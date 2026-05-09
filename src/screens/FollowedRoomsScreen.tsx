@@ -334,10 +334,64 @@ function pickPlayableUrls(raw: any, preferLive = false): string[] {
   return Array.from(new Set(candidates.filter(Boolean))).sort((a, b) => streamScore(b, preferLive) - streamScore(a, preferLive));
 }
 
+function extractLiveIdFromText(value: any): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value || '');
+  return String(
+    text.match(/[?&](?:liveId|liveid|live_id)=([0-9]+)/i)?.[1]
+    || text.match(/(?:liveId|liveid|live_id)["'\s:=]+([0-9]+)/i)?.[1]
+    || text.match(/\/(?:live|playback|record|replay)\/([0-9]+)/i)?.[1]
+    || '',
+  );
+}
+
+function findLiveItem(listRes: any, liveId: string) {
+  const list = unwrapList(listRes, [
+    'content.liveList',
+    'content.list',
+    'content.data',
+    'data.liveList',
+    'data.list',
+    'liveList',
+    'list',
+  ]);
+  return list.find((item: any) => String(item.liveId || item.id || item.live_id || '') === String(liveId));
+}
+
+async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
+  const liveId = String(media.liveId || extractLiveIdFromText(media) || '');
+  const title = media.title || '直播 / 录播';
+  const attempts: Array<() => Promise<any>> = [];
+  if (liveId) {
+    attempts.push(async () => findLiveItem(await pocketApi.getLiveList({ record: false, debug: true, next: 0 }), liveId));
+    attempts.push(async () => pocketApi.getLiveOne(liveId));
+    attempts.push(async () => pocketApi.getOpenLiveOne(liveId));
+    attempts.push(async () => findLiveItem(await pocketApi.getLiveList({ record: true, debug: true, next: 0 }), liveId));
+    attempts.push(async () => findLiveItem(await pocketApi.getOpenLivePublicList({ record: true, next: 0 }), liveId));
+  }
+  for (const attempt of attempts) {
+    try {
+      const detail = await attempt();
+      const urls = pickPlayableUrls(detail, true);
+      if (urls[0]) {
+        return {
+          ...media,
+          type: 'live',
+          liveId,
+          title,
+          url: urls[0],
+        };
+      }
+    } catch {
+      // Try the next endpoint; live shares turn into replays after the stream ends.
+    }
+  }
+  return { ...media, liveId, title, url: media.url };
+}
+
 function classifyMedia(url: string, msgType: string, text: string): MediaType {
   const lower = `${url} ${msgType} ${text}`.toLowerCase();
   if (lower.includes('image') || lower.includes('expressimage') || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) return 'image';
-  if (lower.includes('live') || lower.startsWith('rtmp://') || lower.includes('.flv') || lower.includes('.m3u8')) return 'live';
+  if (lower.includes('live') || lower.includes('playback') || lower.includes('record') || lower.includes('replay') || lower.startsWith('rtmp://') || lower.includes('.flv') || lower.includes('.m3u8')) return 'live';
   if (lower.includes('voice') || lower.includes('audio') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return 'audio';
   if (lower.includes('video') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return 'video';
   return 'link';
@@ -350,11 +404,13 @@ function roomMedia(item: any): RoomMedia | null {
   const msgType = String(item.msgType || item.extMsgType || body.msgType || body.extMsgType || '').toUpperCase();
   const liveId = firstTextFrom([item, ext, body], [
     'liveId',
+    'liveid',
+    'live_id',
     'message.liveId',
     'msg.liveId',
     'content.liveId',
     'data.liveId',
-  ]) || deepFindText([item, ext, body], ['liveId']);
+  ]) || deepFindText([item, ext, body], ['liveId', 'liveid', 'live_id']) || extractLiveIdFromText([item, ext, body, text]);
   const urls = pickPlayableUrls([item, ext, body], !!liveId || msgType.includes('LIVE'));
   const url = urls[0] || '';
   if (!url && !liveId) return null;
@@ -420,14 +476,36 @@ export default function FollowedRoomsScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
 
   useEffect(() => {
-    setTabBarHidden(!!selectedRoom);
-    return () => setTabBarHidden(false);
+    if (!selectedRoom) {
+      setRoomPlayer(null);
+      setLiveImmersiveMode(false);
+      setTabBarHidden(false);
+    }
+    return () => {
+      setTabBarHidden(false);
+      setLiveImmersiveMode(false);
+    };
   }, [selectedRoom, setTabBarHidden]);
 
   useEffect(() => {
     setLiveImmersiveMode(!!roomPlayer);
+    setTabBarHidden(!!roomPlayer);
     return () => setLiveImmersiveMode(false);
-  }, [roomPlayer]);
+  }, [roomPlayer, setTabBarHidden]);
+
+  const closeRoomPlayer = useCallback(() => {
+    setRoomPlayer(null);
+    setLiveImmersiveMode(false);
+    setTabBarHidden(false);
+  }, [setTabBarHidden]);
+
+  const closeRoom = useCallback(() => {
+    setRoomPlayer(null);
+    setPlayingMedia(null);
+    setSelectedRoom(null);
+    setLiveImmersiveMode(false);
+    setTabBarHidden(false);
+  }, [setTabBarHidden]);
 
   const loadFollowed = useCallback(async () => {
     if (!token) {
@@ -547,11 +625,9 @@ export default function FollowedRoomsScreen() {
     }
     let next = media;
     try {
-      if ((!media.url || media.liveId) && media.liveId) {
-        setMediaStatus('正在解析直播地址...');
-        const detail = await pocketApi.getLiveOne(media.liveId).catch(async () => pocketApi.getOpenLiveOne(media.liveId || ''));
-        const urls = pickPlayableUrls(detail, true);
-        next = { ...media, url: urls[0] || media.url };
+      if (media.type === 'live' || media.liveId) {
+        setMediaStatus('\u6b63\u5728\u89e3\u6790\u76f4\u64ad / \u5f55\u64ad\u5730\u5740...');
+        next = await resolveRoomLiveMedia(media);
       }
       if (!next.url) {
         setMediaStatus('这个消息里没有解析到可播放地址。');
@@ -601,7 +677,7 @@ export default function FollowedRoomsScreen() {
         {roomPlayer ? (
           <View style={styles.roomPlayerPage}>
             <View style={styles.roomPlayerHeader}>
-              <TouchableOpacity onPress={() => setRoomPlayer(null)} style={styles.roomPlayerBack}>
+              <TouchableOpacity onPress={closeRoomPlayer} style={styles.roomPlayerBack}>
                 <Text style={styles.roomPlayerBackText}>返回房间</Text>
               </TouchableOpacity>
               <Text style={styles.roomPlayerTitle} numberOfLines={1}>{roomPlayer.title}</Text>
@@ -629,7 +705,7 @@ export default function FollowedRoomsScreen() {
           </View>
         </Modal>
         <View style={styles.chatHeader}>
-          <TouchableOpacity style={styles.backWrap} onPress={() => setSelectedRoom(null)}>
+          <TouchableOpacity style={styles.backWrap} onPress={closeRoom}>
             <Text style={styles.backBtn}>返回房间列表</Text>
           </TouchableOpacity>
           <View style={styles.chatTitleBlock}>
@@ -863,7 +939,7 @@ const styles = StyleSheet.create({
   mediaStatus: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, marginTop: 4, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
   statusDark: { color: '#ffe2a0', backgroundColor: 'rgba(70,52,12,0.82)' },
   listContent: { paddingBottom: 112 },
-  chatContent: { paddingBottom: 132, paddingTop: 4 },
+  chatContent: { paddingBottom: 216, paddingTop: 4 },
   roomItem: { padding: 14, backgroundColor: 'rgba(255,255,255,0.76)', marginHorizontal: 16, marginVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
   roomItemDark: { backgroundColor: 'rgba(20,20,20,0.70)', borderColor: 'rgba(255,255,255,0.12)' },
   roomTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
@@ -921,7 +997,7 @@ const styles = StyleSheet.create({
   imagePreviewClose: { position: 'absolute', top: 42, right: 18, zIndex: 2, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.14)' },
   imagePreviewCloseText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   fullImage: { width: '100%', height: '100%' },
-  sendBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' },
+  sendBar: { position: 'absolute', left: 0, right: 0, bottom: 82, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' },
   sendBarDark: { backgroundColor: 'rgba(18,18,18,0.96)', borderTopColor: 'rgba(255,255,255,0.12)' },
   sendInput: { flex: 1, minHeight: 42, maxHeight: 92, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#fff', color: '#333', fontSize: 13 },
   sendBtn: { minHeight: 42, paddingHorizontal: 16, borderRadius: 16, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },

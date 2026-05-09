@@ -232,7 +232,7 @@ function normalizeLiveRank(res: any): any[] {
   }
   return list.map((item: any, index: number) => ({
     ...item,
-    userId: pickText(item, ['userId', 'uid', 'id', 'account', 'userInfo.userId', 'userInfo.id', 'user.userId', 'user.id', 'memberInfo.userId', 'memberInfo.id']),
+    userId: pickText(item, ['userId', 'uid', 'id', 'account', 'userInfo.userId', 'userInfo.id', 'user.userId', 'user.id', 'user.userIdStr', 'user.userAccount', 'memberInfo.userId', 'memberInfo.id']),
     rank: Number(item.rank || item.no || item.index || index + 1),
     name: pickText(item, [
       'nickName',
@@ -245,6 +245,7 @@ function normalizeLiveRank(res: any): any[] {
       'userInfo.name',
       'user.nickName',
       'user.nickname',
+      'user.userName',
       'user.name',
       'memberInfo.nickName',
       'memberInfo.nickname',
@@ -257,6 +258,7 @@ function normalizeLiveRank(res: any): any[] {
       'userInfo.headImg',
       'user.avatar',
       'user.headImg',
+      'user.userAvatar',
       'memberInfo.avatar',
     ])),
     value: pickText(item, ['score', 'total', 'cost', 'money', 'giftValue', 'value', 'amount', 'contribution', 'count', 'giftNum'], ''),
@@ -275,13 +277,13 @@ function profileFromUserRes(res: any) {
       'nickName', 'nickname', 'userName', 'name',
       'profile.nickName', 'profile.nickname',
       'userInfo.nickName', 'userInfo.nickname',
-      'user.nickName', 'user.nickname',
+      'user.nickName', 'user.nickname', 'user.userName',
     ]),
     avatar: normalizeUrl(pickText(info, [
       'avatar', 'headImg', 'headUrl', 'picPath',
       'profile.avatar', 'profile.headImg',
       'userInfo.avatar', 'userInfo.headImg',
-      'user.avatar', 'user.headImg',
+      'user.avatar', 'user.headImg', 'user.userAvatar',
     ])),
   };
 }
@@ -414,6 +416,18 @@ export default function MediaScreen() {
     try {
       let urls = pickPlayableUrls(item, tab === 'live');
       let detail: any = item;
+      const initialUrl = urls[0] || '';
+      if (initialUrl) {
+        setPlaying({
+          url: initialUrl,
+          urls,
+          title: item.title || item.liveRoomTitle || '直播 / 回放',
+          cover: item.liveCover || item.coverPath,
+          item,
+          isLive: tab === 'live',
+          needsVlc: streamNeedsProxy(initialUrl),
+        });
+      }
       if (item.liveId) {
         detail = await pocketApi.getLiveOne(item.liveId);
         urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];

@@ -226,14 +226,26 @@ export const pocketApi = {
   },
 
   async editUserInfo(params: { nickName?: string; avatar?: string }) {
+    const current = await this.getNimLoginInfo().catch(() => null);
+    const currentInfo = current?.content?.userInfo || current?.content?.baseUserInfo || current?.content || current?.data?.userInfo || current?.data || {};
+    const nickName = params.nickName || currentInfo.nickName || currentInfo.nickname || '';
+    const avatar = params.avatar || currentInfo.avatar || currentInfo.headImg || currentInfo.userAvatar || '';
+    const userId = currentInfo.userId || currentInfo.id || '';
     const payloads = [
-      { nickName: params.nickName || '', avatar: params.avatar || '' },
-      { nickname: params.nickName || '', avatar: params.avatar || '' },
-      { name: params.nickName || '', avatar: params.avatar || '' },
-      { nickName: params.nickName || '', headImg: params.avatar || '' },
-      { nickname: params.nickName || '', headImg: params.avatar || '' },
-      { userInfo: { nickName: params.nickName || '', avatar: params.avatar || '' } },
-      { userInfo: { nickname: params.nickName || '', avatar: params.avatar || '' } },
+      { userId, nickName, avatar },
+      { userId, nickname: nickName, avatar },
+      { userId, name: nickName, avatar },
+      { userId, nickName, headImg: avatar },
+      { userId, nickname: nickName, headImg: avatar },
+      { userId, nickName, userAvatar: avatar },
+      { userId, nickname: nickName, userAvatar: avatar },
+      { userId, nickName, faceImage: avatar },
+      { userInfo: { userId, nickName, avatar } },
+      { userInfo: { userId, nickname: nickName, avatar } },
+      { baseUserInfo: { userId, nickName, avatar } },
+      { baseUserInfo: { userId, nickname: nickName, avatar } },
+      { user: { userId, nickName, avatar } },
+      { user: { userId, nickname: nickName, avatar } },
     ].map((payload) => Object.fromEntries(Object.entries(payload).filter(([, value]) => {
       if (value && typeof value === 'object') {
         return Object.values(value).some((item) => String(item || '').trim());
@@ -243,12 +255,19 @@ export const pocketApi = {
     return tryPocketPost(
       payloads
         .filter((payload) => Object.keys(payload).length > 0)
-        .map((payload, index) => ({
-          url: `${BASE}/user/api/v1/user/info/edit`,
-          payload,
-          modern: index % 2 === 1,
-          label: `edit user info ${index + 1}`,
-        })),
+        .flatMap((payload, index) => [
+          {
+            url: `${BASE}/user/api/v1/user/info/edit`,
+            payload,
+            label: `edit user info ${index + 1}`,
+          },
+          {
+            url: `${BASE}/user/api/v1/user/info/edit`,
+            payload,
+            modern: true,
+            label: `edit user info modern ${index + 1}`,
+          },
+        ]),
       'edit user info failed',
     );
   },
@@ -544,10 +563,12 @@ export const pocketApi = {
     }, { fallback: '获取个人相册失败' });
   },
 
-  async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean }) {
+  async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean; debug?: boolean; next?: number }) {
     return pocketPost(`${BASE}/live/api/v1/live/getLiveList`, {
       groupId: params.groupId ?? 0,
+      debug: params.debug ?? false,
       liveType: params.liveType ?? 0,
+      next: params.next ?? 0,
       page: params.page || 1,
       record: params.record ?? false,
     }, { fallback: '获取直播列表失败' });
