@@ -1,0 +1,43 @@
+{
+  "name": "yaya_msg-mobile",
+  "version": "2.2.4",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.23.1",
+    "@react-navigation/bottom-tabs": "^7.15.10",
+    "@react-navigation/native": "^7.2.2",
+    "@react-navigation/stack": "^7.8.11",
+    "crypto-js": "^4.2.0",
+    "expo": "~54.0.33",
+    "expo-asset": "~12.0.13",
+    "expo-blur": "~15.0.8",
+    "expo-document-picker": "~14.0.8",
+    "expo-file-system": "~19.0.22",
+    "expo-image-picker": "^55.0.20",
+    "expo-screen-orientation": "^55.0.14",
+    "expo-status-bar": "~3.0.9",
+    "qrcode": "^1.5.4",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "^5.7.0",
+    "react-native-screens": "^4.24.0",
+    "react-native-slider": "^0.11.0",
+    "react-native-vector-icons": "^9.2.0",
+    "react-native-video": "^6.19.2",
+    "react-native-webview": "^13.16.1",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}

@@ -1,0 +1,932 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+} from 'react-native';
+import Video from 'react-native-video';
+import { useSettingsStore, useMemberStore, useUiStore } from '../store';
+import { Member, RoomMessage } from '../types';
+import { formatTimestamp } from '../utils/format';
+import {
+  errorMessage,
+  messagePayload,
+  messageText,
+  normalizeUrl,
+  parseMaybeJson,
+  pickText,
+  unwrapList,
+} from '../utils/data';
+import pocketApi from '../api/pocket48';
+import MemberPicker from '../components/MemberPicker';
+import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
+
+type FollowedRoom = {
+  memberId: string;
+  member?: Member;
+  lastMessage?: any;
+};
+
+type RoomMode = 'big' | 'small';
+type MediaType = 'audio' | 'video' | 'live' | 'image' | 'link';
+
+type RoomMedia = {
+  type: MediaType;
+  url: string;
+  title: string;
+  duration?: string;
+  liveId?: string;
+};
+
+type SenderProfile = {
+  id: string;
+  name: string;
+  avatar: string;
+};
+
+type MessageRole = 'idol' | 'mine' | 'fan';
+
+const URL_REG = /(https?:\/\/[^\s"'<>，。！？、]+|rtmp:\/\/[^\s"'<>，。！？、]+)/gi;
+
+const PLAY_URL_FIELDS = [
+  'playStreamPath',
+  'streamUrl',
+  'playUrl',
+  'playPath',
+  'streamPath',
+  'pullStreamPath',
+  'streamPathHd',
+  'streamPathHigh',
+  'streamPathNormal',
+  'streamPathOrigin',
+  'url',
+  'liveUrl',
+  'm3u8Url',
+  'flvUrl',
+  'hlsUrl',
+  'videoUrl',
+  'audioUrl',
+  'voiceUrl',
+  'recordUrl',
+  'mediaUrl',
+  'filePath',
+  'imageUrl',
+  'imagePath',
+  'picPath',
+  'picturePath',
+  'cover',
+  'content.playStreamPath',
+  'content.streamUrl',
+  'content.playUrl',
+  'content.playPath',
+  'content.url',
+  'content.imageUrl',
+  'content.imagePath',
+  'content.picPath',
+  'data.playStreamPath',
+  'data.streamUrl',
+  'data.playUrl',
+  'data.playPath',
+  'data.url',
+  'data.imageUrl',
+  'data.imagePath',
+  'data.picPath',
+];
+
+function shortName(member?: Member, fallback = '') {
+  const raw = member?.ownerName || fallback || '未知成员';
+  return raw.replace(/^(SNH48|GNZ48|BEJ48|CKG48|CGT48)-/, '');
+}
+
+function parseObject(value: any) {
+  const parsed = parseMaybeJson(value);
+  if (parsed && typeof parsed === 'object') return parsed;
+  return {};
+}
+
+function extraInfo(item: any) {
+  return parseObject(item?.extInfo);
+}
+
+function messageBody(item: any) {
+  const body = messagePayload(item);
+  return body && typeof body === 'object' ? body : {};
+}
+
+function firstTextFrom(objects: any[], paths: string[]) {
+  for (const obj of objects) {
+    const value = pickText(obj, paths);
+    if (value) return value;
+  }
+  return '';
+}
+
+function deepFindText(value: any, keys: string[], depth = 0): string {
+  if (!value || depth > 5) return '';
+  if (typeof value === 'string') return '';
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = deepFindText(item, keys, depth + 1);
+      if (found) return found;
+    }
+    return '';
+  }
+  if (typeof value !== 'object') return '';
+  for (const key of keys) {
+    const direct = value[key];
+    if (direct !== undefined && direct !== null && String(direct).trim()) return String(direct);
+  }
+  for (const child of Object.values(value)) {
+    const found = deepFindText(child, keys, depth + 1);
+    if (found) return found;
+  }
+  return '';
+}
+
+function collectUrls(value: any, result: string[] = [], depth = 0) {
+  if (!value || depth > 6) return result;
+  if (typeof value === 'string') {
+    const matches = value.match(URL_REG) || [];
+    matches.forEach((url) => result.push(normalizeUrl(url)));
+    return result;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectUrls(item, result, depth + 1));
+    return result;
+  }
+  if (typeof value === 'object') {
+    Object.values(value).forEach((item) => collectUrls(item, result, depth + 1));
+  }
+  return result;
+}
+
+function senderProfile(item: any, room: Member): SenderProfile {
+  const body = messageBody(item);
+  const ext = extraInfo(item);
+  const objects = [item, ext, body];
+  const id = firstTextFrom(objects, [
+    'senderUserId',
+    'senderId',
+    'fromUserId',
+    'fromAccount',
+    'userId',
+    'uid',
+    'account',
+    'sender.userId',
+    'sender.id',
+    'user.userId',
+    'user.id',
+    'message.userId',
+    'message.senderId',
+  ]) || deepFindText(objects, ['senderUserId', 'fromUserId', 'userId', 'uid']);
+  const name = firstTextFrom(objects, [
+    'senderName',
+    'senderNickName',
+    'nickName',
+    'nickname',
+    'userName',
+    'name',
+    'fromNickName',
+    'sender.nickName',
+    'sender.nickname',
+    'sender.name',
+    'user.nickName',
+    'user.nickname',
+    'user.name',
+    'message.nickName',
+    'message.nickname',
+  ]) || deepFindText(objects, ['nickName', 'nickname', 'senderName', 'userName', 'name']);
+  const avatar = normalizeUrl(firstTextFrom(objects, [
+    'avatar',
+    'senderAvatar',
+    'headImg',
+    'headUrl',
+    'sender.avatar',
+    'user.avatar',
+    'user.headImg',
+    'message.avatar',
+  ]) || deepFindText(objects, ['avatar', 'headImg', 'headUrl']));
+
+  return {
+    id,
+    name: name || (id ? `用户 ${id}` : '未知用户'),
+    avatar: avatar || room.avatar || '',
+  };
+}
+
+function isIdolMessage(item: any, room: Member, includeFans: boolean) {
+  if (!includeFans) return true;
+  const body = messageBody(item);
+  const ext = extraInfo(item);
+  const profile = senderProfile(item, room);
+  const ownerIds = [room.id, (room as any).userId, (room as any).memberId].map(String).filter(Boolean);
+  if (profile.id && ownerIds.includes(String(profile.id))) return true;
+  const role = firstTextFrom([item, ext, body], ['roleId', 'user.roleId', 'sender.roleId', 'message.roleId']);
+  if (role && ['2', '3', '4', 'star', 'idol'].includes(String(role).toLowerCase())) return true;
+  return false;
+}
+
+function currentUserIdFrom(res: any): string {
+  return firstTextFrom([res?.content, res?.data, res], [
+    'userInfo.userId',
+    'userInfo.id',
+    'user.userId',
+    'user.id',
+    'userId',
+    'id',
+    'account',
+  ]);
+}
+
+function messageRole(item: any, room: Member, includeFans: boolean, currentUserId: string): MessageRole {
+  const profile = senderProfile(item, room);
+  if (includeFans && currentUserId && profile.id && String(profile.id) === String(currentUserId)) return 'mine';
+  if (isIdolMessage(item, room, includeFans)) return 'idol';
+  return 'fan';
+}
+
+function messageKey(item: any, index = 0) {
+  return String(item.id || item.msgId || item.messageId || item.clientMsgId || `${item.msgTime || item.ctime || ''}-${senderProfile(item, {} as Member).id}-${index}`);
+}
+
+function getMessageTime(item: any): number {
+  const value = Number(item?.msgTime || item?.messageTime || item?.ctime || item?.time || 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getNextTime(res: any, list: any[]): number {
+  const direct = Number(firstTextFrom([res?.content, res?.data, res], ['nextTime', 'next', 'lastTime']));
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const times = list.map(getMessageTime).filter((time) => time > 0);
+  return times.length ? Math.min(...times) : 0;
+}
+
+function mergeMessages(prev: RoomMessage[], next: RoomMessage[]) {
+  const seen = new Set(prev.map((item, index) => messageKey(item, index)));
+  const merged = [...prev];
+  next.forEach((item, index) => {
+    const key = messageKey(item, index);
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(item);
+  });
+  return merged;
+}
+
+function findLastMessage(messages: any[], member?: Member) {
+  if (!member) return null;
+  return messages.find((msg) => (
+    String(msg.channelId || '') === String(member.channelId || '')
+    || String(msg.serverId || '') === String(member.serverId || '')
+    || String(msg.userId || msg.ownerId || '') === String(member.id || '')
+  ));
+}
+
+function roomChannelId(member: Member, mode: RoomMode) {
+  return String(mode === 'small' ? (member.yklzId || member.channelId || '') : (member.channelId || ''));
+}
+
+function roomLabel(member: Member, mode: RoomMode) {
+  return mode === 'small'
+    ? `小房间 ${member.yklzId || '未配置'}`
+    : `大房间 ${member.channelId || '未配置'}`;
+}
+
+function streamScore(url: string, preferLive = false): number {
+  const lower = url.toLowerCase();
+  if (preferLive && lower.startsWith('rtmp://')) return 130;
+  if (lower.includes('.m3u8') || lower.includes('format=hls')) return preferLive ? 100 : 90;
+  if (lower.includes('.flv')) return preferLive ? 110 : 70;
+  if (lower.startsWith('rtmp://')) return 60;
+  if (/\.(mp4|mov)(\?|$)/i.test(lower)) return 80;
+  if (/\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(lower)) return 80;
+  return 40;
+}
+
+function pickPlayableUrls(raw: any, preferLive = false): string[] {
+  const candidates: string[] = [];
+  const direct = normalizeUrl(pickText(raw, PLAY_URL_FIELDS));
+  if (direct) candidates.push(direct);
+  const nested = unwrapList(raw, [
+    'streams',
+    'playStreams',
+    'liveStreams',
+    'urls',
+    'content.streams',
+    'content.playStreams',
+    'content.urls',
+    'data.streams',
+    'data.playStreams',
+    'data.urls',
+  ]);
+  nested.forEach((item) => {
+    const url = normalizeUrl(pickText(item, PLAY_URL_FIELDS));
+    if (url) candidates.push(url);
+  });
+  collectUrls(raw).forEach((url) => candidates.push(url));
+  return Array.from(new Set(candidates.filter(Boolean))).sort((a, b) => streamScore(b, preferLive) - streamScore(a, preferLive));
+}
+
+function classifyMedia(url: string, msgType: string, text: string): MediaType {
+  const lower = `${url} ${msgType} ${text}`.toLowerCase();
+  if (lower.includes('image') || lower.includes('expressimage') || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) return 'image';
+  if (lower.includes('live') || lower.startsWith('rtmp://') || lower.includes('.flv') || lower.includes('.m3u8')) return 'live';
+  if (lower.includes('voice') || lower.includes('audio') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return 'audio';
+  if (lower.includes('video') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return 'video';
+  return 'link';
+}
+
+function roomMedia(item: any): RoomMedia | null {
+  const body = messageBody(item);
+  const ext = extraInfo(item);
+  const text = messageText(item);
+  const msgType = String(item.msgType || item.extMsgType || body.msgType || body.extMsgType || '').toUpperCase();
+  const liveId = firstTextFrom([item, ext, body], [
+    'liveId',
+    'message.liveId',
+    'msg.liveId',
+    'content.liveId',
+    'data.liveId',
+  ]) || deepFindText([item, ext, body], ['liveId']);
+  const urls = pickPlayableUrls([item, ext, body], !!liveId || msgType.includes('LIVE'));
+  const url = urls[0] || '';
+  if (!url && !liveId) return null;
+  const type = liveId ? 'live' : classifyMedia(url, msgType, text);
+  const duration = firstTextFrom([item, ext, body], ['duration', 'time', 'second', 'audioTime', 'message.time']);
+  const title = text && !text.startsWith('[') && text !== url
+    ? text
+    : type === 'audio'
+      ? '语音消息'
+      : type === 'video'
+        ? '视频消息'
+        : type === 'live'
+          ? '直播 / 录播'
+          : '链接';
+  return { type, url, title, duration, liveId };
+}
+
+function mediaLabel(type: MediaType) {
+  if (type === 'audio') return '\u8bed\u97f3';
+  if (type === 'video') return '\u89c6\u9891';
+  if (type === 'live') return '\u76f4\u64ad';
+  if (type === 'image') return '\u56fe\u7247';
+  return '\u94fe\u63a5';
+}
+
+function playerSource(url: string) {
+  return {
+    uri: url,
+    headers: {
+      'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
+      Referer: 'https://h5.48.cn/',
+    },
+  };
+}
+
+function avatarInitial(name: string) {
+  return (name || '用').trim().slice(0, 1).toUpperCase();
+}
+
+export default function FollowedRoomsScreen() {
+  const theme = useSettingsStore((state) => state.settings.theme);
+  const token = useSettingsStore((state) => state.settings.p48Token);
+  const isDark = theme === 'dark';
+  const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
+  const members = useMemberStore((state) => state.members);
+  const [followed, setFollowed] = useState<FollowedRoom[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<Member | null>(null);
+  const [roomMessages, setRoomMessages] = useState<RoomMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roomMode, setRoomMode] = useState<RoomMode>('big');
+  const [showFanMessages, setShowFanMessages] = useState(false);
+  const [playingMedia, setPlayingMedia] = useState<RoomMedia | null>(null);
+  const [mediaStatus, setMediaStatus] = useState('');
+  const [roomNextTime, setRoomNextTime] = useState(0);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [fullImageUrl, setFullImageUrl] = useState('');
+  const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
+  const [draftMessage, setDraftMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+
+  useEffect(() => {
+    setTabBarHidden(!!selectedRoom);
+    return () => setTabBarHidden(false);
+  }, [selectedRoom, setTabBarHidden]);
+
+  useEffect(() => {
+    setLiveImmersiveMode(!!roomPlayer);
+    return () => setLiveImmersiveMode(false);
+  }, [roomPlayer]);
+
+  const loadFollowed = useCallback(async () => {
+    if (!token) {
+      setStatus('请先在设置里登录口袋48，关注房间需要账号 Token。');
+      return;
+    }
+    setLoading(true);
+    setStatus('正在加载关注房间...');
+    try {
+      const idsRes = await pocketApi.getFollowedIds();
+      const idsArr = unwrapList(idsRes, ['content.data', 'content', 'content.list', 'data', 'list']).map(String);
+      const followedMembers = idsArr
+        .map((id: string) => {
+          const member = members.find((item: any) => String(item.id || item.userId) === id);
+          return { memberId: id, member };
+        })
+        .filter((item) => item.member?.channelId);
+
+      const serverIds = followedMembers
+        .map((item) => Number(item.member?.serverId || 0))
+        .filter((id) => Number.isFinite(id) && id > 0);
+      const lastMsgsRes = serverIds.length ? await pocketApi.getLastMessages(serverIds) : null;
+      const lastMsgs = unwrapList(lastMsgsRes, ['content.lastMsgList', 'content.data', 'content', 'data', 'lastMsgList']);
+
+      setFollowed(followedMembers.map((item) => ({
+        ...item,
+        lastMessage: findLastMessage(lastMsgs, item.member),
+      })));
+      setStatus(followedMembers.length ? `已加载 ${followedMembers.length} 个关注房间` : '没有匹配到关注房间，也可以搜索成员直接打开房间。');
+    } catch (error) {
+      setStatus(`加载失败：${errorMessage(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [members, token]);
+
+  const openRoom = useCallback(async (room: Member, nextMode = roomMode, includeFans = showFanMessages) => {
+    const channelId = roomChannelId(room, nextMode);
+    if (!channelId) {
+      setStatus(nextMode === 'small' ? '这个成员缺少小房间 channelId，无法打开小房间。' : '这个成员缺少大房间 channelId，无法打开房间。');
+      return;
+    }
+    setSelectedRoom(room);
+    setPlayingMedia(null);
+    setMediaStatus('');
+    setLoading(true);
+    setRoomMessages([]);
+    setRoomNextTime(0);
+    setHasMoreMessages(false);
+    setRoomMode(nextMode);
+    setShowFanMessages(includeFans);
+    setStatus(`正在加载${nextMode === 'small' ? '小房间' : '大房间'}消息...`);
+    try {
+      const userInfo = includeFans && !currentUserId
+        ? await pocketApi.getNimLoginInfo().catch(() => null)
+        : null;
+      const nextCurrentUserId = currentUserId || currentUserIdFrom(userInfo);
+      if (nextCurrentUserId) setCurrentUserId(nextCurrentUserId);
+      const res = await pocketApi.getRoomMessages({
+        channelId,
+        serverId: room.serverId,
+        nextTime: 0,
+        fetchAll: includeFans,
+      });
+      const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'data.messageList', 'messageList', 'messages', 'list']);
+      setRoomMessages(list);
+      const nextTime = getNextTime(res, list);
+      setRoomNextTime(nextTime);
+      setHasMoreMessages(list.length >= 50 && nextTime > 0);
+      setStatus(list.length ? `已加载 ${list.length} 条消息 · ${includeFans ? '含粉丝发言' : '仅房主发言'}` : '暂无消息');
+    } catch (error) {
+      setStatus(`加载失败：${errorMessage(error)}`);
+      setRoomMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUserId, roomMode, showFanMessages]);
+
+  const loadMoreRoomMessages = useCallback(async () => {
+    if (!selectedRoom || loading || loadingMoreMessages || !hasMoreMessages || !roomNextTime) return;
+    const channelId = roomChannelId(selectedRoom, roomMode);
+    if (!channelId) return;
+    setLoadingMoreMessages(true);
+    try {
+      const res = await pocketApi.getRoomMessages({
+        channelId,
+        serverId: selectedRoom.serverId,
+        nextTime: roomNextTime,
+        fetchAll: showFanMessages,
+      });
+      const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'data.messageList', 'messageList', 'messages', 'list']);
+      const nextTime = getNextTime(res, list);
+      setRoomMessages((prev) => {
+        const merged = mergeMessages(prev, list as RoomMessage[]);
+        setStatus(`已加载 ${merged.length} 条消息 · ${showFanMessages ? '含粉丝发言' : '仅房主发言'}`);
+        return merged;
+      });
+      setRoomNextTime(nextTime);
+      setHasMoreMessages(list.length >= 50 && nextTime > 0 && nextTime !== roomNextTime);
+    } catch (error) {
+      setStatus(`继续加载失败：${errorMessage(error)}`);
+    } finally {
+      setLoadingMoreMessages(false);
+    }
+  }, [hasMoreMessages, loading, loadingMoreMessages, roomMode, roomNextTime, selectedRoom, showFanMessages]);
+
+  const playMedia = useCallback(async (media: RoomMedia) => {
+    setMediaStatus('');
+    if (media.type === 'link') {
+      const url = media.url || media.title;
+      if (url) Linking.openURL(url).catch(() => setMediaStatus('这个链接无法直接打开。'));
+      return;
+    }
+    if (playingMedia?.url && playingMedia.url === media.url) {
+      setPlayingMedia(null);
+      return;
+    }
+    let next = media;
+    try {
+      if ((!media.url || media.liveId) && media.liveId) {
+        setMediaStatus('正在解析直播地址...');
+        const detail = await pocketApi.getLiveOne(media.liveId).catch(async () => pocketApi.getOpenLiveOne(media.liveId || ''));
+        const urls = pickPlayableUrls(detail, true);
+        next = { ...media, url: urls[0] || media.url };
+      }
+      if (!next.url) {
+        setMediaStatus('这个消息里没有解析到可播放地址。');
+        return;
+      }
+      if (next.type === 'live') {
+        setRoomPlayer(next);
+        return;
+      }
+      setPlayingMedia(next);
+    } catch (error) {
+      setMediaStatus(`播放解析失败：${errorMessage(error)}`);
+    }
+  }, [playingMedia]);
+
+  const sendRoomMessage = useCallback(async () => {
+    if (!selectedRoom || sendingMessage) return;
+    const text = draftMessage.trim();
+    if (!text) return;
+    const channelId = roomChannelId(selectedRoom, roomMode);
+    setSendingMessage(true);
+    setStatus('正在发送房间消息...');
+    try {
+      await pocketApi.sendRoomText({ channelId, serverId: selectedRoom.serverId, text });
+      setDraftMessage('');
+      await openRoom(selectedRoom, roomMode, showFanMessages);
+      setStatus('房间消息已发送');
+    } catch (error) {
+      setStatus(`房间消息发送失败：${errorMessage(error)}`);
+    } finally {
+      setSendingMessage(false);
+    }
+  }, [draftMessage, openRoom, roomMode, selectedRoom, sendingMessage, showFanMessages]);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return followed;
+    return followed.filter((item) => {
+      const member = item.member;
+      return `${member?.ownerName || ''} ${member?.pinyin || ''} ${member?.team || ''} ${member?.channelId || ''}`.toLowerCase().includes(q);
+    });
+  }, [followed, searchQuery]);
+
+  if (selectedRoom) {
+    return (
+      <View style={[styles.container, isDark && styles.containerDark]}>
+        {roomPlayer ? (
+          <View style={styles.roomPlayerPage}>
+            <View style={styles.roomPlayerHeader}>
+              <TouchableOpacity onPress={() => setRoomPlayer(null)} style={styles.roomPlayerBack}>
+                <Text style={styles.roomPlayerBackText}>返回房间</Text>
+              </TouchableOpacity>
+              <Text style={styles.roomPlayerTitle} numberOfLines={1}>{roomPlayer.title}</Text>
+            </View>
+            {Platform.OS === 'android' && LiveExoView ? (
+              <LiveExoView style={styles.roomNativeVideo} url={roomPlayer.url} />
+            ) : (
+              <Video
+                source={playerSource(roomPlayer.url)}
+                style={styles.roomNativeVideo}
+                controls
+                paused={false}
+                resizeMode="contain"
+                ignoreSilentSwitch="ignore"
+              />
+            )}
+          </View>
+        ) : null}
+        <Modal visible={!!fullImageUrl} transparent animationType="fade" onRequestClose={() => setFullImageUrl('')}>
+          <View style={styles.imagePreviewShade}>
+            <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setFullImageUrl('')}>
+              <Text style={styles.imagePreviewCloseText}>关闭</Text>
+            </TouchableOpacity>
+            {fullImageUrl ? <Image source={{ uri: fullImageUrl }} style={styles.fullImage} resizeMode="contain" /> : null}
+          </View>
+        </Modal>
+        <View style={styles.chatHeader}>
+          <TouchableOpacity style={styles.backWrap} onPress={() => setSelectedRoom(null)}>
+            <Text style={styles.backBtn}>返回房间列表</Text>
+          </TouchableOpacity>
+          <View style={styles.chatTitleBlock}>
+            <Text style={[styles.title, isDark && styles.textDark]} numberOfLines={1}>{shortName(selectedRoom)}</Text>
+            <Text style={styles.subtitle} numberOfLines={1}>{selectedRoom.team || selectedRoom.groupName || '成员房间'} · {roomLabel(selectedRoom, roomMode)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.chatTools}>
+          <TouchableOpacity
+            style={[styles.modePill, roomMode === 'big' && styles.modePillActive]}
+            onPress={() => openRoom(selectedRoom, 'big', showFanMessages)}
+          >
+            <Text style={[styles.modePillText, roomMode === 'big' && styles.modePillTextActive]}>大房间</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modePill, roomMode === 'small' && styles.modePillActive]}
+            onPress={() => openRoom(selectedRoom, 'small', showFanMessages)}
+          >
+            <Text style={[styles.modePillText, roomMode === 'small' && styles.modePillTextActive]}>小房间</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modePill, showFanMessages && styles.modePillActive]}
+            onPress={() => openRoom(selectedRoom, roomMode, !showFanMessages)}
+          >
+            <Text style={[styles.modePillText, showFanMessages && styles.modePillTextActive]}>{showFanMessages ? '显示全部' : '仅房主'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
+        {mediaStatus ? <Text style={[styles.mediaStatus, isDark && styles.statusDark]}>{mediaStatus}</Text> : null}
+
+        <FlatList
+          data={roomMessages}
+          keyExtractor={(item, index) => messageKey(item, index)}
+          contentContainerStyle={styles.chatContent}
+          onEndReached={loadMoreRoomMessages}
+          onEndReachedThreshold={0.25}
+          ListFooterComponent={
+            roomMessages.length ? (
+              <View style={styles.chatFooter}>
+                {loadingMoreMessages ? (
+                  <Text style={styles.empty}>继续加载中...</Text>
+                ) : hasMoreMessages ? (
+                  <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMoreRoomMessages}>
+                    <Text style={styles.loadMoreText}>继续加载历史消息</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.empty}>没有更多消息</Text>
+                )}
+              </View>
+            ) : null
+          }
+          renderItem={({ item }) => {
+            const role = messageRole(item, selectedRoom, showFanMessages, currentUserId);
+            const mine = role === 'mine';
+            const idol = role === 'idol';
+            const profile = idol
+              ? { id: selectedRoom.id, name: shortName(selectedRoom), avatar: selectedRoom.avatar }
+              : senderProfile(item, selectedRoom);
+            const media = roomMedia(item);
+            const body = messageText(item);
+            const bubbleText = body && (!media || body !== media.url) ? body : '';
+            const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
+
+            return (
+              <View style={[styles.chatRow, mine && styles.chatRowMine]}>
+                {!mine ? (
+                  profile.avatar ? (
+                    <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+                  ) : (
+                    <View style={styles.avatarFallback}><Text style={styles.avatarText}>{avatarInitial(profile.name)}</Text></View>
+                  )
+                ) : null}
+                <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
+                  <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
+                    <Text style={[styles.msgSender, idol && styles.msgSenderIdol, mine && styles.msgSenderMine, isDark && !mine && styles.textDark]} numberOfLines={1}>
+                      {profile.name}
+                    </Text>
+                    <Text style={[styles.msgTime, mine && styles.msgTimeMine]}>{formatTimestamp(item.msgTime)}</Text>
+                  </View>
+                  <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, isDark && !mine && !idol && styles.msgBubbleDark]}>
+                    {bubbleText ? (
+                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>
+                        {bubbleText}
+                      </Text>
+                    ) : null}
+                    {media ? (
+                      media.type === 'image' && media.url ? (
+                      <TouchableOpacity onPress={() => setFullImageUrl(media.url)} activeOpacity={0.9}>
+                        <Image source={{ uri: media.url }} style={styles.inlineImage} resizeMode="cover" />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={[styles.mediaCard, (idol || mine) && styles.mediaCardHighlight]}>
+                        <View style={styles.mediaMeta}>
+                          <Text style={[styles.mediaIcon, (idol || mine) && styles.mediaTextHighlight]}>{mediaLabel(media.type)}</Text>
+                          <Text style={[styles.mediaTitle, (idol || mine) && styles.mediaTextHighlight]} numberOfLines={2}>{media.title}</Text>
+                          {media.duration ? <Text style={[styles.mediaDuration, (idol || mine) && styles.mediaTextHighlight]}>{media.duration}s</Text> : null}
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.mediaPlayBtn, (idol || mine) && styles.mediaPlayBtnHighlight]}
+                          onPress={() => playMedia(media)}
+                        >
+                          <Text style={[styles.mediaPlayText, (idol || mine) && styles.mediaPlayTextHighlight]}>
+                            {playingMedia?.url && media.url && playingMedia.url === media.url ? '收起' : canInlinePlay ? '播放' : '打开'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )) : !bubbleText ? (
+                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>[空消息]</Text>
+                    ) : null}
+                    {media?.url && playingMedia?.url === media.url ? (
+                      media.type === 'link' ? (
+                        <TouchableOpacity style={styles.openLinkBtn} onPress={() => Linking.openURL(media.url).catch(() => {})}>
+                          <Text style={styles.openLinkText} numberOfLines={1}>{media.url}</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <Video
+                          source={playerSource(media.url)}
+                          style={media.type === 'audio' ? styles.inlineAudio : styles.inlineVideo}
+                          controls
+                          paused={false}
+                          resizeMode="contain"
+                          ignoreSilentSwitch="ignore"
+                        />
+                      )
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+            );
+          }}
+          ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无消息'}</Text>}
+        />
+        <View style={[styles.sendBar, isDark && styles.sendBarDark]}>
+          <TextInput
+            style={[styles.sendInput, isDark && styles.inputDark]}
+            placeholder="发一条房间消息..."
+            placeholderTextColor="#5a5a5a"
+            value={draftMessage}
+            onChangeText={setDraftMessage}
+            multiline
+          />
+          <TouchableOpacity
+            style={[styles.sendBtn, (!draftMessage.trim() || sendingMessage) && styles.refreshBtnDisabled]}
+            onPress={sendRoomMessage}
+            disabled={!draftMessage.trim() || sendingMessage}
+          >
+            <Text style={styles.sendBtnText}>{sendingMessage ? '发送中' : '发送'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, isDark && styles.containerDark]}>
+      <View style={styles.header}>
+        <Text style={[styles.title, isDark && styles.textDark]}>口袋房间</Text>
+        <Text style={styles.subtitle}>关注房间、大房间和小房间消息</Text>
+        <MemberPicker
+          selectedMember={selectedRoom}
+          onSelect={(member) => openRoom(member)}
+          placeholder="搜索成员并打开房间..."
+          limit={50}
+        />
+        <View style={styles.row}>
+          <TextInput
+            style={[styles.input, isDark && styles.inputDark]}
+            placeholder="筛选已关注成员..."
+            placeholderTextColor="#5a5a5a"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          <TouchableOpacity style={[styles.refreshBtn, loading && styles.refreshBtnDisabled]} onPress={loadFollowed} disabled={loading}>
+            <Text style={styles.refreshText}>刷新</Text>
+          </TouchableOpacity>
+        </View>
+        {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
+      </View>
+
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => String(item.memberId)}
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item }) => (
+          <TouchableOpacity style={[styles.roomItem, isDark && styles.roomItemDark]} onPress={() => item.member && openRoom(item.member)}>
+            <View style={styles.roomTop}>
+              <Text style={[styles.roomName, isDark && styles.textDark]} numberOfLines={1}>{shortName(item.member, item.memberId)}</Text>
+              <Text style={styles.roomTeam}>{item.member?.team || item.member?.groupName || '未匹配成员库'}</Text>
+            </View>
+            {item.member ? (
+              <View style={styles.roomMetaRow}>
+                <Text style={styles.roomMeta}>大 {item.member.channelId || '-'}</Text>
+                <Text style={styles.roomMeta}>小 {item.member.yklzId || '-'}</Text>
+              </View>
+            ) : null}
+            <Text style={[styles.lastMessage, isDark && styles.textSubDark]} numberOfLines={1}>
+              {item.lastMessage ? messageText(item.lastMessage) : '点击查看房间消息'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '点击刷新获取关注房间，或直接搜索成员打开房间'}</Text>}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: 'transparent' },
+  containerDark: { backgroundColor: 'transparent' },
+  header: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
+  chatHeader: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backWrap: { paddingVertical: 8, paddingRight: 4 },
+  chatTitleBlock: { flex: 1, minWidth: 0 },
+  chatTools: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  modePill: { flex: 1, minHeight: 46, paddingVertical: 10, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.70)' },
+  modePillActive: { backgroundColor: '#ff6f91' },
+  modePillText: { color: '#444', fontSize: 13, fontWeight: '800' },
+  modePillTextActive: { color: '#fff' },
+  title: { fontSize: 24, fontWeight: '900', color: '#ff6f91' },
+  subtitle: { fontSize: 12, color: '#3f3f3f', marginTop: 2 },
+  row: { flexDirection: 'row', gap: 8 },
+  input: { flex: 1, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', backgroundColor: 'rgba(255,255,255,0.76)', color: '#333' },
+  inputDark: { backgroundColor: 'rgba(42,42,42,0.68)', borderColor: '#444', color: '#eeeeee' },
+  refreshBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, backgroundColor: '#ff6f91', justifyContent: 'center' },
+  refreshBtnDisabled: { opacity: 0.5 },
+  refreshText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
+  status: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
+  mediaStatus: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, marginTop: 4, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
+  statusDark: { color: '#ffe2a0', backgroundColor: 'rgba(70,52,12,0.82)' },
+  listContent: { paddingBottom: 112 },
+  chatContent: { paddingBottom: 132, paddingTop: 4 },
+  roomItem: { padding: 14, backgroundColor: 'rgba(255,255,255,0.76)', marginHorizontal: 16, marginVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
+  roomItemDark: { backgroundColor: 'rgba(20,20,20,0.70)', borderColor: 'rgba(255,255,255,0.12)' },
+  roomTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  roomName: { fontSize: 15, fontWeight: '900', color: '#333', flex: 1 },
+  roomTeam: { fontSize: 11, color: '#ff6f91', fontWeight: '800' },
+  roomMetaRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  roomMeta: { fontSize: 10, color: '#3f3f3f', backgroundColor: 'rgba(255,111,145,0.14)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
+  lastMessage: { fontSize: 12, color: '#3f3f3f', marginTop: 6 },
+  chatFooter: { paddingVertical: 16, alignItems: 'center' },
+  loadMoreBtn: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 16, backgroundColor: '#ff6f91' },
+  loadMoreText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginVertical: 6 },
+  chatRowMine: { justifyContent: 'flex-end' },
+  avatar: { width: 36, height: 36, borderRadius: 18, marginRight: 8, backgroundColor: 'rgba(255,255,255,0.5)' },
+  avatarFallback: { width: 36, height: 36, borderRadius: 18, marginRight: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.78)' },
+  avatarText: { color: '#ff6f91', fontWeight: '900', fontSize: 15 },
+  msgBlock: { maxWidth: '78%', minWidth: 120 },
+  msgBlockMine: { alignItems: 'flex-end' },
+  msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, paddingHorizontal: 4 },
+  msgMetaLineMine: { justifyContent: 'flex-end' },
+  msgSender: { fontSize: 12, fontWeight: '800', color: '#333', maxWidth: 150 },
+  msgSenderIdol: { color: '#ff4f7f' },
+  msgSenderMine: { color: '#3a6f99' },
+  msgTime: { fontSize: 10, color: '#4a4a4a' },
+  msgTimeMine: { color: '#3a6f99' },
+  msgBubble: { padding: 12, backgroundColor: 'rgba(255,255,255,0.82)', borderRadius: 18, borderTopLeftRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
+  msgBubbleIdol: { backgroundColor: 'rgba(255,111,145,0.90)', borderColor: 'rgba(255,255,255,0.28)' },
+  msgBubbleMine: { backgroundColor: 'rgba(123,198,255,0.92)', borderTopLeftRadius: 18, borderTopRightRadius: 6, borderColor: 'rgba(255,255,255,0.32)' },
+  msgBubbleDark: { backgroundColor: 'rgba(20,20,20,0.72)', borderColor: 'rgba(255,255,255,0.10)' },
+  msgBody: { fontSize: 14, color: '#444', lineHeight: 21 },
+  msgBodyHighlight: { color: '#fff' },
+  mediaCard: { marginTop: 8, minWidth: 214, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)' },
+  mediaCardHighlight: { backgroundColor: 'rgba(255,255,255,0.20)', borderColor: 'rgba(255,255,255,0.30)' },
+  mediaMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mediaIcon: { color: '#ff6f91', fontSize: 12, fontWeight: '900' },
+  mediaTitle: { flex: 1, color: '#333', fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  mediaDuration: { color: '#3f3f3f', fontSize: 11, fontWeight: '700' },
+  mediaTextHighlight: { color: '#fff' },
+  mediaPlayBtn: { marginTop: 9, minHeight: 38, paddingVertical: 9, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
+  mediaPlayBtnHighlight: { backgroundColor: '#fff' },
+  mediaPlayText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  mediaPlayTextHighlight: { color: '#ff6f91' },
+  inlineAudio: { height: 52, minWidth: 224, marginTop: 8 },
+  inlineVideo: { height: 190, minWidth: 246, marginTop: 8, backgroundColor: '#000', borderRadius: 12 },
+  inlineImage: { width: 228, height: 228, marginTop: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
+  openLinkBtn: { marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.10)' },
+  openLinkText: { color: '#ff6f91', fontSize: 11, fontWeight: '800' },
+  roomPlayerPage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 1000, elevation: 1000, backgroundColor: '#000' },
+  roomPlayerHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: 44, paddingHorizontal: 10, paddingBottom: 8, backgroundColor: '#080808' },
+  roomPlayerBack: { padding: 8 },
+  roomPlayerBackText: { color: '#ff6f91', fontSize: 14, fontWeight: '900' },
+  roomPlayerTitle: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '800' },
+  roomNativeVideo: { flex: 1, backgroundColor: '#000' },
+  imagePreviewShade: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
+  imagePreviewClose: { position: 'absolute', top: 42, right: 18, zIndex: 2, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.14)' },
+  imagePreviewCloseText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  fullImage: { width: '100%', height: '100%' },
+  sendBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' },
+  sendBarDark: { backgroundColor: 'rgba(18,18,18,0.96)', borderTopColor: 'rgba(255,255,255,0.12)' },
+  sendInput: { flex: 1, minHeight: 42, maxHeight: 92, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#fff', color: '#333', fontSize: 13 },
+  sendBtn: { minHeight: 42, paddingHorizontal: 16, borderRadius: 16, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
+  sendBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  textDark: { color: '#eee' },
+  textSubDark: { color: '#eeeeee' },
+  empty: { textAlign: 'center', color: '#3f3f3f', marginTop: 60, fontSize: 14, paddingHorizontal: 24, lineHeight: 20 },
+});
