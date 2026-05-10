@@ -83,6 +83,14 @@ export function messagePayload(item: any): any {
 export function messageText(item: any): string {
   const body = messagePayload(item);
   if (typeof body === 'string') return body;
+  const type = String(item?.msgType || body?.msgType || body?.messageType || body?.type || '').toUpperCase();
+  const giftInfo = body?.giftInfo || body?.giftReplyInfo?.giftInfo || body?.bodys?.giftInfo;
+  if (type.includes('GIFT') || giftInfo) {
+    const source = giftInfo || body;
+    const giftName = pickText(source, ['giftName', 'name', 'giftInfo.giftName'], '礼物');
+    const giftNum = pickText(source, ['giftNum', 'num', 'count', 'giftInfo.giftNum'], '1');
+    return `送出礼物：${giftName} x${giftNum}`;
+  }
   const text = pickText(body, [
     'text',
     'message.text',
@@ -94,7 +102,6 @@ export function messageText(item: any): string {
   if (text) return text;
   const url = pickText(body, ['url', 'message.url', 'msg.url', 'audioUrl', 'videoUrl', 'imageUrl']);
   if (url) {
-    const type = String(item?.msgType || body?.msgType || body?.type || '').toUpperCase();
     if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return '[语音消息]';
     if (type.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return '[视频消息]';
     if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return '[图片消息]';

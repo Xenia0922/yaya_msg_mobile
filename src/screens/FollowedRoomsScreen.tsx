@@ -30,6 +30,7 @@ import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
 import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
 import { enqueueDownload } from '../services/downloads';
+import { pinyinInitials } from '../utils/members';
 
 type FollowedRoom = {
   memberId: string;
@@ -489,6 +490,20 @@ function roomMedia(item: any): RoomMedia | null {
   return { type, url, title, duration, liveId };
 }
 
+function roomGiftInfo(item: any): { name: string; num: number; image: string; total: string } | null {
+  const body = messageBody(item);
+  const ext = extraInfo(item);
+  const msgType = String(item.msgType || item.extMsgType || body.msgType || body.extMsgType || body.messageType || '').toUpperCase();
+  const giftInfo = body.giftInfo || body.giftReplyInfo?.giftInfo || body.bodys?.giftInfo || ext.giftInfo || item.giftInfo || null;
+  if (!giftInfo && !msgType.includes('GIFT')) return null;
+  const source = giftInfo || body || ext || item;
+  const name = firstTextFrom([source], ['giftName', 'name', 'giftInfo.giftName']) || '礼物';
+  const num = Number(firstTextFrom([source], ['giftNum', 'num', 'count', 'giftInfo.giftNum']) || '1') || 1;
+  const image = normalizeUrl(firstTextFrom([source], ['picPath', 'giftPic', 'image', 'icon', 'giftInfo.picPath']));
+  const money = Number(firstTextFrom([source], ['money', 'cost', 'price', 'giftInfo.money']) || '0') || 0;
+  return { name, num, image, total: money ? `${money * num} 鸡腿` : '' };
+}
+
 function mediaLabel(type: MediaType) {
   if (type === 'audio') return '\u8bed\u97f3';
   if (type === 'video') return '\u89c6\u9891';
@@ -755,7 +770,7 @@ export default function FollowedRoomsScreen() {
     if (!q) return followed;
     return followed.filter((item) => {
       const member = item.member;
-      return `${member?.ownerName || ''} ${member?.pinyin || ''} ${member?.team || ''} ${member?.channelId || ''}`.toLowerCase().includes(q);
+      return `${member?.ownerName || ''} ${member?.pinyin || ''} ${pinyinInitials(member?.pinyin)} ${member?.team || ''} ${member?.channelId || ''}`.toLowerCase().includes(q);
     });
   }, [followed, searchQuery]);
 
@@ -875,8 +890,9 @@ export default function FollowedRoomsScreen() {
               ? { id: selectedRoom.id, name: shortName(selectedRoom), avatar: selectedRoom.avatar }
               : senderProfile(item, selectedRoom);
             const media = roomMedia(item);
+            const gift = roomGiftInfo(item);
             const body = messageText(item);
-            const bubbleText = body && (!media || (body !== media.url && !body.includes(media.url) && !isRawJsonText(body))) ? body : '';
+            const bubbleText = body && !gift && (!media || (body !== media.url && !body.includes(media.url) && !isRawJsonText(body))) ? body : '';
             const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
 
             return (
@@ -900,6 +916,15 @@ export default function FollowedRoomsScreen() {
                       <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>
                         {bubbleText}
                       </Text>
+                    ) : null}
+                    {gift ? (
+                      <View style={styles.giftCard}>
+                        {gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><Text style={styles.giftEmoji}>礼</Text></View>}
+                        <View style={styles.giftTextWrap}>
+                          <Text style={styles.giftName} numberOfLines={1}>送出礼物：{gift.name}</Text>
+                          <Text style={styles.giftMeta}>数量 x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
+                        </View>
+                      </View>
                     ) : null}
                     {media ? (
                       media.type === 'image' && media.url ? (
@@ -1064,6 +1089,13 @@ const styles = StyleSheet.create({
   msgBubbleDark: { backgroundColor: 'rgba(20,20,20,0.72)', borderColor: 'rgba(255,255,255,0.10)' },
   msgBody: { fontSize: 14, color: '#444', lineHeight: 21 },
   msgBodyHighlight: { color: '#fff' },
+  giftCard: { marginTop: 8, minWidth: 210, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,240,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,111,145,0.24)', flexDirection: 'row', alignItems: 'center', gap: 10 },
+  giftImage: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#fff' },
+  giftImageFallback: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
+  giftEmoji: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  giftTextWrap: { flex: 1, minWidth: 0 },
+  giftName: { fontSize: 13, color: '#eb2f96', fontWeight: '800' },
+  giftMeta: { marginTop: 3, fontSize: 11, color: '#666' },
   mediaCard: { marginTop: 8, minWidth: 214, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)' },
   mediaCardHighlight: { backgroundColor: 'rgba(255,255,255,0.20)', borderColor: 'rgba(255,255,255,0.30)' },
   mediaMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },

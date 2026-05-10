@@ -13,7 +13,7 @@ import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { formatTimestamp } from '../utils/format';
-import { errorMessage, messagePayload, messageText, pickText, unwrapList } from '../utils/data';
+import { errorMessage, messagePayload, messageText, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 
 function convTargetId(conv: any): string {
@@ -83,7 +83,7 @@ function privateMessageText(msg: any): string {
 
 function privateMessageMedia(msg: any): { url: string; type: 'audio' | 'video' | 'image' | 'link'; title: string } | null {
   const payload = messagePayload(msg);
-  const url = pickText(payload, [
+  const rawUrl = pickText(payload, [
     'url',
     'mediaUrl',
     'audioUrl',
@@ -93,8 +93,16 @@ function privateMessageMedia(msg: any): { url: string; type: 'audio' | 'video' |
     'msg.url',
     'content.url',
   ]);
-  if (!url) return null;
+  if (!rawUrl) return null;
   const typeText = String(msg.msgType || msg.messageType || payload?.msgType || payload?.messageType || payload?.type || '').toUpperCase();
+  let url = normalizeUrl(rawUrl);
+  const lowerRaw = String(rawUrl).toLowerCase();
+  if (!/^https?:\/\//i.test(url)) {
+    const prefix = typeText.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(lowerRaw)
+      ? 'https://source3.48.cn'
+      : 'https://mp4.48.cn';
+    url = `${prefix}${String(rawUrl).startsWith('/') ? '' : '/'}${rawUrl}`;
+  }
   const lower = url.toLowerCase();
   const type = typeText.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(lower)
     ? 'audio'

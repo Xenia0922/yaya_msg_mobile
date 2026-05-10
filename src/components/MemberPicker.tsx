@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useMemberStore, useSettingsStore } from '../store';
 import { Member } from '../types';
-import { normalizeMember } from '../utils/members';
+import { normalizeMember, pinyinInitials } from '../utils/members';
 
 interface MemberPickerProps {
   selectedMember: Member | null;
@@ -42,6 +42,7 @@ export default function MemberPicker({
             member.ownerName.toLowerCase().includes(q) ||
             short.includes(q) ||
             (member.pinyin || '').toLowerCase().includes(q) ||
+            pinyinInitials(member.pinyin).includes(q) ||
             (member.team || '').toLowerCase().includes(q) ||
             (member.groupName || '').toLowerCase().includes(q) ||
             String(member.id).includes(q)

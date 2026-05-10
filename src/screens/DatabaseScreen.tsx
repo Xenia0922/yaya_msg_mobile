@@ -8,7 +8,7 @@ import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore, useMemberStore } from '../store';
 import { Member } from '../types';
 import { externalApi } from '../api/external';
-import { loadMembers } from '../utils/members';
+import { loadMembers, pinyinInitials } from '../utils/members';
 
 type Nav = StackNavigationProp<RootStackParamList, 'DatabaseScreen'>;
 
@@ -90,7 +90,7 @@ export default function DatabaseScreen() {
       .filter((m) => groupFilter === '全部' || (m.groupName || '其他') === groupFilter)
       .filter((m) => {
         if (!q) return true;
-        return `${m.ownerName} ${m.pinyin} ${m.team} ${m.groupName} ${m.id}`.toLowerCase().includes(q);
+        return `${m.ownerName} ${m.pinyin} ${pinyinInitials(m.pinyin)} ${m.team} ${m.groupName} ${m.id}`.toLowerCase().includes(q);
       })
       .sort((a, b) => Number(memberActive(b)) - Number(memberActive(a)) || (a.groupName || '').localeCompare(b.groupName || '') || (a.team || '').localeCompare(b.team || '') || a.ownerName.localeCompare(b.ownerName));
   }, [members, groupFilter, search]);

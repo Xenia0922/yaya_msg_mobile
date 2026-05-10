@@ -413,7 +413,6 @@ export const pocketApi = {
     const urls = params.fetchAll
       ? [
         { url: `${BASE}/im/api/v1/team/message/list/all`, mode: 'all' },
-        { url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner-fallback' },
       ]
       : [{ url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner' }];
     const attempts: Array<{ url: string; payload: any; modern?: boolean; label: string }> = [];

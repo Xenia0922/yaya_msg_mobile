@@ -8,10 +8,37 @@ function text(value: any): string {
   return String(value);
 }
 
+function fallbackMemberId(raw: any): string {
+  return text(
+    raw?.id
+      || raw?.memberId
+      || raw?.userId
+      || raw?.starId
+      || raw?.channelId
+      || raw?.roomId
+      || raw?.yklzId
+      || raw?.smallRoomId
+      || raw?.account
+      || raw?.ownerName
+      || raw?.starName
+      || raw?.name,
+  );
+}
+
+export function pinyinInitials(value: any): string {
+  return text(value)
+    .replace(/[^a-zA-Z\s-]/g, ' ')
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .toLowerCase();
+}
+
 export function normalizeMember(raw: any): Member {
   return {
     ...raw,
-    id: text(raw?.id || raw?.memberId || raw?.userId),
+    id: fallbackMemberId(raw),
     ownerName: text(raw?.ownerName || raw?.starName || raw?.name || raw?.nickname),
     serverId: text(raw?.serverId),
     channelId: text(raw?.channelId || raw?.roomId),
@@ -53,8 +80,9 @@ export function searchMembers(query: string, limit = 20): Member[] {
   return memberDatabase.filter((m) => {
     const name = m.ownerName.toLowerCase();
     const pn = (m.pinyin || '').toLowerCase();
+    const initials = pinyinInitials(m.pinyin);
     const team = (m.team || '').toLowerCase();
-    return name.includes(q) || pn.includes(q) || team.includes(q) || m.id.includes(q);
+    return name.includes(q) || pn.includes(q) || initials.includes(q) || team.includes(q) || m.id.includes(q);
   }).slice(0, limit);
 }
 

@@ -30,11 +30,19 @@ type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
 
 const PLAY_URL_FIELDS = [
   'playStreamPath',
+  'playUrlPath',
+  'playPathUrl',
   'streamUrl',
+  'streamURL',
   'playUrl',
+  'urlPath',
   'playPath',
   'streamPath',
+  'path',
+  'src',
   'pullStreamPath',
+  'liveStreamPath',
+  'livePlayStreamPath',
   'streamPathHd',
   'streamPathHigh',
   'streamPathNormal',
@@ -45,15 +53,30 @@ const PLAY_URL_FIELDS = [
   'flvUrl',
   'hlsUrl',
   'videoUrl',
+  'recordUrl',
+  'mediaUrl',
+  'filePath',
   'content.playStreamPath',
+  'content.playUrlPath',
+  'content.playPathUrl',
   'content.streamUrl',
   'content.playUrl',
   'content.playPath',
+  'content.streamPath',
+  'content.pullStreamPath',
+  'content.liveStreamPath',
+  'content.livePlayStreamPath',
   'content.url',
   'data.playStreamPath',
+  'data.playUrlPath',
+  'data.playPathUrl',
   'data.streamUrl',
   'data.playUrl',
   'data.playPath',
+  'data.streamPath',
+  'data.pullStreamPath',
+  'data.liveStreamPath',
+  'data.livePlayStreamPath',
   'data.url',
   'content.playStreams.0.streamPath',
   'data.playStreams.0.streamPath',
@@ -91,6 +114,12 @@ function pickPlayableUrls(raw: any, preferLive = false): string[] {
     'content.urls',
     'data.streams',
     'data.playStreams',
+    'content.liveStreams',
+    'content.streamList',
+    'content.playStreamList',
+    'data.liveStreams',
+    'data.streamList',
+    'data.playStreamList',
     'data.urls',
   ]);
   for (const stream of streamList) {
@@ -429,8 +458,12 @@ export default function MediaScreen() {
         });
       }
       if (item.liveId) {
-        detail = await pocketApi.getLiveOne(item.liveId);
+        detail = await pocketApi.getLiveOne(item.liveId).catch(() => null);
         urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];
+        if (!urls.filter(Boolean).length) {
+          detail = await pocketApi.getOpenLiveOne(item.liveId).catch(() => null);
+          urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];
+        }
       }
       urls = Array.from(new Set(urls.filter(Boolean)));
       const baseUrl = urls[0] || '';

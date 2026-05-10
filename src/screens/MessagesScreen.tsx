@@ -6,6 +6,7 @@ import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { Member } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
+import { pinyinInitials } from '../utils/members';
 import pocketApi from '../api/pocket48';
 
 function msgTime(item: any): number {
@@ -28,7 +29,7 @@ export default function MessagesScreen() {
   const pickerList = useMemo(() => {
     const query = pickerQuery.trim().toLowerCase();
     return (query
-      ? members.filter((member) => `${member.ownerName} ${member.pinyin} ${member.team}`.toLowerCase().includes(query))
+      ? members.filter((member) => `${member.ownerName} ${member.pinyin} ${pinyinInitials(member.pinyin)} ${member.team}`.toLowerCase().includes(query))
       : members
     ).slice(0, 80);
   }, [members, pickerQuery]);
