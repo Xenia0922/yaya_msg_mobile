@@ -404,7 +404,7 @@ export const pocketApi = {
     const originalServerId = String(params.serverId || '');
     if (!channelId) throw new Error('missing channelId');
     const resolvedServerId = await resolveServerId(channelId);
-    const serverIds = [resolvedServerId, originalServerId]
+    const serverIds = [originalServerId, resolvedServerId]
       .map((item) => String(item || ''))
       .filter((item, index, arr) => item && item !== '0' && arr.indexOf(item) === index);
     if (!serverIds.length) throw new Error('missing serverId');

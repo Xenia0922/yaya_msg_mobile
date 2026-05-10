@@ -672,7 +672,7 @@ export default function FollowedRoomsScreen() {
       setHasMoreMessages(list.length >= 50 && nextTime > 0);
       showToast(list.length ? `已加载 ${list.length} 条消息 · ${includeFans ? '含粉丝发言' : '仅房主发言'}` : '暂无消息');
     } catch (error) {
-      if (nextMode === 'big' && room.yklzId) {
+      if (nextMode === 'big' && !includeFans && room.yklzId) {
         showToast(`大房间消息接口失败，尝试打开小房间：${errorMessage(error)}`);
         setLoading(false);
         openRoom(room, 'small', includeFans);
