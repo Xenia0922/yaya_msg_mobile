@@ -274,6 +274,21 @@ function currentUserIdFrom(res: any): string {
   ]);
 }
 
+function accountUserId(user: any): string {
+  return firstTextFrom([user], ['userId', 'id', 'userInfo.userId', 'userInfo.id', 'account']);
+}
+
+function currentAccountInfo(res: any) {
+  const content = res?.content || res?.data || res || {};
+  const current = content.userInfo || content.user || content;
+  const bigSmallInfo = content.bigSmallInfo || content.bigSmall || content.userInfo?.bigSmallInfo || {};
+  const big = bigSmallInfo.bigUserInfo || bigSmallInfo.bigUser || bigSmallInfo.ownerUserInfo || null;
+  return {
+    currentUserId: accountUserId(current),
+    bigUserId: accountUserId(big),
+  };
+}
+
 function messageRole(item: any, room: Member, includeFans: boolean, currentUserId: string): MessageRole {
   const profile = senderProfile(item, room);
   if (includeFans && currentUserId && profile.id && String(profile.id) === String(currentUserId)) return 'mine';
@@ -766,10 +781,15 @@ export default function FollowedRoomsScreen() {
     setShowFanMessages(includeFans);
     showToast(`正在加载${nextMode === 'small' ? '小房间' : '大房间'}消息...`);
     try {
-      const userInfo = includeFans && !currentUserId
+      const userInfo = includeFans
         ? await pocketApi.getNimLoginInfo().catch(() => null)
         : null;
-      const nextCurrentUserId = currentUserId || currentUserIdFrom(userInfo);
+      const accountInfo = currentAccountInfo(userInfo);
+      if (includeFans && nextMode === 'big' && accountInfo.bigUserId && accountInfo.currentUserId !== accountInfo.bigUserId) {
+        showToast('正在切回大号读取大房间全部消息...');
+        await pocketApi.switchBigSmall(accountInfo.bigUserId);
+      }
+      const nextCurrentUserId = currentUserId || (includeFans && nextMode === 'big' ? accountInfo.bigUserId : '') || accountInfo.currentUserId || currentUserIdFrom(userInfo);
       if (nextCurrentUserId) setCurrentUserId(nextCurrentUserId);
       const res = await pocketApi.getRoomMessages({
         channelId,
