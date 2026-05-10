@@ -33,20 +33,25 @@ export default function App() {
       runAutoCheckinIfNeeded().catch(() => {});
 
       try {
-        const json = await fetchJson<any[]>('https://yaya-data.pages.dev/members.json');
-        const members = await loadMembers(json);
-        useMemberStore.getState().setMembers(members);
-        if (mounted) setMessage(`联网成功，已加载 ${members.length} 位成员`);
-      } catch (error: any) {
-        const detail = error?.message || String(error);
+        const backup = require('./assets/members.json');
+        const localMembers = await loadMembers(backup);
+        useMemberStore.getState().setMembers(localMembers);
+        if (mounted) setMessage(`已加载随包成员库 ${localMembers.length} 位`);
+
         try {
-          const backup = require('./assets/members.json');
-          const members = await loadMembers(backup);
-          useMemberStore.getState().setMembers(members);
-          if (mounted) setMessage(`网络不可用，已加载离线成员 ${members.length} 位：${detail}`);
-        } catch {
-          if (mounted) setMessage(`成员数据加载失败：${detail}`);
+          const json = await fetchJson<any[]>('https://yaya-data.pages.dev/members.json');
+          const remoteMembers = await loadMembers(json);
+          if (remoteMembers.length >= localMembers.length) {
+            useMemberStore.getState().setMembers(remoteMembers);
+            if (mounted) setMessage(`联网成功，已同步成员库 ${remoteMembers.length} 位`);
+          } else if (mounted) {
+            setMessage(`线上成员库较旧，继续使用随包成员库 ${localMembers.length} 位`);
+          }
+        } catch (error: any) {
+          if (mounted) setMessage(`联网成员库不可用，继续使用随包成员库 ${localMembers.length} 位：${error?.message || String(error)}`);
         }
+      } catch (error: any) {
+        if (mounted) setMessage(`成员数据加载失败：${error?.message || String(error)}`);
       }
 
       if (mounted) setReady(true);

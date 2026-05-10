@@ -6,11 +6,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import QRCode from 'qrcode';
 import { WebView } from 'react-native-webview';
-import { useSettingsStore } from '../store';
+import { useSettingsStore, useUiStore } from '../store';
 import { saveSettings } from '../services/settings';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
-import { errorMessage } from '../utils/data';
+import { errorMessage, pickText } from '../utils/data';
 
 function buildBilibiliCookieFromUrl(rawUrl = ''): string {
   try {
@@ -63,10 +63,44 @@ function extractPocketToken(value: any): string {
   return walk(value);
 }
 
+function accountId(user: any): string {
+  return String(user?.userId || user?.id || user?.userInfo?.userId || user?.userInfo?.id || '');
+}
+
+function accountName(user: any): string {
+  return String(user?.nickname || user?.nickName || user?.name || user?.userInfo?.nickname || user?.userInfo?.nickName || user?.userInfo?.name || '未命名账号');
+}
+
+function accountRole(user: any, fallback: string): string {
+  return String(user?.roleName || user?.typeName || user?.accountType || user?.userInfo?.roleName || fallback);
+}
+
+function parseAccountInfo(res: any) {
+  const content = res?.content || res?.data || res || {};
+  const current = content.userInfo || content.user || content;
+  const bigSmallInfo = content.bigSmallInfo || content.bigSmall || content.userInfo?.bigSmallInfo || {};
+  const bigUsers = [
+    bigSmallInfo.bigUserInfo,
+    bigSmallInfo.bigUser,
+    bigSmallInfo.ownerUserInfo,
+  ].filter(Boolean);
+  const smallUsers = [
+    ...(Array.isArray(bigSmallInfo.smallUserInfo) ? bigSmallInfo.smallUserInfo : []),
+    ...(Array.isArray(bigSmallInfo.smallUserList) ? bigSmallInfo.smallUserList : []),
+    ...(Array.isArray(bigSmallInfo.smallUsers) ? bigSmallInfo.smallUsers : []),
+  ];
+  const users = [...bigUsers, ...smallUsers].filter((user, index, list) => {
+    const id = accountId(user);
+    return id && list.findIndex((item) => accountId(item) === id) === index;
+  });
+  return { current, users };
+}
+
 export default function LoginScreen() {
   const navigation = useNavigation();
   const settings = useSettingsStore((state) => state.settings);
   const setSettings = useSettingsStore((state) => state.setSettings);
+  const showToast = useUiStore((state) => state.showToast);
   const isDark = settings.theme === 'dark';
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -78,6 +112,8 @@ export default function LoginScreen() {
   const [profileName, setProfileName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
   const [renameCountText, setRenameCountText] = useState('');
+  const [accountInfo, setAccountInfo] = useState<{ current: any; users: any[] }>({ current: null, users: [] });
+  const [switchingUserId, setSwitchingUserId] = useState('');
 
   const savePocketToken = async (token: string, message: string) => {
     const clean = token.trim();
@@ -137,6 +173,13 @@ export default function LoginScreen() {
     await savePocketToken(token, 'Token 已保存');
   };
 
+  const refreshAccountInfo = async () => {
+    const res = await pocketApi.loginCheckToken();
+    const ok = res?.success !== false && (res?.status === 200 || res?.success || res?.content || res?.data);
+    setAccountInfo(parseAccountInfo(res));
+    return { res, ok };
+  };
+
   const handleCheckToken = async () => {
     const token = manualToken.trim() || settings.p48Token;
     if (token && token !== settings.p48Token) {
@@ -146,12 +189,35 @@ export default function LoginScreen() {
     setLoading(true);
     setStatus('正在检查 Token...');
     try {
-      const res = await pocketApi.loginCheckToken();
-      const ok = res?.success !== false && (res?.status === 200 || res?.success || res?.content || res?.data);
+      const { res, ok } = await refreshAccountInfo();
       setStatus(ok ? 'Token 有效' : `Token 无效：${res?.msg || res?.message || JSON.stringify(res).slice(0, 160)}`);
     } catch (error) {
       setStatus(`Token 检查失败：${errorMessage(error)}`);
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSwitchPocketAccount = async (user: any) => {
+    const targetUserId = accountId(user);
+    if (!targetUserId) {
+      setStatus('切换失败：没有拿到目标账号 ID');
+      return;
+    }
+    setLoading(true);
+    setSwitchingUserId(targetUserId);
+    setStatus(`正在切换到 ${accountName(user)}...`);
+    try {
+      const res = await pocketApi.switchBigSmall(targetUserId);
+      const token = pickText(res, ['content.token', 'data.token', 'token', 'content.accessToken', 'data.accessToken']) || extractPocketToken(res);
+      if (!token) throw new Error('切换接口没有返回 token');
+      await savePocketToken(token, `已切换到 ${accountName(user)}`);
+      await refreshAccountInfo();
+      showToast(`已切换到 ${accountName(user)}`);
+    } catch (error) {
+      setStatus(`切换账号失败：${errorMessage(error)}`);
+    } finally {
+      setSwitchingUserId('');
       setLoading(false);
     }
   };
@@ -329,6 +395,36 @@ export default function LoginScreen() {
       </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>口袋账号切换</Text>
+        <Text style={[styles.metaLine, isDark && styles.textSubDark]}>
+          当前：{accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : '先检查 Token 读取账号'}
+        </Text>
+        <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginBottom: 10 }]} onPress={handleCheckToken} disabled={loading}>
+          <Text style={styles.btnText}>刷新账号列表</Text>
+        </TouchableOpacity>
+        {accountInfo.users.length ? accountInfo.users.map((user) => {
+          const id = accountId(user);
+          const isCurrent = !!id && id === accountId(accountInfo.current);
+          return (
+            <TouchableOpacity
+              key={id}
+              style={[styles.accountRow, isCurrent && styles.accountRowActive, isDark && styles.accountRowDark]}
+              onPress={() => handleSwitchPocketAccount(user)}
+              disabled={loading || isCurrent}
+            >
+              <View style={styles.accountTextWrap}>
+                <Text style={[styles.accountName, isDark && styles.textDark]}>{accountName(user)}</Text>
+                <Text style={[styles.accountMeta, isDark && styles.textSubDark]}>{accountRole(user, '账号')} · {id || '无ID'}</Text>
+              </View>
+              <Text style={isCurrent ? styles.accountCurrent : styles.accountAction}>
+                {isCurrent ? '当前' : switchingUserId === id ? '切换中' : '切换'}
+              </Text>
+            </TouchableOpacity>
+          );
+        }) : <Text style={[styles.metaLine, isDark && styles.textSubDark]}>没有读取到大小号列表；保存 Token 后点“刷新账号列表”。</Text>}
+      </View>
+
+      <View style={[styles.section, isDark && styles.sectionDark]}>
         <Text style={[styles.sectionTitle, isDark && styles.textDark]}>B站登录</Text>
         <TouchableOpacity style={styles.btnPrimary} onPress={handleBiliQr}>
           <Text style={styles.btnText}>获取 B站登录二维码</Text>
@@ -403,6 +499,14 @@ const styles = StyleSheet.create({
   tokenInfo: { marginTop: 10, fontSize: 12, color: '#4caf50' },
   metaLine: { marginTop: -4, marginBottom: 10, fontSize: 12, color: '#4a4a4a' },
   qr: { width: 220, height: 220, alignSelf: 'center', marginTop: 12 },
+  accountRow: { padding: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.52)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.62)', marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  accountRowDark: { backgroundColor: 'rgba(42,42,42,0.50)', borderColor: '#444' },
+  accountRowActive: { borderColor: '#ff6f91', backgroundColor: 'rgba(255,111,145,0.16)' },
+  accountTextWrap: { flex: 1, minWidth: 0 },
+  accountName: { fontSize: 14, fontWeight: '800', color: '#333' },
+  accountMeta: { marginTop: 3, fontSize: 11, color: '#555' },
+  accountAction: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
+  accountCurrent: { color: '#20a464', fontSize: 13, fontWeight: '800' },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },
 });

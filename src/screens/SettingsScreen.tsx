@@ -18,8 +18,6 @@ import { useSettingsStore, useUiStore } from '../store';
 import { saveSettings } from '../services/settings';
 import { getWasmError, isWasmReady } from '../auth';
 import { checkNetworkStatus } from '../utils/network';
-import pocketApi from '../api/pocket48';
-import { errorMessage } from '../utils/data';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
@@ -81,7 +79,6 @@ export default function SettingsScreen() {
   const [status, setStatus] = useState('');
   const [networkStatus, setNetworkStatus] = useState('');
   const [manualBackgroundUrl, setManualBackgroundUrl] = useState('');
-  const [smallAccountId, setSmallAccountId] = useState('');
 
   const backgroundValue = settings.customBackgroundFile?.trim() || '';
   const backgroundInfo = useMemo(() => {
@@ -101,21 +98,6 @@ export default function SettingsScreen() {
     setSettings({ p48Token: '' });
     await saveSettings({ p48Token: '' });
     setStatus('已退出口袋账号');
-  };
-
-  const switchAccount = async () => {
-    const target = smallAccountId.trim();
-    if (!target) {
-      showToast('请输入要切换的小号 userId');
-      return;
-    }
-    try {
-      await pocketApi.switchBigSmall(target);
-      showToast('小号切换请求已提交');
-      setStatus(`已请求切换到 ${target}，如接口返回新 token 请重新检查账号状态`);
-    } catch (error) {
-      setStatus(`小号切换失败：${errorMessage(error)}`);
-    }
   };
 
   const handleNetworkCheck = async () => {
@@ -160,37 +142,24 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.title}>软件设置</Text>
-        <Text style={[styles.subTitle, isDark && styles.textSubLight]}>账号、主题、下载和接口工具</Text>
+        <Text style={styles.title}>设置</Text>
+        <Text style={[styles.subTitle, isDark && styles.textSubLight]}>外观、播放、下载和接口工具</Text>
       </View>
 
-      <Section title="个人设置" isDark={isDark}>
+      <Section title="账号入口" isDark={isDark}>
         <Text style={[styles.stateLine, isDark && styles.textSubLight]}>口袋 Token：{settings.p48Token ? '已保存' : '未登录'}</Text>
         <Text style={[styles.stateLine, isDark && styles.textSubLight]}>B站账号：{settings.bilibiliCookie ? '已登录' : '未登录'}</Text>
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('LoginScreen')}>
-            <Text style={styles.linkText}>账号资料</Text>
+            <Text style={styles.linkText}>账号管理</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('RechargeScreen')}>
             <Text style={styles.linkText}>鸡腿充值</Text>
           </TouchableOpacity>
         </View>
-        <TextInput
-          style={[styles.input, isDark && styles.inputDark]}
-          placeholder="小号 userId"
-          placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
-          value={smallAccountId}
-          onChangeText={setSmallAccountId}
-          keyboardType="number-pad"
-        />
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={switchAccount}>
-            <Text style={styles.linkText}>切换小号</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-            <Text style={styles.linkText}>退出登录</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={[styles.logoutBtn, { marginTop: 10 }]} onPress={handleLogout}>
+          <Text style={styles.linkText}>退出口袋账号</Text>
+        </TouchableOpacity>
       </Section>
 
       {SETTING_ITEMS.map((item) => (
@@ -257,7 +226,7 @@ export default function SettingsScreen() {
       </Section>
 
       {status ? <Text style={[styles.statusText, isDark && styles.textSubLight]}>{status}</Text> : null}
-      <Text style={[styles.footer, isDark && styles.textSubLight]}>Yaya Message v2.2.5</Text>
+      <Text style={[styles.footer, isDark && styles.textSubLight]}>Yaya Message v2.2.7</Text>
     </ScrollView>
   );
 }

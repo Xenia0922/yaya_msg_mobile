@@ -1,6 +1,6 @@
 {
   "name": "yaya_msg-mobile",
-  "version": "2.2.5",
+  "version": "2.2.7",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",

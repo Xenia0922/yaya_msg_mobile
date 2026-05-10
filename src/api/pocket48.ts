@@ -153,7 +153,7 @@ async function publicMediaPost(url: string, data: any, fallback: string) {
 async function resolveServerId(channelId: string): Promise<string> {
   try {
     const res = await pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) });
-    return String(res?.content?.serverId || res?.data?.serverId || '');
+    return String(res?.content?.serverId || res?.content?.teamInfo?.serverId || res?.data?.serverId || res?.serverId || '');
   } catch {
     return '';
   }
@@ -370,6 +370,13 @@ export const pocketApi = {
     return pocketPost(`${BASE}/user/api/v1/bigsmall/switch/user`, { toUserId: String(targetUserId) }, { fallback: '切换账号失败' });
   },
 
+  async getStarServerMap() {
+    return pocketPost(`${BASE}/im/api/v1/team/star/server/map/get`, {}, {
+      modern: true,
+      fallback: '获取成员房间映射失败',
+    });
+  },
+
   async getUserMoney() {
     return pocketPost(`${BASE}/user/api/v1/user/money`, {}, { fallback: '获取余额失败' });
   },
@@ -396,8 +403,8 @@ export const pocketApi = {
     const channelId = String(params.channelId || '');
     const originalServerId = String(params.serverId || '');
     if (!channelId) throw new Error('missing channelId');
-    const resolvedServerId = originalServerId && originalServerId !== '0' ? '' : await resolveServerId(channelId);
-    const serverIds = [originalServerId, resolvedServerId]
+    const resolvedServerId = await resolveServerId(channelId);
+    const serverIds = [resolvedServerId, originalServerId]
       .map((item) => String(item || ''))
       .filter((item, index, arr) => item && item !== '0' && arr.indexOf(item) === index);
     if (!serverIds.length) throw new Error('missing serverId');
@@ -427,6 +434,16 @@ export const pocketApi = {
           payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit: params.limit || 50 },
           modern: true,
           label: `${entry.mode} modern channel=${channelId} server=${serverId}`,
+        });
+        attempts.push({
+          url: entry.url,
+          payload: { channelId: safeNumber(channelId), nextTime: params.nextTime || 0, limit: params.limit || 50 },
+          label: `${entry.mode} channel-only channel=${channelId}`,
+        });
+        attempts.push({
+          url: entry.url,
+          payload: { serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit: params.limit || 50 },
+          label: `${entry.mode} server-only server=${serverId}`,
         });
       }
     }

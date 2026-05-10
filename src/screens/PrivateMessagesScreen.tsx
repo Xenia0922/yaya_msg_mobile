@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
+  Image,
+  Linking,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { formatTimestamp } from '../utils/format';
@@ -35,7 +38,7 @@ function msgTimeNumber(msg: any): number {
 }
 
 function msgFromId(msg: any): string {
-  return String(msg.fromUserId || msg.senderUserId || msg.senderId || msg.userId || msg.fromAccount || msg.sender?.userId || '');
+  return String(msg.user?.userId || msg.user?.id || msg.fromUserId || msg.senderUserId || msg.senderId || msg.userId || msg.fromAccount || msg.sender?.userId || '');
 }
 
 function msgToId(msg: any): string {
@@ -45,6 +48,7 @@ function msgToId(msg: any): string {
 function isMineMessage(msg: any, targetId: string, currentUserId = ''): boolean {
   if (msg.isSelf === true || msg.self === true || msg.isMe === true) return true;
   if (msg.isSelf === false || msg.self === false || msg.isMe === false) return false;
+  if (targetId && String(msg.user?.userId || msg.user?.id || '') === String(targetId)) return false;
   const from = msgFromId(msg);
   const to = msgToId(msg);
   if (currentUserId && from === currentUserId) return true;
@@ -77,8 +81,41 @@ function privateMessageText(msg: any): string {
   return text;
 }
 
+function privateMessageMedia(msg: any): { url: string; type: 'audio' | 'video' | 'image' | 'link'; title: string } | null {
+  const payload = messagePayload(msg);
+  const url = pickText(payload, [
+    'url',
+    'mediaUrl',
+    'audioUrl',
+    'videoUrl',
+    'imageUrl',
+    'message.url',
+    'msg.url',
+    'content.url',
+  ]);
+  if (!url) return null;
+  const typeText = String(msg.msgType || msg.messageType || payload?.msgType || payload?.messageType || payload?.type || '').toUpperCase();
+  const lower = url.toLowerCase();
+  const type = typeText.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(lower)
+    ? 'audio'
+    : typeText.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(lower)
+      ? 'video'
+      : typeText.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(lower)
+        ? 'image'
+        : 'link';
+  return {
+    url,
+    type,
+    title: type === 'audio' ? '语音消息' : type === 'video' ? '视频消息' : type === 'image' ? '图片消息' : '打开链接',
+  };
+}
+
 function newestFirst<T>(list: T[], timeOf: (item: T) => number): T[] {
   return list.slice().sort((a, b) => timeOf(b) - timeOf(a));
+}
+
+function oldestFirst<T>(list: T[], timeOf: (item: T) => number): T[] {
+  return list.slice().sort((a, b) => timeOf(a) - timeOf(b));
 }
 
 function normalizeFlipPrices(res: any): any[] {
@@ -114,7 +151,6 @@ export default function PrivateMessagesScreen() {
   const [money, setMoney] = useState('');
   const [flipLoading, setFlipLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('');
 
   const flipMember = useMemo(() => {
     if (!selectedConv) return null;
@@ -152,24 +188,24 @@ export default function PrivateMessagesScreen() {
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
-    setStatus('加载私信列表...');
+    showToast('正在加载私信列表...');
     try {
       const res = await pocketApi.getPrivateMessageList();
       const list = unwrapList(res, ['content.userMessageList', 'content.list', 'content.data', 'data.userMessageList', 'userMessageList', 'list']);
       setConversations(newestFirst(list, (item) => Number(item.lastTime || item.msgTime || item.ctime || item.time || 0)));
-      setStatus(`加载完成：${list.length} 个会话`);
+      showToast(`加载完成：${list.length} 个会话`);
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      showToast(`加载失败：${errorMessage(error)}`);
       setConversations([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   const openConversation = async (conv: any) => {
     setSelectedConv(conv);
     setLoading(true);
-    setStatus('加载会话...');
+    showToast('正在加载会话...');
     try {
       if (!currentUserId) {
         const info = await pocketApi.getNimLoginInfo().catch(() => null);
@@ -178,10 +214,10 @@ export default function PrivateMessagesScreen() {
       }
       const res = await pocketApi.getPrivateMessageDetail(convTargetId(conv));
       const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'content.data', 'data.messageList', 'messageList', 'list']);
-      setDetail(newestFirst(list, msgTimeNumber));
-      setStatus(`加载完成：${list.length} 条消息`);
+      setDetail(oldestFirst(list, msgTimeNumber));
+      showToast(`加载完成：${list.length} 条消息`);
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      showToast(`加载失败：${errorMessage(error)}`);
       setDetail([]);
     } finally {
       setLoading(false);
@@ -194,10 +230,10 @@ export default function PrivateMessagesScreen() {
     try {
       await pocketApi.sendPrivateMessageReply(convTargetId(selectedConv), replyText.trim());
       setReplyText('');
-      setStatus('已发送');
+      showToast('已发送');
       await openConversation(selectedConv);
     } catch (error) {
-      setStatus(`发送失败：${errorMessage(error)}`);
+      showToast(`发送失败：${errorMessage(error)}`);
     } finally {
       setLoading(false);
     }
@@ -214,19 +250,47 @@ export default function PrivateMessagesScreen() {
           <Text style={[styles.title, isDark && styles.textLight]} numberOfLines={1}>{convName(selectedConv)}</Text>
           <View style={styles.headerSide} />
         </View>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
         <FlatList
           data={detail}
           keyExtractor={(item, index) => msgId(item, index)}
           renderItem={({ item, index }) => {
             const mine = isMineMessage(item, targetId, currentUserId);
+            const media = privateMessageMedia(item);
+            const text = privateMessageText(item);
+            const hasText = text && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(text);
             return (
               <View style={[styles.msgRow, mine && styles.msgRowMine]}>
                 <View style={[styles.msgBubble, mine && styles.msgBubbleMine, isDark && !mine && styles.msgBubbleDark]}>
                   <Text style={[styles.msgAuthor, mine && styles.msgAuthorMine]}>{mine ? '我' : convName(selectedConv)}</Text>
-                  <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.textLight]}>
-                    {privateMessageText(item)}
-                  </Text>
+                  {hasText ? (
+                    <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.textLight]}>
+                      {text}
+                    </Text>
+                  ) : null}
+                  {media ? (
+                    media.type === 'link' ? (
+                      <TouchableOpacity style={styles.mediaCard} onPress={() => Linking.openURL(media.url).catch(() => showToast('链接无法打开'))}>
+                        <Text style={[styles.mediaTitle, mine && styles.msgTextMine]} numberOfLines={1}>{media.title}</Text>
+                        <Text style={[styles.mediaUrl, mine && styles.msgTimeMine]} numberOfLines={1}>{media.url}</Text>
+                      </TouchableOpacity>
+                    ) : media.type === 'image' ? (
+                      <Image source={{ uri: media.url }} style={styles.inlineImage} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.mediaCard}>
+                        <Text style={[styles.mediaTitle, mine && styles.msgTextMine]}>{media.title}</Text>
+                        <Video
+                          source={{ uri: media.url }}
+                          style={media.type === 'audio' ? styles.inlineAudio : styles.inlineVideo}
+                          controls
+                          paused
+                          resizeMode="contain"
+                          ignoreSilentSwitch="ignore"
+                        />
+                      </View>
+                    )
+                  ) : !hasText ? (
+                    <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.textLight]}>[空消息]</Text>
+                  ) : null}
                   <Text style={[styles.msgTime, mine && styles.msgTimeMine]}>{formatTimestamp(msgTime(item))}</Text>
                 </View>
               </View>
@@ -280,7 +344,6 @@ export default function PrivateMessagesScreen() {
           <Text style={styles.refreshText}>刷新</Text>
         </TouchableOpacity>
       </View>
-      {status ? <Text style={styles.status}>{status}</Text> : null}
       <FlatList
         data={conversations}
         keyExtractor={(item, index) => String(convTargetId(item) || index)}
@@ -332,6 +395,12 @@ const styles = StyleSheet.create({
   msgTextMine: { color: '#fff' },
   msgTime: { fontSize: 10, color: '#333333', marginTop: 6 },
   msgTimeMine: { color: '#ffe8ef' },
+  mediaCard: { marginTop: 6, minWidth: 210, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.20)' },
+  mediaTitle: { paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, color: '#333', fontSize: 12, fontWeight: '800' },
+  mediaUrl: { paddingHorizontal: 10, paddingBottom: 8, color: '#555', fontSize: 10 },
+  inlineAudio: { height: 52, minWidth: 220, backgroundColor: 'rgba(0,0,0,0.12)' },
+  inlineVideo: { height: 180, minWidth: 230, backgroundColor: '#000' },
+  inlineImage: { width: 220, height: 220, marginTop: 6, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.12)' },
   flipPanel: { marginHorizontal: 10, marginBottom: 8, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)' },
   flipPanelDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
   flipPanelTitle: { color: '#333333', fontSize: 13, fontWeight: '800' },

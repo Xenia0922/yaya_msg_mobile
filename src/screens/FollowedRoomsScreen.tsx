@@ -522,13 +522,11 @@ export default function FollowedRoomsScreen() {
   const [selectedRoom, setSelectedRoom] = useState<Member | null>(null);
   const [roomMessages, setRoomMessages] = useState<RoomMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [roomSearchQuery, setRoomSearchQuery] = useState('');
   const [roomMode, setRoomMode] = useState<RoomMode>('big');
   const [showFanMessages, setShowFanMessages] = useState(false);
   const [playingMedia, setPlayingMedia] = useState<RoomMedia | null>(null);
-  const [mediaStatus, setMediaStatus] = useState('');
   const [roomNextTime, setRoomNextTime] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
@@ -591,11 +589,11 @@ export default function FollowedRoomsScreen() {
 
   const loadFollowed = useCallback(async () => {
     if (!token) {
-      setStatus('请先在设置里登录口袋48，关注房间需要账号 Token。');
+      showToast('请先在设置里登录口袋48，关注房间需要账号 Token。');
       return;
     }
     setLoading(true);
-    setStatus('正在加载关注房间...');
+    showToast('正在加载关注房间...');
     try {
       const idsRes = await pocketApi.getFollowedIds();
       const idsArr = unwrapList(idsRes, ['content.data', 'content', 'content.list', 'data', 'list']).map(String);
@@ -616,31 +614,30 @@ export default function FollowedRoomsScreen() {
         ...item,
         lastMessage: findLastMessage(lastMsgs, item.member),
       })));
-      setStatus(followedMembers.length ? `已加载 ${followedMembers.length} 个关注房间` : '没有匹配到关注房间，也可以搜索成员直接打开房间。');
+      showToast(followedMembers.length ? `已加载 ${followedMembers.length} 个关注房间` : '没有匹配到关注房间，也可以搜索成员直接打开房间。');
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      showToast(`加载失败：${errorMessage(error)}`);
     } finally {
       setLoading(false);
     }
-  }, [members, token]);
+  }, [members, showToast, token]);
 
   const openRoom = useCallback(async (room: Member, nextMode = roomMode, includeFans = showFanMessages) => {
     const channelId = roomChannelId(room, nextMode);
     if (!channelId) {
-      setStatus(nextMode === 'small' ? '这个成员缺少小房间 channelId，无法打开小房间。' : '这个成员缺少大房间 channelId，无法打开房间。');
+      showToast(nextMode === 'small' ? '这个成员缺少小房间 channelId，无法打开小房间。' : '这个成员缺少大房间 channelId，无法打开房间。');
       return;
     }
     setSelectedRoom(room);
     setRoomSearchQuery('');
     setPlayingMedia(null);
-    setMediaStatus('');
     setLoading(true);
     setRoomMessages([]);
     setRoomNextTime(0);
     setHasMoreMessages(false);
     setRoomMode(nextMode);
     setShowFanMessages(includeFans);
-    setStatus(`正在加载${nextMode === 'small' ? '小房间' : '大房间'}消息...`);
+    showToast(`正在加载${nextMode === 'small' ? '小房间' : '大房间'}消息...`);
     try {
       const userInfo = includeFans && !currentUserId
         ? await pocketApi.getNimLoginInfo().catch(() => null)
@@ -658,14 +655,20 @@ export default function FollowedRoomsScreen() {
       const nextTime = getNextTime(res, list);
       setRoomNextTime(nextTime);
       setHasMoreMessages(list.length >= 50 && nextTime > 0);
-      setStatus(list.length ? `已加载 ${list.length} 条消息 · ${includeFans ? '含粉丝发言' : '仅房主发言'}` : '暂无消息');
+      showToast(list.length ? `已加载 ${list.length} 条消息 · ${includeFans ? '含粉丝发言' : '仅房主发言'}` : '暂无消息');
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      if (nextMode === 'big' && room.yklzId) {
+        showToast(`大房间消息接口失败，尝试打开小房间：${errorMessage(error)}`);
+        setLoading(false);
+        openRoom(room, 'small', includeFans);
+        return;
+      }
+      showToast(`加载失败：${errorMessage(error)}`);
       setRoomMessages([]);
     } finally {
       setLoading(false);
     }
-  }, [currentUserId, roomMode, showFanMessages]);
+  }, [currentUserId, roomMode, showFanMessages, showToast]);
 
   const loadMoreRoomMessages = useCallback(async () => {
     if (!selectedRoom || loading || loadingMoreMessages || !hasMoreMessages || !roomNextTime) return;
@@ -683,23 +686,22 @@ export default function FollowedRoomsScreen() {
       const nextTime = getNextTime(res, list);
       setRoomMessages((prev) => {
         const merged = mergeMessages(prev, list as RoomMessage[]);
-        setStatus(`已加载 ${merged.length} 条消息 · ${showFanMessages ? '含粉丝发言' : '仅房主发言'}`);
+        showToast(`已加载 ${merged.length} 条消息 · ${showFanMessages ? '含粉丝发言' : '仅房主发言'}`);
         return merged;
       });
       setRoomNextTime(nextTime);
       setHasMoreMessages(list.length >= 50 && nextTime > 0 && nextTime !== roomNextTime);
     } catch (error) {
-      setStatus(`继续加载失败：${errorMessage(error)}`);
+      showToast(`继续加载失败：${errorMessage(error)}`);
     } finally {
       setLoadingMoreMessages(false);
     }
-  }, [hasMoreMessages, loading, loadingMoreMessages, roomMode, roomNextTime, selectedRoom, showFanMessages]);
+  }, [hasMoreMessages, loading, loadingMoreMessages, roomMode, roomNextTime, selectedRoom, showFanMessages, showToast]);
 
   const playMedia = useCallback(async (media: RoomMedia) => {
-    setMediaStatus('');
     if (media.type === 'link') {
       const url = media.url || media.title;
-      if (url) Linking.openURL(url).catch(() => setMediaStatus('这个链接无法直接打开。'));
+      if (url) Linking.openURL(url).catch(() => showToast('这个链接无法直接打开。'));
       return;
     }
     if (playingMedia?.url && playingMedia.url === media.url) {
@@ -709,11 +711,11 @@ export default function FollowedRoomsScreen() {
     let next = media;
     try {
       if (media.type === 'live' || media.liveId) {
-        setMediaStatus('\u6b63\u5728\u89e3\u6790\u76f4\u64ad / \u5f55\u64ad\u5730\u5740...');
+        showToast('正在解析直播 / 录播地址...');
         next = await resolveRoomLiveMedia(media);
       }
       if (!next.url) {
-        setMediaStatus('这个消息里没有解析到可播放地址。');
+        showToast('这个消息里没有解析到可播放地址。');
         return;
       }
       if (next.type === 'live') {
@@ -722,9 +724,9 @@ export default function FollowedRoomsScreen() {
       }
       setPlayingMedia(next);
     } catch (error) {
-      setMediaStatus(`播放解析失败：${errorMessage(error)}`);
+      showToast(`播放解析失败：${errorMessage(error)}`);
     }
-  }, [playingMedia]);
+  }, [playingMedia, showToast]);
 
   const downloadMedia = useCallback(async (media: RoomMedia) => {
     try {
@@ -834,8 +836,6 @@ export default function FollowedRoomsScreen() {
           </TouchableOpacity>
         </View>
 
-        {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
-        {mediaStatus ? <Text style={[styles.mediaStatus, isDark && styles.statusDark]}>{mediaStatus}</Text> : null}
         <View style={styles.roomSearchWrap}>
           <TextInput
             style={[styles.input, isDark && styles.inputDark]}
@@ -977,7 +977,6 @@ export default function FollowedRoomsScreen() {
             <Text style={styles.refreshText}>刷新</Text>
           </TouchableOpacity>
         </View>
-        {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
       </View>
 
       <FlatList

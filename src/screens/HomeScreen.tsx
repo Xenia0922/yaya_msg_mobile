@@ -52,7 +52,7 @@ const CARDS: CardSection[] = [
     items: [
       { title: '提问', desc: '进入翻牌发送入口', route: 'FlipScreen', params: { mode: 'send' } },
       { title: '历史', desc: '浏览历史翻牌内容', route: 'FlipScreen' },
-      { title: '个人相册', desc: '浏览成员照片', route: 'PhotosScreen' },
+      { title: '房间相册', desc: '按大小房间获取图片和视频', route: 'RoomAlbumScreen' },
     ],
   },
   {
@@ -79,7 +79,7 @@ const CARDS: CardSection[] = [
     items: [
       { title: '账号资料', desc: '口袋/B站/头像/昵称', route: 'LoginScreen' },
       { title: '下载管理', desc: '录播/语音/图片/视频', route: 'DownloadScreen' },
-      { title: '小号切换', desc: '在设置页管理口袋小号', route: 'Settings' },
+      { title: '小号切换', desc: '按口袋大小号列表切换', route: 'LoginScreen' },
       { title: '软件设置', desc: '主题、签到和接口工具', route: 'Settings' },
     ],
   },

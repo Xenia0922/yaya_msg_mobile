@@ -51,12 +51,23 @@ export default function DatabaseScreen() {
     let alive = true;
     (async () => {
       try {
+        const backup = require('../../assets/members.json');
+        const localMembers = await loadMembers(backup);
+        if (!alive) return;
+        setMembers(localMembers);
+        setStoreMembers(localMembers);
+        setStatus(`已加载随包成员库：${localMembers.length} 位`);
+
         const raw = await externalApi.fetchMembers();
         const normalized = await loadMembers(raw);
         if (!alive) return;
-        setMembers(normalized);
-        setStoreMembers(normalized);
-        setStatus(`已同步线上成员库：${normalized.length} 位`);
+        if (normalized.length >= localMembers.length) {
+          setMembers(normalized);
+          setStoreMembers(normalized);
+          setStatus(`已同步线上成员库：${normalized.length} 位`);
+        } else {
+          setStatus(`线上成员库较旧（${normalized.length} 位），继续使用随包 ${localMembers.length} 位`);
+        }
       } catch (error: any) {
         if (!alive) return;
         setMembers(storeMembers);

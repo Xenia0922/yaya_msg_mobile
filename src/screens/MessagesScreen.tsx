@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Modal,
 } from 'react-native';
-import { useSettingsStore, useMemberStore } from '../store';
+import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { Member } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
@@ -17,10 +17,10 @@ export default function MessagesScreen() {
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
   const members = useMemberStore((state) => state.members);
   const token = useSettingsStore((state) => state.settings.p48Token);
+  const showToast = useUiStore((state) => state.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
@@ -35,12 +35,12 @@ export default function MessagesScreen() {
 
   const fetchMessages = async (member: Member) => {
     if (!token) {
-      setStatus('请先在账号设置里登录口袋48或粘贴 Token');
+      showToast('请先在账号设置里登录口袋48或粘贴 Token');
       return;
     }
     setSelectedMember(member);
     setLoading(true);
-    setStatus('');
+    showToast('正在加载房间消息...');
     try {
       const res = await pocketApi.getRoomMessages({
         channelId: member.channelId,
@@ -50,8 +50,9 @@ export default function MessagesScreen() {
       });
       const list = unwrapList(res, ['content.messageList', 'content.list', 'messageList', 'list']);
       setMessages(list.slice().sort((a, b) => msgTime(b) - msgTime(a)));
+      showToast(`已加载 ${list.length} 条消息`);
     } catch (error) {
-      setStatus(errorMessage(error));
+      showToast(`加载失败：${errorMessage(error)}`);
       setMessages([]);
     } finally {
       setLoading(false);
@@ -80,7 +81,6 @@ export default function MessagesScreen() {
           value={search}
           onChangeText={setSearch}
         />
-        {status ? <Text style={styles.status}>{status}</Text> : null}
       </View>
 
       <Modal visible={pickerOpen} animationType="slide">
