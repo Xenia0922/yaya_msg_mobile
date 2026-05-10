@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -63,6 +63,7 @@ export default function MusicLibraryScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [nextCtime, setNextCtime] = useState(0);
+  const loadingRef = useRef(false);
 
   const filteredSongs = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -76,6 +77,8 @@ export default function MusicLibraryScreen() {
   }, [query, songs]);
 
   const load = async (refresh = true) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     const cursor = refresh ? 0 : nextCtime;
     if (refresh) setLoading(true);
     else setLoadingMore(true);
@@ -91,6 +94,7 @@ export default function MusicLibraryScreen() {
     } catch (error) {
       setStatus(`加载失败：${errorMessage(error)}`);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       setLoadingMore(false);
     }
@@ -101,7 +105,7 @@ export default function MusicLibraryScreen() {
   }, []);
 
   const loadMore = () => {
-    if (loading || loadingMore || !hasMore) return;
+    if (loading || loadingMore || loadingRef.current || !hasMore) return;
     load(false);
   };
 
@@ -115,7 +119,7 @@ export default function MusicLibraryScreen() {
     try {
       const res = await officialMediaApi.getMusic(String(item.musicId || item.id));
       const data = res?.content?.data || res?.content || res?.data || {};
-      const url = mediaUrl(String(data.musicPath || data.filePath || data.url || ''));
+      const url = mediaUrl(String(data.filePath || data.musicPath || data.playStreamPath || data.audioPath || data.url || ''));
       if (!url) throw new Error('未返回音乐文件地址');
       setPlayUrl(url);
       setStatus(`正在播放：${item.title || data.title || '音乐'}`);

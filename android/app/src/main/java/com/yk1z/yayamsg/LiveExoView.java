@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.TextureView;
+import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -180,7 +181,15 @@ public class LiveExoView extends FrameLayout {
   }
 
   private void setStatus(String text) {
-    statusText.setText(text);
+    String value = text == null ? "" : text;
+    String lower = value.toLowerCase();
+    if (lower.contains("playing") || lower.contains("buffer")) {
+      statusText.setVisibility(View.GONE);
+      statusText.setText("");
+      return;
+    }
+    statusText.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
+    statusText.setText(value);
   }
 
   private int dp(int value) {

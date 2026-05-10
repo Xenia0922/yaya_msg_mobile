@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -128,10 +128,12 @@ export default function RoomAlbumScreen() {
   const [playing, setPlaying] = useState<AlbumItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('选择成员后读取房间相册，图片和视频都会显示。');
+  const loadingRef = useRef(false);
 
   const currentChannelId = useMemo(() => selectedMember ? channelFor(selectedMember, roomMode) : '', [roomMode, selectedMember]);
 
   const loadAlbum = async (member: Member, mode: RoomMode = roomMode, append = false) => {
+    if (loadingRef.current) return;
     const channelId = channelFor(member, mode);
     if (!channelId) {
       setStatus(mode === 'small' ? '这个成员没有小房间 channelId。' : '这个成员没有大房间 channelId。');
@@ -140,6 +142,7 @@ export default function RoomAlbumScreen() {
       return;
     }
 
+    loadingRef.current = true;
     setSelectedMember(member);
     setRoomMode(mode);
     setLoading(true);
@@ -161,6 +164,7 @@ export default function RoomAlbumScreen() {
       setStatus(`加载失败：${errorMessage(error)}`);
       if (!append) setItems([]);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
@@ -171,6 +175,11 @@ export default function RoomAlbumScreen() {
     setNextTime(0);
     setHasMore(false);
     loadAlbum(selectedMember, mode, false);
+  };
+
+  const loadMoreAlbum = () => {
+    if (!selectedMember || loading || loadingRef.current || !hasMore) return;
+    loadAlbum(selectedMember, roomMode, true);
   };
 
   const downloadItem = async (item: AlbumItem) => {
@@ -257,10 +266,10 @@ export default function RoomAlbumScreen() {
           </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '加载中...' : '暂无相册内容'}</Text>}
+        onEndReached={loadMoreAlbum}
+        onEndReachedThreshold={0.35}
         ListFooterComponent={hasMore ? (
-          <TouchableOpacity style={styles.loadMoreBtn} onPress={() => selectedMember && loadAlbum(selectedMember, roomMode, true)}>
-            <Text style={styles.loadMoreText}>继续加载</Text>
-          </TouchableOpacity>
+          <Text style={[styles.footerText, isDark && styles.textSubLight]}>{loading ? '加载中...' : '上滑继续加载'}</Text>
         ) : null}
       />
     </View>
@@ -292,8 +301,7 @@ const styles = StyleSheet.create({
   info: { padding: 9 },
   mediaTitle: { color: '#222222', fontSize: 13, fontWeight: '900' },
   mediaMeta: { marginTop: 4, color: '#555555', fontSize: 11 },
-  loadMoreBtn: { marginHorizontal: 6, marginTop: 10, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
-  loadMoreText: { color: '#ffffff', fontWeight: '900' },
+  footerText: { marginTop: 12, marginBottom: 6, textAlign: 'center', color: '#555555', fontSize: 12, fontWeight: '800' },
   empty: { textAlign: 'center', color: '#555555', marginTop: 60, fontSize: 14 },
   playerPage: { flex: 1, backgroundColor: '#000000' },
   playerHeader: { paddingTop: 48, paddingHorizontal: 16, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

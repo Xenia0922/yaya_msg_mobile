@@ -552,7 +552,16 @@ public class LivePlayerActivity extends Activity {
   }
 
   private void setStatusNow(String text) {
-    if (statusText != null) statusText.setText(text == null ? "" : text);
+    if (statusText == null) return;
+    String value = text == null ? "" : text;
+    String lower = value.toLowerCase();
+    if (lower.contains("playing") || lower.contains("buffer")) {
+      statusText.setVisibility(View.GONE);
+      statusText.setText("");
+      return;
+    }
+    statusText.setVisibility(value.isEmpty() ? View.GONE : View.VISIBLE);
+    statusText.setText(value);
   }
 
   private String clean(String value) {

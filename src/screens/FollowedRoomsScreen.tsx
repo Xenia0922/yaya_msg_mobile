@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   Image,
@@ -274,21 +274,6 @@ function currentUserIdFrom(res: any): string {
   ]);
 }
 
-function accountUserId(user: any): string {
-  return firstTextFrom([user], ['userId', 'id', 'userInfo.userId', 'userInfo.id', 'account']);
-}
-
-function currentAccountInfo(res: any) {
-  const content = res?.content || res?.data || res || {};
-  const current = content.userInfo || content.user || content;
-  const bigSmallInfo = content.bigSmallInfo || content.bigSmall || content.userInfo?.bigSmallInfo || {};
-  const big = bigSmallInfo.bigUserInfo || bigSmallInfo.bigUser || bigSmallInfo.ownerUserInfo || null;
-  return {
-    currentUserId: accountUserId(current),
-    bigUserId: accountUserId(big),
-  };
-}
-
 function messageRole(item: any, room: Member, includeFans: boolean, currentUserId: string): MessageRole {
   const profile = senderProfile(item, room);
   if (includeFans && currentUserId && profile.id && String(profile.id) === String(currentUserId)) return 'mine';
@@ -297,7 +282,13 @@ function messageRole(item: any, room: Member, includeFans: boolean, currentUserI
 }
 
 function messageKey(item: any, index = 0) {
-  return String(item.id || item.msgId || item.messageId || item.clientMsgId || `${item.msgTime || item.ctime || ''}-${senderProfile(item, {} as Member).id}-${index}`);
+  const direct = item.id || item.msgId || item.messageId || item.clientMsgId || item.uuid || item.msgUuid;
+  if (direct) return String(direct);
+  const profile = senderProfile(item, {} as Member);
+  const body = messageBody(item);
+  const text = firstTextFrom([body, item], ['text', 'message', 'msgContent', 'content', 'bodys', 'body']);
+  const media = firstTextFrom([body, item], ['url', 'fileUrl', 'pictureUrl', 'coverUrl', 'liveId']);
+  return String(`${getMessageTime(item)}-${profile.id || profile.name || ''}-${text || media || JSON.stringify(body).slice(0, 120)}-${index}`);
 }
 
 function getMessageTime(item: any): number {
@@ -313,10 +304,10 @@ function getNextTime(res: any, list: any[]): number {
 }
 
 function mergeMessages(prev: RoomMessage[], next: RoomMessage[]) {
-  const seen = new Set(prev.map((item, index) => messageKey(item, index)));
+  const seen = new Set(prev.map((item) => messageKey(item)));
   const merged = [...prev];
-  next.forEach((item, index) => {
-    const key = messageKey(item, index);
+  next.forEach((item) => {
+    const key = messageKey(item);
     if (seen.has(key)) return;
     seen.add(key);
     merged.push(item);
@@ -650,6 +641,7 @@ export default function FollowedRoomsScreen() {
   const [roomNextTime, setRoomNextTime] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
+  const loadingMoreMessagesRef = useRef(false);
   const [currentUserId, setCurrentUserId] = useState('');
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
@@ -781,15 +773,10 @@ export default function FollowedRoomsScreen() {
     setShowFanMessages(includeFans);
     showToast(`正在加载${nextMode === 'small' ? '小房间' : '大房间'}消息...`);
     try {
-      const userInfo = includeFans
+      const userInfo = includeFans && !currentUserId
         ? await pocketApi.getNimLoginInfo().catch(() => null)
         : null;
-      const accountInfo = currentAccountInfo(userInfo);
-      if (includeFans && nextMode === 'big' && accountInfo.bigUserId && accountInfo.currentUserId !== accountInfo.bigUserId) {
-        showToast('正在切回大号读取大房间全部消息...');
-        await pocketApi.switchBigSmall(accountInfo.bigUserId);
-      }
-      const nextCurrentUserId = currentUserId || (includeFans && nextMode === 'big' ? accountInfo.bigUserId : '') || accountInfo.currentUserId || currentUserIdFrom(userInfo);
+      const nextCurrentUserId = currentUserId || currentUserIdFrom(userInfo);
       if (nextCurrentUserId) setCurrentUserId(nextCurrentUserId);
       const res = await pocketApi.getRoomMessages({
         channelId,
@@ -818,9 +805,10 @@ export default function FollowedRoomsScreen() {
   }, [currentUserId, roomMode, showFanMessages, showToast]);
 
   const loadMoreRoomMessages = useCallback(async () => {
-    if (!selectedRoom || loading || loadingMoreMessages || !hasMoreMessages || !roomNextTime) return;
+    if (!selectedRoom || loading || loadingMoreMessages || loadingMoreMessagesRef.current || !hasMoreMessages || !roomNextTime) return;
     const channelId = roomChannelId(selectedRoom, roomMode);
     if (!channelId) return;
+    loadingMoreMessagesRef.current = true;
     setLoadingMoreMessages(true);
     try {
       const res = await pocketApi.getRoomMessages({
@@ -841,6 +829,7 @@ export default function FollowedRoomsScreen() {
     } catch (error) {
       showToast(`继续加载失败：${errorMessage(error)}`);
     } finally {
+      loadingMoreMessagesRef.current = false;
       setLoadingMoreMessages(false);
     }
   }, [hasMoreMessages, loading, loadingMoreMessages, roomMode, roomNextTime, selectedRoom, showFanMessages, showToast]);
@@ -1034,7 +1023,7 @@ export default function FollowedRoomsScreen() {
             style={[styles.modePill, showFanMessages && styles.modePillActive]}
             onPress={() => openRoom(selectedRoom, roomMode, !showFanMessages)}
           >
-            <Text style={[styles.modePillText, showFanMessages && styles.modePillTextActive]}>{showFanMessages ? '仅成员' : '粉丝发言'}</Text>
+            <Text style={[styles.modePillText, showFanMessages && styles.modePillTextActive]}>{showFanMessages ? '成员发言' : '含粉丝发言'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -1060,9 +1049,7 @@ export default function FollowedRoomsScreen() {
                 {loadingMoreMessages ? (
                   <Text style={styles.empty}>继续加载中...</Text>
                 ) : hasMoreMessages ? (
-                  <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMoreRoomMessages}>
-                    <Text style={styles.loadMoreText}>继续加载历史消息</Text>
-                  </TouchableOpacity>
+                  <Text style={styles.empty}>上滑继续加载</Text>
                 ) : (
                   <Text style={styles.empty}>没有更多消息</Text>
                 )}
@@ -1254,8 +1241,6 @@ const styles = StyleSheet.create({
   roomMeta: { fontSize: 10, color: '#3f3f3f', backgroundColor: 'rgba(255,111,145,0.14)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
   lastMessage: { fontSize: 12, color: '#3f3f3f', marginTop: 6 },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },
-  loadMoreBtn: { paddingHorizontal: 18, paddingVertical: 9, borderRadius: 16, backgroundColor: '#ff6f91' },
-  loadMoreText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginVertical: 6 },
   chatRowMine: { justifyContent: 'flex-end' },
   avatar: { width: 36, height: 36, borderRadius: 18, marginRight: 8, backgroundColor: 'rgba(255,255,255,0.5)' },

@@ -142,7 +142,7 @@ export default function DownloadScreen() {
                 {item.status === 'done' ? '完成' : item.status === 'failed' ? `失败：${item.error || ''}` : `下载中 ${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalBytes)}`}
               </Text>
               <View style={styles.taskActions}>
-                <TouchableOpacity onPress={() => openDownloadItem(item)}>
+                <TouchableOpacity onPress={() => openDownloadItem(item).catch((error) => showToast(`打开失败：${error?.message || error}`))}>
                   <Text style={styles.actionText}>打开</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => remove(item.id)}>

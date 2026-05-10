@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -51,8 +51,11 @@ export default function VideoLibraryScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [nextCtime, setNextCtime] = useState(0);
+  const loadingRef = useRef(false);
 
   const load = async (refresh = true) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     const cursor = refresh ? 0 : nextCtime;
     if (refresh) setLoading(true);
     else setLoadingMore(true);
@@ -68,6 +71,7 @@ export default function VideoLibraryScreen() {
     } catch (error) {
       setStatus(`加载失败：${errorMessage(error)}`);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       setLoadingMore(false);
     }
@@ -78,7 +82,7 @@ export default function VideoLibraryScreen() {
   }, []);
 
   const loadMore = () => {
-    if (loading || loadingMore || !hasMore) return;
+    if (loading || loadingMore || loadingRef.current || !hasMore) return;
     load(false);
   };
 

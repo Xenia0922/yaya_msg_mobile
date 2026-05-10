@@ -51,7 +51,6 @@ function createHeaders(token?: string, pa?: string | null, modern = false): Head
     'User-Agent': modern
       ? 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)'
       : `PocketFans201807/${APP_VERSION} (iPhone; iOS 16.3.1; Scale/2.00)`,
-    Host: 'pocketapi.48.cn',
     'Accept-Language': 'zh-Hans-CN;q=1',
     Accept: '*/*',
     appInfo: JSON.stringify(appInfo(modern)),
@@ -115,6 +114,35 @@ async function rawPost(url: string, data: any, options: { token?: string; modern
   return xhrPost(url, data, headers);
 }
 
+function parsePocketJson(text: string): any {
+  if (!text) return null;
+  const fixed = text.replace(/:\s*([0-9]{15,})/g, ':"$1"');
+  try {
+    return JSON.parse(fixed);
+  } catch {
+    return { status: 500, success: false, message: fixed.replace(/\s+/g, ' ').slice(0, 180) };
+  }
+}
+
+async function rawPostFetch(url: string, data: any, options: { token?: string; modern?: boolean; headers?: HeadersMap; signed?: boolean } = {}) {
+  const token = options.token ?? tokenFromStore();
+  const headers = options.signed === false
+    ? { ...createHeaders(token, null, !!options.modern), ...(options.headers || {}) }
+    : await createSignedHeaders(token, !!options.modern, options.headers || {});
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data || {}),
+  });
+  const body = parsePocketJson(await res.text());
+  if (res.status >= 200 && res.status < 300) return body;
+  return {
+    ...(body && typeof body === 'object' ? body : {}),
+    status: body?.status ?? res.status,
+    message: responseMessage(body, `HTTP ${res.status}`),
+  };
+}
+
 async function signedHeaders(token?: string, modern = false, patch: HeadersMap = {}) {
   return createSignedHeaders(token ?? tokenFromStore(), modern, patch);
 }
@@ -127,6 +155,18 @@ async function pocketPost(url: string, data: any, options: { tokenRequired?: boo
     headers: options.headers,
     signed: true,
   });
+  return assertPocketOk(res, options.fallback);
+}
+
+async function pocketPostRoomMessage(url: string, data: any, options: { modern?: boolean; fallback?: string } = {}) {
+  const res = await rawPostFetch(url, data, {
+    token: requireToken(),
+    modern: options.modern,
+    signed: true,
+  });
+  if (res && (res.status === 200 || res.code === 0 || res.success === true || res.content !== undefined || res.data !== undefined)) {
+    return res;
+  }
   return assertPocketOk(res, options.fallback);
 }
 
@@ -212,17 +252,22 @@ function rememberServerId(channelId: string, serverId: string) {
 }
 
 async function tryPocketPost(
-  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; label: string }>,
+  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; roomMessage?: boolean; label: string }>,
   fallback: string,
 ) {
   const errors: string[] = [];
   for (const attempt of attempts) {
     try {
-      const res = await pocketPost(attempt.url, attempt.payload, {
-        modern: attempt.modern,
-        tokenRequired: attempt.tokenRequired,
-        fallback: `${fallback}: ${attempt.label}`,
-      });
+      const res = attempt.roomMessage
+        ? await pocketPostRoomMessage(attempt.url, attempt.payload, {
+          modern: attempt.modern,
+          fallback: `${fallback}: ${attempt.label}`,
+        })
+        : await pocketPost(attempt.url, attempt.payload, {
+          modern: attempt.modern,
+          tokenRequired: attempt.tokenRequired,
+          fallback: `${fallback}: ${attempt.label}`,
+        });
       return {
         ...res,
         _request: {
@@ -457,41 +502,26 @@ export const pocketApi = {
     if (!serverIds.length) throw new Error('missing serverId');
     rememberServerId(channelId, serverIds[0]);
 
-    const urls = params.fetchAll
-      ? [
-        { url: `${BASE}/im/api/v1/team/message/list/all`, mode: 'all' },
-      ]
-      : [{ url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner' }];
-    const attempts: Array<{ url: string; payload: any; modern?: boolean; label: string }> = [];
+    const url = params.fetchAll
+      ? `${BASE}/im/api/v1/team/message/list/all`
+      : `${BASE}/im/api/v1/team/message/list/homeowner`;
+    const mode = params.fetchAll ? 'all' : 'owner';
+    const limit = params.limit || 50;
+    const attempts: Array<{ url: string; payload: any; modern?: boolean; roomMessage?: boolean; label: string }> = [];
     for (const serverId of serverIds) {
-      for (const entry of urls) {
-        attempts.push({
-          url: entry.url,
-          payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit: params.limit || 50 },
-          label: `${entry.mode} number channel=${channelId} server=${serverId}`,
-        });
-        attempts.push({
-          url: entry.url,
-          payload: { channelId: String(channelId), serverId: String(serverId), nextTime: params.nextTime || 0, limit: params.limit || 50 },
-          label: `${entry.mode} string channel=${channelId} server=${serverId}`,
-        });
-        attempts.push({
-          url: entry.url,
-          payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit: params.limit || 50 },
-          modern: true,
-          label: `${entry.mode} modern channel=${channelId} server=${serverId}`,
-        });
-        attempts.push({
-          url: entry.url,
-          payload: { channelId: safeNumber(channelId), nextTime: params.nextTime || 0, limit: params.limit || 50 },
-          label: `${entry.mode} channel-only channel=${channelId}`,
-        });
-        attempts.push({
-          url: entry.url,
-          payload: { serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit: params.limit || 50 },
-          label: `${entry.mode} server-only server=${serverId}`,
-        });
-      }
+      attempts.push({
+        url,
+        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit },
+        roomMessage: true,
+        label: `${mode} desktop channel=${channelId} server=${serverId}`,
+      });
+      attempts.push({
+        url,
+        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit },
+        modern: true,
+        roomMessage: true,
+        label: `${mode} modern channel=${channelId} server=${serverId}`,
+      });
     }
     return tryPocketPost(attempts, 'get room messages failed');
   },

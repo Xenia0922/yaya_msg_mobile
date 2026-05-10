@@ -798,15 +798,15 @@ export default function MediaScreen() {
             {loading ? <ActivityIndicator style={{ marginTop: 8 }} color="#ff6f91" /> : null}
           </View>
         }
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.35}
         ListFooterComponent={
           list.length > 0 ? (
             <View style={styles.footer}>
               {loading ? (
                 <ActivityIndicator color="#ff6f91" />
               ) : hasMore ? (
-                <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMore}>
-                  <Text style={styles.loadMoreText}>加载更多</Text>
-                </TouchableOpacity>
+                <Text style={styles.empty}>上滑继续加载</Text>
               ) : (
                 <Text style={styles.empty}>没有更多了</Text>
               )}
@@ -832,8 +832,6 @@ const styles = StyleSheet.create({
   refreshBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18, backgroundColor: '#ddd' },
   refreshText: { fontSize: 13, color: '#444', fontWeight: '700' },
   footer: { padding: 18, alignItems: 'center' },
-  loadMoreBtn: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91' },
-  loadMoreText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   error: { margin: 12, padding: 10, borderRadius: 18, backgroundColor: '#fff3cd', color: '#8a5a00', fontSize: 12, lineHeight: 18 },
   playerPage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999, elevation: 999, backgroundColor: '#000' },
   playerPageFullscreen: { backgroundColor: '#000' },
