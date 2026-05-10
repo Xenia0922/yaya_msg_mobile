@@ -115,6 +115,10 @@ async function rawPost(url: string, data: any, options: { token?: string; modern
   return xhrPost(url, data, headers);
 }
 
+async function signedHeaders(token?: string, modern = false, patch: HeadersMap = {}) {
+  return createSignedHeaders(token ?? tokenFromStore(), modern, patch);
+}
+
 async function pocketPost(url: string, data: any, options: { tokenRequired?: boolean; modern?: boolean; headers?: HeadersMap; fallback?: string } = {}) {
   const token = options.tokenRequired === false ? tokenFromStore() : requireToken();
   const res = await rawPost(url, data, {
@@ -161,7 +165,7 @@ function rememberServerId(channelId: string, serverId: string) {
 }
 
 async function tryPocketPost(
-  attempts: Array<{ url: string; payload: any; modern?: boolean; label: string }>,
+  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; label: string }>,
   fallback: string,
 ) {
   const errors: string[] = [];
@@ -169,6 +173,7 @@ async function tryPocketPost(
     try {
       const res = await pocketPost(attempt.url, attempt.payload, {
         modern: attempt.modern,
+        tokenRequired: attempt.tokenRequired,
         fallback: `${fallback}: ${attempt.label}`,
       });
       return {
@@ -225,60 +230,82 @@ export const pocketApi = {
     return pocketPost(`${BASE}/user/api/v1/user/info/reload`, { from: 'appstart' }, { fallback: 'Token 无效' });
   },
 
-  async editUserInfo(params: { nickName?: string; avatar?: string }) {
-    const current = await this.loginCheckToken().catch(async () => this.getNimLoginInfo().catch(() => null));
-    const currentInfo = current?.content?.userInfo || current?.content?.baseUserInfo || current?.content?.user || current?.content || current?.data?.userInfo || current?.data || {};
-    const nickName = params.nickName || currentInfo.nickName || currentInfo.nickname || '';
-    const avatar = params.avatar || currentInfo.avatar || currentInfo.headImg || currentInfo.userAvatar || '';
-    const userId = currentInfo.userId || currentInfo.userIdStr || currentInfo.id || currentInfo.account || '';
-    const payloads = [
-      { userId, nickName, avatar, birthDay: currentInfo.birthDay || currentInfo.birthday || '', sex: currentInfo.sex ?? '', province: currentInfo.province || '', city: currentInfo.city || '' },
-      { userId, nickname: nickName, avatar, birthDay: currentInfo.birthDay || currentInfo.birthday || '', sex: currentInfo.sex ?? '', province: currentInfo.province || '', city: currentInfo.city || '' },
-      { userId, nickName, avatar },
-      { userId, nickname: nickName, avatar },
-      { userId, name: nickName, avatar },
-      { userId, nickName, headImg: avatar },
-      { userId, nickname: nickName, headImg: avatar },
-      { userId, nickName, userAvatar: avatar },
-      { userId, nickname: nickName, userAvatar: avatar },
-      { userId, nickName, faceImage: avatar },
-      { userInfo: { userId, nickName, avatar } },
-      { userInfo: { userId, nickname: nickName, avatar } },
-      { baseUserInfo: { userId, nickName, avatar } },
-      { baseUserInfo: { userId, nickname: nickName, avatar } },
-      { user: { userId, nickName, avatar } },
-      { user: { userId, nickname: nickName, avatar } },
-    ].map((payload) => Object.fromEntries(Object.entries(payload).filter(([, value]) => {
-      if (value && typeof value === 'object') {
-        return Object.values(value).some((item) => String(item || '').trim());
-      }
-      return String(value || '').trim();
-    })));
-    return tryPocketPost(
-      payloads
-        .filter((payload) => Object.keys(payload).length > 0)
-        .flatMap((payload, index) => [
-          {
-            url: `${BASE}/user/api/v1/user/info/edit`,
-            payload,
-            label: `edit user info ${index + 1}`,
-          },
-          {
-            url: `${BASE}/user/api/v1/user/info/edit`,
-            payload,
-            modern: true,
-            label: `edit user info modern ${index + 1}`,
-          },
-        ]),
-      'edit user info failed',
-    );
+  async editUserInfo(params: { key?: string; value?: string; nickName?: string; avatar?: string }) {
+    const changes: Array<{ key: string; value: string }> = [];
+    if (params.key) {
+      changes.push({ key: String(params.key), value: String(params.value ?? '') });
+    } else {
+      if (params.nickName?.trim()) changes.push({ key: 'nickname', value: params.nickName.trim() });
+      if (params.avatar?.trim()) changes.push({ key: 'avatar', value: params.avatar.trim() });
+    }
+    if (!changes.length) throw new Error('缺少修改字段');
+
+    const results = [];
+    for (const change of changes) {
+      const res = await pocketPost(`${BASE}/user/api/v1/user/info/edit`, change, {
+        modern: true,
+        fallback: '修改资料失败',
+      });
+      results.push(res);
+    }
+    return results[results.length - 1];
+  },
+
+  async getUserRenameCount() {
+    return pocketPost(`${BASE}/user/api/v1/user/rename/count`, {}, {
+      modern: true,
+      fallback: '获取改名次数失败',
+    });
+  },
+
+  async uploadUserAvatar(params: { uri: string; fileName?: string; mimeType?: string }) {
+    const token = requireToken();
+    const headers = await signedHeaders(token, true);
+    delete headers['Content-Type'];
+    delete headers.Host;
+    const mimeType = params.mimeType || 'image/jpeg';
+    const fileName = params.fileName || `avatar-${Date.now()}.${mimeType.includes('png') ? 'png' : 'jpg'}`;
+    const formData = new FormData();
+    formData.append('fromType', 'avatar');
+    formData.append('file', {
+      uri: params.uri,
+      name: fileName,
+      type: mimeType,
+    } as any);
+    const response = await fetch('https://pfile.48.cn/filesystem/upload/image', {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok && data && (data.status === 200 || data.success)) {
+      const item = Array.isArray(data.content) ? data.content[0] : data.content;
+      const path = item?.path || item?.url || item?.filePath || '';
+      if (!path) throw new Error('上传头像成功但没有返回图片路径');
+      return { success: true, content: item, path };
+    }
+    throw new Error(responseMessage(data, '上传头像失败'));
   },
 
   async checkIn() {
-    return pocketPost(`${BASE}/user/api/v1/checkin`, {}, {
+    const res = await rawPost(`${BASE}/user/api/v1/checkin`, {}, {
+      token: requireToken(),
       modern: true,
       headers: { 'P-Sign-Type': 'V0' },
-      fallback: '签到失败',
+      signed: true,
+    });
+    if (responseOk(res)) return res;
+    const message = responseMessage(res, '签到失败');
+    if (/已签到|重复签到|已经签到|已领取|明天再来/.test(message)) {
+      return { success: true, status: res?.status ?? res?.code ?? 200, message, content: res?.content || null, alreadyChecked: true };
+    }
+    throw new Error(res?.status !== undefined || res?.code !== undefined ? `${message} (${res?.status ?? res?.code})` : message);
+  },
+
+  async getCheckinToday() {
+    return pocketPost(`${BASE}/user/api/v1/checkin/check/today`, {}, {
+      modern: true,
+      fallback: '获取今日签到状态失败',
     });
   },
 
@@ -416,6 +443,7 @@ export const pocketApi = {
     if (!serverId || serverId === '0') throw new Error('missing serverId');
     rememberServerId(channelId, serverId);
     const body = JSON.stringify({ text });
+    const extInfo = JSON.stringify({ text, msgType: 'TEXT' });
     return tryPocketPost([
       {
         url: `${BASE}/im/api/v1/team/message/send`,
@@ -428,10 +456,28 @@ export const pocketApi = {
         label: 'team message send string',
       },
       {
+        url: `${BASE}/im/api/v1/team/message/send`,
+        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), type: 'TEXT', msgContent: body, extInfo },
+        modern: true,
+        label: 'team message send modern msgContent',
+      },
+      {
+        url: `${BASE}/im/api/v1/team/message/send`,
+        payload: { channelId: String(channelId), serverId: String(serverId), type: 'TEXT', msgContent: body, extInfo },
+        modern: true,
+        label: 'team message send modern string msgContent',
+      },
+      {
         url: `${BASE}/im/api/v1/team/message/send/text`,
         payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), text },
         modern: true,
         label: 'team message send text',
+      },
+      {
+        url: `${BASE}/im/api/v1/team/message/send/text`,
+        payload: { channelId: String(channelId), serverId: String(serverId), text },
+        modern: true,
+        label: 'team message send text string',
       },
       {
         url: `${BASE}/im/api/v1/team/message/create`,
@@ -539,7 +585,7 @@ export const pocketApi = {
   },
 
   async getStarArchives(memberId: number) {
-    return pocketPost(`${BASE}/user/api/v1/user/star/archives`, { memberId: Number(memberId) }, { fallback: '获取成员档案失败' });
+    return pocketPost(`${BASE}/user/api/v1/user/star/archives`, { memberId: Number(memberId) }, { tokenRequired: false, fallback: '获取成员档案失败' });
   },
 
   async getStarHistory(memberId: number) {
@@ -547,7 +593,7 @@ export const pocketApi = {
       memberId: Number(memberId),
       limit: 100,
       lastTime: 0,
-    }, { fallback: '获取成员历史失败' });
+    }, { tokenRequired: false, fallback: '获取成员历史失败' });
   },
 
   async getOpenLive(params: { memberId: string; nextTime?: number }) {
@@ -560,15 +606,39 @@ export const pocketApi = {
   },
 
   async getOpenLiveOne(liveId: string) {
-    return pocketPost(`${BASE}/live/api/v1/live/getOpenLiveOne`, {
-      liveId: String(liveId),
-    }, { fallback: '获取公演详情失败' });
+    const id = String(liveId);
+    return tryPocketPost([
+      {
+        url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
+        payload: { liveId: id },
+        tokenRequired: false,
+        label: 'open live one',
+      },
+      {
+        url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
+        payload: { liveId: id, streamProtocol: 'RTMP' },
+        tokenRequired: false,
+        label: 'open live one rtmp',
+      },
+    ], '获取公演详情失败');
   },
 
   async getLiveOne(liveId: string) {
-    return pocketPost(`${BASE}/live/api/v1/live/getLiveOne`, {
-      liveId: String(liveId),
-    }, { fallback: '获取直播详情失败' });
+    const id = String(liveId);
+    return tryPocketPost([
+      {
+        url: `${BASE}/live/api/v1/live/getLiveOne`,
+        payload: { liveId: id },
+        tokenRequired: false,
+        label: 'live one',
+      },
+      {
+        url: `${BASE}/live/api/v1/live/getLiveOne`,
+        payload: { liveId: id, streamProtocol: 'RTMP' },
+        tokenRequired: false,
+        label: 'live one rtmp',
+      },
+    ], '获取直播详情失败');
   },
 
   async getOpenLivePublicList(params: { groupId?: number; next?: number; record?: boolean }) {
@@ -577,7 +647,7 @@ export const pocketApi = {
       debug: false,
       next: params.next ?? 0,
       record: !!params.record,
-    }, { fallback: '获取公演列表失败' });
+    }, { tokenRequired: false, fallback: '获取公演列表失败' });
   },
 
   async getMemberPhotos(memberId: string, page = 0, size = 20) {
@@ -585,7 +655,7 @@ export const pocketApi = {
       starId: safeNumber(memberId),
       size,
       page,
-    }, { fallback: '获取个人相册失败' });
+    }, { tokenRequired: false, fallback: '获取个人相册失败' });
   },
 
   async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean; debug?: boolean; next?: number }) {
@@ -596,7 +666,7 @@ export const pocketApi = {
       next: params.next ?? 0,
       page: params.page || 1,
       record: params.record ?? false,
-    }, { fallback: '获取直播列表失败' });
+    }, { tokenRequired: false, fallback: '获取直播列表失败' });
   },
 
   async operateRoomVoice(params: { channelId: string; serverId: string }) {

@@ -8,6 +8,11 @@ import { formatTimestamp } from '../utils/format';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 
+function msgTime(item: any): number {
+  const value = Number(item.msgTime || item.messageTime || item.ctime || item.time || item.createTime || 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
 export default function MessagesScreen() {
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
   const members = useMemberStore((state) => state.members);
@@ -43,7 +48,8 @@ export default function MessagesScreen() {
         nextTime: 0,
         fetchAll: true,
       });
-      setMessages(unwrapList(res, ['content.messageList', 'content.list', 'messageList', 'list']));
+      const list = unwrapList(res, ['content.messageList', 'content.list', 'messageList', 'list']);
+      setMessages(list.slice().sort((a, b) => msgTime(b) - msgTime(a)));
     } catch (error) {
       setStatus(errorMessage(error));
       setMessages([]);

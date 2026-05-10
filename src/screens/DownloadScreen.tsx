@@ -1,131 +1,158 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, FlatList, StyleSheet, Alert,
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
-import { useSettingsStore } from '../store';
-import * as FileSystem from 'expo-file-system';
+import { useSettingsStore, useUiStore } from '../store';
+import {
+  clearFinishedDownloads,
+  deleteDownloadItem,
+  DownloadItem,
+  enqueueDownload,
+  loadDownloadItems,
+  openDownloadItem,
+} from '../services/downloads';
 
 type Nav = StackNavigationProp<RootStackParamList, 'DownloadScreen'>;
 
-interface DownloadTask {
-  id: string;
-  name: string;
-  progress: number;
-  status: 'pending' | 'downloading' | 'paused' | 'done' | 'failed';
-  totalSize: string;
-  downloaded: string;
+function formatBytes(value?: number) {
+  const bytes = Number(value) || 0;
+  if (!bytes) return '--';
+  if (bytes > 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes > 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+function typeLabel(type: DownloadItem['type']) {
+  if (type === 'replay') return '录播';
+  if (type === 'voice') return '语音';
+  if (type === 'image') return '图片';
+  if (type === 'video') return '视频';
+  if (type === 'audio') return '音频';
+  return '文件';
 }
 
 export default function DownloadScreen() {
   const navigation = useNavigation<Nav>();
   const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
-  const [tasks, setTasks] = useState<DownloadTask[]>([]);
-  const [downloading, setDownloading] = useState(false);
+  const showToast = useUiStore((s) => s.showToast);
+  const [items, setItems] = useState<DownloadItem[]>([]);
   const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const addDownload = () => {
-    if (!url.trim()) return;
-    const task: DownloadTask = {
-      id: Date.now().toString(),
-      name: url.split('/').pop() || '下载文件',
-      progress: 0,
-      status: 'pending',
-      totalSize: '--',
-      downloaded: '0 MB',
-    };
-    setTasks((prev) => [task, ...prev]);
-    startDownload(task);
-  };
+  const refresh = useCallback(async () => {
+    setItems(await loadDownloadItems());
+  }, []);
 
-  const startDownload = async (task: DownloadTask) => {
-    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: 'downloading' } : t));
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  useFocusEffect(useCallback(() => {
+    refresh();
+  }, [refresh]));
+
+  const startManualDownload = async () => {
+    const target = url.trim();
+    if (!target || busy) return;
+    setBusy(true);
     try {
-      const filename = task.id + '_' + task.name;
-      const dest = ((FileSystem as any).documentDirectory || 'file:///data/user/0/com.anonymous.yaya_msgmobile/files/') + filename;
-      const resumable = FileSystem.createDownloadResumable(
-        task.name.startsWith('http') ? task.name : url,
-        dest,
-        {},
-        (progress) => {
-          const pct = progress.totalBytesExpectedToWrite
-            ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite
-            : 0;
-          setTasks((prev) => prev.map((t) =>
-            t.id === task.id
-              ? { ...t, progress: pct, downloaded: `${(progress.totalBytesWritten / 1e6).toFixed(1)} MB` }
-              : t
-          ));
-        }
-      );
-      const result = await resumable.downloadAsync();
-      if (result?.uri) {
-        setTasks((prev) => prev.map((t) =>
-          t.id === task.id ? { ...t, status: 'done', progress: 1 } : t
-        ));
-      }
-    } catch (e: any) {
-      setTasks((prev) => prev.map((t) =>
-        t.id === task.id ? { ...t, status: 'failed' } : t
-      ));
+      await enqueueDownload({
+        url: target,
+        type: /\.(jpe?g|png|webp|gif)(\?|$)/i.test(target) ? 'image'
+          : /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(target) ? 'audio'
+          : /\.(mp4|m3u8|flv|mov)(\?|$)/i.test(target) ? 'video'
+          : 'file',
+        onProgress: refresh,
+      });
+      setUrl('');
+      showToast('下载完成');
+    } catch (error: any) {
+      showToast(`下载失败：${error?.message || error}`);
+    } finally {
+      setBusy(false);
+      refresh();
     }
   };
 
-  const removeTask = (id: string) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+  const remove = async (id: string) => {
+    await deleteDownloadItem(id);
+    refresh();
   };
 
-  const clearDone = () => {
-    setTasks((prev) => prev.filter((t) => t.status !== 'done'));
+  const clearDone = async () => {
+    await clearFinishedDownloads();
+    refresh();
   };
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>← 返回</Text>
+          <Text style={styles.backBtn}>返回</Text>
         </TouchableOpacity>
         <Text style={[styles.title, isDark && styles.textLight]}>下载管理</Text>
         <TouchableOpacity onPress={clearDone}>
-          <Text style={styles.clearBtn}>清除已完成</Text>
+          <Text style={styles.clearBtn}>清理完成</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={[styles.manualCard, isDark && styles.cardDark]}>
+        <TextInput
+          style={[styles.urlInput, isDark && styles.urlInputDark]}
+          placeholder="粘贴图片、语音、视频或录播地址"
+          placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
+          value={url}
+          onChangeText={setUrl}
+          autoCapitalize="none"
+        />
+        <TouchableOpacity style={[styles.addBtn, busy && styles.btnDisabled]} onPress={startManualDownload} disabled={busy}>
+          <Text style={styles.addBtnText}>{busy ? '下载中' : '添加下载'}</Text>
         </TouchableOpacity>
       </View>
 
       <FlatList
-        data={tasks}
+        data={items}
         keyExtractor={(item) => item.id}
-        ListEmptyComponent={<Text style={styles.empty}>暂无下载任务</Text>}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>暂无下载项目</Text>}
         renderItem={({ item }) => (
-          <View style={[styles.task, isDark && styles.taskDark]}>
-            <Text style={[styles.taskName, isDark && styles.textLight]} numberOfLines={1}>{item.name}</Text>
+          <View style={[styles.task, isDark && styles.cardDark]}>
+            <View style={styles.taskHead}>
+              <Text style={[styles.typeTag, isDark && styles.typeTagDark]}>{typeLabel(item.type)}</Text>
+              <Text style={[styles.taskName, isDark && styles.textLight]} numberOfLines={1}>{item.name}</Text>
+            </View>
             <View style={styles.progressBar}>
               <View style={[
                 styles.progressFill,
-                { width: `${Math.round(item.progress * 100)}%` },
                 item.status === 'failed' && styles.progressFailed,
+                { width: `${Math.round((item.progress || 0) * 100)}%` },
               ]} />
             </View>
             <View style={styles.taskMeta}>
-              <Text style={styles.taskStatus}>
-                {item.status === 'downloading' ? `下载中 ${item.downloaded}` :
-                 item.status === 'done' ? '完成' :
-                 item.status === 'failed' ? '失败' : '等待中'}
+              <Text style={[styles.taskStatus, isDark && styles.textSubLight]}>
+                {item.status === 'done' ? '完成' : item.status === 'failed' ? `失败：${item.error || ''}` : `下载中 ${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalBytes)}`}
               </Text>
-              <TouchableOpacity onPress={() => removeTask(item.id)}>
-                <Text style={styles.deleteBtn}>删除</Text>
-              </TouchableOpacity>
+              <View style={styles.taskActions}>
+                <TouchableOpacity onPress={() => openDownloadItem(item)}>
+                  <Text style={styles.actionText}>打开</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => remove(item.id)}>
+                  <Text style={[styles.actionText, styles.deleteText]}>删除</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         )}
       />
-
-      <View style={[styles.addBar, isDark && styles.addBarDark]}>
-        <TouchableOpacity style={styles.addBtn} onPress={addDownload}>
-          <Text style={styles.addBtnText}>+ 添加下载</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -133,24 +160,32 @@ export default function DownloadScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 14 },
-  title: { fontSize: 18, fontWeight: 'bold', color: '#ff6f91' },
-  clearBtn: { fontSize: 12, color: '#ff6f91' },
-  task: { backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 12, marginVertical: 4, padding: 12, borderRadius: 16 },
-  taskDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
-  taskName: { fontSize: 13, fontWeight: '600', color: '#333', marginBottom: 6 },
-  progressBar: { height: 4, backgroundColor: 'rgba(238,238,238,0.82)', borderRadius: 2, marginBottom: 6 },
-  progressFill: { height: 4, backgroundColor: '#ff6f91', borderRadius: 2 },
+  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  backBtn: { color: '#ff6f91', fontSize: 14, minWidth: 54 },
+  title: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '800', color: '#ff6f91' },
+  clearBtn: { color: '#ff6f91', fontSize: 13, minWidth: 54, textAlign: 'right' },
+  manualCard: { marginHorizontal: 14, marginBottom: 8, padding: 12, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
+  cardDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.14)' },
+  urlInput: { minHeight: 44, paddingHorizontal: 12, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.78)', color: '#222222', fontSize: 13 },
+  urlInputDark: { backgroundColor: 'rgba(255,255,255,0.10)', color: '#ffffff' },
+  addBtn: { marginTop: 10, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
+  btnDisabled: { opacity: 0.55 },
+  addBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 14 },
+  list: { paddingHorizontal: 14, paddingBottom: 112 },
+  task: { marginVertical: 5, padding: 12, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
+  taskHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  typeTag: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, backgroundColor: '#ff6f91', color: '#ffffff', fontSize: 11, fontWeight: '800', overflow: 'hidden' },
+  typeTagDark: { backgroundColor: '#ff6f91' },
+  taskName: { flex: 1, color: '#222222', fontWeight: '800', fontSize: 14 },
+  progressBar: { height: 5, marginVertical: 10, backgroundColor: 'rgba(0,0,0,0.10)', borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: 5, backgroundColor: '#ff6f91', borderRadius: 4 },
   progressFailed: { backgroundColor: '#ff4444' },
-  taskMeta: { flexDirection: 'row', justifyContent: 'space-between' },
-  taskStatus: { fontSize: 11, color: '#333333' },
-  deleteBtn: { fontSize: 11, color: '#ff4444' },
-  addBar: { padding: 12, backgroundColor: 'rgba(255,255,255,0.46)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.42)' },
-  addBarDark: { backgroundColor: 'rgba(20,20,20,0.58)', borderTopColor: 'rgba(255,255,255,0.12)' },
-  addBtn: { padding: 12, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center' },
-  addBtnText: { color: '#fff', fontWeight: '600' },
-  empty: { textAlign: 'center', color: '#333333', marginTop: 60 },
-  textLight: { color: '#eee' },
+  taskMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  taskStatus: { flex: 1, color: '#555555', fontSize: 12 },
+  taskActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  actionText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
+  deleteText: { color: '#ff4444' },
+  empty: { textAlign: 'center', marginTop: 60, color: '#555555' },
+  textLight: { color: '#ffffff' },
+  textSubLight: { color: '#dddddd' },
 });

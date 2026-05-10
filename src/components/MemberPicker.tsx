@@ -35,8 +35,8 @@ export default function MemberPicker({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? members.filter((member) => {
+    if (!q) return [];
+    const list = members.filter((member) => {
           const short = memberShortName(member).toLowerCase();
           return (
             member.ownerName.toLowerCase().includes(q) ||
@@ -46,8 +46,7 @@ export default function MemberPicker({
             (member.groupName || '').toLowerCase().includes(q) ||
             String(member.id).includes(q)
           );
-        })
-      : members;
+        });
 
     return list.slice(0, limit);
   }, [members, query, limit]);
@@ -86,7 +85,7 @@ export default function MemberPicker({
           );
         }}
         ListEmptyComponent={
-          <Text style={styles.hint}>{membersLoaded ? '没有匹配成员' : '暂无成员数据'}</Text>
+          <Text style={styles.hint}>{query.trim() ? (membersLoaded ? '没有匹配成员' : '暂无成员数据') : '输入姓名、拼音或简写后显示候选'}</Text>
         }
       />
     </View>

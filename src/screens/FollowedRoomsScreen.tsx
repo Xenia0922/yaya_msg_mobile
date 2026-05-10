@@ -3,7 +3,6 @@ import {
   BackHandler,
   Image,
   Linking,
-  Modal,
   Platform,
   View,
   Text,
@@ -13,6 +12,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Video from 'react-native-video';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp } from '../utils/format';
@@ -27,7 +27,9 @@ import {
 } from '../utils/data';
 import pocketApi from '../api/pocket48';
 import MemberPicker from '../components/MemberPicker';
+import ZoomImageModal from '../components/ZoomImageModal';
 import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
+import { enqueueDownload } from '../services/downloads';
 
 type FollowedRoom = {
   memberId: string;
@@ -58,11 +60,19 @@ const URL_REG = /(https?:\/\/[^\s"'<>，。！？、]+|rtmp:\/\/[^\s"'<>，。�
 
 const PLAY_URL_FIELDS = [
   'playStreamPath',
+  'playUrlPath',
+  'playPathUrl',
   'streamUrl',
+  'streamURL',
   'playUrl',
+  'urlPath',
   'playPath',
   'streamPath',
+  'path',
+  'src',
   'pullStreamPath',
+  'liveStreamPath',
+  'livePlayStreamPath',
   'streamPathHd',
   'streamPathHigh',
   'streamPathNormal',
@@ -84,17 +94,29 @@ const PLAY_URL_FIELDS = [
   'picturePath',
   'cover',
   'content.playStreamPath',
+  'content.playUrlPath',
+  'content.playPathUrl',
   'content.streamUrl',
   'content.playUrl',
   'content.playPath',
+  'content.streamPath',
+  'content.pullStreamPath',
+  'content.liveStreamPath',
+  'content.livePlayStreamPath',
   'content.url',
   'content.imageUrl',
   'content.imagePath',
   'content.picPath',
   'data.playStreamPath',
+  'data.playUrlPath',
+  'data.playPathUrl',
   'data.streamUrl',
   'data.playUrl',
   'data.playPath',
+  'data.streamPath',
+  'data.pullStreamPath',
+  'data.liveStreamPath',
+  'data.livePlayStreamPath',
   'data.url',
   'data.imageUrl',
   'data.imagePath',
@@ -278,7 +300,11 @@ function mergeMessages(prev: RoomMessage[], next: RoomMessage[]) {
     seen.add(key);
     merged.push(item);
   });
-  return merged;
+  return sortMessagesNewestFirst(merged);
+}
+
+function sortMessagesNewestFirst<T>(list: T[]): T[] {
+  return list.slice().sort((a: any, b: any) => getMessageTime(b) - getMessageTime(a));
 }
 
 function findLastMessage(messages: any[], member?: Member) {
@@ -322,9 +348,15 @@ function pickPlayableUrls(raw: any, preferLive = false): string[] {
     'urls',
     'content.streams',
     'content.playStreams',
+    'content.liveStreams',
+    'content.streamList',
+    'content.playStreamList',
     'content.urls',
     'data.streams',
     'data.playStreams',
+    'data.liveStreams',
+    'data.streamList',
+    'data.playStreamList',
     'data.urls',
   ]);
   nested.forEach((item) => {
@@ -359,6 +391,11 @@ function isPlayableMediaUrl(url: string) {
     || /\.(mp4|mov|m4v|3gp|mp3|m4a|aac|amr|wav)(\?|$)/i.test(lower)
     || lower.includes('playstream')
     || lower.includes('stream');
+}
+
+function isRawJsonText(value: string) {
+  const text = String(value || '').trim();
+  return (text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'));
 }
 
 function findLiveItem(listRes: any, liveId: string) {
@@ -479,6 +516,7 @@ export default function FollowedRoomsScreen() {
   const token = useSettingsStore((state) => state.settings.p48Token);
   const isDark = theme === 'dark';
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
+  const showToast = useUiStore((state) => state.showToast);
   const members = useMemberStore((state) => state.members);
   const [followed, setFollowed] = useState<FollowedRoom[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Member | null>(null);
@@ -486,6 +524,7 @@ export default function FollowedRoomsScreen() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [roomSearchQuery, setRoomSearchQuery] = useState('');
   const [roomMode, setRoomMode] = useState<RoomMode>('big');
   const [showFanMessages, setShowFanMessages] = useState(false);
   const [playingMedia, setPlayingMedia] = useState<RoomMedia | null>(null);
@@ -496,8 +535,14 @@ export default function FollowedRoomsScreen() {
   const [currentUserId, setCurrentUserId] = useState('');
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
-  const [draftMessage, setDraftMessage] = useState('');
-  const [sendingMessage, setSendingMessage] = useState(false);
+
+  useFocusEffect(useCallback(() => {
+    setTabBarHidden(!!selectedRoom || !!roomPlayer);
+    return () => {
+      setTabBarHidden(false);
+      setLiveImmersiveMode(false);
+    };
+  }, [roomPlayer, selectedRoom, setTabBarHidden]));
 
   useEffect(() => {
     setTabBarHidden(!!selectedRoom);
@@ -586,6 +631,7 @@ export default function FollowedRoomsScreen() {
       return;
     }
     setSelectedRoom(room);
+    setRoomSearchQuery('');
     setPlayingMedia(null);
     setMediaStatus('');
     setLoading(true);
@@ -608,7 +654,7 @@ export default function FollowedRoomsScreen() {
         fetchAll: includeFans,
       });
       const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'data.messageList', 'messageList', 'messages', 'list']);
-      setRoomMessages(list);
+      setRoomMessages(sortMessagesNewestFirst(list));
       const nextTime = getNextTime(res, list);
       setRoomNextTime(nextTime);
       setHasMoreMessages(list.length >= 50 && nextTime > 0);
@@ -680,24 +726,27 @@ export default function FollowedRoomsScreen() {
     }
   }, [playingMedia]);
 
-  const sendRoomMessage = useCallback(async () => {
-    if (!selectedRoom || sendingMessage) return;
-    const text = draftMessage.trim();
-    if (!text) return;
-    const channelId = roomChannelId(selectedRoom, roomMode);
-    setSendingMessage(true);
-    setStatus('正在发送房间消息...');
+  const downloadMedia = useCallback(async (media: RoomMedia) => {
     try {
-      await pocketApi.sendRoomText({ channelId, serverId: selectedRoom.serverId, text });
-      setDraftMessage('');
-      await openRoom(selectedRoom, roomMode, showFanMessages);
-      setStatus('房间消息已发送');
+      let next = media;
+      if ((media.type === 'live' || media.liveId) && !media.url) {
+        next = await resolveRoomLiveMedia(media);
+      }
+      const url = next.url || media.url;
+      if (!url) {
+        showToast('没有可下载地址');
+        return;
+      }
+      await enqueueDownload({
+        url,
+        type: next.type === 'live' ? 'replay' : next.type === 'audio' ? 'voice' : next.type === 'image' ? 'image' : next.type === 'video' ? 'video' : 'file',
+        name: next.title,
+      });
+      showToast('已加入下载管理');
     } catch (error) {
-      setStatus(`房间消息发送失败：${errorMessage(error)}`);
-    } finally {
-      setSendingMessage(false);
+      showToast(`下载失败：${errorMessage(error)}`);
     }
-  }, [draftMessage, openRoom, roomMode, selectedRoom, sendingMessage, showFanMessages]);
+  }, [showToast]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -707,6 +756,26 @@ export default function FollowedRoomsScreen() {
       return `${member?.ownerName || ''} ${member?.pinyin || ''} ${member?.team || ''} ${member?.channelId || ''}`.toLowerCase().includes(q);
     });
   }, [followed, searchQuery]);
+
+  const filteredRoomMessages = useMemo(() => {
+    const q = roomSearchQuery.trim().toLowerCase();
+    if (!q || !selectedRoom) return roomMessages;
+    return roomMessages.filter((item) => {
+      const profile = senderProfile(item, selectedRoom);
+      const text = messageText(item);
+      return [
+        text,
+        profile.name,
+        profile.id,
+        selectedRoom.ownerName,
+        selectedRoom.team,
+        selectedRoom.groupName,
+        (item as any).senderName,
+        (item as any).senderNickName,
+        (item as any).nickName,
+      ].some((value) => String(value || '').toLowerCase().includes(q));
+    });
+  }, [roomMessages, roomSearchQuery, selectedRoom]);
 
   if (selectedRoom) {
     return (
@@ -733,14 +802,7 @@ export default function FollowedRoomsScreen() {
             )}
           </View>
         ) : null}
-        <Modal visible={!!fullImageUrl} transparent animationType="fade" onRequestClose={() => setFullImageUrl('')}>
-          <View style={styles.imagePreviewShade}>
-            <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setFullImageUrl('')}>
-              <Text style={styles.imagePreviewCloseText}>关闭</Text>
-            </TouchableOpacity>
-            {fullImageUrl ? <Image source={{ uri: fullImageUrl }} style={styles.fullImage} resizeMode="contain" /> : null}
-          </View>
-        </Modal>
+        <ZoomImageModal url={fullImageUrl} onClose={() => setFullImageUrl('')} />
         <View style={styles.chatHeader}>
           <TouchableOpacity style={styles.backWrap} onPress={closeRoom}>
             <Text style={styles.backBtn}>返回房间列表</Text>
@@ -774,9 +836,18 @@ export default function FollowedRoomsScreen() {
 
         {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
         {mediaStatus ? <Text style={[styles.mediaStatus, isDark && styles.statusDark]}>{mediaStatus}</Text> : null}
+        <View style={styles.roomSearchWrap}>
+          <TextInput
+            style={[styles.input, isDark && styles.inputDark]}
+            placeholder="搜索聊天记录、成员名、粉丝名..."
+            placeholderTextColor="#5a5a5a"
+            value={roomSearchQuery}
+            onChangeText={setRoomSearchQuery}
+          />
+        </View>
 
         <FlatList
-          data={roomMessages}
+          data={filteredRoomMessages}
           keyExtractor={(item, index) => messageKey(item, index)}
           contentContainerStyle={styles.chatContent}
           onEndReached={loadMoreRoomMessages}
@@ -805,7 +876,7 @@ export default function FollowedRoomsScreen() {
               : senderProfile(item, selectedRoom);
             const media = roomMedia(item);
             const body = messageText(item);
-            const bubbleText = body && (!media || body !== media.url) ? body : '';
+            const bubbleText = body && (!media || (body !== media.url && !body.includes(media.url) && !isRawJsonText(body))) ? body : '';
             const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
 
             return (
@@ -832,11 +903,13 @@ export default function FollowedRoomsScreen() {
                     ) : null}
                     {media ? (
                       media.type === 'image' && media.url ? (
-                      <TouchableOpacity onPress={() => setFullImageUrl(media.url)} activeOpacity={0.9}>
-                        <Image source={{ uri: media.url }} style={styles.inlineImage} resizeMode="cover" />
-                      </TouchableOpacity>
+                      <>
+                        <TouchableOpacity onPress={() => setFullImageUrl(media.url)} onLongPress={() => downloadMedia(media)} activeOpacity={0.9}>
+                          <Image source={{ uri: media.url }} style={styles.inlineImage} resizeMode="cover" />
+                        </TouchableOpacity>
+                      </>
                     ) : (
-                      <View style={[styles.mediaCard, (idol || mine) && styles.mediaCardHighlight]}>
+                      <TouchableOpacity style={[styles.mediaCard, (idol || mine) && styles.mediaCardHighlight]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)}>
                         <View style={styles.mediaMeta}>
                           <Text style={[styles.mediaIcon, (idol || mine) && styles.mediaTextHighlight]}>{mediaLabel(media.type)}</Text>
                           <Text style={[styles.mediaTitle, (idol || mine) && styles.mediaTextHighlight]} numberOfLines={2}>{media.title}</Text>
@@ -850,7 +923,7 @@ export default function FollowedRoomsScreen() {
                             {playingMedia?.url && media.url && playingMedia.url === media.url ? '收起' : canInlinePlay ? '播放' : '打开'}
                           </Text>
                         </TouchableOpacity>
-                      </View>
+                      </TouchableOpacity>
                     )) : !bubbleText ? (
                       <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>[空消息]</Text>
                     ) : null}
@@ -877,23 +950,6 @@ export default function FollowedRoomsScreen() {
           }}
           ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无消息'}</Text>}
         />
-        <View style={[styles.sendBar, isDark && styles.sendBarDark]}>
-          <TextInput
-            style={[styles.sendInput, isDark && styles.inputDark]}
-            placeholder="发一条房间消息..."
-            placeholderTextColor="#5a5a5a"
-            value={draftMessage}
-            onChangeText={setDraftMessage}
-            multiline
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, (!draftMessage.trim() || sendingMessage) && styles.refreshBtnDisabled]}
-            onPress={sendRoomMessage}
-            disabled={!draftMessage.trim() || sendingMessage}
-          >
-            <Text style={styles.sendBtnText}>{sendingMessage ? '发送中' : '发送'}</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     );
   }
@@ -955,10 +1011,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   header: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
-  chatHeader: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  backWrap: { paddingVertical: 8, paddingRight: 4 },
-  chatTitleBlock: { flex: 1, minWidth: 0 },
+  chatHeader: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 12, alignItems: 'center', justifyContent: 'center', minHeight: 108 },
+  backWrap: { position: 'absolute', left: 16, top: 54, paddingVertical: 8, paddingRight: 4, zIndex: 2 },
+  chatTitleBlock: { minWidth: 0, maxWidth: '64%', alignItems: 'center' },
   chatTools: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  roomSearchWrap: { paddingHorizontal: 16, paddingBottom: 8 },
   modePill: { flex: 1, minHeight: 46, paddingVertical: 10, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.70)' },
   modePillActive: { backgroundColor: '#ff6f91' },
   modePillText: { color: '#444', fontSize: 13, fontWeight: '800' },
@@ -1030,15 +1087,6 @@ const styles = StyleSheet.create({
   roomPlayerBackText: { color: '#ff6f91', fontSize: 14, fontWeight: '900' },
   roomPlayerTitle: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '800' },
   roomNativeVideo: { flex: 1, backgroundColor: '#000' },
-  imagePreviewShade: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
-  imagePreviewClose: { position: 'absolute', top: 42, right: 18, zIndex: 2, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.14)' },
-  imagePreviewCloseText: { color: '#fff', fontSize: 13, fontWeight: '900' },
-  fullImage: { width: '100%', height: '100%' },
-  sendBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' },
-  sendBarDark: { backgroundColor: 'rgba(18,18,18,0.96)', borderTopColor: 'rgba(255,255,255,0.12)' },
-  sendInput: { flex: 1, minHeight: 42, maxHeight: 92, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#fff', color: '#333', fontSize: 13 },
-  sendBtn: { minHeight: 42, paddingHorizontal: 16, borderRadius: 16, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
-  sendBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },
   empty: { textAlign: 'center', color: '#3f3f3f', marginTop: 60, fontSize: 14, paddingHorizontal: 24, lineHeight: 20 },

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSettingsStore } from '../store';
+import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, messagePayload, messageText, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
@@ -27,6 +27,11 @@ function msgId(msg: any, index: number): string {
 
 function msgTime(msg: any): any {
   return msg.timestamp || msg.msgTime || msg.ctime || msg.time || msg.createTime || msg.sendTime;
+}
+
+function msgTimeNumber(msg: any): number {
+  const value = Number(msgTime(msg));
+  return Number.isFinite(value) ? value : 0;
 }
 
 function msgFromId(msg: any): string {
@@ -54,22 +59,96 @@ function isMineMessage(msg: any, targetId: string, currentUserId = ''): boolean 
 
 function privateMessageText(msg: any): string {
   const payload = messagePayload(msg);
-  return messageText(msg)
+  const text = messageText(msg)
     || pickText(msg, ['content.text', 'text', 'message', 'msg'])
     || pickText(payload, ['text', 'content', 'message.text', 'msg.text'])
     || '[空消息]';
+  const trimmed = String(text).trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    const url = pickText(payload, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'message.url', 'msg.url']);
+    if (url) {
+      const type = String(msg.msgType || payload?.msgType || payload?.type || '').toUpperCase();
+      if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return '[语音消息]';
+      if (type.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return '[视频消息]';
+      if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return '[图片消息]';
+      return '[媒体消息]';
+    }
+  }
+  return text;
+}
+
+function newestFirst<T>(list: T[], timeOf: (item: T) => number): T[] {
+  return list.slice().sort((a, b) => timeOf(b) - timeOf(a));
+}
+
+function normalizeFlipPrices(res: any): any[] {
+  return unwrapList(res, ['content.customs', 'content.list', 'content.data.customs', 'data.customs', 'customs', 'list']);
+}
+
+function flipTypeName(value: any) {
+  const id = Number(value);
+  if (id === 1) return '文字';
+  if (id === 2) return '语音';
+  if (id === 3) return '视频';
+  return `类型${value || ''}`;
+}
+
+function lowestPrice(item: any) {
+  const values = [item.normalCost, item.privateCost, item.anonymityCost]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  return values.length ? Math.min(...values) : 0;
 }
 
 export default function PrivateMessagesScreen() {
   const navigation = useNavigation();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const members = useMemberStore((state) => state.members);
+  const showToast = useUiStore((state) => state.showToast);
   const [conversations, setConversations] = useState<any[]>([]);
   const [selectedConv, setSelectedConv] = useState<any>(null);
   const [detail, setDetail] = useState<any[]>([]);
   const [replyText, setReplyText] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
+  const [flipPrices, setFlipPrices] = useState<any[]>([]);
+  const [money, setMoney] = useState('');
+  const [flipLoading, setFlipLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+
+  const flipMember = useMemo(() => {
+    if (!selectedConv) return null;
+    const targetId = convTargetId(selectedConv);
+    return members.find((item: any) => String(item.id) === targetId || String(item.userId) === targetId || String(item.memberId) === targetId) || null;
+  }, [members, selectedConv]);
+
+  useEffect(() => {
+    let alive = true;
+    async function loadFlipPrompt() {
+      if (!flipMember) {
+        setFlipPrices([]);
+        setMoney('');
+        return;
+      }
+      setFlipLoading(true);
+      try {
+        const [priceRes, moneyRes] = await Promise.all([
+          pocketApi.getFlipPrices(String(flipMember.id)),
+          pocketApi.getUserMoney().catch(() => null),
+        ]);
+        if (!alive) return;
+        setFlipPrices(normalizeFlipPrices(priceRes));
+        setMoney(pickText(moneyRes, ['content.money', 'content.balance', 'content.userMoney', 'data.money', 'money', 'balance']));
+      } catch (error) {
+        if (alive) showToast(`翻牌配置读取失败：${errorMessage(error)}`);
+        setFlipPrices([]);
+      } finally {
+        if (alive) setFlipLoading(false);
+      }
+    }
+    loadFlipPrompt();
+    return () => { alive = false; };
+  }, [flipMember, showToast]);
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
@@ -77,7 +156,7 @@ export default function PrivateMessagesScreen() {
     try {
       const res = await pocketApi.getPrivateMessageList();
       const list = unwrapList(res, ['content.userMessageList', 'content.list', 'content.data', 'data.userMessageList', 'userMessageList', 'list']);
-      setConversations(list);
+      setConversations(newestFirst(list, (item) => Number(item.lastTime || item.msgTime || item.ctime || item.time || 0)));
       setStatus(`加载完成：${list.length} 个会话`);
     } catch (error) {
       setStatus(`加载失败：${errorMessage(error)}`);
@@ -93,16 +172,13 @@ export default function PrivateMessagesScreen() {
     setStatus('加载会话...');
     try {
       if (!currentUserId) {
-        pocketApi.getNimLoginInfo()
-          .then((info) => {
-            const id = pickText(info, ['content.userInfo.userId', 'content.userId', 'content.id', 'userId', 'id']);
-            if (id) setCurrentUserId(String(id));
-          })
-          .catch(() => {});
+        const info = await pocketApi.getNimLoginInfo().catch(() => null);
+        const id = pickText(info, ['content.userInfo.userId', 'content.userId', 'content.id', 'userId', 'id']);
+        if (id) setCurrentUserId(String(id));
       }
       const res = await pocketApi.getPrivateMessageDetail(convTargetId(conv));
       const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'content.data', 'data.messageList', 'messageList', 'list']);
-      setDetail(list.slice().reverse());
+      setDetail(newestFirst(list, msgTimeNumber));
       setStatus(`加载完成：${list.length} 条消息`);
     } catch (error) {
       setStatus(`加载失败：${errorMessage(error)}`);
@@ -136,6 +212,7 @@ export default function PrivateMessagesScreen() {
             <Text style={styles.backBtn}>返回列表</Text>
           </TouchableOpacity>
           <Text style={[styles.title, isDark && styles.textLight]} numberOfLines={1}>{convName(selectedConv)}</Text>
+          <View style={styles.headerSide} />
         </View>
         {status ? <Text style={styles.status}>{status}</Text> : null}
         <FlatList
@@ -157,6 +234,25 @@ export default function PrivateMessagesScreen() {
           }}
           ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无私信'}</Text>}
         />
+        {flipMember ? (
+          <View style={[styles.flipPanel, isDark && styles.flipPanelDark]}>
+            <Text style={[styles.flipPanelTitle, isDark && styles.textLight]}>
+              {flipLoading ? '正在读取翻牌配置...' : `${flipMember.ownerName || convName(selectedConv)} 翻牌`}
+            </Text>
+            <Text style={[styles.flipMeta, isDark && styles.textSubLight]}>
+              鸡腿余额：{money || '--'} · {flipPrices.length ? `已开放 ${flipPrices.length} 种形式` : '暂无开放翻牌形式'}
+            </Text>
+            {flipPrices.length ? (
+              <View style={styles.flipTypeRow}>
+                {flipPrices.slice(0, 4).map((item, index) => (
+                  <View key={`${item.answerType || index}`} style={styles.flipChip}>
+                    <Text style={styles.flipChipText}>{flipTypeName(item.answerType)} · {lowestPrice(item)}鸡腿起</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         <View style={[styles.replyBar, isDark && styles.replyBarDark]}>
           <TextInput
             style={[styles.replyInput, isDark && styles.replyInputDark]}
@@ -212,8 +308,9 @@ const styles = StyleSheet.create({
   containerDark: { backgroundColor: 'transparent' },
   header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 14 },
+  backBtn: { color: '#ff6f91', fontSize: 14, minWidth: 54 },
   title: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', color: '#ff6f91' },
+  headerSide: { width: 54 },
   refresh: { padding: 6 },
   refreshText: { color: '#ff6f91', fontSize: 13 },
   status: { marginHorizontal: 16, marginTop: 10, color: '#444', fontSize: 12 },
@@ -235,6 +332,13 @@ const styles = StyleSheet.create({
   msgTextMine: { color: '#fff' },
   msgTime: { fontSize: 10, color: '#333333', marginTop: 6 },
   msgTimeMine: { color: '#ffe8ef' },
+  flipPanel: { marginHorizontal: 10, marginBottom: 8, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)' },
+  flipPanelDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
+  flipPanelTitle: { color: '#333333', fontSize: 13, fontWeight: '800' },
+  flipMeta: { color: '#555555', fontSize: 12, marginTop: 4 },
+  flipTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  flipChip: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 12, backgroundColor: '#ff6f91' },
+  flipChipText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
   replyBar: { flexDirection: 'row', padding: 10, backgroundColor: 'rgba(255,255,255,0.46)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.42)', alignItems: 'center' },
   replyBarDark: { backgroundColor: 'rgba(20,20,20,0.58)', borderTopColor: 'rgba(255,255,255,0.12)' },
   replyInput: { flex: 1, padding: 10, borderRadius: 20, borderWidth: 1, borderColor: '#ddd', color: '#333', marginRight: 8, fontSize: 14 },
@@ -242,5 +346,6 @@ const styles = StyleSheet.create({
   sendBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: '#ff6f91' },
   sendBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   textLight: { color: '#eee' },
+  textSubLight: { color: '#dddddd' },
   empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
 });

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import QRCode from 'qrcode';
 import { WebView } from 'react-native-webview';
@@ -76,6 +77,7 @@ export default function LoginScreen() {
   const [qrHtml, setQrHtml] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
+  const [renameCountText, setRenameCountText] = useState('');
 
   const savePocketToken = async (token: string, message: string) => {
     const clean = token.trim();
@@ -214,6 +216,13 @@ export default function LoginScreen() {
       const info = res?.content?.userInfo || res?.content?.user || res?.content || res?.data?.userInfo || res?.data || {};
       setProfileName(String(info.nickName || info.nickname || info.name || ''));
       setProfileAvatar(String(info.avatar || info.headImg || info.headUrl || ''));
+      const renameRes = await pocketApi.getUserRenameCount().catch(() => null);
+      const renameContent = renameRes?.content ?? renameRes?.data ?? renameRes;
+      if (renameContent && typeof renameContent === 'object') {
+        const freeCount = renameContent.count ?? renameContent.renameCount ?? renameContent.renameNum ?? renameContent.num ?? renameContent.leftCount ?? renameContent.remainCount;
+        const chickenCount = renameContent.jtcount ?? renameContent.jtCount ?? renameContent.chickenCount ?? renameContent.payCount;
+        setRenameCountText(`免费修改：${freeCount ?? '--'} · 鸡腿修改：${chickenCount ?? '--'}`);
+      }
       setStatus('\u8d44\u6599\u5df2\u8bfb\u53d6');
     } catch (error) {
       setStatus(`\u8d44\u6599\u8bfb\u53d6\u5931\u8d25\uff1a${errorMessage(error)}`);
@@ -234,6 +243,42 @@ export default function LoginScreen() {
       setStatus('\u8d44\u6599\u4fee\u6539\u63a5\u53e3\u5df2\u8fd4\u56de\u6210\u529f');
     } catch (error) {
       setStatus(`\u8d44\u6599\u4fee\u6539\u5931\u8d25\uff1a${errorMessage(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePickAvatar = async () => {
+    setLoading(true);
+    setStatus('正在选择并上传头像...');
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setStatus('没有相册权限，无法选择头像');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (result.canceled) {
+        setStatus('已取消选择头像');
+        return;
+      }
+      const asset = result.assets?.[0];
+      if (!asset?.uri) throw new Error('图片选择器没有返回文件');
+      const upload = await pocketApi.uploadUserAvatar({
+        uri: asset.uri,
+        fileName: asset.fileName || `avatar-${Date.now()}.jpg`,
+        mimeType: asset.mimeType || 'image/jpeg',
+      });
+      setProfileAvatar(upload.path);
+      await pocketApi.editUserInfo({ key: 'avatar', value: upload.path });
+      setStatus('头像已上传并保存');
+    } catch (error) {
+      setStatus(`头像上传失败：${errorMessage(error)}`);
     } finally {
       setLoading(false);
     }
@@ -294,6 +339,7 @@ export default function LoginScreen() {
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
         <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{'\u53e3\u888b\u8d44\u6599'}</Text>
+        {renameCountText ? <Text style={[styles.metaLine, isDark && styles.textSubDark]}>{renameCountText}</Text> : null}
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
           placeholder={'\u6635\u79f0'}
@@ -309,11 +355,14 @@ export default function LoginScreen() {
           onChangeText={setProfileAvatar}
           autoCapitalize="none"
         />
+        <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginBottom: 10 }]} onPress={handlePickAvatar} disabled={loading}>
+          <Text style={styles.btnText}>选择本地图片更换头像</Text>
+        </TouchableOpacity>
         <View style={styles.btnRow}>
-          <TouchableOpacity style={styles.btn} onPress={handleLoadProfile}>
+          <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleLoadProfile} disabled={loading}>
             <Text style={styles.btnText}>{'\u8bfb\u53d6\u8d44\u6599'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.btnPrimary} onPress={handleEditProfile}>
+          <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleEditProfile} disabled={loading}>
             <Text style={styles.btnText}>{'\u4fdd\u5b58\u4fee\u6539'}</Text>
           </TouchableOpacity>
         </View>
@@ -352,6 +401,7 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   status: { margin: 16, fontSize: 13, color: '#444', textAlign: 'center', lineHeight: 20 },
   tokenInfo: { marginTop: 10, fontSize: 12, color: '#4caf50' },
+  metaLine: { marginTop: -4, marginBottom: 10, fontSize: 12, color: '#4a4a4a' },
   qr: { width: 220, height: 220, alignSelf: 'center', marginTop: 12 },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },

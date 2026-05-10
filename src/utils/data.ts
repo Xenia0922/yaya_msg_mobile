@@ -83,16 +83,24 @@ export function messagePayload(item: any): any {
 export function messageText(item: any): string {
   const body = messagePayload(item);
   if (typeof body === 'string') return body;
-  return pickText(body, [
+  const text = pickText(body, [
     'text',
     'message.text',
     'msg.text',
     'content.text',
     'body.text',
     'title',
-    'url',
-    'message.url',
-  ], item?.msgType ? `[${item.msgType}]` : '');
+  ]);
+  if (text) return text;
+  const url = pickText(body, ['url', 'message.url', 'msg.url', 'audioUrl', 'videoUrl', 'imageUrl']);
+  if (url) {
+    const type = String(item?.msgType || body?.msgType || body?.type || '').toUpperCase();
+    if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return '[语音消息]';
+    if (type.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return '[视频消息]';
+    if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return '[图片消息]';
+    return '[链接消息]';
+  }
+  return item?.msgType ? `[${item.msgType}]` : '';
 }
 
 export function messageImageUrl(item: any): string {

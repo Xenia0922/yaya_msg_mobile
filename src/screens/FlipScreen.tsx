@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Video from 'react-native-video';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import MemberPicker from '../components/MemberPicker';
@@ -117,24 +118,30 @@ function questionText(item: any): string {
   return pickText(item, ['content', 'questionContent', 'question', 'questionText', 'text'], '');
 }
 
-function parseMediaText(raw: string): string {
-  if (!raw) return '';
+function parseMedia(raw: string): { text: string; url: string } {
+  if (!raw) return { text: '', url: '' };
+  if (/^https?:\/\//i.test(raw.trim())) return { text: '', url: normalizeUrl(raw) };
   try {
     const json = JSON.parse(raw);
     const url = normalizeUrl(pickText(json, ['url', 'mediaUrl', 'audioUrl', 'videoUrl']));
-    return url || pickText(json, ['text', 'content'], raw);
+    return { url, text: pickText(json, ['text', 'content'], '') };
   } catch {
-    return raw;
+    return { text: raw, url: '' };
   }
 }
 
 function answerText(item: any): string {
   const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
   if (!raw) return '';
-  const parsed = parseMediaText(raw);
-  if (Number(item.answerType) === 2) return `语音：${parsed}`;
-  if (Number(item.answerType) === 3) return `视频：${parsed}`;
-  return parsed;
+  const parsed = parseMedia(raw);
+  if (Number(item.answerType) === 2) return parsed.text || '语音回复';
+  if (Number(item.answerType) === 3) return parsed.text || '视频回复';
+  return parsed.text || parsed.url || raw;
+}
+
+function answerMediaUrl(item: any): string {
+  const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
+  return parseMedia(raw).url;
 }
 
 function priceFor(config: FlipPriceConfig | undefined, privacyType: PrivacyType): number {
@@ -161,6 +168,7 @@ export default function FlipScreen() {
   const [cost, setCost] = useState('');
   const [content, setContent] = useState('');
   const [balance, setBalance] = useState('');
+  const [playingAnswerUrl, setPlayingAnswerUrl] = useState('');
 
   const selectedPrice = useMemo(
     () => prices.find((item) => item.answerType === answerType),
@@ -386,6 +394,8 @@ export default function FlipScreen() {
         keyExtractor={(item, index) => String(item.questionId || item.id || index)}
         renderItem={({ item }) => {
           const answer = answerText(item);
+          const answerUrl = answerMediaUrl(item);
+          const flipAnswerType = Number(item.answerType);
           return (
             <View style={[styles.card, isDark && styles.cardDark]}>
               <View style={styles.cardTop}>
@@ -398,7 +408,29 @@ export default function FlipScreen() {
               <Text style={[styles.memberName, isDark && styles.textLight]}>{memberName(item)}</Text>
               <Text style={[styles.cardQ, isDark && styles.textLight]}>问：{questionText(item) || '未返回问题内容'}</Text>
               {answer ? (
-                <Text style={[styles.cardA, isDark && styles.textSub]}>答：{answer}</Text>
+                <>
+                  <Text style={[styles.cardA, isDark && styles.textSub]}>答：{answer}</Text>
+                  {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
+                    <View style={styles.answerMediaCard}>
+                      <TouchableOpacity
+                        style={styles.answerMediaBtn}
+                        onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
+                      >
+                        <Text style={styles.answerMediaBtnText}>{flipAnswerType === 2 ? '播放语音' : '播放视频'}</Text>
+                      </TouchableOpacity>
+                      {playingAnswerUrl === answerUrl ? (
+                        <Video
+                          source={{ uri: answerUrl }}
+                          style={flipAnswerType === 2 ? styles.answerAudio : styles.answerVideo}
+                          controls
+                          paused={false}
+                          resizeMode="contain"
+                          ignoreSilentSwitch="ignore"
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
+                </>
               ) : (
                 <Text style={styles.cardPending}>{statusLabel(item.status)}</Text>
               )}
@@ -472,6 +504,11 @@ const styles = StyleSheet.create({
   memberName: { fontSize: 13, color: '#333', fontWeight: '800', marginBottom: 8 },
   cardQ: { fontSize: 14, color: '#333', marginBottom: 8, lineHeight: 20 },
   cardA: { fontSize: 13, color: '#444', lineHeight: 20, marginBottom: 6 },
+  answerMediaCard: { marginTop: 4, marginBottom: 8 },
+  answerMediaBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: '#ff6f91' },
+  answerMediaBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  answerAudio: { height: 52, marginTop: 8, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 12 },
+  answerVideo: { height: 190, marginTop: 8, backgroundColor: '#000', borderRadius: 12 },
   cardPending: { fontSize: 13, color: '#c58a00' },
   cardMeta: { fontSize: 11, color: '#ff6f91', marginTop: 6 },
   empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },

@@ -92,8 +92,8 @@ android {
         applicationId 'com.yk1z.yayamsg'
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 31)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2022400
-        versionName "2.2.4"
+        versionCode 2022500
+        versionName "2.2.5"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -162,6 +162,7 @@ dependencies {
     implementation("tv.danmaku.ijk.media:ijkplayer-armv7a:0.8.8")
     implementation("tv.danmaku.ijk.media:ijkplayer-arm64:0.8.8")
     implementation("tv.danmaku.ijk.media:ijkplayer-x86:0.8.8")
+    implementation("tv.danmaku.ijk.media:ijkplayer-x86_64:0.8.8")
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";

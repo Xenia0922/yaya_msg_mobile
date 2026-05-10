@@ -3,11 +3,13 @@ import {
   View, Text, TouchableOpacity, FlatList, Image, StyleSheet,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSettingsStore } from '../store';
+import { useSettingsStore, useUiStore } from '../store';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
+import ZoomImageModal from '../components/ZoomImageModal';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
+import { enqueueDownload } from '../services/downloads';
 
 function normalizeImageUrl(value: any): string {
   const direct = normalizeUrl(value);
@@ -82,8 +84,10 @@ function deepFindImageUrl(value: any, depth = 0): string {
 export default function PhotosScreen() {
   const navigation = useNavigation();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const showToast = useUiStore((state) => state.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [photos, setPhotos] = useState<any[]>([]);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -133,6 +137,15 @@ export default function PhotosScreen() {
     }
   };
 
+  const downloadPhoto = async (url: string) => {
+    try {
+      await enqueueDownload({ url, type: 'image', name: selectedMember ? `${selectedMember.ownerName}-photo` : 'member-photo' });
+      showToast('已加入下载管理');
+    } catch (error) {
+      showToast(`下载失败：${errorMessage(error)}`);
+    }
+  };
+
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
@@ -145,6 +158,7 @@ export default function PhotosScreen() {
         <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
         {status ? <Text style={styles.status}>{status}</Text> : null}
       </View>
+      <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
       <FlatList
         data={photos}
         numColumns={2}
@@ -154,7 +168,13 @@ export default function PhotosScreen() {
           const url = deepFindImageUrl(item);
           return (
             <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
-              {url ? <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" /> : <View style={styles.photo} />}
+              {url ? (
+                <>
+                  <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadPhoto(url)}>
+                    <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+                  </TouchableOpacity>
+                </>
+              ) : <View style={styles.photo} />}
               <Text style={styles.photoTitle} numberOfLines={1}>{item.name || item.title || ''}</Text>
             </View>
           );

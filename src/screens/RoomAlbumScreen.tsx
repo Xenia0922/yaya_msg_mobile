@@ -3,17 +3,21 @@ import {
   View, Text, TouchableOpacity, FlatList, Image, StyleSheet,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSettingsStore } from '../store';
+import { useSettingsStore, useUiStore } from '../store';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
+import ZoomImageModal from '../components/ZoomImageModal';
 import { errorMessage, messageImageUrl, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
+import { enqueueDownload } from '../services/downloads';
 
 export default function RoomAlbumScreen() {
   const navigation = useNavigation();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const showToast = useUiStore((state) => state.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [images, setImages] = useState<any[]>([]);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -35,6 +39,15 @@ export default function RoomAlbumScreen() {
     }
   };
 
+  const downloadImage = async (url: string) => {
+    try {
+      await enqueueDownload({ url, type: 'image', name: selectedMember ? `${selectedMember.ownerName}-room-image` : 'room-image' });
+      showToast('已加入下载管理');
+    } catch (error) {
+      showToast(`下载失败：${errorMessage(error)}`);
+    }
+  };
+
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <View style={[styles.header, isDark && styles.headerDark]}>
@@ -47,6 +60,7 @@ export default function RoomAlbumScreen() {
         <MemberPicker selectedMember={selectedMember} onSelect={loadAlbum} />
         {status ? <Text style={styles.status}>{status}</Text> : null}
       </View>
+      <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
       <FlatList
         data={images}
         numColumns={2}
@@ -57,7 +71,11 @@ export default function RoomAlbumScreen() {
           return (
             <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
               {url ? (
-                <Image source={{ uri: url }} style={styles.photo} />
+                <>
+                  <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadImage(url)}>
+                    <Image source={{ uri: url }} style={styles.photo} />
+                  </TouchableOpacity>
+                </>
               ) : (
                 <View style={styles.photoPlaceholder}>
                   <Text style={styles.photoPlaceholderText}>图片</Text>

@@ -48,12 +48,18 @@ export const useMemberStore = create<MemberState>((set) => ({
 
 interface UiState {
   tabBarHidden: boolean;
+  toastMessage: string;
   setTabBarHidden: (hidden: boolean) => void;
+  showToast: (message: string) => void;
+  hideToast: () => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
   tabBarHidden: false,
+  toastMessage: '',
   setTabBarHidden: (hidden) => set({ tabBarHidden: hidden }),
+  showToast: (message) => set({ toastMessage: message }),
+  hideToast: () => set({ toastMessage: '' }),
 }));
 
 interface AppState {

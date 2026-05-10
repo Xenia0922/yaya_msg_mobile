@@ -29,6 +29,7 @@ import AnalysisScreen from '../screens/AnalysisScreen';
 import DownloadScreen from '../screens/DownloadScreen';
 import DatabaseScreen from '../screens/DatabaseScreen';
 import ApiDiagnosticsScreen from '../screens/ApiDiagnosticsScreen';
+import AppToast from '../components/AppToast';
 import { mainTabBarStyle } from './tabBarStyle';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import { ui } from '../theme/ui';
@@ -284,36 +285,39 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer theme={themed}>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          animation: 'none',
-          cardOverlayEnabled: false,
-          detachPreviousScreen: true,
-          cardStyle: hasBackground ? { backgroundColor: 'transparent' } : undefined,
-        }}
-      >
-        <Stack.Screen name="Main" component={MainTabs} />
-        <Stack.Screen name="MessagesScreen" component={MessagesStackScreen} />
-        <Stack.Screen name="LoginScreen" component={LoginStackScreen} />
-        <Stack.Screen name="RechargeScreen" component={RechargeStackScreen} />
-        <Stack.Screen name="FetchScreen" component={FetchStackScreen} />
-        <Stack.Screen name="FlipScreen" component={FlipStackScreen} />
-        <Stack.Screen name="ProfileScreen" component={ProfileStackScreen} />
-        <Stack.Screen name="PhotosScreen" component={PhotosStackScreen} />
-        <Stack.Screen name="RoomAlbumScreen" component={RoomAlbumStackScreen} />
-        <Stack.Screen name="RoomRadioScreen" component={RoomRadioStackScreen} />
-        <Stack.Screen name="OpenLiveScreen" component={OpenLiveStackScreen} />
-        <Stack.Screen name="PrivateMessagesScreen" component={PrivateMessagesStackScreen} />
-        <Stack.Screen name="BilibiliLiveScreen" component={BilibiliLiveStackScreen} />
-        <Stack.Screen name="VideoLibraryScreen" component={VideoLibraryStackScreen} />
-        <Stack.Screen name="MusicLibraryScreen" component={MusicLibraryStackScreen} />
-        <Stack.Screen name="AudioProgramsScreen" component={AudioProgramsStackScreen} />
-        <Stack.Screen name="AnalysisScreen" component={AnalysisStackScreen} />
-        <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
-        <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
-        <Stack.Screen name="ApiDiagnosticsScreen" component={ApiDiagnosticsStackScreen} />
-      </Stack.Navigator>
+      <>
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            animation: 'none',
+            cardOverlayEnabled: false,
+            detachPreviousScreen: true,
+            cardStyle: hasBackground ? { backgroundColor: 'transparent' } : undefined,
+          }}
+        >
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="MessagesScreen" component={MessagesStackScreen} />
+          <Stack.Screen name="LoginScreen" component={LoginStackScreen} />
+          <Stack.Screen name="RechargeScreen" component={RechargeStackScreen} />
+          <Stack.Screen name="FetchScreen" component={FetchStackScreen} />
+          <Stack.Screen name="FlipScreen" component={FlipStackScreen} />
+          <Stack.Screen name="ProfileScreen" component={ProfileStackScreen} />
+          <Stack.Screen name="PhotosScreen" component={PhotosStackScreen} />
+          <Stack.Screen name="RoomAlbumScreen" component={RoomAlbumStackScreen} />
+          <Stack.Screen name="RoomRadioScreen" component={RoomRadioStackScreen} />
+          <Stack.Screen name="OpenLiveScreen" component={OpenLiveStackScreen} />
+          <Stack.Screen name="PrivateMessagesScreen" component={PrivateMessagesStackScreen} />
+          <Stack.Screen name="BilibiliLiveScreen" component={BilibiliLiveStackScreen} />
+          <Stack.Screen name="VideoLibraryScreen" component={VideoLibraryStackScreen} />
+          <Stack.Screen name="MusicLibraryScreen" component={MusicLibraryStackScreen} />
+          <Stack.Screen name="AudioProgramsScreen" component={AudioProgramsStackScreen} />
+          <Stack.Screen name="AnalysisScreen" component={AnalysisStackScreen} />
+          <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
+          <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
+          <Stack.Screen name="ApiDiagnosticsScreen" component={ApiDiagnosticsStackScreen} />
+        </Stack.Navigator>
+        <AppToast />
+      </>
     </NavigationContainer>
   );
 }

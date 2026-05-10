@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View, Text, ScrollView, StyleSheet,
-} from 'react-native';
-import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList, TabParamList } from '../navigation/types';
-import { useSettingsStore, useMemberStore } from '../store';
-import { isWasmReady, getWasmError } from '../auth';
+import { useMemberStore, useSettingsStore } from '../store';
 import { FadeInView, ScalePressable } from '../components/Motion';
 
 type HomeNavProp = CompositeNavigationProp<
@@ -30,14 +27,6 @@ interface CardSection {
 
 const CARDS: CardSection[] = [
   {
-    title: '消息',
-    subtitle: '房间消息抓取、检索',
-    items: [
-      { title: '检索', desc: '进入历史消息列表', route: 'MessagesScreen' },
-      { title: '抓取', desc: '手动刷新与重扫', route: 'FetchScreen' },
-    ],
-  },
-  {
     title: '直播',
     subtitle: '口袋直播、回放、B站源',
     items: [
@@ -51,10 +40,10 @@ const CARDS: CardSection[] = [
     title: '口袋',
     subtitle: '关注房间、私信、相册、公演',
     items: [
-      { title: '房间', desc: '查看关注与房间动态', route: 'Rooms' },
-      { title: '私信', desc: '查看口袋私信会话', route: 'PrivateMessagesScreen' },
+      { title: '房间', desc: '关注房间和历史消息', route: 'Rooms' },
+      { title: '私信', desc: '口袋私信会话', route: 'PrivateMessagesScreen' },
       { title: '相册', desc: '按房间查看图片', route: 'RoomAlbumScreen' },
-      { title: '公演记录', desc: '查看公演与活动记录', route: 'OpenLiveScreen' },
+      { title: '公演记录', desc: '成员公演与活动记录', route: 'OpenLiveScreen' },
     ],
   },
   {
@@ -80,17 +69,18 @@ const CARDS: CardSection[] = [
     subtitle: '成员档案、分析统计',
     items: [
       { title: '成员档案', desc: '成员资料与细节', route: 'ProfileScreen' },
-      { title: '数据分析', desc: '消息/翻牌/礼物统计', route: 'AnalysisScreen' },
+      { title: '数据分析', desc: '房间/翻牌/礼物统计', route: 'AnalysisScreen' },
       { title: '数据库', desc: '查看附属数据', route: 'DatabaseScreen' },
     ],
   },
   {
     title: '通用',
-    subtitle: '口袋账号、B站账号、软件设置',
+    subtitle: '账号、下载、小号和软件设置',
     items: [
-      { title: '账号登录', desc: '登录与账号信息', route: 'LoginScreen' },
-      { title: '下载管理', desc: '下载任务与进度', route: 'DownloadScreen' },
-      { title: '软件设置', desc: '调整程序行为', route: 'Settings' },
+      { title: '账号资料', desc: '口袋/B站/头像/昵称', route: 'LoginScreen' },
+      { title: '下载管理', desc: '录播/语音/图片/视频', route: 'DownloadScreen' },
+      { title: '小号切换', desc: '在设置页管理口袋小号', route: 'Settings' },
+      { title: '软件设置', desc: '主题、签到和接口工具', route: 'Settings' },
     ],
   },
 ];
@@ -103,15 +93,13 @@ export default function HomeScreen() {
   const token = settings.p48Token;
   const membersLoaded = useMemberStore((state) => state.membersLoaded);
   const members = useMemberStore((state) => state.members);
-  const wasmOk = isWasmReady();
-  const wasmErr = getWasmError();
   const [showTip, setShowTip] = useState(true);
 
   useEffect(() => {
     setShowTip(true);
     const timer = setTimeout(() => setShowTip(false), 3000);
     return () => clearTimeout(timer);
-  }, [token, wasmOk, wasmErr]);
+  }, [token]);
 
   const handleNav = (item: NavItem) => {
     if (item.params) (navigation as any).navigate(item.route, item.params);
@@ -128,12 +116,7 @@ export default function HomeScreen() {
       {showTip && !token ? (
         <FadeInView style={[styles.warnBanner, isDark && styles.warnBannerDark]} delay={80} distance={8}>
           <Text style={styles.warnTitle}>未登录口袋账号</Text>
-          <Text style={[styles.warnText, isDark && styles.warnTextDark]}>成员库、资源和部分公开数据可以直接查看；消息、私信、翻牌等功能需要先登录或粘贴 token。</Text>
-        </FadeInView>
-      ) : showTip && !wasmOk && !!wasmErr ? (
-        <FadeInView style={[styles.warnBanner, isDark && styles.warnBannerDark]} delay={80} distance={8}>
-          <Text style={styles.warnTitle}>口袋签名暂不可用</Text>
-          <Text style={[styles.warnText, isDark && styles.warnTextDark]}>已保存 token，但需要签名的口袋接口可能失败。请到设置页查看签名和联网状态。</Text>
+          <Text style={[styles.warnText, isDark && styles.warnTextDark]}>成员库、资源和公开数据可直接查看；消息、私信、翻牌等需要登录或粘贴 token。</Text>
         </FadeInView>
       ) : null}
 
@@ -184,18 +167,18 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 12, paddingBottom: 112 },
   card: { backgroundColor: '#ffffff', borderRadius: 18, padding: 14, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#e7e7e7', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   cardOnImage: { backgroundColor: 'rgba(255,255,255,0.70)', borderColor: 'rgba(255,255,255,0.72)' },
-  cardDark: { backgroundColor: 'rgba(20,20,20,0.58)', borderColor: 'rgba(255,255,255,0.12)' },
+  cardDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.14)' },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#ff6f91', marginBottom: 2 },
   cardSub: { fontSize: 11, color: '#555555', marginBottom: 10 },
   cardSubDark: { color: '#eeeeee' },
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   cardItem: { flex: 1, minWidth: '45%', backgroundColor: '#f8f8f8', borderRadius: 16, padding: 10, borderWidth: 1, borderColor: '#eeeeee', shadowColor: 'transparent' },
   cardItemOnImage: { backgroundColor: 'rgba(255,255,255,0.34)', borderColor: 'rgba(255,255,255,0.48)' },
-  cardItemDark: { backgroundColor: 'rgba(42,42,42,0.54)', borderColor: 'rgba(255,255,255,0.12)' },
-  cardItemTitle: { fontSize: 13, fontWeight: '600', color: '#333' },
+  cardItemDark: { backgroundColor: 'rgba(42,42,42,0.64)', borderColor: 'rgba(255,255,255,0.12)' },
+  cardItemTitle: { fontSize: 13, fontWeight: '700', color: '#333' },
   cardItemTitleDark: { color: '#f4f4f4' },
   cardItemDesc: { fontSize: 10, color: '#555555', marginTop: 2 },
-  cardItemDescDark: { color: '#c8c8c8' },
+  cardItemDescDark: { color: '#d0d0d0' },
   footer: { textAlign: 'center', color: '#555', fontSize: 10, marginTop: 8 },
   footerDark: { color: '#c8c8c8' },
 });
