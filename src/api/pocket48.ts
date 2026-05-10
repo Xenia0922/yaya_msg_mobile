@@ -226,12 +226,14 @@ export const pocketApi = {
   },
 
   async editUserInfo(params: { nickName?: string; avatar?: string }) {
-    const current = await this.getNimLoginInfo().catch(() => null);
-    const currentInfo = current?.content?.userInfo || current?.content?.baseUserInfo || current?.content || current?.data?.userInfo || current?.data || {};
+    const current = await this.loginCheckToken().catch(async () => this.getNimLoginInfo().catch(() => null));
+    const currentInfo = current?.content?.userInfo || current?.content?.baseUserInfo || current?.content?.user || current?.content || current?.data?.userInfo || current?.data || {};
     const nickName = params.nickName || currentInfo.nickName || currentInfo.nickname || '';
     const avatar = params.avatar || currentInfo.avatar || currentInfo.headImg || currentInfo.userAvatar || '';
-    const userId = currentInfo.userId || currentInfo.id || '';
+    const userId = currentInfo.userId || currentInfo.userIdStr || currentInfo.id || currentInfo.account || '';
     const payloads = [
+      { userId, nickName, avatar, birthDay: currentInfo.birthDay || currentInfo.birthday || '', sex: currentInfo.sex ?? '', province: currentInfo.province || '', city: currentInfo.city || '' },
+      { userId, nickname: nickName, avatar, birthDay: currentInfo.birthDay || currentInfo.birthday || '', sex: currentInfo.sex ?? '', province: currentInfo.province || '', city: currentInfo.city || '' },
       { userId, nickName, avatar },
       { userId, nickname: nickName, avatar },
       { userId, name: nickName, avatar },
@@ -281,7 +283,30 @@ export const pocketApi = {
   },
 
   async getNimLoginInfo() {
-    return pocketPost(`${BASE}/user/api/v1/user/info/home`, {}, { modern: true, fallback: '获取用户信息失败' });
+    return tryPocketPost([
+      {
+        url: `${BASE}/user/api/v1/user/info/reload`,
+        payload: { from: 'appstart' },
+        modern: true,
+        label: 'reload modern',
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/reload`,
+        payload: { from: 'appstart' },
+        label: 'reload legacy',
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/home`,
+        payload: {},
+        modern: true,
+        label: 'info home modern',
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/home`,
+        payload: {},
+        label: 'info home legacy',
+      },
+    ], 'get self user info failed');
   },
 
   async getUserProfile(userId: string) {

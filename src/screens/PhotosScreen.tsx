@@ -9,11 +9,19 @@ import MemberPicker from '../components/MemberPicker';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 
+function normalizeImageUrl(value: any): string {
+  const direct = normalizeUrl(value);
+  if (!direct) return '';
+  if (/^https?:\/\//i.test(direct)) return direct.replace(/^http:\/\//i, 'https://');
+  if (/^(backstage|mediasource|202\d|20\d{6})\//i.test(direct)) return `https://source.48.cn/${direct}`;
+  return direct;
+}
+
 function deepFindImageUrl(value: any, depth = 0): string {
   if (!value || depth > 6) return '';
   if (typeof value === 'string') {
-    const direct = normalizeUrl(value);
-    if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(direct) || direct.includes('source.48.cn') || direct.includes('/image')) {
+    const direct = normalizeImageUrl(value);
+    if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(direct) || direct.includes('source.48.cn') || direct.includes('/image') || direct.includes('backstage')) {
       return direct;
     }
     return '';
@@ -26,7 +34,7 @@ function deepFindImageUrl(value: any, depth = 0): string {
     return '';
   }
   if (typeof value === 'object') {
-    const direct = normalizeUrl(pickText(value, [
+    const direct = normalizeImageUrl(pickText(value, [
       'url',
       'imageUrl',
       'imgUrl',
@@ -50,7 +58,17 @@ function deepFindImageUrl(value: any, depth = 0): string {
       'nftPic',
       'cardImg',
       'cardImage',
+      'coverImage',
+      'imagePath',
       'picturePath',
+      'fullPhoto1',
+      'fullPhoto2',
+      'fullPhoto3',
+      'fullPhoto4',
+      'starInfo.fullPhoto1',
+      'starInfo.fullPhoto2',
+      'starInfo.fullPhoto3',
+      'starInfo.fullPhoto4',
     ]));
     if (direct) return direct;
     for (const item of Object.values(value)) {
@@ -74,8 +92,11 @@ export default function PhotosScreen() {
     setLoading(true);
     setStatus('加载个人相册...');
     try {
-      const res = await pocketApi.getMemberPhotos(member.id);
-      const list = unwrapList(res, [
+      const [photoRes, archiveRes] = await Promise.all([
+        pocketApi.getMemberPhotos(member.id).catch(() => null),
+        pocketApi.getStarArchives(Number(member.id)).catch(() => null),
+      ]);
+      const list = unwrapList(photoRes, [
         'content.nftList',
         'content.photoList',
         'content.imageList',
@@ -93,8 +114,17 @@ export default function PhotosScreen() {
         'imageList',
         'list',
       ]);
-      setPhotos(list);
-      setStatus(`加载完成：${list.length} 张图片`);
+      const starInfo = archiveRes?.content?.starInfo || archiveRes?.content || archiveRes?.data?.starInfo || archiveRes?.data || {};
+      const archivePhotos = ['fullPhoto1', 'fullPhoto2', 'fullPhoto3', 'fullPhoto4', 'avatar', 'starAvatar']
+        .map((key) => starInfo?.[key])
+        .filter(Boolean)
+        .map((url, index) => ({ id: `archive-${index}`, url, title: '成员照片' }));
+      const merged = [...list, ...archivePhotos].filter((item, index, arr) => {
+        const url = deepFindImageUrl(item);
+        return url && arr.findIndex((other) => deepFindImageUrl(other) === url) === index;
+      });
+      setPhotos(merged);
+      setStatus(`加载完成：${merged.length} 张图片`);
     } catch (error) {
       setStatus(`加载失败：${errorMessage(error)}`);
       setPhotos([]);
@@ -124,7 +154,7 @@ export default function PhotosScreen() {
           const url = deepFindImageUrl(item);
           return (
             <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
-              {url ? <Image source={{ uri: url }} style={styles.photo} /> : <View style={styles.photo} />}
+              {url ? <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" /> : <View style={styles.photo} />}
               <Text style={styles.photoTitle} numberOfLines={1}>{item.name || item.title || ''}</Text>
             </View>
           );

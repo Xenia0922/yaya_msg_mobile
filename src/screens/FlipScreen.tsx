@@ -160,6 +160,7 @@ export default function FlipScreen() {
   const [privacyType, setPrivacyType] = useState<PrivacyType>('1');
   const [cost, setCost] = useState('');
   const [content, setContent] = useState('');
+  const [balance, setBalance] = useState('');
 
   const selectedPrice = useMemo(
     () => prices.find((item) => item.answerType === answerType),
@@ -185,6 +186,16 @@ export default function FlipScreen() {
   useEffect(() => {
     if (mode === 'view') loadFlips(1);
   }, [loadFlips, mode]);
+
+  useEffect(() => {
+    if (mode !== 'send') return;
+    pocketApi.getUserMoney()
+      .then((res) => {
+        const money = res?.content?.moneyTotal ?? res?.data?.moneyTotal ?? res?.content?.money ?? res?.data?.money ?? '';
+        if (money !== '') setBalance(String(money));
+      })
+      .catch(() => {});
+  }, [mode]);
 
   useEffect(() => {
     if (!selectedPrice) {
@@ -319,6 +330,7 @@ export default function FlipScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.label, isDark && styles.textLight]}>鸡腿数</Text>
+          {balance ? <Text style={[styles.balanceText, isDark && styles.textSub]}>当前余额：{balance} 口袋币</Text> : null}
           <TextInput
             style={[styles.input, isDark && styles.inputDark]}
             keyboardType="numeric"
@@ -448,6 +460,7 @@ const styles = StyleSheet.create({
   disabledBtn: { opacity: 0.65 },
   sendBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   hint: { marginTop: 8, color: '#333333', fontSize: 12 },
+  balanceText: { marginBottom: 8, color: '#333333', fontSize: 13, fontWeight: '700' },
   statusText: { margin: 12, color: '#ff6f91', textAlign: 'center', fontSize: 13 },
   card: { padding: 14, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 16, marginVertical: 6, borderRadius: 16 },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.58)' },

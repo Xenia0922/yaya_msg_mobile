@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BackHandler,
   Image,
   Linking,
   Modal,
@@ -335,13 +336,29 @@ function pickPlayableUrls(raw: any, preferLive = false): string[] {
 }
 
 function extractLiveIdFromText(value: any): string {
-  const text = typeof value === 'string' ? value : JSON.stringify(value || '');
+  const raw = typeof value === 'string' ? value : JSON.stringify(value || '');
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {}
+  const text = `${raw} ${decoded}`;
   return String(
     text.match(/[?&](?:liveId|liveid|live_id)=([0-9]+)/i)?.[1]
+    || text.match(/[?&](?:id|live)=([0-9]{5,})/i)?.[1]
     || text.match(/(?:liveId|liveid|live_id)["'\s:=]+([0-9]+)/i)?.[1]
     || text.match(/\/(?:live|playback|record|replay)\/([0-9]+)/i)?.[1]
     || '',
   );
+}
+
+function isPlayableMediaUrl(url: string) {
+  const lower = String(url || '').toLowerCase();
+  return lower.startsWith('rtmp://')
+    || lower.includes('.m3u8')
+    || lower.includes('.flv')
+    || /\.(mp4|mov|m4v|3gp|mp3|m4a|aac|amr|wav)(\?|$)/i.test(lower)
+    || lower.includes('playstream')
+    || lower.includes('stream');
 }
 
 function findLiveItem(listRes: any, liveId: string) {
@@ -362,16 +379,23 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
   const title = media.title || '直播 / 录播';
   const attempts: Array<() => Promise<any>> = [];
   if (liveId) {
-    attempts.push(async () => findLiveItem(await pocketApi.getLiveList({ record: false, debug: true, next: 0 }), liveId));
     attempts.push(async () => pocketApi.getLiveOne(liveId));
     attempts.push(async () => pocketApi.getOpenLiveOne(liveId));
+    attempts.push(async () => findLiveItem(await pocketApi.getLiveList({ record: false, debug: true, next: 0 }), liveId));
     attempts.push(async () => findLiveItem(await pocketApi.getLiveList({ record: true, debug: true, next: 0 }), liveId));
     attempts.push(async () => findLiveItem(await pocketApi.getOpenLivePublicList({ record: true, next: 0 }), liveId));
+    attempts.push(async () => {
+      for (let page = 1; page <= 3; page += 1) {
+        const found = findLiveItem(await pocketApi.getLiveList({ record: true, debug: true, page, next: page - 1 }), liveId);
+        if (found) return found;
+      }
+      return null;
+    });
   }
   for (const attempt of attempts) {
     try {
       const detail = await attempt();
-      const urls = pickPlayableUrls(detail, true);
+      const urls = pickPlayableUrls(detail, true).filter(isPlayableMediaUrl);
       if (urls[0]) {
         return {
           ...media,
@@ -385,7 +409,7 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
       // Try the next endpoint; live shares turn into replays after the stream ends.
     }
   }
-  return { ...media, liveId, title, url: media.url };
+  return { ...media, liveId, title, url: isPlayableMediaUrl(media.url) ? media.url : '' };
 }
 
 function classifyMedia(url: string, msgType: string, text: string): MediaType {
@@ -476,10 +500,10 @@ export default function FollowedRoomsScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
 
   useEffect(() => {
+    setTabBarHidden(!!selectedRoom);
     if (!selectedRoom) {
       setRoomPlayer(null);
       setLiveImmersiveMode(false);
-      setTabBarHidden(false);
     }
     return () => {
       setTabBarHidden(false);
@@ -489,15 +513,28 @@ export default function FollowedRoomsScreen() {
 
   useEffect(() => {
     setLiveImmersiveMode(!!roomPlayer);
-    setTabBarHidden(!!roomPlayer);
+    setTabBarHidden(!!selectedRoom || !!roomPlayer);
     return () => setLiveImmersiveMode(false);
-  }, [roomPlayer, setTabBarHidden]);
+  }, [roomPlayer, selectedRoom, setTabBarHidden]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (roomPlayer) {
+        setRoomPlayer(null);
+        setLiveImmersiveMode(false);
+        setTabBarHidden(!!selectedRoom);
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [roomPlayer, selectedRoom, setTabBarHidden]);
 
   const closeRoomPlayer = useCallback(() => {
     setRoomPlayer(null);
     setLiveImmersiveMode(false);
-    setTabBarHidden(false);
-  }, [setTabBarHidden]);
+    setTabBarHidden(!!selectedRoom);
+  }, [selectedRoom, setTabBarHidden]);
 
   const closeRoom = useCallback(() => {
     setRoomPlayer(null);
@@ -939,7 +976,7 @@ const styles = StyleSheet.create({
   mediaStatus: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, marginTop: 4, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
   statusDark: { color: '#ffe2a0', backgroundColor: 'rgba(70,52,12,0.82)' },
   listContent: { paddingBottom: 112 },
-  chatContent: { paddingBottom: 216, paddingTop: 4 },
+  chatContent: { paddingBottom: 132, paddingTop: 4 },
   roomItem: { padding: 14, backgroundColor: 'rgba(255,255,255,0.76)', marginHorizontal: 16, marginVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
   roomItemDark: { backgroundColor: 'rgba(20,20,20,0.70)', borderColor: 'rgba(255,255,255,0.12)' },
   roomTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
@@ -997,7 +1034,7 @@ const styles = StyleSheet.create({
   imagePreviewClose: { position: 'absolute', top: 42, right: 18, zIndex: 2, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.14)' },
   imagePreviewCloseText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   fullImage: { width: '100%', height: '100%' },
-  sendBar: { position: 'absolute', left: 0, right: 0, bottom: 82, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' },
+  sendBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, backgroundColor: 'rgba(255,255,255,0.96)', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' },
   sendBarDark: { backgroundColor: 'rgba(18,18,18,0.96)', borderTopColor: 'rgba(255,255,255,0.12)' },
   sendInput: { flex: 1, minHeight: 42, maxHeight: 92, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', backgroundColor: '#fff', color: '#333', fontSize: 13 },
   sendBtn: { minHeight: 42, paddingHorizontal: 16, borderRadius: 16, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },

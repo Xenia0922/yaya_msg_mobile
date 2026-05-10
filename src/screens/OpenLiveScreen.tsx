@@ -31,13 +31,14 @@ function liveTitle(item: any) {
   const body = parseMaybeJson(item?.body || item?.bodys || item?.msgContent || item?.content);
   return pickText(item, ['title', 'liveTitle', 'content.title'])
     || pickText(body, ['title', 'liveTitle', 'data.title'])
+    || pickText(item, ['showName', 'content', 'desc', 'message'])
     || '公演记录';
 }
 
 function liveIdOf(item: any) {
   const body = parseMaybeJson(item?.body || item?.bodys || item?.msgContent || item?.content);
-  return pickText(item, ['liveId', 'id', 'extInfo.liveId', 'content.liveId'])
-    || pickText(body, ['liveId', 'id', 'data.liveId']);
+  return pickText(item, ['liveId', 'extInfo.liveId', 'content.liveId'])
+    || pickText(body, ['liveId', 'data.liveId']);
 }
 
 function memberShortName(member: Member) {
@@ -63,6 +64,20 @@ function pickOpenLiveUrl(res: any) {
     .filter(Boolean)
     .sort((a, b) => score(b) - score(a));
   return urls[0] || normalizeUrl(pickText(res, ['content.playStreamPath', 'content.streamPath', 'data.playStreamPath', 'data.streamPath']));
+}
+
+function uniqueShows(items: any[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = [
+      liveIdOf(item),
+      pickText(item, ['showTime', 'startTime', 'msgTime', 'ctime']),
+      liveTitle(item),
+    ].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export default function OpenLiveScreen() {
@@ -100,8 +115,29 @@ export default function OpenLiveScreen() {
     setLoading(true);
     setStatus('加载成员公演...');
     try {
-      const res = await pocketApi.getOpenLive({ memberId: member.id });
-      let list = unwrapList(res, [
+      const [archiveRes, historyRes, openLiveRes] = await Promise.all([
+        pocketApi.getStarArchives(Number(member.id)).catch(() => null),
+        pocketApi.getStarHistory(Number(member.id)).catch(() => null),
+        pocketApi.getOpenLive({ memberId: member.id }).catch(() => null),
+      ]);
+      const history = unwrapList(historyRes, [
+        'content.history',
+        'content.data.history',
+        'content.list',
+        'content.data',
+        'data.history',
+        'data.list',
+        'history',
+        'list',
+      ]);
+      const archiveHistory = unwrapList(archiveRes, [
+        'content.history',
+        'content.starInfo.history',
+        'content.data.history',
+        'data.history',
+        'history',
+      ]);
+      const openLiveList = unwrapList(openLiveRes, [
         'content.messageList',
         'content.liveList',
         'content.openLiveList',
@@ -117,6 +153,7 @@ export default function OpenLiveScreen() {
         'openLiveList',
         'list',
       ]);
+      let list = uniqueShows([...openLiveList, ...history, ...archiveHistory]);
       if (!list.length) {
         const groupIds = [0, 1, 2, 3, 5, 6];
         const all = await Promise.all(groupIds.map((groupId) =>
@@ -287,7 +324,7 @@ export default function OpenLiveScreen() {
           <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => playShow(item)}>
             <Text style={[styles.cardTitle, isDark && styles.textDark]}>{liveTitle(item)}</Text>
             <Text style={[styles.cardDate, isDark && styles.textSubDark]}>
-              {formatTimestamp(item.startTime || item.msgTime || item.ctime)}
+              {formatTimestamp(item.showTime || item.startTime || item.msgTime || item.ctime)}
             </Text>
           </TouchableOpacity>
         )}
