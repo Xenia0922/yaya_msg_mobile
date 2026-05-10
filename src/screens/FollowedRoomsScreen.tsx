@@ -3,7 +3,9 @@ import {
   BackHandler,
   Image,
   Linking,
+  Modal,
   Platform,
+  ScrollView,
   View,
   Text,
   FlatList,
@@ -11,6 +13,7 @@ import {
   TextInput,
   StyleSheet,
 } from 'react-native';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import Video from 'react-native-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
@@ -47,6 +50,8 @@ type RoomMedia = {
   title: string;
   duration?: string;
   liveId?: string;
+  isLive?: boolean;
+  needsVlc?: boolean;
 };
 
 type SenderProfile = {
@@ -394,6 +399,16 @@ function isPlayableMediaUrl(url: string) {
     || lower.includes('stream');
 }
 
+function streamNeedsProxy(url: string): boolean {
+  const lower = String(url || '').toLowerCase();
+  return lower.startsWith('rtmp://') || lower.includes('.flv');
+}
+
+function isLiveStreamUrl(url: string): boolean {
+  const lower = String(url || '').toLowerCase();
+  return lower.startsWith('rtmp://') || lower.includes('.flv') || lower.includes('.m3u8');
+}
+
 function isRawJsonText(value: string) {
   const text = String(value || '').trim();
   return (text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'));
@@ -441,13 +456,16 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
           liveId,
           title,
           url: urls[0],
+          isLive: isLiveStreamUrl(urls[0]),
+          needsVlc: streamNeedsProxy(urls[0]),
         };
       }
     } catch {
       // Try the next endpoint; live shares turn into replays after the stream ends.
     }
   }
-  return { ...media, liveId, title, url: isPlayableMediaUrl(media.url) ? media.url : '' };
+  const url = isPlayableMediaUrl(media.url) ? media.url : '';
+  return { ...media, liveId, title, url, isLive: isLiveStreamUrl(url), needsVlc: streamNeedsProxy(url) };
 }
 
 function classifyMedia(url: string, msgType: string, text: string): MediaType {
@@ -522,6 +540,78 @@ function playerSource(url: string) {
   };
 }
 
+function normalizeLiveRank(res: any): any[] {
+  let list = unwrapList(res, [
+    'content.rankList',
+    'content.userRankList',
+    'content.userRankingList',
+    'content.contributionList',
+    'content.list',
+    'content.data',
+    'data.rankList',
+    'data.userRankList',
+    'data.userRankingList',
+    'data.contributionList',
+    'data.list',
+    'rankList',
+    'userRankList',
+    'userRankingList',
+    'contributionList',
+    'list',
+  ]);
+  if (!list.length) {
+    const content = res?.content || res?.data || res;
+    const found: any[] = [];
+    const walk = (node: any, depth = 0) => {
+      if (!node || depth > 5) return;
+      if (Array.isArray(node)) {
+        node.forEach((item) => walk(item, depth + 1));
+        return;
+      }
+      if (typeof node !== 'object') return;
+      const hasUser = pickText(node, ['nickName', 'nickname', 'userName', 'name', 'userInfo.nickname', 'userInfo.nickName', 'user.nickname', 'user.nickName']);
+      const hasValue = pickText(node, ['score', 'total', 'cost', 'money', 'giftValue', 'value', 'amount', 'contribution', 'count', 'giftNum']);
+      if (hasUser || hasValue || node.userInfo || node.user) found.push(node);
+      Object.values(node).forEach((value) => walk(value, depth + 1));
+    };
+    walk(content);
+    list = found;
+  }
+  return list.map((item: any, index: number) => ({
+    ...item,
+    userId: pickText(item, ['userId', 'uid', 'id', 'account', 'userInfo.userId', 'userInfo.id', 'user.userId', 'user.id', 'user.userIdStr', 'memberInfo.userId', 'memberInfo.id']),
+    rank: Number(item.rank || item.no || item.index || index + 1),
+    name: pickText(item, [
+      'nickName',
+      'nickname',
+      'userName',
+      'name',
+      'senderName',
+      'userInfo.nickName',
+      'userInfo.nickname',
+      'userInfo.name',
+      'user.nickName',
+      'user.nickname',
+      'user.userName',
+      'user.name',
+      'memberInfo.nickName',
+      'memberInfo.nickname',
+    ], `用户 ${index + 1}`),
+    avatar: normalizeUrl(pickText(item, [
+      'avatar',
+      'headImg',
+      'picPath',
+      'userInfo.avatar',
+      'userInfo.headImg',
+      'user.avatar',
+      'user.headImg',
+      'user.userAvatar',
+      'memberInfo.avatar',
+    ])),
+    value: pickText(item, ['score', 'total', 'cost', 'money', 'giftValue', 'value', 'amount', 'contribution', 'count', 'giftNum'], ''),
+  }));
+}
+
 function avatarInitial(name: string) {
   return (name || '用').trim().slice(0, 1).toUpperCase();
 }
@@ -548,12 +638,17 @@ export default function FollowedRoomsScreen() {
   const [currentUserId, setCurrentUserId] = useState('');
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
+  const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
+  const [rankVisible, setRankVisible] = useState(false);
+  const [rankRows, setRankRows] = useState<any[]>([]);
+  const [rankStatus, setRankStatus] = useState('');
 
   useFocusEffect(useCallback(() => {
     setTabBarHidden(!!selectedRoom || !!roomPlayer);
     return () => {
       setTabBarHidden(false);
       setLiveImmersiveMode(false);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
   }, [roomPlayer, selectedRoom, setTabBarHidden]));
 
@@ -562,24 +657,37 @@ export default function FollowedRoomsScreen() {
     if (!selectedRoom) {
       setRoomPlayer(null);
       setLiveImmersiveMode(false);
+      setRoomPlayerFullscreen(false);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
     return () => {
       setTabBarHidden(false);
       setLiveImmersiveMode(false);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
   }, [selectedRoom, setTabBarHidden]);
 
   useEffect(() => {
-    setLiveImmersiveMode(!!roomPlayer);
-    setTabBarHidden(!!selectedRoom || !!roomPlayer);
+    setLiveImmersiveMode(!!roomPlayer && roomPlayerFullscreen);
+    if (roomPlayerFullscreen) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    }
     return () => setLiveImmersiveMode(false);
+  }, [roomPlayer, roomPlayerFullscreen]);
+
+  useEffect(() => {
+    setTabBarHidden(!!selectedRoom || !!roomPlayer);
   }, [roomPlayer, selectedRoom, setTabBarHidden]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (roomPlayer) {
         setRoomPlayer(null);
+        setRoomPlayerFullscreen(false);
         setLiveImmersiveMode(false);
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
         setTabBarHidden(!!selectedRoom);
         return true;
       }
@@ -590,15 +698,19 @@ export default function FollowedRoomsScreen() {
 
   const closeRoomPlayer = useCallback(() => {
     setRoomPlayer(null);
+    setRoomPlayerFullscreen(false);
     setLiveImmersiveMode(false);
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     setTabBarHidden(!!selectedRoom);
   }, [selectedRoom, setTabBarHidden]);
 
   const closeRoom = useCallback(() => {
     setRoomPlayer(null);
+    setRoomPlayerFullscreen(false);
     setPlayingMedia(null);
     setSelectedRoom(null);
     setLiveImmersiveMode(false);
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     setTabBarHidden(false);
   }, [setTabBarHidden]);
 
@@ -743,6 +855,26 @@ export default function FollowedRoomsScreen() {
     }
   }, [playingMedia, showToast]);
 
+  const openRoomRankPanel = useCallback(async () => {
+    if (!roomPlayer?.liveId) {
+      setRankRows([]);
+      setRankStatus('当前直播/回放缺少 liveId，不能获取贡献榜');
+      setRankVisible(true);
+      return;
+    }
+    setRankVisible(true);
+    setRankStatus('正在加载贡献榜...');
+    try {
+      const res = await pocketApi.getLiveRank(String(roomPlayer.liveId));
+      const rows = normalizeLiveRank(res);
+      setRankRows(rows);
+      setRankStatus(rows.length ? `已加载 ${rows.length} 位贡献用户` : '贡献榜为空');
+    } catch (error) {
+      setRankRows([]);
+      setRankStatus(`贡献榜加载失败：${errorMessage(error)}`);
+    }
+  }, [roomPlayer]);
+
   const downloadMedia = useCallback(async (media: RoomMedia) => {
     try {
       let next = media;
@@ -798,14 +930,24 @@ export default function FollowedRoomsScreen() {
     return (
       <View style={[styles.container, isDark && styles.containerDark]}>
         {roomPlayer ? (
-          <View style={styles.roomPlayerPage}>
-            <View style={styles.roomPlayerHeader}>
+          <View style={[styles.roomPlayerPage, roomPlayerFullscreen && styles.roomPlayerPageFullscreen]}>
+            {!roomPlayerFullscreen ? <View style={styles.roomPlayerHeader}>
               <TouchableOpacity onPress={closeRoomPlayer} style={styles.roomPlayerBack}>
                 <Text style={styles.roomPlayerBackText}>返回房间</Text>
               </TouchableOpacity>
               <Text style={styles.roomPlayerTitle} numberOfLines={1}>{roomPlayer.title}</Text>
-            </View>
-            {Platform.OS === 'android' && LiveExoView ? (
+              <TouchableOpacity onPress={openRoomRankPanel} style={styles.roomPlayerTool}>
+                <Text style={styles.roomPlayerToolText}>贡献榜</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setRoomPlayerFullscreen(true)} style={styles.roomPlayerTool}>
+                <Text style={styles.roomPlayerToolText}>全屏</Text>
+              </TouchableOpacity>
+            </View> : (
+              <TouchableOpacity onPress={() => setRoomPlayerFullscreen(false)} style={styles.exitRoomFullscreenBtn}>
+                <Text style={styles.exitRoomFullscreenText}>退出全屏</Text>
+              </TouchableOpacity>
+            )}
+            {roomPlayer.needsVlc && Platform.OS === 'android' && LiveExoView ? (
               <LiveExoView style={styles.roomNativeVideo} url={roomPlayer.url} />
             ) : (
               <Video
@@ -817,6 +959,31 @@ export default function FollowedRoomsScreen() {
                 ignoreSilentSwitch="ignore"
               />
             )}
+            <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
+              <View style={styles.roomModalShade}>
+                <View style={styles.roomRankPanel}>
+                  <View style={styles.roomRankHeader}>
+                    <Text style={styles.roomRankTitle}>贡献榜</Text>
+                    <TouchableOpacity onPress={() => setRankVisible(false)}>
+                      <Text style={styles.roomPlayerBackText}>关闭</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.roomRankStatus}>{rankStatus}</Text>
+                  <ScrollView style={styles.roomRankList}>
+                    {rankRows.map((row, index) => (
+                      <View key={String(row.userId || row.id || index)} style={styles.roomRankRow}>
+                        <Text style={styles.roomRankNo}>{row.rank || index + 1}</Text>
+                        {row.avatar ? <Image source={{ uri: row.avatar }} style={styles.roomRankAvatar} /> : <View style={styles.roomRankAvatar} />}
+                        <View style={styles.roomRankInfo}>
+                          <Text style={styles.roomRankName} numberOfLines={1}>{row.name}</Text>
+                          <Text style={styles.roomRankValue} numberOfLines={1}>{row.value ? `贡献 ${row.value}` : '贡献用户'}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+              </View>
+            </Modal>
           </View>
         ) : null}
         <ZoomImageModal url={fullImageUrl} onClose={() => setFullImageUrl('')} />
@@ -847,7 +1014,7 @@ export default function FollowedRoomsScreen() {
             style={[styles.modePill, showFanMessages && styles.modePillActive]}
             onPress={() => openRoom(selectedRoom, roomMode, !showFanMessages)}
           >
-            <Text style={[styles.modePillText, showFanMessages && styles.modePillTextActive]}>{showFanMessages ? '显示全部' : '仅房主'}</Text>
+            <Text style={[styles.modePillText, showFanMessages && styles.modePillTextActive]}>{showFanMessages ? '仅成员' : '粉丝发言'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -1113,11 +1280,28 @@ const styles = StyleSheet.create({
   openLinkBtn: { marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.10)' },
   openLinkText: { color: '#ff6f91', fontSize: 11, fontWeight: '800' },
   roomPlayerPage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 1000, elevation: 1000, backgroundColor: '#000' },
+  roomPlayerPageFullscreen: { paddingTop: 0 },
   roomPlayerHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: 44, paddingHorizontal: 10, paddingBottom: 8, backgroundColor: '#080808' },
   roomPlayerBack: { padding: 8 },
   roomPlayerBackText: { color: '#ff6f91', fontSize: 14, fontWeight: '900' },
   roomPlayerTitle: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '800' },
+  roomPlayerTool: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', marginLeft: 6 },
+  roomPlayerToolText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  exitRoomFullscreenBtn: { position: 'absolute', top: 14, right: 14, zIndex: 10, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.58)' },
+  exitRoomFullscreenText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   roomNativeVideo: { flex: 1, backgroundColor: '#000' },
+  roomModalShade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  roomRankPanel: { maxHeight: '82%', padding: 14, borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: 'rgba(18,18,18,0.94)' },
+  roomRankHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  roomRankTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  roomRankStatus: { color: '#d8d8d8', fontSize: 12, marginBottom: 10 },
+  roomRankList: { maxHeight: 420 },
+  roomRankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.10)' },
+  roomRankNo: { width: 24, color: '#ff6f91', fontSize: 13, fontWeight: '900', textAlign: 'center' },
+  roomRankAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.18)' },
+  roomRankInfo: { flex: 1, minWidth: 0 },
+  roomRankName: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  roomRankValue: { color: '#cfcfcf', fontSize: 11, marginTop: 2 },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },
   empty: { textAlign: 'center', color: '#3f3f3f', marginTop: 60, fontSize: 14, paddingHorizontal: 24, lineHeight: 20 },
