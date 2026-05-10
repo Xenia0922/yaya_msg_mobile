@@ -150,13 +150,60 @@ async function publicMediaPost(url: string, data: any, fallback: string) {
   return assertPocketOk(res, fallback);
 }
 
-async function resolveServerId(channelId: string): Promise<string> {
+function pushUniqueId(target: string[], value: any) {
+  const text = String(value || '');
+  if (!text || text === '0' || target.includes(text)) return;
+  target.push(text);
+}
+
+function collectServerIdsForChannel(node: any, channelId: string, target: string[], depth = 0) {
+  if (!node || depth > 6) return;
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectServerIdsForChannel(item, channelId, target, depth + 1));
+    return;
+  }
+  if (typeof node !== 'object') return;
+
+  const nodeChannel = String(
+    node.channelId
+      || node.roomId
+      || node.teamInfo?.channelId
+      || node.teamInfo?.roomId
+      || '',
+  );
+  if (nodeChannel === String(channelId)) {
+    pushUniqueId(target, node.serverId || node.serverID || node.teamInfo?.serverId || node.teamInfo?.serverID);
+  }
+
+  Object.entries(node).forEach(([key, value]) => {
+    if (String(key) === String(channelId)) pushUniqueId(target, value);
+    collectServerIdsForChannel(value, channelId, target, depth + 1);
+  });
+}
+
+async function resolveServerIds(channelId: string): Promise<string[]> {
+  const ids: string[] = [];
   try {
     const res = await pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) });
-    return String(res?.content?.serverId || res?.content?.teamInfo?.serverId || res?.data?.serverId || res?.serverId || '');
+    pushUniqueId(ids, res?.content?.serverId || res?.content?.teamInfo?.serverId || res?.data?.serverId || res?.serverId);
   } catch {
-    return '';
+    // Fall through to the server map; some large rooms have stale local serverId values.
   }
+  try {
+    const res = await pocketPost(`${BASE}/im/api/v1/team/star/server/map/get`, {}, {
+      modern: true,
+      fallback: 'get room server map failed',
+    });
+    collectServerIdsForChannel(res, channelId, ids);
+  } catch {
+    // The map is a fallback only.
+  }
+  return ids;
+}
+
+async function resolveServerId(channelId: string): Promise<string> {
+  const ids = await resolveServerIds(channelId);
+  return ids[0] || '';
 }
 
 function rememberServerId(channelId: string, serverId: string) {
@@ -403,8 +450,8 @@ export const pocketApi = {
     const channelId = String(params.channelId || '');
     const originalServerId = String(params.serverId || '');
     if (!channelId) throw new Error('missing channelId');
-    const resolvedServerId = await resolveServerId(channelId);
-    const serverIds = [originalServerId, resolvedServerId]
+    const resolvedServerIds = await resolveServerIds(channelId);
+    const serverIds = (params.fetchAll ? [...resolvedServerIds, originalServerId] : [originalServerId, ...resolvedServerIds])
       .map((item) => String(item || ''))
       .filter((item, index, arr) => item && item !== '0' && arr.indexOf(item) === index);
     if (!serverIds.length) throw new Error('missing serverId');
