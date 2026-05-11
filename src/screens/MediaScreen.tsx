@@ -342,7 +342,7 @@ export default function MediaScreen() {
   const [vodList, setVodList] = useState<VODItem[]>([]);
   const [liveList, setLiveList] = useState<VODItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
+  const [nextCursor, setNextCursor] = useState(0);
   const [error, setError] = useState('');
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
@@ -376,19 +376,22 @@ export default function MediaScreen() {
     return () => setTabBarHidden(false);
   }, [playing, setTabBarHidden]);
 
-  const fetchList = useCallback(async (mode: 'live' | 'vod', p = 1) => {
+  const fetchList = useCallback(async (mode: 'live' | 'vod', cursor = 0, append = false) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
     setError('');
     try {
-      const res = await pocketApi.getLiveList({ page: p, record: mode === 'vod' });
+      const res = await pocketApi.getLiveList({ next: cursor, record: mode === 'vod', debug: true });
       const next = normalizeLiveList(res);
-      setHasMore(next.length > 0);
-      if (mode === 'live') setLiveList((prev) => (p === 1 ? next : mergeUniqueLiveItems(prev, next)));
-      else setVodList((prev) => (p === 1 ? next : mergeUniqueLiveItems(prev, next)));
+      const nextToken = Number((res as any)?.content?.next ?? (res as any)?.data?.next ?? (res as any)?.next ?? 0) || 0;
+      setNextCursor(nextToken);
+      setHasMore(next.length > 0 && nextToken > 0);
+      if (mode === 'live') setLiveList((prev) => (append ? mergeUniqueLiveItems(prev, next) : next));
+      else setVodList((prev) => (append ? mergeUniqueLiveItems(prev, next) : next));
     } catch (err) {
       setError(errorMessage(err));
+      setHasMore(false);
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -396,7 +399,7 @@ export default function MediaScreen() {
   }, []);
 
   useEffect(() => {
-    fetchList(tab, 1);
+    fetchList(tab, 0);
   }, [fetchList, tab]);
 
   useEffect(() => () => {
@@ -418,21 +421,19 @@ export default function MediaScreen() {
 
   const switchTab = (next: 'live' | 'vod') => {
     setTab(next);
-    setPage(1);
+    setNextCursor(0);
     setHasMore(true);
   };
 
   const refreshList = () => {
-    setPage(1);
+    setNextCursor(0);
     setHasMore(true);
-    fetchList(tab, 1);
+    fetchList(tab, 0);
   };
 
   const loadMore = () => {
     if (loading || loadingRef.current || !hasMore || list.length === 0) return;
-    const nextPage = page + 1;
-    setPage(nextPage);
-    fetchList(tab, nextPage);
+    fetchList(tab, nextCursor, true);
   };
 
   const startPlay = async (item: VODItem) => {

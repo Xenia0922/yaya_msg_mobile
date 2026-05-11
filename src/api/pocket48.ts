@@ -51,6 +51,7 @@ function createHeaders(token?: string, pa?: string | null, modern = false): Head
     'User-Agent': modern
       ? 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)'
       : `PocketFans201807/${APP_VERSION} (iPhone; iOS 16.3.1; Scale/2.00)`,
+    Host: 'pocketapi.48.cn',
     'Accept-Language': 'zh-Hans-CN;q=1',
     Accept: '*/*',
     appInfo: JSON.stringify(appInfo(modern)),
@@ -128,13 +129,13 @@ async function signedHeaders(token?: string, modern = false, patch: HeadersMap =
   return createSignedHeaders(token ?? tokenFromStore(), modern, patch);
 }
 
-async function pocketPost(url: string, data: any, options: { tokenRequired?: boolean; modern?: boolean; headers?: HeadersMap; fallback?: string } = {}) {
+async function pocketPost(url: string, data: any, options: { tokenRequired?: boolean; modern?: boolean; headers?: HeadersMap; fallback?: string; signed?: boolean } = {}) {
   const token = options.tokenRequired === false ? tokenFromStore() : requireToken();
   const res = await rawPost(url, data, {
     token,
     modern: options.modern,
     headers: options.headers,
-    signed: true,
+    signed: options.signed !== false,
   });
   return assertPocketOk(res, options.fallback);
 }
@@ -221,7 +222,7 @@ function rememberServerId(channelId: string, serverId: string) {
 }
 
 async function tryPocketPost(
-  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; label: string }>,
+  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; signed?: boolean; label: string }>,
   fallback: string,
 ) {
   const errors: string[] = [];
@@ -230,6 +231,7 @@ async function tryPocketPost(
       const res = await pocketPost(attempt.url, attempt.payload, {
         modern: attempt.modern,
         tokenRequired: attempt.tokenRequired,
+        signed: attempt.signed,
         fallback: `${fallback}: ${attempt.label}`,
       });
       return {
@@ -471,12 +473,19 @@ export const pocketApi = {
       : `${BASE}/im/api/v1/team/message/list/homeowner`;
     const mode = params.fetchAll ? 'all' : 'owner';
     const limit = params.limit || 50;
-    const attempts: Array<{ url: string; payload: any; modern?: boolean; label: string }> = [];
+    const attempts: Array<{ url: string; payload: any; modern?: boolean; signed?: boolean; label: string }> = [];
     for (const serverId of serverIds) {
+      const payload = { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit };
       attempts.push({
         url,
-        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit },
+        payload,
         label: `${mode} channel=${channelId} server=${serverId}`,
+      });
+      attempts.push({
+        url,
+        payload,
+        signed: false,
+        label: `${mode} unsigned channel=${channelId} server=${serverId}`,
       });
     }
     return tryPocketPost(attempts, 'get room messages failed');
@@ -708,14 +717,15 @@ export const pocketApi = {
   },
 
   async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean; debug?: boolean; next?: number }) {
-    return pocketPost(`${BASE}/live/api/v1/live/getLiveList`, {
+    const payload: any = {
       groupId: params.groupId ?? 0,
       debug: params.debug ?? false,
       liveType: params.liveType ?? 0,
       next: params.next ?? 0,
-      page: params.page || 1,
       record: params.record ?? false,
-    }, { tokenRequired: false, fallback: '获取直播列表失败' });
+    };
+    if (params.page !== undefined) payload.page = params.page;
+    return pocketPost(`${BASE}/live/api/v1/live/getLiveList`, payload, { tokenRequired: false, fallback: '获取直播列表失败' });
   },
 
   async operateRoomVoice(params: { channelId: string; serverId: string }) {

@@ -140,10 +140,10 @@ export function WebViewSigner() {
       pointerEvents="none"
       style={{
         position: 'absolute',
-        left: -100,
-        top: -100,
-        width: 32,
-        height: 32,
+        left: 0,
+        bottom: 0,
+        width: 1,
+        height: 1,
         opacity: 0.01,
       }}
     >

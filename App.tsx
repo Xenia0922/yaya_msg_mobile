@@ -30,7 +30,6 @@ export default function App() {
       } catch {}
 
       initWasm().catch(() => {});
-      runAutoCheckinIfNeeded().catch(() => {});
 
       try {
         const backup = require('./assets/members.json');
@@ -62,6 +61,14 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!ready) return;
+    const timer = setTimeout(() => {
+      runAutoCheckinIfNeeded().catch(() => {});
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [ready]);
+
   if (!ready) {
     return (
       <FadeInView style={{ flex: 1, backgroundColor: splashBg, alignItems: 'center', justifyContent: 'center', padding: 24 }} distance={8} duration={220}>
@@ -71,6 +78,7 @@ export default function App() {
         <ScalePressable style={{ marginTop: 20, padding: 16 }} onPress={() => setReady(true)}>
           <Text style={{ color: '#ff6f91', fontSize: 14, fontWeight: '600' }}>跳过等待，进入应用</Text>
         </ScalePressable>
+        <WebViewSigner />
       </FadeInView>
     );
   }
