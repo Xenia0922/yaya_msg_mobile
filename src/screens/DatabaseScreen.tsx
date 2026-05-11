@@ -23,18 +23,30 @@ function fieldValue(value: any) {
 
 function memberFields(member: Member) {
   const raw = member as any;
-  return [
-    ['成员ID', member.id],
-    ['大房间', member.channelId],
-    ['小房间', member.yklzId],
-    ['服务器', member.serverId],
-    ['直播间', member.liveRoomId],
-    ['roomId', member.roomId],
-    ['队伍ID', member.teamId],
-    ['拼音', member.pinyin],
-    ['昵称', raw.nickname || raw.nickName],
-    ['SNH48 ID', raw.snh48Id || raw.snhId],
-  ].filter(([, value]) => value !== undefined && value !== null && value !== '');
+  const fields: [string, string][] = [];
+  fields.push(['成员ID', member.id]);
+  if (member.channelId) fields.push(['大房间', member.channelId]);
+  if (member.yklzId) fields.push(['小房间', member.yklzId]);
+  if (member.serverId) fields.push(['服务器', member.serverId]);
+  if (member.liveRoomId) fields.push(['直播间', member.liveRoomId]);
+  if (member.roomId) fields.push(['roomId', member.roomId]);
+  if (raw.birthday) fields.push(['生日', raw.birthday]);
+  if (raw.constellation) fields.push(['星座', raw.constellation]);
+  if (raw.height) fields.push(['身高', `${raw.height}cm`]);
+  if (raw.periodName) fields.push(['期数', raw.periodName]);
+  if (raw.rank) fields.push(['最高排名', raw.rank]);
+  if (raw.nickname) fields.push(['昵称', raw.nickname]);
+  if (raw.wbName) fields.push(['微博', raw.wbName]);
+  return fields;
+}
+
+function formatDateStr(dateStr: string) {
+  if (!dateStr || dateStr === '-') return '-';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  } catch { return dateStr; }
 }
 
 export default function DatabaseScreen() {
@@ -142,8 +154,13 @@ export default function DatabaseScreen() {
             <View style={styles.memberMain}>
               <Text style={[styles.memberName, isDark && styles.textLight]}>{item.ownerName}</Text>
               <Text style={[styles.memberMeta, isDark && styles.textSubDark]}>
-                {[item.groupName, item.team, item.pinyin].filter(Boolean).join(' · ')}
+                {[item.groupName, item.team, (item as any).periodName, (item as any).rank ? `Top${(item as any).rank}` : ''].filter(Boolean).join(' · ')}
               </Text>
+              {((item as any).birthday || (item as any).birthplace) ? (
+                <Text style={[styles.memberMetaExtra, isDark && styles.textSubDark]}>
+                  {[(item as any).birthday ? `🎂${(item as any).birthday}` : '', (item as any).birthplace].filter(Boolean).join(' · ')}
+                </Text>
+              ) : null}
               <View style={styles.fieldGrid}>
                 {memberFields(item).map(([label, value]) => (
                   <View key={`${item.id}-${label}`} style={styles.fieldChip}>
@@ -186,6 +203,7 @@ const styles = StyleSheet.create({
   memberMain: { flex: 1, minWidth: 0 },
   memberName: { fontSize: 15, fontWeight: '800', color: '#333' },
   memberMeta: { fontSize: 11, color: '#333333', marginTop: 3 },
+  memberMetaExtra: { fontSize: 10, color: '#555', marginTop: 2 },
   memberRight: { alignItems: 'flex-end', gap: 4 },
   fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 9 },
   fieldChip: { maxWidth: '48%', minWidth: '30%', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 10, backgroundColor: 'rgba(255,111,145,0.10)' },

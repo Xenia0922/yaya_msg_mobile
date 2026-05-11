@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 
 export type DownloadType = 'replay' | 'voice' | 'image' | 'video' | 'audio' | 'file';
 export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'failed';
@@ -21,6 +21,30 @@ export interface DownloadItem {
 
 const STORAGE_KEY = 'yaya_download_items_v1';
 const DOWNLOAD_DIR = `${FileSystem.documentDirectory || ''}downloads/`;
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chars: string[] = [];
+  for (let i = 0; i < bytes.byteLength; i++) {
+    chars.push(String.fromCharCode(bytes[i]));
+  }
+  return (global as any).btoa?.(chars.join('')) || base64Encode(bytes);
+}
+
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function base64Encode(bytes: Uint8Array): string {
+  let result = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = bytes[i + 1] || 0;
+    const c = bytes[i + 2] || 0;
+    result += BASE64_CHARS[a >> 2];
+    result += BASE64_CHARS[((a & 3) << 4) | (b >> 4)];
+    result += i + 1 < bytes.length ? BASE64_CHARS[((b & 15) << 2) | (c >> 6)] : '=';
+    result += i + 2 < bytes.length ? BASE64_CHARS[c & 63] : '=';
+  }
+  return result;
+}
 
 function sanitizeName(name: string) {
   return String(name || 'download')
@@ -95,20 +119,13 @@ export async function enqueueDownload(params: {
 
   const localUri = `${DOWNLOAD_DIR}${item.id}-${item.name}`;
   try {
-    const task = FileSystem.createDownloadResumable(url, localUri, {}, async (progress) => {
-      const total = progress.totalBytesExpectedToWrite || 0;
-      const written = progress.totalBytesWritten || 0;
-      const nextItem = {
-        ...item,
-        status: 'downloading' as const,
-        progress: total ? Math.min(1, written / total) : 0,
-        totalBytes: total,
-        downloadedBytes: written,
-      };
-      params.onProgress?.(nextItem);
+    const { uri: downloadedUri } = await FileSystem.downloadAsync(url, localUri, {
+      headers: {
+        'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
+        Referer: 'https://h5.48.cn/',
+      },
     });
-    const result = await task.downloadAsync();
-    const done = { status: 'done' as const, progress: 1, localUri: result?.uri || localUri };
+    const done = { status: 'done' as const, progress: 1, localUri: downloadedUri || localUri };
     await updateItem(item.id, done);
     return { ...item, ...done };
   } catch (error: any) {

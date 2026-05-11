@@ -299,8 +299,7 @@ function getMessageTime(item: any): number {
 function getNextTime(res: any, list: any[]): number {
   const direct = Number(firstTextFrom([res?.content, res?.data, res], ['nextTime', 'next', 'lastTime']));
   if (Number.isFinite(direct) && direct > 0) return direct;
-  const times = list.map(getMessageTime).filter((time) => time > 0);
-  return times.length ? Math.min(...times) : 0;
+  return 0;
 }
 
 function mergeMessages(prev: RoomMessage[], next: RoomMessage[]) {
@@ -488,6 +487,7 @@ function roomMedia(item: any): RoomMedia | null {
   const ext = extraInfo(item);
   const text = messageText(item);
   const msgType = String(item.msgType || item.extMsgType || body.msgType || body.extMsgType || '').toUpperCase();
+  if (msgType.includes('GIFT') || String(item.msgType) === '7') return null;
   const liveId = firstTextFrom([item, ext, body], [
     'liveId',
     'liveid',
@@ -518,13 +518,15 @@ function roomGiftInfo(item: any): { name: string; num: number; image: string; to
   const body = messageBody(item);
   const ext = extraInfo(item);
   const msgType = String(item.msgType || item.extMsgType || body.msgType || body.extMsgType || body.messageType || '').toUpperCase();
-  const giftInfo = body.giftInfo || body.giftReplyInfo?.giftInfo || body.bodys?.giftInfo || ext.giftInfo || item.giftInfo || null;
-  if (!giftInfo && !msgType.includes('GIFT')) return null;
-  const source = giftInfo || body || ext || item;
-  const name = firstTextFrom([source], ['giftName', 'name', 'giftInfo.giftName']) || '礼物';
-  const num = Number(firstTextFrom([source], ['giftNum', 'num', 'count', 'giftInfo.giftNum']) || '1') || 1;
-  const image = normalizeUrl(firstTextFrom([source], ['picPath', 'giftPic', 'image', 'icon', 'giftInfo.picPath']));
-  const money = Number(firstTextFrom([source], ['money', 'cost', 'price', 'giftInfo.money']) || '0') || 0;
+  const giftReplyInfo = body.giftReplyInfo || ext.giftReplyInfo || {};
+  const giftInfo = body.giftInfo || giftReplyInfo.giftInfo || ext.giftInfo || item.giftInfo || null;
+  if (!giftInfo && !msgType.includes('GIFT') && String(item.msgType) !== '7') return null;
+  if (msgType.includes('LIVE') && !giftInfo) return null;
+  const source = giftInfo || giftReplyInfo || body;
+  const name = firstTextFrom([giftInfo, giftReplyInfo, body], ['giftName', 'replyName', 'name']) || '礼物';
+  const num = Number(firstTextFrom([giftInfo, giftReplyInfo, body], ['giftNum', 'replyNum', 'num', 'count']) || '1') || 1;
+  const image = normalizeUrl(firstTextFrom([giftInfo, giftReplyInfo, body], ['picPath', 'giftPic', 'image', 'icon']));
+  const money = Number(firstTextFrom([giftInfo, giftReplyInfo, body], ['money', 'replyMoney', 'cost', 'price']) || '0') || 0;
   return { name, num, image, total: money ? `${money * num} 鸡腿` : '' };
 }
 
@@ -685,10 +687,6 @@ export default function FollowedRoomsScreen() {
   }, [roomPlayer, roomPlayerFullscreen]);
 
   useEffect(() => {
-    setTabBarHidden(!!selectedRoom || !!roomPlayer);
-  }, [roomPlayer, selectedRoom, setTabBarHidden]);
-
-  useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (roomPlayer) {
         setRoomPlayer(null);
@@ -794,7 +792,7 @@ export default function FollowedRoomsScreen() {
         nextTime: 0,
         fetchAll: includeFans,
       });
-      const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'data.messageList', 'messageList', 'messages', 'list']);
+      const list = unwrapList(res, ['content.messageList', 'content.message', 'content.messages', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'messages', 'list']);
       setRoomMessages(sortMessagesNewestFirst(list));
       const nextTime = getNextTime(res, list);
       setRoomNextTime(nextTime);
@@ -821,7 +819,7 @@ export default function FollowedRoomsScreen() {
         nextTime: roomNextTime,
         fetchAll: showFanMessages,
       });
-      const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'data.messageList', 'messageList', 'messages', 'list']);
+      const list = unwrapList(res, ['content.messageList', 'content.message', 'content.messages', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'messages', 'list']);
       const nextTime = getNextTime(res, list);
       setRoomMessages((prev) => {
         const merged = mergeMessages(prev, list as RoomMessage[]);
@@ -970,6 +968,8 @@ export default function FollowedRoomsScreen() {
                 paused={false}
                 resizeMode="contain"
                 ignoreSilentSwitch="ignore"
+                playInBackground={false}
+                playWhenInactive={false}
               />
             )}
             <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
@@ -1070,7 +1070,26 @@ export default function FollowedRoomsScreen() {
             const media = roomMedia(item);
             const gift = roomGiftInfo(item);
             const body = messageText(item);
-            const bubbleText = body && !gift && (!media || (body !== media.url && !body.includes(media.url) && !isRawJsonText(body))) ? body : '';
+            let giftReplyText = '';
+            if (gift) {
+              const payload = messagePayload(item);
+              const ext = extraInfo(item);
+              const gr = payload?.giftReplyInfo || ext?.giftReplyInfo || {};
+              const rawBodys = (item as any)?.bodys || (item as any)?.body || '';
+              if (payload && typeof payload === 'object') {
+                giftReplyText = payload.text || payload.body || gr.replyName || payload.replyName || payload.content || ext.replyName || gr.text || '';
+                if (typeof giftReplyText === 'string') giftReplyText = giftReplyText.trim();
+                else giftReplyText = '';
+              }
+              if (!giftReplyText && typeof rawBodys === 'string') {
+                try { const parsed = JSON.parse(rawBodys); giftReplyText = parsed?.text || parsed?.body || parsed?.replyName || ''; } catch {}
+              }
+              if (!giftReplyText) {
+                giftReplyText = String((item as any)?.msgContent || (item as any)?.text || (item as any)?.message || '').trim();
+              }
+            }
+            const isMediaLabel = /^\[(语音|图片|视频|链接)消息\]$/.test(body);
+            const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? body : '') : body);
             const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
 
             return (
@@ -1099,7 +1118,7 @@ export default function FollowedRoomsScreen() {
                       <View style={styles.giftCard}>
                         {gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><Text style={styles.giftEmoji}>礼</Text></View>}
                         <View style={styles.giftTextWrap}>
-                          <Text style={styles.giftName} numberOfLines={1}>送出礼物：{gift.name}</Text>
+                          <Text style={styles.giftName} numberOfLines={1}>{idol ? '感谢礼物' : '送出礼物'}：{gift.name}</Text>
                           <Text style={styles.giftMeta}>数量 x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
                         </View>
                       </View>
@@ -1127,7 +1146,7 @@ export default function FollowedRoomsScreen() {
                           </Text>
                         </TouchableOpacity>
                       </TouchableOpacity>
-                    )) : !bubbleText ? (
+                    )) : (!bubbleText && !gift) ? (
                       <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>[空消息]</Text>
                     ) : null}
                     {media?.url && playingMedia?.url === media.url ? (

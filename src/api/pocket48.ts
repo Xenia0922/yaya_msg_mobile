@@ -462,32 +462,20 @@ export const pocketApi = {
     const originalServerId = String(params.serverId || '');
     if (!channelId) throw new Error('missing channelId');
     const resolvedServerIds = await resolveServerIds(channelId);
-    const serverIds = [originalServerId, ...resolvedServerIds]
-      .map((item) => String(item || ''))
-      .filter((item, index, arr) => item && item !== '0' && arr.indexOf(item) === index);
-    if (!serverIds.length) throw new Error('missing serverId');
-    rememberServerId(channelId, serverIds[0]);
-
     const url = params.fetchAll
       ? `${BASE}/im/api/v1/team/message/list/all`
       : `${BASE}/im/api/v1/team/message/list/homeowner`;
-    const mode = params.fetchAll ? 'all' : 'owner';
     const limit = params.limit || 50;
-    const attempts: Array<{ url: string; payload: any; modern?: boolean; signed?: boolean; label: string }> = [];
-    for (const serverId of serverIds) {
-      const payload = { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit };
-      attempts.push({
-        url,
-        payload,
-        label: `${mode} channel=${channelId} server=${serverId}`,
-      });
-      attempts.push({
-        url,
-        payload,
-        signed: false,
-        label: `${mode} unsigned channel=${channelId} server=${serverId}`,
-      });
+    const next = params.nextTime || 0;
+    const attempts: Array<{ url: string; payload: any; signed?: boolean; label: string }> = [];
+    for (const serverId of [originalServerId, ...resolvedServerIds]) {
+      const sid = String(serverId || '');
+      if (!sid || sid === '0') continue;
+      const payload = { channelId: safeNumber(channelId), serverId: safeNumber(sid), nextTime: next, limit };
+      attempts.push({ url, payload, label: `room srv=${sid}` });
+      attempts.push({ url, payload, signed: false, label: `room unsigned srv=${sid}` });
     }
+    if (!attempts.length) throw new Error('missing serverId');
     return tryPocketPost(attempts, 'get room messages failed');
   },
 
@@ -655,12 +643,12 @@ export const pocketApi = {
   },
 
   async getOpenLive(params: { memberId: string; nextTime?: number }) {
-    return pocketPost(`${BASE}/im/api/v1/chatroom/msg/list/aim/type`, {
-      extMsgType: 'OPEN_LIVE',
-      roomId: '',
-      ownerId: String(params.memberId),
-      nextTime: params.nextTime || 0,
-    }, { fallback: '获取成员公演失败' });
+    const memberId = String(params.memberId || '');
+    if (!memberId) throw new Error('missing memberId');
+    return tryPocketPost([
+      { url: `${BASE}/im/api/v1/chatroom/msg/list/aim/type`, payload: { extMsgType: 'OPEN_LIVE', roomId: '', ownerId: memberId, nextTime: Number(params.nextTime) || 0 }, label: 'openlive' },
+      { url: `${BASE}/im/api/v1/chatroom/msg/list/aim/type`, payload: { extMsgType: 'OPEN_LIVE', roomId: '', ownerId: memberId, nextTime: Number(params.nextTime) || 0 }, signed: false, label: 'openlive unsigned' },
+    ], '获取成员公演失败');
   },
 
   async getOpenLiveOne(liveId: string) {

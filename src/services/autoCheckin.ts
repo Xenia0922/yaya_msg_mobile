@@ -53,26 +53,35 @@ export async function runAutoCheckinIfNeeded() {
   const user = pickCurrentUserId(profile, settings.p48Token);
   if (!user) return { skipped: true, message: '自动签到未获取到账号信息' };
   if (settings.yaya_auto_checkin_last_date === today && settings.yaya_auto_checkin_last_user === user) {
-    showToast('今日已自动签到过');
     return { skipped: true, alreadyChecked: true, message: '今日已自动签到过' };
   }
 
   const todayState = await pocketApi.getCheckinToday().catch(() => null);
+  if (isCheckedToday(todayState)) {
+    const patch = {
+      yaya_auto_checkin_last_date: today,
+      yaya_auto_checkin_last_user: user,
+    };
+    setSettings(patch);
+    await saveSettings(patch);
+    return { skipped: true, alreadyChecked: true, message: '今日已经签到过了' };
+  }
+
   let message = '自动签到成功';
-  if (!isCheckedToday(todayState)) {
-    try {
-      const res: any = await pocketApi.checkIn();
-      message = res?.alreadyChecked ? '今日已经签到过了' : (res?.message || res?.msg || '自动签到成功');
-    } catch (error: any) {
-      if (!isAlreadyCheckedError(error)) {
-        const errorMessage = error?.message || String(error);
-        showToast(`自动签到失败：${errorMessage}`);
-        throw error;
-      }
+  let alreadyChecked = false;
+  try {
+    const res: any = await pocketApi.checkIn();
+    alreadyChecked = !!res?.alreadyChecked;
+    message = res?.alreadyChecked ? '今日已经签到过了' : (res?.message || res?.msg || '自动签到成功');
+  } catch (error: any) {
+    if (isAlreadyCheckedError(error)) {
       message = '今日已经签到过了';
+      alreadyChecked = true;
+    } else {
+      const errorMessage = error?.message || String(error);
+      showToast(`自动签到失败：${errorMessage}`);
+      throw error;
     }
-  } else {
-    message = '今日已经签到过了';
   }
 
   const patch = {
@@ -81,6 +90,8 @@ export async function runAutoCheckinIfNeeded() {
   };
   setSettings(patch);
   await saveSettings(patch);
-  showToast(message);
+  if (!alreadyChecked && message !== '今日已经签到过了') {
+    showToast(message);
+  }
   return { success: true, message };
 }

@@ -9,11 +9,15 @@ interface RequestOptions {
 
 function parseResponse(text: string): JsonValue {
   if (!text) return null;
-  const fixedText = text.replace(/:\s*([0-9]{15,})/g, ':"$1"');
   try {
-    return JSON.parse(fixedText);
+    return JSON.parse(text);
   } catch {
-    return text;
+    const fixed = text.replace(/:\s*([0-9]{15,})/g, ':"$1"');
+    try {
+      return JSON.parse(fixed);
+    } catch {
+      return text;
+    }
   }
 }
 

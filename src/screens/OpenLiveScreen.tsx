@@ -76,18 +76,21 @@ function normalizeOpenLiveMessage(item: any, index: number): OpenLiveItem | null
 }
 
 function normalizeOpenLiveList(res: any): OpenLiveItem[] {
-  const list = unwrapList(res, [
-    'content.message',
-    'content.messageList',
-    'content.list',
-    'data.message',
-    'data.messageList',
-    'message',
-    'messageList',
-    'list',
-  ]);
+  const source = res?.content ?? res?.data ?? res;
+  let list = Array.isArray(source?.message) ? source.message
+    : Array.isArray(source?.messageList) ? source.messageList
+    : unwrapList(res, [
+      'content.message',
+      'content.messageList',
+      'content.list',
+      'data.message',
+      'data.messageList',
+      'message',
+      'messageList',
+      'list',
+    ]);
   return list
-    .map(normalizeOpenLiveMessage)
+    .map((item: any, index: number) => normalizeOpenLiveMessage(item, index))
     .filter(Boolean) as OpenLiveItem[];
 }
 
@@ -271,7 +274,7 @@ export default function OpenLiveScreen() {
           <Text style={styles.playerTitle} numberOfLines={1}>{playing.title}</Text>
           <TouchableOpacity onPress={toggleOrientation}><Text style={styles.headerAction}>{isLandscape ? '竖屏' : '横屏'}</Text></TouchableOpacity>
         </View>
-        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" />
+        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} />
         <TouchableOpacity style={styles.externalBtn} onPress={() => Linking.openURL(playing.url)}>
           <Text style={styles.externalText}>外部打开</Text>
         </TouchableOpacity>

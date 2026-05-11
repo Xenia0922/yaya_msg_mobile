@@ -11,13 +11,14 @@ import {
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
-import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
 import { saveSettings } from '../services/settings';
 import { getWasmError, isWasmReady } from '../auth';
 import { checkNetworkStatus } from '../utils/network';
+import pocketApi from '../api/pocket48';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
@@ -79,6 +80,9 @@ export default function SettingsScreen() {
   const [status, setStatus] = useState('');
   const [networkStatus, setNetworkStatus] = useState('');
   const [manualBackgroundUrl, setManualBackgroundUrl] = useState('');
+  const [nickName, setNickName] = useState('');
+  const [renameCount, setRenameCount] = useState<number | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const backgroundValue = settings.customBackgroundFile?.trim() || '';
   const backgroundInfo = useMemo(() => {
@@ -112,15 +116,13 @@ export default function SettingsScreen() {
 
   const pickBackgroundImage = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'image/*', copyToCacheDirectory: true, multiple: false });
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { Alert.alert('需要相册权限'); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, base64: true });
       if (result.canceled) return;
       const asset = result.assets?.[0];
-      const uri = asset?.uri;
-      if (!uri) {
-        Alert.alert('背景图失败', '图片选择器没有返回 uri。');
-        return;
-      }
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const base64 = asset?.base64;
+      if (!base64) { Alert.alert('背景图失败', '图片选择器没有返回图片数据。'); return; }
       const mimeType = asset?.mimeType || 'image/jpeg';
       await updateSetting('customBackgroundFile', `data:${mimeType};base64,${base64}`, { customBackgroundUpdatedAt: Date.now() });
     } catch (error: any) {
@@ -137,6 +139,54 @@ export default function SettingsScreen() {
   const clearBackground = () => {
     updateSetting('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() });
     setManualBackgroundUrl('');
+  };
+
+  const loadRenameCount = async () => {
+    try {
+      const res = await pocketApi.getUserRenameCount();
+      const count = res?.content?.count ?? res?.content?.renameCount ?? res?.content;
+      setRenameCount(typeof count === 'number' ? count : null);
+    } catch { setRenameCount(null); }
+  };
+
+  const handleChangeNickname = async () => {
+    const name = nickName.trim();
+    if (!name) { showToast('请输入新昵称'); return; }
+    showToast('正在修改昵称...');
+    try {
+      const res = await pocketApi.editUserInfo({ nickName: name });
+      showToast(res?.message || res?.msg || '昵称修改成功');
+      setNickName('');
+      loadRenameCount();
+    } catch (error: any) {
+      showToast(`修改失败：${error?.message || error}`);
+    }
+  };
+
+  const handleUploadAvatar = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { Alert.alert('需要相册权限'); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, base64: true });
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      const base64 = asset?.base64;
+      if (!base64) { Alert.alert('未获取到图片数据'); return; }
+      setAvatarUploading(true);
+      showToast('正在上传头像...');
+      const uploadRes = await pocketApi.uploadUserAvatar({
+        uri: `data:${asset.mimeType || 'image/jpeg'};base64,${base64}`,
+        mimeType: asset.mimeType || 'image/jpeg',
+      });
+      if (uploadRes.path) {
+        await pocketApi.editUserInfo({ avatar: uploadRes.path });
+        showToast('头像更新成功');
+      }
+    } catch (error: any) {
+      showToast(`上传失败：${error?.message || error}`);
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   return (
@@ -159,6 +209,28 @@ export default function SettingsScreen() {
         </View>
         <TouchableOpacity style={[styles.logoutBtn, { marginTop: 10 }]} onPress={handleLogout}>
           <Text style={styles.linkText}>退出口袋账号</Text>
+        </TouchableOpacity>
+      </Section>
+
+      <Section title="修改昵称" isDark={isDark}>
+        <TouchableOpacity style={styles.linkBtn} onPress={loadRenameCount}>
+          <Text style={styles.linkText}>{renameCount !== null ? `剩余改名次数：${renameCount}` : '查询改名次数'}</Text>
+        </TouchableOpacity>
+        <TextInput
+          style={[styles.input, isDark && styles.inputDark]}
+          placeholder="输入新昵称"
+          placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
+          value={nickName}
+          onChangeText={setNickName}
+        />
+        <TouchableOpacity style={[styles.secondaryBtn, { marginTop: 10 }]} onPress={handleChangeNickname}>
+          <Text style={styles.linkText}>提交修改</Text>
+        </TouchableOpacity>
+      </Section>
+
+      <Section title="更换头像" isDark={isDark}>
+        <TouchableOpacity style={[styles.secondaryBtn, avatarUploading && { opacity: 0.5 }]} onPress={handleUploadAvatar} disabled={avatarUploading}>
+          <Text style={styles.linkText}>{avatarUploading ? '上传中...' : '从相册选择头像'}</Text>
         </TouchableOpacity>
       </Section>
 

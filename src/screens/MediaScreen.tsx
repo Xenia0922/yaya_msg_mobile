@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   DeviceEventEmitter,
   FlatList,
   Image,
@@ -375,6 +376,18 @@ export default function MediaScreen() {
     setTabBarHidden(!!playing);
     return () => setTabBarHidden(false);
   }, [playing, setTabBarHidden]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!playing) return false;
+      setIsFullscreen(false);
+      setLiveImmersiveMode(false);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      setPlaying(null);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [playing]);
 
   const fetchList = useCallback(async (mode: 'live' | 'vod', cursor = 0, append = false) => {
     if (loadingRef.current) return;

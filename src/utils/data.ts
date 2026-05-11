@@ -64,11 +64,12 @@ export function normalizeUrl(value: any): string {
 }
 
 export function parseMaybeJson(value: any): any {
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  try { return JSON.parse(value); } catch {
+    const fixed = value.replace(/:\s*([0-9]{15,})/g, ':"$1"');
+    try { return JSON.parse(fixed); } catch { return null; }
   }
 }
 
@@ -77,7 +78,9 @@ export function messagePayload(item: any): any {
   const body = parseMaybeJson(raw);
   if (body?.message) return parseMaybeJson(body.message);
   if (body?.msg) return parseMaybeJson(body.msg);
-  return body;
+  if (body) return body;
+  if (typeof raw === 'string') return raw;
+  return null;
 }
 
 export function messageText(item: any): string {
@@ -85,11 +88,15 @@ export function messageText(item: any): string {
   if (typeof body === 'string') return body;
   const type = String(item?.msgType || body?.msgType || body?.messageType || body?.type || '').toUpperCase();
   const giftInfo = body?.giftInfo || body?.giftReplyInfo?.giftInfo || body?.bodys?.giftInfo;
-  if (type.includes('GIFT') || giftInfo) {
-    const source = giftInfo || body;
+  const isGift = type.includes('GIFT') || (giftInfo && !type.includes('LIVE')) || String(item?.msgType) === '7';
+  if (isGift) {
+    const source = giftInfo || body || {};
     const giftName = pickText(source, ['giftName', 'name', 'giftInfo.giftName'], '礼物');
     const giftNum = pickText(source, ['giftNum', 'num', 'count', 'giftInfo.giftNum'], '1');
-    return `送出礼物：${giftName} x${giftNum}`;
+    const gr = body?.giftReplyInfo || {};
+    const replyText = gr.replyName || body?.replyName || body?.text || body?.body || '';
+    const prefix = replyText && typeof replyText === 'string' && replyText.trim() ? `${replyText.trim()} · ` : '';
+    return `${prefix}送出礼物：${giftName} x${giftNum}`;
   }
   const text = pickText(body, [
     'text',
