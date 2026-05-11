@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
   Image,
   Linking,
@@ -37,7 +38,7 @@ function parseExtInfo(item: any) {
   const raw = item?.extInfo || item?.ext || item?.body || item?.bodys || item?.msgContent || '';
   if (!raw) return {};
   if (typeof raw === 'object') return raw;
-  const fixed = String(raw).replace(/:\s*([0-9]{15,})/g, ':"$1"');
+  const fixed = String(raw).replace(/:\s*([0-9]{16,})/g, ':"$1"');
   return parseMaybeJson(fixed) || {};
 }
 
@@ -118,6 +119,9 @@ function scoreStream(url: string) {
 
 function pickPlayableUrl(res: any) {
   const streams = unwrapList(res, ['content.playStreams', 'content.streams', 'data.playStreams', 'playStreams']);
+  const highQuality = streams.find((stream: any) => Number(stream?.streamType) === 2);
+  const highQualityUrl = normalizeUrl(pickText(highQuality, ['streamPath', 'playStreamPath', 'url', 'playUrl']));
+  if (highQualityUrl) return highQualityUrl;
   const urls = [
     ...streams.map((item) => normalizeUrl(pickText(item, ['streamPath', 'playStreamPath', 'url', 'playUrl', 'flv', 'm3u8']))),
     normalizeUrl(pickText(res, [
@@ -164,6 +168,17 @@ export default function OpenLiveScreen() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!playing) return false;
+      setPlaying(null);
+      setIsLandscape(false);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [playing]);
+
   const filtered = useMemo(() => {
     const text = query.trim().toLowerCase();
     if (!text) return items;
@@ -187,7 +202,7 @@ export default function OpenLiveScreen() {
       const nextItems = normalizeOpenLiveList(res);
       const nextCursor = nextTimeFrom(res);
       const merged = append ? mergeOpenLive(items, nextItems) : nextItems;
-      setItems(merged);
+      setItems((prev) => (append ? mergeOpenLive(prev, nextItems) : nextItems));
       setNextTime(nextCursor);
       setHasMore(nextItems.length > 0 && !!nextCursor && nextCursor !== cursor);
       const text = merged.length ? `共 ${merged.length} 场` : '未找到相关记录';

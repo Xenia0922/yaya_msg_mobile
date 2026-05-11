@@ -304,10 +304,10 @@ function getNextTime(res: any, list: any[]): number {
 }
 
 function mergeMessages(prev: RoomMessage[], next: RoomMessage[]) {
-  const seen = new Set(prev.map((item) => messageKey(item)));
+  const seen = new Set(prev.map((item, index) => messageKey(item, index)));
   const merged = [...prev];
-  next.forEach((item) => {
-    const key = messageKey(item);
+  next.forEach((item, index) => {
+    const key = messageKey(item, index);
     if (seen.has(key)) return;
     seen.add(key);
     merged.push(item);
@@ -698,6 +698,16 @@ export default function FollowedRoomsScreen() {
         setTabBarHidden(!!selectedRoom);
         return true;
       }
+      if (selectedRoom) {
+        setRoomPlayer(null);
+        setRoomPlayerFullscreen(false);
+        setPlayingMedia(null);
+        setSelectedRoom(null);
+        setLiveImmersiveMode(false);
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+        setTabBarHidden(false);
+        return true;
+      }
       return false;
     });
     return () => subscription.remove();
@@ -788,15 +798,9 @@ export default function FollowedRoomsScreen() {
       setRoomMessages(sortMessagesNewestFirst(list));
       const nextTime = getNextTime(res, list);
       setRoomNextTime(nextTime);
-      setHasMoreMessages(list.length >= 50 && nextTime > 0);
+      setHasMoreMessages(nextTime > 0 && list.length > 0);
       showToast(list.length ? `已加载 ${list.length} 条消息 · ${includeFans ? '含粉丝发言' : '仅房主发言'}` : '暂无消息');
     } catch (error) {
-      if (nextMode === 'big' && !includeFans && room.yklzId) {
-        showToast(`大房间消息接口失败，尝试打开小房间：${errorMessage(error)}`);
-        setLoading(false);
-        openRoom(room, 'small', includeFans);
-        return;
-      }
       showToast(`加载失败：${errorMessage(error)}`);
       setRoomMessages([]);
     } finally {
@@ -825,7 +829,7 @@ export default function FollowedRoomsScreen() {
         return merged;
       });
       setRoomNextTime(nextTime);
-      setHasMoreMessages(list.length >= 50 && nextTime > 0 && nextTime !== roomNextTime);
+      setHasMoreMessages(nextTime > 0 && list.length > 0);
     } catch (error) {
       showToast(`继续加载失败：${errorMessage(error)}`);
     } finally {

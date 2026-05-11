@@ -124,25 +124,6 @@ function parsePocketJson(text: string): any {
   }
 }
 
-async function rawPostFetch(url: string, data: any, options: { token?: string; modern?: boolean; headers?: HeadersMap; signed?: boolean } = {}) {
-  const token = options.token ?? tokenFromStore();
-  const headers = options.signed === false
-    ? { ...createHeaders(token, null, !!options.modern), ...(options.headers || {}) }
-    : await createSignedHeaders(token, !!options.modern, options.headers || {});
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(data || {}),
-  });
-  const body = parsePocketJson(await res.text());
-  if (res.status >= 200 && res.status < 300) return body;
-  return {
-    ...(body && typeof body === 'object' ? body : {}),
-    status: body?.status ?? res.status,
-    message: responseMessage(body, `HTTP ${res.status}`),
-  };
-}
-
 async function signedHeaders(token?: string, modern = false, patch: HeadersMap = {}) {
   return createSignedHeaders(token ?? tokenFromStore(), modern, patch);
 }
@@ -155,18 +136,6 @@ async function pocketPost(url: string, data: any, options: { tokenRequired?: boo
     headers: options.headers,
     signed: true,
   });
-  return assertPocketOk(res, options.fallback);
-}
-
-async function pocketPostRoomMessage(url: string, data: any, options: { modern?: boolean; fallback?: string } = {}) {
-  const res = await rawPostFetch(url, data, {
-    token: requireToken(),
-    modern: options.modern,
-    signed: true,
-  });
-  if (res && (res.status === 200 || res.code === 0 || res.success === true || res.content !== undefined || res.data !== undefined)) {
-    return res;
-  }
   return assertPocketOk(res, options.fallback);
 }
 
@@ -252,22 +221,17 @@ function rememberServerId(channelId: string, serverId: string) {
 }
 
 async function tryPocketPost(
-  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; roomMessage?: boolean; label: string }>,
+  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; label: string }>,
   fallback: string,
 ) {
   const errors: string[] = [];
   for (const attempt of attempts) {
     try {
-      const res = attempt.roomMessage
-        ? await pocketPostRoomMessage(attempt.url, attempt.payload, {
-          modern: attempt.modern,
-          fallback: `${fallback}: ${attempt.label}`,
-        })
-        : await pocketPost(attempt.url, attempt.payload, {
-          modern: attempt.modern,
-          tokenRequired: attempt.tokenRequired,
-          fallback: `${fallback}: ${attempt.label}`,
-        });
+      const res = await pocketPost(attempt.url, attempt.payload, {
+        modern: attempt.modern,
+        tokenRequired: attempt.tokenRequired,
+        fallback: `${fallback}: ${attempt.label}`,
+      });
       return {
         ...res,
         _request: {
@@ -388,7 +352,7 @@ export const pocketApi = {
     });
     if (responseOk(res)) return res;
     const message = responseMessage(res, '签到失败');
-    if (/已签到|重复签到|已经签到|已领取|明天再来/.test(message)) {
+    if (/\u5df2\u7b7e\u5230|\u91cd\u590d\u7b7e\u5230|\u5df2\u7ecf\u7b7e\u5230|\u5df2\u9886\u53d6|\u660e\u5929\u518d\u6765/.test(message)) {
       return { success: true, status: res?.status ?? res?.code ?? 200, message, content: res?.content || null, alreadyChecked: true };
     }
     throw new Error(res?.status !== undefined || res?.code !== undefined ? `${message} (${res?.status ?? res?.code})` : message);
@@ -496,7 +460,7 @@ export const pocketApi = {
     const originalServerId = String(params.serverId || '');
     if (!channelId) throw new Error('missing channelId');
     const resolvedServerIds = await resolveServerIds(channelId);
-    const serverIds = (params.fetchAll ? [...resolvedServerIds, originalServerId] : [originalServerId, ...resolvedServerIds])
+    const serverIds = [originalServerId, ...resolvedServerIds]
       .map((item) => String(item || ''))
       .filter((item, index, arr) => item && item !== '0' && arr.indexOf(item) === index);
     if (!serverIds.length) throw new Error('missing serverId');
@@ -507,20 +471,12 @@ export const pocketApi = {
       : `${BASE}/im/api/v1/team/message/list/homeowner`;
     const mode = params.fetchAll ? 'all' : 'owner';
     const limit = params.limit || 50;
-    const attempts: Array<{ url: string; payload: any; modern?: boolean; roomMessage?: boolean; label: string }> = [];
+    const attempts: Array<{ url: string; payload: any; modern?: boolean; label: string }> = [];
     for (const serverId of serverIds) {
       attempts.push({
         url,
         payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit },
-        roomMessage: true,
-        label: `${mode} desktop channel=${channelId} server=${serverId}`,
-      });
-      attempts.push({
-        url,
-        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), nextTime: params.nextTime || 0, limit },
-        modern: true,
-        roomMessage: true,
-        label: `${mode} modern channel=${channelId} server=${serverId}`,
+        label: `${mode} channel=${channelId} server=${serverId}`,
       });
     }
     return tryPocketPost(attempts, 'get room messages failed');
