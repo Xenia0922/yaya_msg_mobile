@@ -83,7 +83,9 @@ cd android
 
 ---
 
-> *"把每一次舞台都当作最后一次，把每一条翻牌都当作第一次。"*
+> *"暴雨过后会出现流星！大家好我是 GNZ48 TEAM G 的鲍雨欣！"*
+>
+> [![鲍雨欣](assets/baoyuxin.jpg)](https://github.com/Xenia0922/yaya_msg_mobile)
 >
 > 献给 **GNZ48 鲍雨欣** —— 因为值得，所以坚持。
 
