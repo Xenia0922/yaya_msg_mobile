@@ -79,7 +79,17 @@ cd android
 
 ## 致谢
 
-本项目在开发过程中得到了来自 [OpenAI](https://openai.com) 及 [DeepSeek](https://deepseek.com) 的 AI 技术支持。
+### Desktop
+
+移动端基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发，感谢原作者的开源贡献。
+
+### 灵感来源
+
+[48tools](https://github.com/duan602728596/48tools) · [msg48](https://msg48.org) · [WebPocket48Assistant](https://github.com/Lawaxi/WebPocket48Assistant) · [Partner48](https://github.com/Akimaylilll/Partner48)
+
+### AI
+
+[OpenAI](https://openai.com) · [DeepSeek](https://deepseek.com)
 
 ---
 
