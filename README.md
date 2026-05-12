@@ -8,7 +8,7 @@
 [![React Native](https://img.shields.io/badge/react_native-0.81-61DAFB?logo=react)](https://reactnative.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](/LICENSE)
 
-基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg)（[桌面端](https://github.com/yk1z/yaya_msg) / [网页端](https://gnz.hl)）二次开发的移动端版本，提供与桌面端一致的核心功能体验。
+基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg)（[桌面端](https://github.com/yk1z/yaya_msg) / [网页端](https://gnz.hk)）二次开发的移动端版本，提供与桌面端一致的核心功能体验。
 
 ---
 
@@ -81,7 +81,7 @@ cd android
 
 ### Desktop
 
-移动端基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发，感谢原作者的开源贡献。桌面端 [GitHub](https://github.com/yk1z/yaya_msg) · 网页端 [gnz.hl](https://gnz.hl)
+移动端基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发，感谢原作者的开源贡献。桌面端 [GitHub](https://github.com/yk1z/yaya_msg) · 网页端 [gnz.hk](https://gnz.hk)
 
 ### 灵感来源
 
