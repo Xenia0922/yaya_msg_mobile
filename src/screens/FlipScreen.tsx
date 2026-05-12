@@ -118,16 +118,22 @@ function questionText(item: any): string {
   return pickText(item, ['content', 'questionContent', 'question', 'questionText', 'text'], '');
 }
 
-function parseMedia(raw: string): { text: string; url: string } {
-  if (!raw) return { text: '', url: '' };
-  if (/^https?:\/\//i.test(raw.trim())) return { text: '', url: normalizeUrl(raw) };
+function parseMedia(raw: string): { text: string; url: string; duration: number } {
+  if (!raw) return { text: '', url: '', duration: 0 };
+  if (/^https?:\/\//i.test(raw.trim())) return { text: '', url: normalizeUrl(raw), duration: 0 };
   try {
     const json = JSON.parse(raw);
     const url = normalizeUrl(pickText(json, ['url', 'mediaUrl', 'audioUrl', 'videoUrl']));
-    return { url, text: pickText(json, ['text', 'content'], '') };
+    const dur = Number(json?.duration || json?.time || json?.second || json?.audioTime || json?.length || 0);
+    return { url, text: pickText(json, ['text', 'content'], ''), duration: Number.isFinite(dur) ? Math.round(dur) : 0 };
   } catch {
-    return { text: raw, url: '' };
+    return { text: raw, url: '', duration: 0 };
   }
+}
+
+function answerMediaDuration(item: any): number {
+  const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
+  return parseMedia(raw).duration;
 }
 
 function answerText(item: any): string {
@@ -396,6 +402,7 @@ export default function FlipScreen() {
           const answer = answerText(item);
           const answerUrl = answerMediaUrl(item);
           const flipAnswerType = Number(item.answerType);
+          const ansDur = answerMediaDuration(item);
           return (
             <View style={[styles.card, isDark && styles.cardDark]}>
               <View style={styles.cardTop}>
@@ -416,7 +423,7 @@ export default function FlipScreen() {
                         style={styles.answerMediaBtn}
                         onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
                       >
-                        <Text style={styles.answerMediaBtnText}>{flipAnswerType === 2 ? '播放语音' : '播放视频'}</Text>
+                        <Text style={styles.answerMediaBtnText}>{playingAnswerUrl === answerUrl ? '收起' : `▶ ${ansDur > 0 ? (ansDur < 60 ? `${ansDur}s` : `${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`) : (flipAnswerType === 2 ? '语音' : '视频')}`}</Text>
                       </TouchableOpacity>
                       {playingAnswerUrl === answerUrl ? (
                         <Video

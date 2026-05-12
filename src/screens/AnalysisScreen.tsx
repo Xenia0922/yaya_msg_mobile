@@ -318,10 +318,11 @@ export default function AnalysisScreen() {
             const isImg = isMedia(item, 'image');
             const isAud = isMedia(item, 'audio');
             const isVid = isMedia(item, 'video');
-            const type = isImg ? '🖼' : isAud ? '🎵' : '🎬';
-            const label = isImg ? '图片' : isAud ? '语音' : '视频';
             const payload = messagePayload(item);
             const url = pickText(payload, ['url', 'imageUrl', 'audioUrl', 'videoUrl', 'message.url']);
+            const dur = Number(payload?.duration || payload?.time || payload?.second || payload?.audioTime || payload?.length || 0);
+            const durStr = dur > 0 ? (dur < 60 ? `${Math.round(dur)}s` : `${Math.floor(dur/60)}:${String(Math.round(dur)%60).padStart(2,'0')}`) : '';
+            const label = isImg ? '图片' : isAud ? `语音${durStr ? ` ${durStr}` : ''}` : `视频${durStr ? ` ${durStr}` : ''}`;
             return (
               <TouchableOpacity
                 style={[styles.rowCard, isDark && styles.cardDark]}
@@ -333,7 +334,7 @@ export default function AnalysisScreen() {
                   }
                 }}
               >
-                <Text style={[styles.rowTitle, isDark && styles.textLight]}>{type} {label} · {senderName(item)}</Text>
+                <Text style={[styles.rowTitle, isDark && styles.textLight]}>▶ {label} · {senderName(item)}</Text>
                 <Text style={[styles.rowText, isDark && styles.textSubLight]} numberOfLines={2}>
                   {messageText(item) || '(无文字)'}
                 </Text>
@@ -358,8 +359,9 @@ export default function AnalysisScreen() {
             const answerRaw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent'], '');
             let answerText = '';
             let answerUrl = '';
+            let answerDuration = 0;
             if (answerRaw) {
-              try { const j = JSON.parse(answerRaw); answerText = j?.text || j?.content || ''; answerUrl = (isVoice || isVideo) ? (j?.url || j?.mediaUrl || '') : ''; } catch { answerText = answerRaw; }
+              try { const j = JSON.parse(answerRaw); answerText = j?.text || j?.content || ''; answerUrl = (isVoice || isVideo) ? (j?.url || j?.mediaUrl || '') : ''; answerDuration = Number(j?.duration || j?.time || j?.second || j?.audioTime || j?.length || 0); } catch { answerText = answerRaw; }
             }
             const qTime = Number(item.qtime || item.createTime || 0);
             const aTime = Number(item.answerTime || 0);
@@ -395,7 +397,7 @@ export default function AnalysisScreen() {
                     </Text>
                     {answerUrl ? (
                       <TouchableOpacity style={styles.flipPlayBtn} onPress={() => setFlipPlayUrl((prev) => prev === answerUrl ? '' : answerUrl)}>
-                        <Text style={styles.flipPlayText}>{flipPlayUrl === answerUrl ? '收起' : isVoice ? '播放语音' : '播放视频'}</Text>
+                        <Text style={styles.flipPlayText}>{flipPlayUrl === answerUrl ? '收起' : `▶ ${answerDuration > 0 ? (answerDuration < 60 ? `${answerDuration}s` : `${Math.floor(answerDuration / 60)}:${String(answerDuration % 60).padStart(2, '0')}`) : (isVoice ? '语音' : '视频')}`}</Text>
                       </TouchableOpacity>
                     ) : null}
                     {flipPlayUrl === answerUrl && answerUrl ? (

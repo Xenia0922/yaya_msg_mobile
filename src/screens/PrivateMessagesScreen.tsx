@@ -70,6 +70,15 @@ function privateMessageText(msg: any): string {
         if (q && answerText) return `问：${q}\n答：${answerText}`;
         if (q) return `问：${q}`;
         if (answerText) return `答：${answerText}`;
+        if (a && typeof a === 'object') {
+          const au = pickText(a, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'voiceUrl', 'mp4Url']);
+          if (au) {
+            const at = answerTypeFromContext(msg) || answerTypeFromContext(parsed);
+            if (at === 2 || looksLikeAudioUrl(au)) return q ? `问：${q}\n答：[语音消息]` : '[语音消息]';
+            if (at === 3 || looksLikeVideoUrl(au)) return q ? `问：${q}\n答：[视频消息]` : '[视频消息]';
+            if (looksLikeImageUrl(au)) return q ? `问：${q}\n答：[图片消息]` : '[图片消息]';
+          }
+        }
       }
     }
   }
@@ -90,6 +99,15 @@ function privateMessageText(msg: any): string {
 
   const t = String(text).trim();
   if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
+    const json = parseMaybeJson(t);
+    if (json && typeof json === 'object') {
+      const url = pickText(json, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'voiceUrl', 'mp4Url']);
+      if (url) {
+        if (looksLikeAudioUrl(url) || answerTypeFromContext(msg) === 2) return '[语音消息]';
+        if (looksLikeVideoUrl(url) || answerTypeFromContext(msg) === 3) return '[视频消息]';
+        if (looksLikeImageUrl(url)) return '[图片消息]';
+    }
+  }
     const p = payload && typeof payload === 'object' ? payload : {};
     const url = pickText(p, ['url', 'mediaUrl', 'audioUrl', 'videoUrl']);
     if (url) {
@@ -102,13 +120,26 @@ function privateMessageText(msg: any): string {
   return text || '[空消息]';
 }
 
-type MediaInfo = { url: string; type: 'audio' | 'video' | 'image'; title: string } | null;
+type MediaInfo = { url: string; type: 'audio' | 'video' | 'image'; title: string; duration?: number } | null;
 
 function looksLikeAudioUrl(url: string): boolean { return /\.(mp3|m4a|aac|amr|wav|ogg)(\?|$)/i.test(url.toLowerCase()); }
 function looksLikeVideoUrl(url: string): boolean { return /\.(mp4|mov|m4v|3gp|webm)(\?|$)/i.test(url.toLowerCase()) || url.includes('.m3u8') || url.includes('.flv'); }
 function looksLikeImageUrl(url: string): boolean { return /\.(jpe?g|png|webp|gif|bmp)(\?|$)/i.test(url.toLowerCase()); }
 function answerTypeFromContext(source: any): number {
   return Number(source?.answerType || source?.answerTypeConfig || source?.type || 0);
+}
+
+function extractDuration(source: any): number {
+  const v = Number(source?.duration || source?.time || source?.second || source?.audioTime || source?.length || source?.playTime || source?.videoTime || 0);
+  return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+}
+
+function formatDur(seconds: number): string {
+  if (!seconds || seconds <= 0) return '';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function collectPrivateMessageMediaCandidates(msg: any): any[] {
@@ -118,32 +149,25 @@ function collectPrivateMessageMediaCandidates(msg: any): any[] {
 
   const flipKeys = ['flipCardInfo', 'filpCardInfo', 'flipCardAudioInfo', 'filpCardAudioInfo', 'flipCardVideoInfo', 'filpCardVideoInfo'];
 
-  if (content && typeof content === 'object') {
-    candidates.push(content);
-    for (const key of flipKeys) { if (content[key]) candidates.push(parseMaybeJson(content[key])); }
-    if (Array.isArray(content.bodys)) {
-      for (const b of content.bodys) {
-        const parsed = typeof b === 'string' ? parseMaybeJson(b) : b;
-        if (parsed) { candidates.push(parsed); for (const key of flipKeys) { if (parsed[key]) candidates.push(parseMaybeJson(parsed[key])); } }
-      }
+  function pushBody(source: any) {
+    if (!source || typeof source !== 'object') return;
+    candidates.push(source);
+    for (const key of flipKeys) { if (source[key]) candidates.push(parseMaybeJson(source[key])); }
+    for (const k of ['text', 'messageText', 'body', 'content']) {
+      if (typeof source[k] === 'string') { const p = parseMaybeJson(source[k]); if (p && typeof p === 'object') candidates.push(p); }
     }
+    if (Array.isArray(source.bodys)) {
+      for (const b of source.bodys) { const parsed = typeof b === 'string' ? parseMaybeJson(b) : b; if (parsed) pushBody(parsed); }
+    } else if (source.bodys && typeof source.bodys === 'object') {
+      pushBody(source.bodys);
+    }
+    if (source.body && typeof source.body === 'object') pushBody(source.body);
+    if (source.content && typeof source.content === 'object') pushBody(source.content);
   }
 
-  if (msg && typeof msg === 'object') {
-    candidates.push(msg);
-    for (const key of flipKeys) { if (msg[key]) candidates.push(parseMaybeJson(msg[key])); }
-    if (Array.isArray(msg.bodys)) {
-      for (const b of msg.bodys) {
-        const parsed = typeof b === 'string' ? parseMaybeJson(b) : b;
-        if (parsed) { candidates.push(parsed); for (const key of flipKeys) { if (parsed[key]) candidates.push(parseMaybeJson(parsed[key])); } }
-      }
-    }
-  }
-
-  if (payload && typeof payload === 'object') {
-    candidates.push(payload);
-    for (const key of flipKeys) { if (payload[key]) candidates.push(parseMaybeJson(payload[key])); }
-  }
+  if (content && typeof content === 'object') pushBody(content);
+  if (msg && typeof msg === 'object') pushBody(msg);
+  if (payload && typeof payload === 'object') pushBody(payload);
 
   const bodyRawCandidates = [];
   if (typeof msg?.bodys === 'string') bodyRawCandidates.push(msg.bodys);
@@ -155,13 +179,16 @@ function collectPrivateMessageMediaCandidates(msg: any): any[] {
   if (typeof msg?.message === 'string') bodyRawCandidates.push(msg.message);
   for (const raw of bodyRawCandidates) {
     const parsed = parseMaybeJson(raw);
-    if (parsed) {
-      candidates.push(parsed);
-      for (const key of flipKeys) { if (parsed[key]) candidates.push(parseMaybeJson(parsed[key])); }
-    }
+    if (parsed) pushBody(parsed);
   }
 
   return candidates.filter(Boolean);
+}
+
+function makeMedia(url: string, type: 'audio' | 'video' | 'image', durSources: any[] = []): MediaInfo {
+  const d = durSources.reduce((best, src) => best || extractDuration(src), 0);
+  const titleMap: Record<string, string> = { audio: '语音消息', video: '视频消息', image: '图片消息' };
+  return { url, type, title: titleMap[type] || '媒体消息', ...(d > 0 ? { duration: d } : {}) };
 }
 
 function privateMessageMedia(msg: any): MediaInfo {
@@ -176,14 +203,14 @@ function privateMessageMedia(msg: any): MediaInfo {
       const answerType = answerTypeFromContext(item);
       let url = normalizeUrl(rawUrl);
       if (!/^https?:\/\//i.test(url)) url = `${looksLikeImageUrl(url) ? 'https://source3.48.cn' : 'https://mp4.48.cn'}/${url.replace(/^\//, '')}`;
-      if (looksLikeAudioUrl(url) || (answerType === 2 && !looksLikeVideoUrl(url) && !looksLikeImageUrl(url))) return { url, type: 'audio', title: '语音消息' };
-      if (looksLikeVideoUrl(url) || (answerType === 3 && !looksLikeAudioUrl(url) && !looksLikeImageUrl(url))) return { url, type: 'video', title: '视频消息' };
-      if (looksLikeImageUrl(url)) return { url, type: 'image', title: '图片消息' };
+      if (looksLikeAudioUrl(url) || (answerType === 2 && !looksLikeVideoUrl(url) && !looksLikeImageUrl(url))) return makeMedia(url, 'audio', [item, msg, content]);
+      if (looksLikeVideoUrl(url) || (answerType === 3 && !looksLikeAudioUrl(url) && !looksLikeImageUrl(url))) return makeMedia(url, 'video', [item, msg, content]);
+      if (looksLikeImageUrl(url)) return makeMedia(url, 'image', [item]);
       const type = String(msg.msgType || item?.msgType || item?.type || p?.msgType || p?.type || '').toUpperCase();
-      if (type.includes('AUDIO') || type.includes('VOICE')) return { url, type: 'audio', title: '语音消息' };
-      if (type.includes('VIDEO')) return { url, type: 'video', title: '视频消息' };
-      if (type.includes('IMAGE')) return { url, type: 'image', title: '图片消息' };
-      return { url, type: 'image', title: '媒体消息' };
+      if (type.includes('AUDIO') || type.includes('VOICE')) return makeMedia(url, 'audio', [item, msg]);
+      if (type.includes('VIDEO')) return makeMedia(url, 'video', [item, msg]);
+      if (type.includes('IMAGE')) return makeMedia(url, 'image', [item]);
+      return makeMedia(url, 'image', []);
     }
 
     const answerRaw = item.answer || item.answerContent || '';
@@ -195,10 +222,10 @@ function privateMessageMedia(msg: any): MediaInfo {
           const answerType = answerTypeFromContext(item) || answerTypeFromContext(parsed) || answerTypeFromContext(content) || answerTypeFromContext(msg);
           let url2 = normalizeUrl(rawUrl);
           if (!/^https?:\/\//i.test(url2)) url2 = `${looksLikeImageUrl(url2) ? 'https://source3.48.cn' : 'https://mp4.48.cn'}/${url2.replace(/^\//, '')}`;
-          if (answerType === 2 || looksLikeAudioUrl(url2)) return { url: url2, type: 'audio', title: '语音消息' };
-          if (answerType === 3 || looksLikeVideoUrl(url2)) return { url: url2, type: 'video', title: '视频消息' };
-          if (looksLikeImageUrl(url2)) return { url: url2, type: 'image', title: '图片消息' };
-          return { url: url2, type: 'image', title: '媒体消息' };
+          if (answerType === 2 || looksLikeAudioUrl(url2)) return makeMedia(url2, 'audio', [parsed, item, msg]);
+          if (answerType === 3 || looksLikeVideoUrl(url2)) return makeMedia(url2, 'video', [parsed, item, msg]);
+          if (looksLikeImageUrl(url2)) return makeMedia(url2, 'image', [parsed]);
+          return makeMedia(url2, 'image', [parsed]);
         }
       }
     }
@@ -208,9 +235,30 @@ function privateMessageMedia(msg: any): MediaInfo {
   const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
   if (urlMatch) {
     const url3 = urlMatch[0];
-    if (looksLikeAudioUrl(url3)) return { url: url3, type: 'audio', title: '语音消息' };
-    if (looksLikeVideoUrl(url3)) return { url: url3, type: 'video', title: '视频消息' };
-    if (looksLikeImageUrl(url3)) return { url: url3, type: 'image', title: '图片消息' };
+    if (looksLikeAudioUrl(url3)) return makeMedia(url3, 'audio', [msg]);
+    if (looksLikeVideoUrl(url3)) return makeMedia(url3, 'video', [msg]);
+    if (looksLikeImageUrl(url3)) return makeMedia(url3, 'image', []);
+  }
+
+  const directAnswers = [
+    payload?.answer, payload?.answerContent,
+    content?.answer, content?.answerContent,
+    msg?.answer, msg?.answerContent,
+  ];
+  for (const ans of directAnswers) {
+    const pda = typeof ans === 'string' ? parseMaybeJson(ans) : ans;
+    if (pda && typeof pda === 'object') {
+      const daUrl = pickText(pda, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'voiceUrl', 'mp4Url']);
+      if (daUrl) {
+        const daAt = answerTypeFromContext(pda) || answerTypeFromContext(msg) || answerTypeFromContext(content);
+        let daNorm = normalizeUrl(daUrl);
+        if (!/^https?:\/\//i.test(daNorm)) daNorm = `${looksLikeImageUrl(daNorm) ? 'https://source3.48.cn' : 'https://mp4.48.cn'}/${daNorm.replace(/^\//, '')}`;
+        if (daAt === 2 || looksLikeAudioUrl(daNorm)) return makeMedia(daNorm, 'audio', [pda, msg]);
+        if (daAt === 3 || looksLikeVideoUrl(daNorm)) return makeMedia(daNorm, 'video', [pda, msg]);
+        if (looksLikeImageUrl(daNorm)) return makeMedia(daNorm, 'image', [pda]);
+        return makeMedia(daNorm, 'image', [pda]);
+      }
+    }
   }
 
   return null;
@@ -377,7 +425,7 @@ export default function PrivateMessagesScreen() {
                       <Image source={{ uri: media.url }} style={styles.inlineImg} resizeMode="cover" />
                     ) : (
                       <TouchableOpacity style={styles.mediaBtn} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
-                        <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? '收起' : media.type === 'audio' ? '▶ 播放语音' : '▶ 播放视频'}</Text>
+                        <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? '收起' : `▶ ${formatDur(media.duration || 0) || media.type === 'audio' ? '语音' : '视频'}`}</Text>
                       </TouchableOpacity>
                     )
                   ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>[空消息]</Text> : null}
