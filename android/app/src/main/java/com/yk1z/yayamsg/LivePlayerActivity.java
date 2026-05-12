@@ -46,12 +46,13 @@ public class LivePlayerActivity extends Activity {
   public static final String EXTRA_LIVE_ID = "liveId";
   public static final String EXTRA_ACCEPT_USER_ID = "acceptUserId";
 
-  private static final int MIN_BUFFER_MS = 500;
-  private static final int MAX_BUFFER_MS = 1000;
-  private static final int PLAYBACK_BUFFER_MS = 250;
-  private static final int REBUFFER_MS = 500;
+  private static final int MIN_BUFFER_MS = 6000;
+  private static final int MAX_BUFFER_MS = 20000;
+  private static final int PLAYBACK_BUFFER_MS = 1500;
+  private static final int REBUFFER_MS = 3000;
   private static final int MAX_RETRY = 5;
   private static final long RETRY_DELAY_MS = 2000L;
+  private static final long STALL_TIMEOUT_MS = 8000L;
   private static final String TAG = "LivePlayerActivity";
   private static final AtomicBoolean IJK_READY = new AtomicBoolean(false);
 
@@ -136,9 +137,10 @@ public class LivePlayerActivity extends Activity {
     rotate.setOnClickListener(v -> toggleOrientation());
     top.addView(rotate, new LinearLayout.LayoutParams(dp(64), dp(40)));
 
-    TextView retry = actionButton("重连");
+    TextView retry = actionButton("刷 新");
     retry.setOnClickListener(v -> manualRetry());
-    LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(dp(64), dp(40));
+    retry.setBackground(glassBackground(0xccff6f91, dp(20)));
+    LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(dp(72), dp(40));
     retryParams.leftMargin = dp(8);
     top.addView(retry, retryParams);
 
@@ -205,16 +207,34 @@ public class LivePlayerActivity extends Activity {
           .createMediaSource(MediaItem.fromUri(Uri.parse(url))));
       exoPlayer.setPlayWhenReady(true);
       exoPlayer.addListener(new Player.Listener() {
+        private final Runnable stallCheck = new Runnable() {
+          @Override public void run() {
+            if (released || releasing) return;
+            if (exoPlayer == null) return;
+            int state = exoPlayer.getPlaybackState();
+            if (state == Player.STATE_BUFFERING) {
+              Log.w(TAG, "Stall timeout — player stuck buffering for " + safeUrl(url));
+              scheduleRetry("Stream stalled");
+            } else if (state == Player.STATE_IDLE) {
+              scheduleRetry("Player idle");
+            }
+          }
+        };
+
         @Override
         public void onPlaybackStateChanged(int state) {
+          handler.removeCallbacks(stallCheck);
           if (state == Player.STATE_READY) {
             retryCount = 0;
             Log.i(TAG, "ExoPlayer ready for " + safeUrl(url));
             setStatus("Playing");
           } else if (state == Player.STATE_BUFFERING) {
-            setStatus("Buffering with ExoPlayer...");
+            setStatus("Buffering...");
+            handler.postDelayed(stallCheck, STALL_TIMEOUT_MS);
           } else if (state == Player.STATE_ENDED) {
             scheduleRetry("Stream ended");
+          } else if (state == Player.STATE_IDLE) {
+            handler.postDelayed(stallCheck, STALL_TIMEOUT_MS);
           }
         }
 

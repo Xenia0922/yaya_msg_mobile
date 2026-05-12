@@ -490,6 +490,12 @@ function roomMedia(item: any): RoomMedia | null {
   const text = messageText(item);
   const msgType = String(item.msgType || item.extMsgType || body.msgType || body.extMsgType || '').toUpperCase();
   if (msgType.includes('GIFT') || String(item.msgType) === '7') return null;
+
+  if (msgType === 'EXPRESSIMAGE' || msgType === 'EXPRESS') {
+    const exprUrl = normalizeUrl(body?.expressImgInfo?.emotionRemote || body?.url || '');
+    if (exprUrl) return { type: 'image' as const, url: exprUrl, title: '表情' };
+  }
+
   const liveId = firstTextFrom([item, ext, body], [
     'liveId',
     'liveid',
@@ -738,39 +744,32 @@ export default function FollowedRoomsScreen() {
     await AsyncStorage.setItem('yaya_pinned_rooms', JSON.stringify(next));
   };
 
+  useEffect(() => {
+    AsyncStorage.getItem('yaya_pinned_rooms').then((v) => {
+      if (v) { try { setPinned(JSON.parse(v)); } catch { setPinned([]); } }
+    });
+  }, []);
+
   const loadFollowed = useCallback(async (silent = false) => {
-    if (!token) {
-      if (!silent) showToast('请先在设置里登录口袋48，关注房间需要账号 Token。');
-      return;
-    }
+    if (!token) { if (!silent) showToast('需登录后刷新'); return; }
     setLoading(true);
-    if (!silent) showToast('正在加载关注房间...');
     try {
       const idsRes = await pocketApi.getFollowedIds();
-      const idsArr = unwrapList(idsRes, ['content.data', 'content', 'content.list', 'data', 'list']).map(String);
-      const followedMembers = idsArr
-        .map((id: string) => {
-          const member = members.find((item: any) => String(item.id || item.userId) === id);
-          return { memberId: id, member };
-        })
-        .filter((item) => item.member?.channelId);
-
-      const serverIds = followedMembers
-        .map((item) => Number(item.member?.serverId || 0))
-        .filter((id) => Number.isFinite(id) && id > 0);
+      const idsArr = unwrapList(idsRes, ['content.data', 'content', 'data', 'list']).map(String);
+      const followedMembers = idsArr.map((id: string) => {
+        const member = members.find((item: any) => String(item.id || item.userId) === id);
+        return { memberId: id, member };
+      }).filter((item: any) => item.member?.channelId);
+      const serverIds = followedMembers.map((item: any) => Number(item.member?.serverId || 0)).filter((id: number) => id > 0);
       const lastMsgsRes = serverIds.length ? await pocketApi.getLastMessages(serverIds) : null;
-      const lastMsgs = unwrapList(lastMsgsRes, ['content.lastMsgList', 'content.data', 'content', 'data', 'lastMsgList']);
-
-      setFollowed(followedMembers.map((item) => ({
+      const lastMsgs = unwrapList(lastMsgsRes, ['content.lastMsgList', 'content.data', 'data', 'lastMsgList']);
+      setFollowed(followedMembers.map((item: any) => ({
         ...item,
         lastMessage: findLastMessage(lastMsgs, item.member),
       })));
-      if (!silent) showToast(followedMembers.length ? `已加载 ${followedMembers.length} 个关注房间` : '没有匹配到关注房间，也可以搜索成员直接打开房间。');
-    } catch (error) {
-      if (!silent) showToast(`加载失败：${errorMessage(error)}`);
-    } finally {
-      setLoading(false);
-    }
+      if (!silent) showToast(`已加载 ${followedMembers.length} 个房间`);
+    } catch (e) { if (!silent) showToast(`加载失败：${errorMessage(e)}`); }
+    finally { setLoading(false); }
   }, [members, showToast, token]);
 
   useEffect(() => { loadFollowed(true); }, [loadFollowed]);
@@ -1088,24 +1087,17 @@ export default function FollowedRoomsScreen() {
               : senderProfile(item, selectedRoom);
             const media = roomMedia(item);
             const gift = roomGiftInfo(item);
+            const payload = messagePayload(item) as any;
+            const replyInfo = payload?.replyInfo || payload?.giftReplyInfo;
+            const replyName = replyInfo?.replyName || '';
+            const replyQuoted = replyInfo?.replyText || '';
             const body = messageText(item);
             let giftReplyText = '';
             if (gift) {
-              const payload = messagePayload(item);
-              const ext = extraInfo(item);
-              const gr = payload?.giftReplyInfo || ext?.giftReplyInfo || {};
-              const rawBodys = (item as any)?.bodys || (item as any)?.body || '';
-              if (payload && typeof payload === 'object') {
-                giftReplyText = payload.text || payload.body || gr.replyName || payload.replyName || payload.content || ext.replyName || gr.text || '';
-                if (typeof giftReplyText === 'string') giftReplyText = giftReplyText.trim();
-                else giftReplyText = '';
-              }
-              if (!giftReplyText && typeof rawBodys === 'string') {
-                try { const parsed = JSON.parse(rawBodys); giftReplyText = parsed?.text || parsed?.body || parsed?.replyName || ''; } catch {}
-              }
-              if (!giftReplyText) {
-                giftReplyText = String((item as any)?.msgContent || (item as any)?.text || (item as any)?.message || '').trim();
-              }
+              const gr = payload?.giftReplyInfo || {};
+              giftReplyText = gr.text || payload.text || payload.body || gr.replyName || gr.replyText || '';
+              if (typeof giftReplyText === 'string') giftReplyText = giftReplyText.trim();
+              else giftReplyText = '';
             }
             const isMediaLabel = /^\[(语音|图片|视频|链接)消息\]$/.test(body);
             const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? body : '') : body);
@@ -1121,8 +1113,14 @@ export default function FollowedRoomsScreen() {
                     <View style={styles.avatarFallback}><Text style={styles.avatarText}>{avatarInitial(profile.name)}</Text></View>
                   )
                 ) : null}
-                <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
-                  <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
+                 <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
+                  {replyName || replyQuoted ? (
+                    <View style={[styles.replyCard, isDark && styles.replyCardDark]}>
+                      {replyName ? <Text style={styles.replyName} numberOfLines={1}>{replyName}</Text> : null}
+                      {replyQuoted ? <Text style={[styles.replyText, isDark && styles.replyTextDark]} numberOfLines={3}>{replyQuoted}</Text> : null}
+                    </View>
+                  ) : null}
+                   <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
                     <Text style={[styles.msgSender, idol && styles.msgSenderIdol, mine && styles.msgSenderMine, isDark && !mine && styles.textDark]} numberOfLines={1}>
                       {profile.name}
                     </Text>
@@ -1134,9 +1132,9 @@ export default function FollowedRoomsScreen() {
                         {bubbleText}
                       </Text>
                     ) : null}
-                    {gift ? (
-                      <View style={styles.giftCard}>
-                        {gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><Text style={styles.giftEmoji}>礼</Text></View>}
+                    {gift && !giftReplyText ? (
+                      <View style={[styles.giftCard, giftReplyText ? styles.giftCardCompact : null]}>
+                        {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><Text style={styles.giftEmoji}>礼</Text></View>) : null}
                         <View style={styles.giftTextWrap}>
                           <Text style={styles.giftName} numberOfLines={1}>{idol ? '感谢礼物' : '送出礼物'}：{gift.name}</Text>
                           <Text style={[styles.giftMeta, isDark && styles.giftMetaDark]}>数量 x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
@@ -1147,7 +1145,7 @@ export default function FollowedRoomsScreen() {
                       media.type === 'image' && media.url ? (
                       <>
                         <TouchableOpacity onPress={() => setFullImageUrl(media.url)} onLongPress={() => downloadMedia(media)} activeOpacity={0.9}>
-                          <Image source={{ uri: media.url }} style={styles.inlineImage} resizeMode="cover" />
+                          <Image source={{ uri: media.url }} style={media.title === '表情' ? styles.inlineSticker : styles.inlineImage} resizeMode="cover" />
                         </TouchableOpacity>
                       </>
                     ) : (
@@ -1304,6 +1302,11 @@ const styles = StyleSheet.create({
   avatarText: { color: '#ff6f91', fontWeight: '900', fontSize: 15 },
   msgBlock: { maxWidth: '78%', minWidth: 120 },
   msgBlockMine: { alignItems: 'flex-end' },
+  replyCard: { marginBottom: 6, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
+  replyCardDark: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  replyName: { fontSize: 11, color: '#ff6f91', fontWeight: '800', marginBottom: 2 },
+  replyText: { fontSize: 12, color: '#555', lineHeight: 17 },
+  replyTextDark: { color: '#aaa' },
   msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, paddingHorizontal: 4 },
   msgMetaLineMine: { justifyContent: 'flex-end' },
   msgSender: { fontSize: 12, fontWeight: '800', color: '#333', maxWidth: 150 },
@@ -1319,6 +1322,7 @@ const styles = StyleSheet.create({
   msgBody: { fontSize: 14, color: '#444', lineHeight: 21 },
   msgBodyHighlight: { color: '#fff' },
   giftCard: { marginTop: 8, minWidth: 210, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,240,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,111,145,0.24)', flexDirection: 'row', alignItems: 'center', gap: 10 },
+  giftCardCompact: { minWidth: 0, padding: 8, gap: 0 } as any,
   giftImage: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#fff' },
   giftImageFallback: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   giftEmoji: { color: '#fff', fontSize: 13, fontWeight: '800' },
@@ -1342,6 +1346,7 @@ const styles = StyleSheet.create({
   inlineAudio: { height: 52, minWidth: 224, marginTop: 8 },
   inlineVideo: { height: 190, minWidth: 246, marginTop: 8, backgroundColor: '#000', borderRadius: 12 },
   inlineImage: { width: 228, height: 228, marginTop: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
+  inlineSticker: { width: 120, height: 120, marginTop: 6, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
   openLinkBtn: { marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.10)' },
   openLinkText: { color: '#ff6f91', fontSize: 11, fontWeight: '800' },
   roomPlayerPage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 1000, elevation: 1000, backgroundColor: '#000' },

@@ -441,6 +441,14 @@ export const pocketApi = {
     return pocketPost(`${BASE}/user/api/v1/user/money`, {}, { fallback: '获取余额失败' });
   },
 
+  async getGroupTeamStar() {
+    return pocketPost(`${BASE}/user/api/v1/client/update/group_team_star`, {}, {
+      modern: true,
+      tokenRequired: false,
+      fallback: '获取官方成员列表失败',
+    });
+  },
+
   async getFollowedIds() {
     return pocketPost(`${BASE}/user/api/v1/friendships/friends/id`, {}, { fallback: '获取关注房间失败' });
   },

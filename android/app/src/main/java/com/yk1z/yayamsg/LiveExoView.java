@@ -27,10 +27,10 @@ import com.google.android.exoplayer2.upstream.DefaultDataSource;
 import com.google.android.exoplayer2.video.VideoSize;
 
 public class LiveExoView extends FrameLayout {
-  private static final int MIN_BUFFER_MS = 500;
-  private static final int MAX_BUFFER_MS = 1000;
-  private static final int PLAYBACK_BUFFER_MS = 250;
-  private static final int REBUFFER_MS = 500;
+  private static final int MIN_BUFFER_MS = 6000;
+  private static final int MAX_BUFFER_MS = 20000;
+  private static final int PLAYBACK_BUFFER_MS = 1500;
+  private static final int REBUFFER_MS = 3000;
   private static final int MAX_RETRY = 5;
   private static final long RETRY_DELAY_MS = 1600L;
 

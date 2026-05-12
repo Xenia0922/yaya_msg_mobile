@@ -618,6 +618,9 @@ export default function MediaScreen() {
               <Text style={styles.giftBtnText}>礼物</Text>
             </TouchableOpacity>
           ) : null}
+          <TouchableOpacity onPress={() => startPlay(playing.item)} style={[styles.switchPlayerBtn, styles.retryPlayerBtn]}>
+            <Text style={[styles.switchPlayerText, styles.retryPlayerText]}>刷新</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => openRankPanel()} style={styles.switchPlayerBtn}>
             <Text style={styles.switchPlayerText}>贡献榜</Text>
           </TouchableOpacity>
@@ -867,6 +870,8 @@ const styles = StyleSheet.create({
   giftBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   switchPlayerBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18, backgroundColor: '#222' },
   switchPlayerText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
+  retryPlayerBtn: { backgroundColor: '#ff6f91', marginLeft: 6 },
+  retryPlayerText: { color: '#fff' },
   exitFullscreenBtn: { position: 'absolute', top: 28, right: 16, zIndex: 1001, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.62)' },
   exitFullscreenText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   player: { flex: 1, backgroundColor: '#000' },

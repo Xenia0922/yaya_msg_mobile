@@ -73,6 +73,24 @@ export function parseMaybeJson(value: any): any {
   }
 }
 
+const EMOJI_MAP: Record<string, string> = {
+  '[色]': '😍', '[爱心]': '❤️', '[亲亲]': '😚', '[生病]': '😷', '[大哭]': '😭', '[微笑]': '🙂', '[酷]': '😎', '[坏笑]': '😏',
+  '[惊恐]': '😱', '[愉快]': '😊', '[憨笑]': '😄', '[悠闲]': '😌', '[奋斗]': '💪', '[大笑]': '😆', '[疑问]': '❓', '[嘘]': '🤫',
+  '[晕]': '😵', '[衰]': '😞', '[骷髅]': '💀', '[敲打]': '🔨', '[再见]': '👋', '[擦汗]': '😓', '[抠鼻]': '👃', '[鼓掌]': '👏',
+  '[糗大了]': '😳', '[左哼哼]': '😤', '[右哼哼]': '😤', '[哈欠]': '🥱', '[鄙视]': '👎', '[委屈]': '🥺', '[快哭了]': '😿', '[阴险]': '😈',
+  '[吓]': '😨', '[可怜]': '🥺', '[菜刀]': '🔪', '[西瓜]': '🍉', '[啤酒]': '🍺', '[篮球]': '🏀', '[乒乓]': '🏓', '[咖啡]': '☕',
+  '[饭]': '🍚', '[猪头]': '🐷', '[玫瑰]': '🌹', '[凋谢]': '🥀', '[嘴唇]': '💋', '[心碎]': '💔', '[蛋糕]': '🎂', '[闪电]': '⚡',
+  '[炸弹]': '💣', '[刀]': '🔪', '[足球]': '⚽', '[瓢虫]': '🐞', '[便便]': '💩', '[月亮]': '🌙', '[太阳]': '☀️', '[礼物]': '🎁',
+  '[拥抱]': '🤗', '[强]': '👍', '[弱]': '👎', '[握手]': '🤝', '[胜利]': '✌️', '[抱拳]': '🙏', '[勾引]': '☝️', '[拳头]': '✊',
+  '[差劲]': '👎', '[爱你]': '🤟', '[NO]': '🙅', '[OK]': '👌', '[跳跳]': '💃', '[发抖]': '🥶', '[怄火]': '😡', '[转圈]': '💫',
+  '[磕头]': '🙇', '[回头]': '🔙', '[跳绳]': '🏃', '[挥手]': '🙋', '[激动]': '🤩', '[街舞]': '🕺', '[献吻]': '😽', '[左太极]': '☯️', '[右太极]': '☯️',
+};
+
+export function replaceEmojiText(text: string): string {
+  if (!text) return text;
+  return text.replace(/\[([^\]]+)\]/g, (match: string) => EMOJI_MAP[match] || match);
+}
+
 export function messagePayload(item: any): any {
   const raw = item?.bodys ?? item?.body ?? item?.msgContent ?? item?.content ?? item?.message;
   const body = parseMaybeJson(raw);
@@ -85,10 +103,26 @@ export function messagePayload(item: any): any {
 
 export function messageText(item: any): string {
   const body = messagePayload(item);
-  if (typeof body === 'string') return body;
+  if (typeof body === 'string') return replaceEmojiText(body);
   const type = String(item?.msgType || body?.msgType || body?.messageType || body?.type || '').toUpperCase();
+
+  if (type === 'EXPRESSIMAGE' || type === 'EXPRESS') {
+    return '';
+  }
+
   const giftInfo = body?.giftInfo || body?.giftReplyInfo?.giftInfo || body?.bodys?.giftInfo;
   const isGift = type.includes('GIFT') || (giftInfo && !type.includes('LIVE')) || String(item?.msgType) === '7';
+
+  const replyInfo = body?.replyInfo || body?.giftReplyInfo || (body?.bodys as any)?.replyInfo || (body?.bodys as any)?.giftReplyInfo;
+  const isReply = type.includes('REPLY') || !!replyInfo;
+  if (isReply) {
+    const rName = replyInfo?.replyName || '';
+    const replyText = replyInfo?.text || pickText(body, ['text', 'body.text', 'content', 'replyContent']);
+    if (rName && replyText) return `回复 ${rName}：${replyText}`;
+    if (replyText) return replyText;
+    if (rName) return `回复 ${rName}`;
+  }
+
   if (isGift) {
     const source = giftInfo || body || {};
     const giftName = pickText(source, ['giftName', 'name', 'giftInfo.giftName'], '礼物');
@@ -106,7 +140,7 @@ export function messageText(item: any): string {
     'body.text',
     'title',
   ]);
-  if (text) return text;
+  if (text) return replaceEmojiText(text);
   const url = pickText(body, ['url', 'message.url', 'msg.url', 'audioUrl', 'videoUrl', 'imageUrl']);
   if (url) {
     if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return '[语音消息]';

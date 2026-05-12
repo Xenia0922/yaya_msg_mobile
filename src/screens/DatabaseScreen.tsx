@@ -9,6 +9,8 @@ import { useSettingsStore, useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { externalApi } from '../api/external';
+import pocketApi from '../api/pocket48';
+import { unwrapList } from '../utils/data';
 import { loadMembers, pinyinInitials } from '../utils/members';
 
 type Nav = StackNavigationProp<RootStackParamList, 'DatabaseScreen'>;
@@ -71,15 +73,22 @@ export default function DatabaseScreen() {
         setStoreMembers(localMembers);
         setStatus(`已加载随包成员库：${localMembers.length} 位`);
 
-        const raw = await externalApi.fetchMembers();
-        const normalized = await loadMembers(raw);
+        const res = await pocketApi.getGroupTeamStar();
         if (!alive) return;
-        if (normalized.length >= localMembers.length) {
-          setMembers(normalized);
-          setStoreMembers(normalized);
-          setStatus(`已同步线上成员库：${normalized.length} 位`);
-        } else {
-          setStatus(`线上成员库较旧（${normalized.length} 位），继续使用随包 ${localMembers.length} 位`);
+        if (res) {
+          const list = unwrapList(res, ['content.groupData', 'content.data', 'content.list', 'data', 'groupData', 'list']);
+          if (list.length > 0) {
+            const normalized = await loadMembers(list);
+            if (normalized.length >= localMembers.length) {
+              setMembers(normalized);
+              setStoreMembers(normalized);
+              setStatus(`已同步官方成员库：${normalized.length} 位`);
+            } else {
+              setStatus(`官方成员库较新加载不足，继续使用随包 ${localMembers.length} 位`);
+            }
+          } else {
+            setStatus(`官方接口返回空数据，继续使用随包 ${localMembers.length} 位`);
+          }
         }
       } catch (error: any) {
         if (!alive) return;
