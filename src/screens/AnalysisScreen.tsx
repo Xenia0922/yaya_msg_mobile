@@ -117,6 +117,16 @@ export default function AnalysisScreen() {
   const [mediaFullUrl, setMediaFullUrl] = useState('');
   const [playMedia, setPlayMedia] = useState<{ url: string; type: string } | null>(null);
   const [flipPlayUrl, setFlipPlayUrl] = useState('');
+  const [flipMemberFilter, setFlipMemberFilter] = useState('');
+
+  const flipMemberNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of flips) {
+      const rec = item as Record<string, any>;
+      set.add(pickText(rec, ['memberName', 'starName', 'baseUserInfo.nickname'], '成员'));
+    }
+    return ['全部成员', ...Array.from(set).sort()];
+  }, [flips]);
 
   const summary = useMemo(() => {
     const total = messages.length;
@@ -147,6 +157,14 @@ export default function AnalysisScreen() {
   const senders = useMemo(() => countBy(messages, senderName).slice(0, 30), [messages]);
   const recent = useMemo(() => messages.slice().sort((a, b) => msgTime(b) - msgTime(a)).slice(0, 20), [messages]);
 
+  const filteredFlips = useMemo(() => {
+    if (!flipMemberFilter || flipMemberFilter === '全部成员') return flips;
+    return flips.filter((item: any) => {
+      const mn = pickText(item, ['memberName', 'starName', 'baseUserInfo.nickname'], '成员');
+      return mn === flipMemberFilter;
+    });
+  }, [flips, flipMemberFilter]);
+
   const flipStats = useMemo(() => {
     let totalCost = 0;
     let durSum = 0;
@@ -154,8 +172,8 @@ export default function AnalysisScreen() {
     let minDur = Infinity;
     let maxDur = 0;
     let typeStats = { text: 0, audio: 0, video: 0 };
-    const memberMap = new Map<string, { name: string; count: number; cost: number; durSum: number; answeredCount: number; minDur: number; maxDur: number; minCost: number; maxCost: number; typeCounts: { text: number; audio: number; video: number } }>();
-    for (const item of flips) {
+    const memberMap = new Map<string, any>();
+    for (const item of filteredFlips) {
       const rec = item as Record<string, any>;
       const cost = Number(rec['cost']) || 0;
       totalCost += cost;
@@ -190,8 +208,8 @@ export default function AnalysisScreen() {
     const avgDur = answeredCount > 0 ? durSum / answeredCount : 0;
     const memberRank = [...memberMap.values()].sort((a, b) => b.cost - a.cost);
     const topCost = memberRank[0]?.cost || 1;
-    return { totalCount: flips.length, totalCost, typeStats, avgDur, minDur: minDur === Infinity ? 0 : minDur, maxDur, answeredCount, memberRank, topCost };
-  }, [flips]);
+    return { totalCount: filteredFlips.length, totalCost, typeStats, avgDur, minDur: minDur === Infinity ? 0 : minDur, maxDur, answeredCount, memberRank, topCost };
+  }, [filteredFlips]);
 
   function formatDurationMs(ms: number): string {
     if (ms <= 0) return '-';
@@ -418,13 +436,25 @@ export default function AnalysisScreen() {
       ) : null}
 
       {tab === 'flip' ? (
-        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <FlatList
-            data={flips}
-            keyExtractor={(item, index) => String(item.questionId || item.id || item.answerId || index)}
-            contentContainerStyle={styles.content}
-            ListHeaderComponent={
+        <FlatList
+          data={filteredFlips}
+          keyExtractor={(item, index) => String(item.questionId || item.id || item.answerId || index)}
+          contentContainerStyle={styles.content}
+          ListHeaderComponent={
             <View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10, marginTop: 4 }}>
+                <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 14 }}>
+                  {flipMemberNames.map((name: string) => (
+                    <TouchableOpacity
+                      key={name}
+                      style={[styles.flipChip, flipMemberFilter === name && styles.flipChipActive, isDark && styles.flipChipDark]}
+                      onPress={() => setFlipMemberFilter(name === '全部成员' ? '' : name)}
+                    >
+                      <Text style={[styles.flipChipText, flipMemberFilter === name && styles.flipChipTextActive]}>{name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
               <View style={[styles.flipCardsRow, isDark && styles.cardDark]}>
                 <View style={styles.flipCard}>
                   <Text style={styles.flipCardValue}>{flipStats.totalCount}</Text>
@@ -471,7 +501,7 @@ export default function AnalysisScreen() {
                   </View>
                 );
               })}
-              <Text style={[styles.statusText, isDark && styles.textSubLight, { marginBottom: 8, marginTop: 6 }]}>翻牌明细 · 共 {flips.length} 条</Text>
+              <Text style={[styles.statusText, isDark && styles.textSubLight, { marginBottom: 8, marginTop: 6 }]}>翻牌明细 · 共 {filteredFlips.length} 条</Text>
             </View>
           }
           renderItem={({ item, index }) => {
@@ -543,7 +573,6 @@ export default function AnalysisScreen() {
             );
           }}
         />
-        </FadeInView>
       ) : null}
       {mediaFullUrl ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setMediaFullUrl('')}>
@@ -654,4 +683,9 @@ const styles = StyleSheet.create({
   flipBarBg: { height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)', marginBottom: 4 },
   flipBarFg: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
   flipMemberMeta: { fontSize: 10, color: '#777', lineHeight: 16 },
+  flipChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
+  flipChipActive: { backgroundColor: '#ff6f91' },
+  flipChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
+  flipChipText: { fontSize: 11, color: '#555', fontWeight: '600' },
+  flipChipTextActive: { color: '#fff' },
 });
