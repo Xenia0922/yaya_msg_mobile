@@ -203,7 +203,7 @@ export default function SettingsScreen() {
         </Text>
       </Section>
 
-      <Text style={[styles.footer, isDark && styles.textSubLight]}>Yaya Message v2.2.8</Text>
+      <Text style={[styles.footer, isDark && styles.textSubLight]}>Yaya Message v2.3</Text>
     </ScrollView>
   );
 }
