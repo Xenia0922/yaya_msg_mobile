@@ -407,6 +407,19 @@ export default function FlipScreen() {
             const answerUrl = answerMediaUrl(item);
             const flipAnswerType = Number(item.answerType);
             const ansDur = answerMediaDuration(item);
+            const qTime = Number(item.qtime || item.createTime || 0);
+            const aTime = Number(item.answerTime || 0);
+            const deadline = qTime ? qTime + 7 * 86400000 : 0;
+            const remaining = deadline - Date.now();
+            const remainingDays = Math.max(0, Math.floor(remaining / 86400000));
+            const remainingHours = Math.max(0, Math.floor((remaining % 86400000) / 3600000));
+            const remainingMinutes = Math.max(0, Math.floor((remaining % 3600000) / 60000));
+            const remainingStr = aTime ? '' : (remaining > 0 ? `剩${remainingDays > 0 ? `${remainingDays}天` : ''}${remainingHours > 0 ? `${remainingHours}小时` : ''}${remainingMinutes}分` : '已过期');
+            const elapsed = aTime && qTime ? aTime - qTime : 0;
+            const elapsedDays = Math.floor(elapsed / 86400000);
+            const elapsedHours = Math.floor((elapsed % 86400000) / 3600000);
+            const elapsedMinutes = Math.floor((elapsed % 3600000) / 60000);
+            const elapsedStr = elapsed > 0 ? `耗时${elapsedDays > 0 ? `${elapsedDays}天` : ''}${elapsedHours > 0 ? `${elapsedHours}小时` : ''}${elapsedMinutes}分` : '';
             return (
               <FadeInView delay={80 + index * 30} duration={300}>
                 <View style={[styles.card, isDark && styles.cardDark]}>
@@ -448,7 +461,9 @@ export default function FlipScreen() {
                   )}
                   <Text style={styles.cardMeta}>
                     {item.cost || 0} 口袋币
-                    {item.answerTime ? ` · 回复时间 ${formatTimestamp(item.answerTime)}` : ''}
+                    {remainingStr ? ` · ${remainingStr}` : ''}
+                    {elapsedStr ? ` · ${elapsedStr}` : ''}
+                    {item.answerTime ? ` · 回复于 ${formatTimestamp(item.answerTime)}` : ''}
                   </Text>
                 </View>
               </FadeInView>
