@@ -1,6 +1,12 @@
 # Yaya Message Mobile
 
-> 口袋48 第三方移动客户端，React Native 跨平台实现。
+> 口袋48 第三方移动客户端 · React Native 跨平台实现
+
+[![Version](https://img.shields.io/badge/version-2.3-ff6f91)](https://github.com/Xenia0922/yaya_msg_mobile)
+[![Android](https://img.shields.io/badge/platform-Android-3DDC84?logo=android)](https://github.com/Xenia0922/yaya_msg_mobile)
+[![Expo](https://img.shields.io/badge/expo-54-4630EB?logo=expo)](https://expo.dev)
+[![React Native](https://img.shields.io/badge/react_native-0.81-61DAFB?logo=react)](https://reactnative.dev)
+[![License](https://img.shields.io/badge/license-MIT-green)](/LICENSE)
 
 基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg)（桌面端）二次开发的移动端版本，提供与桌面端一致的核心功能体验。
 
