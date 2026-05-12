@@ -145,7 +145,7 @@ export default function HomeScreen() {
             </View>
           </FadeInView>
         ))}
-        <Text style={[styles.footer, isDark && styles.footerDark]}>presented by yk1z</Text>
+        <Text style={[styles.footer, isDark && styles.footerDark]}>presented by Xenia</Text>
       </ScrollView>
     </View>
   );
@@ -165,16 +165,16 @@ const styles = StyleSheet.create({
   warnTextDark: { color: '#f3dca2' },
   scroll: { flex: 1 },
   scrollContent: { padding: 12, paddingBottom: 112 },
-  card: { backgroundColor: '#ffffff', borderRadius: 18, padding: 14, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#e7e7e7', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
-  cardOnImage: { backgroundColor: 'rgba(255,255,255,0.70)', borderColor: 'rgba(255,255,255,0.72)' },
-  cardDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.14)' },
+  card: { backgroundColor: '#ffffff', borderRadius: 18, padding: 14, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.84)', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  cardOnImage: { backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(255,255,255,0.68)' },
+  cardDark: { backgroundColor: 'rgba(20,20,20,0.62)', borderColor: 'rgba(255,255,255,0.10)' },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#ff6f91', marginBottom: 2 },
   cardSub: { fontSize: 11, color: '#555555', marginBottom: 10 },
   cardSubDark: { color: '#eeeeee' },
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  cardItem: { flex: 1, minWidth: '45%', backgroundColor: '#f8f8f8', borderRadius: 16, padding: 10, borderWidth: 1, borderColor: '#eeeeee', shadowColor: 'transparent' },
-  cardItemOnImage: { backgroundColor: 'rgba(255,255,255,0.34)', borderColor: 'rgba(255,255,255,0.48)' },
-  cardItemDark: { backgroundColor: 'rgba(42,42,42,0.64)', borderColor: 'rgba(255,255,255,0.12)' },
+  cardItem: { flex: 1, minWidth: '45%', backgroundColor: 'rgba(248,248,248,0.80)', borderRadius: 16, padding: 10, borderWidth: 1, borderColor: 'rgba(248,248,248,0.80)' },
+  cardItemOnImage: { backgroundColor: 'rgba(255,255,255,0.34)', borderColor: 'rgba(255,255,255,0.34)' },
+  cardItemDark: { backgroundColor: 'rgba(35,35,35,0.64)', borderColor: 'rgba(42,42,42,0.32)' },
   cardItemTitle: { fontSize: 13, fontWeight: '700', color: '#333' },
   cardItemTitleDark: { color: '#f4f4f4' },
   cardItemDesc: { fontSize: 10, color: '#555555', marginTop: 2 },

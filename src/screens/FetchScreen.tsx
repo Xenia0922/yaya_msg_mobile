@@ -20,13 +20,17 @@ type RoomMode = 'big' | 'small';
 function normalizeMessages(res: any): any[] {
   return unwrapList(res, [
     'content.messageList',
+    'content.message',
     'content.messages',
     'content.list',
     'content.data',
     'data.content.messageList',
+    'data.content.message',
     'data.messageList',
+    'data.message',
     'data.list',
     'messageList',
+    'message',
     'messages',
     'list',
   ]);

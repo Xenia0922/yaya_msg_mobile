@@ -12,54 +12,32 @@ import { CompositeNavigationProp, useNavigation } from '@react-navigation/native
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
 import { saveSettings } from '../services/settings';
 import { getWasmError, isWasmReady } from '../auth';
 import { checkNetworkStatus } from '../utils/network';
-import pocketApi from '../api/pocket48';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
   StackNavigationProp<RootStackParamList>
 >;
 
-const SETTING_ITEMS = [
-  {
-    title: '主题',
-    key: 'theme' as const,
-    options: [
-      { label: '浅色', value: 'light' },
-      { label: '深色', value: 'dark' },
-    ],
-  },
-  {
-    title: '音乐播放',
-    key: 'yaya_music_play_mode' as const,
-    options: [
-      { label: '顺序', value: 'sequential' },
-      { label: '随机', value: 'random' },
-      { label: '单曲循环', value: 'single' },
-    ],
-  },
-  {
-    title: '电台播放',
-    key: 'yaya_audio_program_play_mode' as const,
-    options: [
-      { label: '顺序', value: 'sequential' },
-      { label: '随机', value: 'random' },
-      { label: '单集循环', value: 'single' },
-    ],
-  },
-  {
-    title: '自动签到',
-    key: 'yaya_auto_checkin_enabled' as const,
-    options: [
-      { label: '关闭', value: false },
-      { label: '开启', value: true },
-    ],
-  },
+const THEME_OPTIONS = [
+  { label: '浅色', value: 'light' },
+  { label: '深色', value: 'dark' },
+];
+
+const MUSIC_MODES = [
+  { label: '顺序', value: 'sequential' },
+  { label: '随机', value: 'random' },
+  { label: '单曲循环', value: 'single' },
+];
+
+const AUDIO_MODES = [
+  { label: '顺序', value: 'sequential' },
+  { label: '随机', value: 'random' },
+  { label: '单集循环', value: 'single' },
 ];
 
 function Section({ title, children, isDark }: { title: string; children: React.ReactNode; isDark: boolean }) {
@@ -71,233 +49,160 @@ function Section({ title, children, isDark }: { title: string; children: React.R
   );
 }
 
+function ChipRow<T>({ options, value, isDark, onChange }: { options: { label: string; value: T }[]; value: T; isDark: boolean; onChange: (value: T) => void }) {
+  return (
+    <View style={styles.chipRow}>
+      {options.map((opt) => (
+        <TouchableOpacity
+          key={String(opt.value)}
+          style={[styles.chip, isDark && styles.chipDark, value === opt.value && styles.chipActive]}
+          onPress={() => onChange(opt.value)}
+        >
+          <Text style={[styles.chipText, isDark && styles.textSubLight, value === opt.value && styles.chipTextActive]}>
+            {opt.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const navigation = useNavigation<SettingsNavProp>();
   const settings = useSettingsStore((state) => state.settings);
   const setSettings = useSettingsStore((state) => state.setSettings);
   const showToast = useUiStore((state) => state.showToast);
   const isDark = settings.theme === 'dark';
-  const [status, setStatus] = useState('');
   const [networkStatus, setNetworkStatus] = useState('');
-  const [manualBackgroundUrl, setManualBackgroundUrl] = useState('');
-  const [nickName, setNickName] = useState('');
-  const [renameCount, setRenameCount] = useState<number | null>(null);
-  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [manualBgUrl, setManualBgUrl] = useState('');
+  const [bgStatus, setBgStatus] = useState('');
 
   const backgroundValue = settings.customBackgroundFile?.trim() || '';
   const backgroundInfo = useMemo(() => {
     if (!backgroundValue) return '未设置';
     if (backgroundValue.startsWith('data:')) return `本地图片已保存，约 ${Math.round(backgroundValue.length / 1024)}KB`;
-    return backgroundValue.length > 90 ? `${backgroundValue.slice(0, 90)}...` : backgroundValue;
+    return backgroundValue.length > 60 ? `${backgroundValue.slice(0, 60)}...` : backgroundValue;
   }, [backgroundValue]);
 
-  const updateSetting = async (key: string, value: any, extra: any = {}) => {
-    const patch: any = { [key]: value, ...extra };
+  const update = async (key: string, value: any, extra: any = {}) => {
+    const patch = { [key]: value, ...extra };
     setSettings(patch);
     await saveSettings(patch);
     showToast('设置已保存');
   };
 
-  const handleLogout = async () => {
-    setSettings({ p48Token: '' });
-    await saveSettings({ p48Token: '' });
-    setStatus('已退出口袋账号');
-  };
-
   const handleNetworkCheck = async () => {
-    setNetworkStatus('正在检测网络...');
+    setNetworkStatus('检测中...');
     try {
       const report = await checkNetworkStatus();
-      setNetworkStatus(report.results.map((item) => `${item.ok ? '可访问' : '不可访问'} ${item.name}: ${item.message}`).join('\n'));
+      setNetworkStatus(report.results.map((item) => `${item.ok ? '✓' : '✗'} ${item.name}: ${item.message}`).join('\n'));
     } catch (error: any) {
       setNetworkStatus(error?.message || '联网自检失败');
     }
   };
 
-  const pickBackgroundImage = async () => {
+  const pickBg = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) { Alert.alert('需要相册权限'); return; }
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, base64: true });
+      const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, base64: true } as any);
       if (result.canceled) return;
-      const asset = result.assets?.[0];
-      const base64 = asset?.base64;
-      if (!base64) { Alert.alert('背景图失败', '图片选择器没有返回图片数据。'); return; }
-      const mimeType = asset?.mimeType || 'image/jpeg';
-      await updateSetting('customBackgroundFile', `data:${mimeType};base64,${base64}`, { customBackgroundUpdatedAt: Date.now() });
-    } catch (error: any) {
-      Alert.alert('背景图选择失败', error?.message || String(error));
-    }
-  };
-
-  const applyManualBackgroundUrl = () => {
-    const url = manualBackgroundUrl.trim();
-    if (!url) return;
-    updateSetting('customBackgroundFile', url, { customBackgroundUpdatedAt: Date.now() });
-  };
-
-  const clearBackground = () => {
-    updateSetting('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() });
-    setManualBackgroundUrl('');
-  };
-
-  const loadRenameCount = async () => {
-    try {
-      const res = await pocketApi.getUserRenameCount();
-      const count = res?.content?.count ?? res?.content?.renameCount ?? res?.content;
-      setRenameCount(typeof count === 'number' ? count : null);
-    } catch { setRenameCount(null); }
-  };
-
-  const handleChangeNickname = async () => {
-    const name = nickName.trim();
-    if (!name) { showToast('请输入新昵称'); return; }
-    showToast('正在修改昵称...');
-    try {
-      const res = await pocketApi.editUserInfo({ nickName: name });
-      showToast(res?.message || res?.msg || '昵称修改成功');
-      setNickName('');
-      loadRenameCount();
-    } catch (error: any) {
-      showToast(`修改失败：${error?.message || error}`);
-    }
-  };
-
-  const handleUploadAvatar = async () => {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) { Alert.alert('需要相册权限'); return; }
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8, base64: true });
-      if (result.canceled) return;
-      const asset = result.assets?.[0];
-      const base64 = asset?.base64;
+      const base64 = result.assets?.[0]?.base64;
       if (!base64) { Alert.alert('未获取到图片数据'); return; }
-      setAvatarUploading(true);
-      showToast('正在上传头像...');
-      const uploadRes = await pocketApi.uploadUserAvatar({
-        uri: `data:${asset.mimeType || 'image/jpeg'};base64,${base64}`,
-        mimeType: asset.mimeType || 'image/jpeg',
-      });
-      if (uploadRes.path) {
-        await pocketApi.editUserInfo({ avatar: uploadRes.path });
-        showToast('头像更新成功');
-      }
+      const mime = result.assets?.[0]?.mimeType || 'image/jpeg';
+      await update('customBackgroundFile', `data:${mime};base64,${base64}`, { customBackgroundUpdatedAt: Date.now() });
     } catch (error: any) {
-      showToast(`上传失败：${error?.message || error}`);
-    } finally {
-      setAvatarUploading(false);
+      Alert.alert('背景图失败', error?.message || String(error));
     }
+  };
+
+  const applyBgUrl = () => {
+    const url = manualBgUrl.trim();
+    if (!url) return;
+    update('customBackgroundFile', url, { customBackgroundUpdatedAt: Date.now() });
   };
 
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.title}>设置</Text>
-        <Text style={[styles.subTitle, isDark && styles.textSubLight]}>外观、播放、下载和接口工具</Text>
+        <Text style={styles.pageTitle}>设置</Text>
       </View>
 
-      <Section title="账号入口" isDark={isDark}>
-        <Text style={[styles.stateLine, isDark && styles.textSubLight]}>口袋 Token：{settings.p48Token ? '已保存' : '未登录'}</Text>
-        <Text style={[styles.stateLine, isDark && styles.textSubLight]}>B站账号：{settings.bilibiliCookie ? '已登录' : '未登录'}</Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('LoginScreen')}>
-            <Text style={styles.linkText}>账号管理</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('RechargeScreen')}>
-            <Text style={styles.linkText}>鸡腿充值</Text>
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity style={[styles.logoutBtn, { marginTop: 10 }]} onPress={handleLogout}>
-          <Text style={styles.linkText}>退出口袋账号</Text>
+      <Section title="账号" isDark={isDark}>
+        <Text style={[styles.sub, isDark && styles.textSubLight]}>口袋登录、大小号切换、B站登录、修改昵称和头像</Text>
+        <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('LoginScreen')}>
+          <Text style={styles.linkText}>进入账号管理</Text>
         </TouchableOpacity>
       </Section>
 
-      <Section title="修改昵称" isDark={isDark}>
-        <TouchableOpacity style={styles.linkBtn} onPress={loadRenameCount}>
-          <Text style={styles.linkText}>{renameCount !== null ? `剩余改名次数：${renameCount}` : '查询改名次数'}</Text>
-        </TouchableOpacity>
-        <TextInput
-          style={[styles.input, isDark && styles.inputDark]}
-          placeholder="输入新昵称"
-          placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
-          value={nickName}
-          onChangeText={setNickName}
-        />
-        <TouchableOpacity style={[styles.secondaryBtn, { marginTop: 10 }]} onPress={handleChangeNickname}>
-          <Text style={styles.linkText}>提交修改</Text>
-        </TouchableOpacity>
-      </Section>
-
-      <Section title="更换头像" isDark={isDark}>
-        <TouchableOpacity style={[styles.secondaryBtn, avatarUploading && { opacity: 0.5 }]} onPress={handleUploadAvatar} disabled={avatarUploading}>
-          <Text style={styles.linkText}>{avatarUploading ? '上传中...' : '从相册选择头像'}</Text>
-        </TouchableOpacity>
-      </Section>
-
-      {SETTING_ITEMS.map((item) => (
-        <Section key={item.key} title={item.title} isDark={isDark}>
-          <View style={styles.optionRow}>
-            {item.options.map((option) => (
-              <TouchableOpacity
-                key={String(option.value)}
-                style={[styles.optionChip, isDark && styles.optionChipDark, settings[item.key] === option.value && styles.optionChipActive]}
-                onPress={() => updateSetting(item.key, option.value)}
-              >
-                <Text style={[styles.optionText, isDark && styles.textSubLight, settings[item.key] === option.value && styles.optionTextActive]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Section>
-      ))}
-
-      <Section title="下载与背景" isDark={isDark}>
-        <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('DownloadScreen')}>
-          <Text style={styles.linkText}>下载管理</Text>
-        </TouchableOpacity>
-        <Text style={[styles.backgroundInfo, isDark && styles.textSubLight]}>{backgroundInfo}</Text>
+      <Section title="外观" isDark={isDark}>
+        <ChipRow options={THEME_OPTIONS} value={settings.theme} isDark={isDark} onChange={(v) => update('theme', v)} />
+        <View style={styles.divider} />
+        <Text style={[styles.sub, isDark && styles.textSubLight]}>背景图：{backgroundInfo}</Text>
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
           placeholder="粘贴背景图 URL"
-          placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
-          value={manualBackgroundUrl}
-          onChangeText={setManualBackgroundUrl}
+          placeholderTextColor={isDark ? '#aaa' : '#666'}
+          value={manualBgUrl}
+          onChangeText={setManualBgUrl}
           autoCapitalize="none"
         />
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={applyManualBackgroundUrl}>
+        <View style={styles.chipRow}>
+          <TouchableOpacity style={styles.linkBtn} onPress={applyBgUrl}>
             <Text style={styles.linkText}>应用 URL</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={pickBackgroundImage}>
-            <Text style={styles.linkText}>本地图片</Text>
+          <TouchableOpacity style={styles.subBtn} onPress={pickBg}>
+            <Text style={styles.subBtnText}>本地图片</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.clearBackgroundBtn} onPress={clearBackground}>
-          <Text style={styles.clearBackgroundText}>恢复默认背景</Text>
-        </TouchableOpacity>
+        {backgroundValue ? (
+          <TouchableOpacity style={styles.clearBtn} onPress={() => { update('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() }); setManualBgUrl(''); }}>
+            <Text style={styles.clearText}>恢复默认背景</Text>
+          </TouchableOpacity>
+        ) : null}
       </Section>
 
-      <Section title="运行状态" isDark={isDark}>
-        <Text style={[styles.stateLine, isDark && styles.textSubLight]}>
-          签名模块：{isWasmReady() ? '已就绪' : `未就绪${getWasmError() ? `：${getWasmError()}` : ''}`}
-        </Text>
-        <Text style={[styles.stateLine, isDark && styles.textSubLight]}>
-          自动签到：{settings.yaya_auto_checkin_enabled ? `开启，上次 ${settings.yaya_auto_checkin_last_date || '尚未执行'}` : '关闭'}
-        </Text>
-        <TouchableOpacity style={styles.secondaryBtn} onPress={handleNetworkCheck}>
-          <Text style={styles.linkText}>联网自检</Text>
+      <Section title="音乐播放" isDark={isDark}>
+        <ChipRow options={MUSIC_MODES} value={settings.yaya_music_play_mode} isDark={isDark} onChange={(v) => update('yaya_music_play_mode', v)} />
+      </Section>
+
+      <Section title="电台播放" isDark={isDark}>
+        <ChipRow options={AUDIO_MODES} value={settings.yaya_audio_program_play_mode} isDark={isDark} onChange={(v) => update('yaya_audio_program_play_mode', v)} />
+      </Section>
+
+      <Section title="自动签到" isDark={isDark}>
+        <ChipRow options={[{ label: '关闭', value: false as any }, { label: '开启', value: true as any }]} value={settings.yaya_auto_checkin_enabled} isDark={isDark} onChange={(v) => update('yaya_auto_checkin_enabled', v)} />
+        {settings.yaya_auto_checkin_enabled ? (
+          <Text style={[styles.sub, isDark && styles.textSubLight]}>
+            上次签到：{settings.yaya_auto_checkin_last_date || '尚未执行'}
+          </Text>
+        ) : null}
+      </Section>
+
+      <Section title="工具" isDark={isDark}>
+        <View style={styles.chipRow}>
+          <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('DownloadScreen')}>
+            <Text style={styles.linkText}>下载管理</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('ApiDiagnosticsScreen')}>
+            <Text style={styles.linkText}>接口自检</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.subBtn} onPress={handleNetworkCheck}>
+          <Text style={styles.subBtnText}>联网自检</Text>
         </TouchableOpacity>
         {networkStatus ? <Text style={[styles.networkText, isDark && styles.textSubLight]}>{networkStatus}</Text> : null}
       </Section>
 
-      <Section title="接口自检" isDark={isDark}>
-        <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('ApiDiagnosticsScreen')}>
-          <Text style={styles.linkText}>打开接口自检</Text>
-        </TouchableOpacity>
+      <Section title="运行状态" isDark={isDark}>
+        <Text style={[styles.sub, isDark && styles.textSubLight]}>
+          签名模块：{isWasmReady() ? '已就绪' : '未就绪'}
+        </Text>
+        <Text style={[styles.sub, isDark && styles.textSubLight]}>
+          成员库：{useSettingsStore.getState().settings.p48Token ? '已加载' : '待加载'}
+        </Text>
       </Section>
 
-      {status ? <Text style={[styles.statusText, isDark && styles.textSubLight]}>{status}</Text> : null}
       <Text style={[styles.footer, isDark && styles.textSubLight]}>Yaya Message v2.2.7</Text>
     </ScrollView>
   );
@@ -307,32 +212,29 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   content: { paddingBottom: 112 },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 10 },
-  title: { fontSize: 22, fontWeight: '800', color: '#ff6f91' },
-  subTitle: { marginTop: 4, color: '#555555', fontSize: 12 },
-  section: { marginHorizontal: 12, marginVertical: 6, padding: 16, backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
-  sectionDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.14)' },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#222222', marginBottom: 12 },
-  stateLine: { color: '#444444', fontSize: 13, lineHeight: 22 },
-  networkText: { marginTop: 10, color: '#444444', fontSize: 12, lineHeight: 18 },
-  input: { minHeight: 46, padding: 12, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.78)', color: '#222222', fontSize: 13, marginTop: 10 },
-  inputDark: { backgroundColor: 'rgba(255,255,255,0.10)', color: '#ffffff' },
-  backgroundInfo: { color: '#444444', fontSize: 12, lineHeight: 18, marginVertical: 10 },
-  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  linkBtn: { flex: 1, minHeight: 44, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  secondaryBtn: { flex: 1, minHeight: 44, borderRadius: 18, backgroundColor: '#4f4f4f', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  logoutBtn: { flex: 1, minHeight: 44, borderRadius: 18, backgroundColor: '#ff4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  linkText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
-  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  optionChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.68)' },
-  optionChipDark: { backgroundColor: 'rgba(255,255,255,0.10)' },
-  optionChipActive: { backgroundColor: '#ff6f91' },
-  optionText: { fontSize: 13, color: '#444444', fontWeight: '700' },
-  optionTextActive: { color: '#ffffff' },
-  clearBackgroundBtn: { marginTop: 10, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.42)' },
-  clearBackgroundText: { color: '#ff6f91', fontWeight: '800' },
-  statusText: { textAlign: 'center', color: '#444444', marginTop: 8, paddingHorizontal: 16, lineHeight: 20 },
-  footer: { textAlign: 'center', color: '#555555', fontSize: 12, marginTop: 12 },
-  textLight: { color: '#ffffff' },
-  textSubLight: { color: '#dddddd' },
+  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 8 },
+  pageTitle: { fontSize: 22, fontWeight: '800', color: '#ff6f91' },
+  section: { marginHorizontal: 12, marginTop: 8, padding: 14, backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
+  sectionDark: { backgroundColor: 'rgba(20,20,20,0.62)', borderColor: 'rgba(255,255,255,0.10)' },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: '#222', marginBottom: 8 },
+  sub: { fontSize: 12, color: '#555', marginBottom: 6, lineHeight: 18 },
+  divider: { height: 1, backgroundColor: 'rgba(0,0,0,0.06)', marginVertical: 10 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.05)' },
+  chipDark: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  chipActive: { backgroundColor: '#ff6f91' },
+  chipText: { fontSize: 13, color: '#444', fontWeight: '700' },
+  chipTextActive: { color: '#fff' },
+  input: { minHeight: 42, padding: 10, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.04)', color: '#222', fontSize: 13, marginTop: 6 },
+  inputDark: { backgroundColor: 'rgba(255,255,255,0.06)', color: '#fff' },
+  linkBtn: { flex: 1, minHeight: 40, borderRadius: 14, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  linkText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  subBtn: { minHeight: 40, borderRadius: 14, backgroundColor: '#4f4f4f', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, marginTop: 8 },
+  subBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  clearBtn: { marginTop: 8, minHeight: 36, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,0,0,0.08)' },
+  clearText: { color: '#e74c3c', fontWeight: '800', fontSize: 12 },
+  networkText: { marginTop: 8, fontSize: 11, color: '#555', lineHeight: 16 },
+  footer: { textAlign: 'center', color: '#999', fontSize: 12, marginTop: 16 },
+  textLight: { color: '#fff' },
+  textSubLight: { color: '#ddd' },
 });

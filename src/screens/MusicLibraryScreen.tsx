@@ -185,7 +185,7 @@ export default function MusicLibraryScreen() {
         <View style={[styles.miniPlayer, isDark && styles.miniPlayerDark]}>
           <Video
             source={{ uri: playUrl }}
-            style={styles.hiddenPlayer}
+            style={styles.tinyPlayer}
             paused={paused}
             controls={false}
             ignoreSilentSwitch="ignore"
@@ -194,32 +194,42 @@ export default function MusicLibraryScreen() {
             onEnd={() => playByOffset(1)}
             onError={() => setStatus('音乐播放失败，请换一首试试')}
           />
-          <View style={styles.playerTopRow}>
-            <View style={styles.coverStub}>
-              <Text style={styles.coverText}>音</Text>
+          <View style={styles.miniTop}>
+            <View style={styles.coverArt}>
+              <Text style={styles.coverArtText}>♪</Text>
             </View>
             <View style={styles.playerMeta}>
               <Text style={[styles.playerTitle, isDark && styles.textDark]} numberOfLines={1}>{playing?.title || '正在播放'}</Text>
               <Text style={[styles.playerSub, isDark && styles.textSubDark]} numberOfLines={1}>
-                {[playing?.joinMemberNames, playing?.subTitle].filter(Boolean).join(' · ') || '官方音乐'}
+                {[playing?.joinMemberNames, playing?.subTitle, playing?.albumName].filter(Boolean).join(' · ') || '官方音乐'}
               </Text>
             </View>
-            <TouchableOpacity style={styles.playerBtn} onPress={() => playByOffset(-1)}>
-              <Text style={styles.playerBtnText}>上一</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.playBtn} onPress={() => setPaused((value) => !value)}>
-              <Text style={styles.playBtnText}>{paused ? '播' : '停'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.playerBtn} onPress={() => playByOffset(1)}>
-              <Text style={styles.playerBtnText}>下一</Text>
+            <TouchableOpacity
+              style={[styles.closePlayer, isDark && styles.closePlayerDark]}
+              onPress={() => { setPlaying(null); setPlayUrl(''); }}
+            >
+              <Text style={styles.closePlayerText}>✕</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.progressRow}>
-            <Text style={[styles.timeText, isDark && styles.textSubDark]}>{formatTime(position)}</Text>
+          <View style={styles.progressWrap}>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+              <View style={[styles.progressFill, { width: `${progress * 100}%` as any }]} />
             </View>
-            <Text style={[styles.timeText, isDark && styles.textSubDark]}>{formatTime(duration)}</Text>
+            <View style={styles.timeRow}>
+              <Text style={[styles.timeText, isDark && styles.textSubDark]}>{formatTime(position)}</Text>
+              <Text style={[styles.timeText, isDark && styles.textSubDark]}>{formatTime(duration)}</Text>
+            </View>
+          </View>
+          <View style={styles.controlsRow}>
+            <TouchableOpacity style={styles.controlBtn} onPress={() => playByOffset(-1)}>
+              <Text style={styles.controlIcon}>⏮</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.mainPlayBtn} onPress={() => setPaused((v) => !v)}>
+              <Text style={styles.mainPlayIcon}>{paused ? '▶' : '⏸'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.controlBtn} onPress={() => playByOffset(1)}>
+              <Text style={styles.controlIcon}>⏭</Text>
+            </TouchableOpacity>
           </View>
         </View>
       ) : null}
@@ -238,7 +248,7 @@ const styles = StyleSheet.create({
   searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
   status: { margin: 12, color: '#444', fontSize: 13, textAlign: 'center' },
   listContent: { paddingBottom: 120 },
-  listContentWithPlayer: { paddingBottom: 172 },
+  listContentWithPlayer: { paddingBottom: 140 },
   songItem: { height: 76, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.72)', marginHorizontal: 16, marginVertical: 4, borderRadius: 12 },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
   songItemActive: { borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
@@ -246,23 +256,28 @@ const styles = StyleSheet.create({
   songTitle: { fontSize: 15, fontWeight: '700', color: '#333' },
   songArtist: { fontSize: 11, color: '#333333', marginTop: 2 },
   dateText: { fontSize: 11, color: '#333333', marginTop: 4 },
-  hiddenPlayer: { width: 0, height: 0 },
-  miniPlayer: { position: 'absolute', left: 12, right: 12, bottom: 12, padding: 12, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)' },
-  miniPlayerDark: { backgroundColor: 'rgba(18,18,18,0.94)', borderColor: 'rgba(255,255,255,0.12)' },
-  playerTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  coverStub: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
-  coverText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  tinyPlayer: { width: 0, height: 0 },
+  miniPlayer: { position: 'absolute', left: 10, right: 10, bottom: 10, padding: 12, paddingBottom: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.76)', shadowColor: '#000', shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: -2 }, elevation: 8 },
+  miniPlayerDark: { backgroundColor: 'rgba(22,22,22,0.94)', borderColor: 'rgba(255,255,255,0.06)', shadowOpacity: 0.20 },
+  miniTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  coverArt: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
+  coverArtText: { color: '#fff', fontSize: 18 },
   playerMeta: { flex: 1, minWidth: 0 },
-  playerTitle: { fontSize: 14, fontWeight: '800', color: '#333' },
-  playerSub: { fontSize: 11, color: '#333333', marginTop: 2 },
-  playerBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,111,145,0.12)' },
-  playerBtnText: { color: '#ff6f91', fontSize: 10, fontWeight: '800' },
-  playBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
-  playBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-  progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(120,120,120,0.24)', overflow: 'hidden' },
+  playerTitle: { fontSize: 14, fontWeight: '800', color: '#222' },
+  playerSub: { fontSize: 11, color: '#555', marginTop: 1 },
+  closePlayer: { padding: 4 },
+  closePlayerDark: {},
+  closePlayerText: { color: '#999', fontSize: 12, fontWeight: '700' },
+  progressWrap: { marginBottom: 8 },
+  progressTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' },
   progressFill: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
-  timeText: { width: 38, fontSize: 10, color: '#333333', textAlign: 'center' },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
+  timeText: { fontSize: 10, color: '#555' },
+  controlsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 18 },
+  controlBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,111,145,0.08)' },
+  controlIcon: { fontSize: 14, color: '#ff6f91' },
+  mainPlayBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
+  mainPlayIcon: { fontSize: 18, color: '#fff' },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },
 });

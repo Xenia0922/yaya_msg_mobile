@@ -298,17 +298,19 @@ export default function LoginScreen() {
   };
 
   const handleEditProfile = async () => {
-    if (!profileName.trim() && !profileAvatar.trim()) {
-      setStatus('\u5148\u586b\u6635\u79f0\u6216\u5934\u50cf URL');
+    const name = profileName.trim();
+    if (!name) {
+      setStatus('请输入新昵称');
       return;
     }
     setLoading(true);
-    setStatus('\u6b63\u5728\u63d0\u4ea4\u8d44\u6599\u4fee\u6539...');
+    setStatus('正在修改昵称...');
     try {
-      await pocketApi.editUserInfo({ nickName: profileName.trim(), avatar: profileAvatar.trim() });
-      setStatus('\u8d44\u6599\u4fee\u6539\u63a5\u53e3\u5df2\u8fd4\u56de\u6210\u529f');
+      await pocketApi.editUserInfo({ key: 'nickname', value: name });
+      setStatus('昵称修改成功');
+      await handleLoadProfile();
     } catch (error) {
-      setStatus(`\u8d44\u6599\u4fee\u6539\u5931\u8d25\uff1a${errorMessage(error)}`);
+      setStatus(`昵称修改失败：${errorMessage(error)}`);
     } finally {
       setLoading(false);
     }
@@ -321,6 +323,7 @@ export default function LoginScreen() {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         setStatus('没有相册权限，无法选择头像');
+        setLoading(false);
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -331,18 +334,22 @@ export default function LoginScreen() {
       });
       if (result.canceled) {
         setStatus('已取消选择头像');
+        setLoading(false);
         return;
       }
       const asset = result.assets?.[0];
       if (!asset?.uri) throw new Error('图片选择器没有返回文件');
+      setStatus('正在上传到口袋服务器...');
       const upload = await pocketApi.uploadUserAvatar({
         uri: asset.uri,
         fileName: asset.fileName || `avatar-${Date.now()}.jpg`,
         mimeType: asset.mimeType || 'image/jpeg',
       });
-      setProfileAvatar(upload.path);
+      if (!upload.path) throw new Error('上传成功但没有返回路径');
+      setStatus('正在更新头像...');
       await pocketApi.editUserInfo({ key: 'avatar', value: upload.path });
-      setStatus('头像已上传并保存');
+      setProfileAvatar(upload.path);
+      setStatus('头像已更新');
     } catch (error) {
       setStatus(`头像上传失败：${errorMessage(error)}`);
     } finally {
@@ -434,34 +441,35 @@ export default function LoginScreen() {
       </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{'\u53e3\u888b\u8d44\u6599'}</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>口袋资料</Text>
         {renameCountText ? <Text style={[styles.metaLine, isDark && styles.textSubDark]}>{renameCountText}</Text> : null}
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
-          placeholder={'\u6635\u79f0'}
+          placeholder="昵称"
           placeholderTextColor="#5a5a5a"
           value={profileName}
           onChangeText={setProfileName}
         />
+        <View style={styles.btnRow}>
+          <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleLoadProfile} disabled={loading}>
+            <Text style={styles.btnText}>读取资料</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleEditProfile} disabled={loading}>
+            <Text style={styles.btnText}>修改昵称</Text>
+          </TouchableOpacity>
+        </View>
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
-          placeholder={'\u5934\u50cf URL'}
+          placeholder="头像 URL（上传后自动填入）"
           placeholderTextColor="#5a5a5a"
           value={profileAvatar}
           onChangeText={setProfileAvatar}
           autoCapitalize="none"
+          editable={false}
         />
-        <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginBottom: 10 }]} onPress={handlePickAvatar} disabled={loading}>
-          <Text style={styles.btnText}>选择本地图片更换头像</Text>
+        <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginTop: 8 }]} onPress={handlePickAvatar} disabled={loading}>
+          <Text style={styles.btnText}>选择本地图片上传头像</Text>
         </TouchableOpacity>
-        <View style={styles.btnRow}>
-          <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleLoadProfile} disabled={loading}>
-            <Text style={styles.btnText}>{'\u8bfb\u53d6\u8d44\u6599'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleEditProfile} disabled={loading}>
-            <Text style={styles.btnText}>{'\u4fdd\u5b58\u4fee\u6539'}</Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>

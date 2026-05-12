@@ -26,7 +26,7 @@ export default function RechargeScreen() {
     setStatus('正在刷新余额...');
     try {
       const res = await pocketApi.getUserMoney();
-      const money = res?.content?.moneyTotal ?? res?.data?.moneyTotal ?? '';
+      const money = res?.content?.moneyTotal ?? res?.data?.moneyTotal ?? res?.content?.money ?? res?.data?.money ?? '';
       setBalance(String(money));
       setStatus(money !== '' ? '余额已刷新' : '接口未返回余额');
     } catch (error) {

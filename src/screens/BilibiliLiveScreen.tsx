@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800', color: '#ff6f91' },
   backBtn: { color: '#ff6f91', fontSize: 14 },
   refresh: { fontSize: 12, color: '#ff6f91' },
-  status: { margin: 12, padding: 10, borderRadius: 18, backgroundColor: '#fff3cd', color: '#8a5a00', fontSize: 12, lineHeight: 18 },
+  status: { margin: 12, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)', color: '#555', fontSize: 12, textAlign: 'center' },
   playerPage: { flex: 1, backgroundColor: '#000' },
   playHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingTop: 50, backgroundColor: 'rgba(20,20,20,0.72)', gap: 12 },
   playTitle: { color: '#fff', fontSize: 16, fontWeight: '700', flex: 1 },

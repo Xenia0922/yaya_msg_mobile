@@ -335,14 +335,16 @@ export const pocketApi = {
       headers,
       body: formData,
     });
-    const data = await response.json().catch(() => null);
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
     if (response.ok && data && (data.status === 200 || data.success)) {
       const item = Array.isArray(data.content) ? data.content[0] : data.content;
       const path = item?.path || item?.url || item?.filePath || '';
       if (!path) throw new Error('上传头像成功但没有返回图片路径');
       return { success: true, content: item, path };
     }
-    throw new Error(responseMessage(data, '上传头像失败'));
+    const source = data || response;
+    throw new Error((source as any)?.message || (source as any)?.msg || `上传失败 HTTP ${response.status}`);
   },
 
   async checkIn() {

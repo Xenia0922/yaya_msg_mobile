@@ -101,12 +101,12 @@ export default function ApiDiagnosticsScreen() {
           nextTime: 0,
           fetchAll: true,
         });
-        return `${statusOf(res)} via=${res?._request?.label || 'default'} channelId=${member.channelId} serverId=${member.serverId || '(auto)'} count=${contentCount(res, ['content.messageList', 'content.list', 'messageList', 'list'])}`;
+        return `${statusOf(res)} via=${res?._request?.label || 'default'} channelId=${member.channelId} serverId=${member.serverId || '(auto)'} count=${contentCount(res, ['content.messageList', 'content.message', 'content.list', 'messageList', 'message', 'list'])}`;
       }));
 
       output.push(await runCase('Room album', async () => {
         const res = await pocketApi.getRoomAlbum({ channelId: member.channelId, nextTime: 0 });
-        return `${statusOf(res)} count=${contentCount(res, ['content.messageList', 'content.list', 'messageList', 'list'])}`;
+        return `${statusOf(res)} count=${contentCount(res, ['content.messageList', 'content.message', 'content.list', 'messageList', 'message', 'list'])}`;
       }));
 
       output.push(await runCase('Room radio', async () => {

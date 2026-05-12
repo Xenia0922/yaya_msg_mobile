@@ -115,6 +115,7 @@ export default function AnalysisScreen() {
   const [status, setStatus] = useState('选择成员后读取房间消息，翻牌统计读取账号翻牌记录。');
   const [mediaFullUrl, setMediaFullUrl] = useState('');
   const [playMedia, setPlayMedia] = useState<{ url: string; type: string } | null>(null);
+  const [flipPlayUrl, setFlipPlayUrl] = useState('');
 
   const summary = useMemo(() => {
     const total = messages.length;
@@ -144,7 +145,6 @@ export default function AnalysisScreen() {
 
   const senders = useMemo(() => countBy(messages, senderName).slice(0, 30), [messages]);
   const recent = useMemo(() => messages.slice().sort((a, b) => msgTime(b) - msgTime(a)).slice(0, 20), [messages]);
-  const flipRows = useMemo(() => countBy(flips, (item) => pickText(item, ['memberName', 'starName', 'member.name', 'question'], '翻牌')).slice(0, 30), [flips]);
 
   const loadRoomStats = async (nextMember: Member) => {
     setMember(nextMember);
@@ -219,7 +219,9 @@ export default function AnalysisScreen() {
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.backBtn}>返回</Text></TouchableOpacity>
         <Text style={[styles.title, isDark && styles.textLight]}>数据统计</Text>
-        <TouchableOpacity onPress={loadFlipStats}><Text style={styles.refreshText}>翻牌</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => { setLoading(true); loadRoomStats(member!).finally(() => loadFlipStats().finally(() => setLoading(false))); }} disabled={!member || loading}>
+          <Text style={[styles.refreshText, (!member || loading) && { opacity: 0.45 }]}>刷新</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.pickerWrap}>
@@ -229,7 +231,7 @@ export default function AnalysisScreen() {
 
       <View style={styles.tabs}>
         {TABS.map((item) => (
-          <TouchableOpacity key={item.key} style={[styles.tab, tab === item.key && styles.tabActive]} onPress={() => setTab(item.key)}>
+          <TouchableOpacity key={item.key} style={[styles.tab, tab === item.key && styles.tabActive]} onPress={() => { setTab(item.key); if (item.key === 'flip' && !flips.length) loadFlipStats(); }}>
             <Text style={[styles.tabText, tab === item.key && styles.tabTextActive]} numberOfLines={1}>{item.label}</Text>
           </TouchableOpacity>
         ))}
@@ -344,17 +346,75 @@ export default function AnalysisScreen() {
 
       {tab === 'flip' ? (
         <FlatList
-          data={flipRows}
-          keyExtractor={(item) => item.key}
+          data={flips}
+          keyExtractor={(item, index) => String(item.questionId || item.id || item.answerId || index)}
           contentContainerStyle={styles.content}
           ListHeaderComponent={<Text style={[styles.statusText, isDark && styles.textSubLight, { marginBottom: 8 }]}>共 {flips.length} 条翻牌记录</Text>}
-          renderItem={({ item, index }) => (
-            <View style={[styles.rankRow, isDark && styles.cardDark]}>
-              <Text style={styles.rankNo}>{index + 1}</Text>
-              <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{item.key}</Text>
-              <Text style={styles.rankValue}>{item.count} 条</Text>
-            </View>
-          )}
+          renderItem={({ item }) => {
+            const flipAnswerType = Number(item.answerType);
+            const isText = flipAnswerType === 1;
+            const isVoice = flipAnswerType === 2;
+            const isVideo = flipAnswerType === 3;
+            const answerRaw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent'], '');
+            let answerText = '';
+            let answerUrl = '';
+            if (answerRaw) {
+              try { const j = JSON.parse(answerRaw); answerText = j?.text || j?.content || ''; answerUrl = (isVoice || isVideo) ? (j?.url || j?.mediaUrl || '') : ''; } catch { answerText = answerRaw; }
+            }
+            const qTime = Number(item.qtime || item.createTime || 0);
+            const aTime = Number(item.answerTime || 0);
+            const elapsed = aTime && qTime ? aTime - qTime : 0;
+            const d = Math.floor(elapsed / 86400000);
+            const h = Math.floor((elapsed % 86400000) / 3600000);
+            const m = Math.floor((elapsed % 3600000) / 60000);
+            const elapsedStr = elapsed > 0 ? `${d ? `${d}天` : ''}${h ? `${h}时` : ''}${m}分` : '';
+            const isAnswered = item.status === 2;
+            const deadline = qTime ? qTime + 7 * 86400000 : 0;
+            const remaining = isAnswered ? 0 : (deadline - Date.now());
+            const rd = Math.floor(remaining / 86400000);
+            const rh = Math.floor((remaining % 86400000) / 3600000);
+            const rm = Math.floor((remaining % 3600000) / 60000);
+            const remainStr = remaining > 0 && !isAnswered ? `${rd ? `${rd}天` : ''}${rh ? `${rh}时` : ''}${rm}分` : (!isAnswered && remaining <= 0 ? '已过期' : '');
+            return (
+              <View style={[styles.rowCard, isDark && styles.cardDark]}>
+                <View style={styles.flipHeader}>
+                  <Text style={[styles.flipMember, isDark && styles.textLight]} numberOfLines={1}>
+                    {pickText(item, ['memberName', 'starName', 'baseUserInfo.nickname'], '成员')}
+                  </Text>
+                  <Text style={styles.flipTime}>{formatTimestamp(qTime)}</Text>
+                </View>
+                <Text style={[styles.flipQ, isDark && styles.textSubLight]} numberOfLines={10}>问：{pickText(item, ['content', 'questionContent', 'question', 'text'], '') || '无提问内容'}</Text>
+                {isAnswered && isText ? (
+                  <Text style={[styles.flipAText, isDark && styles.textSubLight]} numberOfLines={20}>
+                    答：{answerText || '已翻牌'}
+                  </Text>
+                ) : isAnswered && (isVoice || isVideo) ? (
+                  <View style={styles.flipABlock}>
+                    <Text style={[styles.flipA, isDark && styles.textSubLight]} numberOfLines={20}>
+                      答：{answerText || (isVoice ? '[语音回复]' : '[视频回复]')}
+                    </Text>
+                    {answerUrl ? (
+                      <TouchableOpacity style={styles.flipPlayBtn} onPress={() => setFlipPlayUrl((prev) => prev === answerUrl ? '' : answerUrl)}>
+                        <Text style={styles.flipPlayText}>{flipPlayUrl === answerUrl ? '收起' : isVoice ? '播放语音' : '播放视频'}</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {flipPlayUrl === answerUrl && answerUrl ? (
+                      <Video source={{ uri: answerUrl }} style={isVoice ? styles.flipAudio : styles.flipVideo} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
+                    ) : null}
+                  </View>
+                ) : !isAnswered ? (
+                  <Text style={styles.flipPending}>{item.status === 1 ? '等待回复中' : item.status === 3 ? '已退款' : '等待回复中'}</Text>
+                ) : null}
+                <View style={styles.flipMeta}>
+                  <Text style={styles.flipTag}>{isText ? '文字' : isVoice ? '语音' : isVideo ? '视频' : '未知'}</Text>
+                  <Text style={styles.flipPrivacy}>{item.type === 1 ? '公开' : item.type === 2 ? '私密' : item.type === 3 ? '匿名' : '未知'}</Text>
+                  <Text style={styles.flipCost}>{item.cost || 0} 鸡腿</Text>
+                  {elapsedStr ? <Text style={styles.flipElapsed}>耗时 {elapsedStr}</Text> : null}
+                  {remainStr ? <Text style={styles.flipRemain}>剩 {remainStr}</Text> : null}
+                </View>
+              </View>
+            );
+          }}
         />
       ) : null}
       {mediaFullUrl ? (
@@ -421,6 +481,24 @@ const styles = StyleSheet.create({
   barBg: { position: 'absolute', top: 0, left: 0, height: '100%', backgroundColor: '#555', borderRadius: 3 },
   barFg: { position: 'absolute', top: 0, left: 0, height: '100%', backgroundColor: '#ff6f91', borderRadius: 3 },
   empty: { textAlign: 'center', color: '#333333', marginTop: 40, fontSize: 14 },
+  flipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  flipMember: { fontSize: 14, fontWeight: '800', color: '#ff6f91', flex: 1 },
+  flipTime: { fontSize: 11, color: '#555' },
+  flipQ: { fontSize: 13, color: '#444', lineHeight: 20, marginBottom: 6 },
+  flipABlock: { backgroundColor: 'rgba(255,111,145,0.06)', padding: 8, borderRadius: 10, marginBottom: 6 },
+  flipA: { fontSize: 13, color: '#444', lineHeight: 20 },
+  flipAText: { fontSize: 13, color: '#444', lineHeight: 20, marginBottom: 6 },
+  flipPending: { fontSize: 12, color: '#c58a00', fontWeight: '700' },
+  flipMeta: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  flipTag: { fontSize: 10, color: '#ff6f91', fontWeight: '800', backgroundColor: 'rgba(255,111,145,0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  flipPrivacy: { fontSize: 10, color: '#13a8a8', fontWeight: '800', backgroundColor: 'rgba(19,168,168,0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  flipCost: { fontSize: 10, color: '#555' },
+  flipElapsed: { fontSize: 10, color: '#ff6f91', fontWeight: '700' },
+  flipRemain: { fontSize: 10, color: '#e67e22', fontWeight: '700' },
+  flipPlayBtn: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: '#ff6f91' },
+  flipPlayText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  flipAudio: { height: 52, marginTop: 8, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 10 },
+  flipVideo: { height: 150, marginTop: 8, backgroundColor: '#000', borderRadius: 10 },
   imgModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center' },
   imgFull: { width: '96%', height: '80%' },
   videoModal: { flex: 1, backgroundColor: '#000' },

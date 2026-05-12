@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -11,40 +11,32 @@ import {
 } from 'react-native';
 import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { formatTimestamp } from '../utils/format';
-import { errorMessage, messagePayload, messageText, normalizeUrl, pickText, unwrapList } from '../utils/data';
+import { errorMessage, messagePayload, messageText, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 
 function convTargetId(conv: any): string {
   return String(conv?.targetUserId || conv?.user?.userId || conv?.userId || '');
 }
-
 function convName(conv: any): string {
   return pickText(conv, ['user.nickname', 'user.nickName', 'user.starName', 'user.realNickName', 'nickname', 'starName'], convTargetId(conv) || '私信');
 }
-
 function msgId(msg: any, index: number): string {
   return String(msg.messageId || msg.msgId || msg.id || msg.clientMsgId || index);
 }
-
-function msgTime(msg: any): any {
-  return msg.timestamp || msg.msgTime || msg.ctime || msg.time || msg.createTime || msg.sendTime;
-}
-
 function msgTimeNumber(msg: any): number {
-  const value = Number(msgTime(msg));
-  return Number.isFinite(value) ? value : 0;
+  const v = Number(msg.timestamp || msg.msgTime || msg.ctime || msg.time || msg.createTime || msg.sendTime || 0);
+  return Number.isFinite(v) ? v : 0;
 }
-
 function msgFromId(msg: any): string {
-  return String(msg.user?.userId || msg.user?.id || msg.fromUserId || msg.senderUserId || msg.senderId || msg.userId || msg.fromAccount || msg.sender?.userId || '');
+  return String(msg.user?.userId || msg.user?.id || msg.fromUserId || msg.senderUserId || msg.senderId || msg.userId || msg.fromAccount || '');
 }
-
 function msgToId(msg: any): string {
   return String(msg.toUserId || msg.targetUserId || msg.receiverUserId || msg.receiveUserId || '');
 }
-
 function isMineMessage(msg: any, targetId: string, currentUserId = ''): boolean {
   if (msg.isSelf === true || msg.self === true || msg.isMe === true) return true;
   if (msg.isSelf === false || msg.self === false || msg.isMe === false) return false;
@@ -55,374 +47,454 @@ function isMineMessage(msg: any, targetId: string, currentUserId = ''): boolean 
   if (currentUserId && to === currentUserId) return false;
   if (from && targetId && from === targetId) return false;
   if (to && targetId && to === targetId) return true;
-  const direct = String(msg.direct || msg.direction || msg.messageDirection || '').toLowerCase();
-  if (['out', 'outgoing', 'send', 'sent', '1'].includes(direct)) return true;
-  if (['in', 'incoming', 'receive', 'received', '0'].includes(direct)) return false;
+  const d = String(msg.direct || msg.direction || msg.messageDirection || '').toLowerCase();
+  if (['out', 'outgoing', 'send', 'sent', '1'].includes(d)) return true;
+  if (['in', 'incoming', 'receive', 'received', '0'].includes(d)) return false;
   return false;
 }
 
 function privateMessageText(msg: any): string {
   const payload = messagePayload(msg);
-  const text = messageText(msg)
-    || pickText(msg, ['content.text', 'text', 'message', 'msg'])
-    || pickText(payload, ['text', 'content', 'message.text', 'msg.text'])
-    || '[空消息]';
-  const trimmed = String(text).trim();
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-    const url = pickText(payload, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'message.url', 'msg.url']);
-    if (url) {
-      const type = String(msg.msgType || payload?.msgType || payload?.type || '').toUpperCase();
-      if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return '[语音消息]';
-      if (type.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return '[视频消息]';
-      if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return '[图片消息]';
-      return '[媒体消息]';
+  const text = messageText(msg) || pickText(msg, ['content.text', 'text', 'message', 'msg'])
+    || pickText(payload, ['text', 'content', 'message.text', 'msg.text']) || '';
+
+  const flipKeys = ['flipCardInfo', 'filpCardInfo', 'flipCardAudioInfo', 'filpCardAudioInfo', 'flipCardVideoInfo', 'filpCardVideoInfo'];
+  for (const key of flipKeys) {
+    const fi = payload?.[key] || msg?.[key] || msg?.content?.[key];
+    if (fi) {
+      const parsed = typeof fi === 'string' ? parseMaybeJson(fi) : fi;
+      if (parsed) {
+        const q = parsed.question || parsed.answerQuestion || '';
+        const a = (typeof parsed.answer === 'string') ? parseMaybeJson(parsed.answer) : parsed.answer;
+        const answerText = (a && typeof a === 'object') ? (a.text || a.content || '') : (typeof parsed.answer === 'string' ? parsed.answer : '');
+        if (q && answerText) return `问：${q}\n答：${answerText}`;
+        if (q) return `问：${q}`;
+        if (answerText) return `答：${answerText}`;
+      }
     }
   }
-  return text;
-}
 
-function privateMessageMedia(msg: any): { url: string; type: 'audio' | 'video' | 'image' | 'link'; title: string } | null {
-  const payload = messagePayload(msg);
-  const rawUrl = pickText(payload, [
-    'url',
-    'mediaUrl',
-    'audioUrl',
-    'videoUrl',
-    'imageUrl',
-    'message.url',
-    'msg.url',
-    'content.url',
-  ]);
-  if (!rawUrl) return null;
-  const typeText = String(msg.msgType || msg.messageType || payload?.msgType || payload?.messageType || payload?.type || '').toUpperCase();
-  let url = normalizeUrl(rawUrl);
-  const lowerRaw = String(rawUrl).toLowerCase();
-  if (!/^https?:\/\//i.test(url)) {
-    const prefix = typeText.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(lowerRaw)
-      ? 'https://source3.48.cn'
-      : 'https://mp4.48.cn';
-    url = `${prefix}${String(rawUrl).startsWith('/') ? '' : '/'}${rawUrl}`;
+  const answerRaw = payload?.answer || payload?.answerContent || msg?.answer || msg?.answerContent || '';
+  if (answerRaw) {
+    const parsed = typeof answerRaw === 'string' ? parseMaybeJson(answerRaw) : answerRaw;
+    if (parsed && typeof parsed === 'object') {
+      const at = parsed.text || parsed.content || parsed.answer || '';
+      if (at) {
+        const qtext = payload?.question || msg?.question || '';
+        if (qtext) return `问：${qtext}\n答：${at}`;
+      }
+    } else if (typeof parsed === 'string' && parsed.trim()) {
+      return parsed;
+    }
   }
-  const lower = url.toLowerCase();
-  const type = typeText.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(lower)
-    ? 'audio'
-    : typeText.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(lower)
-      ? 'video'
-      : typeText.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(lower)
-        ? 'image'
-        : 'link';
-  return {
-    url,
-    type,
-    title: type === 'audio' ? '语音消息' : type === 'video' ? '视频消息' : type === 'image' ? '图片消息' : '打开链接',
-  };
+
+  const t = String(text).trim();
+  if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
+    const p = payload && typeof payload === 'object' ? payload : {};
+    const url = pickText(p, ['url', 'mediaUrl', 'audioUrl', 'videoUrl']);
+    if (url) {
+      const type = String(msg.msgType || p?.msgType || p?.type || '').toUpperCase();
+      if (type.includes('AUDIO') || looksLikeAudioUrl(url)) return '[语音消息]';
+      if (type.includes('VIDEO') || looksLikeVideoUrl(url)) return '[视频消息]';
+      if (type.includes('IMAGE') || looksLikeImageUrl(url)) return '[图片消息]';
+    }
+  }
+  return text || '[空消息]';
 }
 
-function newestFirst<T>(list: T[], timeOf: (item: T) => number): T[] {
-  return list.slice().sort((a, b) => timeOf(b) - timeOf(a));
+type MediaInfo = { url: string; type: 'audio' | 'video' | 'image'; title: string } | null;
+
+function looksLikeAudioUrl(url: string): boolean { return /\.(mp3|m4a|aac|amr|wav|ogg)(\?|$)/i.test(url.toLowerCase()); }
+function looksLikeVideoUrl(url: string): boolean { return /\.(mp4|mov|m4v|3gp|webm)(\?|$)/i.test(url.toLowerCase()) || url.includes('.m3u8') || url.includes('.flv'); }
+function looksLikeImageUrl(url: string): boolean { return /\.(jpe?g|png|webp|gif|bmp)(\?|$)/i.test(url.toLowerCase()); }
+function answerTypeFromContext(source: any): number {
+  return Number(source?.answerType || source?.answerTypeConfig || source?.type || 0);
 }
 
-function oldestFirst<T>(list: T[], timeOf: (item: T) => number): T[] {
-  return list.slice().sort((a, b) => timeOf(a) - timeOf(b));
+function collectPrivateMessageMediaCandidates(msg: any): any[] {
+  const content = msg?.content || {};
+  const payload = messagePayload(msg) || {};
+  const candidates: any[] = [];
+
+  const flipKeys = ['flipCardInfo', 'filpCardInfo', 'flipCardAudioInfo', 'filpCardAudioInfo', 'flipCardVideoInfo', 'filpCardVideoInfo'];
+
+  if (content && typeof content === 'object') {
+    candidates.push(content);
+    for (const key of flipKeys) { if (content[key]) candidates.push(parseMaybeJson(content[key])); }
+    if (Array.isArray(content.bodys)) {
+      for (const b of content.bodys) {
+        const parsed = typeof b === 'string' ? parseMaybeJson(b) : b;
+        if (parsed) { candidates.push(parsed); for (const key of flipKeys) { if (parsed[key]) candidates.push(parseMaybeJson(parsed[key])); } }
+      }
+    }
+  }
+
+  if (msg && typeof msg === 'object') {
+    candidates.push(msg);
+    for (const key of flipKeys) { if (msg[key]) candidates.push(parseMaybeJson(msg[key])); }
+    if (Array.isArray(msg.bodys)) {
+      for (const b of msg.bodys) {
+        const parsed = typeof b === 'string' ? parseMaybeJson(b) : b;
+        if (parsed) { candidates.push(parsed); for (const key of flipKeys) { if (parsed[key]) candidates.push(parseMaybeJson(parsed[key])); } }
+      }
+    }
+  }
+
+  if (payload && typeof payload === 'object') {
+    candidates.push(payload);
+    for (const key of flipKeys) { if (payload[key]) candidates.push(parseMaybeJson(payload[key])); }
+  }
+
+  const bodyRawCandidates = [];
+  if (typeof msg?.bodys === 'string') bodyRawCandidates.push(msg.bodys);
+  if (typeof content?.bodys === 'string') bodyRawCandidates.push(content.bodys);
+  if (typeof msg?.body === 'string') bodyRawCandidates.push(msg.body);
+  if (typeof content?.body === 'string') bodyRawCandidates.push(content.body);
+  if (typeof msg?.content === 'string') bodyRawCandidates.push(msg.content);
+  if (typeof msg?.msgContent === 'string') bodyRawCandidates.push(msg.msgContent);
+  if (typeof msg?.message === 'string') bodyRawCandidates.push(msg.message);
+  for (const raw of bodyRawCandidates) {
+    const parsed = parseMaybeJson(raw);
+    if (parsed) {
+      candidates.push(parsed);
+      for (const key of flipKeys) { if (parsed[key]) candidates.push(parseMaybeJson(parsed[key])); }
+    }
+  }
+
+  return candidates.filter(Boolean);
 }
 
-function normalizeFlipPrices(res: any): any[] {
-  return unwrapList(res, ['content.customs', 'content.list', 'content.data.customs', 'data.customs', 'customs', 'list']);
+function privateMessageMedia(msg: any): MediaInfo {
+  const content = msg?.content || {};
+  const payload = messagePayload(msg) || {};
+  const p = payload && typeof payload === 'object' ? payload : {};
+  const candidates = collectPrivateMessageMediaCandidates(msg);
+
+  for (const item of candidates) {
+    let rawUrl = pickText(item, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'imageUrl', 'voiceUrl', 'mp4Url', 'playUrl', 'path', 'message.url', 'msg.url']);
+    if (rawUrl) {
+      const answerType = answerTypeFromContext(item);
+      let url = normalizeUrl(rawUrl);
+      if (!/^https?:\/\//i.test(url)) url = `${looksLikeImageUrl(url) ? 'https://source3.48.cn' : 'https://mp4.48.cn'}/${url.replace(/^\//, '')}`;
+      if (looksLikeAudioUrl(url) || (answerType === 2 && !looksLikeVideoUrl(url) && !looksLikeImageUrl(url))) return { url, type: 'audio', title: '语音消息' };
+      if (looksLikeVideoUrl(url) || (answerType === 3 && !looksLikeAudioUrl(url) && !looksLikeImageUrl(url))) return { url, type: 'video', title: '视频消息' };
+      if (looksLikeImageUrl(url)) return { url, type: 'image', title: '图片消息' };
+      const type = String(msg.msgType || item?.msgType || item?.type || p?.msgType || p?.type || '').toUpperCase();
+      if (type.includes('AUDIO') || type.includes('VOICE')) return { url, type: 'audio', title: '语音消息' };
+      if (type.includes('VIDEO')) return { url, type: 'video', title: '视频消息' };
+      if (type.includes('IMAGE')) return { url, type: 'image', title: '图片消息' };
+      return { url, type: 'image', title: '媒体消息' };
+    }
+
+    const answerRaw = item.answer || item.answerContent || '';
+    if (answerRaw) {
+      const parsed = typeof answerRaw === 'string' ? parseMaybeJson(answerRaw) : answerRaw;
+      if (parsed && typeof parsed === 'object') {
+        rawUrl = pickText(parsed, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'voiceUrl', 'mp4Url']);
+        if (rawUrl) {
+          const answerType = answerTypeFromContext(item) || answerTypeFromContext(parsed) || answerTypeFromContext(content) || answerTypeFromContext(msg);
+          let url2 = normalizeUrl(rawUrl);
+          if (!/^https?:\/\//i.test(url2)) url2 = `${looksLikeImageUrl(url2) ? 'https://source3.48.cn' : 'https://mp4.48.cn'}/${url2.replace(/^\//, '')}`;
+          if (answerType === 2 || looksLikeAudioUrl(url2)) return { url: url2, type: 'audio', title: '语音消息' };
+          if (answerType === 3 || looksLikeVideoUrl(url2)) return { url: url2, type: 'video', title: '视频消息' };
+          if (looksLikeImageUrl(url2)) return { url: url2, type: 'image', title: '图片消息' };
+          return { url: url2, type: 'image', title: '媒体消息' };
+        }
+      }
+    }
+  }
+
+  const rawText = String(msg?.body || msg?.bodys || msg?.msgContent || msg?.content || msg?.message || '');
+  const urlMatch = rawText.match(/https?:\/\/[^\s"'<>]+/i);
+  if (urlMatch) {
+    const url3 = urlMatch[0];
+    if (looksLikeAudioUrl(url3)) return { url: url3, type: 'audio', title: '语音消息' };
+    if (looksLikeVideoUrl(url3)) return { url: url3, type: 'video', title: '视频消息' };
+    if (looksLikeImageUrl(url3)) return { url: url3, type: 'image', title: '图片消息' };
+  }
+
+  return null;
 }
 
-function flipTypeName(value: any) {
-  const id = Number(value);
-  if (id === 1) return '文字';
-  if (id === 2) return '语音';
-  if (id === 3) return '视频';
-  return `类型${value || ''}`;
-}
+function oldestFirst<T>(list: T[], timeOf: (item: T) => number): T[] { return list.slice().sort((a, b) => timeOf(a) - timeOf(b)); }
 
-function lowestPrice(item: any) {
-  const values = [item.normalCost, item.privateCost, item.anonymityCost]
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value) && value >= 0);
-  return values.length ? Math.min(...values) : 0;
-}
+function flipTypeName(value: any) { const id = Number(value); if (id === 1) return '文字'; if (id === 2) return '语音'; if (id === 3) return '视频'; return `类型${value || ''}`; }
+function lowestPrice(item: any) { return Math.min(...[item.normalCost, item.privateCost, item.anonymityCost].map(Number).filter((v: number) => isFinite(v) && v >= 0)); }
 
 export default function PrivateMessagesScreen() {
-  const navigation = useNavigation();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
-  const members = useMemberStore((state) => state.members);
-  const showToast = useUiStore((state) => state.showToast);
-  const [conversations, setConversations] = useState<any[]>([]);
-  const [selectedConv, setSelectedConv] = useState<any>(null);
-  const [detail, setDetail] = useState<any[]>([]);
-  const [replyText, setReplyText] = useState('');
-  const [currentUserId, setCurrentUserId] = useState('');
-  const [flipPrices, setFlipPrices] = useState<any[]>([]);
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const members = useMemberStore((s) => s.members);
+  const showToast = useUiStore((s) => s.showToast);
+  const [convs, setConvs] = useState<any[]>([]);
+  const [sel, setSel] = useState<any>(null);
+  const [msgs, setMsgs] = useState<any[]>([]);
+  const [text, setText] = useState('');
+  const [uid, setUid] = useState('');
+  const [prices, setPrices] = useState<any[]>([]);
   const [money, setMoney] = useState('');
-  const [flipLoading, setFlipLoading] = useState(false);
+  const [flipType, setFlipType] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [nextTime, setNextTime] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const flatRef = useRef<FlatList>(null);
+  const [playUrl, setPlayUrl] = useState('');
 
-  const flipMember = useMemo(() => {
-    if (!selectedConv) return null;
-    const targetId = convTargetId(selectedConv);
-    return members.find((item: any) => String(item.id) === targetId || String(item.userId) === targetId || String(item.memberId) === targetId) || null;
-  }, [members, selectedConv]);
+  const member = useMemo(() => {
+    if (!sel) return null;
+    const id = convTargetId(sel);
+    return members.find((m: any) => String(m.id) === id || String(m.userId) === id || String(m.memberId) === id) || null;
+  }, [members, sel]);
+
+  useEffect(() => { loadConvs(); }, []);
 
   useEffect(() => {
-    let alive = true;
-    async function loadFlipPrompt() {
-      if (!flipMember) {
-        setFlipPrices([]);
-        setMoney('');
-        return;
-      }
-      setFlipLoading(true);
+    if (!member) { setPrices([]); setMoney(''); return; }
+    let a = true;
+    (async () => {
       try {
-        const [priceRes, moneyRes] = await Promise.all([
-          pocketApi.getFlipPrices(String(flipMember.id)),
-          pocketApi.getUserMoney().catch(() => null),
-        ]);
-        if (!alive) return;
-        setFlipPrices(normalizeFlipPrices(priceRes));
-        setMoney(pickText(moneyRes, ['content.money', 'content.balance', 'content.userMoney', 'data.money', 'money', 'balance']));
-      } catch (error) {
-        if (alive) showToast(`翻牌配置读取失败：${errorMessage(error)}`);
-        setFlipPrices([]);
-      } finally {
-        if (alive) setFlipLoading(false);
+        const [pr, mr] = await Promise.all([pocketApi.getFlipPrices(String(member.id)), pocketApi.getUserMoney().catch(() => null)]);
+        if (!a) return;
+        const list = unwrapList(pr, ['content.customs', 'content.list', 'data.customs', 'customs', 'list']);
+        setPrices(list || []);
+        setMoney(pickText(mr, ['content.moneyTotal', 'content.total', 'content.money', 'content.balance', 'data.moneyTotal', 'data.money', 'money', 'balance']) || '');
+      } catch { if (a) setPrices([]); }
+    })();
+    return () => { a = false; };
+  }, [member]);
+
+  const loadConvs = async () => {
+    setLoading(true);
+    try {
+      let cursor = Date.now();
+      let all: any[] = [];
+      let loops = 0;
+      while (loops < 60) {
+        const res = await pocketApi.getPrivateMessageList(cursor);
+        const list = unwrapList(res, ['content.userMessageList', 'content.list', 'content.data', 'data.userMessageList', 'userMessageList', 'list']);
+        const incoming = Array.isArray(list) ? list : [];
+        all = all.concat(incoming.filter((it: any) => !all.find((a: any) => (convTargetId(a) || a.userMessageId) === (convTargetId(it) || it.userMessageId))));
+        const nextCursor = Number(res?.content?.lastTime || res?.data?.lastTime || 0);
+        if (!nextCursor || !incoming.length) break;
+        cursor = nextCursor;
+        loops += 1;
       }
-    }
-    loadFlipPrompt();
-    return () => { alive = false; };
-  }, [flipMember, showToast]);
+      setConvs(all.slice().sort((a: any, b: any) => Number(b.lastTime || b.msgTime || 0) - Number(a.lastTime || a.msgTime || 0)));
+    } catch (e) { showToast(`加载失败：${errorMessage(e)}`); }
+    finally { setLoading(false); }
+  };
 
-  const loadConversations = useCallback(async () => {
+  const openConv = async (c: any) => {
+    setSel(c); setMsgs([]); setNextTime(0); setHasMore(false); setFlipType(0); setPlayUrl('');
     setLoading(true);
-    showToast('正在加载私信列表...');
     try {
-      const res = await pocketApi.getPrivateMessageList();
-      const list = unwrapList(res, ['content.userMessageList', 'content.list', 'content.data', 'data.userMessageList', 'userMessageList', 'list']);
-      setConversations(newestFirst(list, (item) => Number(item.lastTime || item.msgTime || item.ctime || item.time || 0)));
-      showToast(`加载完成：${list.length} 个会话`);
-    } catch (error) {
-      showToast(`加载失败：${errorMessage(error)}`);
-      setConversations([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [showToast]);
-
-  const openConversation = async (conv: any) => {
-    setSelectedConv(conv);
-    setLoading(true);
-    showToast('正在加载会话...');
-    try {
-      if (!currentUserId) {
+      if (!uid) {
         const info = await pocketApi.getNimLoginInfo().catch(() => null);
-        const id = pickText(info, ['content.userInfo.userId', 'content.userId', 'content.id', 'userId', 'id']);
-        if (id) setCurrentUserId(String(id));
+        const id = pickText(info, ['content.userInfo.userId', 'content.userId', 'id', 'userId']);
+        if (id) setUid(String(id));
       }
-      const res = await pocketApi.getPrivateMessageDetail(convTargetId(conv));
-      const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'content.data', 'data.messageList', 'messageList', 'list']);
-      setDetail(oldestFirst(list, msgTimeNumber));
-      showToast(`加载完成：${list.length} 条消息`);
-    } catch (error) {
-      showToast(`加载失败：${errorMessage(error)}`);
-      setDetail([]);
-    } finally {
-      setLoading(false);
-    }
+      const res = await pocketApi.getPrivateMessageDetail(convTargetId(c));
+      const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'messageList', 'list']);
+      const sorted = oldestFirst(list, msgTimeNumber);
+      setMsgs(sorted);
+      setNextTime(Number(res?.content?.nextTime || res?.data?.nextTime || 0));
+      setHasMore(sorted.length > 0);
+      setTimeout(() => flatRef.current?.scrollToEnd?.({ animated: false }), 150);
+    } catch (e) { showToast(`加载失败：${errorMessage(e)}`); }
+    finally { setLoading(false); }
   };
 
-  const sendReply = async () => {
-    if (!replyText.trim() || !selectedConv) return;
+  const loadMore = async () => {
+    if (!sel || loading || !hasMore || !nextTime) return;
     setLoading(true);
     try {
-      await pocketApi.sendPrivateMessageReply(convTargetId(selectedConv), replyText.trim());
-      setReplyText('');
-      showToast('已发送');
-      await openConversation(selectedConv);
-    } catch (error) {
-      showToast(`发送失败：${errorMessage(error)}`);
-    } finally {
-      setLoading(false);
-    }
+      const res = await pocketApi.getPrivateMessageDetail(convTargetId(sel), nextTime);
+      const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'messageList', 'list']);
+      if (!list.length) { setHasMore(false); return; }
+      const seen = new Set(msgs.map((m, i) => msgId(m, i)));
+      const older = oldestFirst(list, msgTimeNumber);
+      const merged = oldestFirst([...older, ...msgs.filter((m, i) => !seen.has(msgId(m, i)))], msgTimeNumber);
+      setMsgs(merged);
+      setNextTime(Number(res?.content?.nextTime || res?.data?.nextTime || 0));
+      setHasMore(list.length > 0);
+    } catch (e) { showToast(`历史加载失败：${errorMessage(e)}`); }
+    finally { setLoading(false); }
   };
 
-  if (selectedConv) {
-    const targetId = convTargetId(selectedConv);
+  const doSend = async () => {
+    const txt = text.trim();
+    if (!txt || !sel) return;
+    setLoading(true);
+    try {
+      if (flipType && member) {
+        const p = prices.find((x) => x.answerType === flipType);
+        const cost = p ? (p.privateCost || p.normalCost || lowestPrice(p)) : 0;
+        await pocketApi.sendFlipQuestion({
+          memberId: parseInt(member.id, 10),
+          content: txt,
+          type: 2,
+          cost,
+          answerType: flipType,
+        });
+        showToast('翻牌已提交');
+      } else {
+        await pocketApi.sendPrivateMessageReply(convTargetId(sel), txt);
+        showToast('已发送');
+        await openConv(sel);
+      }
+      setText('');
+    } catch (e) { showToast(`发送失败：${errorMessage(e)}`); }
+    finally { setLoading(false); }
+  };
+
+  if (sel) {
+    const targetId = convTargetId(sel);
     return (
-      <View style={[styles.container, isDark && styles.containerDark]}>
-        <View style={[styles.header, isDark && styles.headerDark]}>
-          <TouchableOpacity onPress={() => setSelectedConv(null)}>
-            <Text style={styles.backBtn}>返回列表</Text>
-          </TouchableOpacity>
-          <Text style={[styles.title, isDark && styles.textLight]} numberOfLines={1}>{convName(selectedConv)}</Text>
-          <View style={styles.headerSide} />
+      <View style={[styles.screen, isDark && styles.screenDark]}>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => setSel(null)}><Text style={styles.back}>返回</Text></TouchableOpacity>
+          <Text style={[styles.title, isDark && styles.light]} numberOfLines={1}>{convName(sel)}</Text>
+          <View style={{ width: 54 }} />
         </View>
         <FlatList
-          data={detail}
-          keyExtractor={(item, index) => msgId(item, index)}
-          renderItem={({ item, index }) => {
-            const mine = isMineMessage(item, targetId, currentUserId);
+          ref={flatRef}
+          data={msgs}
+          keyExtractor={(item, i) => msgId(item, i)}
+          contentContainerStyle={styles.msgList}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
+          renderItem={({ item }) => {
+            const mine = isMineMessage(item, targetId, uid);
             const media = privateMessageMedia(item);
-            const text = privateMessageText(item);
-            const hasText = text && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(text);
+            const txt = privateMessageText(item);
+            const hasText = txt && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(txt) && txt !== '[空消息]';
             return (
               <View style={[styles.msgRow, mine && styles.msgRowMine]}>
-                <View style={[styles.msgBubble, mine && styles.msgBubbleMine, isDark && !mine && styles.msgBubbleDark]}>
-                  <Text style={[styles.msgAuthor, mine && styles.msgAuthorMine]}>{mine ? '我' : convName(selectedConv)}</Text>
-                  {hasText ? (
-                    <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.textLight]}>
-                      {text}
-                    </Text>
-                  ) : null}
+                <View style={[styles.bubble, mine && styles.bubbleMine, isDark && !mine && styles.bubbleDark]}>
+                  {hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>{txt}</Text> : null}
                   {media ? (
-                    media.type === 'link' ? (
-                      <TouchableOpacity style={styles.mediaCard} onPress={() => Linking.openURL(media.url).catch(() => showToast('链接无法打开'))}>
-                        <Text style={[styles.mediaTitle, mine && styles.msgTextMine]} numberOfLines={1}>{media.title}</Text>
-                        <Text style={[styles.mediaUrl, mine && styles.msgTimeMine]} numberOfLines={1}>{media.url}</Text>
-                      </TouchableOpacity>
-                    ) : media.type === 'image' ? (
-                      <Image source={{ uri: media.url }} style={styles.inlineImage} resizeMode="cover" />
+                    media.type === 'image' ? (
+                      <Image source={{ uri: media.url }} style={styles.inlineImg} resizeMode="cover" />
                     ) : (
-                      <View style={styles.mediaCard}>
-                        <Text style={[styles.mediaTitle, mine && styles.msgTextMine]}>{media.title}</Text>
-                        <Video
-                          source={{ uri: media.url }}
-                          style={media.type === 'audio' ? styles.inlineAudio : styles.inlineVideo}
-                          controls
-                          paused
-                          resizeMode="contain"
-                          ignoreSilentSwitch="ignore"
-                        />
-                      </View>
+                      <TouchableOpacity style={styles.mediaBtn} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
+                        <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? '收起' : media.type === 'audio' ? '▶ 播放语音' : '▶ 播放视频'}</Text>
+                      </TouchableOpacity>
                     )
-                  ) : !hasText ? (
-                    <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.textLight]}>[空消息]</Text>
+                  ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>[空消息]</Text> : null}
+                  {playUrl === media?.url ? (
+                    <Video source={{ uri: media!.url }} style={media!.type === 'audio' ? styles.audio : styles.video} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
                   ) : null}
-                  <Text style={[styles.msgTime, mine && styles.msgTimeMine]}>{formatTimestamp(msgTime(item))}</Text>
+                  <Text style={[styles.msgTime, mine && styles.msgTimeMine]}>{formatTimestamp(msgTimeNumber(item))}</Text>
                 </View>
               </View>
             );
           }}
-          ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无私信'}</Text>}
+          ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无消息'}</Text>}
         />
-        {flipMember ? (
-          <View style={[styles.flipPanel, isDark && styles.flipPanelDark]}>
-            <Text style={[styles.flipPanelTitle, isDark && styles.textLight]}>
-              {flipLoading ? '正在读取翻牌配置...' : `${flipMember.ownerName || convName(selectedConv)} 翻牌`}
-            </Text>
-            <Text style={[styles.flipMeta, isDark && styles.textSubLight]}>
-              鸡腿余额：{money || '--'} · {flipPrices.length ? `已开放 ${flipPrices.length} 种形式` : '暂无开放翻牌形式'}
-            </Text>
-            {flipPrices.length ? (
-              <View style={styles.flipTypeRow}>
-                {flipPrices.slice(0, 4).map((item, index) => (
-                  <View key={`${item.answerType || index}`} style={styles.flipChip}>
-                    <Text style={styles.flipChipText}>{flipTypeName(item.answerType)} · {lowestPrice(item)}鸡腿起</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
+        {member ? (
+          <View style={[styles.flipBar, isDark && styles.flipBarDark]}>
+            <Text style={[styles.flipName, isDark && styles.light]}>{member.ownerName} 翻牌</Text>
+            <View style={styles.flipRow}>
+              {prices.slice(0, 3).map((p) => (
+                <TouchableOpacity key={p.answerType} style={[styles.flipChip, flipType === p.answerType && styles.flipChipOn]} onPress={() => setFlipType((v) => v === p.answerType ? 0 : p.answerType)}>
+                  <Text style={[styles.flipChipT, flipType === p.answerType && styles.flipChipTOn]}>{flipTypeName(p.answerType)}·{lowestPrice(p)}</Text>
+                </TouchableOpacity>
+              ))}
+              <View style={styles.flipSpacer} />
+              {money ? <Text style={[styles.flipMoney, isDark && styles.light]}>余额 {money}</Text> : null}
+              <TouchableOpacity style={styles.flipRechargeBtn} onPress={() => navigation.navigate('RechargeScreen')}>
+                <Text style={styles.flipRechargeT}>充值</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
-        <View style={[styles.replyBar, isDark && styles.replyBarDark]}>
-          <TextInput
-            style={[styles.replyInput, isDark && styles.replyInputDark]}
-            placeholder="输入回复..."
-            placeholderTextColor="#5a5a5a"
-            value={replyText}
-            onChangeText={setReplyText}
-          />
-          <TouchableOpacity style={styles.sendBtn} onPress={sendReply} disabled={loading}>
-            <Text style={styles.sendBtnText}>发送</Text>
-          </TouchableOpacity>
+        <View style={[styles.inputBar, isDark && styles.inputBarDark]}>
+          {flipType > 0 ? <Text style={styles.flipLabel}>私密翻牌·{flipTypeName(flipType)}</Text> : null}
+          <View style={styles.inputRow}>
+            <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="输入内容..." placeholderTextColor="#999" value={text} onChangeText={setText} multiline />
+            <TouchableOpacity style={styles.sendBtn} onPress={doSend} disabled={loading || !text.trim()}>
+              <Text style={styles.sendT}>{loading ? '..' : flipType ? '翻牌' : '发送'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textLight]}>私信列表</Text>
-        <TouchableOpacity onPress={loadConversations} style={styles.refresh}>
-          <Text style={styles.refreshText}>刷新</Text>
-        </TouchableOpacity>
+    <View style={[styles.screen, isDark && styles.screenDark]}>
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.back}>返回</Text></TouchableOpacity>
+        <Text style={[styles.title, isDark && styles.light]}>私信列表</Text>
+        <TouchableOpacity onPress={loadConvs}><Text style={styles.refreshBtn}>刷新</Text></TouchableOpacity>
       </View>
       <FlatList
-        data={conversations}
-        keyExtractor={(item, index) => String(convTargetId(item) || index)}
+        data={convs}
+        keyExtractor={(item, i) => String(convTargetId(item) || i)}
         renderItem={({ item }) => (
-          <TouchableOpacity style={[styles.convItem, isDark && styles.convItemDark]} onPress={() => openConversation(item)}>
+          <TouchableOpacity style={[styles.convItem, isDark && styles.convItemDark]} onPress={() => openConv(item)}>
             <View style={styles.convInfo}>
-              <Text style={[styles.convName, isDark && styles.textLight]}>{convName(item)}</Text>
-              <Text style={styles.convPreview} numberOfLines={1}>{item.newestMessage || messageText(item) || '点击查看会话'}</Text>
+              <Text style={[styles.convName, isDark && styles.light]}>{convName(item)}</Text>
+              <Text style={styles.convPrev} numberOfLines={1}>{item.newestMessage || '点击查看'}</Text>
             </View>
-            {Number(item.noreadNum) > 0 ? (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadText}>{item.noreadNum}</Text>
-              </View>
-            ) : null}
+            {Number(item.noreadNum) > 0 ? <View style={styles.badge}><Text style={styles.badgeT}>{item.noreadNum}</Text></View> : null}
           </TouchableOpacity>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '点击刷新获取私信列表'}</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '刷新获取私信列表'}</Text>}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 14, minWidth: 54 },
+  screen: { flex: 1, backgroundColor: 'transparent' },
+  screenDark: { backgroundColor: 'transparent' },
+  topBar: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  back: { color: '#ff6f91', fontSize: 14 },
   title: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', color: '#ff6f91' },
-  headerSide: { width: 54 },
-  refresh: { padding: 6 },
-  refreshText: { color: '#ff6f91', fontSize: 13 },
-  status: { marginHorizontal: 16, marginTop: 10, color: '#444', fontSize: 12 },
-  convItem: { padding: 14, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 16, marginVertical: 4, borderRadius: 16, flexDirection: 'row', alignItems: 'center' },
+  refreshBtn: { color: '#ff6f91', fontSize: 13 },
+  light: { color: '#eee' },
+  convItem: { padding: 14, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 14, marginVertical: 3, borderRadius: 16, flexDirection: 'row', alignItems: 'center' },
   convItemDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
   convInfo: { flex: 1 },
   convName: { fontSize: 15, fontWeight: '700', color: '#333' },
-  convPreview: { fontSize: 12, color: '#333333', marginTop: 4 },
-  unreadBadge: { backgroundColor: '#ff4444', borderRadius: 16, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  unreadText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  msgRow: { paddingHorizontal: 12, marginVertical: 4, alignItems: 'flex-start' },
+  convPrev: { fontSize: 12, color: '#555', marginTop: 4 },
+  badge: { backgroundColor: '#ff4444', borderRadius: 16, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  badgeT: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  msgList: { paddingHorizontal: 8, paddingBottom: 8 },
+  msgRow: { marginVertical: 2, alignItems: 'flex-start' },
   msgRowMine: { alignItems: 'flex-end' },
-  msgBubble: { maxWidth: '82%', padding: 10, backgroundColor: 'rgba(255,255,255,0.46)', borderRadius: 18 },
-  msgBubbleMine: { backgroundColor: '#ff6f91' },
-  msgBubbleDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
-  msgAuthor: { fontSize: 11, color: '#ff6f91', fontWeight: '800', marginBottom: 4 },
-  msgAuthorMine: { color: '#fff' },
+  bubble: { maxWidth: '82%', padding: 10, backgroundColor: 'rgba(255,255,255,0.46)', borderRadius: 18 },
+  bubbleMine: { backgroundColor: '#ff6f91' },
+  bubbleDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   msgText: { fontSize: 14, color: '#333', lineHeight: 20 },
   msgTextMine: { color: '#fff' },
-  msgTime: { fontSize: 10, color: '#333333', marginTop: 6 },
-  msgTimeMine: { color: '#ffe8ef' },
-  mediaCard: { marginTop: 6, minWidth: 210, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.20)' },
-  mediaTitle: { paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, color: '#333', fontSize: 12, fontWeight: '800' },
-  mediaUrl: { paddingHorizontal: 10, paddingBottom: 8, color: '#555', fontSize: 10 },
-  inlineAudio: { height: 52, minWidth: 220, backgroundColor: 'rgba(0,0,0,0.12)' },
-  inlineVideo: { height: 180, minWidth: 230, backgroundColor: '#000' },
-  inlineImage: { width: 220, height: 220, marginTop: 6, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.12)' },
-  flipPanel: { marginHorizontal: 10, marginBottom: 8, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)' },
-  flipPanelDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
-  flipPanelTitle: { color: '#333333', fontSize: 13, fontWeight: '800' },
-  flipMeta: { color: '#555555', fontSize: 12, marginTop: 4 },
-  flipTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  flipChip: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 12, backgroundColor: '#ff6f91' },
-  flipChipText: { color: '#ffffff', fontSize: 11, fontWeight: '800' },
-  replyBar: { flexDirection: 'row', padding: 10, backgroundColor: 'rgba(255,255,255,0.46)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.42)', alignItems: 'center' },
-  replyBarDark: { backgroundColor: 'rgba(20,20,20,0.58)', borderTopColor: 'rgba(255,255,255,0.12)' },
-  replyInput: { flex: 1, padding: 10, borderRadius: 20, borderWidth: 1, borderColor: '#ddd', color: '#333', marginRight: 8, fontSize: 14 },
-  replyInputDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444', color: '#eeeeee' },
-  sendBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: '#ff6f91' },
-  sendBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  textLight: { color: '#eee' },
-  textSubLight: { color: '#dddddd' },
-  empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
+  msgTime: { fontSize: 10, color: '#777', marginTop: 4 },
+  msgTimeMine: { color: '#ffe0e8' },
+  mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.08)', alignSelf: 'flex-start' },
+  mediaBtnText: { fontSize: 12, fontWeight: '800', color: '#ff6f91' },
+  inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)' },
+  audio: { height: 48, minWidth: 200, marginTop: 4, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 10 },
+  video: { height: 150, minWidth: 200, marginTop: 4, backgroundColor: '#000', borderRadius: 10 },
+  flipBar: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: 'rgba(255,255,255,0.72)', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
+  flipBarDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderTopColor: 'rgba(255,255,255,0.08)' },
+  flipName: { fontSize: 11, color: '#555', fontWeight: '700', marginBottom: 4 },
+  flipRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  flipChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.06)' },
+  flipChipOn: { backgroundColor: '#ff6f91' },
+  flipChipT: { fontSize: 11, color: '#555', fontWeight: '700' },
+  flipChipTOn: { color: '#fff' },
+  flipSpacer: { flex: 1 },
+  flipMoney: { fontSize: 11, color: '#ff6f91', fontWeight: '700' },
+  flipRechargeBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: '#ff6f91' },
+  flipRechargeT: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  flipLabel: { fontSize: 10, color: '#ff6f91', fontWeight: '800', marginBottom: 2 },
+  inputBar: { paddingHorizontal: 10, paddingVertical: 8, backgroundColor: 'rgba(255,255,255,0.72)', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
+  inputBarDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderTopColor: 'rgba(255,255,255,0.08)' },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  input: { flex: 1, padding: 10, borderRadius: 18, borderWidth: 1, borderColor: '#ddd', color: '#333', fontSize: 14, maxHeight: 80 },
+  inputDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444', color: '#eee' },
+  sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91' },
+  sendT: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  empty: { textAlign: 'center', color: '#777', marginTop: 60, fontSize: 14 },
 });

@@ -49,7 +49,7 @@ export default function MessagesScreen() {
         nextTime: 0,
         fetchAll: true,
       });
-      const list = unwrapList(res, ['content.messageList', 'content.list', 'messageList', 'list']);
+      const list = unwrapList(res, ['content.messageList', 'content.message', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'list']);
       setMessages(list.slice().sort((a, b) => msgTime(b) - msgTime(a)));
       showToast(`已加载 ${list.length} 条消息`);
     } catch (error) {
