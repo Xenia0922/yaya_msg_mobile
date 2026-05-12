@@ -38,6 +38,7 @@ yarn-error.*
 *.tsbuildinfo
 
 # generated native folders
+/android/local.properties
 /ios
 
 # Android source is part of this app because it contains native player code.
@@ -45,3 +46,5 @@ android/.gradle/
 android/build/
 android/app/build/
 *.apk
+*.hsp
+/harmonyos
