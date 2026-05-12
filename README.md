@@ -1,55 +1,84 @@
-# 牙牙消息 (Yaya Message)
+# Yaya Message Mobile
 
-基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发的 React Native 移动端客户端。
+> 口袋48 第三方移动客户端，React Native 跨平台实现。
+
+基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg)（桌面端）二次开发的移动端版本，提供与桌面端一致的核心功能体验。
 
 ---
 
-### 平台支持
+## 平台
 
 | 平台 | 状态 |
-|------|------|
-| Android | 可用 |
+|:--|:--|
+| Android | 正式可用 |
 | iOS | 开发中 |
 | HarmonyOS | 开发中 |
 
 ---
 
-### 功能
+## 功能
 
-- 口袋48 关注房间 & 历史消息
-- 私信会话 & 翻牌发送
-- 直播播放 (ExoPlayer RTMP/HLS)
-- 翻牌记录 & 统计分析
-- 鸡腿余额查询 & 充值
-- 成员档案 & 相册
-- 电台 & 音乐库
-- 自动签到
+- **房间消息** — 关注房间时间线、媒体预览、礼物解析
+- **私信 & 翻牌** — 私信会话、翻牌问答（文字/语音/视频）
+- **直播播放** — ExoPlayer 原生渲染，支持 RTMP/HLS 多源回退
+- **翻牌统计** — 历史翻牌图表、类型分布、回复耗时分析
+- **成员档案** — 生日、星座、身高、血型、期数、排名、时间线
+- **媒体库** — 电台回放、音乐库、相册浏览
+- **鸡腿充值** — 余额查询、官方充值页内嵌 WebView
+- **自动签到** — 静默签到，已签不重复提示
+- **多主题** — 浅色 / 深色模式切换
 
 ---
 
-### 构建
+## 构建
+
+### 前置环境
+
+- Node.js ≥ 18
+- JDK 17+
+- Android SDK（API 34+）
+
+### 安装依赖
 
 ```bash
-cd yaya_msg-mobile
-npm install
-$env:JAVA_HOME = "path/to/jdk"
-$env:ANDROID_HOME = "path/to/android/sdk"
-cd android
-.\gradlew.bat assembleRelease
+npm install --legacy-peer-deps
 ```
 
-APK 输出在 `android/app/build/outputs/apk/release/`
+### 打包 Android APK
+
+```bash
+# Windows PowerShell
+$env:JAVA_HOME = "path\to\jdk"
+$env:ANDROID_HOME = "path\to\android\sdk"
+cd android
+.\gradlew assembleRelease
+```
+
+产物路径：`android/app/build/outputs/apk/release/app-release.apk`
 
 ---
 
-### 致谢
+## 技术栈
 
-感谢 [OpenAI](https://openai.com) 及 [DeepSeek](https://deepseek.com) 的技术支持。
+| 层 | 技术 |
+|:--|:--|
+| 框架 | React Native 0.81 + Expo SDK 54 (bare) |
+| 导航 | React Navigation 7 |
+| 状态管理 | Zustand |
+| 直播引擎 | ExoPlayer (Android) / AVPlayer (iOS) / AVPlayer (HarmonyOS) |
+| 认证 | WebAssembly + WebView fallback |
+| 网络 | Pocket48 API（签名 + 非签名双通道） |
 
 ---
 
-### 说明
+## 致谢
 
-本项目仍在开发中，可能存在未修复的 Bug，敬请谅解。
+本项目在开发过程中得到了来自 [OpenAI](https://openai.com) 及 [DeepSeek](https://deepseek.com) 的 AI 技术支持。
 
-**presented by Xenia**
+---
+
+## 声明
+
+项目仍处于活跃开发阶段，部分功能可能存在缺陷，欢迎 Issue & PR。
+
+**Presented by Xenia**
