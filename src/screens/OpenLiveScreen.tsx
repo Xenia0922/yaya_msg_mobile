@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import { useSettingsStore, useUiStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
@@ -162,7 +163,7 @@ export default function OpenLiveScreen() {
   const [nextTime, setNextTime] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('搜索并选择成员后查看公演记录。');
+  const [status, setStatus] = useState('暂无公演记录');
   const [playing, setPlaying] = useState<{ url: string; title: string } | null>(null);
   const [isLandscape, setIsLandscape] = useState(false);
   const loadingRef = useRef(false);
@@ -198,7 +199,7 @@ export default function OpenLiveScreen() {
       setNextTime(0);
       setHasMore(false);
     }
-    setStatus(`正在加载 ${shortMemberName(nextMember)} 的公演记录...`);
+    setStatus(`加载中... ${shortMemberName(nextMember)} 的公演记录...`);
     try {
       const cursor = append ? nextTime : 0;
       const res = await pocketApi.getOpenLive({ memberId: nextMember.id, nextTime: cursor });
@@ -292,51 +293,55 @@ export default function OpenLiveScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.controls}>
-        <MemberPicker selectedMember={member} onSelect={(next) => loadMemberShows(next, false)} placeholder="搜索成员并打开公演记录..." />
-        <TextInput
-          style={[styles.search, isDark && styles.searchDark]}
-          placeholder="筛选标题、成员、liveId..."
-          placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
-          value={query}
-          onChangeText={setQuery}
-        />
-        <Text style={[styles.status, isDark && styles.textSubLight]}>{loading && !items.length ? '加载中...' : status}</Text>
-      </View>
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <View style={styles.controls}>
+          <MemberPicker selectedMember={member} onSelect={(next) => loadMemberShows(next, false)} placeholder="搜索成员并打开公演记录..." />
+          <TextInput
+            style={[styles.search, isDark && styles.searchDark]}
+            placeholder="筛选标题、成员、liveId..."
+            placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
+            value={query}
+            onChangeText={setQuery}
+          />
+          <Text style={[styles.status, isDark && styles.textSubLight]}>{loading && !items.length ? '加载中...' : status}</Text>
+        </View>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.key}
-        contentContainerStyle={styles.list}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.35}
-        ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            {loading ? <ActivityIndicator color="#ff6f91" /> : null}
-            <Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '加载中...' : '暂无公演记录'}</Text>
-          </View>
-        }
-        ListFooterComponent={items.length ? (
-          <Text style={[styles.footerText, isDark && styles.textSubLight]}>
-            {loading ? '加载中...' : hasMore ? '上滑继续加载' : '没有更多了'}
-          </Text>
-        ) : null}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.card, isDark && styles.cardDark]}
-            activeOpacity={0.9}
-            onPress={() => playItem(item)}
-            onLongPress={() => downloadItem(item)}
-          >
-            {item.cover ? <Image source={{ uri: item.cover }} style={styles.cover} resizeMode="cover" /> : <View style={styles.coverPlaceholder}><Text style={styles.coverText}>LIVE</Text></View>}
-            <View style={styles.cardBody}>
-              <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>{item.title}</Text>
-              <Text style={[styles.meta, isDark && styles.textSubLight]} numberOfLines={1}>{item.nickname || shortMemberName(member) || '成员'}</Text>
-              <Text style={[styles.time, isDark && styles.textSubLight]}>{formatTimestamp(item.msgTime)}</Text>
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.key}
+          contentContainerStyle={styles.list}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.35}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              {loading ? <ActivityIndicator color="#ff6f91" /> : null}
+              <Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '加载中...' : '暂无公演记录'}</Text>
             </View>
-          </TouchableOpacity>
-        )}
-      />
+          }
+          ListFooterComponent={items.length ? (
+            <Text style={[styles.footerText, isDark && styles.textSubLight]}>
+              {loading ? '加载中...' : hasMore ? '上滑继续加载' : '没有更多了'}
+            </Text>
+          ) : null}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <TouchableOpacity
+                style={[styles.card, isDark && styles.cardDark]}
+                activeOpacity={0.9}
+                onPress={() => playItem(item)}
+                onLongPress={() => downloadItem(item)}
+              >
+                {item.cover ? <Image source={{ uri: item.cover }} style={styles.cover} resizeMode="cover" /> : <View style={styles.coverPlaceholder}><Text style={styles.coverText}>LIVE</Text></View>}
+                <View style={styles.cardBody}>
+                  <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>{item.title}</Text>
+                  <Text style={[styles.meta, isDark && styles.textSubLight]} numberOfLines={1}>{item.nickname || shortMemberName(member) || '成员'}</Text>
+                  <Text style={[styles.time, isDark && styles.textSubLight]}>{formatTimestamp(item.msgTime)}</Text>
+                </View>
+              </TouchableOpacity>
+            </FadeInView>
+          )}
+        />
+      </FadeInView>
     </View>
   );
 }

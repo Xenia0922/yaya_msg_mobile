@@ -10,6 +10,7 @@ import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import officialMediaApi from '../api/officialMedia';
 import { useSettingsStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 
@@ -59,7 +60,7 @@ export default function VideoLibraryScreen() {
     const cursor = refresh ? 0 : nextCtime;
     if (refresh) setLoading(true);
     else setLoadingMore(true);
-    setStatus(refresh ? '正在加载官方视频...' : '正在加载更多视频...');
+    setStatus(refresh ? '加载中...官方视频...' : '加载中...更多视频...');
     try {
       const res = await officialMediaApi.getVideoList({ ctime: cursor, typeId: 0, groupId: 0, limit: 20 });
       const list = normalizeVideos(res);
@@ -128,23 +129,27 @@ export default function VideoLibraryScreen() {
         </TouchableOpacity>
       </View>
       {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text> : null}
-      <FlatList
-        data={videos}
-        keyExtractor={(item, index) => String(item.videoId || item.id || index)}
-        contentContainerStyle={styles.listContent}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.35}
-        ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => play(item)}>
-            <Text style={[styles.cardTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
-            <Text style={[styles.cardSub, isDark && styles.textSubDark]}>
-              {[item.typeName, item.subTitle, formatTimestamp(item.ctime).slice(0, 10)].filter(Boolean).join(' · ')}
-            </Text>
-            <Text style={[styles.desc, isDark && styles.textSubDark]}>{item.play ? `播放 ${item.play}` : '点击解析播放地址'}</Text>
-          </TouchableOpacity>
-        )}
-      />
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={videos}
+          keyExtractor={(item, index) => String(item.videoId || item.id || index)}
+          contentContainerStyle={styles.listContent}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => play(item)}>
+                <Text style={[styles.cardTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
+                <Text style={[styles.cardSub, isDark && styles.textSubDark]}>
+                  {[item.typeName, item.subTitle, formatTimestamp(item.ctime).slice(0, 10)].filter(Boolean).join(' · ')}
+                </Text>
+                <Text style={[styles.desc, isDark && styles.textSubDark]}>{item.play ? `播放 ${item.play}` : '点击解析播放地址'}</Text>
+              </TouchableOpacity>
+            </FadeInView>
+          )}
+        />
+      </FadeInView>
     </View>
   );
 }

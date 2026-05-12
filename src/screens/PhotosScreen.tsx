@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useUiStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
@@ -154,33 +155,37 @@ export default function PhotosScreen() {
         </TouchableOpacity>
         <Text style={[styles.title, isDark && styles.textDark]}>个人相册</Text>
       </View>
-      <View style={styles.pickerWrap}>
-        <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
-        {status ? <Text style={styles.status}>{status}</Text> : null}
-      </View>
-      <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
-      <FlatList
-        data={photos}
-        numColumns={2}
-        keyExtractor={(item, index) => String(item.id || item.nftId || index)}
-        contentContainerStyle={{ padding: 8 }}
-        renderItem={({ item }) => {
-          const url = deepFindImageUrl(item);
-          return (
-            <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
-              {url ? (
-                <>
-                  <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadPhoto(url)}>
-                    <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
-                  </TouchableOpacity>
-                </>
-              ) : <View style={styles.photo} />}
-              <Text style={styles.photoTitle} numberOfLines={1}>{item.name || item.title || ''}</Text>
-            </View>
-          );
-        }}
-        ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '选择成员查看相册'}</Text>}
-      />
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <View style={styles.pickerWrap}>
+          <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
+          {status ? <Text style={[styles.status, isDark && styles.textDark]}>{status}</Text> : null}
+        </View>
+        <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
+        <FlatList
+          data={photos}
+          numColumns={2}
+          keyExtractor={(item, index) => String(item.id || item.nftId || index)}
+          contentContainerStyle={{ padding: 8 }}
+          renderItem={({ item, index }) => {
+            const url = deepFindImageUrl(item);
+            return (
+              <FadeInView delay={80 + index * 30} duration={300} style={{ flex: 1 }}>
+                <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
+                  {url ? (
+                    <>
+                      <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadPhoto(url)}>
+                        <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+                      </TouchableOpacity>
+                    </>
+                  ) : <View style={styles.photo} />}
+                  <Text style={[styles.photoTitle, isDark && styles.textDark]} numberOfLines={1}>{item.name || item.title || ''}</Text>
+                </View>
+              </FadeInView>
+            );
+          }}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textDark]}>{loading ? '加载中...' : '暂无图片'}</Text>}
+        />
+      </FadeInView>
     </View>
   );
 }

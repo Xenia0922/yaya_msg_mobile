@@ -13,6 +13,7 @@ import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
 import { useSettingsStore, useUiStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
@@ -127,7 +128,7 @@ export default function RoomAlbumScreen() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [playing, setPlaying] = useState<AlbumItem | null>(null);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('选择成员后读取房间相册，图片和视频都会显示。');
+  const [status, setStatus] = useState('暂无数据');
   const loadingRef = useRef(false);
 
   const currentChannelId = useMemo(() => selectedMember ? channelFor(selectedMember, roomMode) : '', [roomMode, selectedMember]);
@@ -146,7 +147,7 @@ export default function RoomAlbumScreen() {
     setSelectedMember(member);
     setRoomMode(mode);
     setLoading(true);
-    setStatus(`正在加载${mode === 'small' ? '小房间' : '大房间'}相册...`);
+    setStatus(`加载中...${mode === 'small' ? '小房间' : '大房间'}相册...`);
     try {
       const res = await pocketApi.getRoomAlbum({ channelId, nextTime: append ? nextTime : 0 });
       const nextItems = normalizeAlbumItems(res, mode);
@@ -222,56 +223,60 @@ export default function RoomAlbumScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.pickerWrap}>
-        <MemberPicker selectedMember={selectedMember} onSelect={(member) => loadAlbum(member, 'big', false)} />
-        <View style={styles.modeRow}>
-          <TouchableOpacity style={[styles.modeBtn, roomMode === 'big' && styles.modeBtnActive]} onPress={() => switchMode('big')}>
-            <Text style={[styles.modeText, roomMode === 'big' && styles.modeTextActive]}>大房间</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.modeBtn, roomMode === 'small' && styles.modeBtnActive, !selectedMember?.yklzId && styles.modeBtnDisabled]} onPress={() => switchMode('small')}>
-            <Text style={[styles.modeText, roomMode === 'small' && styles.modeTextActive]}>小房间</Text>
-          </TouchableOpacity>
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <View style={styles.pickerWrap}>
+          <MemberPicker selectedMember={selectedMember} onSelect={(member) => loadAlbum(member, 'big', false)} />
+          <View style={styles.modeRow}>
+            <TouchableOpacity style={[styles.modeBtn, roomMode === 'big' && styles.modeBtnActive]} onPress={() => switchMode('big')}>
+              <Text style={[styles.modeText, roomMode === 'big' && styles.modeTextActive, isDark && roomMode !== 'big' && styles.textLight]}>大房间</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modeBtn, roomMode === 'small' && styles.modeBtnActive, !selectedMember?.yklzId && styles.modeBtnDisabled]} onPress={() => switchMode('small')}>
+              <Text style={[styles.modeText, roomMode === 'small' && styles.modeTextActive, isDark && roomMode !== 'small' && styles.textLight]}>小房间</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.channelText, isDark && styles.textSubLight]}>
+            当前 channelId：{currentChannelId || '--'}
+          </Text>
+          <Text style={[styles.status, isDark && styles.textSubLight]}>{loading ? '加载中...' : status}</Text>
         </View>
-        <Text style={[styles.channelText, isDark && styles.textSubLight]}>
-          当前 channelId：{currentChannelId || '--'}
-        </Text>
-        <Text style={[styles.status, isDark && styles.textSubLight]}>{loading ? '加载中...' : status}</Text>
-      </View>
 
-      <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
-      <FlatList
-        data={items}
-        numColumns={2}
-        keyExtractor={(item) => `${item.roomMode}-${item.id}`}
-        contentContainerStyle={styles.grid}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.mediaCard, isDark && styles.mediaCardDark]}
-            activeOpacity={0.9}
-            onPress={() => item.type === 'video' ? setPlaying(item) : setPreviewUrl(item.url)}
-            onLongPress={() => downloadItem(item)}
-          >
-            {item.type === 'video' ? (
-              <View style={styles.videoThumb}>
-                <Text style={styles.videoBadge}>视频</Text>
-                <Text style={styles.playMark}>播放</Text>
-              </View>
-            ) : (
-              <Image source={{ uri: item.url }} style={styles.photo} resizeMode="cover" />
-            )}
-            <View style={styles.info}>
-              <Text style={[styles.mediaTitle, isDark && styles.textLight]} numberOfLines={1}>{item.title}</Text>
-              <Text style={[styles.mediaMeta, isDark && styles.textSubLight]}>{item.roomMode === 'small' ? '小房间' : '大房间'} · {formatTimestamp(item.time)}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '加载中...' : '暂无相册内容'}</Text>}
-        onEndReached={loadMoreAlbum}
-        onEndReachedThreshold={0.35}
-        ListFooterComponent={hasMore ? (
-          <Text style={[styles.footerText, isDark && styles.textSubLight]}>{loading ? '加载中...' : '上滑继续加载'}</Text>
-        ) : null}
-      />
+        <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
+        <FlatList
+          data={items}
+          numColumns={2}
+          keyExtractor={(item) => `${item.roomMode}-${item.id}`}
+          contentContainerStyle={styles.grid}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300} style={{ flex: 1 }}>
+              <TouchableOpacity
+                style={[styles.mediaCard, isDark && styles.mediaCardDark]}
+                activeOpacity={0.9}
+                onPress={() => item.type === 'video' ? setPlaying(item) : setPreviewUrl(item.url)}
+                onLongPress={() => downloadItem(item)}
+              >
+                {item.type === 'video' ? (
+                  <View style={styles.videoThumb}>
+                    <Text style={styles.videoBadge}>视频</Text>
+                    <Text style={styles.playMark}>播放</Text>
+                  </View>
+                ) : (
+                  <Image source={{ uri: item.url }} style={styles.photo} resizeMode="cover" />
+                )}
+                <View style={styles.info}>
+                  <Text style={[styles.mediaTitle, isDark && styles.textLight]} numberOfLines={1}>{item.title}</Text>
+                  <Text style={[styles.mediaMeta, isDark && styles.textSubLight]}>{item.roomMode === 'small' ? '小房间' : '大房间'} · {formatTimestamp(item.time)}</Text>
+                </View>
+              </TouchableOpacity>
+            </FadeInView>
+          )}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '加载中...' : '暂无相册内容'}</Text>}
+          onEndReached={loadMoreAlbum}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={hasMore ? (
+            <Text style={[styles.footerText, isDark && styles.textSubLight]}>{loading ? '加载中...' : '上滑继续加载'}</Text>
+          ) : null}
+        />
+      </FadeInView>
     </View>
   );
 }

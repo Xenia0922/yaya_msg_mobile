@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Modal,
 } from 'react-native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
@@ -73,12 +74,12 @@ export default function MessagesScreen() {
           <Text style={{ color: isDark ? '#eeeeee' : '#333', flex: 1 }}>
             {selectedMember?.ownerName || `选择成员 (${members.length})`}
           </Text>
-          <Text style={{ color: '#333333' }}>选择</Text>
+          <Text style={{ color: isDark ? '#eee' : '#333333' }}>选择</Text>
         </TouchableOpacity>
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
           placeholder="搜索消息内容..."
-          placeholderTextColor="#5a5a5a"
+          placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
           value={search}
           onChangeText={setSearch}
         />
@@ -91,12 +92,12 @@ export default function MessagesScreen() {
               <Text style={styles.modalBack}>关闭</Text>
             </TouchableOpacity>
             <Text style={[styles.modalTitle, isDark && { color: '#eee' }]}>选择成员</Text>
-            <Text style={{ color: '#333333', fontSize: 12 }}>{members.length} 位</Text>
+            <Text style={{ color: isDark ? '#eee' : '#333333', fontSize: 12 }}>{members.length} 位</Text>
           </View>
           <TextInput
             style={[styles.input, isDark && styles.inputDark, { margin: 12 }]}
             placeholder="搜索成员..."
-            placeholderTextColor="#5a5a5a"
+            placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
             value={pickerQuery}
             onChangeText={setPickerQuery}
           />
@@ -112,28 +113,32 @@ export default function MessagesScreen() {
                 }}
               >
                 <Text style={[styles.memberName, isDark && { color: '#eee' }]}>{item.ownerName}</Text>
-                <Text style={styles.memberTeam}>{item.team || item.groupName || ''}</Text>
+                <Text style={[styles.memberTeam, isDark && styles.memberTeamDark]}>{item.team || item.groupName || ''}</Text>
               </TouchableOpacity>
             )}
-            ListEmptyComponent={<Text style={styles.empty}>成员列表为空</Text>}
+            ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>成员列表为空</Text>}
           />
         </View>
       </Modal>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || index)}
-        renderItem={({ item }) => (
-          <View style={[styles.msg, isDark && styles.msgDark]}>
-            <View style={styles.msgHeader}>
-              <Text style={[styles.msgSender, isDark && { color: '#eee' }]}>{item.senderName || item.senderNickName || '成员'}</Text>
-              <Text style={styles.msgTime}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
-            </View>
-            <Text style={[styles.msgBody, isDark && { color: '#eeeeee' }]}>{messageText(item) || '[空消息]'}</Text>
-          </View>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : selectedMember ? '暂无消息' : '请选择成员'}</Text>}
-      />
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={filtered}
+          keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || index)}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <View style={[styles.msg, isDark && styles.msgDark]}>
+                <View style={styles.msgHeader}>
+                  <Text style={[styles.msgSender, isDark && { color: '#eee' }]}>{item.senderName || item.senderNickName || '成员'}</Text>
+                  <Text style={[styles.msgTime, isDark && styles.msgTimeDark]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
+                </View>
+                <Text style={[styles.msgBody, isDark && { color: '#eeeeee' }]}>{messageText(item) || '[空消息]'}</Text>
+              </View>
+            </FadeInView>
+          )}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '加载中...' : '暂无消息'}</Text>}
+        />
+      </FadeInView>
     </View>
   );
 }
@@ -147,7 +152,7 @@ const styles = StyleSheet.create({
   pickerDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444' },
   input: { padding: 10, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: 'rgba(255,255,255,0.50)', color: '#333', marginBottom: 8 },
   inputDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444', color: '#eeeeee' },
-  headerDark: {},
+  headerDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: 'rgba(255,255,255,0.14)' },
   status: { color: '#8a5a00', backgroundColor: '#fff3cd', padding: 8, borderRadius: 18, fontSize: 12, lineHeight: 18 },
   modalContainer: { flex: 1, backgroundColor: 'transparent', paddingTop: 50 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 42, marginBottom: 12, paddingVertical: 14, paddingHorizontal: 18, backgroundColor: 'rgba(255,255,255,0.58)', borderRadius: 26, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.64)' },
@@ -157,11 +162,14 @@ const styles = StyleSheet.create({
   memberItemDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
   memberName: { fontSize: 14, color: '#333' },
   memberTeam: { fontSize: 11, color: '#333333' },
+  memberTeamDark: { color: '#aaa' },
   msg: { padding: 12, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 12, marginVertical: 3, borderRadius: 18 },
   msgDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
   msgHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   msgSender: { fontSize: 13, fontWeight: '700', color: '#333' },
   msgTime: { fontSize: 11, color: '#333333' },
+  msgTimeDark: { color: '#aaa' },
   msgBody: { fontSize: 14, color: '#555', lineHeight: 20 },
   empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
+  emptyDark: { color: '#aaa' },
 });

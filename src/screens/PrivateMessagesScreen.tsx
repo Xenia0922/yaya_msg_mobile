@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, messagePayload, messageText, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
@@ -411,33 +412,35 @@ export default function PrivateMessagesScreen() {
           contentContainerStyle={styles.msgList}
           onEndReached={loadMore}
           onEndReachedThreshold={0.3}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const mine = isMineMessage(item, targetId, uid);
             const media = privateMessageMedia(item);
             const txt = privateMessageText(item);
             const hasText = txt && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(txt) && txt !== '[空消息]';
             return (
-              <View style={[styles.msgRow, mine && styles.msgRowMine]}>
-                <View style={[styles.bubble, mine && styles.bubbleMine, isDark && !mine && styles.bubbleDark]}>
-                  {hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>{txt}</Text> : null}
-                  {media ? (
-                    media.type === 'image' ? (
-                      <Image source={{ uri: media.url }} style={styles.inlineImg} resizeMode="cover" />
-                    ) : (
-                      <TouchableOpacity style={styles.mediaBtn} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
-                        <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? '收起' : `▶ ${formatDur(media.duration || 0) || media.type === 'audio' ? '语音' : '视频'}`}</Text>
-                      </TouchableOpacity>
-                    )
-                  ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>[空消息]</Text> : null}
-                  {playUrl === media?.url ? (
-                    <Video source={{ uri: media!.url }} style={media!.type === 'audio' ? styles.audio : styles.video} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
-                  ) : null}
-                  <Text style={[styles.msgTime, mine && styles.msgTimeMine]}>{formatTimestamp(msgTimeNumber(item))}</Text>
+              <FadeInView delay={80 + index * 30} duration={300}>
+                <View style={[styles.msgRow, mine && styles.msgRowMine]}>
+                  <View style={[styles.bubble, mine && styles.bubbleMine, isDark && !mine && styles.bubbleDark]}>
+                    {hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>{txt}</Text> : null}
+                    {media ? (
+                      media.type === 'image' ? (
+                        <Image source={{ uri: media.url }} style={styles.inlineImg} resizeMode="cover" />
+                      ) : (
+                        <TouchableOpacity style={styles.mediaBtn} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
+                          <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? '收起' : `▶ ${formatDur(media.duration || 0) || media.type === 'audio' ? '语音' : '视频'}`}</Text>
+                        </TouchableOpacity>
+                      )
+                    ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>[空消息]</Text> : null}
+                    {playUrl === media?.url ? (
+                      <Video source={{ uri: media!.url }} style={media!.type === 'audio' ? styles.audio : styles.video} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
+                    ) : null}
+                    <Text style={[styles.msgTime, mine && styles.msgTimeMine, isDark && !mine && styles.light]}>{formatTimestamp(msgTimeNumber(item))}</Text>
+                  </View>
                 </View>
-              </View>
+              </FadeInView>
             );
           }}
-          ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无消息'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '加载中...' : '暂无消息'}</Text>}
         />
         {member ? (
           <View style={[styles.flipBar, isDark && styles.flipBarDark]}>
@@ -445,7 +448,7 @@ export default function PrivateMessagesScreen() {
             <View style={styles.flipRow}>
               {prices.slice(0, 3).map((p) => (
                 <TouchableOpacity key={p.answerType} style={[styles.flipChip, flipType === p.answerType && styles.flipChipOn]} onPress={() => setFlipType((v) => v === p.answerType ? 0 : p.answerType)}>
-                  <Text style={[styles.flipChipT, flipType === p.answerType && styles.flipChipTOn]}>{flipTypeName(p.answerType)}·{lowestPrice(p)}</Text>
+                  <Text style={[styles.flipChipT, flipType === p.answerType && styles.flipChipTOn, isDark && flipType !== p.answerType && styles.light]}>{flipTypeName(p.answerType)}·{lowestPrice(p)}</Text>
                 </TouchableOpacity>
               ))}
               <View style={styles.flipSpacer} />
@@ -459,7 +462,7 @@ export default function PrivateMessagesScreen() {
         <View style={[styles.inputBar, isDark && styles.inputBarDark]}>
           {flipType > 0 ? <Text style={styles.flipLabel}>私密翻牌·{flipTypeName(flipType)}</Text> : null}
           <View style={styles.inputRow}>
-            <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="输入内容..." placeholderTextColor="#999" value={text} onChangeText={setText} multiline />
+            <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="输入内容..." placeholderTextColor={isDark ? '#aaa' : '#999'} value={text} onChangeText={setText} multiline />
             <TouchableOpacity style={styles.sendBtn} onPress={doSend} disabled={loading || !text.trim()}>
               <Text style={styles.sendT}>{loading ? '..' : flipType ? '翻牌' : '发送'}</Text>
             </TouchableOpacity>
@@ -476,20 +479,24 @@ export default function PrivateMessagesScreen() {
         <Text style={[styles.title, isDark && styles.light]}>私信列表</Text>
         <TouchableOpacity onPress={loadConvs}><Text style={styles.refreshBtn}>刷新</Text></TouchableOpacity>
       </View>
-      <FlatList
-        data={convs}
-        keyExtractor={(item, i) => String(convTargetId(item) || i)}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={[styles.convItem, isDark && styles.convItemDark]} onPress={() => openConv(item)}>
-            <View style={styles.convInfo}>
-              <Text style={[styles.convName, isDark && styles.light]}>{convName(item)}</Text>
-              <Text style={styles.convPrev} numberOfLines={1}>{item.newestMessage || '点击查看'}</Text>
-            </View>
-            {Number(item.noreadNum) > 0 ? <View style={styles.badge}><Text style={styles.badgeT}>{item.noreadNum}</Text></View> : null}
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '刷新获取私信列表'}</Text>}
-      />
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={convs}
+          keyExtractor={(item, i) => String(convTargetId(item) || i)}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <TouchableOpacity style={[styles.convItem, isDark && styles.convItemDark]} onPress={() => openConv(item)}>
+                <View style={styles.convInfo}>
+                  <Text style={[styles.convName, isDark && styles.light]}>{convName(item)}</Text>
+                  <Text style={[styles.convPrev, isDark && styles.light]} numberOfLines={1}>{item.newestMessage || '点击查看'}</Text>
+                </View>
+                {Number(item.noreadNum) > 0 ? <View style={styles.badge}><Text style={styles.badgeT}>{item.noreadNum}</Text></View> : null}
+              </TouchableOpacity>
+            </FadeInView>
+          )}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '加载中...' : '暂无私信'}</Text>}
+        />
+      </FadeInView>
     </View>
   );
 }
@@ -518,7 +525,7 @@ const styles = StyleSheet.create({
   msgText: { fontSize: 14, color: '#333', lineHeight: 20 },
   msgTextMine: { color: '#fff' },
   msgTime: { fontSize: 10, color: '#777', marginTop: 4 },
-  msgTimeMine: { color: '#ffe0e8' },
+  msgTimeMine: { color: '#b35d6e' },
   mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.08)', alignSelf: 'flex-start' },
   mediaBtnText: { fontSize: 12, fontWeight: '800', color: '#ff6f91' },
   inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)' },

@@ -93,7 +93,7 @@ android {
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 31)
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2022700
-        versionName "2.3"
+        versionName "2.4"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

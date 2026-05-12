@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
@@ -92,17 +93,18 @@ export default function ProfileScreen() {
         <Text style={[styles.title, isDark && styles.textDark]}>成员档案</Text>
       </View>
 
-      <View style={styles.pickerWrap}>
-        <MemberPicker selectedMember={selectedMember} onSelect={loadProfile} placeholder="搜索成员查看档案..." />
-      </View>
+      <FadeInView delay={80} duration={300}>
+        <View style={styles.pickerWrap}>
+          <MemberPicker selectedMember={selectedMember} onSelect={loadProfile} placeholder="搜索成员查看档案..." />
+        </View>
 
-      {selectedMember ? (
+        {selectedMember ? (
         <View style={[styles.card, isDark && styles.cardDark]}>
           <View style={styles.profileHead}>
             {avatar !== '-' ? <Image source={{ uri: avatar }} style={styles.avatar} /> : <View style={styles.avatarFallback} />}
             <View style={styles.profileTitleWrap}>
               <Text style={[styles.name, isDark && styles.textDark]} numberOfLines={1}>{name}</Text>
-              <Text style={styles.subLine} numberOfLines={1}>
+              <Text style={[styles.subLine, isDark && styles.textDark]} numberOfLines={1}>
                 {firstText(selectedMember.groupName)} · {firstText(selectedMember.team)}
               </Text>
             </View>
@@ -111,7 +113,7 @@ export default function ProfileScreen() {
           {archive.error ? (
             <View style={styles.notice}>
               <Text style={styles.noticeTitle}>在线档案暂不可用</Text>
-              <Text style={styles.noticeText}>已显示本地成员库资料；需要口袋签名的排行和经历可能无法加载。</Text>
+              <Text style={[styles.noticeText, isDark && styles.textDark]}>已显示本地成员库资料；需要口袋签名的排行和经历可能无法加载。</Text>
             </View>
           ) : null}
 
@@ -152,7 +154,7 @@ export default function ProfileScreen() {
           {raw.note ? (
             <View style={styles.noteBox}>
               <Text style={styles.noteLabel}>备注</Text>
-              <Text style={styles.noteText}>{raw.note}</Text>
+              <Text style={[styles.noteText, isDark && styles.textDark]}>{raw.note}</Text>
             </View>
           ) : null}
 
@@ -169,8 +171,8 @@ export default function ProfileScreen() {
         </View>
       ) : (
         <View style={[styles.emptyCard, isDark && styles.cardDark]}>
-          <Text style={[styles.emptyTitle, isDark && styles.textDark]}>搜索选择一个成员查看档案</Text>
-          <Text style={styles.emptyText}>可按姓名、拼音、队伍搜索，查看完整资料和在线档案。</Text>
+          <Text style={[styles.emptyTitle, isDark && styles.textDark]}>暂无数据</Text>
+          <Text style={[styles.emptyText, isDark && styles.textDark]}>搜索成员查看档案</Text>
         </View>
       )}
 
@@ -183,7 +185,7 @@ export default function ProfileScreen() {
               <Text style={[styles.rankName, isDark && styles.textDark]} numberOfLines={1}>
                 {firstText(fan.nickName, fan.nickname, fan.userName)}
               </Text>
-              <Text style={styles.rankMeta} numberOfLines={1}>{firstText(fan.userId, fan.level, fan.score)}</Text>
+              <Text style={[styles.rankMeta, isDark && styles.textDark]} numberOfLines={1}>{firstText(fan.userId, fan.level, fan.score)}</Text>
             </View>
           ))}
         </View>
@@ -203,15 +205,16 @@ export default function ProfileScreen() {
         </View>
       ) : null}
 
-      {loading ? <Text style={styles.loading}>加载中...</Text> : null}
+      </FadeInView>
+      {loading ? <Text style={[styles.loading, isDark && styles.textDark]}>加载中...</Text> : null}
     </ScrollView>
   );
 }
 
 function InfoItem({ label, value, dark }: { label: string; value: string; dark: boolean }) {
   return (
-    <View style={styles.infoItem}>
-      <Text style={styles.infoLabel}>{label}</Text>
+    <View style={[styles.infoItem, dark && styles.infoItemDark]}>
+      <Text style={[styles.infoLabel, dark && styles.textDark]}>{label}</Text>
       <Text style={[styles.infoValue, dark && styles.textDark]} numberOfLines={1}>{value}</Text>
     </View>
   );
@@ -243,6 +246,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#ff6f91', fontSize: 15, fontWeight: '800', marginBottom: 10, marginTop: 14 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   infoItem: { width: '48%', padding: 10, borderRadius: 14, backgroundColor: '#f7f7f7' },
+  infoItemDark: { backgroundColor: 'rgba(50,50,50,0.62)' },
   infoLabel: { color: '#333333', fontSize: 11, marginBottom: 4 },
   infoValue: { color: '#333', fontSize: 13, fontWeight: '600' },
   noteBox: { marginTop: 14, padding: 12, borderRadius: 14, backgroundColor: '#fff3cd' },

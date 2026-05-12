@@ -15,6 +15,7 @@ import MemberPicker from '../components/MemberPicker';
 import { RootStackParamList } from '../navigation/types';
 import pocketApi from '../api/pocket48';
 import { useSettingsStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
@@ -293,13 +294,14 @@ export default function FlipScreen() {
           <Text style={styles.title}>发送翻牌</Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.label, isDark && styles.textLight]}>选择成员</Text>
-          <MemberPicker selectedMember={selectedMember} onSelect={selectMemberForPrice} />
-        </View>
+        <FadeInView delay={80} duration={300}>
+          <View style={styles.section}>
+            <Text style={[styles.label, isDark && styles.textLight]}>选择成员</Text>
+            <MemberPicker selectedMember={selectedMember} onSelect={selectMemberForPrice} />
+          </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.label, isDark && styles.textLight]}>回复形式</Text>
+          <View style={styles.section}>
+            <Text style={[styles.label, isDark && styles.textLight]}>回复形式</Text>
           <View style={styles.optionRow}>
             {prices.map((item) => {
               const active = answerType === item.answerType;
@@ -377,6 +379,7 @@ export default function FlipScreen() {
           </TouchableOpacity>
           {status ? <Text style={styles.statusText}>{status}</Text> : null}
         </View>
+        </FadeInView>
       </ScrollView>
     );
   }
@@ -395,68 +398,72 @@ export default function FlipScreen() {
         <Text style={styles.title}>翻牌记录</Text>
       </View>
       {status ? <Text style={styles.statusText}>{status}</Text> : null}
-      <FlatList
-        data={flips}
-        keyExtractor={(item, index) => String(item.questionId || item.id || index)}
-        renderItem={({ item }) => {
-          const answer = answerText(item);
-          const answerUrl = answerMediaUrl(item);
-          const flipAnswerType = Number(item.answerType);
-          const ansDur = answerMediaDuration(item);
-          return (
-            <View style={[styles.card, isDark && styles.cardDark]}>
-              <View style={styles.cardTop}>
-                <Text style={styles.cardDate}>{formatTimestamp(item.qtime || item.createTime)}</Text>
-                <View style={styles.tagRow}>
-                  <Text style={styles.typeTag}>{answerTypeLabel(item.answerType)}</Text>
-                  <Text style={styles.privacyTag}>{privacyLabel(item.type)}</Text>
-                </View>
-              </View>
-              <Text style={[styles.memberName, isDark && styles.textLight]}>{memberName(item)}</Text>
-              <Text style={[styles.cardQ, isDark && styles.textLight]}>问：{questionText(item) || '未返回问题内容'}</Text>
-              {answer ? (
-                <>
-                  <Text style={[styles.cardA, isDark && styles.textSub]}>答：{answer}</Text>
-                  {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
-                    <View style={styles.answerMediaCard}>
-                      <TouchableOpacity
-                        style={styles.answerMediaBtn}
-                        onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
-                      >
-                        <Text style={styles.answerMediaBtnText}>{playingAnswerUrl === answerUrl ? '收起' : `▶ ${ansDur > 0 ? (ansDur < 60 ? `${ansDur}s` : `${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`) : (flipAnswerType === 2 ? '语音' : '视频')}`}</Text>
-                      </TouchableOpacity>
-                      {playingAnswerUrl === answerUrl ? (
-                        <Video
-                          source={{ uri: answerUrl }}
-                          style={flipAnswerType === 2 ? styles.answerAudio : styles.answerVideo}
-                          controls
-                          paused={false}
-                          resizeMode="contain"
-                          ignoreSilentSwitch="ignore"
-                        />
-                      ) : null}
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={flips}
+          keyExtractor={(item, index) => String(item.questionId || item.id || index)}
+          renderItem={({ item, index }) => {
+            const answer = answerText(item);
+            const answerUrl = answerMediaUrl(item);
+            const flipAnswerType = Number(item.answerType);
+            const ansDur = answerMediaDuration(item);
+            return (
+              <FadeInView delay={80 + index * 30} duration={300}>
+                <View style={[styles.card, isDark && styles.cardDark]}>
+                  <View style={styles.cardTop}>
+                    <Text style={styles.cardDate}>{formatTimestamp(item.qtime || item.createTime)}</Text>
+                    <View style={styles.tagRow}>
+                      <Text style={styles.typeTag}>{answerTypeLabel(item.answerType)}</Text>
+                      <Text style={styles.privacyTag}>{privacyLabel(item.type)}</Text>
                     </View>
-                  ) : null}
-                </>
-              ) : (
-                <Text style={styles.cardPending}>{statusLabel(item.status)}</Text>
-              )}
-              <Text style={styles.cardMeta}>
-                {item.cost || 0} 口袋币
-                {item.answerTime ? ` · 回复时间 ${formatTimestamp(item.answerTime)}` : ''}
-              </Text>
-            </View>
-          );
-        }}
-        onEndReached={() => {
-          if (loading) return;
-          const nextPage = page + 1;
-          setPage(nextPage);
-          loadFlips(nextPage);
-        }}
-        onEndReachedThreshold={0.5}
-        ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无翻牌记录'}</Text>}
-      />
+                  </View>
+                  <Text style={[styles.memberName, isDark && styles.textLight]}>{memberName(item)}</Text>
+                  <Text style={[styles.cardQ, isDark && styles.textLight]}>问：{questionText(item) || '未返回问题内容'}</Text>
+                  {answer ? (
+                    <>
+                      <Text style={[styles.cardA, isDark && styles.textSub]}>答：{answer}</Text>
+                      {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
+                        <View style={styles.answerMediaCard}>
+                          <TouchableOpacity
+                            style={styles.answerMediaBtn}
+                            onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
+                          >
+                            <Text style={styles.answerMediaBtnText}>{playingAnswerUrl === answerUrl ? '收起' : `▶ ${ansDur > 0 ? (ansDur < 60 ? `${ansDur}s` : `${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`) : (flipAnswerType === 2 ? '语音' : '视频')}`}</Text>
+                          </TouchableOpacity>
+                          {playingAnswerUrl === answerUrl ? (
+                            <Video
+                              source={{ uri: answerUrl }}
+                              style={flipAnswerType === 2 ? styles.answerAudio : styles.answerVideo}
+                              controls
+                              paused={false}
+                              resizeMode="contain"
+                              ignoreSilentSwitch="ignore"
+                            />
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Text style={styles.cardPending}>{statusLabel(item.status)}</Text>
+                  )}
+                  <Text style={styles.cardMeta}>
+                    {item.cost || 0} 口袋币
+                    {item.answerTime ? ` · 回复时间 ${formatTimestamp(item.answerTime)}` : ''}
+                  </Text>
+                </View>
+              </FadeInView>
+            );
+          }}
+          onEndReached={() => {
+            if (loading) return;
+            const nextPage = page + 1;
+            setPage(nextPage);
+            loadFlips(nextPage);
+          }}
+          onEndReachedThreshold={0.5}
+          ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无翻牌记录'}</Text>}
+        />
+      </FadeInView>
     </View>
   );
 }

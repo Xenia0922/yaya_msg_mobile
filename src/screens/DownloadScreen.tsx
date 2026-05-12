@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
+  Image,
+  Modal,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +13,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import {
   clearFinishedDownloads,
   deleteDownloadItem,
@@ -47,6 +50,15 @@ export default function DownloadScreen() {
   const [items, setItems] = useState<DownloadItem[]>([]);
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
+  const [imgPreview, setImgPreview] = useState('');
+
+  const handleOpen = async (item: DownloadItem) => {
+    if (item.type === 'image' && item.localUri) {
+      setImgPreview(item.localUri);
+      return;
+    }
+    try { await openDownloadItem(item); } catch (e: any) { showToast(`打开失败：${e?.message || e}`); }
+  };
 
   const refresh = useCallback(async () => {
     setItems(await loadDownloadItems());
@@ -105,54 +117,65 @@ export default function DownloadScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.manualCard, isDark && styles.cardDark]}>
-        <TextInput
-          style={[styles.urlInput, isDark && styles.urlInputDark]}
-          placeholder="粘贴图片、语音、视频或录播地址"
-          placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
-          value={url}
-          onChangeText={setUrl}
-          autoCapitalize="none"
-        />
-        <TouchableOpacity style={[styles.addBtn, busy && styles.btnDisabled]} onPress={startManualDownload} disabled={busy}>
-          <Text style={styles.addBtnText}>{busy ? '下载中' : '添加下载'}</Text>
-        </TouchableOpacity>
-      </View>
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <View style={[styles.manualCard, isDark && styles.cardDark]}>
+          <TextInput
+            style={[styles.urlInput, isDark && styles.urlInputDark]}
+            placeholder="粘贴图片、语音、视频或录播地址"
+            placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
+            value={url}
+            onChangeText={setUrl}
+            autoCapitalize="none"
+          />
+          <TouchableOpacity style={[styles.addBtn, busy && styles.btnDisabled]} onPress={startManualDownload} disabled={busy}>
+            <Text style={styles.addBtnText}>{busy ? '下载中' : '添加下载'}</Text>
+          </TouchableOpacity>
+        </View>
 
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>暂无下载项目</Text>}
-        renderItem={({ item }) => (
-          <View style={[styles.task, isDark && styles.cardDark]}>
-            <View style={styles.taskHead}>
-              <Text style={[styles.typeTag, isDark && styles.typeTagDark]}>{typeLabel(item.type)}</Text>
-              <Text style={[styles.taskName, isDark && styles.textLight]} numberOfLines={1}>{item.name}</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[
-                styles.progressFill,
-                item.status === 'failed' && styles.progressFailed,
-                { width: `${Math.round((item.progress || 0) * 100)}%` },
-              ]} />
-            </View>
-            <View style={styles.taskMeta}>
-              <Text style={[styles.taskStatus, isDark && styles.textSubLight]}>
-                {item.status === 'done' ? '完成' : item.status === 'failed' ? `失败：${item.error || ''}` : `下载中 ${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalBytes)}`}
-              </Text>
-              <View style={styles.taskActions}>
-                <TouchableOpacity onPress={() => openDownloadItem(item).catch((error) => showToast(`打开失败：${error?.message || error}`))}>
-                  <Text style={styles.actionText}>打开</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => remove(item.id)}>
-                  <Text style={[styles.actionText, styles.deleteText]}>删除</Text>
-                </TouchableOpacity>
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>暂无下载项目</Text>}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <View style={[styles.task, isDark && styles.cardDark]}>
+                <View style={styles.taskHead}>
+                  <Text style={[styles.typeTag, isDark && styles.typeTagDark]}>{typeLabel(item.type)}</Text>
+                  <Text style={[styles.taskName, isDark && styles.textLight]} numberOfLines={1}>{item.name}</Text>
+                </View>
+                <View style={styles.progressBar}>
+                  <View style={[
+                    styles.progressFill,
+                    item.status === 'failed' && styles.progressFailed,
+                    { width: `${Math.round((item.progress || 0) * 100)}%` },
+                  ]} />
+                </View>
+                <View style={styles.taskMeta}>
+                  <Text style={[styles.taskStatus, isDark && styles.textSubLight]}>
+                    {item.status === 'done' ? '完成' : item.status === 'failed' ? `失败：${item.error || ''}` : `下载中 ${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalBytes)}`}
+                  </Text>
+                  <View style={styles.taskActions}>
+                    <TouchableOpacity onPress={() => handleOpen(item).catch((error: any) => showToast(`打开失败：${error?.message || error}`))}>
+                      <Text style={styles.actionText}>打开</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => remove(item.id)}>
+                      <Text style={[styles.actionText, styles.deleteText]}>删除</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
-            </View>
-          </View>
-        )}
-      />
+            </FadeInView>
+          )}
+        />
+      </FadeInView>
+      {imgPreview ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setImgPreview('')}>
+          <TouchableOpacity style={styles.imgModal} activeOpacity={1} onPress={() => setImgPreview('')}>
+            <Image source={{ uri: imgPreview }} style={styles.imgFull} resizeMode="contain" />
+          </TouchableOpacity>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -188,4 +211,6 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: 60, color: '#555555' },
   textLight: { color: '#ffffff' },
   textSubLight: { color: '#dddddd' },
+  imgModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
+  imgFull: { width: '96%', height: '80%' },
 });

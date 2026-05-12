@@ -6,6 +6,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
+import { FadeInView } from '../components/Motion';
 import { useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { errorMessage, messagePayload, messageText, pickText, unwrapList } from '../utils/data';
@@ -112,7 +113,7 @@ export default function AnalysisScreen() {
   const [messages, setMessages] = useState<any[]>([]);
   const [flips, setFlips] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('选择成员后读取房间消息，翻牌统计读取账号翻牌记录。');
+  const [status, setStatus] = useState('暂无数据');
   const [mediaFullUrl, setMediaFullUrl] = useState('');
   const [playMedia, setPlayMedia] = useState<{ url: string; type: string } | null>(null);
   const [flipPlayUrl, setFlipPlayUrl] = useState('');
@@ -146,10 +147,67 @@ export default function AnalysisScreen() {
   const senders = useMemo(() => countBy(messages, senderName).slice(0, 30), [messages]);
   const recent = useMemo(() => messages.slice().sort((a, b) => msgTime(b) - msgTime(a)).slice(0, 20), [messages]);
 
+  const flipStats = useMemo(() => {
+    let totalCost = 0;
+    let durSum = 0;
+    let answeredCount = 0;
+    let minDur = Infinity;
+    let maxDur = 0;
+    let typeStats = { text: 0, audio: 0, video: 0 };
+    const memberMap = new Map<string, { name: string; count: number; cost: number; durSum: number; answeredCount: number; minDur: number; maxDur: number; minCost: number; maxCost: number; typeCounts: { text: number; audio: number; video: number } }>();
+    for (const item of flips) {
+      const rec = item as Record<string, any>;
+      const cost = Number(rec['cost']) || 0;
+      totalCost += cost;
+      const at = Number(rec['answerType']);
+      if (at === 1) typeStats.text += 1;
+      else if (at === 2) typeStats.audio += 1;
+      else if (at === 3) typeStats.video += 1;
+      const mn = pickText(rec, ['memberName', 'starName', 'baseUserInfo.nickname'], '成员');
+      if (!memberMap.has(mn)) memberMap.set(mn, { name: mn, count: 0, cost: 0, durSum: 0, answeredCount: 0, minDur: Infinity, maxDur: 0, minCost: Infinity, maxCost: 0, typeCounts: { text: 0, audio: 0, video: 0 } });
+      const m = memberMap.get(mn)!;
+      m.count += 1;
+      m.cost += cost;
+      if (at === 1) m.typeCounts.text += 1;
+      else if (at === 2) m.typeCounts.audio += 1;
+      else if (at === 3) m.typeCounts.video += 1;
+      if (cost > m.maxCost) m.maxCost = cost;
+      if (cost < m.minCost) m.minCost = cost;
+      if (rec['status'] === 2 && rec['qtime'] && rec['answerTime']) {
+        const diff = Number(rec['answerTime']) - Number(rec['qtime']);
+        if (diff > 0) {
+          durSum += diff;
+          answeredCount += 1;
+          if (diff < minDur) minDur = diff;
+          if (diff > maxDur) maxDur = diff;
+          m.durSum += diff;
+          m.answeredCount += 1;
+          if (diff < m.minDur) m.minDur = diff;
+          if (diff > m.maxDur) m.maxDur = diff;
+        }
+      }
+    }
+    const avgDur = answeredCount > 0 ? durSum / answeredCount : 0;
+    const memberRank = [...memberMap.values()].sort((a, b) => b.cost - a.cost);
+    const topCost = memberRank[0]?.cost || 1;
+    return { totalCount: flips.length, totalCost, typeStats, avgDur, minDur: minDur === Infinity ? 0 : minDur, maxDur, answeredCount, memberRank, topCost };
+  }, [flips]);
+
+  function formatDurationMs(ms: number): string {
+    if (ms <= 0) return '-';
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (d > 0) return `${d}天${h}小时${m}分`;
+    if (h > 0) return `${h}小时${m}分`;
+    return `${m}分`;
+  }
+
   const loadRoomStats = async (nextMember: Member) => {
     setMember(nextMember);
     setLoading(true);
-    setStatus('正在加载统计数据...');
+    setStatus('加载中...统计数据...');
     setMessages([]);
     try {
       let nextTime = 0;
@@ -190,7 +248,7 @@ export default function AnalysisScreen() {
 
   const loadFlipStats = async () => {
     setLoading(true);
-    setStatus('正在加载翻牌统计...');
+    setStatus('加载中...翻牌统计...');
     try {
       const pages = await Promise.all([0, 50, 100, 150].map((begin) => pocketApi.getFlipList(begin, 50).catch(() => null)));
       const list = pages.flatMap((res) => unwrapList(res, ['content.questions', 'content.list', 'content.data', 'data.questions', 'questions', 'list']));
@@ -232,126 +290,191 @@ export default function AnalysisScreen() {
       <View style={styles.tabs}>
         {TABS.map((item) => (
           <TouchableOpacity key={item.key} style={[styles.tab, tab === item.key && styles.tabActive]} onPress={() => { setTab(item.key); if (item.key === 'flip' && !flips.length) loadFlipStats(); }}>
-            <Text style={[styles.tabText, tab === item.key && styles.tabTextActive]} numberOfLines={1}>{item.label}</Text>
+            <Text style={[styles.tabText, tab === item.key && styles.tabTextActive, isDark && tab !== item.key && styles.textSubLight]} numberOfLines={1}>{item.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {tab === 'room' ? (
-        <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.summaryGrid}>
-            {cards.map((item) => (
-              <View key={item.label} style={[styles.summaryCard, isDark && styles.cardDark]}>
-                <Text style={styles.summaryValue}>{item.value}</Text>
-                <Text style={[styles.summaryLabel, isDark && styles.textSubLight]}>{item.label}</Text>
-              </View>
-            ))}
-          </View>
-          {recent.map((item, index) => (
-            <View key={`${msgTime(item)}-${index}`} style={[styles.rowCard, isDark && styles.cardDark]}>
-              <Text style={[styles.rowTitle, isDark && styles.textLight]}>{senderName(item)}</Text>
-              <Text style={[styles.rowText, isDark && styles.textSubLight]} numberOfLines={3}>{messageText(item)}</Text>
-              <Text style={styles.rowMeta}>{formatTimestamp(msgTime(item))}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      ) : null}
-
-      {tab === 'dates' ? (
-        <FlatList
-          data={dateStats}
-          keyExtractor={(item) => item.date}
-          contentContainerStyle={styles.content}
-          ListEmptyComponent={<Text style={styles.empty}>暂无日期数据</Text>}
-          renderItem={({ item }) => {
-            const totalPct = (item.total / dateMax) * 100;
-            const memberPct = (item.member / dateMax) * 100;
-            return (
-              <View style={[styles.dateRow, isDark && styles.cardDark]}>
-                <View style={styles.dateHeader}>
-                  <Text style={[styles.dateTitle, isDark && styles.textLight]}>{item.date}</Text>
-                  <Text style={styles.dateMeta}>
-                    <Text style={styles.dateMember}>成员: {item.member}</Text> | 总: {item.total}
-                  </Text>
-                </View>
-                <View style={styles.barWrap}>
-                  <View style={[styles.barBg, { width: `${totalPct}%`, opacity: 0.25 }]} />
-                  <View style={[styles.barFg, { width: `${memberPct}%` }]} />
-                </View>
-              </View>
-            );
-          }}
-        />
-      ) : null}
-
-      {tab === 'senders' ? (
-        <FlatList
-          data={senders}
-          keyExtractor={(item) => item.key}
-          contentContainerStyle={styles.content}
-          renderItem={({ item, index }) => (
-            <View style={[styles.rankRow, isDark && styles.cardDark]}>
-              <Text style={styles.rankNo}>{index + 1}</Text>
-              <Text style={[styles.rankName, isDark && styles.textLight]}>{item.key}</Text>
-              <Text style={styles.rankValue}>{item.count} 条</Text>
-            </View>
-          )}
-        />
-      ) : null}
-
-      {tab === 'media' ? (
-        <FlatList
-          data={messages.filter((item) => isMedia(item, 'image') || isMedia(item, 'audio') || isMedia(item, 'video'))}
-          keyExtractor={(item, index) => `media-${index}`}
-          contentContainerStyle={styles.content}
-          ListHeaderComponent={
+        <FadeInView delay={80} duration={300}>
+          <ScrollView contentContainerStyle={styles.content}>
             <View style={styles.summaryGrid}>
-              {cards.slice(3).map((item) => (
+              {cards.map((item) => (
                 <View key={item.label} style={[styles.summaryCard, isDark && styles.cardDark]}>
                   <Text style={styles.summaryValue}>{item.value}</Text>
                   <Text style={[styles.summaryLabel, isDark && styles.textSubLight]}>{item.label}</Text>
                 </View>
               ))}
             </View>
-          }
-          renderItem={({ item }) => {
-            const isImg = isMedia(item, 'image');
-            const isAud = isMedia(item, 'audio');
-            const isVid = isMedia(item, 'video');
-            const payload = messagePayload(item);
-            const url = pickText(payload, ['url', 'imageUrl', 'audioUrl', 'videoUrl', 'message.url']);
-            const dur = Number(payload?.duration || payload?.time || payload?.second || payload?.audioTime || payload?.length || 0);
-            const durStr = dur > 0 ? (dur < 60 ? `${Math.round(dur)}s` : `${Math.floor(dur/60)}:${String(Math.round(dur)%60).padStart(2,'0')}`) : '';
-            const label = isImg ? '图片' : isAud ? `语音${durStr ? ` ${durStr}` : ''}` : `视频${durStr ? ` ${durStr}` : ''}`;
-            return (
-              <TouchableOpacity
-                style={[styles.rowCard, isDark && styles.cardDark]}
-                activeOpacity={0.8}
-                onPress={() => {
-                  if (url) {
-                    if (isImg) setMediaFullUrl(url);
-                    else setPlayMedia({ url, type: isAud ? 'audio' : 'video' });
-                  }
-                }}
-              >
-                <Text style={[styles.rowTitle, isDark && styles.textLight]}>▶ {label} · {senderName(item)}</Text>
-                <Text style={[styles.rowText, isDark && styles.textSubLight]} numberOfLines={2}>
-                  {messageText(item) || '(无文字)'}
-                </Text>
+            {recent.map((item, index) => (
+              <View key={`${msgTime(item)}-${index}`} style={[styles.rowCard, isDark && styles.cardDark]}>
+                <Text style={[styles.rowTitle, isDark && styles.textLight]}>{senderName(item)}</Text>
+                <Text style={[styles.rowText, isDark && styles.textSubLight]} numberOfLines={3}>{messageText(item)}</Text>
                 <Text style={styles.rowMeta}>{formatTimestamp(msgTime(item))}</Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
+              </View>
+            ))}
+          </ScrollView>
+        </FadeInView>
+      ) : null}
+
+      {tab === 'dates' ? (
+        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+          <FlatList
+            data={dateStats}
+            keyExtractor={(item) => item.date}
+            contentContainerStyle={styles.content}
+            ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>暂无日期数据</Text>}
+            renderItem={({ item, index }) => {
+              const totalPct = (item.total / dateMax) * 100;
+              const memberPct = (item.member / dateMax) * 100;
+              return (
+                <FadeInView delay={80 + index * 30} duration={300}>
+                  <View style={[styles.dateRow, isDark && styles.cardDark]}>
+                    <View style={styles.dateHeader}>
+                      <Text style={[styles.dateTitle, isDark && styles.textLight]}>{item.date}</Text>
+                      <Text style={styles.dateMeta}>
+                        <Text style={styles.dateMember}>成员: {item.member}</Text> | 总: {item.total}
+                      </Text>
+                    </View>
+                    <View style={styles.barWrap}>
+                      <View style={[styles.barBg, { width: `${totalPct}%`, opacity: 0.25 }]} />
+                      <View style={[styles.barFg, { width: `${memberPct}%` }]} />
+                    </View>
+                  </View>
+                </FadeInView>
+              );
+            }}
+          />
+        </FadeInView>
+      ) : null}
+
+      {tab === 'senders' ? (
+        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+          <FlatList
+            data={senders}
+            keyExtractor={(item) => item.key}
+            contentContainerStyle={styles.content}
+            renderItem={({ item, index }) => (
+              <FadeInView delay={80 + index * 30} duration={300}>
+                <View style={[styles.rankRow, isDark && styles.cardDark]}>
+                  <Text style={styles.rankNo}>{index + 1}</Text>
+                  <Text style={[styles.rankName, isDark && styles.textLight]}>{item.key}</Text>
+                  <Text style={styles.rankValue}>{item.count} 条</Text>
+                </View>
+              </FadeInView>
+            )}
+          />
+        </FadeInView>
+      ) : null}
+
+      {tab === 'media' ? (
+        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+          <FlatList
+            data={messages.filter((item) => isMedia(item, 'image') || isMedia(item, 'audio') || isMedia(item, 'video'))}
+            keyExtractor={(item, index) => `media-${index}`}
+            contentContainerStyle={styles.content}
+            ListHeaderComponent={
+              <View style={styles.summaryGrid}>
+                {cards.slice(3).map((item) => (
+                  <View key={item.label} style={[styles.summaryCard, isDark && styles.cardDark]}>
+                    <Text style={styles.summaryValue}>{item.value}</Text>
+                    <Text style={[styles.summaryLabel, isDark && styles.textSubLight]}>{item.label}</Text>
+                  </View>
+                ))}
+              </View>
+            }
+            renderItem={({ item, index }) => {
+              const isImg = isMedia(item, 'image');
+              const isAud = isMedia(item, 'audio');
+              const isVid = isMedia(item, 'video');
+              const payload = messagePayload(item);
+              const url = pickText(payload, ['url', 'imageUrl', 'audioUrl', 'videoUrl', 'message.url']);
+              const dur = Number(payload?.duration || payload?.time || payload?.second || payload?.audioTime || payload?.length || 0);
+              const durStr = dur > 0 ? (dur < 60 ? `${Math.round(dur)}s` : `${Math.floor(dur/60)}:${String(Math.round(dur)%60).padStart(2,'0')}`) : '';
+              const label = isImg ? '图片' : isAud ? `语音${durStr ? ` ${durStr}` : ''}` : `视频${durStr ? ` ${durStr}` : ''}`;
+              return (
+                <FadeInView delay={80 + index * 30} duration={300}>
+                  <TouchableOpacity
+                    style={[styles.rowCard, isDark && styles.cardDark]}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      if (url) {
+                        if (isImg) setMediaFullUrl(url);
+                        else setPlayMedia({ url, type: isAud ? 'audio' : 'video' });
+                      }
+                    }}
+                  >
+                    <Text style={[styles.rowTitle, isDark && styles.textLight]}>▶ {label} · {senderName(item)}</Text>
+                    <Text style={[styles.rowText, isDark && styles.textSubLight]} numberOfLines={2}>
+                      {messageText(item) || '(无文字)'}
+                    </Text>
+                    <Text style={styles.rowMeta}>{formatTimestamp(msgTime(item))}</Text>
+                  </TouchableOpacity>
+                </FadeInView>
+              );
+            }}
+          />
+        </FadeInView>
       ) : null}
 
       {tab === 'flip' ? (
-        <FlatList
-          data={flips}
-          keyExtractor={(item, index) => String(item.questionId || item.id || item.answerId || index)}
-          contentContainerStyle={styles.content}
-          ListHeaderComponent={<Text style={[styles.statusText, isDark && styles.textSubLight, { marginBottom: 8 }]}>共 {flips.length} 条翻牌记录</Text>}
-          renderItem={({ item }) => {
+        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+          <FlatList
+            data={flips}
+            keyExtractor={(item, index) => String(item.questionId || item.id || item.answerId || index)}
+            contentContainerStyle={styles.content}
+            ListHeaderComponent={
+            <View>
+              <View style={[styles.flipCardsRow, isDark && styles.cardDark]}>
+                <View style={styles.flipCard}>
+                  <Text style={styles.flipCardValue}>{flipStats.totalCount}</Text>
+                  <Text style={[styles.flipCardLabel, isDark && styles.textSubLight]}>总翻牌数</Text>
+                </View>
+                <View style={[styles.flipCardBorder, isDark && styles.flipCardBorderDark]} />
+                <View style={styles.flipCard}>
+                  <Text style={[styles.flipCardValue, { color: '#fa8c16' }]}>{flipStats.totalCost}</Text>
+                  <Text style={[styles.flipCardLabel, isDark && styles.textSubLight]}>总消耗(鸡腿)</Text>
+                </View>
+                <View style={[styles.flipCardBorder, isDark && styles.flipCardBorderDark]} />
+                <View style={styles.flipCardBig}>
+                  <Text style={[styles.flipCardValue, { color: '#722ed1' }]}>{formatDurationMs(flipStats.avgDur)}</Text>
+                  <Text style={[styles.flipCardLabel, isDark && styles.textSubLight]}>平均耗时</Text>
+                  {flipStats.minDur > 0 ? <Text style={styles.flipCardRange}>{formatDurationMs(flipStats.minDur)} ~ {formatDurationMs(flipStats.maxDur)}</Text> : null}
+                </View>
+              </View>
+              <View style={styles.flipTypeRow}>
+                <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(24,144,255,0.12)', color: '#1890ff' }]}>文字 {flipStats.typeStats.text}</Text>
+                <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(114,46,209,0.12)', color: '#722ed1' }]}>语音 {flipStats.typeStats.audio}</Text>
+                <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(235,47,150,0.12)', color: '#eb2f96' }]}>视频 {flipStats.typeStats.video}</Text>
+              </View>
+              <Text style={[styles.sectionSub, isDark && styles.textSubLight]}>成员排名 · {flipStats.memberRank.length} 人 · 共 {flipStats.totalCount} 条</Text>
+              {flipStats.memberRank.map((m, idx) => {
+                const pct = (m.cost / flipStats.topCost) * 100;
+                const avgPrice = m.count > 0 ? Math.round(m.cost / m.count) : 0;
+                const avgTime = m.answeredCount > 0 ? formatDurationMs(m.durSum / m.answeredCount) : '';
+                return (
+                  <View key={m.name} style={[styles.flipMemberCard, isDark && styles.cardDark]}>
+                    <View style={styles.flipMemberHeader}>
+                      <Text style={[styles.flipMemberName, isDark && styles.textLight]} numberOfLines={1}>{idx + 1}. {m.name}</Text>
+                      <Text style={styles.flipMemberCost}>{m.cost} 鸡腿</Text>
+                    </View>
+                    <View style={styles.flipBarBg}>
+                      <View style={[styles.flipBarFg, { width: `${pct}%` }]} />
+                    </View>
+                    <Text style={[styles.flipMemberMeta, isDark && styles.textSubLight]}>
+                      共 {m.count} 条 · 文字{m.typeCounts.text} 语音{m.typeCounts.audio} 视频{m.typeCounts.video}
+                    </Text>
+                    <Text style={[styles.flipMemberMeta, isDark && styles.textSubLight, { marginTop: 2 }]}>
+                      均{avgPrice}鸡腿 · 最高{m.maxCost} · 最低{m.minCost === Infinity ? '-' : m.minCost}
+                    </Text>
+                    {avgTime ? <Text style={[styles.flipMemberMeta, isDark && styles.textSubLight, { marginTop: 2 }]}>均耗时{avgTime} · 最快{formatDurationMs(m.minDur)} · 最慢{formatDurationMs(m.maxDur)}</Text> : null}
+                  </View>
+                );
+              })}
+              <Text style={[styles.statusText, isDark && styles.textSubLight, { marginBottom: 8, marginTop: 6 }]}>翻牌明细 · 共 {flips.length} 条</Text>
+            </View>
+          }
+          renderItem={({ item, index }) => {
             const flipAnswerType = Number(item.answerType);
             const isText = flipAnswerType === 1;
             const isVoice = flipAnswerType === 2;
@@ -369,55 +492,58 @@ export default function AnalysisScreen() {
             const d = Math.floor(elapsed / 86400000);
             const h = Math.floor((elapsed % 86400000) / 3600000);
             const m = Math.floor((elapsed % 3600000) / 60000);
-            const elapsedStr = elapsed > 0 ? `${d ? `${d}天` : ''}${h ? `${h}时` : ''}${m}分` : '';
+            const elapsedStr = elapsed > 0 ? `${d ? `${d}天` : ''}${h ? `${h}小时` : ''}${m}分` : '';
             const isAnswered = item.status === 2;
             const deadline = qTime ? qTime + 7 * 86400000 : 0;
             const remaining = isAnswered ? 0 : (deadline - Date.now());
             const rd = Math.floor(remaining / 86400000);
             const rh = Math.floor((remaining % 86400000) / 3600000);
             const rm = Math.floor((remaining % 3600000) / 60000);
-            const remainStr = remaining > 0 && !isAnswered ? `${rd ? `${rd}天` : ''}${rh ? `${rh}时` : ''}${rm}分` : (!isAnswered && remaining <= 0 ? '已过期' : '');
+            const remainStr = remaining > 0 && !isAnswered ? `${rd ? `${rd}天` : ''}${rh ? `${rh}小时` : ''}${rm}分` : (!isAnswered && remaining <= 0 ? '已过期' : '');
             return (
-              <View style={[styles.rowCard, isDark && styles.cardDark]}>
-                <View style={styles.flipHeader}>
-                  <Text style={[styles.flipMember, isDark && styles.textLight]} numberOfLines={1}>
-                    {pickText(item, ['memberName', 'starName', 'baseUserInfo.nickname'], '成员')}
-                  </Text>
-                  <Text style={styles.flipTime}>{formatTimestamp(qTime)}</Text>
-                </View>
-                <Text style={[styles.flipQ, isDark && styles.textSubLight]} numberOfLines={10}>问：{pickText(item, ['content', 'questionContent', 'question', 'text'], '') || '无提问内容'}</Text>
-                {isAnswered && isText ? (
-                  <Text style={[styles.flipAText, isDark && styles.textSubLight]} numberOfLines={20}>
-                    答：{answerText || '已翻牌'}
-                  </Text>
-                ) : isAnswered && (isVoice || isVideo) ? (
-                  <View style={styles.flipABlock}>
-                    <Text style={[styles.flipA, isDark && styles.textSubLight]} numberOfLines={20}>
-                      答：{answerText || (isVoice ? '[语音回复]' : '[视频回复]')}
+              <FadeInView delay={80 + index * 30} duration={300}>
+                <View style={[styles.rowCard, isDark && styles.cardDark]}>
+                  <View style={styles.flipHeader}>
+                    <Text style={[styles.flipMember, isDark && styles.textLight]} numberOfLines={1}>
+                      {pickText(item, ['memberName', 'starName', 'baseUserInfo.nickname'], '成员')}
                     </Text>
-                    {answerUrl ? (
-                      <TouchableOpacity style={styles.flipPlayBtn} onPress={() => setFlipPlayUrl((prev) => prev === answerUrl ? '' : answerUrl)}>
-                        <Text style={styles.flipPlayText}>{flipPlayUrl === answerUrl ? '收起' : `▶ ${answerDuration > 0 ? (answerDuration < 60 ? `${answerDuration}s` : `${Math.floor(answerDuration / 60)}:${String(answerDuration % 60).padStart(2, '0')}`) : (isVoice ? '语音' : '视频')}`}</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {flipPlayUrl === answerUrl && answerUrl ? (
-                      <Video source={{ uri: answerUrl }} style={isVoice ? styles.flipAudio : styles.flipVideo} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
-                    ) : null}
+                    <Text style={styles.flipTime}>{formatTimestamp(qTime)}</Text>
                   </View>
-                ) : !isAnswered ? (
-                  <Text style={styles.flipPending}>{item.status === 1 ? '等待回复中' : item.status === 3 ? '已退款' : '等待回复中'}</Text>
-                ) : null}
-                <View style={styles.flipMeta}>
-                  <Text style={styles.flipTag}>{isText ? '文字' : isVoice ? '语音' : isVideo ? '视频' : '未知'}</Text>
-                  <Text style={styles.flipPrivacy}>{item.type === 1 ? '公开' : item.type === 2 ? '私密' : item.type === 3 ? '匿名' : '未知'}</Text>
-                  <Text style={styles.flipCost}>{item.cost || 0} 鸡腿</Text>
-                  {elapsedStr ? <Text style={styles.flipElapsed}>耗时 {elapsedStr}</Text> : null}
-                  {remainStr ? <Text style={styles.flipRemain}>剩 {remainStr}</Text> : null}
+                  <Text style={[styles.flipQ, isDark && styles.textSubLight]} numberOfLines={10}>问：{pickText(item, ['content', 'questionContent', 'question', 'text'], '') || '无提问内容'}</Text>
+                  {isAnswered && isText ? (
+                    <Text style={[styles.flipAText, isDark && styles.textSubLight]} numberOfLines={20}>
+                      答：{answerText || '已翻牌'}
+                    </Text>
+                  ) : isAnswered && (isVoice || isVideo) ? (
+                    <View style={styles.flipABlock}>
+                      <Text style={[styles.flipA, isDark && styles.textSubLight]} numberOfLines={20}>
+                        答：{answerText || (isVoice ? '[语音回复]' : '[视频回复]')}
+                      </Text>
+                      {answerUrl ? (
+                        <TouchableOpacity style={styles.flipPlayBtn} onPress={() => setFlipPlayUrl((prev) => prev === answerUrl ? '' : answerUrl)}>
+                          <Text style={styles.flipPlayText}>{flipPlayUrl === answerUrl ? '收起' : `▶ ${answerDuration > 0 ? (answerDuration < 60 ? `${answerDuration}s` : `${Math.floor(answerDuration / 60)}:${String(answerDuration % 60).padStart(2, '0')}`) : (isVoice ? '语音' : '视频')}`}</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      {flipPlayUrl === answerUrl && answerUrl ? (
+                        <Video source={{ uri: answerUrl }} style={isVoice ? styles.flipAudio : styles.flipVideo} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
+                      ) : null}
+                    </View>
+                  ) : !isAnswered ? (
+                    <Text style={styles.flipPending}>{item.status === 1 ? '等待回复中' : item.status === 3 ? '已退款' : '等待回复中'}</Text>
+                  ) : null}
+                  <View style={styles.flipMeta}>
+                    <Text style={styles.flipTag}>{isText ? '文字' : isVoice ? '语音' : isVideo ? '视频' : '未知'}</Text>
+                    <Text style={styles.flipPrivacy}>{item.type === 1 ? '公开' : item.type === 2 ? '私密' : item.type === 3 ? '匿名' : '未知'}</Text>
+                    <Text style={styles.flipCost}>{item.cost || 0} 鸡腿</Text>
+                    {elapsedStr ? <Text style={styles.flipElapsed}>耗时 {elapsedStr}</Text> : null}
+                    {remainStr ? <Text style={styles.flipRemain}>剩 {remainStr}</Text> : null}
+                  </View>
                 </View>
-              </View>
+              </FadeInView>
             );
           }}
         />
+        </FadeInView>
       ) : null}
       {mediaFullUrl ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setMediaFullUrl('')}>
@@ -510,4 +636,22 @@ const styles = StyleSheet.create({
   cardDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
   textLight: { color: '#ffffff' },
   textSubLight: { color: '#dddddd' },
+  flipCardsRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 16, marginBottom: 12 },
+  flipCard: { flex: 1, alignItems: 'center', paddingVertical: 4 },
+  flipCardBig: { flex: 1.4, alignItems: 'center', paddingVertical: 4 },
+  flipCardValue: { fontSize: 20, fontWeight: '800', color: '#ff6f91' },
+  flipCardLabel: { fontSize: 11, color: '#777', marginTop: 4 },
+  flipCardRange: { fontSize: 10, color: '#999', marginTop: 2 },
+  flipCardBorder: { width: 1, backgroundColor: 'rgba(0,0,0,0.08)' },
+  flipCardBorderDark: { backgroundColor: 'rgba(255,255,255,0.10)' },
+  flipTypeRow: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 14 },
+  flipTypePill: { fontSize: 11, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 },
+  sectionSub: { fontSize: 12, fontWeight: '700', color: '#555', marginBottom: 8 },
+  flipMemberCard: { padding: 12, backgroundColor: 'rgba(255,255,255,0.60)', borderRadius: 12, marginBottom: 6 },
+  flipMemberHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  flipMemberName: { fontSize: 13, fontWeight: '700', color: '#333', flex: 1 },
+  flipMemberCost: { fontSize: 12, fontWeight: '800', color: '#fa8c16' },
+  flipBarBg: { height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)', marginBottom: 4 },
+  flipBarFg: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
+  flipMemberMeta: { fontSize: 10, color: '#777', lineHeight: 16 },
 });

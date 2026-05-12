@@ -156,13 +156,14 @@ export async function clearFinishedDownloads() {
 export async function openDownloadItem(item: DownloadItem) {
   const target = item.localUri || item.url;
   if (!target) return;
-  if (target.startsWith('file://')) {
-    const getContentUriAsync = (FileSystem as any).getContentUriAsync;
-    if (typeof getContentUriAsync === 'function') {
-      const contentUri = await getContentUriAsync(target);
-      await Linking.openURL(contentUri);
-      return;
-    }
+  if (target.startsWith('file://') && Platform.OS === 'android') {
+    try {
+      const getContentUriAsync = (FileSystem as any).getContentUriAsync;
+      if (typeof getContentUriAsync === 'function') {
+        const contentUri = await getContentUriAsync(target);
+        if (contentUri) { await Linking.openURL(contentUri); return; }
+      }
+    } catch { /* fall through */ }
   }
   await Linking.openURL(target);
 }

@@ -1,6 +1,6 @@
 {
   "name": "yaya_msg-mobile",
-  "version": "2.3",
+  "version": "2.4",
   "description": "口袋48 第三方 React Native 移动客户端",
   "homepage": "https://github.com/Xenia0922/yaya_msg_mobile",
   "repository": {
@@ -52,6 +52,5 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
-  },
-  "private": true
+  }
 }

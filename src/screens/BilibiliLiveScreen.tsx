@@ -12,6 +12,7 @@ import Video from 'react-native-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { BilibiliLiveRoom } from '../types';
 import { externalApi } from '../api/external';
 import bilibiliApi from '../api/bilibili';
@@ -27,7 +28,7 @@ export default function BilibiliLiveScreen() {
   const [streamTitle, setStreamTitle] = useState('B站直播');
   const [liveStatuses, setLiveStatuses] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('正在加载直播间列表...');
+  const [status, setStatus] = useState('加载中...直播间列表...');
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
@@ -196,25 +197,29 @@ export default function BilibiliLiveScreen() {
           <Text style={styles.refresh}>刷新状态</Text>
         </TouchableOpacity>
       </View>
-      {status ? <Text style={styles.status}>{status}</Text> : null}
+      {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
       {loading ? <ActivityIndicator color="#ff6f91" style={{ padding: 12 }} /> : null}
-      <FlatList
-        data={rooms}
-        keyExtractor={(item, index) => item.roomId || String(index)}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.roomItem, isDark && styles.roomItemDark]}
-            onPress={() => startWatch(item)}
-          >
-            <View style={styles.roomInfo}>
-              <Text style={[styles.roomName, isDark && styles.textLight]}>{item.name || `房间号：${item.roomId}`}</Text>
-              <Text style={styles.roomId}>房间号：{item.roomId}</Text>
-            </View>
-            <View style={[styles.statusDot, liveStatuses[item.roomId] ? styles.liveDot : styles.offlineDot]} />
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>暂无直播间</Text>}
-      />
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={rooms}
+          keyExtractor={(item, index) => item.roomId || String(index)}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <TouchableOpacity
+                style={[styles.roomItem, isDark && styles.roomItemDark]}
+                onPress={() => startWatch(item)}
+              >
+                <View style={styles.roomInfo}>
+                  <Text style={[styles.roomName, isDark && styles.textLight]}>{item.name || `房间号：${item.roomId}`}</Text>
+                  <Text style={[styles.roomId, isDark && styles.roomIdDark]}>房间号：{item.roomId}</Text>
+                </View>
+                <View style={[styles.statusDot, liveStatuses[item.roomId] ? styles.liveDot : styles.offlineDot]} />
+              </TouchableOpacity>
+            </FadeInView>
+          )}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>暂无直播间</Text>}
+        />
+      </FadeInView>
     </View>
   );
 }
@@ -228,6 +233,7 @@ const styles = StyleSheet.create({
   backBtn: { color: '#ff6f91', fontSize: 14 },
   refresh: { fontSize: 12, color: '#ff6f91' },
   status: { margin: 12, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)', color: '#555', fontSize: 12, textAlign: 'center' },
+  statusDark: { backgroundColor: 'rgba(30,30,30,0.78)', color: '#aaa' },
   playerPage: { flex: 1, backgroundColor: '#000' },
   playHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingTop: 50, backgroundColor: 'rgba(20,20,20,0.72)', gap: 12 },
   playTitle: { color: '#fff', fontSize: 16, fontWeight: '700', flex: 1 },
@@ -246,9 +252,11 @@ const styles = StyleSheet.create({
   roomInfo: { flex: 1 },
   roomName: { fontSize: 15, fontWeight: '700', color: '#333' },
   roomId: { fontSize: 11, color: '#333333', marginTop: 2 },
+  roomIdDark: { color: '#aaa' },
   statusDot: { width: 12, height: 12, borderRadius: 6 },
   liveDot: { backgroundColor: '#4caf50' },
   offlineDot: { backgroundColor: '#5a5a5a' },
   textLight: { color: '#eee' },
   empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
+  emptyDark: { color: '#aaa' },
 });

@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore, useMemberStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { externalApi } from '../api/external';
 import { loadMembers, pinyinInitials } from '../utils/members';
@@ -117,14 +118,14 @@ export default function DatabaseScreen() {
         </TouchableOpacity>
         <View>
           <Text style={[styles.title, isDark && styles.textLight]}>数据库</Text>
-          <Text style={styles.count}>总计 {members.length} 位 · 在团 {activeCount} 位</Text>
+          <Text style={[styles.count, isDark && styles.textSubDark]}>总计 {members.length} 位 · 在团 {activeCount} 位</Text>
         </View>
       </View>
 
       <TextInput
         style={[styles.input, isDark && styles.inputDark]}
         placeholder="搜索成员、拼音、队伍、ID..."
-        placeholderTextColor="#5a5a5a"
+        placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
         value={search}
         onChangeText={setSearch}
       />
@@ -137,7 +138,7 @@ export default function DatabaseScreen() {
           showsHorizontalScrollIndicator={false}
           renderItem={({ item }) => (
             <TouchableOpacity style={[styles.chip, groupFilter === item && styles.chipActive]} onPress={() => setGroupFilter(item)}>
-              <Text style={[styles.chipText, groupFilter === item && styles.chipTextActive]}>{item}</Text>
+              <Text style={[styles.chipText, isDark && styles.textLight, groupFilter === item && styles.chipTextActive]}>{item}</Text>
             </TouchableOpacity>
           )}
         />
@@ -145,38 +146,42 @@ export default function DatabaseScreen() {
 
       <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <View style={[styles.memberRow, isDark && styles.memberRowDark, !memberActive(item) && styles.inactiveRow]}>
-            <View style={styles.memberMain}>
-              <Text style={[styles.memberName, isDark && styles.textLight]}>{item.ownerName}</Text>
-              <Text style={[styles.memberMeta, isDark && styles.textSubDark]}>
-                {[item.groupName, item.team, (item as any).periodName, (item as any).rank ? `Top${(item as any).rank}` : ''].filter(Boolean).join(' · ')}
-              </Text>
-              {((item as any).birthday || (item as any).birthplace) ? (
-                <Text style={[styles.memberMetaExtra, isDark && styles.textSubDark]}>
-                  {[(item as any).birthday ? `🎂${(item as any).birthday}` : '', (item as any).birthplace].filter(Boolean).join(' · ')}
-                </Text>
-              ) : null}
-              <View style={styles.fieldGrid}>
-                {memberFields(item).map(([label, value]) => (
-                  <View key={`${item.id}-${label}`} style={styles.fieldChip}>
-                    <Text style={styles.fieldLabel}>{label}</Text>
-                    <Text style={styles.fieldText} numberOfLines={1}>{fieldValue(value)}</Text>
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <View style={[styles.memberRow, isDark && styles.memberRowDark, !memberActive(item) && styles.inactiveRow]}>
+                <View style={styles.memberMain}>
+                  <Text style={[styles.memberName, isDark && styles.textLight]}>{item.ownerName}</Text>
+                  <Text style={[styles.memberMeta, isDark && styles.textSubDark]}>
+                    {[item.groupName, item.team, (item as any).periodName, (item as any).rank ? `Top${(item as any).rank}` : ''].filter(Boolean).join(' · ')}
+                  </Text>
+                  {((item as any).birthday || (item as any).birthplace) ? (
+                    <Text style={[styles.memberMetaExtra, isDark && styles.textSubDark]}>
+                      {[(item as any).birthday ? `🎂${(item as any).birthday}` : '', (item as any).birthplace].filter(Boolean).join(' · ')}
+                    </Text>
+                  ) : null}
+                  <View style={styles.fieldGrid}>
+                    {memberFields(item).map(([label, value]) => (
+                      <View key={`${item.id}-${label}`} style={styles.fieldChip}>
+                        <Text style={styles.fieldLabel}>{label}</Text>
+                        <Text style={[styles.fieldText, isDark && styles.textSubDark]} numberOfLines={1}>{fieldValue(value)}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                </View>
+                <View style={styles.memberRight}>
+                  <Text style={memberActive(item) ? styles.activeTag : styles.inactiveTag}>{memberActive(item) ? '在团' : '非在团'}</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.memberRight}>
-              <Text style={memberActive(item) ? styles.activeTag : styles.inactiveTag}>{memberActive(item) ? '在团' : '非在团'}</Text>
-            </View>
-          </View>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>没有匹配成员</Text>}
-      />
+            </FadeInView>
+          )}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubDark]}>没有匹配成员</Text>}
+        />
+      </FadeInView>
     </View>
   );
 }

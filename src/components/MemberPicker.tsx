@@ -57,12 +57,12 @@ export default function MemberPicker({
       <TextInput
         style={[styles.input, isDark && styles.inputDark]}
         placeholder={placeholder}
-        placeholderTextColor="#5a5a5a"
+        placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
         value={query}
         onChangeText={setQuery}
       />
       {selectedMember ? <Text style={styles.selected}>已选择：{selectedMember.ownerName}</Text> : null}
-      {!membersLoaded ? <Text style={styles.hint}>成员数据加载中...</Text> : null}
+      {!membersLoaded ? <Text style={[styles.hint, isDark && styles.hintDark]}>成员数据加载中...</Text> : null}
       <FlatList
         data={filtered}
         horizontal
@@ -74,19 +74,19 @@ export default function MemberPicker({
           const active = selectedMember?.id === item.id;
           return (
             <TouchableOpacity
-              style={[styles.chip, active && styles.chipActive]}
+              style={[styles.chip, isDark && styles.chipDark, active && styles.chipActive]}
               onPress={() => onSelect(normalizeMember(item))}
               activeOpacity={0.75}
             >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+              <Text style={[styles.chipText, isDark && styles.chipTextDark, active && styles.chipTextActive]}>
                 {memberShortName(item)}
               </Text>
-              {item.team ? <Text style={[styles.team, active && styles.teamActive]}>{item.team}</Text> : null}
+              {item.team ? <Text style={[styles.team, isDark && styles.teamDark, active && styles.teamActive]}>{item.team}</Text> : null}
             </TouchableOpacity>
           );
         }}
         ListEmptyComponent={
-          <Text style={styles.hint}>{query.trim() ? (membersLoaded ? '没有匹配成员' : '暂无成员数据') : '输入姓名、拼音或简写后显示候选'}</Text>
+          <Text style={[styles.hint, isDark && styles.hintDark]}>{query.trim() ? (membersLoaded ? '没有匹配成员' : '暂无成员数据') : '搜索成员...'}</Text>
         }
       />
     </View>
@@ -114,10 +114,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(238,238,238,0.82)',
     marginRight: 8,
   },
+  chipDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   chipActive: { backgroundColor: '#ff6f91' },
   chipText: { fontSize: 12, color: '#444', fontWeight: '600' },
+  chipTextDark: { color: '#cccccc' },
   chipTextActive: { color: '#fff' },
   team: { fontSize: 9, color: '#333333', marginTop: 2 },
-  teamActive: { color: '#ffe8ef' },
+  teamDark: { color: '#cccccc' },
+  teamActive: { color: '#d47082' },
   hint: { color: '#333333', fontSize: 12, paddingVertical: 8 },
+  hintDark: { color: '#cccccc' },
 });

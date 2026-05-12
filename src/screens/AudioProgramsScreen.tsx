@@ -10,6 +10,7 @@ import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import officialMediaApi from '../api/officialMedia';
 import { useSettingsStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 
@@ -68,7 +69,7 @@ export default function AudioProgramsScreen() {
     const cursor = refresh ? 0 : nextCtime;
     if (refresh) setLoading(true);
     else setLoadingMore(true);
-    setStatus(refresh ? '正在加载官方电台...' : '正在加载更多电台...');
+    setStatus(refresh ? '加载中...官方电台...' : '加载中...更多电台...');
     try {
       const res = await officialMediaApi.getTalkList({ ctime: cursor, groupId: 0, limit: 20 });
       const list = normalizeTalks(res);
@@ -145,26 +146,30 @@ export default function AudioProgramsScreen() {
       ) : null}
 
       {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text> : null}
-      <FlatList
-        data={programs}
-        keyExtractor={(item, index) => String(item.talkId || item.id || index)}
-        contentContainerStyle={styles.listContent}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.35}
-        ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.progItem, isDark && styles.cardDark, playing?.talkId === item.talkId && styles.progItemActive]}
-            onPress={() => play(item)}
-          >
-            <Text style={[styles.progTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
-            <Text style={[styles.progDesc, isDark && styles.textSubDark]} numberOfLines={2}>
-              {[item.subTitle, item.guest].filter(Boolean).join(' · ') || '口袋电台'}
-            </Text>
-            <Text style={[styles.progDate, isDark && styles.textSubDark]}>{formatTimestamp(item.ctime).slice(0, 10)}</Text>
-          </TouchableOpacity>
-        )}
-      />
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={programs}
+          keyExtractor={(item, index) => String(item.talkId || item.id || index)}
+          contentContainerStyle={styles.listContent}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <TouchableOpacity
+                style={[styles.progItem, isDark && styles.cardDark, playing?.talkId === item.talkId && styles.progItemActive]}
+                onPress={() => play(item)}
+              >
+                <Text style={[styles.progTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
+                <Text style={[styles.progDesc, isDark && styles.textSubDark]} numberOfLines={2}>
+                  {[item.subTitle, item.guest].filter(Boolean).join(' · ') || '口袋电台'}
+                </Text>
+                <Text style={[styles.progDate, isDark && styles.textSubDark]}>{formatTimestamp(item.ctime).slice(0, 10)}</Text>
+              </TouchableOpacity>
+            </FadeInView>
+          )}
+        />
+      </FadeInView>
     </View>
   );
 }

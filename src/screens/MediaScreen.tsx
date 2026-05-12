@@ -20,6 +20,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { VODItem } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
@@ -508,7 +509,7 @@ export default function MediaScreen() {
       return;
     }
     setGiftVisible(true);
-    setGiftStatus('正在加载礼物...');
+    setGiftStatus('加载中...礼物...');
     setSelectedGift(null);
     try {
       const [giftRes, moneyRes] = await Promise.all([
@@ -560,7 +561,7 @@ export default function MediaScreen() {
       return;
     }
     setRankVisible(true);
-    setRankStatus('正在加载贡献榜...');
+    setRankStatus('加载中...贡献榜...');
     try {
       const res = await pocketApi.getLiveRank(String(source.item.liveId));
       const rows = normalizeLiveRank(res);
@@ -760,74 +761,78 @@ export default function MediaScreen() {
       <View style={[styles.header, isDark && styles.headerDark]}>
         <Text style={styles.title}>直播 / 回放</Text>
         <View style={styles.tabRow}>
-          <TouchableOpacity style={[styles.tabBtn, tab === 'live' && styles.tabBtnActive]} onPress={() => switchTab('live')}>
-            <Text style={[styles.tabBtnText, tab === 'live' && styles.tabBtnTextActive]}>直播</Text>
+          <TouchableOpacity style={[styles.tabBtn, tab === 'live' && styles.tabBtnActive, isDark && tab !== 'live' && styles.tabBtnDark]} onPress={() => switchTab('live')}>
+            <Text style={[styles.tabBtnText, tab === 'live' && styles.tabBtnTextActive, isDark && tab !== 'live' && styles.tabBtnTextDark]}>直播</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tabBtn, tab === 'vod' && styles.tabBtnActive]} onPress={() => switchTab('vod')}>
-            <Text style={[styles.tabBtnText, tab === 'vod' && styles.tabBtnTextActive]}>回放</Text>
+          <TouchableOpacity style={[styles.tabBtn, tab === 'vod' && styles.tabBtnActive, isDark && tab !== 'vod' && styles.tabBtnDark]} onPress={() => switchTab('vod')}>
+            <Text style={[styles.tabBtnText, tab === 'vod' && styles.tabBtnTextActive, isDark && tab !== 'vod' && styles.tabBtnTextDark]}>回放</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.refreshBtn} onPress={refreshList}>
-            <Text style={styles.refreshText}>刷新</Text>
+          <TouchableOpacity style={[styles.refreshBtn, isDark && styles.refreshBtnDark]} onPress={refreshList}>
+            <Text style={[styles.refreshText, isDark && styles.refreshTextDark]}>刷新</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <FlatList
-        data={list}
-        keyExtractor={(item, index) => item.liveId || String(index)}
-        renderItem={({ item }) => {
-          const coverUrl = item.liveCover || item.coverPath;
-          const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
-          return (
-            <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => startPlay(item)}>
-              {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.cover} /> : (
-                <View style={[styles.cover, styles.coverPlaceholder]}>
-                  <Text style={styles.coverPlaceholderText}>视频</Text>
-                </View>
-              )}
-              <View style={styles.cardInfo}>
-                <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>
-                  {item.title || item.liveRoomTitle || '无标题'}
-                </Text>
-                {subtitle ? <Text style={styles.cardSub}>{subtitle}</Text> : null}
-                <View style={styles.typeRow}>
-                  <View style={styles.typeTag}>
-                    <Text style={styles.typeText}>{item.liveType === 2 ? '电台' : '视频'}</Text>
-                  </View>
-                  {tab === 'live' ? (
-                    <View style={[styles.typeTag, styles.giftTag]}>
-                      <Text style={styles.typeText}>可送礼</Text>
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={list}
+          keyExtractor={(item, index) => item.liveId || String(index)}
+          renderItem={({ item, index }) => {
+            const coverUrl = item.liveCover || item.coverPath;
+            const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
+            return (
+              <FadeInView delay={80 + index * 30} duration={300}>
+                <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => startPlay(item)}>
+                  {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.cover} /> : (
+                    <View style={[styles.cover, styles.coverPlaceholder]}>
+                      <Text style={[styles.coverPlaceholderText, isDark && styles.coverPlaceholderTextDark]}>视频</Text>
                     </View>
-                  ) : null}
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <Text style={styles.empty}>{loading ? '加载中...' : '暂无数据，点击刷新重试'}</Text>
-            {loading ? <ActivityIndicator style={{ marginTop: 8 }} color="#ff6f91" /> : null}
-          </View>
-        }
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.35}
-        ListFooterComponent={
-          list.length > 0 ? (
-            <View style={styles.footer}>
-              {loading ? (
-                <ActivityIndicator color="#ff6f91" />
-              ) : hasMore ? (
-                <Text style={styles.empty}>上滑继续加载</Text>
-              ) : (
-                <Text style={styles.empty}>没有更多了</Text>
-              )}
+                  )}
+                  <View style={styles.cardInfo}>
+                    <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>
+                      {item.title || item.liveRoomTitle || '无标题'}
+                    </Text>
+                    {subtitle ? <Text style={[styles.cardSub, isDark && styles.cardSubDark]}>{subtitle}</Text> : null}
+                    <View style={styles.typeRow}>
+                      <View style={styles.typeTag}>
+                        <Text style={styles.typeText}>{item.liveType === 2 ? '电台' : '视频'}</Text>
+                      </View>
+                      {tab === 'live' ? (
+                        <View style={[styles.typeTag, styles.giftTag]}>
+                          <Text style={styles.typeText}>可送礼</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </FadeInView>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              <Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '加载中...' : '暂无数据'}</Text>
+              {loading ? <ActivityIndicator style={{ marginTop: 8 }} color="#ff6f91" /> : null}
             </View>
-          ) : null
-        }
-      />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            list.length > 0 ? (
+              <View style={styles.footer}>
+                {loading ? (
+                  <ActivityIndicator color="#ff6f91" />
+                ) : hasMore ? (
+                  <Text style={[styles.empty, isDark && styles.emptyDark]}>上滑继续加载</Text>
+                ) : (
+                  <Text style={[styles.empty, isDark && styles.emptyDark]}>没有更多了</Text>
+                )}
+              </View>
+            ) : null
+          }
+        />
+      </FadeInView>
     </View>
   );
 }
@@ -845,6 +850,10 @@ const styles = StyleSheet.create({
   tabBtnTextActive: { color: '#fff' },
   refreshBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18, backgroundColor: '#ddd' },
   refreshText: { fontSize: 13, color: '#444', fontWeight: '700' },
+  tabBtnDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
+  tabBtnTextDark: { color: '#aaa' },
+  refreshBtnDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
+  refreshTextDark: { color: '#aaa' },
   footer: { padding: 18, alignItems: 'center' },
   error: { margin: 12, padding: 10, borderRadius: 18, backgroundColor: '#fff3cd', color: '#8a5a00', fontSize: 12, lineHeight: 18 },
   playerPage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999, elevation: 999, backgroundColor: '#000' },
@@ -880,9 +889,11 @@ const styles = StyleSheet.create({
   cover: { width: 112, height: 78, borderRadius: 18, backgroundColor: '#e0e0e0' },
   coverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   coverPlaceholderText: { fontSize: 13, color: '#3f3f3f', fontWeight: '700' },
+  coverPlaceholderTextDark: { color: '#aaa' },
   cardInfo: { flex: 1, marginLeft: 12, justifyContent: 'center' },
   cardTitle: { fontSize: 15, fontWeight: '700', color: '#333', marginBottom: 4 },
   cardSub: { fontSize: 12, color: '#3f3f3f', marginBottom: 6 },
+  cardSubDark: { color: '#aaa' },
   typeRow: { flexDirection: 'row', gap: 4 },
   typeTag: { backgroundColor: '#ff6f9118', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
   giftTag: { backgroundColor: '#13c2c218' },
@@ -890,6 +901,7 @@ const styles = StyleSheet.create({
   textLight: { color: '#eee' },
   emptyWrap: { alignItems: 'center', marginTop: 80 },
   empty: { fontSize: 14, color: '#3f3f3f' },
+  emptyDark: { color: '#aaa' },
   modalShade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)' },
   giftPanel: { maxHeight: '82%', backgroundColor: 'rgba(18,18,18,0.92)', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 14 },
   giftPanelDark: { backgroundColor: 'rgba(18,18,18,0.94)' },

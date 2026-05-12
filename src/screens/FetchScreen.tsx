@@ -10,6 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
 import { useSettingsStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
@@ -99,50 +100,54 @@ export default function FetchScreen() {
         <Text style={[styles.title, isDark && styles.textDark]}>抓取消息</Text>
       </View>
 
-      <View style={styles.section}>
-        <MemberPicker selectedMember={selectedMember} onSelect={setSelectedMember} />
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.row}>
-          <TouchableOpacity style={[styles.modeBtn, messageMode === 'all' && styles.modeBtnActive]} onPress={() => setMessageMode('all')}>
-            <Text style={[styles.modeText, messageMode === 'all' && styles.modeTextActive]}>全部消息</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.modeBtn, messageMode === 'owner' && styles.modeBtnActive]} onPress={() => setMessageMode('owner')}>
-            <Text style={[styles.modeText, messageMode === 'owner' && styles.modeTextActive]}>成员消息</Text>
-          </TouchableOpacity>
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <View style={styles.section}>
+          <MemberPicker selectedMember={selectedMember} onSelect={setSelectedMember} />
         </View>
 
-        <View style={styles.row}>
-          <TouchableOpacity style={[styles.modeBtn, roomMode === 'big' && styles.modeBtnActive]} onPress={() => setRoomMode('big')}>
-            <Text style={[styles.modeText, roomMode === 'big' && styles.modeTextActive]}>大房间</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.modeBtn, roomMode === 'small' && styles.modeBtnActive]} onPress={() => setRoomMode('small')}>
-            <Text style={[styles.modeText, roomMode === 'small' && styles.modeTextActive]}>小房间</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={[styles.fetchBtn, loading && styles.fetchBtnDisabled]} onPress={startFetch} disabled={loading}>
-          <Text style={styles.fetchBtnText}>{loading ? '抓取中...' : '开始抓取'}</Text>
-        </TouchableOpacity>
-        {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text> : null}
-      </View>
-
-      <FlatList
-        data={results}
-        keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || item.clientMsgId || index)}
-        renderItem={({ item }) => (
-          <View style={[styles.msgItem, isDark && styles.msgItemDark]}>
-            <Text style={[styles.msgTime, isDark && styles.textSubDark]}>
-              {formatTimestamp(item.msgTime || item.time || item.ctime)}
-            </Text>
-            <Text style={[styles.msgText, isDark && styles.textDark]}>
-              {(item.senderName || item.senderNickName || item.extInfo?.user?.nickName || '成员')}: {messageText(item) || '[空消息]'}
-            </Text>
+        <View style={styles.section}>
+          <View style={styles.row}>
+            <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, messageMode === 'all' && styles.modeBtnActive]} onPress={() => setMessageMode('all')}>
+              <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'all' && styles.modeTextActive]}>全部消息</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, messageMode === 'owner' && styles.modeBtnActive]} onPress={() => setMessageMode('owner')}>
+              <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'owner' && styles.modeTextActive]}>成员消息</Text>
+            </TouchableOpacity>
           </View>
-        )}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>选择成员后开始抓取</Text> : null}
-      />
+
+          <View style={styles.row}>
+            <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, roomMode === 'big' && styles.modeBtnActive]} onPress={() => setRoomMode('big')}>
+              <Text style={[styles.modeText, isDark && styles.textDark, roomMode === 'big' && styles.modeTextActive]}>大房间</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, roomMode === 'small' && styles.modeBtnActive]} onPress={() => setRoomMode('small')}>
+              <Text style={[styles.modeText, isDark && styles.textDark, roomMode === 'small' && styles.modeTextActive]}>小房间</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={[styles.fetchBtn, loading && styles.fetchBtnDisabled]} onPress={startFetch} disabled={loading}>
+            <Text style={styles.fetchBtnText}>{loading ? '抓取中...' : '开始抓取'}</Text>
+          </TouchableOpacity>
+          {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text> : null}
+        </View>
+
+        <FlatList
+          data={results}
+          keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || item.clientMsgId || index)}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <View style={[styles.msgItem, isDark && styles.msgItemDark]}>
+                <Text style={[styles.msgTime, isDark && styles.textSubDark]}>
+                  {formatTimestamp(item.msgTime || item.time || item.ctime)}
+                </Text>
+                <Text style={[styles.msgText, isDark && styles.textDark]}>
+                  {(item.senderName || item.senderNickName || item.extInfo?.user?.nickName || '成员')}: {messageText(item) || '[空消息]'}
+                </Text>
+              </View>
+            </FadeInView>
+          )}
+          ListEmptyComponent={!loading ? <Text style={[styles.empty, isDark && styles.textDark]}>暂无数据</Text> : null}
+        />
+      </FadeInView>
     </View>
   );
 }
@@ -157,6 +162,7 @@ const styles = StyleSheet.create({
   section: { padding: 16 },
   row: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 18, backgroundColor: 'rgba(238,238,238,0.82)', alignItems: 'center' },
+  modeBtnDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   modeBtnActive: { backgroundColor: '#ff6f91' },
   modeText: { fontSize: 13, color: '#444', fontWeight: '700' },
   modeTextActive: { color: '#fff' },

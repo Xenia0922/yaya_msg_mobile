@@ -7,6 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import QRCode from 'qrcode';
 import { WebView } from 'react-native-webview';
 import { useSettingsStore, useUiStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { saveSettings } from '../services/settings';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
@@ -244,7 +245,7 @@ export default function LoginScreen() {
           return;
         }
         if (res.data.code === 86038) {
-          setStatus('二维码已过期，请重新获取');
+          setStatus('二维码已过期，请刷新');
           return;
         }
       } catch {}
@@ -366,10 +367,11 @@ export default function LoginScreen() {
         <Text style={[styles.title, isDark && styles.textDark]}>账号设置</Text>
       </View>
 
-      <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>口袋48 验证码登录</Text>
-        <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="手机号" placeholderTextColor="#5a5a5a" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
-        <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="短信验证码" placeholderTextColor="#5a5a5a" keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
+      <FadeInView delay={80} duration={300}>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>口袋48 验证码登录</Text>
+        <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="手机号" placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+        <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="短信验证码" placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
         <View style={styles.btnRow}>
           <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleSendSms} disabled={loading}>
             <Text style={styles.btnText}>获取验证码</Text>
@@ -385,7 +387,7 @@ export default function LoginScreen() {
         <TextInput
           style={[styles.input, styles.tokenInput, isDark && styles.inputDark]}
           placeholder="粘贴口袋 token"
-          placeholderTextColor="#5a5a5a"
+          placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
           value={manualToken}
           onChangeText={setManualToken}
           multiline
@@ -446,7 +448,7 @@ export default function LoginScreen() {
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
           placeholder="昵称"
-          placeholderTextColor="#5a5a5a"
+          placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
           value={profileName}
           onChangeText={setProfileName}
         />
@@ -461,7 +463,7 @@ export default function LoginScreen() {
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
           placeholder="头像 URL（上传后自动填入）"
-          placeholderTextColor="#5a5a5a"
+          placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
           value={profileAvatar}
           onChangeText={setProfileAvatar}
           autoCapitalize="none"
@@ -475,9 +477,10 @@ export default function LoginScreen() {
       <View style={[styles.section, isDark && styles.sectionDark]}>
         <Text style={[styles.sectionTitle, isDark && styles.textDark]}>鸡腿充值</Text>
         <TouchableOpacity style={styles.btnPrimary} onPress={() => (navigation as any).navigate('RechargeScreen')}>
-          <Text style={styles.btnText}>打开官方充值页</Text>
-        </TouchableOpacity>
-      </View>
+            <Text style={styles.btnText}>打开官方充值页</Text>
+          </TouchableOpacity>
+        </View>
+      </FadeInView>
 
       {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text> : null}
     </ScrollView>

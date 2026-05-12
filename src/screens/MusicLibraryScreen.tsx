@@ -11,6 +11,7 @@ import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import officialMediaApi from '../api/officialMedia';
 import { useSettingsStore } from '../store';
+import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 
@@ -82,7 +83,7 @@ export default function MusicLibraryScreen() {
     const cursor = refresh ? 0 : nextCtime;
     if (refresh) setLoading(true);
     else setLoadingMore(true);
-    setStatus(refresh ? '正在加载官方音乐...' : '正在加载更多音乐...');
+    setStatus(refresh ? '加载中...官方音乐...' : '加载中...更多音乐...');
     try {
       const res = await officialMediaApi.getMusicList({ ctime: cursor, limit: 20 });
       const list = normalizeMusic(res);
@@ -159,28 +160,32 @@ export default function MusicLibraryScreen() {
         style={[styles.searchInput, isDark && styles.searchInputDark]}
       />
       {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text> : null}
-      <FlatList
-        data={filteredSongs}
-        keyExtractor={(item, index) => String(item.musicId || item.id || index)}
-        contentContainerStyle={[styles.listContent, playUrl && styles.listContentWithPlayer]}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.35}
-        ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.songItem, isDark && styles.cardDark, playing?.musicId === item.musicId && styles.songItemActive]}
-            onPress={() => play(item)}
-          >
-            <View style={styles.songInfo}>
-              <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={1}>{item.title || '无标题'}</Text>
-              <Text style={[styles.songArtist, isDark && styles.textSubDark]} numberOfLines={1}>
-                {[item.joinMemberNames, item.subTitle, item.albumName].filter(Boolean).join(' · ') || '官方单曲'}
-              </Text>
-              <Text style={[styles.dateText, isDark && styles.textSubDark]}>{formatTimestamp(item.ctime).slice(0, 10)}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      />
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <FlatList
+          data={filteredSongs}
+          keyExtractor={(item, index) => String(item.musicId || item.id || index)}
+          contentContainerStyle={[styles.listContent, playUrl && styles.listContentWithPlayer]}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
+          renderItem={({ item, index }) => (
+            <FadeInView delay={80 + index * 30} duration={300}>
+              <TouchableOpacity
+                style={[styles.songItem, isDark && styles.cardDark, playing?.musicId === item.musicId && styles.songItemActive]}
+                onPress={() => play(item)}
+              >
+                <View style={styles.songInfo}>
+                  <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={1}>{item.title || '无标题'}</Text>
+                  <Text style={[styles.songArtist, isDark && styles.textSubDark]} numberOfLines={1}>
+                    {[item.joinMemberNames, item.subTitle, item.albumName].filter(Boolean).join(' · ') || '官方单曲'}
+                  </Text>
+                  <Text style={[styles.dateText, isDark && styles.textSubDark]}>{formatTimestamp(item.ctime).slice(0, 10)}</Text>
+                </View>
+              </TouchableOpacity>
+            </FadeInView>
+          )}
+        />
+      </FadeInView>
       {playUrl ? (
         <View style={[styles.miniPlayer, isDark && styles.miniPlayerDark]}>
           <Video
@@ -208,7 +213,7 @@ export default function MusicLibraryScreen() {
               style={[styles.closePlayer, isDark && styles.closePlayerDark]}
               onPress={() => { setPlaying(null); setPlayUrl(''); }}
             >
-              <Text style={styles.closePlayerText}>✕</Text>
+              <Text style={[styles.closePlayerText, isDark && styles.closePlayerTextDark]}>✕</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.progressWrap}>
@@ -266,8 +271,9 @@ const styles = StyleSheet.create({
   playerTitle: { fontSize: 14, fontWeight: '800', color: '#222' },
   playerSub: { fontSize: 11, color: '#555', marginTop: 1 },
   closePlayer: { padding: 4 },
-  closePlayerDark: {},
+  closePlayerDark: { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12 },
   closePlayerText: { color: '#999', fontSize: 12, fontWeight: '700' },
+  closePlayerTextDark: { color: '#eeeeee' },
   progressWrap: { marginBottom: 8 },
   progressTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' },
   progressFill: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },

@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
+import { FadeInView } from '../components/Motion';
 import { errorMessage, pickText } from '../utils/data';
 import pocketApi from '../api/pocket48';
 
@@ -42,19 +43,21 @@ export default function RoomRadioScreen() {
         </TouchableOpacity>
         <Text style={[styles.title, isDark && styles.textDark]}>房间电台</Text>
       </View>
-      <View style={styles.pickerWrap}>
-        <MemberPicker selectedMember={selectedMember} onSelect={startRadio} />
-      </View>
-      <View style={[styles.playerCard, isDark && styles.playerCardDark]}>
-        <Text style={[styles.playerTitle, isDark && styles.textDark]}>{selectedMember?.ownerName || '请选择成员'}</Text>
-        <Text style={[styles.playerStatus, isDark && styles.textSubDark]}>{loading ? '加载中...' : status || '选择成员后获取房间电台地址'}</Text>
-        {selectedMember ? (
-          <TouchableOpacity style={styles.playBtn} onPress={() => startRadio(selectedMember)}>
-            <Text style={styles.playBtnText}>重新获取</Text>
-          </TouchableOpacity>
-        ) : null}
-        {radioUrl ? <Text style={[styles.url, isDark && styles.textSubDark]}>{radioUrl}</Text> : null}
-      </View>
+      <FadeInView delay={80} duration={300}>
+        <View style={styles.pickerWrap}>
+          <MemberPicker selectedMember={selectedMember} onSelect={startRadio} />
+        </View>
+        <View style={[styles.playerCard, isDark && styles.playerCardDark]}>
+          <Text style={[styles.playerTitle, isDark && styles.textDark]}>{selectedMember?.ownerName || '暂无数据'}</Text>
+          <Text style={[styles.playerStatus, isDark && styles.textSubDark]}>{loading ? '加载中...' : status || '暂无电台地址'}</Text>
+          {selectedMember ? (
+            <TouchableOpacity style={styles.playBtn} onPress={() => startRadio(selectedMember)}>
+              <Text style={styles.playBtnText}>刷新</Text>
+            </TouchableOpacity>
+          ) : null}
+          {radioUrl ? <Text style={[styles.url, isDark && styles.textSubDark]}>{radioUrl}</Text> : null}
+        </View>
+      </FadeInView>
     </View>
   );
 }
