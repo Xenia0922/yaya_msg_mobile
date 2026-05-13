@@ -360,6 +360,8 @@ export default function MediaScreen() {
   const [rankVisible, setRankVisible] = useState(false);
   const [rankRows, setRankRows] = useState<any[]>([]);
   const [rankStatus, setRankStatus] = useState('');
+  const [announcement, setAnnouncement] = useState('');
+  const [announceVisible, setAnnounceVisible] = useState(false);
   const loadingRef = useRef(false);
   const playingRef = useRef<typeof playing>(null);
 
@@ -431,6 +433,23 @@ export default function MediaScreen() {
     setLiveImmersiveMode(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     setPlaying(null);
+    setAnnouncement('');
+    setAnnounceVisible(false);
+  };
+
+  const refreshAnnouncement = async () => {
+    if (!playing || !playing.isLive) return;
+    try {
+      const detail = await pocketApi.getLiveOne(playing.item.liveId).catch(() => null);
+      if (detail) {
+        const d = detail as any;
+        const annText = d?.content?.announcement || d?.announcement || d?.data?.announcement || '';
+        setAnnouncement(annText || '暂无公告');
+        setAnnounceVisible(true);
+      }
+    } catch {
+      setAnnouncement('公告加载失败');
+    }
   };
 
   const switchTab = (next: 'live' | 'vod') => {
@@ -475,6 +494,9 @@ export default function MediaScreen() {
       if (item.liveId) {
         detail = await pocketApi.getLiveOne(item.liveId).catch(() => null);
         urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];
+        const d = detail as any;
+        const annText = d?.content?.announcement || d?.announcement || d?.data?.announcement || '';
+        if (annText) { setAnnouncement(annText); setAnnounceVisible(true); }
         if (!urls.filter(Boolean).length) {
           detail = await pocketApi.getOpenLiveOne(item.liveId).catch(() => null);
           urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];
@@ -633,6 +655,20 @@ export default function MediaScreen() {
             <Text style={styles.exitFullscreenText}>退出全屏</Text>
           </TouchableOpacity>
         )}
+
+        {announceVisible && announcement ? (
+          <View style={styles.announceBar}>
+            <Text style={styles.announceText} numberOfLines={3}>{announcement}</Text>
+            <View style={styles.announceActions}>
+              <TouchableOpacity onPress={refreshAnnouncement} style={styles.announceBtn}>
+                <Text style={styles.announceBtnText}>↻</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setAnnounceVisible(false)} style={styles.announceBtn}>
+                <Text style={styles.announceBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
 
         {playing.needsVlc && Platform.OS === 'android' && LiveExoView ? (
           <View style={styles.player}>
@@ -875,6 +911,11 @@ const styles = StyleSheet.create({
   retryPlayerText: { color: '#fff' },
   exitFullscreenBtn: { position: 'absolute', top: 28, right: 16, zIndex: 1001, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.62)' },
   exitFullscreenText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  announceBar: { flexDirection: 'row', backgroundColor: 'rgba(255,140,22,0.18)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,140,22,0.3)', padding: 10, alignItems: 'flex-start' },
+  announceText: { flex: 1, color: '#fa8c16', fontSize: 12, lineHeight: 20, paddingRight: 8 },
+  announceActions: { flexDirection: 'column', gap: 4 },
+  announceBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(255,140,22,0.25)' },
+  announceBtnText: { color: '#fa8c16', fontSize: 13, fontWeight: '800' },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },
   vlcGate: { flex: 1, backgroundColor: '#050505', justifyContent: 'center', padding: 22 },
