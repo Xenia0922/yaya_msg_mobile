@@ -360,10 +360,12 @@ export default function PrivateMessagesScreen() {
       const res = await pocketApi.getPrivateMessageDetail(convTargetId(sel), nextTime);
       const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'messageList', 'list']);
       if (!list.length) { setHasMore(false); return; }
-      const seen = new Set(msgs.map((m, i) => msgId(m, i)));
       const older = oldestFirst(list, msgTimeNumber);
-      const merged = oldestFirst([...older, ...msgs.filter((m, i) => !seen.has(msgId(m, i)))], msgTimeNumber);
-      setMsgs(merged);
+      setMsgs((prev) => {
+        const seen = new Set(prev.map((m, i) => msgId(m, i)));
+        const dedupedOlder = older.filter((m, i) => !seen.has(msgId(m, i)));
+        return oldestFirst([...dedupedOlder, ...prev], msgTimeNumber);
+      });
       setNextTime(Number(res?.content?.nextTime || res?.data?.nextTime || 0));
       setHasMore(list.length > 0);
     } catch (e) { showToast(`历史加载失败：${errorMessage(e)}`); }
@@ -417,8 +419,9 @@ export default function PrivateMessagesScreen() {
             const media = privateMessageMedia(item);
             const txt = privateMessageText(item);
             const hasText = txt && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(txt) && txt !== '[空消息]';
+            const mediaLabel = media ? (formatDur(media.duration || 0) || (media.type === 'audio' ? '语音' : '视频')) : '';
             return (
-              <FadeInView delay={80 + index * 30} duration={300}>
+              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <View style={[styles.msgRow, mine && styles.msgRowMine]}>
                   <View style={[styles.bubble, mine && styles.bubbleMine, isDark && !mine && styles.bubbleDark]}>
                     {hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>{txt}</Text> : null}
@@ -427,7 +430,7 @@ export default function PrivateMessagesScreen() {
                         <Image source={{ uri: media.url }} style={styles.inlineImg} resizeMode="cover" />
                       ) : (
                         <TouchableOpacity style={styles.mediaBtn} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
-                          <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? '收起' : `▶ ${formatDur(media.duration || 0) || media.type === 'audio' ? '语音' : '视频'}`}</Text>
+                          <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? '收起' : `▶ ${mediaLabel}`}</Text>
                         </TouchableOpacity>
                       )
                     ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>[空消息]</Text> : null}
@@ -484,7 +487,7 @@ export default function PrivateMessagesScreen() {
           data={convs}
           keyExtractor={(item, i) => String(convTargetId(item) || i)}
           renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300}>
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <TouchableOpacity style={[styles.convItem, isDark && styles.convItemDark]} onPress={() => openConv(item)}>
                 <View style={styles.convInfo}>
                   <Text style={[styles.convName, isDark && styles.light]}>{convName(item)}</Text>

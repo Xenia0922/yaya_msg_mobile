@@ -5,7 +5,7 @@ import AppNavigator from './src/navigation';
 import { loadSettings } from './src/services/settings';
 import { useSettingsStore, useMemberStore } from './src/store';
 import { loadMembers } from './src/utils/members';
-import { fetchJson } from './src/utils/network';
+import { fetchJsonStrict } from './src/utils/network';
 import { initWasm, WebViewSigner } from './src/auth';
 import { FadeInView, ScalePressable } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
@@ -27,9 +27,14 @@ export default function App() {
       try {
         const settings = await loadSettings();
         useSettingsStore.getState().setSettings(settings);
-      } catch {}
+      } catch (error: any) {
+        if (mounted) setMessage(`设置加载失败：${error?.message || String(error)}`);
+      }
 
-      initWasm().catch(() => {});
+      initWasm().catch((error: any) => {
+        if (!mounted) return;
+        setMessage((prev) => `${prev}\n签名模块初始化失败：${error?.message || String(error)}`);
+      });
 
       try {
         const backup = require('./assets/members.json');
@@ -38,7 +43,7 @@ export default function App() {
         if (mounted) setMessage(`已加载随包成员库 ${localMembers.length} 位`);
 
         try {
-          const json = await fetchJson<any[]>('https://yaya-data.pages.dev/members.json');
+          const json = await fetchJsonStrict<any[]>('https://yaya-data.pages.dev/members.json');
           const remoteMembers = await loadMembers(json);
           if (remoteMembers.length >= localMembers.length) {
             useMemberStore.getState().setMembers(remoteMembers);

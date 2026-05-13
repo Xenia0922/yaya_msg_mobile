@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Modal,
 } from 'react-native';
@@ -61,10 +61,24 @@ export default function MessagesScreen() {
     }
   };
 
-  const filtered = messages.filter((item) => {
-    const body = messageText(item);
-    return !search || body.includes(search) || String(item.senderName || '').includes(search);
-  });
+  const filtered = useMemo(() => {
+    const q = search.trim();
+    if (!q) return messages;
+    return messages.filter((item) => {
+      const body = messageText(item);
+      return body.includes(q) || String(item.senderName || '').includes(q);
+    });
+  }, [messages, search]);
+
+  const renderMsgItem = useCallback(({ item }: { item: any }) => (
+    <View style={[styles.msg, isDark && styles.msgDark]}>
+      <View style={styles.msgHeader}>
+        <Text style={[styles.msgSender, isDark && { color: '#eee' }]}>{item.senderName || item.senderNickName || '成员'}</Text>
+        <Text style={[styles.msgTime, isDark && styles.msgTimeDark]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
+      </View>
+      <Text style={[styles.msgBody, isDark && { color: '#eeeeee' }]}>{messageText(item) || '[空消息]'}</Text>
+    </View>
+  ), [isDark]);
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
@@ -125,18 +139,12 @@ export default function MessagesScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || index)}
-          renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300}>
-              <View style={[styles.msg, isDark && styles.msgDark]}>
-                <View style={styles.msgHeader}>
-                  <Text style={[styles.msgSender, isDark && { color: '#eee' }]}>{item.senderName || item.senderNickName || '成员'}</Text>
-                  <Text style={[styles.msgTime, isDark && styles.msgTimeDark]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
-                </View>
-                <Text style={[styles.msgBody, isDark && { color: '#eeeeee' }]}>{messageText(item) || '[空消息]'}</Text>
-              </View>
-            </FadeInView>
-          )}
+          renderItem={renderMsgItem}
           ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '加载中...' : '暂无消息'}</Text>}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
         />
       </FadeInView>
     </View>

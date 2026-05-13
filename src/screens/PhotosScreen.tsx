@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList, Image, StyleSheet,
 } from 'react-native';
@@ -124,10 +124,15 @@ export default function PhotosScreen() {
         .map((key) => starInfo?.[key])
         .filter(Boolean)
         .map((url, index) => ({ id: `archive-${index}`, url, title: '成员照片' }));
-      const merged = [...list, ...archivePhotos].filter((item, index, arr) => {
+      const combined = [...list, ...archivePhotos];
+      const seen = new Set<string>();
+      const merged: any[] = [];
+      for (const item of combined) {
         const url = deepFindImageUrl(item);
-        return url && arr.findIndex((other) => deepFindImageUrl(other) === url) === index;
-      });
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        merged.push(item);
+      }
       setPhotos(merged);
       setStatus(`加载完成：${merged.length} 张图片`);
     } catch (error) {
@@ -138,14 +143,33 @@ export default function PhotosScreen() {
     }
   };
 
-  const downloadPhoto = async (url: string) => {
+  const downloadPhoto = useCallback(async (url: string) => {
     try {
       await enqueueDownload({ url, type: 'image', name: selectedMember ? `${selectedMember.ownerName}-photo` : 'member-photo' });
       showToast('已加入下载管理');
     } catch (error) {
       showToast(`下载失败：${errorMessage(error)}`);
     }
-  };
+  }, [selectedMember, showToast]);
+
+  const photoUrls = useMemo(() => photos.map((p) => deepFindImageUrl(p)), [photos]);
+
+  const renderPhotoItem = useCallback(({ item, index }: { item: any; index: number }) => {
+    const url = photoUrls[index] || deepFindImageUrl(item);
+    const delay = index < 12 ? 80 + index * 30 : 0;
+    return (
+      <FadeInView delay={delay} duration={300} style={{ flex: 1 }}>
+        <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
+          {url ? (
+            <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadPhoto(url)}>
+              <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+            </TouchableOpacity>
+          ) : <View style={styles.photo} />}
+          <Text style={[styles.photoTitle, isDark && styles.textDark]} numberOfLines={1}>{item.name || item.title || ''}</Text>
+        </View>
+      </FadeInView>
+    );
+  }, [downloadPhoto, isDark, photoUrls]);
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
@@ -166,24 +190,12 @@ export default function PhotosScreen() {
           numColumns={2}
           keyExtractor={(item, index) => String(item.id || item.nftId || index)}
           contentContainerStyle={{ padding: 8 }}
-          renderItem={({ item, index }) => {
-            const url = deepFindImageUrl(item);
-            return (
-              <FadeInView delay={80 + index * 30} duration={300} style={{ flex: 1 }}>
-                <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
-                  {url ? (
-                    <>
-                      <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadPhoto(url)}>
-                        <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
-                      </TouchableOpacity>
-                    </>
-                  ) : <View style={styles.photo} />}
-                  <Text style={[styles.photoTitle, isDark && styles.textDark]} numberOfLines={1}>{item.name || item.title || ''}</Text>
-                </View>
-              </FadeInView>
-            );
-          }}
+          renderItem={renderPhotoItem}
           ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textDark]}>{loading ? '加载中...' : '暂无图片'}</Text>}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
         />
       </FadeInView>
     </View>

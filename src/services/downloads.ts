@@ -119,12 +119,47 @@ export async function enqueueDownload(params: {
 
   const localUri = `${DOWNLOAD_DIR}${item.id}-${item.name}`;
   try {
-    const { uri: downloadedUri } = await FileSystem.downloadAsync(url, localUri, {
-      headers: {
-        'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
-        Referer: 'https://h5.48.cn/',
-      },
-    });
+    const headers = {
+      'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
+      Referer: 'https://h5.48.cn/',
+    };
+
+    const createDownloadResumable = (FileSystem as any).createDownloadResumable;
+    if (typeof createDownloadResumable === 'function') {
+      let progressTimer: ReturnType<typeof setTimeout> | null = null;
+      let latestPatch: Partial<DownloadItem> | null = null;
+
+      const flushProgress = async () => {
+        if (!latestPatch) return;
+        const patch = latestPatch;
+        latestPatch = null;
+        progressTimer = null;
+        await updateItem(item.id, patch);
+      };
+
+      const updateProgress = (written: number, expected: number) => {
+        const total = Number(expected) || 0;
+        const done = Number(written) || 0;
+        const progress = total > 0 ? Math.max(0, Math.min(1, done / total)) : 0;
+        latestPatch = { progress, downloadedBytes: done, totalBytes: total, status: 'downloading' };
+        if (params.onProgress) params.onProgress({ ...item, ...latestPatch } as DownloadItem);
+        if (!progressTimer) progressTimer = setTimeout(() => { flushProgress().catch(() => undefined); }, 350);
+      };
+
+      const dl = createDownloadResumable(url, localUri, { headers }, (p: any) => {
+        updateProgress(p?.totalBytesWritten || 0, p?.totalBytesExpectedToWrite || 0);
+      });
+
+      const result = await dl.downloadAsync();
+      if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
+      await flushProgress();
+      const downloadedUri = result?.uri;
+      const done = { status: 'done' as const, progress: 1, localUri: downloadedUri || localUri };
+      await updateItem(item.id, done);
+      return { ...item, ...done };
+    }
+
+    const { uri: downloadedUri } = await FileSystem.downloadAsync(url, localUri, { headers });
     const done = { status: 'done' as const, progress: 1, localUri: downloadedUri || localUri };
     await updateItem(item.id, done);
     return { ...item, ...done };

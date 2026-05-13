@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   Image,
@@ -1104,7 +1104,7 @@ export default function FollowedRoomsScreen() {
             const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
 
             return (
-              <FadeInView delay={80 + index * 30} duration={300}>
+              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <View style={[styles.chatRow, mine && styles.chatRowMine]}>
                   {!mine ? (
                   profile.avatar ? (
@@ -1227,7 +1227,7 @@ export default function FollowedRoomsScreen() {
           keyExtractor={(item) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
           renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300}>
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <TouchableOpacity style={[styles.roomItem, isDark && styles.roomItemDark]} onPress={() => item.member && openRoom(item.member)}>
                 <View style={styles.roomTop}>
                   <Text style={[styles.roomName, isDark && styles.textDark]} numberOfLines={1}>{shortName(item.member, item.memberId)}</Text>
@@ -1249,6 +1249,10 @@ export default function FollowedRoomsScreen() {
             </FadeInView>
           )}
           ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '加载中...' : '暂无关注房间'}</Text>}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
         />
       </FadeInView>
     </View>

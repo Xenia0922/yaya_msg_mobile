@@ -137,8 +137,12 @@ export default function DownloadScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>暂无下载项目</Text>}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300}>
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <View style={[styles.task, isDark && styles.cardDark]}>
                 <View style={styles.taskHead}>
                   <Text style={[styles.typeTag, isDark && styles.typeTagDark]}>{typeLabel(item.type)}</Text>

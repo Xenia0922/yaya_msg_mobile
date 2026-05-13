@@ -103,6 +103,7 @@ export function WebViewSigner() {
   const seq = useRef(1);
 
   useEffect(() => {
+    signerError = '';
     signerRequest = async (timeoutMs = 10000) => {
       const ready = await waitForReady(timeoutMs);
       if (!ready) {
@@ -125,6 +126,9 @@ export function WebViewSigner() {
     };
     return () => {
       signerRequest = null;
+      signerReady = false;
+      signerError = 'WebView 签名容器已卸载';
+      notifyReady(false);
       Object.values(pending.current).forEach((item) => {
         clearTimeout(item.timer);
         item.resolve(null);
@@ -166,6 +170,11 @@ export function WebViewSigner() {
           if (payload.type === 'error') {
             signerReady = false;
             signerError = payload.error || 'WebView 签名模块异常';
+            Object.values(pending.current).forEach((item) => {
+              clearTimeout(item.timer);
+              item.reject(new Error(signerError));
+            });
+            pending.current = {};
             notifyReady(false);
             return;
           }

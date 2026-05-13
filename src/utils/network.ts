@@ -47,7 +47,11 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
         resolve(body as T);
         return;
       }
-      const message = body?.message || body?.msg || body?.error || `HTTP ${xhr.status}`;
+      const message = (
+        (body && typeof body === 'object' && (body.message || body.msg || body.error))
+        || (typeof body === 'string' && body.trim() ? body.trim().slice(0, 180) : '')
+        || `HTTP ${xhr.status}`
+      );
       reject(new Error(message));
     };
     xhr.onerror = () => reject(new Error('网络请求失败'));
@@ -63,6 +67,12 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
 
 function fetchJson<T>(url: string): Promise<T> {
   return requestJson<T>(url, { method: 'GET', timeout: 10000 });
+}
+
+async function fetchJsonStrict<T>(url: string): Promise<T> {
+  const res = await fetchJson<any>(url);
+  if (!res || typeof res === 'string') throw new Error('响应不是有效 JSON');
+  return res as T;
 }
 
 function xhrPost(url: string, data: any, headers: Record<string, string>): Promise<any> {
@@ -114,4 +124,4 @@ async function checkNetworkStatus() {
   };
 }
 
-export { requestJson, fetchJson, xhrPost, probeUrl, checkNetworkStatus };
+export { requestJson, fetchJson, fetchJsonStrict, xhrPost, probeUrl, checkNetworkStatus };

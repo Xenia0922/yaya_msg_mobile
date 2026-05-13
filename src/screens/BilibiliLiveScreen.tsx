@@ -204,7 +204,7 @@ export default function BilibiliLiveScreen() {
           data={rooms}
           keyExtractor={(item, index) => item.roomId || String(index)}
           renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300}>
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <TouchableOpacity
                 style={[styles.roomItem, isDark && styles.roomItemDark]}
                 onPress={() => startWatch(item)}
@@ -218,6 +218,10 @@ export default function BilibiliLiveScreen() {
             </FadeInView>
           )}
           ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>暂无直播间</Text>}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
         />
       </FadeInView>
     </View>

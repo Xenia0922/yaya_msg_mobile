@@ -823,7 +823,7 @@ export default function MediaScreen() {
             const coverUrl = item.liveCover || item.coverPath;
             const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
             return (
-              <FadeInView delay={80 + index * 30} duration={300}>
+              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => startPlay(item)}>
                   {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.cover} /> : (
                     <View style={[styles.cover, styles.coverPlaceholder]}>
@@ -871,6 +871,10 @@ export default function MediaScreen() {
               </View>
             ) : null
           }
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
         />
       </FadeInView>
     </View>
