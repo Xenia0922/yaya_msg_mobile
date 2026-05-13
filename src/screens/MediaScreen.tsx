@@ -684,6 +684,7 @@ export default function MediaScreen() {
                   <Text style={styles.backBtnTextPink}>关闭</Text>
                 </TouchableOpacity>
               </View>
+              <Text style={styles.giftTip}>直播送礼主播看不到赠送，仅能统计贡献值</Text>
               <Text style={styles.giftStatus}>
                 {balance ? `余额：${balance} 口袋币 · ` : ''}{giftStatus}
               </Text>
@@ -913,6 +914,7 @@ const styles = StyleSheet.create({
   giftHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   giftTitle: { fontSize: 18, fontWeight: '800', color: '#f5f5f5' },
   giftStatus: { color: '#d8d8d8', fontSize: 12, marginBottom: 10 },
+  giftTip: { fontSize: 11, color: '#ff4444', marginBottom: 6, textAlign: 'center', fontWeight: '600' },
   giftGrid: { maxHeight: 360 },
   giftGridInner: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   giftItem: { width: '31%', padding: 8, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)' },
