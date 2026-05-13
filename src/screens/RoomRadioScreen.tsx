@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
   playerCardDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
   playerTitle: { fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 8 },
   playerStatus: { fontSize: 13, color: '#333333', marginBottom: 16, textAlign: 'center' },
-  playBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, backgroundColor: '#ff6f91' },
+  playBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 18, backgroundColor: '#ff6f91' },
   playBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   url: { fontSize: 11, color: '#4caf50', marginTop: 12, textAlign: 'center' },
   textDark: { color: '#eee' },

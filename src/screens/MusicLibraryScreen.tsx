@@ -164,8 +164,12 @@ export default function MusicLibraryScreen() {
         <FlatList
           data={filteredSongs}
           keyExtractor={(item, index) => String(item.musicId || item.id || index)}
-          contentContainerStyle={[styles.listContent, playUrl && styles.listContentWithPlayer]}
-          onEndReached={loadMore}
+            contentContainerStyle={[styles.listContent, playUrl && styles.listContentWithPlayer]}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
+            onEndReached={loadMore}
           onEndReachedThreshold={0.35}
           ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
           renderItem={({ item, index }) => (
@@ -282,7 +286,7 @@ const styles = StyleSheet.create({
   controlsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 18 },
   controlBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,111,145,0.08)' },
   controlIcon: { fontSize: 14, color: '#ff6f91' },
-  mainPlayBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
+  mainPlayBtn: { width: 44, height: 44, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
   mainPlayIcon: { fontSize: 18, color: '#fff' },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },

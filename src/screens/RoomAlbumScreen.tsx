@@ -244,9 +244,13 @@ export default function RoomAlbumScreen() {
         <FlatList
           data={items}
           numColumns={2}
-          keyExtractor={(item) => `${item.roomMode}-${item.id}`}
-          contentContainerStyle={styles.grid}
-          renderItem={({ item, index }) => (
+            keyExtractor={(item) => `${item.roomMode}-${item.id}`}
+            contentContainerStyle={styles.grid}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
+            renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300} style={{ flex: 1 }}>
               <TouchableOpacity
                 style={[styles.mediaCard, isDark && styles.mediaCardDark]}

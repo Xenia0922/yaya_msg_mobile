@@ -341,6 +341,10 @@ export default function AnalysisScreen() {
             data={dateStats}
             keyExtractor={(item) => item.date}
             contentContainerStyle={styles.content}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
             ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>暂无日期数据</Text>}
             renderItem={({ item, index }) => {
               const totalPct = (item.total / dateMax) * 100;
@@ -372,6 +376,10 @@ export default function AnalysisScreen() {
             data={senders}
             keyExtractor={(item) => item.key}
             contentContainerStyle={styles.content}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
             renderItem={({ item, index }) => (
               <FadeInView delay={80 + index * 30} duration={300}>
                 <View style={[styles.rankRow, isDark && styles.cardDark]}>
@@ -391,6 +399,10 @@ export default function AnalysisScreen() {
             data={messages.filter((item) => isMedia(item, 'image') || isMedia(item, 'audio') || isMedia(item, 'video'))}
             keyExtractor={(item, index) => `media-${index}`}
             contentContainerStyle={styles.content}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
             ListHeaderComponent={
               <View style={styles.summaryGrid}>
                 {cards.slice(3).map((item) => (
@@ -440,10 +452,14 @@ export default function AnalysisScreen() {
           data={filteredFlips}
           keyExtractor={(item, index) => String(item.questionId || item.id || item.answerId || index)}
           contentContainerStyle={styles.content}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           ListHeaderComponent={
             <View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10, marginTop: 4 }}>
-                <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 14 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.flipChipScroll}>
+                <View style={styles.flipChipRow}>
                   {flipMemberNames.map((name: string) => (
                     <TouchableOpacity
                       key={name}
@@ -637,7 +653,7 @@ const styles = StyleSheet.create({
   barWrap: { position: 'relative', height: 6, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.06)', overflow: 'hidden' },
   barBg: { position: 'absolute', top: 0, left: 0, height: '100%', backgroundColor: '#555', borderRadius: 3 },
   barFg: { position: 'absolute', top: 0, left: 0, height: '100%', backgroundColor: '#ff6f91', borderRadius: 3 },
-  empty: { textAlign: 'center', color: '#333333', marginTop: 40, fontSize: 14 },
+  empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
   flipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   flipMember: { fontSize: 14, fontWeight: '800', color: '#ff6f91', flex: 1 },
   flipTime: { fontSize: 11, color: '#555' },
@@ -683,6 +699,8 @@ const styles = StyleSheet.create({
   flipBarBg: { height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)', marginBottom: 4 },
   flipBarFg: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
   flipMemberMeta: { fontSize: 10, color: '#777', lineHeight: 16 },
+  flipChipScroll: { marginBottom: 10, marginTop: 4 },
+  flipChipRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14 },
   flipChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
   flipChipActive: { backgroundColor: '#ff6f91' },
   flipChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },

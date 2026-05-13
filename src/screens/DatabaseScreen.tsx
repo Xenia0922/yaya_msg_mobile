@@ -144,6 +144,10 @@ export default function DatabaseScreen() {
           horizontal
           data={groups}
           keyExtractor={(item) => item}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           showsHorizontalScrollIndicator={false}
           renderItem={({ item }) => (
             <TouchableOpacity style={[styles.chip, groupFilter === item && styles.chipActive]} onPress={() => setGroupFilter(item)}>
@@ -160,6 +164,10 @@ export default function DatabaseScreen() {
           data={filtered}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContent}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300}>
               <View style={[styles.memberRow, isDark && styles.memberRowDark, !memberActive(item) && styles.inactiveRow]}>
@@ -220,7 +228,7 @@ const styles = StyleSheet.create({
   memberMetaExtra: { fontSize: 10, color: '#555', marginTop: 2 },
   memberRight: { alignItems: 'flex-end', gap: 4 },
   fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 9 },
-  fieldChip: { maxWidth: '48%', minWidth: '30%', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 10, backgroundColor: 'rgba(255,111,145,0.10)' },
+  fieldChip: { maxWidth: '48%', minWidth: '30%', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 18, backgroundColor: 'rgba(255,111,145,0.10)' },
   fieldLabel: { fontSize: 9, color: '#ff6f91', fontWeight: '800', marginBottom: 2 },
   fieldText: { fontSize: 10, color: '#555', fontWeight: '700' },
   activeTag: { fontSize: 10, color: '#fff', backgroundColor: '#20a464', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },

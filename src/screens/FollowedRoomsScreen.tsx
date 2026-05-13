@@ -1063,6 +1063,10 @@ export default function FollowedRoomsScreen() {
             data={filteredRoomMessages}
             keyExtractor={(item, index) => messageKey(item, index)}
             contentContainerStyle={styles.chatContent}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
             onEndReached={loadMoreRoomMessages}
             onEndReachedThreshold={0.25}
             ListFooterComponent={
@@ -1279,7 +1283,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8 },
   input: { flex: 1, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', backgroundColor: 'rgba(255,255,255,0.76)', color: '#333' },
   inputDark: { backgroundColor: 'rgba(42,42,42,0.68)', borderColor: '#444', color: '#eeeeee' },
-  refreshBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, backgroundColor: '#ff6f91', justifyContent: 'center' },
+  refreshBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91', justifyContent: 'center' },
   refreshBtnDisabled: { opacity: 0.5 },
   refreshText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
@@ -1343,7 +1347,7 @@ const styles = StyleSheet.create({
   mediaDuration: { color: '#3f3f3f', fontSize: 11, fontWeight: '700' },
   mediaDurationDark: { color: '#aaa' },
   mediaTextHighlight: { color: '#fff' },
-  mediaPlayBtn: { marginTop: 9, minHeight: 38, paddingVertical: 9, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
+  mediaPlayBtn: { marginTop: 9, minHeight: 38, paddingVertical: 9, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
   mediaPlayBtnHighlight: { backgroundColor: '#fff' },
   mediaPlayText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   mediaPlayTextHighlight: { color: '#ff6f91' },

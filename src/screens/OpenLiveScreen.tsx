@@ -308,9 +308,13 @@ export default function OpenLiveScreen() {
 
         <FlatList
           data={filtered}
-          keyExtractor={(item) => item.key}
-          contentContainerStyle={styles.list}
-          onEndReached={loadMore}
+            keyExtractor={(item) => item.key}
+            contentContainerStyle={styles.list}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
+            onEndReached={loadMore}
           onEndReachedThreshold={0.35}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>

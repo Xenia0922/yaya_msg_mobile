@@ -101,11 +101,11 @@ export default function FetchScreen() {
       </View>
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <View style={styles.section}>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
           <MemberPicker selectedMember={selectedMember} onSelect={setSelectedMember} />
         </View>
 
-        <View style={styles.section}>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
           <View style={styles.row}>
             <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, messageMode === 'all' && styles.modeBtnActive]} onPress={() => setMessageMode('all')}>
               <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'all' && styles.modeTextActive]}>全部消息</Text>
@@ -133,6 +133,10 @@ export default function FetchScreen() {
         <FlatList
           data={results}
           keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || item.clientMsgId || index)}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300}>
               <View style={[styles.msgItem, isDark && styles.msgItemDark]}>
@@ -160,6 +164,7 @@ const styles = StyleSheet.create({
   backBtn: { color: '#ff6f91', fontSize: 14, marginBottom: 6 },
   title: { fontSize: 22, fontWeight: '800', color: '#ff6f91' },
   section: { padding: 16 },
+  sectionDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
   row: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 18, backgroundColor: 'rgba(238,238,238,0.82)', alignItems: 'center' },
   modeBtnDark: { backgroundColor: 'rgba(42,42,42,0.52)' },

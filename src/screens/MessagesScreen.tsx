@@ -85,10 +85,10 @@ export default function MessagesScreen() {
       <View style={[styles.header, isDark && styles.headerDark]}>
         <Text style={styles.title}>消息检索</Text>
         <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setPickerOpen(true)}>
-          <Text style={{ color: isDark ? '#eeeeee' : '#333', flex: 1 }}>
+          <Text style={[styles.pickerLabel, isDark && styles.textLight]}>
             {selectedMember?.ownerName || `选择成员 (${members.length})`}
           </Text>
-          <Text style={{ color: isDark ? '#eee' : '#333333' }}>选择</Text>
+          <Text style={[styles.pickerButtonText, isDark && styles.textLight]}>选择</Text>
         </TouchableOpacity>
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
@@ -106,7 +106,7 @@ export default function MessagesScreen() {
               <Text style={styles.modalBack}>关闭</Text>
             </TouchableOpacity>
             <Text style={[styles.modalTitle, isDark && { color: '#eee' }]}>选择成员</Text>
-            <Text style={{ color: isDark ? '#eee' : '#333333', fontSize: 12 }}>{members.length} 位</Text>
+            <Text style={[styles.pickerCount, isDark && styles.textLight]}>{members.length} 位</Text>
           </View>
           <TextInput
             style={[styles.input, isDark && styles.inputDark, { margin: 12 }]}
@@ -156,6 +156,9 @@ const styles = StyleSheet.create({
   containerDark: { backgroundColor: 'transparent' },
   header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
   title: { fontSize: 22, fontWeight: '800', color: '#ff6f91', marginBottom: 12 },
+  pickerLabel: { color: '#333', flex: 1 },
+  pickerButtonText: { color: '#333333' },
+  pickerCount: { color: '#333333', fontSize: 12 },
   picker: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: 'rgba(255,255,255,0.50)', marginBottom: 8 },
   pickerDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444' },
   input: { padding: 10, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: 'rgba(255,255,255,0.50)', color: '#333', marginBottom: 8 },
@@ -180,4 +183,5 @@ const styles = StyleSheet.create({
   msgBody: { fontSize: 14, color: '#555', lineHeight: 20 },
   empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
   emptyDark: { color: '#aaa' },
+  textLight: { color: '#eeeeee' },
 });

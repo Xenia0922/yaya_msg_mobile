@@ -362,6 +362,7 @@ export default function MediaScreen() {
   const [rankStatus, setRankStatus] = useState('');
   const [announcement, setAnnouncement] = useState('');
   const [announceVisible, setAnnounceVisible] = useState(false);
+  const [announceExpanded, setAnnounceExpanded] = useState(true);
   const loadingRef = useRef(false);
   const playingRef = useRef<typeof playing>(null);
 
@@ -435,20 +436,23 @@ export default function MediaScreen() {
     setPlaying(null);
     setAnnouncement('');
     setAnnounceVisible(false);
+    setAnnounceExpanded(false);
   };
 
   const refreshAnnouncement = async () => {
     if (!playing || !playing.isLive) return;
     try {
       const detail = await pocketApi.getLiveOne(playing.item.liveId).catch(() => null);
-      if (detail) {
-        const d = detail as any;
-        const annText = d?.content?.announcement || d?.announcement || d?.data?.announcement || '';
-        setAnnouncement(annText || '暂无公告');
-        setAnnounceVisible(true);
-      }
+      const detail2 = !detail ? await pocketApi.getOpenLiveOne(playing.item.liveId).catch(() => null) : null;
+      const d = (detail || detail2 || {}) as any;
+      const annText = d?.content?.announcement || d?.announcement || d?.data?.announcement || '';
+      setAnnouncement(annText || '暂无公告');
+      setAnnounceVisible(true);
+      setAnnounceExpanded(true);
     } catch {
       setAnnouncement('公告加载失败');
+      setAnnounceVisible(true);
+      setAnnounceExpanded(true);
     }
   };
 
@@ -494,9 +498,20 @@ export default function MediaScreen() {
       if (item.liveId) {
         detail = await pocketApi.getLiveOne(item.liveId).catch(() => null);
         urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];
-        const d = detail as any;
+        const d = (detail || {}) as any;
         const annText = d?.content?.announcement || d?.announcement || d?.data?.announcement || '';
-        if (annText) { setAnnouncement(annText); setAnnounceVisible(true); }
+        if (annText) {
+          setAnnouncement(annText);
+          setAnnounceVisible(true);
+        }
+        else {
+          const detail2 = await pocketApi.getOpenLiveOne(item.liveId).catch(() => null);
+          if (detail2) {
+            const d2 = detail2 as any;
+            const annText2 = d2?.content?.announcement || d2?.announcement || d2?.data?.announcement || '';
+            if (annText2) { setAnnouncement(annText2); setAnnounceVisible(true); setAnnounceExpanded(false); }
+          }
+        }
         if (!urls.filter(Boolean).length) {
           detail = await pocketApi.getOpenLiveOne(item.liveId).catch(() => null);
           urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];
@@ -649,6 +664,11 @@ export default function MediaScreen() {
           <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.switchPlayerBtn}>
             <Text style={styles.switchPlayerText}>全屏</Text>
           </TouchableOpacity>
+          {announceVisible && announcement ? (
+            <TouchableOpacity style={[styles.switchPlayerBtn, styles.announceHeaderBtn]} onPress={() => setAnnounceExpanded(v => !v)}>
+              <Text style={[styles.switchPlayerText, styles.announceHeaderText]}>{announceExpanded ? '收起' : '公告'}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
         ) : (
           <TouchableOpacity onPress={() => setIsFullscreen(false)} style={styles.exitFullscreenBtn}>
@@ -656,17 +676,25 @@ export default function MediaScreen() {
           </TouchableOpacity>
         )}
 
-        {announceVisible && announcement ? (
-          <View style={styles.announceBar}>
-            <Text style={styles.announceText} numberOfLines={3}>{announcement}</Text>
-            <View style={styles.announceActions}>
-              <TouchableOpacity onPress={refreshAnnouncement} style={styles.announceBtn}>
-                <Text style={styles.announceBtnText}>↻</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setAnnounceVisible(false)} style={styles.announceBtn}>
-                <Text style={styles.announceBtnText}>✕</Text>
-              </TouchableOpacity>
+        {announceExpanded && announceVisible && announcement ? (
+          <View style={styles.announcePanel}>
+            <View style={styles.announcePanelTop}>
+              <Text style={styles.announcePanelTitle} numberOfLines={1}>📢 公告</Text>
+              <View style={styles.announcePanelBtns}>
+                <TouchableOpacity onPress={refreshAnnouncement} style={styles.announceSmallBtn}>
+                  <Text style={styles.announceSmallBtnText}>刷新</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setAnnounceExpanded(false)} style={styles.announceSmallBtn}>
+                  <Text style={styles.announceSmallBtnText}>收起</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setAnnounceVisible(false); setAnnounceExpanded(false); }} style={styles.announceSmallBtn}>
+                  <Text style={styles.announceSmallBtnText}>✕</Text>
+                </TouchableOpacity>
+              </View>
             </View>
+            <ScrollView style={styles.announcePanelBody}>
+              <Text style={styles.announcePanelText}>{announcement}</Text>
+            </ScrollView>
           </View>
         ) : null}
 
@@ -722,7 +750,7 @@ export default function MediaScreen() {
               </View>
               <Text style={styles.giftTip}>直播送礼主播看不到赠送，仅能统计贡献值</Text>
               <Text style={styles.giftStatus}>
-                {balance ? `余额：${balance} 口袋币 · ` : ''}{giftStatus}
+                {balance ? `余额：${balance} 鸡腿 · ` : ''}{giftStatus}
               </Text>
               <ScrollView style={styles.giftGrid}>
                 <View style={styles.giftGridInner}>
@@ -736,7 +764,7 @@ export default function MediaScreen() {
                       >
                         {giftImage(gift) ? <Image source={{ uri: giftImage(gift) }} style={styles.giftImage} /> : <View style={styles.giftImage} />}
                         <Text style={styles.giftName} numberOfLines={1}>{giftName(gift)}</Text>
-                        <Text style={styles.giftCost}>{giftCost(gift)} 口袋币</Text>
+                        <Text style={styles.giftCost}>{giftCost(gift)} 鸡腿</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -902,24 +930,31 @@ const styles = StyleSheet.create({
   error: { margin: 12, padding: 10, borderRadius: 18, backgroundColor: '#fff3cd', color: '#8a5a00', fontSize: 12, lineHeight: 18 },
   playerPage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999, elevation: 999, backgroundColor: '#000' },
   playerPageFullscreen: { backgroundColor: '#000' },
-  playHeader: { flexDirection: 'row', alignItems: 'center', padding: 8, paddingTop: 44, backgroundColor: '#0a0a0a' },
-  backBtn: { padding: 8 },
-  backBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  backBtnTextPink: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
-  playTitle: { color: '#fff', fontSize: 15, fontWeight: '600', flex: 1 },
-  giftBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18, backgroundColor: '#ff6f91', marginRight: 8 },
-  giftBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  switchPlayerBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18, backgroundColor: '#222' },
-  switchPlayerText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
-  retryPlayerBtn: { backgroundColor: '#ff6f91', marginLeft: 6 },
+  playHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 44, paddingBottom: 4, backgroundColor: '#0a0a0a' },
+  backBtn: { padding: 6 },
+  backBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  backBtnTextPink: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
+  playTitle: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1, marginLeft: 4 },
+  giftBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: '#ff6f91' },
+  giftBtnText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  switchPlayerBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: '#222', marginLeft: 4 },
+  switchPlayerText: { color: '#ff6f91', fontSize: 11, fontWeight: '800' },
+  retryPlayerBtn: { backgroundColor: '#ff6f91' },
   retryPlayerText: { color: '#fff' },
+  announceHeaderBtn: { backgroundColor: 'rgba(255,140,22,0.25)' },
+  announceHeaderText: { color: '#fa8c16' },
   exitFullscreenBtn: { position: 'absolute', top: 28, right: 16, zIndex: 1001, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.62)' },
   exitFullscreenText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  announceBar: { flexDirection: 'row', backgroundColor: 'rgba(255,140,22,0.18)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,140,22,0.3)', padding: 10, alignItems: 'flex-start' },
-  announceText: { flex: 1, color: '#fa8c16', fontSize: 12, lineHeight: 20, paddingRight: 8 },
-  announceActions: { flexDirection: 'column', gap: 4 },
-  announceBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(255,140,22,0.25)' },
-  announceBtnText: { color: '#fa8c16', fontSize: 13, fontWeight: '800' },
+  announcePill: { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(255,140,22,0.20)', borderWidth: 1, borderColor: 'rgba(255,140,22,0.3)', marginVertical: 4 },
+  announcePillText: { color: '#fa8c16', fontSize: 11, fontWeight: '700' },
+  announcePanel: { borderRadius: 12, backgroundColor: 'rgba(20,20,20,0.85)', borderWidth: 1, borderColor: 'rgba(255,140,22,0.2)', marginHorizontal: 8, marginBottom: 4, overflow: 'hidden' },
+  announcePanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,140,22,0.15)' },
+  announcePanelTitle: { color: '#fa8c16', fontSize: 12, fontWeight: '800', flex: 1 },
+  announcePanelBtns: { flexDirection: 'row', gap: 6 },
+  announceSmallBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(255,140,22,0.18)' },
+  announceSmallBtnText: { color: '#fa8c16', fontSize: 10, fontWeight: '700' },
+  announcePanelBody: { paddingHorizontal: 12, paddingVertical: 8, maxHeight: 140 },
+  announcePanelText: { color: '#eee', fontSize: 12, lineHeight: 20 },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },
   vlcGate: { flex: 1, backgroundColor: '#050505', justifyContent: 'center', padding: 22 },
@@ -950,7 +985,7 @@ const styles = StyleSheet.create({
   giftTag: { backgroundColor: '#13c2c218' },
   typeText: { fontSize: 11, color: '#ff6f91', fontWeight: '700' },
   textLight: { color: '#eee' },
-  emptyWrap: { alignItems: 'center', marginTop: 80 },
+  emptyWrap: { alignItems: 'center', marginTop: 60 },
   empty: { fontSize: 14, color: '#3f3f3f' },
   emptyDark: { color: '#aaa' },
   modalShade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)' },

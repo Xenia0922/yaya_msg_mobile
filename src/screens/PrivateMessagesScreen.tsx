@@ -412,6 +412,10 @@ export default function PrivateMessagesScreen() {
           data={msgs}
           keyExtractor={(item, i) => msgId(item, i)}
           contentContainerStyle={styles.msgList}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.3}
           renderItem={({ item, index }) => {
@@ -486,6 +490,10 @@ export default function PrivateMessagesScreen() {
         <FlatList
           data={convs}
           keyExtractor={(item, i) => String(convTargetId(item) || i)}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           renderItem={({ item, index }) => (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <TouchableOpacity style={[styles.convItem, isDark && styles.convItemDark]} onPress={() => openConv(item)}>

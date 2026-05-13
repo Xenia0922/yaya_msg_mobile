@@ -145,6 +145,10 @@ export default function ApiDiagnosticsScreen() {
             data={rows}
             scrollEnabled={false}
             keyExtractor={(item) => item.key}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
             renderItem={({ item, index }) => (
               <FadeInView delay={80 + index * 30} duration={300}>
                 <View style={[styles.row, isDark && styles.cardDark]}>

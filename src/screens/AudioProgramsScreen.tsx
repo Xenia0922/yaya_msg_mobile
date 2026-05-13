@@ -151,6 +151,10 @@ export default function AudioProgramsScreen() {
           data={programs}
           keyExtractor={(item, index) => String(item.talkId || item.id || index)}
           contentContainerStyle={styles.listContent}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
           ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}

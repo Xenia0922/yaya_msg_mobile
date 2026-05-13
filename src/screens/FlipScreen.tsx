@@ -346,7 +346,7 @@ export default function FlipScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.label, isDark && styles.textLight]}>鸡腿数</Text>
-          {balance ? <Text style={[styles.balanceText, isDark && styles.textSub]}>当前余额：{balance} 口袋币</Text> : null}
+          {balance ? <Text style={[styles.balanceText, isDark && styles.textSub]}>当前余额：{balance} 鸡腿</Text> : null}
           <TextInput
             style={[styles.input, isDark && styles.inputDark]}
             keyboardType="numeric"
@@ -355,7 +355,7 @@ export default function FlipScreen() {
             placeholder={minCost ? `最低 ${minCost}` : '先选择翻牌配置'}
             placeholderTextColor="#5a5a5a"
           />
-          {minCost ? <Text style={styles.hint}>当前最低：{minCost} 口袋币</Text> : null}
+          {minCost ? <Text style={styles.hint}>当前最低：{minCost} 鸡腿</Text> : null}
           <TouchableOpacity style={styles.rechargeBtn} onPress={() => navigation.navigate('RechargeScreen')}>
             <Text style={styles.rechargeText}>鸡腿不足？去充值</Text>
           </TouchableOpacity>
@@ -402,6 +402,10 @@ export default function FlipScreen() {
         <FlatList
           data={flips}
           keyExtractor={(item, index) => String(item.questionId || item.id || index)}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           renderItem={({ item, index }) => {
             const answer = answerText(item);
             const answerUrl = answerMediaUrl(item);
@@ -436,7 +440,7 @@ export default function FlipScreen() {
                     <>
                       <Text style={[styles.cardA, isDark && styles.textSub]}>答：{answer}</Text>
                       {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
-                        <View style={styles.answerMediaCard}>
+                        <View style={[styles.answerMediaCard, isDark && styles.answerMediaCardDark]}>
                           <TouchableOpacity
                             style={styles.answerMediaBtn}
                             onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
@@ -460,7 +464,7 @@ export default function FlipScreen() {
                     <Text style={styles.cardPending}>{statusLabel(item.status)}</Text>
                   )}
                   <Text style={styles.cardMeta}>
-                    {item.cost || 0} 口袋币
+                    {item.cost || 0} 鸡腿
                     {remainingStr ? ` · ${remainingStr}` : ''}
                     {elapsedStr ? ` · ${elapsedStr}` : ''}
                     {item.answerTime ? ` · 回复于 ${formatTimestamp(item.answerTime)}` : ''}
@@ -534,6 +538,7 @@ const styles = StyleSheet.create({
   cardQ: { fontSize: 14, color: '#333', marginBottom: 8, lineHeight: 20 },
   cardA: { fontSize: 13, color: '#444', lineHeight: 20, marginBottom: 6 },
   answerMediaCard: { marginTop: 4, marginBottom: 8 },
+  answerMediaCardDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
   answerMediaBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: '#ff6f91' },
   answerMediaBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   answerAudio: { height: 52, marginTop: 8, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 12 },
