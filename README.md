@@ -2,13 +2,13 @@
 
 > 口袋48 第三方移动客户端 · React Native 跨平台实现
 
-[![Version](https://img.shields.io/badge/version-2.4-ff6f91)](https://github.com/Xenia0922/yaya_msg_mobile)
+[![Version](https://img.shields.io/badge/version-2.4.1-ff6f91)](https://github.com/Xenia0922/yaya_msg_mobile)
 [![Android](https://img.shields.io/badge/platform-Android-3DDC84?logo=android)](https://github.com/Xenia0922/yaya_msg_mobile)
 [![Expo](https://img.shields.io/badge/expo-54-4630EB?logo=expo)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/react_native-0.81-61DAFB?logo=react)](https://reactnative.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](/LICENSE)
 
-基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg)（[桌面端](https://github.com/yk1z/yaya_msg) / [网页端](https://gnz.hk)）二次开发的移动端版本，提供与桌面端一致的核心功能体验。
+基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg)（[桌面端](https://github.com/yk1z/yaya_msg) / [网页端](https://gnz.hk)）二次开发的移动端版本。
 
 ---
 
@@ -24,17 +24,12 @@
 
 ## 功能
 
-- **房间消息** — 关注房间时间线、回复引用显示、媒体预览、礼物解析、口袋表情
-- **私信 & 翻牌** — 私信会话、翻牌问答（文字/语音/视频含倒计时）
-- **直播播放** — ExoPlayer 原生渲染，支持 RTMP/HLS 多源回退，直播公告实时展示
-- **翻牌统计** — 历史翻牌图表、类型分布、回复耗时分析、成员排名、按成员筛选
-- **数据库 & 档案** — 官方实时成员库、生日、星座、身高、血型、期数、排名、时间线
-- **媒体库** — 电台回放、音乐库、相册浏览、表情贴纸
-- **下载管理** — URL 下载、图片应用内预览
-- **鸡腿充值** — 余额查询、官方充值页内嵌 WebView
-- **自动签到** — 静默签到，已签不重复提示
-- **房间置顶** — 本地持久化，退出不丢失
-- **多主题** — 浅色 / 深色模式，全界面统一适配
+- **房间消息** — 关注房间时间线、回复引用、口袋表情与贴纸、礼物感谢文字
+- **私信 & 翻牌** — 私信会话、翻牌问答（文字/语音/视频，含七天倒计时与回复耗时）
+- **直播 & 回放** — ExoPlayer 原生渲染，RTMP/HLS 多源回退，直播公告实时展示、送礼与贡献榜
+- **翻牌统计** — 类型分布、回复耗时分析、成员排名、按成员筛选
+- **成员数据库** — 接入官方实时接口，含拼音首字母检索、档案与历史
+- **鸡腿充值** — 余额查询、官方充值页内嵌
 
 ---
 
@@ -73,7 +68,7 @@ cd android
 | 框架 | React Native 0.81 + Expo SDK 54 (bare) |
 | 导航 | React Navigation 7 |
 | 状态管理 | Zustand |
-| 直播引擎 | ExoPlayer (Android) / AVPlayer (iOS) / AVPlayer (HarmonyOS) |
+| 直播引擎 | ExoPlayer (Android) / AVPlayer (iOS / HarmonyOS) |
 | 认证 | WebAssembly + WebView fallback |
 | 网络 | Pocket48 API（签名 + 非签名双通道） |
 
