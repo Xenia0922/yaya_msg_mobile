@@ -687,9 +687,6 @@ export default function MediaScreen() {
                 <TouchableOpacity onPress={() => setAnnounceExpanded(false)} style={styles.announceSmallBtn}>
                   <Text style={styles.announceSmallBtnText}>收起</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => { setAnnounceVisible(false); setAnnounceExpanded(false); }} style={styles.announceSmallBtn}>
-                  <Text style={styles.announceSmallBtnText}>✕</Text>
-                </TouchableOpacity>
               </View>
             </View>
             <ScrollView style={styles.announcePanelBody}>

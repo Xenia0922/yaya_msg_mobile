@@ -194,7 +194,11 @@ function collectUrls(value: any, result: string[] = [], depth = 0) {
     return result;
   }
   if (typeof value === 'object') {
-    Object.values(value).forEach((item) => collectUrls(item, result, depth + 1));
+    const skipKeys = new Set(['avatar', 'headImg', 'headUrl', 'picPath', 'coverPath', 'coverUrl', 'avatarUrl', 'userAvatar', 'senderAvatar']);
+    for (const [key, val] of Object.entries(value)) {
+      if (skipKeys.has(key) && typeof val === 'string') continue;
+      collectUrls(val, result, depth + 1);
+    }
   }
   return result;
 }
@@ -803,7 +807,7 @@ export default function FollowedRoomsScreen() {
       if (nextCurrentUserId) setCurrentUserId(nextCurrentUserId);
       const res = await pocketApi.getRoomMessages({
         channelId,
-        serverId: room.serverId,
+        serverId: nextMode === 'small' ? '' : room.serverId,
         nextTime: 0,
         fetchAll: includeFans,
       });
@@ -830,7 +834,7 @@ export default function FollowedRoomsScreen() {
     try {
       const res = await pocketApi.getRoomMessages({
         channelId,
-        serverId: selectedRoom.serverId,
+        serverId: roomMode === 'small' ? '' : selectedRoom.serverId,
         nextTime: roomNextTime,
         fetchAll: showFanMessages,
       });

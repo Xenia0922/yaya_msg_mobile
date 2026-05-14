@@ -1,6 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Linking, Platform } from 'react-native';
+import * as MediaLibrary from 'expo-media-library';
+import { Linking, Platform, Alert } from 'react-native';
+import { useSettingsStore } from '../store';
+
+function getToken(): string {
+  try {
+    return useSettingsStore.getState().settings.p48Token || '';
+  } catch {
+    return '';
+  }
+}
 
 export type DownloadType = 'replay' | 'voice' | 'image' | 'video' | 'audio' | 'file';
 export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'failed';
@@ -119,10 +129,12 @@ export async function enqueueDownload(params: {
 
   const localUri = `${DOWNLOAD_DIR}${item.id}-${item.name}`;
   try {
-    const headers = {
+    const token = getToken();
+    const headers: Record<string, string> = {
       'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
       Referer: 'https://h5.48.cn/',
     };
+    if (token) headers['token'] = token;
 
     const createDownloadResumable = (FileSystem as any).createDownloadResumable;
     if (typeof createDownloadResumable === 'function') {
@@ -191,6 +203,43 @@ export async function clearFinishedDownloads() {
 export async function openDownloadItem(item: DownloadItem) {
   const target = item.localUri || item.url;
   if (!target) return;
+
+  // For images/videos: save to device gallery then open
+  if (item.type === 'image' || item.type === 'video') {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        // Fall back to direct open
+        if (Platform.OS === 'android' && target.startsWith('file://')) {
+          try {
+            const getContentUriAsync = (FileSystem as any).getContentUriAsync;
+            if (typeof getContentUriAsync === 'function') {
+              const contentUri = await getContentUriAsync(target);
+              if (contentUri) { await Linking.openURL(contentUri); return; }
+            }
+          } catch {}
+        }
+        await Linking.openURL(target);
+        return;
+      }
+
+      // Save to gallery
+      const asset = await MediaLibrary.createAssetAsync(target);
+      if (asset) {
+        // Optionally move to album
+        await MediaLibrary.createAlbumAsync('牙牙消息', asset, false).catch(() => {});
+        // Open the asset
+        await Linking.openURL(`content://media/external/file/${asset.id}`).catch(async () => {
+          await Linking.openURL(target);
+        });
+        return;
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // Generic file open
   if (target.startsWith('file://') && Platform.OS === 'android') {
     try {
       const getContentUriAsync = (FileSystem as any).getContentUriAsync;
@@ -198,7 +247,7 @@ export async function openDownloadItem(item: DownloadItem) {
         const contentUri = await getContentUriAsync(target);
         if (contentUri) { await Linking.openURL(contentUri); return; }
       }
-    } catch { /* fall through */ }
+    } catch {}
   }
   await Linking.openURL(target);
 }

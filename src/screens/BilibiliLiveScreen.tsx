@@ -33,6 +33,7 @@ export default function BilibiliLiveScreen() {
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
+  const [roomInput, setRoomInput] = useState('');
   const currentCandidate = candidates[candidateIndex];
   const streamUrl = currentCandidate?.url || '';
 

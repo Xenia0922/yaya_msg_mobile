@@ -110,6 +110,25 @@ export function messageText(item: any): string {
     return '';
   }
 
+  if (type === 'TEXT') {
+    if (body && typeof body === 'object') {
+      const b = body as Record<string, any>;
+      const t = b.text || b.bodys || b.body || b.msgContent || b.content;
+      if (t) return replaceEmojiText(String(t));
+    }
+    // Fallback: try raw fields on item directly
+    const raw = item?.bodys ?? item?.body ?? item?.msgContent ?? item?.content ?? item?.message ?? '';
+    if (typeof raw === 'string' && raw.trim() && !raw.startsWith('{') && !raw.startsWith('[')) {
+      return replaceEmojiText(raw);
+    }
+    if (typeof raw === 'number') return replaceEmojiText(String(raw));
+    if (typeof raw === 'object') {
+      const r = raw as Record<string, any>;
+      const t2 = r.text || r.bodys || r.body || r.msgContent || r.content;
+      if (t2) return replaceEmojiText(String(t2));
+    }
+  }
+
   const giftInfo = body?.giftInfo || body?.giftReplyInfo?.giftInfo || body?.bodys?.giftInfo;
   const isGift = type.includes('GIFT') || (giftInfo && !type.includes('LIVE')) || String(item?.msgType) === '7';
 
@@ -138,9 +157,31 @@ export function messageText(item: any): string {
     'msg.text',
     'content.text',
     'body.text',
+    'bodys.text',
     'title',
   ]);
-  if (text) return replaceEmojiText(text);
+  if (!text && body && typeof body === 'object') {
+    // search deeper for text in nested objects
+    for (const [_key, val] of Object.entries(body as Record<string, any>)) {
+      if (typeof val === 'string' && val.trim() && !val.startsWith('http') && !val.startsWith('{') && val.length < 500) {
+        return replaceEmojiText(val);
+      }
+      if (val && typeof val === 'object') {
+        const t = pickText(val, ['text', 'body', 'content', 'message', 'title', 'description']);
+        if (t) return replaceEmojiText(String(t));
+        // try first string value of nested object
+        for (const [_k2, v2] of Object.entries(val)) {
+          if (typeof v2 === 'string' && v2.trim() && !v2.startsWith('http') && v2.length < 500) {
+            return replaceEmojiText(v2);
+          }
+        }
+      }
+      if (typeof val === 'number') {
+        return replaceEmojiText(String(val));
+      }
+    }
+  }
+  if (text) return replaceEmojiText(String(text));
   const url = pickText(body, ['url', 'message.url', 'msg.url', 'audioUrl', 'videoUrl', 'imageUrl']);
   if (url) {
     if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return '[语音消息]';
@@ -148,7 +189,7 @@ export function messageText(item: any): string {
     if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return '[图片消息]';
     return '[链接消息]';
   }
-  return item?.msgType && !/^LIVE|SHARE/i.test(String(item.msgType)) ? `[${item.msgType}]` : '';
+  return item?.msgType && !/^LIVE|SHARE|TEXT$/i.test(String(item.msgType)) ? `[${item.msgType}]` : '';
 }
 
 export function messageImageUrl(item: any): string {
