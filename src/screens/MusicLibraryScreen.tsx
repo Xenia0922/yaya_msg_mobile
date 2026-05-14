@@ -14,6 +14,7 @@ import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
+import ScreenHeader from '../components/ScreenHeader';
 
 function normalizeMusic(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -143,15 +144,11 @@ export default function MusicLibraryScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textDark]}>音乐</Text>
+      <ScreenHeader title="音乐" right={
         <TouchableOpacity onPress={() => load(true)} disabled={loading}>
           <Text style={[styles.backBtn, loading && styles.disabledText]}>刷新</Text>
         </TouchableOpacity>
-      </View>
+      } />
       <TextInput
         value={query}
         onChangeText={setQuery}
@@ -249,10 +246,8 @@ export default function MusicLibraryScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
   disabledText: { opacity: 0.45 },
-  title: { fontSize: 18, fontWeight: '800', color: '#ff6f91' },
   searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
   searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
   status: { margin: 12, color: '#444', fontSize: 13, textAlign: 'center' },

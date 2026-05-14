@@ -4,10 +4,11 @@ import {
 } from 'react-native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import { Member } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
-import { pinyinInitials } from '../utils/members';
+import { memberSearchText } from '../utils/members';
 import pocketApi from '../api/pocket48';
 
 function msgTime(item: any): number {
@@ -30,7 +31,7 @@ export default function MessagesScreen() {
   const pickerList = useMemo(() => {
     const query = pickerQuery.trim().toLowerCase();
     return (query
-      ? members.filter((member) => `${member.ownerName} ${member.pinyin} ${pinyinInitials(member.pinyin)} ${member.team}`.toLowerCase().includes(query))
+      ? members.filter((member) => memberSearchText(member).includes(query))
       : members
     ).slice(0, 80);
   }, [members, pickerQuery]);
@@ -82,26 +83,24 @@ export default function MessagesScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={styles.title}>消息检索</Text>
-        <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setPickerOpen(true)}>
-          <Text style={[styles.pickerLabel, isDark && styles.textLight]}>
-            {selectedMember?.ownerName || `选择成员 (${members.length})`}
-          </Text>
-          <Text style={[styles.pickerButtonText, isDark && styles.textLight]}>选择</Text>
-        </TouchableOpacity>
-        <TextInput
-          style={[styles.input, isDark && styles.inputDark]}
-          placeholder="搜索消息内容..."
-          placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
-          value={search}
-          onChangeText={setSearch}
-        />
-      </View>
+      <ScreenHeader title="消息检索" />
+      <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setPickerOpen(true)}>
+        <Text style={[styles.pickerLabel, isDark && styles.textLight]}>
+          {selectedMember?.ownerName || `选择成员 (${members.length})`}
+        </Text>
+        <Text style={[styles.pickerButtonText, isDark && styles.textLight]}>选择</Text>
+      </TouchableOpacity>
+      <TextInput
+        style={[styles.input, isDark && styles.inputDark]}
+        placeholder="搜索消息内容..."
+        placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+        value={search}
+        onChangeText={setSearch}
+      />
 
       <Modal visible={pickerOpen} animationType="slide">
         <View style={[styles.modalContainer, isDark && styles.containerDark]}>
-          <View style={[styles.modalHeader, isDark && styles.headerDark]}>
+          <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
             <TouchableOpacity onPress={() => setPickerOpen(false)}>
               <Text style={styles.modalBack}>关闭</Text>
             </TouchableOpacity>
@@ -154,8 +153,6 @@ export default function MessagesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  title: { fontSize: 22, fontWeight: '800', color: '#ff6f91', marginBottom: 12 },
   pickerLabel: { color: '#333', flex: 1 },
   pickerButtonText: { color: '#333333' },
   pickerCount: { color: '#333333', fontSize: 12 },
@@ -163,10 +160,10 @@ const styles = StyleSheet.create({
   pickerDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444' },
   input: { padding: 10, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: 'rgba(255,255,255,0.50)', color: '#333', marginBottom: 8 },
   inputDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444', color: '#eeeeee' },
-  headerDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: 'rgba(255,255,255,0.14)' },
   status: { color: '#8a5a00', backgroundColor: '#fff3cd', padding: 8, borderRadius: 18, fontSize: 12, lineHeight: 18 },
   modalContainer: { flex: 1, backgroundColor: 'transparent', paddingTop: 50 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 42, marginBottom: 12, paddingVertical: 14, paddingHorizontal: 18, backgroundColor: 'rgba(255,255,255,0.58)', borderRadius: 26, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.64)' },
+  modalHeaderDark: { backgroundColor: 'rgba(42,42,42,0.68)', borderColor: 'rgba(255,255,255,0.14)' },
   modalBack: { color: '#ff6f91', fontSize: 14 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
   memberItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 14, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 12, marginVertical: 2, borderRadius: 18 },

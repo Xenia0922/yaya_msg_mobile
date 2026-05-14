@@ -8,6 +8,7 @@ import QRCode from 'qrcode';
 import { WebView } from 'react-native-webview';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import { saveSettings } from '../services/settings';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
@@ -360,12 +361,7 @@ export default function LoginScreen() {
 
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textDark]}>账号设置</Text>
-      </View>
+      <ScreenHeader title="账号设置" />
 
       <FadeInView delay={80} duration={300}>
         <View style={[styles.section, isDark && styles.sectionDark]}>
@@ -491,10 +487,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   content: { paddingBottom: 32 },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 14, marginBottom: 8 },
-  title: { fontSize: 22, fontWeight: '800', color: '#ff6f91' },
   section: { padding: 16, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 16, marginTop: 16, borderRadius: 18 },
   sectionDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 12 },

@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import MemberPicker from '../components/MemberPicker';
+import ScreenHeader from '../components/ScreenHeader';
 import pocketApi from '../api/pocket48';
 import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
@@ -93,12 +94,7 @@ export default function FetchScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textDark]}>抓取消息</Text>
-      </View>
+      <ScreenHeader title="抓取消息" />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={[styles.section, isDark && styles.sectionDark]}>
@@ -159,10 +155,6 @@ export default function FetchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 14, marginBottom: 6 },
-  title: { fontSize: 22, fontWeight: '800', color: '#ff6f91' },
   section: { padding: 16 },
   sectionDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
   row: { flexDirection: 'row', gap: 8, marginBottom: 12 },

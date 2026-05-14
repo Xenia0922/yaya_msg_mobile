@@ -7,12 +7,12 @@ import {
   View,
 } from 'react-native';
 import Video from 'react-native-video';
-import { useNavigation } from '@react-navigation/native';
 import officialMediaApi from '../api/officialMedia';
 import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
+import ScreenHeader from '../components/ScreenHeader';
 
 function normalizeTalks(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -50,7 +50,6 @@ function audioUrls(path: string): string[] {
 }
 
 export default function AudioProgramsScreen() {
-  const navigation = useNavigation<any>();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
   const [programs, setPrograms] = useState<any[]>([]);
   const [playing, setPlaying] = useState<any | null>(null);
@@ -115,15 +114,11 @@ export default function AudioProgramsScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textDark]}>电台</Text>
-        <TouchableOpacity onPress={() => load(true)} disabled={loading}>
+      <ScreenHeader title="电台" right={
+        <TouchableOpacity onPress={() => load(true) } disabled={loading}>
           <Text style={[styles.backBtn, loading && styles.disabledText]}>刷新</Text>
         </TouchableOpacity>
-      </View>
+      } />
 
       {playUrls[urlIndex] ? (
         <View style={[styles.playerBar, isDark && styles.cardDark]}>
@@ -181,10 +176,8 @@ export default function AudioProgramsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
   disabledText: { opacity: 0.45 },
-  title: { fontSize: 20, fontWeight: '800', color: '#ff6f91' },
   playerBar: { margin: 12, padding: 12, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)' },
   playerTitle: { fontSize: 14, fontWeight: '800', color: '#333', marginBottom: 8 },
   audioPlayer: { height: 48, width: '100%' },

@@ -8,10 +8,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import MemberPicker from '../components/MemberPicker';
 import { RootStackParamList } from '../navigation/types';
+import ScreenHeader from '../components/ScreenHeader';
 import pocketApi from '../api/pocket48';
 import { useMemberStore, useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
@@ -47,7 +47,6 @@ async function runCase(title: string, fn: () => Promise<string>): Promise<Row> {
 }
 
 export default function ApiDiagnosticsScreen() {
-  const navigation = useNavigation<Nav>();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
   const token = useSettingsStore((state) => state.settings.p48Token);
   const members = useMemberStore((state) => state.members);
@@ -122,12 +121,7 @@ export default function ApiDiagnosticsScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>返回</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>接口自检</Text>
-      </View>
+      <ScreenHeader title="接口自检" />
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
         <View style={[styles.card, isDark && styles.cardDark]}>
@@ -167,10 +161,6 @@ export default function ApiDiagnosticsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  headerDark: {},
-  back: { color: '#ff6f91', fontSize: 14, marginBottom: 6 },
-  title: { color: '#ff6f91', fontSize: 24, fontWeight: '900' },
   body: { flex: 1 },
   bodyContent: { padding: 12, paddingBottom: 30 },
   card: { backgroundColor: 'rgba(255,255,255,0.46)', padding: 14, borderRadius: 16, marginBottom: 10 },

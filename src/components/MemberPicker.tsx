@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useMemberStore, useSettingsStore } from '../store';
 import { Member } from '../types';
-import { normalizeMember, pinyinInitials } from '../utils/members';
+import { normalizeMember, memberSearchText } from '../utils/members';
 
 interface MemberPickerProps {
   selectedMember: Member | null;
@@ -36,19 +36,7 @@ export default function MemberPicker({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    const list = members.filter((member) => {
-          const short = memberShortName(member).toLowerCase();
-          return (
-            member.ownerName.toLowerCase().includes(q) ||
-            short.includes(q) ||
-            (member.pinyin || '').toLowerCase().includes(q) ||
-            pinyinInitials(member.pinyin).includes(q) ||
-            (member.team || '').toLowerCase().includes(q) ||
-            (member.groupName || '').toLowerCase().includes(q) ||
-            String(member.id).includes(q)
-          );
-        });
-
+    const list = members.filter((member) => memberSearchText(member).includes(q));
     return list.slice(0, limit);
   }, [members, query, limit]);
 
@@ -94,10 +82,10 @@ export default function MemberPicker({
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: 8 },
+  wrapper: { gap: 8, paddingHorizontal: 14 },
   input: {
-    padding: 12,
-    borderRadius: 18,
+    padding: 10,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#ddd',
     backgroundColor: 'rgba(255,255,255,0.38)',

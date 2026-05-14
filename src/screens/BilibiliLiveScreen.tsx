@@ -13,6 +13,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import { BilibiliLiveRoom } from '../types';
 import { externalApi } from '../api/external';
 import bilibiliApi from '../api/bilibili';
@@ -120,21 +121,22 @@ export default function BilibiliLiveScreen() {
   if (streamUrl) {
     return (
       <View style={styles.playerPage}>
-        <View style={styles.playHeader}>
-          <TouchableOpacity onPress={closePlayer}>
-            <Text style={styles.backBtn}>返回</Text>
+        <View style={styles.playerToolbar}>
+          <TouchableOpacity onPress={closePlayer} style={styles.glassBtn}>
+            <Text style={styles.glassBtnText}>返回</Text>
           </TouchableOpacity>
-          <Text style={styles.playTitle} numberOfLines={1}>{streamTitle}</Text>
-          <TouchableOpacity onPress={() => setUseWebPlayer((prev) => !prev)} style={styles.switchPlayerBtn}>
-            <Text style={styles.switchPlayerText}>{useWebPlayer ? '原生' : '网页'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={toggleOrientation} style={styles.switchPlayerBtn}>
-            <Text style={styles.switchPlayerText}>{isLandscape ? '竖屏' : '横屏'}</Text>
-          </TouchableOpacity>
+          <Text style={styles.playerLineInfo} numberOfLines={1}>
+            线路 {candidateIndex + 1}/{candidates.length} · {currentCandidate?.formatName || 'unknown'}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity onPress={() => setUseWebPlayer((prev) => !prev)} style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>{useWebPlayer ? '原生' : '网页'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={toggleOrientation} style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>{isLandscape ? '竖屏' : '横屏'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <Text style={styles.lineInfo}>
-          线路 {candidateIndex + 1}/{candidates.length} · {currentCandidate?.formatName || 'unknown'} · {currentCandidate?.codecName || 'codec'}
-        </Text>
         {useWebPlayer ? (
           <WebView
             source={{ html: getPlayerHtml(streamUrl) }}
@@ -188,15 +190,11 @@ export default function BilibiliLiveScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>B站直播</Text>
+      <ScreenHeader title="B站直播" right={
         <TouchableOpacity onPress={checkStatuses}>
           <Text style={styles.refresh}>刷新状态</Text>
         </TouchableOpacity>
-      </View>
+      } />
       {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
       {loading ? <ActivityIndicator color="#ff6f91" style={{ padding: 12 }} /> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
@@ -231,18 +229,16 @@ export default function BilibiliLiveScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerDark: {},
-  title: { fontSize: 18, fontWeight: '800', color: '#ff6f91' },
-  backBtn: { color: '#ff6f91', fontSize: 14 },
   refresh: { fontSize: 12, color: '#ff6f91' },
   status: { margin: 12, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)', color: '#555', fontSize: 12, textAlign: 'center' },
   statusDark: { backgroundColor: 'rgba(30,30,30,0.78)', color: '#aaa' },
   playerPage: { flex: 1, backgroundColor: '#000' },
-  playHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingTop: 50, backgroundColor: 'rgba(20,20,20,0.72)', gap: 12 },
-  playTitle: { color: '#fff', fontSize: 16, fontWeight: '700', flex: 1 },
   switchPlayerBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18, backgroundColor: '#222' },
   switchPlayerText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
+  playerToolbar: { flexDirection: 'row', paddingHorizontal: 8, paddingTop: 44, paddingBottom: 6, backgroundColor: '#0a0a0a', alignItems: 'center', gap: 8 },
+  playerLineInfo: { flex: 1, color: '#999', fontSize: 11, textAlign: 'center' },
+  glassBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
+  glassBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   lineInfo: { color: '#eeeeee', backgroundColor: '#111', fontSize: 11, paddingHorizontal: 12, paddingVertical: 6 },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },

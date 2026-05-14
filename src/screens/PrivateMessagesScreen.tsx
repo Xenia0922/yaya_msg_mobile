@@ -15,6 +15,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, messagePayload, messageText, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
@@ -402,11 +403,7 @@ export default function PrivateMessagesScreen() {
     const targetId = convTargetId(sel);
     return (
       <View style={[styles.screen, isDark && styles.screenDark]}>
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => setSel(null)}><Text style={styles.back}>返回</Text></TouchableOpacity>
-          <Text style={[styles.title, isDark && styles.light]} numberOfLines={1}>{convName(sel)}</Text>
-          <View style={{ width: 54 }} />
-        </View>
+        <ScreenHeader title={convName(sel)} onBack={() => setSel(null)} />
         <FlatList
           ref={flatRef}
           data={msgs}
@@ -454,7 +451,7 @@ export default function PrivateMessagesScreen() {
             <Text style={[styles.flipName, isDark && styles.light]}>{member.ownerName} 翻牌</Text>
             <View style={styles.flipRow}>
               {prices.slice(0, 3).map((p) => (
-                <TouchableOpacity key={p.answerType} style={[styles.flipChip, flipType === p.answerType && styles.flipChipOn]} onPress={() => setFlipType((v) => v === p.answerType ? 0 : p.answerType)}>
+                <TouchableOpacity key={p.answerType} style={[styles.flipChip, isDark && flipType !== p.answerType && styles.flipChipDark, flipType === p.answerType && styles.flipChipOn]} onPress={() => setFlipType((v) => v === p.answerType ? 0 : p.answerType)}>
                   <Text style={[styles.flipChipT, flipType === p.answerType && styles.flipChipTOn, isDark && flipType !== p.answerType && styles.light]}>{flipTypeName(p.answerType)}·{lowestPrice(p)}</Text>
                 </TouchableOpacity>
               ))}
@@ -481,11 +478,9 @@ export default function PrivateMessagesScreen() {
 
   return (
     <View style={[styles.screen, isDark && styles.screenDark]}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.back}>返回</Text></TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.light]}>私信列表</Text>
+      <ScreenHeader title="私信列表" right={
         <TouchableOpacity onPress={loadConvs}><Text style={styles.refreshBtn}>刷新</Text></TouchableOpacity>
-      </View>
+      } />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <FlatList
           data={convs}
@@ -515,9 +510,6 @@ export default function PrivateMessagesScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent' },
   screenDark: { backgroundColor: 'transparent' },
-  topBar: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  back: { color: '#ff6f91', fontSize: 14 },
-  title: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', color: '#ff6f91' },
   refreshBtn: { color: '#ff6f91', fontSize: 13 },
   light: { color: '#eee' },
   convItem: { padding: 14, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 14, marginVertical: 3, borderRadius: 16, flexDirection: 'row', alignItems: 'center' },
@@ -547,6 +539,7 @@ const styles = StyleSheet.create({
   flipName: { fontSize: 11, color: '#555', fontWeight: '700', marginBottom: 4 },
   flipRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   flipChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.06)' },
+  flipChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
   flipChipOn: { backgroundColor: '#ff6f91' },
   flipChipT: { fontSize: 11, color: '#555', fontWeight: '700' },
   flipChipTOn: { color: '#fff' },

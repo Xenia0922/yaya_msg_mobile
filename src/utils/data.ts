@@ -148,7 +148,7 @@ export function messageText(item: any): string {
     if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return '[图片消息]';
     return '[链接消息]';
   }
-  return item?.msgType ? `[${item.msgType}]` : '';
+  return item?.msgType && !/^LIVE|SHARE/i.test(String(item.msgType)) ? `[${item.msgType}]` : '';
 }
 
 export function messageImageUrl(item: any): string {

@@ -14,6 +14,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import {
   clearFinishedDownloads,
   deleteDownloadItem,
@@ -107,15 +108,11 @@ export default function DownloadScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textLight]}>下载管理</Text>
+      <ScreenHeader title="下载管理" right={
         <TouchableOpacity onPress={clearDone}>
           <Text style={styles.clearBtn}>清理完成</Text>
         </TouchableOpacity>
-      </View>
+      } />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={[styles.manualCard, isDark && styles.cardDark]}>
@@ -187,9 +184,6 @@ export default function DownloadScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn: { color: '#ff6f91', fontSize: 14, minWidth: 54 },
-  title: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '800', color: '#ff6f91' },
   clearBtn: { color: '#ff6f91', fontSize: 13, minWidth: 54, textAlign: 'right' },
   manualCard: { marginHorizontal: 14, marginBottom: 8, padding: 12, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.14)' },

@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import pocketApi from '../api/pocket48';
 import { useSettingsStore } from '../store';
 import { errorMessage } from '../utils/data';
+import ScreenHeader from '../components/ScreenHeader';
 
 const RECHARGE_URL = 'https://live.48.cn/Recharge/';
 
@@ -40,15 +41,11 @@ export default function RechargeScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textLight]}>鸡腿充值</Text>
+      <ScreenHeader title="鸡腿充值" right={
         <TouchableOpacity onPress={refreshBalance}>
           <Text style={styles.actionText}>刷新余额</Text>
         </TouchableOpacity>
-      </View>
+      } />
 
       <View style={[styles.statusBar, isDark && styles.statusBarDark]}>
         <Text style={[styles.statusText, isDark && styles.statusTextDark]}>

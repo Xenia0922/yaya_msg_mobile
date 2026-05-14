@@ -12,6 +12,7 @@ import Video from 'react-native-video';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import MemberPicker from '../components/MemberPicker';
+import ScreenHeader from '../components/ScreenHeader';
 import { RootStackParamList } from '../navigation/types';
 import pocketApi from '../api/pocket48';
 import { useSettingsStore } from '../store';
@@ -282,17 +283,11 @@ export default function FlipScreen() {
   };
 
   const pageStyle = [styles.container, isDark && styles.containerDark];
-  const headerStyle = [styles.header, isDark && styles.headerDark];
 
   if (mode === 'send') {
     return (
       <ScrollView style={pageStyle} keyboardShouldPersistTaps="handled">
-        <View style={headerStyle}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.backBtn}>返回</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>发送翻牌</Text>
-        </View>
+        <ScreenHeader title="发送翻牌" />
 
         <FadeInView delay={80} duration={300}>
           <View style={styles.section}>
@@ -306,15 +301,15 @@ export default function FlipScreen() {
             {prices.map((item) => {
               const active = answerType === item.answerType;
               return (
-                <TouchableOpacity
-                  key={String(item.answerType)}
-                  style={[styles.optionChip, active && styles.optionChipActive]}
-                  onPress={() => setAnswerType(item.answerType)}
-                >
-                  <Text style={[styles.optionText, active && styles.optionTextActive]}>
-                    {answerTypeLabel(item.answerType)}翻牌
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    key={String(item.answerType)}
+                    style={[styles.optionChip, isDark && !active && styles.optionChipDark, active && styles.optionChipActive]}
+                    onPress={() => setAnswerType(item.answerType)}
+                  >
+                    <Text style={[styles.optionText, active && styles.optionTextActive]}>
+                      {answerTypeLabel(item.answerType)}翻牌
+                    </Text>
+                  </TouchableOpacity>
               );
             })}
           </View>
@@ -331,7 +326,7 @@ export default function FlipScreen() {
               return (
                 <TouchableOpacity
                   key={item.value}
-                  style={[styles.optionChip, active && styles.optionChipActive, disabled && styles.optionDisabled]}
+                  style={[styles.optionChip, isDark && !active && styles.optionChipDark, active && styles.optionChipActive, disabled && styles.optionDisabled]}
                   disabled={disabled}
                   onPress={() => setPrivacyType(item.value)}
                 >
@@ -385,18 +380,12 @@ export default function FlipScreen() {
   }
 
   return (
-    <View style={pageStyle}>
-      <View style={headerStyle}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.backBtn}>返回</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('FlipScreen', { mode: 'send' })}>
-            <Text style={styles.actionBtn}>发送翻牌</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.title}>翻牌记录</Text>
-      </View>
+      <View style={pageStyle}>
+      <ScreenHeader title="翻牌记录" right={
+        <TouchableOpacity onPress={() => navigation.navigate('FlipScreen', { mode: 'send' })}>
+          <Text style={styles.actionBtn}>发送翻牌</Text>
+        </TouchableOpacity>
+      } />
       {status ? <Text style={styles.statusText}>{status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <FlatList
@@ -490,16 +479,12 @@ export default function FlipScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  headerDark: {},
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  backBtn: { color: '#ff6f91', fontSize: 14 },
   actionBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
-  title: { fontSize: 26, fontWeight: '800', color: '#ff6f91', marginTop: 8 },
   section: { padding: 16 },
   label: { fontSize: 16, fontWeight: '800', color: '#333', marginBottom: 10 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   optionChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.38)' },
+  optionChipDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   optionChipActive: { backgroundColor: '#ff6f91' },
   optionDisabled: { opacity: 0.45 },
   optionText: { fontSize: 13, color: '#444', fontWeight: '700' },

@@ -18,6 +18,7 @@ import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
+import ScreenHeader from '../components/ScreenHeader';
 
 type RoomMode = 'big' | 'small';
 
@@ -199,13 +200,7 @@ export default function RoomAlbumScreen() {
   if (playing) {
     return (
       <View style={styles.playerPage}>
-        <View style={styles.playerHeader}>
-          <TouchableOpacity onPress={() => setPlaying(null)}>
-            <Text style={styles.backBtn}>返回相册</Text>
-          </TouchableOpacity>
-          <Text style={styles.playerTitle} numberOfLines={1}>{playing.title}</Text>
-          <View style={styles.headerSide} />
-        </View>
+        <ScreenHeader title={playing.title} onBack={() => setPlaying(null)} />
         <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" />
       </View>
     );
@@ -213,24 +208,20 @@ export default function RoomAlbumScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textLight]}>房间相册</Text>
+      <ScreenHeader title="房间相册" right={
         <TouchableOpacity onPress={() => selectedMember && loadAlbum(selectedMember, roomMode, false)}>
           <Text style={styles.backBtn}>刷新</Text>
         </TouchableOpacity>
-      </View>
+      } />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.pickerWrap}>
           <MemberPicker selectedMember={selectedMember} onSelect={(member) => loadAlbum(member, 'big', false)} />
           <View style={styles.modeRow}>
-            <TouchableOpacity style={[styles.modeBtn, roomMode === 'big' && styles.modeBtnActive]} onPress={() => switchMode('big')}>
+            <TouchableOpacity style={[styles.modeBtn, isDark && roomMode !== 'big' && styles.modeBtnDark, roomMode === 'big' && styles.modeBtnActive]} onPress={() => switchMode('big')}>
               <Text style={[styles.modeText, roomMode === 'big' && styles.modeTextActive, isDark && roomMode !== 'big' && styles.textLight]}>大房间</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modeBtn, roomMode === 'small' && styles.modeBtnActive, !selectedMember?.yklzId && styles.modeBtnDisabled]} onPress={() => switchMode('small')}>
+            <TouchableOpacity style={[styles.modeBtn, isDark && roomMode !== 'small' && styles.modeBtnDark, roomMode === 'small' && styles.modeBtnActive, !selectedMember?.yklzId && styles.modeBtnDisabled]} onPress={() => switchMode('small')}>
               <Text style={[styles.modeText, roomMode === 'small' && styles.modeTextActive, isDark && roomMode !== 'small' && styles.textLight]}>小房间</Text>
             </TouchableOpacity>
           </View>
@@ -288,12 +279,11 @@ export default function RoomAlbumScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '800', minWidth: 56 },
-  title: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#ff6f91' },
   pickerWrap: { paddingHorizontal: 14, gap: 8 },
   modeRow: { flexDirection: 'row', gap: 10 },
   modeBtn: { flex: 1, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.66)' },
+  modeBtnDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   modeBtnActive: { backgroundColor: '#ff6f91' },
   modeBtnDisabled: { opacity: 0.48 },
   modeText: { color: '#444444', fontWeight: '900' },
@@ -313,9 +303,6 @@ const styles = StyleSheet.create({
   footerText: { marginTop: 12, marginBottom: 6, textAlign: 'center', color: '#555555', fontSize: 12, fontWeight: '800' },
   empty: { textAlign: 'center', color: '#555555', marginTop: 60, fontSize: 14 },
   playerPage: { flex: 1, backgroundColor: '#000000' },
-  playerHeader: { paddingTop: 48, paddingHorizontal: 16, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  playerTitle: { flex: 1, color: '#ffffff', fontSize: 15, fontWeight: '900', textAlign: 'center' },
-  headerSide: { width: 56 },
   player: { flex: 1, backgroundColor: '#000000' },
   textLight: { color: '#ffffff' },
   textSubLight: { color: '#dddddd' },

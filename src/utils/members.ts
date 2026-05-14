@@ -35,6 +35,26 @@ export function pinyinInitials(value: any): string {
     .toLowerCase();
 }
 
+export function memberSearchText(member: Member): string {
+  const short = member.ownerName.split('-').pop() || '';
+  const rawPinyin = (member.pinyin || '').trim();
+  // split camelCase: "BaoYuXin" → ["Bao","Yu","Xin"]; "baoyuxin" → ["baoyuxin"]
+  const camelParts = rawPinyin.split(/(?=[A-Z])/).filter(Boolean);
+  const pinyinLower = rawPinyin.toLowerCase();
+  const initials = camelParts.map((p) => p[0]).join('').toLowerCase();
+  const initialsSpaced = camelParts.map((p) => p[0]).join(' ').toLowerCase();
+  return [
+    member.ownerName,
+    short,
+    pinyinLower,
+    initials,
+    initialsSpaced,
+    member.team || '',
+    member.groupName || '',
+    String(member.id || ''),
+  ].join(' ').toLowerCase();
+}
+
 export function normalizeMember(raw: any): Member {
   return {
     ...raw,

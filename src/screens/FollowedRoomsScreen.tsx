@@ -19,6 +19,7 @@ import Video from 'react-native-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp } from '../utils/format';
 import {
@@ -35,7 +36,7 @@ import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
 import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
 import { enqueueDownload } from '../services/downloads';
-import { pinyinInitials } from '../utils/members';
+import { memberSearchText, pinyinInitials } from '../utils/members';
 
 type FollowedRoom = {
   memberId: string;
@@ -240,15 +241,19 @@ function senderProfile(item: any, room: Member): SenderProfile {
     'headImg',
     'headUrl',
     'sender.avatar',
+    'sender.headImg',
     'user.avatar',
     'user.headImg',
+    'userInfo.avatar',
+    'userInfo.headImg',
     'message.avatar',
-  ]) || deepFindText(objects, ['avatar', 'headImg', 'headUrl']));
+    'message.headImg',
+  ]) || deepFindText(objects, ['avatar', 'headImg', 'headUrl', 'picPath']));
 
   return {
     id,
     name: name || (id ? `用户 ${id}` : '未知用户'),
-    avatar: avatar || room.avatar || '',
+    avatar: avatar || '',
   };
 }
 
@@ -924,7 +929,8 @@ export default function FollowedRoomsScreen() {
     if (q) {
       list = followed.filter((item) => {
         const member = item.member;
-        return `${member?.ownerName || ''} ${member?.pinyin || ''} ${pinyinInitials(member?.pinyin)} ${member?.team || ''} ${member?.channelId || ''}`.toLowerCase().includes(q);
+        if (!member) return false;
+        return memberSearchText(member).includes(q);
       });
     }
     const pinnedIds = new Set(pinned);
@@ -1014,18 +1020,11 @@ export default function FollowedRoomsScreen() {
           </View>
         ) : null}
         <ZoomImageModal url={fullImageUrl} onClose={() => setFullImageUrl('')} />
-        <View style={styles.chatHeader}>
-          <TouchableOpacity style={styles.backWrap} onPress={closeRoom}>
-            <Text style={styles.backBtn}>返回房间列表</Text>
-          </TouchableOpacity>
-          <View style={styles.chatTitleBlock}>
-            <Text style={[styles.title, isDark && styles.textDark]} numberOfLines={1}>{shortName(selectedRoom)}</Text>
-            <Text style={[styles.subtitle, isDark && styles.textSubDark]} numberOfLines={1}>{selectedRoom.team || selectedRoom.groupName || '成员房间'} · {roomLabel(selectedRoom, roomMode)}</Text>
-          </View>
+        <ScreenHeader title={shortName(selectedRoom)} onBack={closeRoom} right={
           <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(String(selectedRoom.id || ''))}>
             <Text style={styles.pinBtnText}>{pinned.includes(String(selectedRoom.id || '')) ? '取消置顶' : '置顶'}</Text>
           </TouchableOpacity>
-        </View>
+        } />
 
         <View style={styles.chatTools}>
           <TouchableOpacity
@@ -1086,9 +1085,10 @@ export default function FollowedRoomsScreen() {
             const role = messageRole(item, selectedRoom, showFanMessages, currentUserId);
             const mine = role === 'mine';
             const idol = role === 'idol';
+            const msgProfile = senderProfile(item, selectedRoom);
             const profile = idol
-              ? { id: selectedRoom.id, name: shortName(selectedRoom), avatar: selectedRoom.avatar }
-              : senderProfile(item, selectedRoom);
+              ? { id: selectedRoom.id, name: shortName(selectedRoom), avatar: msgProfile.avatar || selectedRoom.avatar }
+              : msgProfile;
             const media = roomMedia(item);
             const gift = roomGiftInfo(item);
             const payload = messagePayload(item) as any;
@@ -1202,28 +1202,18 @@ export default function FollowedRoomsScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, isDark && styles.textDark]}>口袋房间</Text>
-        <Text style={[styles.subtitle, isDark && styles.textSubDark]}>关注房间、大房间和小房间消息</Text>
-        <MemberPicker
-          selectedMember={selectedRoom}
-          onSelect={(member) => openRoom(member)}
-          placeholder="搜索成员并打开房间..."
-          limit={50}
-        />
-        <View style={styles.row}>
-          <TextInput
-            style={[styles.input, isDark && styles.inputDark]}
-            placeholder="筛选已关注成员..."
-            placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          <TouchableOpacity style={[styles.refreshBtn, loading && styles.refreshBtnDisabled]} onPress={() => loadFollowed()} disabled={loading}>
-            <Text style={styles.refreshText}>刷新</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ScreenHeader title="口袋房间" right={
+        <TouchableOpacity onPress={() => loadFollowed()}>
+          <Text style={styles.refreshText}>刷新</Text>
+        </TouchableOpacity>
+      } />
+      <Text style={[styles.subtitle, isDark && styles.textSubDark]}>关注房间、大房间和小房间消息</Text>
+      <MemberPicker
+        selectedMember={selectedRoom}
+        onSelect={(member) => openRoom(member)}
+        placeholder="搜索成员并打开房间..."
+        limit={50}
+      />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <FlatList
@@ -1266,10 +1256,6 @@ export default function FollowedRoomsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
-  chatHeader: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 12, alignItems: 'center', justifyContent: 'center', minHeight: 108 },
-  backWrap: { position: 'absolute', left: 16, top: 54, paddingVertical: 8, paddingRight: 4, zIndex: 2 },
-  chatTitleBlock: { minWidth: 0, maxWidth: '64%', alignItems: 'center' },
   chatTools: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
   roomSearchWrap: { paddingHorizontal: 16, paddingBottom: 8 },
   modePill: { flex: 1, minHeight: 46, paddingVertical: 10, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.70)' },
@@ -1278,15 +1264,13 @@ const styles = StyleSheet.create({
   modePillTextActive: { color: '#fff' },
   modePillDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   modePillTextDark: { color: '#aaa' },
-  title: { fontSize: 24, fontWeight: '900', color: '#ff6f91' },
-  subtitle: { fontSize: 12, color: '#3f3f3f', marginTop: 2 },
-  row: { flexDirection: 'row', gap: 8 },
+  subtitle: { fontSize: 12, color: '#3f3f3f', marginTop: 2, paddingHorizontal: 16 },
+  row: { flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
   input: { flex: 1, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', backgroundColor: 'rgba(255,255,255,0.76)', color: '#333' },
   inputDark: { backgroundColor: 'rgba(42,42,42,0.68)', borderColor: '#444', color: '#eeeeee' },
   refreshBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91', justifyContent: 'center' },
   refreshBtnDisabled: { opacity: 0.5 },
   refreshText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
   status: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
   mediaStatus: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, marginTop: 4, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
   statusDark: { color: '#ffe2a0', backgroundColor: 'rgba(70,52,12,0.82)' },

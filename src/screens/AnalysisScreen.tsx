@@ -6,6 +6,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
+import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import { useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
@@ -292,13 +293,11 @@ export default function AnalysisScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.backBtn}>返回</Text></TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textLight]}>数据统计</Text>
+      <ScreenHeader title="数据统计" right={
         <TouchableOpacity onPress={() => { setLoading(true); loadRoomStats(member!).finally(() => loadFlipStats().finally(() => setLoading(false))); }} disabled={!member || loading}>
           <Text style={[styles.refreshText, (!member || loading) && { opacity: 0.45 }]}>刷新</Text>
         </TouchableOpacity>
-      </View>
+      } />
 
       <View style={styles.pickerWrap}>
         <MemberPicker selectedMember={member} onSelect={loadRoomStats} />
@@ -307,7 +306,7 @@ export default function AnalysisScreen() {
 
       <View style={styles.tabs}>
         {TABS.map((item) => (
-          <TouchableOpacity key={item.key} style={[styles.tab, tab === item.key && styles.tabActive]} onPress={() => { setTab(item.key); if (item.key === 'flip' && !flips.length) loadFlipStats(); }}>
+            <TouchableOpacity key={item.key} style={[styles.tab, isDark && tab !== item.key && styles.tabDark, tab === item.key && styles.tabActive]} onPress={() => { setTab(item.key); if (item.key === 'flip' && !flips.length) loadFlipStats(); }}>
             <Text style={[styles.tabText, tab === item.key && styles.tabTextActive, isDark && tab !== item.key && styles.textSubLight]} numberOfLines={1}>{item.label}</Text>
           </TouchableOpacity>
         ))}
@@ -466,7 +465,7 @@ export default function AnalysisScreen() {
                       style={[styles.flipChip, flipMemberFilter === name && styles.flipChipActive, isDark && styles.flipChipDark]}
                       onPress={() => setFlipMemberFilter(name === '全部成员' ? '' : name)}
                     >
-                      <Text style={[styles.flipChipText, flipMemberFilter === name && styles.flipChipTextActive]}>{name}</Text>
+                      <Text style={[styles.flipChipText, flipMemberFilter === name && styles.flipChipTextActive, isDark && flipMemberFilter !== name && styles.textSubLight]}>{name}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -485,7 +484,7 @@ export default function AnalysisScreen() {
                 <View style={styles.flipCardBig}>
                   <Text style={[styles.flipCardValue, { color: '#722ed1' }]}>{formatDurationMs(flipStats.avgDur)}</Text>
                   <Text style={[styles.flipCardLabel, isDark && styles.textSubLight]}>平均耗时</Text>
-                  {flipStats.minDur > 0 ? <Text style={styles.flipCardRange}>{formatDurationMs(flipStats.minDur)} ~ {formatDurationMs(flipStats.maxDur)}</Text> : null}
+                  {flipStats.minDur > 0 ? <Text style={[styles.flipCardRange, isDark && styles.textSubLight]}>{formatDurationMs(flipStats.minDur)} ~ {formatDurationMs(flipStats.maxDur)}</Text> : null}
                 </View>
               </View>
               <View style={styles.flipTypeRow}>
@@ -553,7 +552,7 @@ export default function AnalysisScreen() {
                     <Text style={[styles.flipMember, isDark && styles.textLight]} numberOfLines={1}>
                       {pickText(item, ['memberName', 'starName', 'baseUserInfo.nickname'], '成员')}
                     </Text>
-                    <Text style={styles.flipTime}>{formatTimestamp(qTime)}</Text>
+                    <Text style={[styles.flipTime, isDark && styles.textSubLight]}>{formatTimestamp(qTime)}</Text>
                   </View>
                   <Text style={[styles.flipQ, isDark && styles.textSubLight]} numberOfLines={10}>问：{pickText(item, ['content', 'questionContent', 'question', 'text'], '') || '无提问内容'}</Text>
                   {isAnswered && isText ? (
@@ -621,14 +620,12 @@ export default function AnalysisScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  backBtn: { color: '#ff6f91', fontSize: 14, minWidth: 54 },
-  title: { flex: 1, color: '#ff6f91', fontSize: 20, fontWeight: '800', textAlign: 'center' },
-  refreshText: { color: '#ff6f91', fontSize: 14, minWidth: 54, textAlign: 'right' },
   pickerWrap: { paddingHorizontal: 14 },
+  refreshText: { color: '#ff6f91', fontSize: 14, minWidth: 54, textAlign: 'right' },
   statusText: { marginTop: 8, color: '#555555', fontSize: 12 },
   tabs: { flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingVertical: 10 },
   tab: { flex: 1, minHeight: 36, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.56)', paddingHorizontal: 6 },
+  tabDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   tabActive: { backgroundColor: '#ff6f91' },
   tabText: { color: '#444444', fontSize: 11, fontWeight: '800' },
   tabTextActive: { color: '#ffffff' },

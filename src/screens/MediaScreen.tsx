@@ -21,6 +21,7 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import { VODItem } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
@@ -642,33 +643,32 @@ export default function MediaScreen() {
     return (
       <View style={[styles.playerPage, isFullscreen && styles.playerPageFullscreen]}>
         {!isFullscreen ? (
-        <View style={styles.playHeader}>
-          <TouchableOpacity
-            onPress={closePlayer}
-            style={styles.backBtn}
-          >
-            <Text style={styles.backBtnText}>返回</Text>
+        <View style={styles.playerToolbar}>
+          <TouchableOpacity onPress={closePlayer} style={styles.glassBtn}>
+            <Text style={styles.glassBtnText}>返回</Text>
           </TouchableOpacity>
-          <Text style={styles.playTitle} numberOfLines={1}>{playing.title}</Text>
-          {playing.isLive ? (
-            <TouchableOpacity onPress={() => openGiftPanel()} style={styles.giftBtn}>
-              <Text style={styles.giftBtnText}>礼物</Text>
+          <View style={styles.playerToolbarCenter}>
+            {playing.isLive ? (
+              <TouchableOpacity onPress={() => openGiftPanel()} style={styles.giftBtn}>
+                <Text style={styles.giftBtnText}>礼物</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity onPress={() => startPlay(playing.item)} style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>刷新</Text>
             </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity onPress={() => startPlay(playing.item)} style={[styles.switchPlayerBtn, styles.retryPlayerBtn]}>
-            <Text style={[styles.switchPlayerText, styles.retryPlayerText]}>刷新</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => openRankPanel()} style={styles.switchPlayerBtn}>
-            <Text style={styles.switchPlayerText}>贡献榜</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.switchPlayerBtn}>
-            <Text style={styles.switchPlayerText}>全屏</Text>
-          </TouchableOpacity>
-          {announceVisible && announcement ? (
-            <TouchableOpacity style={[styles.switchPlayerBtn, styles.announceHeaderBtn]} onPress={() => setAnnounceExpanded(v => !v)}>
-              <Text style={[styles.switchPlayerText, styles.announceHeaderText]}>{announceExpanded ? '收起' : '公告'}</Text>
+            <TouchableOpacity onPress={() => openRankPanel()} style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>贡献榜</Text>
             </TouchableOpacity>
-          ) : null}
+            <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>全屏</Text>
+            </TouchableOpacity>
+            {announceVisible && announcement ? (
+              <TouchableOpacity style={[styles.glassBtn, styles.announceHeaderBtn]} onPress={() => setAnnounceExpanded(v => !v)}>
+                <Text style={[styles.glassBtnText, styles.announceHeaderText]}>{announceExpanded ? '收起' : '公告'}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={{ minWidth: 44 }} />
         </View>
         ) : (
           <TouchableOpacity onPress={() => setIsFullscreen(false)} style={styles.exitFullscreenBtn}>
@@ -826,19 +826,17 @@ export default function MediaScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <Text style={styles.title}>直播 / 回放</Text>
-        <View style={styles.tabRow}>
-          <TouchableOpacity style={[styles.tabBtn, tab === 'live' && styles.tabBtnActive, isDark && tab !== 'live' && styles.tabBtnDark]} onPress={() => switchTab('live')}>
-            <Text style={[styles.tabBtnText, tab === 'live' && styles.tabBtnTextActive, isDark && tab !== 'live' && styles.tabBtnTextDark]}>直播</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.tabBtn, tab === 'vod' && styles.tabBtnActive, isDark && tab !== 'vod' && styles.tabBtnDark]} onPress={() => switchTab('vod')}>
-            <Text style={[styles.tabBtnText, tab === 'vod' && styles.tabBtnTextActive, isDark && tab !== 'vod' && styles.tabBtnTextDark]}>回放</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.refreshBtn, isDark && styles.refreshBtnDark]} onPress={refreshList}>
-            <Text style={[styles.refreshText, isDark && styles.refreshTextDark]}>刷新</Text>
-          </TouchableOpacity>
-        </View>
+      <ScreenHeader title="直播 · 回放" />
+      <View style={styles.toolbarRow}>
+        <TouchableOpacity style={[styles.tabBtn, tab === 'live' && styles.tabBtnActive, isDark && tab !== 'live' && styles.tabBtnDark]} onPress={() => switchTab('live')}>
+          <Text style={[styles.tabBtnText, tab === 'live' && styles.tabBtnTextActive, isDark && tab !== 'live' && styles.tabBtnTextDark]}>直播</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tabBtn, tab === 'vod' && styles.tabBtnActive, isDark && tab !== 'vod' && styles.tabBtnDark]} onPress={() => switchTab('vod')}>
+          <Text style={[styles.tabBtnText, tab === 'vod' && styles.tabBtnTextActive, isDark && tab !== 'vod' && styles.tabBtnTextDark]}>回放</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.refreshBtn, isDark && styles.refreshBtnDark]} onPress={refreshList}>
+          <Text style={[styles.refreshText, isDark && styles.refreshTextDark]}>刷新</Text>
+        </TouchableOpacity>
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -912,10 +910,12 @@ export default function MediaScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  headerDark: {},
-  title: { fontSize: 22, fontWeight: '800', color: '#ff6f91', marginBottom: 12 },
   tabRow: { flexDirection: 'row', gap: 8 },
+  toolbarRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 8, alignItems: 'center' },
+  playerToolbar: { flexDirection: 'row', paddingHorizontal: 8, paddingTop: 44, paddingBottom: 6, backgroundColor: '#0a0a0a', alignItems: 'center' },
+  playerToolbarCenter: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 6, flexWrap: 'wrap' },
+  glassBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
+  glassBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   tabBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.38)' },
   tabBtnActive: { backgroundColor: '#ff6f91' },
   tabBtnText: { fontSize: 13, color: '#444', fontWeight: '700' },
@@ -930,11 +930,7 @@ const styles = StyleSheet.create({
   error: { margin: 12, padding: 10, borderRadius: 18, backgroundColor: '#fff3cd', color: '#8a5a00', fontSize: 12, lineHeight: 18 },
   playerPage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999, elevation: 999, backgroundColor: '#000' },
   playerPageFullscreen: { backgroundColor: '#000' },
-  playHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 44, paddingBottom: 4, backgroundColor: '#0a0a0a' },
-  backBtn: { padding: 6 },
-  backBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   backBtnTextPink: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
-  playTitle: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1, marginLeft: 4 },
   giftBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: '#ff6f91' },
   giftBtnText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   switchPlayerBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: '#222', marginLeft: 4 },

@@ -13,6 +13,7 @@ import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
+import ScreenHeader from '../components/ScreenHeader';
 
 function normalizeVideos(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -106,12 +107,7 @@ export default function VideoLibraryScreen() {
   if (playUrl) {
     return (
       <View style={styles.playerPage}>
-        <View style={styles.playHeader}>
-          <TouchableOpacity onPress={() => setPlayUrl('')}>
-            <Text style={styles.backBtn}>返回</Text>
-          </TouchableOpacity>
-          <Text style={styles.playTitle} numberOfLines={1}>{playing?.title || '视频'}</Text>
-        </View>
+        <ScreenHeader title={playing?.title || '视频'} onBack={() => setPlayUrl('')} />
         <Video source={{ uri: playUrl }} style={styles.videoPlayer} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
       </View>
     );
@@ -119,15 +115,11 @@ export default function VideoLibraryScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textDark]}>视频</Text>
+      <ScreenHeader title="视频" right={
         <TouchableOpacity onPress={() => load(true)} disabled={loading}>
           <Text style={[styles.backBtn, loading && styles.disabledText]}>刷新</Text>
         </TouchableOpacity>
-      </View>
+      } />
       {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <FlatList
@@ -161,10 +153,8 @@ export default function VideoLibraryScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
   disabledText: { opacity: 0.45 },
-  title: { fontSize: 20, fontWeight: '800', color: '#ff6f91' },
   status: { margin: 16, color: '#444', fontSize: 13, textAlign: 'center' },
   listContent: { paddingBottom: 120 },
   card: { padding: 14, backgroundColor: 'rgba(255,255,255,0.72)', margin: 12, marginBottom: 0, borderRadius: 16 },
@@ -173,8 +163,6 @@ const styles = StyleSheet.create({
   cardSub: { fontSize: 11, color: '#333333', marginTop: 4 },
   desc: { fontSize: 12, color: '#555', marginTop: 6, lineHeight: 18 },
   playerPage: { flex: 1, backgroundColor: '#000' },
-  playHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingTop: 50, backgroundColor: 'rgba(20,20,20,0.72)', gap: 12 },
-  playTitle: { color: '#fff', fontSize: 16, fontWeight: '800', flex: 1 },
   videoPlayer: { flex: 1, backgroundColor: '#000' },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },

@@ -48,3 +48,4 @@ android/app/build/
 *.apk
 *.hsp
 /harmonyos
+src_backup_*

@@ -5,13 +5,14 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import ScreenHeader from '../components/ScreenHeader';
 import { useSettingsStore, useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { externalApi } from '../api/external';
 import pocketApi from '../api/pocket48';
 import { unwrapList } from '../utils/data';
-import { loadMembers, pinyinInitials } from '../utils/members';
+import { loadMembers, memberSearchText } from '../utils/members';
 
 type Nav = StackNavigationProp<RootStackParamList, 'DatabaseScreen'>;
 
@@ -112,7 +113,7 @@ export default function DatabaseScreen() {
       .filter((m) => groupFilter === '全部' || (m.groupName || '其他') === groupFilter)
       .filter((m) => {
         if (!q) return true;
-        return `${m.ownerName} ${m.pinyin} ${pinyinInitials(m.pinyin)} ${m.team} ${m.groupName} ${m.id}`.toLowerCase().includes(q);
+        return memberSearchText(m).includes(q);
       })
       .sort((a, b) => Number(memberActive(b)) - Number(memberActive(a)) || (a.groupName || '').localeCompare(b.groupName || '') || (a.team || '').localeCompare(b.team || '') || a.ownerName.localeCompare(b.ownerName));
   }, [members, groupFilter, search]);
@@ -121,15 +122,10 @@ export default function DatabaseScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <View>
-          <Text style={[styles.title, isDark && styles.textLight]}>数据库</Text>
-          <Text style={[styles.count, isDark && styles.textSubDark]}>总计 {members.length} 位 · 在团 {activeCount} 位</Text>
-        </View>
-      </View>
+      <ScreenHeader title="数据库" />
+      <Text style={[styles.status, isDark && styles.textSubDark]}>
+        总计 {members.length} 位 · 在团 {activeCount} 位
+      </Text>
 
       <TextInput
         style={[styles.input, isDark && styles.inputDark]}
@@ -206,10 +202,6 @@ export default function DatabaseScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 16 },
-  backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
-  title: { fontSize: 22, fontWeight: '800', color: '#ff6f91' },
-  count: { fontSize: 12, color: '#333333', marginTop: 2 },
   input: { marginHorizontal: 16, marginBottom: 10, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', backgroundColor: 'rgba(255,255,255,0.72)', color: '#333' },
   inputDark: { backgroundColor: 'rgba(42,42,42,0.62)', borderColor: '#444', color: '#eeeeee' },
   groupBar: { paddingHorizontal: 12, marginBottom: 6 },

@@ -15,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
 import { saveSettings } from '../services/settings';
+import ScreenHeader from '../components/ScreenHeader';
 import { getWasmError, isWasmReady } from '../auth';
 import { checkNetworkStatus } from '../utils/network';
 
@@ -124,9 +125,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.pageTitle}>设置</Text>
-      </View>
+      <ScreenHeader title="设置" />
 
       <Section title="账号" isDark={isDark}>
         <Text style={[styles.sub, isDark && styles.textSubLight]}>口袋登录、大小号切换、B站登录、修改昵称和头像</Text>
@@ -203,7 +202,7 @@ export default function SettingsScreen() {
         </Text>
       </Section>
 
-      <Text style={[styles.footer, isDark && styles.textSubLight]}>Yaya Message v2.4</Text>
+      <Text style={[styles.footer, isDark && styles.textSubLight]}>Yaya Message v2.4.1</Text>
     </ScrollView>
   );
 }
@@ -212,8 +211,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   content: { paddingBottom: 112 },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 8 },
-  pageTitle: { fontSize: 22, fontWeight: '800', color: '#ff6f91' },
   section: { marginHorizontal: 12, marginTop: 8, padding: 14, backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
   sectionDark: { backgroundColor: 'rgba(20,20,20,0.62)', borderColor: 'rgba(255,255,255,0.10)' },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: '#222', marginBottom: 8 },

@@ -30,6 +30,7 @@ import DownloadScreen from '../screens/DownloadScreen';
 import DatabaseScreen from '../screens/DatabaseScreen';
 import ApiDiagnosticsScreen from '../screens/ApiDiagnosticsScreen';
 import AppToast from '../components/AppToast';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { mainTabBarStyle } from './tabBarStyle';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import { ui } from '../theme/ui';
@@ -284,6 +285,7 @@ export default function AppNavigator() {
     : navTheme;
 
   return (
+    <ErrorBoundary>
     <NavigationContainer theme={themed}>
       <>
         <Stack.Navigator
@@ -319,5 +321,6 @@ export default function AppNavigator() {
         <AppToast />
       </>
     </NavigationContainer>
+    </ErrorBoundary>
   );
 }

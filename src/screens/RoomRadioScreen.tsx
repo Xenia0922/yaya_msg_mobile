@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
+import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import { errorMessage, pickText } from '../utils/data';
 import pocketApi from '../api/pocket48';
@@ -37,12 +38,7 @@ export default function RoomRadioScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textDark]}>房间电台</Text>
-      </View>
+      <ScreenHeader title="房间电台" />
       <FadeInView delay={80} duration={300}>
         <View style={styles.pickerWrap}>
           <MemberPicker selectedMember={selectedMember} onSelect={startRadio} />
@@ -65,10 +61,6 @@ export default function RoomRadioScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 14, marginBottom: 6 },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#ff6f91' },
   pickerWrap: { padding: 16 },
   playerCard: { margin: 16, padding: 20, backgroundColor: 'rgba(255,255,255,0.46)', borderRadius: 18, alignItems: 'center' },
   playerCardDark: { backgroundColor: 'rgba(20,20,20,0.58)' },

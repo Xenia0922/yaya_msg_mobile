@@ -489,61 +489,6 @@ export const pocketApi = {
     return tryPocketPost(attempts, 'get room messages failed');
   },
 
-  async sendRoomText(params: { channelId: string; serverId: string; text: string }) {
-    const channelId = String(params.channelId || '');
-    let serverId = String(params.serverId || '');
-    const text = String(params.text || '').trim();
-    if (!channelId) throw new Error('missing channelId');
-    if (!text) throw new Error('empty message');
-    if (!serverId || serverId === '0') serverId = await resolveServerId(channelId);
-    if (!serverId || serverId === '0') throw new Error('missing serverId');
-    rememberServerId(channelId, serverId);
-    const body = JSON.stringify({ text });
-    const extInfo = JSON.stringify({ text, msgType: 'TEXT' });
-    return tryPocketPost([
-      {
-        url: `${BASE}/im/api/v1/team/message/send`,
-        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), msgType: 'TEXT', text, body, bodys: body },
-        label: 'team message send number',
-      },
-      {
-        url: `${BASE}/im/api/v1/team/message/send`,
-        payload: { channelId: String(channelId), serverId: String(serverId), msgType: 'TEXT', text, body, bodys: body },
-        label: 'team message send string',
-      },
-      {
-        url: `${BASE}/im/api/v1/team/message/send`,
-        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), type: 'TEXT', msgContent: body, extInfo },
-        modern: true,
-        label: 'team message send modern msgContent',
-      },
-      {
-        url: `${BASE}/im/api/v1/team/message/send`,
-        payload: { channelId: String(channelId), serverId: String(serverId), type: 'TEXT', msgContent: body, extInfo },
-        modern: true,
-        label: 'team message send modern string msgContent',
-      },
-      {
-        url: `${BASE}/im/api/v1/team/message/send/text`,
-        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), text },
-        modern: true,
-        label: 'team message send text',
-      },
-      {
-        url: `${BASE}/im/api/v1/team/message/send/text`,
-        payload: { channelId: String(channelId), serverId: String(serverId), text },
-        modern: true,
-        label: 'team message send text string',
-      },
-      {
-        url: `${BASE}/im/api/v1/team/message/create`,
-        payload: { channelId: safeNumber(channelId), serverId: safeNumber(serverId), msgType: 'TEXT', bodys: body },
-        modern: true,
-        label: 'team message create',
-      },
-    ], 'send room text failed');
-  },
-
   async getRoomAlbum(params: { channelId: string; nextTime?: number }) {
     return pocketPost(`${BASE}/im/api/v1/team/msg/list/img`, {
       channelId: String(params.channelId),

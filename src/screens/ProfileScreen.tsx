@@ -11,6 +11,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
@@ -86,12 +87,7 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={styles.backBtn}>← 返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textDark]}>成员档案</Text>
-      </View>
+      <ScreenHeader title="成员档案" />
 
       <FadeInView delay={80} duration={300}>
         <View style={styles.pickerWrap}>
@@ -224,10 +220,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   content: { paddingBottom: 36 },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 15, marginBottom: 8 },
-  title: { fontSize: 24, fontWeight: '800', color: '#ff6f91' },
   pickerWrap: { paddingHorizontal: 16, marginBottom: 10 },
   card: { marginHorizontal: 16, marginBottom: 14, padding: 16, backgroundColor: 'rgba(255,255,255,0.46)', borderRadius: 18 },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.58)' },

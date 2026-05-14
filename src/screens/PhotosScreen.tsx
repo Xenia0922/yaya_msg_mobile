@@ -5,6 +5,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
@@ -173,12 +174,7 @@ export default function PhotosScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtn}>返回</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textDark]}>个人相册</Text>
-      </View>
+      <ScreenHeader title="个人相册" />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.pickerWrap}>
           <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
@@ -205,10 +201,6 @@ export default function PhotosScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 14, marginBottom: 4 },
-  headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 14, marginBottom: 6 },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#ff6f91' },
   pickerWrap: { padding: 16 },
   status: { marginTop: 8, color: '#444', fontSize: 12 },
   photoCard: { flex: 1, margin: 4, backgroundColor: 'rgba(255,255,255,0.46)', borderRadius: 18, overflow: 'hidden' },

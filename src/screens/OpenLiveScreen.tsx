@@ -18,6 +18,7 @@ import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import ScreenHeader from '../components/ScreenHeader';
 import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
@@ -270,11 +271,9 @@ export default function OpenLiveScreen() {
   if (playing) {
     return (
       <View style={styles.playerPage}>
-        <View style={styles.playerHeader}>
-          <TouchableOpacity onPress={() => setPlaying(null)}><Text style={styles.headerAction}>返回</Text></TouchableOpacity>
-          <Text style={styles.playerTitle} numberOfLines={1}>{playing.title}</Text>
+        <ScreenHeader title={playing.title} onBack={() => setPlaying(null)} right={
           <TouchableOpacity onPress={toggleOrientation}><Text style={styles.headerAction}>{isLandscape ? '竖屏' : '横屏'}</Text></TouchableOpacity>
-        </View>
+        } />
         <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} />
         <TouchableOpacity style={styles.externalBtn} onPress={() => Linking.openURL(playing.url)}>
           <Text style={styles.externalText}>外部打开</Text>
@@ -285,13 +284,11 @@ export default function OpenLiveScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.headerAction}>返回</Text></TouchableOpacity>
-        <Text style={[styles.title, isDark && styles.textLight]}>公演记录</Text>
+      <ScreenHeader title="公演记录" right={
         <TouchableOpacity disabled={!member || loading} onPress={() => member && loadMemberShows(member)}>
           <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>刷新</Text>
         </TouchableOpacity>
-      </View>
+      } />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.controls}>
@@ -353,10 +350,8 @@ export default function OpenLiveScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 54, paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800', minWidth: 54 },
   disabledText: { opacity: 0.45 },
-  title: { flex: 1, color: '#ff6f91', fontSize: 22, fontWeight: '900', textAlign: 'center' },
   controls: { paddingHorizontal: 14, gap: 8 },
   search: { minHeight: 42, borderRadius: 16, paddingHorizontal: 12, backgroundColor: 'rgba(255,255,255,0.72)', color: '#222222' },
   searchDark: { backgroundColor: 'rgba(255,255,255,0.10)', color: '#ffffff' },
@@ -377,8 +372,6 @@ const styles = StyleSheet.create({
   textLight: { color: '#ffffff' },
   textSubLight: { color: '#dddddd' },
   playerPage: { flex: 1, backgroundColor: '#000000' },
-  playerHeader: { paddingTop: 48, paddingHorizontal: 16, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  playerTitle: { flex: 1, color: '#ffffff', textAlign: 'center', fontWeight: '900' },
   player: { flex: 1, backgroundColor: '#000000' },
   externalBtn: { margin: 16, minHeight: 44, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   externalText: { color: '#ffffff', fontWeight: '900' },
