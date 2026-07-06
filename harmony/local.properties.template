@@ -1,0 +1,16 @@
+## DevEco Studio 运行前请修改以下路径
+## Before opening in DevEco Studio, edit the paths below
+
+# Node.js 路径
+nodejs.dir=C\:\\Users\\Xenia\\AppData\\Local\\fnm_multishells\\28844_1767674252205
+# 或者 / or:
+# nodejs.dir=C\:\\Program Files\\nodejs
+
+# HarmonyOS SDK 路径
+# hwsdk.dir=C\:\\Users\\Xenia\\AppData\\Local\\Huawei\\Sdk
+
+# Java / JDK 路径 (DevEco Studio 内置)
+# java.home=C\:\\Program Files\\Huawei\\DevEco Studio\\jbr
+
+# If not using HMS (云调试/真机调试), set hms=false
+hms=false

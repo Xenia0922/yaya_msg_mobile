@@ -341,6 +341,7 @@ export default function MediaScreen() {
   const navigation = useNavigation<any>();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
+  const showToast = useUiStore((state) => state.showToast);
   const [tab, setTab] = useState<'live' | 'vod'>(route.params?.mode ?? 'live');
   const [vodList, setVodList] = useState<VODItem[]>([]);
   const [liveList, setLiveList] = useState<VODItem[]>([]);
@@ -366,8 +367,42 @@ export default function MediaScreen() {
   const [announceExpanded, setAnnounceExpanded] = useState(true);
   const loadingRef = useRef(false);
   const playingRef = useRef<typeof playing>(null);
+  // v2.6: group filter + search
+  const [groupId, setGroupId] = useState(0);
+  const [search, setSearch] = useState('');
 
-  const list = tab === 'live' ? liveList : vodList;
+  const GROUPS: { label: string; id: number; match: string }[] = [
+    { label: '全部', id: 0, match: '' },
+    { label: 'SNH', id: 1, match: 'SNH48' },
+    { label: 'BEJ', id: 2, match: 'BEJ48' },
+    { label: 'GNZ', id: 3, match: 'GNZ48' },
+    { label: 'CKG', id: 4, match: 'CKG48' },
+    { label: 'CGT', id: 6, match: 'CGT48' },
+  ];
+  const list = useMemo(() => {
+    let raw = tab === 'live' ? liveList : vodList;
+    // v2.6: client-side group filter by nickname/title text match
+    if (groupId !== 0) {
+      const g = GROUPS.find((x) => x.id === groupId);
+      if (g && g.match) {
+        raw = raw.filter((item) =>
+          (item.nickname || '').includes(g.match) ||
+          (item.title || '').includes(g.match) ||
+          (item.liveRoomTitle || '').includes(g.match)
+        );
+      }
+    }
+    if (!search.trim()) return raw;
+    const q = search.trim().toLowerCase();
+    return raw.filter((item) => {
+      const timeStr = formatTimestamp(item.startTime);
+      return (item.title || '').toLowerCase().includes(q)
+        || (item.nickname || '').toLowerCase().includes(q)
+        || (item.liveRoomTitle || '').toLowerCase().includes(q)
+        || timeStr.includes(q)
+        || String(item.liveId || '').includes(q);
+    });
+  }, [tab, liveList, vodList, search, groupId]);
   const selectedGiftTotal = useMemo(
     () => (selectedGift ? giftCost(selectedGift) * (Number(giftNum) || 1) : 0),
     [giftNum, selectedGift],
@@ -376,6 +411,36 @@ export default function MediaScreen() {
   useEffect(() => {
     playingRef.current = playing;
   }, [playing]);
+
+  // v2.6: auto-play when navigated from room with playLiveId
+  useEffect(() => {
+    const lid = route.params?.playLiveId;
+    if (!lid) return;
+    const isLive = route.params?.mode !== 'vod';
+    (async () => {
+      try {
+        let detail: any = await pocketApi.getLiveOne(lid).catch(() => null);
+        if (!detail) detail = await pocketApi.getOpenLiveOne(lid).catch(() => null);
+        const item = (detail?.content || detail?.data || detail || {}) as any;
+        const urls = pickPlayableUrls(item, isLive);
+        const url = urls[0] || '';
+        if (!url) { showToast('未解析到播放地址'); return; }
+        const title = route.params?.playTitle || item.title || item.liveRoomTitle || '直播';
+        const cover = route.params?.playCover || item.liveCover || item.coverPath || '';
+        setPlaying({
+          url,
+          urls,
+          title,
+          cover: normalizeUrl(cover),
+          item: { ...item, liveId: lid, title, liveCover: cover },
+          isLive,
+          needsVlc: streamNeedsProxy(url),
+        });
+        // Switch tab to match mode
+        if (!isLive && tab !== 'vod') switchTab('vod');
+      } catch (e) { showToast(`播放失败：${errorMessage(e)}`); }
+    })();
+  }, [route.params?.playLiveId]);
 
   useEffect(() => {
     setTabBarHidden(!!playing);
@@ -394,7 +459,7 @@ export default function MediaScreen() {
     return () => subscription.remove();
   }, [playing]);
 
-  const fetchList = useCallback(async (mode: 'live' | 'vod', cursor = 0, append = false) => {
+  const doFetch = useCallback(async (mode: 'live' | 'vod', cursor = 0, append = false) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
@@ -414,11 +479,15 @@ export default function MediaScreen() {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, []);
+  }, []); // stable ref, reads groupId from groupIdRef
 
-  useEffect(() => {
-    fetchList(tab, 0);
-  }, [fetchList, tab]);
+  const reloadList = useCallback(() => {
+    setLiveList([]); setVodList([]); setNextCursor(0); setHasMore(true);
+    doFetch(tab, 0);
+  }, [doFetch, tab]);
+
+  // initial load
+  useEffect(() => { doFetch(tab, 0); }, [doFetch, tab]);
 
   useEffect(() => () => {
     setLiveImmersiveMode(false);
@@ -439,6 +508,14 @@ export default function MediaScreen() {
     setAnnounceVisible(false);
     setAnnounceExpanded(false);
   };
+
+  // v2.6: came from room with playLiveId → hide list, back goes to room
+  const fromRoom = !!route.params?.playLiveId;
+  useEffect(() => {
+    if (fromRoom && !playing) {
+      navigation.navigate('Rooms' as any);
+    }
+  }, [fromRoom, playing]);
 
   const refreshAnnouncement = async () => {
     if (!playing || !playing.isLive) return;
@@ -461,17 +538,17 @@ export default function MediaScreen() {
     setTab(next);
     setNextCursor(0);
     setHasMore(true);
+    doFetch(next, 0);
   };
 
   const refreshList = () => {
-    setNextCursor(0);
-    setHasMore(true);
-    fetchList(tab, 0);
+    setSearch('');
+    reloadList();
   };
 
   const loadMore = () => {
-    if (loading || loadingRef.current || !hasMore || list.length === 0) return;
-    fetchList(tab, nextCursor, true);
+    if (loading || loadingRef.current || !hasMore) return;
+    doFetch(tab, nextCursor, true);
   };
 
   const startPlay = async (item: VODItem) => {
@@ -835,6 +912,34 @@ export default function MediaScreen() {
           <Text style={[styles.refreshText, isDark && styles.refreshTextDark]}>刷新</Text>
         </TouchableOpacity>
       </View>
+      {/* v2.6: group selector — client-side text match filter */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupRow} contentContainerStyle={styles.groupRowContent}>
+        {GROUPS.map((item) => (
+          <TouchableOpacity
+            key={String(item.id)}
+            style={[styles.groupChip, isDark && styles.groupChipDark, groupId === item.id && styles.groupChipActive]}
+            onPress={() => setGroupId(item.id)}
+          >
+            <Text style={[styles.groupChipText, isDark && styles.groupChipTextDark, groupId === item.id && styles.groupChipTextActive]}>{item.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      {/* v2.6: search bar */}
+      <View style={styles.searchWrap}>
+        <TextInput
+          style={[styles.searchInput, isDark && styles.searchInputDark]}
+          placeholder="搜索成员名、标题、时间..."
+          placeholderTextColor={isDark ? '#888' : '#999'}
+          value={search}
+          onChangeText={setSearch}
+          returnKeyType="search"
+        />
+        {search.trim() ? (
+          <TouchableOpacity onPress={() => setSearch('')} style={styles.searchClear}>
+            <Text style={{ color: '#ff6f91', fontWeight: '700', fontSize: 13 }}>清除</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -848,7 +953,9 @@ export default function MediaScreen() {
             return (
               <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => startPlay(item)}>
-                  {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.cover} /> : (
+                  {coverUrl ? (
+                    <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
+                  ) : (
                     <View style={[styles.cover, styles.coverPlaceholder]}>
                       <Text style={[styles.coverPlaceholderText, isDark && styles.coverPlaceholderTextDark]}>视频</Text>
                     </View>
@@ -875,7 +982,9 @@ export default function MediaScreen() {
           }}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '加载中...' : '暂无数据'}</Text>
+              <Text style={[styles.empty, isDark && styles.emptyDark]}>
+                {search.trim() ? '没有匹配的直播/录播' : loading ? '加载中...' : '暂无数据'}
+              </Text>
               {loading ? <ActivityIndicator style={{ marginTop: 8 }} color="#ff6f91" /> : null}
             </View>
           }
@@ -887,7 +996,13 @@ export default function MediaScreen() {
                 {loading ? (
                   <ActivityIndicator color="#ff6f91" />
                 ) : hasMore ? (
-                  <Text style={[styles.empty, isDark && styles.emptyDark]}>上滑继续加载</Text>
+                  search.trim() ? (
+                    <TouchableOpacity onPress={loadMore} style={styles.loadMoreBtn}>
+                      <Text style={styles.loadMoreText}>加载更多...</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={[styles.empty, isDark && styles.emptyDark]}>上滑继续加载</Text>
+                  )
                 ) : (
                   <Text style={[styles.empty, isDark && styles.emptyDark]}>没有更多了</Text>
                 )}
@@ -977,6 +1092,25 @@ const styles = StyleSheet.create({
   typeTag: { backgroundColor: '#ff6f9118', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
   giftTag: { backgroundColor: '#13c2c218' },
   typeText: { fontSize: 11, color: '#ff6f91', fontWeight: '700' },
+  // v2.6: group + search
+  groupRow: { maxHeight: 44, marginBottom: 4 },
+  groupRowContent: { paddingHorizontal: 12, alignItems: 'center', gap: 6 },
+  groupChip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 16, backgroundColor: 'rgba(238,238,238,0.72)' },
+  groupChipDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
+  groupChipActive: { backgroundColor: '#ff6f91' },
+  groupChipText: { fontSize: 12, color: '#555', fontWeight: '700' },
+  groupChipTextDark: { color: '#aaa' },
+  groupChipTextActive: { color: '#fff' },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, marginBottom: 4 },
+  searchInput: {
+    flex: 1, padding: 10, borderRadius: 16,
+    borderWidth: 1, borderColor: 'rgba(230,230,230,0.95)',
+    backgroundColor: 'rgba(255,255,255,0.52)', color: '#333', fontSize: 13,
+  },
+  searchInputDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444', color: '#eee' },
+  searchClear: { paddingHorizontal: 12, paddingVertical: 8 },
+  loadMoreBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91' },
+  loadMoreText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   textLight: { color: '#eee' },
   emptyWrap: { alignItems: 'center', marginTop: 60 },
   empty: { fontSize: 14, color: '#3f3f3f' },

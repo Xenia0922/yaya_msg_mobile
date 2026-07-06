@@ -21,11 +21,18 @@ export type RootStackParamList = {
   DownloadScreen: undefined;
   DatabaseScreen: undefined;
   ApiDiagnosticsScreen: undefined;
+  TripScreen: undefined;
+  MeleeRankScreen: undefined;
+  MemberDynamicScreen: undefined;
+  MemberWeiboScreen: undefined;
+  InvoiceScreen: undefined;
+  ConversationScreen: undefined;
+  ScoreOfficialScreen: undefined;
 };
 
 export type TabParamList = {
   Home: undefined;
-  Media: { mode?: 'live' | 'vod' } | undefined;
+  Media: { mode?: 'live' | 'vod'; playLiveId?: string; playTitle?: string; playCover?: string } | undefined;
   Rooms: undefined;
   Settings: undefined;
 };

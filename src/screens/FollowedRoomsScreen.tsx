@@ -16,7 +16,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import Video from 'react-native-video';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
@@ -55,6 +55,7 @@ type RoomMedia = {
   liveId?: string;
   isLive?: boolean;
   needsVlc?: boolean;
+  cover?: string;
 };
 
 type SenderProfile = {
@@ -466,12 +467,17 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
       const detail = await attempt();
       const urls = pickPlayableUrls(detail, true).filter(isPlayableMediaUrl);
       if (urls[0]) {
+        const d = detail?.content || detail?.data || detail || {};
+        const cover = normalizeUrl(
+          d.liveCover || d.coverPath || d.cover || d.coverUrl || d.picPath || d.liveRoomCover || ''
+        ) || media.cover;
         return {
           ...media,
           type: 'live',
           liveId,
           title,
           url: urls[0],
+          cover,
           isLive: isLiveStreamUrl(urls[0]),
           needsVlc: streamNeedsProxy(urls[0]),
         };
@@ -515,20 +521,50 @@ function roomMedia(item: any): RoomMedia | null {
     'data.liveId',
   ]) || deepFindText([item, ext, body], ['liveId', 'liveid', 'live_id']) || extractLiveIdFromText([item, ext, body, text]);
   const urls = pickPlayableUrls([item, ext, body], !!liveId || msgType.includes('LIVE'));
-  const url = urls[0] || '';
+  let url = urls[0] || '';
+  // Fallback: try collecting all URLs from raw data
+  if (!url && !liveId) {
+    const allUrls: string[] = [];
+    collectUrls(item, allUrls);
+    collectUrls(ext, allUrls);
+    collectUrls(body, allUrls);
+    url = allUrls.find(u => u && /^https?:\/\//i.test(u)) || '';
+  }
+  // Fallback: if still no url but text/body has a URL, use it
+  if (!url && !liveId) {
+    const rawUrls: string[] = [];
+    collectUrls(item, rawUrls);
+    collectUrls(ext, rawUrls);
+    collectUrls(body, rawUrls);
+    // Also check the raw text for URLs
+    const textMatch = String(text || '').match(/(https?:\/\/[^\s]+)/i);
+    if (textMatch) rawUrls.push(textMatch[1]);
+    url = rawUrls.find(u => u && /^https?:\/\//i.test(u)) || '';
+  }
+  // Still no URL? Check if text IS a media indicator
+  if (!url && !liveId) {
+    const t = String(text || '').toLowerCase();
+    if (t.includes('[图片]') || t.includes('[语音]') || t.includes('[视频]') || t.includes('[链接]') || t.includes('[直播]')) {
+      // It's a media placeholder - don't show raw text, render as empty media
+      url = t; // mark as "has media" so we don't return null
+    }
+  }
   if (!url && !liveId) return null;
   const type = liveId ? 'live' : classifyMedia(url, msgType, text);
-  const duration = firstTextFrom([item, ext, body], ['duration', 'time', 'second', 'audioTime', 'message.time']);
-  const title = text && !text.startsWith('[') && text !== url
-    ? text
-    : type === 'audio'
-      ? '语音消息'
-      : type === 'video'
-        ? '视频消息'
-        : type === 'live'
-          ? '直播 / 录播'
-          : '链接';
-  return { type, url, title, duration, liveId };
+  const duration = firstTextFrom([item, ext, body], ['duration', 'time', 'second', 'audioTime', 'voiceTime', 'length', 'message.time']);
+  // Audio/video always use clean labels; other types use message text
+  const title = type === 'audio' ? '语音消息'
+    : type === 'video' ? '视频消息'
+    : type === 'live' ? '直播 / 录播'
+    : type === 'image' ? '图片'
+    : text && !text.startsWith('[') && text !== url ? text
+    : '链接';
+  const cover = normalizeUrl(firstTextFrom([item, ext, body], [
+    'coverUrl', 'coverPath', 'cover', 'liveCover', 'picPath', 'picturePath', 'imageUrl', 'poster', 'thumb',
+    'videoCover', 'videoPoster', 'thumbnail', 'thumbUrl',
+    'message.coverUrl', 'message.cover', 'content.coverUrl', 'data.coverUrl',
+  ]) || '');
+  return { type, url, title, duration, liveId, cover };
 }
 
 function roomGiftInfo(item: any): { name: string; num: number; image: string; total: string } | null {
@@ -647,6 +683,7 @@ export default function FollowedRoomsScreen() {
   const isDark = theme === 'dark';
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
   const showToast = useUiStore((state) => state.showToast);
+  const navigation = useNavigation<any>();
   const members = useMemberStore((state) => state.members);
   const [followed, setFollowed] = useState<FollowedRoom[]>([]);
   const [pinned, setPinned] = useState<string[]>([]);
@@ -807,9 +844,10 @@ export default function FollowedRoomsScreen() {
       if (nextCurrentUserId) setCurrentUserId(nextCurrentUserId);
       const res = await pocketApi.getRoomMessages({
         channelId,
-        serverId: nextMode === 'small' ? '' : room.serverId,
+        serverId: room.serverId,
         nextTime: 0,
         fetchAll: includeFans,
+        fallbackChannelId: nextMode === 'small' ? room.channelId : undefined,
       });
       const list = unwrapList(res, ['content.messageList', 'content.message', 'content.messages', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'messages', 'list']);
       setRoomMessages(sortMessagesNewestFirst(list));
@@ -834,9 +872,10 @@ export default function FollowedRoomsScreen() {
     try {
       const res = await pocketApi.getRoomMessages({
         channelId,
-        serverId: roomMode === 'small' ? '' : selectedRoom.serverId,
+        serverId: selectedRoom.serverId,
         nextTime: roomNextTime,
         fetchAll: showFanMessages,
+        fallbackChannelId: roomMode === 'small' ? selectedRoom.channelId : undefined,
       });
       const list = unwrapList(res, ['content.messageList', 'content.message', 'content.messages', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'messages', 'list']);
       const nextTime = getNextTime(res, list);
@@ -868,7 +907,7 @@ export default function FollowedRoomsScreen() {
     let next = media;
     try {
       if (media.type === 'live' || media.liveId) {
-        showToast('正在解析直播 / 录播地址...');
+        showToast('正在解析直播/录播地址...');
         next = await resolveRoomLiveMedia(media);
       }
       if (!next.url) {
@@ -876,14 +915,16 @@ export default function FollowedRoomsScreen() {
         return;
       }
       if (next.type === 'live') {
-        setRoomPlayer(next);
+        // v2.6: use unified MediaScreen player; detect live vs vod
+        const targetMode = next.isLive ? 'live' : 'vod';
+        navigation.navigate('Media', { mode: targetMode, playLiveId: next.liveId, playTitle: next.title, playCover: next.url });
         return;
       }
       setPlayingMedia(next);
     } catch (error) {
       showToast(`播放解析失败：${errorMessage(error)}`);
     }
-  }, [playingMedia, showToast]);
+  }, [playingMedia, showToast, navigation]);
 
   const openRoomRankPanel = useCallback(async () => {
     if (!roomPlayer?.liveId) {
@@ -1107,8 +1148,9 @@ export default function FollowedRoomsScreen() {
               if (typeof giftReplyText === 'string') giftReplyText = giftReplyText.trim();
               else giftReplyText = '';
             }
-            const isMediaLabel = /^\[(语音|图片|视频|链接)消息\]$/.test(body);
-            const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? body : '') : body);
+            const isMediaLabel = /^\[(语音|图片|视频|链接|直播)\]/.test(body);
+            const looksLikeFile = !media && /^https?:\/\//i.test(String(body || '')) || /\.(amr|mp3|m4a|aac|mp4|mov|jpg|jpeg|png|gif|webp)(\?|$)/i.test(String(body || ''));
+            const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? body : '') : (looksLikeFile ? '' : body));
             const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
 
             return (
@@ -1156,8 +1198,24 @@ export default function FollowedRoomsScreen() {
                           <Image source={{ uri: media.url }} style={media.title === '表情' ? styles.inlineSticker : styles.inlineImage} resizeMode="cover" />
                         </TouchableOpacity>
                       </>
+                    ) : (media.type === 'live' || media.type === 'video') && media.cover ? (
+                      // Live/Video with cover: image + centered play button overlay
+                      <TouchableOpacity style={styles.liveCardWrap} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} activeOpacity={0.9}>
+                        <Image source={{ uri: media.cover }} style={styles.liveCardImg} resizeMode="cover" />
+                        <View style={styles.liveCardOverlay}>
+                          <View style={styles.livePlayCircle}>
+                            <Text style={styles.livePlayIcon}>▶</Text>
+                          </View>
+                        </View>
+                        <View style={styles.liveCardTitleBar}>
+                          <Text style={styles.liveCardTitle} numberOfLines={1}>{media.title}</Text>
+                        </View>
+                      </TouchableOpacity>
                     ) : (
-                      <TouchableOpacity style={[styles.mediaCard, (idol || mine) && styles.mediaCardHighlight]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)}>
+                      <TouchableOpacity style={[styles.mediaCard, (idol || mine) && styles.mediaCardHighlight]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)} onPress={() => media.type === 'live' ? playMedia(media) : undefined}>
+                        {media.cover ? (
+                          <Image source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" />
+                        ) : null}
                         <View style={styles.mediaMeta}>
                           <Text style={[styles.mediaIcon, (idol || mine) && styles.mediaTextHighlight]}>{mediaLabel(media.type)}</Text>
                           <Text style={[styles.mediaTitle, (idol || mine) && styles.mediaTextHighlight, isDark && !(idol || mine) && styles.mediaTitleDark]} numberOfLines={2}>{media.title}</Text>
@@ -1168,7 +1226,7 @@ export default function FollowedRoomsScreen() {
                           onPress={() => playMedia(media)}
                         >
                           <Text style={[styles.mediaPlayText, (idol || mine) && styles.mediaPlayTextHighlight]}>
-                            {playingMedia?.url && media.url && playingMedia.url === media.url ? '收起' : canInlinePlay ? '播放' : '打开'}
+                            {playingMedia?.url && media.url && playingMedia.url === media.url ? '⏸ 暂停' : `▶ ${media.duration ? `${media.duration}s` : '播放'}`}
                           </Text>
                         </TouchableOpacity>
                       </TouchableOpacity>
@@ -1180,10 +1238,21 @@ export default function FollowedRoomsScreen() {
                         <TouchableOpacity style={styles.openLinkBtn} onPress={() => Linking.openURL(media.url).catch(() => {})}>
                           <Text style={styles.openLinkText} numberOfLines={1}>{media.url}</Text>
                         </TouchableOpacity>
+                      ) : media.type === 'audio' ? (
+                        <View style={styles.inlineAudioWrap}>
+                          <Video
+                            source={playerSource(media.url)}
+                            style={styles.inlineAudioHidden}
+                            paused={false}
+                            ignoreSilentSwitch="ignore"
+                            playInBackground={false}
+                            onEnd={() => setPlayingMedia(null)}
+                          />
+                        </View>
                       ) : (
                         <Video
                           source={playerSource(media.url)}
-                          style={media.type === 'audio' ? styles.inlineAudio : styles.inlineVideo}
+                          style={styles.inlineVideo}
                           controls
                           paused={false}
                           resizeMode="contain"
@@ -1328,6 +1397,14 @@ const styles = StyleSheet.create({
   giftMetaDark: { color: '#aaa' },
   mediaCard: { marginTop: 8, minWidth: 214, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)' },
   mediaCardHighlight: { backgroundColor: 'rgba(255,255,255,0.20)', borderColor: 'rgba(255,255,255,0.30)' },
+  liveCover: { width: '100%', height: 130, borderRadius: 10, marginBottom: 8, backgroundColor: 'rgba(128,128,128,0.1)' },
+  liveCardWrap: { marginTop: 8, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.1)' },
+  liveCardImg: { width: '100%', height: 180, borderRadius: 14 },
+  liveCardOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 36, alignItems: 'center', justifyContent: 'center' },
+  livePlayCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  livePlayIcon: { color: '#fff', fontSize: 24, marginLeft: 4 },
+  liveCardTitleBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: 'rgba(0,0,0,0.5)' },
+  liveCardTitle: { color: '#fff', fontSize: 13, fontWeight: '700' },
   mediaMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   mediaIcon: { color: '#ff6f91', fontSize: 12, fontWeight: '900' },
   mediaTitle: { flex: 1, color: '#333', fontSize: 13, fontWeight: '800', lineHeight: 18 },
@@ -1340,6 +1417,8 @@ const styles = StyleSheet.create({
   mediaPlayText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   mediaPlayTextHighlight: { color: '#ff6f91' },
   inlineAudio: { height: 52, minWidth: 224, marginTop: 8 },
+  inlineAudioWrap: { height: 0, overflow: 'hidden' },
+  inlineAudioHidden: { height: 0, width: 0 },
   inlineVideo: { height: 190, minWidth: 246, marginTop: 8, backgroundColor: '#000', borderRadius: 12 },
   inlineImage: { width: 228, height: 228, marginTop: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
   inlineSticker: { width: 120, height: 120, marginTop: 6, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },

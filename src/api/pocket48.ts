@@ -20,6 +20,8 @@ function createDeviceId(): string {
 
 const DEVICE_ID = createDeviceId();
 
+// --- App Info / Headers factories ---
+
 function appInfo(modern = false) {
   if (modern) {
     return {
@@ -58,6 +60,148 @@ function createHeaders(token?: string, pa?: string | null, modern = false): Head
   };
   if (token) headers.token = token;
   if (pa) headers.pa = pa;
+  return headers;
+}
+
+function createModernHeaders(token?: string, pa?: string | null): HeadersMap {
+  const headers = createHeaders(token, pa, true);
+  headers.appInfo = JSON.stringify({
+    vendor: 'apple',
+    deviceId: '7B93DFD0-472F-4736-A628-E85FAE086486',
+    appVersion: '7.1.35',
+    appBuild: '25101021',
+    osVersion: '16.3.0',
+    osType: 'ios',
+    deviceName: 'iPhone 14 Pro',
+    os: 'ios',
+  });
+  headers['User-Agent'] = 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)';
+  headers['Content-Type'] = 'application/json;charset=utf-8';
+  delete (headers as any).Origin;
+  delete (headers as any).Referer;
+  return headers;
+}
+
+function createCheckinHeaders(token?: string, pa?: string | null): HeadersMap {
+  const headers = createModernHeaders(token, pa);
+  headers['P-Sign-Type'] = 'V0';
+  return headers;
+}
+
+function createWeiboHeaders(token?: string, pa?: string | null): HeadersMap {
+  const headers = createModernHeaders(token, pa);
+  headers.appInfo = JSON.stringify({
+    vendor: 'apple',
+    deviceId: '7B93DFD0-472F-4736-A628-E85FAE086487',
+    appVersion: '7.1.38',
+    appBuild: '26042402',
+    osVersion: '26.5.0',
+    osType: 'ios',
+    deviceName: 'iPhone17,1',
+    os: 'ios',
+  });
+  headers['User-Agent'] = 'PocketFans201807/7.1.38 (iPhone; iOS 26.5; Scale/3.00)';
+  headers['P-Sign-Type'] = 'V0';
+  return headers;
+}
+
+function createInvoiceHeaders(token?: string, options?: { tokenHeader?: boolean }): HeadersMap {
+  const headers: HeadersMap = {
+    'Content-Type': 'application/json; charset=utf-8',
+    Accept: 'application/json, text/plain, */*',
+    Host: 'pocketapi.48.cn',
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+  };
+  if (options?.tokenHeader && token) headers.token = token;
+  return headers;
+}
+
+function createPfileHeaders(token?: string, pa?: string | null): HeadersMap {
+  const headers = createModernHeaders(token, pa);
+  delete headers['Content-Type'];
+  delete headers.Host;
+  return headers;
+}
+
+function createPageantryHeaders(token?: string, pa?: string | null): HeadersMap {
+  const headers: HeadersMap = {
+    'Content-Type': 'application/json; charset=utf-8',
+    Accept: 'application/json, text/plain, */*',
+    Origin: 'http://h5.snh48.com',
+    Referer: 'http://h5.snh48.com/',
+    Host: 'pocketapi.48.cn',
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+    appInfo: encodeURIComponent(JSON.stringify({
+      build: '26042402',
+      phoneSystemVersion: 'iOS',
+      schema: 'com.DuYi.SNH48',
+      appName: 'pocket48',
+      IMEI: '7B93DFD0-472F-4736-A628-E85FAE086487',
+      osType: 'ios',
+      version: '7.1.38',
+      phoneName: 'iPhone17,1',
+    })),
+  };
+  if (token) headers.token = token;
+  if (pa) headers.pa = pa;
+  return headers;
+}
+
+function createElectionVoteHeaders(payload: any = {}, options: { auth?: boolean; appToken?: boolean } = {}): HeadersMap {
+  const headers: HeadersMap = {
+    'Content-Type': 'application/json; charset=utf-8',
+    Accept: 'application/json, text/plain, */*',
+    Origin: 'https://ceremony.ckg48.com',
+    Referer: 'https://ceremony.ckg48.com/',
+    Host: 'voteapi.48.cn',
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+  };
+  if (options.appToken) {
+    const appToken = String(payload.appToken || payload.pocketToken || payload.token || '').trim();
+    if (appToken) headers['X-APP-TOKEN'] = appToken;
+  }
+  if (options.auth !== false) {
+    const voteToken = String(
+      payload.voteToken || payload.electionToken || payload.authToken
+      || payload.bearerToken || payload.authorization || payload.electionAuthorization || ''
+    ).replace(/^Bearer\s+/i, '').trim();
+    if (voteToken) headers.Authorization = `Bearer ${voteToken}`;
+  }
+  return headers;
+}
+
+function createMeet48Headers(): HeadersMap {
+  const settings = useSettingsStore.getState().settings;
+  const storedAuth = settings.meet48Auth;
+  const authDisabled = storedAuth?.disabled === true;
+  const deviceId = (!authDisabled && storedAuth?.deviceId) || createDeviceId();
+  const headers: HeadersMap = {
+    'content-type': 'application/json',
+    accept: '*/*',
+    'accept-language': 'zh_TW',
+    'user-agent': 'Meet48/2.0.3 (com.dapp.meet48; build:2602062; iOS 26.4.2) Alamofire/5.8.0',
+    'x-versioncode': '2.0.3',
+    'x-app-id': '2e63a31eac9d056755b0f83b89ef6674',
+    'x-device-info': JSON.stringify({
+      appVersion: '2.0.3',
+      deviceId,
+      osType: 'ios',
+      appName: 'Meet48',
+      vendor: 'apple',
+      osVersion: '26.4.2',
+      appBuildId: '2602062',
+      osLoginType: 'common',
+      bundleId: 'com.dapp.meet48',
+      deviceName: 'iPhone17,1',
+    }),
+    'x-web-type': '1',
+    'x-deviceid': deviceId,
+    'x-custom-device-type': 'IOS',
+  };
+  const token = authDisabled ? '' : (storedAuth?.token || '');
+  const cookie = authDisabled ? '' : (storedAuth?.cookie || '');
+  if (token) headers.token = token;
+  if (cookie) headers.cookie = cookie;
   return headers;
 }
 
@@ -441,8 +585,8 @@ export const pocketApi = {
     return pocketPost(`${BASE}/user/api/v1/user/money`, {}, { fallback: '获取余额失败' });
   },
 
-  async getGroupTeamStar() {
-    return pocketPost(`${BASE}/user/api/v1/client/update/group_team_star`, {}, {
+  async getGroupTeamStar(payload?: any) {
+    return pocketPost(`${BASE}/user/api/v1/client/update/group_team_star`, payload || {}, {
       modern: true,
       tokenRequired: false,
       fallback: '获取官方成员列表失败',
@@ -467,23 +611,53 @@ export const pocketApi = {
     }, { fallback: '获取最新消息失败' });
   },
 
-  async getRoomMessages(params: { channelId: string; serverId: string; nextTime?: number; fetchAll?: boolean; limit?: number }) {
+  async getRoomMessages(params: { channelId: string; serverId: string; nextTime?: number; fetchAll?: boolean; limit?: number; fallbackChannelId?: string }) {
     const channelId = String(params.channelId || '');
+    const fallbackCid = params.fallbackChannelId ? String(params.fallbackChannelId) : '';
     const originalServerId = String(params.serverId || '');
     if (!channelId) throw new Error('missing channelId');
-    const resolvedServerIds = await resolveServerIds(channelId);
-    const url = params.fetchAll
-      ? `${BASE}/im/api/v1/team/message/list/all`
-      : `${BASE}/im/api/v1/team/message/list/homeowner`;
+    // v2.4.2 logic: resolve serverId when original is empty, and remember it
+    const resolvedServerId = (originalServerId && originalServerId !== '0') ? '' : await resolveServerId(channelId);
+    const serverIds = [originalServerId, resolvedServerId]
+      .map((item) => String(item || ''))
+      .filter((item, index, arr) => item && item !== '0' && arr.indexOf(item) === index);
+    if (serverIds.length) rememberServerId(channelId, serverIds[0]);
+
+    const urls = params.fetchAll
+      ? [
+        { url: `${BASE}/im/api/v1/team/message/list/all`, mode: 'all' },
+        { url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner-fallback' },
+      ]
+      : [{ url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner' }];
+    const attempts: Array<{ url: string; payload: any; modern?: boolean; signed?: boolean; label: string }> = [];
     const limit = params.limit || 50;
     const next = params.nextTime || 0;
-    const attempts: Array<{ url: string; payload: any; signed?: boolean; label: string }> = [];
-    for (const serverId of [originalServerId, ...resolvedServerIds]) {
-      const sid = String(serverId || '');
-      if (!sid || sid === '0') continue;
-      const payload = { channelId: safeNumber(channelId), serverId: safeNumber(sid), nextTime: next, limit };
-      attempts.push({ url, payload, label: `room srv=${sid}` });
-      attempts.push({ url, payload, signed: false, label: `room unsigned srv=${sid}` });
+    // Try both channelId and fallbackChannelId
+    const cids = [channelId, ...(fallbackCid && fallbackCid !== channelId ? [fallbackCid] : [])];
+    for (const cid of cids) {
+      const svrs = cid === channelId ? serverIds : [params.serverId || ''].filter(s => s && s !== '0');
+      for (const serverId of svrs.length ? svrs : ['']) {
+        const sid = String(serverId || '');
+        if (!sid || sid === '0') continue;
+        for (const entry of urls) {
+          attempts.push({
+            url: entry.url,
+            payload: { channelId: safeNumber(cid), serverId: safeNumber(sid), nextTime: next, limit },
+            label: `${entry.mode} num ch=${cid} srv=${sid}`,
+          });
+          attempts.push({
+            url: entry.url,
+            payload: { channelId: String(cid), serverId: String(sid), nextTime: next, limit },
+            label: `${entry.mode} str ch=${cid} srv=${sid}`,
+          });
+          attempts.push({
+            url: entry.url,
+            payload: { channelId: safeNumber(cid), serverId: safeNumber(sid), nextTime: next, limit },
+            modern: true,
+            label: `${entry.mode} mod ch=${cid} srv=${sid}`,
+          });
+        }
+      }
     }
     if (!attempts.length) throw new Error('missing serverId');
     return tryPocketPost(attempts, 'get room messages failed');
@@ -711,6 +885,396 @@ export const pocketApi = {
       type: 1,
       liveId: String(liveId),
     }, { fallback: '获取直播榜单失败' });
+  },
+
+  // --- v2.6 New APIs ---
+
+  async getLiveResult(liveId: string) {
+    return pocketPost(`${BASE}/live/api/v1/live/result`, {
+      liveId: String(liveId),
+    }, { tokenRequired: false, fallback: '获取直播结果失败' });
+  },
+
+  async getTripList(params: { groupId?: number; memberId?: string; userId?: string; lastTime?: string; isMore?: boolean } = {}) {
+    const payload: any = {
+      lastTime: String(params.lastTime || '0'),
+      groupId: Number(params.groupId) || 0,
+      isMore: !!params.isMore,
+    };
+    if (params.memberId) payload.memberId = String(params.memberId);
+    if (params.userId) payload.userId = String(params.userId);
+    return pocketPost(`${BASE}/trip/api/trip/v1/list`, payload, { fallback: '获取行程失败' });
+  },
+
+  async getMeleeWeekRank(rankId: number, nextId?: string) {
+    const payload: any = { rankId: Number(rankId) || 0 };
+    if (nextId) payload.nextId = nextId;
+    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeWeekRank`, payload, { fallback: '获取乱斗周榜失败' });
+  },
+
+  async getMeleeRankPage(rankId?: number, nextId?: string) {
+    const payload: any = {};
+    if (rankId !== undefined && rankId !== null) payload.rankid = Number(rankId) || 0;
+    if (nextId) payload.nextId = nextId;
+    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeRankPage`, payload, { fallback: '获取乱斗榜单失败' });
+  },
+
+  async getMeleeYearRankPage(rankId?: number, nextId?: string) {
+    const payload: any = {};
+    if (rankId !== undefined && rankId !== null) payload.rankid = Number(rankId) || 0;
+    if (nextId) payload.nextId = nextId;
+    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeYearRankPage`, payload, { fallback: '获取乱斗年榜失败' });
+  },
+
+  async getPersonMeleeRankPage(resId: number) {
+    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getPersonMeleeRankPage`, {
+      resId: Number(resId) || 0,
+    }, { fallback: '获取成员鸡腿贡献榜失败' });
+  },
+
+  async getMemberDynamic(params: { ownerId: string; nextTime?: number; roomId?: string }) {
+    return pocketPost(`${BASE}/im/api/v1/chatroom/msg/list/aim/type`, {
+      extMsgType: 'POST_INFO',
+      roomId: String(params.roomId || ''),
+      ownerId: String(params.ownerId),
+      nextTime: Number(params.nextTime) || 0,
+    }, { fallback: '获取成员动态失败', headers: createWeiboHeaders(requireToken()) });
+  },
+
+  async getMemberWeibo(params: { ownerId: string; nextTime?: number; roomId?: string }) {
+    return pocketPost(`${BASE}/im/api/v1/chatroom/msg/list/aim/type`, {
+      extMsgType: 'WEI_BO',
+      roomId: String(params.roomId || ''),
+      ownerId: String(params.ownerId),
+      nextTime: Number(params.nextTime) || 0,
+    }, { fallback: '获取成员微博失败', headers: createWeiboHeaders(requireToken()) });
+  },
+
+  async getMemberPostImages(userId: string, nextTime = 0) {
+    return pocketPost(`${BASE}/posts/api/v1/posts/img/list`, {
+      userId: String(userId),
+      nextTime: Number(nextTime) || 0,
+    }, { fallback: '获取成员图片动态失败' });
+  },
+
+  async getConversationPage(nextTime = 0, limit = 20) {
+    return pocketPost(`${BASE}/im/api/v1/conversation/page`, {
+      nextTime: Number(nextTime) || 0,
+      limit: Number(limit) || 20,
+    }, { modern: true, fallback: '获取会话列表失败' });
+  },
+
+  async getUserHomeInfo(userId?: string) {
+    const payload: any = {};
+    if (userId) payload.userId = String(userId);
+    return pocketPost(`${BASE}/user/api/v1/user/info/home`, payload, {
+      modern: true,
+      fallback: '获取用户主页信息失败',
+    });
+  },
+
+  async getUnreadMessageCount() {
+    return pocketPost(`${BASE}/message/api/v1/unread/message/num`, {}, {
+      modern: true,
+      fallback: '获取未读消息数失败',
+    });
+  },
+
+  async getUserPictureFrames() {
+    return pocketPost(`${BASE}/user/api/v1/user/get/picture/frame`, {}, {
+      modern: true,
+      fallback: '获取头像框失败',
+    });
+  },
+
+  async getMediaCollectionTotalCount() {
+    return pocketPost(`${BASE}/media/api/media/v1/getCollectionTotalCount`, {}, {
+      modern: true,
+      fallback: '获取收藏统计失败',
+    });
+  },
+
+  async getFlipCustomIndexV1(memberId: string) {
+    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/custom/index`, {
+      memberId: String(memberId),
+    }, { tokenRequired: false, fallback: '获取翻牌配置失败' });
+  },
+
+  // --- Invoice APIs ---
+
+  async getInvoiceTips() {
+    const res = await requestJson<any>(`${BASE}/invoice/api/v1/invoice/tips`, {
+      method: 'GET',
+      headers: createInvoiceHeaders(),
+    });
+    return assertPocketOk(res, '获取开票提示失败');
+  },
+
+  async getInvoiceConfig() {
+    return pocketPost(`${BASE}/invoice/api/v1/invoice/config`, {}, {
+      headers: createInvoiceHeaders(requireToken(), { tokenHeader: true }),
+      fallback: '获取开票配置失败',
+    });
+  },
+
+  async getInvoiceOrderList(nextTime = '', yearMonth = '') {
+    const token = requireToken();
+    return pocketPost(`${BASE}/invoice/api/v1/order/list`, {
+      nextTime: String(nextTime || '0'),
+      token,
+      yearMonth: String(yearMonth || ''),
+    }, {
+      headers: createInvoiceHeaders(),
+      fallback: '获取可开票订单失败',
+    });
+  },
+
+  async applyElectronicInvoice(params: {
+    buyerType?: number;
+    buyerName?: string;
+    buyerTaxNo?: string;
+    buyerAddress?: string;
+    buyerPhone?: string;
+    buyerBankName?: string;
+    buyerBankAccount?: string;
+    notifyEmail?: string;
+    notifyMobile?: string;
+    orderDataId?: string[];
+  }) {
+    const token = requireToken();
+    const ids = (params.orderDataId || []).map(item => String(item || '').trim()).filter(Boolean);
+    if (!ids.length) throw new Error('请选择要开票的订单');
+    const payload: any = {
+      buyerType: Number(params.buyerType) === 1 ? 1 : 0,
+      buyerName: String(params.buyerName || '').trim(),
+      notifyEmail: String(params.notifyEmail || '').trim(),
+      notifyMobile: String(params.notifyMobile || '').trim(),
+      orderDataId: ids,
+      token,
+    };
+    if (payload.buyerType === 1) {
+      Object.assign(payload, {
+        buyerAddress: String(params.buyerAddress || '').trim(),
+        buyerBankAccount: String(params.buyerBankAccount || '').trim(),
+        buyerBankName: String(params.buyerBankName || '').trim(),
+        buyerPhone: String(params.buyerPhone || '').trim(),
+        buyerTaxNo: String(params.buyerTaxNo || '').trim(),
+      });
+    }
+    return pocketPost(`${BASE}/invoice/api/v1/invoice/apply/electronic`, payload, {
+      headers: createInvoiceHeaders(),
+      fallback: '提交开票申请失败',
+    });
+  },
+
+  // --- Meet48 APIs ---
+
+  async getMeet48LiveList(params: { next?: number; record?: boolean } = {}) {
+    const res = await requestJson<any>('https://meetapi-v2.meet48.xyz/meet48-api/live/api/v1/live/getLiveList', {
+      method: 'POST',
+      body: { title: null, next: params.next || 0, record: !!params.record },
+      headers: createMeet48Headers(),
+    });
+    return assertPocketOk(res, 'Meet48 API 错误');
+  },
+
+  async getMeet48LiveOne(liveId: string) {
+    const res = await requestJson<any>('https://meetapi-v2.meet48.xyz/meet48-api/live/api/v1/live/getLiveOne', {
+      method: 'POST',
+      body: { liveId: String(liveId), streamProtocol: 'RTMP' },
+      headers: createMeet48Headers(),
+    });
+    return assertPocketOk(res, 'Meet48 API 错误');
+  },
+
+  // --- Election / Vote APIs ---
+
+  async loginElectionVote(payload: any = {}) {
+    const appToken = String(payload.appToken || payload.pocketToken || payload.token || '').trim();
+    if (!appToken) throw new Error('缺少 Token');
+    const res = await requestJson<any>('https://voteapi.48.cn/election-vote/api/v1/login/app', {
+      method: 'POST',
+      body: {
+        appToken,
+        nickName: String(payload.nickName || payload.nickname || ''),
+        avatar: String(payload.avatar || ''),
+        device: String(payload.device || 'iOS;iPhone17,1;7.1.38;26042402'),
+        platform: String(payload.platform || 'IOS'),
+      },
+      headers: createElectionVoteHeaders(payload, { auth: false, appToken: true }),
+    });
+    return assertPocketOk(res, '计分登录失败');
+  },
+
+  async getElectionVoteStatus(payload: any = {}) {
+    const res = await requestJson<any>('https://voteapi.48.cn/election-vote/api/v1/vote/status', {
+      method: 'GET',
+      headers: createElectionVoteHeaders(payload, { auth: false }),
+    });
+    return assertPocketOk(res, '计分状态获取失败');
+  },
+
+  async getElectionActStatus(payload: any = {}) {
+    const res = await requestJson<any>('https://voteapi.48.cn/election-vote/api/v1/act/status', {
+      method: 'GET',
+      headers: createElectionVoteHeaders(payload, { auth: false }),
+    });
+    return assertPocketOk(res, '活动状态获取失败');
+  },
+
+  async getElectionUserInfo(payload: any = {}) {
+    const res = await requestJson<any>('https://voteapi.48.cn/election-vote/api/v1/userinfo/get', {
+      method: 'POST',
+      body: {},
+      headers: createElectionVoteHeaders(payload, { auth: true }),
+    });
+    return assertPocketOk(res, '计分用户信息获取失败');
+  },
+
+  async getElectionVoteHistory(payload: any = {}) {
+    const res = await requestJson<any>('https://voteapi.48.cn/election-vote/api/v1/vote/history/list', {
+      method: 'POST',
+      body: { limit: Number(payload.limit) || 10, lastTime: Number(payload.lastTime) || 0 },
+      headers: createElectionVoteHeaders(payload, { auth: true }),
+    });
+    return assertPocketOk(res, '投票记录获取失败');
+  },
+
+  async getElectionCodeActHistory(payload: any = {}) {
+    const res = await requestJson<any>('https://voteapi.48.cn/election-vote/api/v1/code/act/history/list', {
+      method: 'POST',
+      body: { limit: Number(payload.limit) || 10, lastTime: Number(payload.lastTime) || 0 },
+      headers: createElectionVoteHeaders(payload, { auth: true }),
+    });
+    return assertPocketOk(res, '激活码记录获取失败');
+  },
+
+  async getElectionSgBindStatus(payload: any = {}) {
+    const res = await requestJson<any>('https://voteapi.48.cn/election-vote/api/v1/userinfo/check/bind/sg', {
+      method: 'POST',
+      body: {},
+      headers: createElectionVoteHeaders(payload, { auth: true }),
+    });
+    return assertPocketOk(res, 'SG绑定状态获取失败');
+  },
+
+  async bindElectionSg(payload: any = {}) {
+    const res = await requestJson<any>('https://voteapi.48.cn/election-vote/api/v1/bind/sg', {
+      method: 'POST',
+      body: {
+        clientId: String(payload.clientId || '20260518001'),
+        platform: String(payload.platform || 'IOS'),
+        code: String(payload.code || ''),
+        device: String(payload.device || 'iOS;iPhone17,1;7.1.38;26042402'),
+      },
+      headers: createElectionVoteHeaders(payload, { auth: true, appToken: true }),
+    });
+    return assertPocketOk(res, 'SG绑定失败');
+  },
+
+  // --- Pageantry APIs ---
+
+  async getPageantryRareTreasures() {
+    return pocketPost(`${BASE}/ai-fairyland/api/pageantry/2026/v1/rare_treasure/list`, {}, {
+      headers: createPageantryHeaders(requireToken()),
+      fallback: '获取稀有宝物列表失败',
+    });
+  },
+
+  async getPageantryBuyStarList(starId = '', starName = '') {
+    return pocketPost(`${BASE}/ai-fairyland/api/pageantry/2026/v1/get/buy_star/list`, {
+      starId: String(starId),
+      starName: String(starName),
+    }, {
+      headers: createPageantryHeaders(requireToken()),
+      fallback: '获取计分成员列表失败',
+    });
+  },
+
+  // --- Open Live Participants (web scraping) ---
+
+  async getOpenLiveParticipants(liveId: string, title = '', dateHint = '') {
+    const pageHeaders: HeadersMap = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      Referer: 'https://live.48.cn/',
+    };
+
+    try {
+      // Try the memberhot API first
+      const livePageUrl = `https://live.48.cn/Index/inlive/id/${encodeURIComponent(liveId)}`;
+      const html = await requestJson<string>(livePageUrl, {
+        method: 'GET',
+        headers: pageHeaders,
+      }) as any; // Returns raw HTML as string
+
+      // Extract hidden input values
+      const extractInput = (inputId: string) => {
+        const pattern = new RegExp(`<input[^>]+id=["']${inputId}["'][^>]+value=["']([^"']*)["']`, 'i');
+        const match = String(html || '').match(pattern);
+        return match ? String(match[1] || '').trim() : '';
+      };
+
+      const videoId = extractInput('vedio_id');
+      const clubId = extractInput('club_id');
+      const pageToken = extractInput('param');
+
+      if (videoId && clubId && pageToken) {
+        try {
+          const payload = new URLSearchParams({
+            act: 'default',
+            video_id: videoId,
+            token: pageToken,
+            club_id: clubId,
+          }).toString();
+
+          const memberRes = await requestJson<any>(
+            'https://live.48.cn/Index/ajax_getmemberhot/',
+            {
+              method: 'POST',
+              body: payload,
+              headers: {
+                ...pageHeaders,
+                Origin: 'https://live.48.cn',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+              },
+            },
+          );
+
+          const rows = Array.isArray(memberRes?.desc) ? memberRes.desc : [];
+          const participants = rows
+            .map((item: any) => ({
+              name: String(item?.memberName || '').trim(),
+              memberId: String(item?.memberId || '').trim(),
+              avatar: String(item?.avatar || '').trim(),
+              hot: item?.hot ?? '',
+            }))
+            .filter((item: any) => item.name);
+
+          if (participants.length) {
+            return { success: true, content: { participants, source: 'memberhot' } };
+          }
+        } catch {
+          // Fall through to HTML parsing
+        }
+      }
+
+      // Fallback: extract names from HTML
+      const nameMatches = String(html || '').matchAll(/<p class="listname">\s*([^<\r\n]+?)\s*(?:<em|<\/p>)/gi);
+      const names: string[] = [];
+      for (const match of nameMatches) {
+        const name = String(match[1] || '').replace(/\s+/g, ' ').trim();
+        if (name && !names.includes(name)) names.push(name);
+      }
+      const htmlParticipants = names.map(name => ({ name, memberId: '', avatar: '', hot: '' }));
+      if (htmlParticipants.length) {
+        return { success: true, content: { participants: htmlParticipants, source: 'html' } };
+      }
+    } catch {
+      // All attempts failed
+    }
+
+    return { success: false, msg: '未找到参与成员' };
   },
 };
 

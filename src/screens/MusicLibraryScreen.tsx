@@ -8,13 +8,16 @@ import {
   View,
 } from 'react-native';
 import Video from 'react-native-video';
-import { useNavigation } from '@react-navigation/native';
 import officialMediaApi from '../api/officialMedia';
 import { useSettingsStore } from '../store';
+import { useMusicPlayerStore } from '../store/musicPlayerStore';
+import { MusicEngine, mediaUrl as buildMediaUrl } from '../services/musicPlayer';
 import { FadeInView } from '../components/Motion';
-import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
+import { errorMessage, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
+import MiniPlayerBar from '../components/MiniPlayerBar';
+import FullScreenPlayer from '../components/FullScreenPlayer';
 
 function normalizeMusic(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -37,35 +40,25 @@ function nextCtimeFrom(list: any[]): number {
   return times.length ? Math.min(...times) : 0;
 }
 
-function mediaUrl(path: string): string {
-  if (!path) return '';
-  if (path.startsWith('http')) return path;
-  return path.startsWith('/') ? `https://mp4.48.cn${path}` : normalizeUrl(path);
-}
-
-function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 export default function MusicLibraryScreen() {
-  const navigation = useNavigation<any>();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const playbackState = useMusicPlayerStore((s) => s.playbackState);
+  const playUrl = useMusicPlayerStore((s) => s.url);
+  const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
+  const queue = useMusicPlayerStore((s) => s.queue);
+  const playMode = useMusicPlayerStore((s) => s.playMode);
   const [songs, setSongs] = useState<any[]>([]);
   const [query, setQuery] = useState('');
-  const [playing, setPlaying] = useState<any | null>(null);
-  const [playUrl, setPlayUrl] = useState('');
-  const [paused, setPaused] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [position, setPosition] = useState(0);
   const [status, setStatus] = useState('加载中...');
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [nextCtime, setNextCtime] = useState(0);
+  const [showFullScreen, setShowFullScreen] = useState(false);
   const loadingRef = useRef(false);
+  const videoRef = useRef<any>(null);
+  // Keep MusicEngine ref in sync whenever Video element exists
+  useEffect(() => { MusicEngine.setVideoRef(videoRef.current); }, [playbackState, playUrl]);
 
   const filteredSongs = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -104,6 +97,11 @@ export default function MusicLibraryScreen() {
 
   useEffect(() => {
     load(true);
+    MusicEngine.setUrlResolver(async (track) => {
+      const res = await officialMediaApi.getMusic(String(track.musicId || track.id));
+      const data = res?.content?.data || res?.content || res?.data || {};
+      return buildMediaUrl(String(data.filePath || data.musicPath || data.playStreamPath || data.audioPath || data.url || ''));
+    });
   }, []);
 
   const loadMore = () => {
@@ -111,36 +109,9 @@ export default function MusicLibraryScreen() {
     load(false);
   };
 
-  const play = async (item: any) => {
-    setPlaying(item);
-    setPlayUrl('');
-    setPaused(false);
-    setDuration(0);
-    setPosition(0);
-    setStatus('正在解析音乐地址...');
-    try {
-      const res = await officialMediaApi.getMusic(String(item.musicId || item.id));
-      const data = res?.content?.data || res?.content || res?.data || {};
-      const url = mediaUrl(String(data.filePath || data.musicPath || data.playStreamPath || data.audioPath || data.url || ''));
-      if (!url) throw new Error('未返回音乐文件地址');
-      setPlayUrl(url);
-      setStatus(`正在播放：${item.title || data.title || '音乐'}`);
-    } catch (error) {
-      setStatus(`播放失败：${errorMessage(error)}`);
-    }
+  const playSong = async (item: any) => {
+    await MusicEngine.playTrack(item, songs);
   };
-
-  const playByOffset = (offset: number) => {
-    const source = filteredSongs.length ? filteredSongs : songs;
-    if (!source.length) return;
-    const currentKey = String(playing?.musicId || playing?.id || '');
-    const currentIndex = source.findIndex((item) => String(item.musicId || item.id || '') === currentKey);
-    const baseIndex = currentIndex >= 0 ? currentIndex : 0;
-    const nextIndex = (baseIndex + offset + source.length) % source.length;
-    play(source[nextIndex]);
-  };
-
-  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
@@ -161,7 +132,7 @@ export default function MusicLibraryScreen() {
         <FlatList
           data={filteredSongs}
           keyExtractor={(item, index) => String(item.musicId || item.id || index)}
-            contentContainerStyle={[styles.listContent, playUrl && styles.listContentWithPlayer]}
+            contentContainerStyle={[styles.listContent, playbackState !== 'idle' && { paddingBottom: 80 }]}
             initialNumToRender={12}
             maxToRenderPerBatch={12}
             windowSize={7}
@@ -169,11 +140,13 @@ export default function MusicLibraryScreen() {
             onEndReached={loadMore}
           onEndReachedThreshold={0.35}
           ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
-          renderItem={({ item, index }) => (
+          renderItem={({ item, index }) => {
+            const active = queue[currentIndex] && (String(queue[currentIndex].musicId || queue[currentIndex].id) === String(item.musicId || item.id));
+            return (
             <FadeInView delay={80 + index * 30} duration={300}>
               <TouchableOpacity
-                style={[styles.songItem, isDark && styles.cardDark, playing?.musicId === item.musicId && styles.songItemActive]}
-                onPress={() => play(item)}
+                style={[styles.songItem, isDark && styles.cardDark, active && styles.songItemActive]}
+                onPress={() => playSong(item)}
               >
                 <View style={styles.songInfo}>
                   <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={1}>{item.title || '无标题'}</Text>
@@ -184,61 +157,32 @@ export default function MusicLibraryScreen() {
                 </View>
               </TouchableOpacity>
             </FadeInView>
-          )}
+          )}}
         />
       </FadeInView>
-      {playUrl ? (
-        <View style={[styles.miniPlayer, isDark && styles.miniPlayerDark]}>
-          <Video
-            source={{ uri: playUrl }}
-            style={styles.tinyPlayer}
-            paused={paused}
-            controls={false}
-            ignoreSilentSwitch="ignore"
-            onLoad={(event) => setDuration(event.duration || 0)}
-            onProgress={(event) => setPosition(event.currentTime || 0)}
-            onEnd={() => playByOffset(1)}
-            onError={() => setStatus('音乐播放失败，请换一首试试')}
-          />
-          <View style={styles.miniTop}>
-            <View style={styles.coverArt}>
-              <Text style={styles.coverArtText}>♪</Text>
-            </View>
-            <View style={styles.playerMeta}>
-              <Text style={[styles.playerTitle, isDark && styles.textDark]} numberOfLines={1}>{playing?.title || '正在播放'}</Text>
-              <Text style={[styles.playerSub, isDark && styles.textSubDark]} numberOfLines={1}>
-                {[playing?.joinMemberNames, playing?.subTitle, playing?.albumName].filter(Boolean).join(' · ') || '官方音乐'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.closePlayer, isDark && styles.closePlayerDark]}
-              onPress={() => { setPlaying(null); setPlayUrl(''); }}
-            >
-              <Text style={[styles.closePlayerText, isDark && styles.closePlayerTextDark]}>✕</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.progressWrap}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progress * 100}%` as any }]} />
-            </View>
-            <View style={styles.timeRow}>
-              <Text style={[styles.timeText, isDark && styles.textSubDark]}>{formatTime(position)}</Text>
-              <Text style={[styles.timeText, isDark && styles.textSubDark]}>{formatTime(duration)}</Text>
-            </View>
-          </View>
-          <View style={styles.controlsRow}>
-            <TouchableOpacity style={styles.controlBtn} onPress={() => playByOffset(-1)}>
-              <Text style={styles.controlIcon}>⏮</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.mainPlayBtn} onPress={() => setPaused((v) => !v)}>
-              <Text style={styles.mainPlayIcon}>{paused ? '▶' : '⏸'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.controlBtn} onPress={() => playByOffset(1)}>
-              <Text style={styles.controlIcon}>⏭</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {playbackState !== 'idle' && playUrl ? (
+        <Video
+          ref={videoRef}
+          source={{ uri: playUrl }}
+          style={styles.tinyPlayer}
+          paused={playbackState !== 'playing'}
+          ignoreSilentSwitch="ignore"
+          onLoad={(e) => MusicEngine.onLoad(e.duration || 0)}
+          onProgress={(e) => MusicEngine.onProgress(e.currentTime || 0)}
+          onEnd={() => {
+            if (playMode === 'single') {
+              useMusicPlayerStore.getState().setPosition(0);
+              useMusicPlayerStore.getState().setPlaybackState('paused');
+              setTimeout(() => useMusicPlayerStore.getState().setPlaybackState('playing'), 50);
+            } else {
+              MusicEngine.next();
+            }
+          }}
+          onError={() => { MusicEngine.next(); }}
+        />
       ) : null}
+      <MiniPlayerBar onOpenFullScreen={() => setShowFullScreen(true)} />
+      <FullScreenPlayer visible={showFullScreen} onClose={() => setShowFullScreen(false)} />
     </View>
   );
 }
@@ -252,7 +196,6 @@ const styles = StyleSheet.create({
   searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
   status: { margin: 12, color: '#444', fontSize: 13, textAlign: 'center' },
   listContent: { paddingBottom: 120 },
-  listContentWithPlayer: { paddingBottom: 140 },
   songItem: { height: 76, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.72)', marginHorizontal: 16, marginVertical: 4, borderRadius: 12 },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.68)' },
   songItemActive: { borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
@@ -261,28 +204,6 @@ const styles = StyleSheet.create({
   songArtist: { fontSize: 11, color: '#333333', marginTop: 2 },
   dateText: { fontSize: 11, color: '#333333', marginTop: 4 },
   tinyPlayer: { width: 0, height: 0 },
-  miniPlayer: { position: 'absolute', left: 10, right: 10, bottom: 10, padding: 12, paddingBottom: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.76)', shadowColor: '#000', shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: -2 }, elevation: 8 },
-  miniPlayerDark: { backgroundColor: 'rgba(22,22,22,0.94)', borderColor: 'rgba(255,255,255,0.06)', shadowOpacity: 0.20 },
-  miniTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  coverArt: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
-  coverArtText: { color: '#fff', fontSize: 18 },
-  playerMeta: { flex: 1, minWidth: 0 },
-  playerTitle: { fontSize: 14, fontWeight: '800', color: '#222' },
-  playerSub: { fontSize: 11, color: '#555', marginTop: 1 },
-  closePlayer: { padding: 4 },
-  closePlayerDark: { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12 },
-  closePlayerText: { color: '#999', fontSize: 12, fontWeight: '700' },
-  closePlayerTextDark: { color: '#eeeeee' },
-  progressWrap: { marginBottom: 8 },
-  progressTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' },
-  progressFill: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  timeText: { fontSize: 10, color: '#555' },
-  controlsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 18 },
-  controlBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,111,145,0.08)' },
-  controlIcon: { fontSize: 14, color: '#ff6f91' },
-  mainPlayBtn: { width: 44, height: 44, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
-  mainPlayIcon: { fontSize: 18, color: '#fff' },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },
 });

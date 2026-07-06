@@ -168,12 +168,36 @@ export async function enqueueDownload(params: {
       const downloadedUri = result?.uri;
       const done = { status: 'done' as const, progress: 1, localUri: downloadedUri || localUri };
       await updateItem(item.id, done);
+
+      // Auto-save to gallery so user can find it
+      if (item.type === 'image' || item.type === 'video') {
+        try {
+          const { status } = await MediaLibrary.requestPermissionsAsync();
+          if (status === 'granted') {
+            const asset = await MediaLibrary.createAssetAsync(done.localUri || localUri);
+            if (asset) await MediaLibrary.createAlbumAsync('牙牙消息', asset, false).catch(() => {});
+          }
+        } catch {}
+      }
+
       return { ...item, ...done };
     }
 
     const { uri: downloadedUri } = await FileSystem.downloadAsync(url, localUri, { headers });
     const done = { status: 'done' as const, progress: 1, localUri: downloadedUri || localUri };
     await updateItem(item.id, done);
+
+    // Auto-save to gallery so user can find it
+    if (item.type === 'image' || item.type === 'video') {
+      try {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status === 'granted') {
+          const asset = await MediaLibrary.createAssetAsync(done.localUri || localUri);
+          if (asset) await MediaLibrary.createAlbumAsync('牙牙消息', asset, false).catch(() => {});
+        }
+      } catch {}
+    }
+
     return { ...item, ...done };
   } catch (error: any) {
     const failed = { status: 'failed' as const, error: error?.message || String(error) };

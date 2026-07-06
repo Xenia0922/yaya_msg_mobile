@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "牙牙消息 - SNH48 Group 口袋48 第三方客户端"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "牙牙消息主页面"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "牙牙消息"
+    }
+  ]
+}

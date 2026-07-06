@@ -22,6 +22,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     yaya_auto_checkin_last_user: '',
     customBackgroundFile: '',
     customBackgroundUpdatedAt: 0,
+    yaya_trip_show_all: false,
+    meet48Auth: null,
   },
   setSettings: (patch) =>
     set((state) => ({ settings: { ...state.settings, ...patch } })),
@@ -106,4 +108,22 @@ export const useAppStore = create<AppState>((set) => ({
   setDateMonth: (v) => set({ dateMonth: v }),
   setDateDay: (v) => set({ dateDay: v }),
   setSortOrder: (v) => set({ sortOrder: v }),
+}));
+
+// --- v2.6: Announcement store ---
+
+interface AnnouncementState {
+  seenIds: string[];
+  lastFetched: number;
+  markSeen: (id: string) => void;
+  setLastFetched: (ts: number) => void;
+}
+
+export const useAnnouncementStore = create<AnnouncementState>((set) => ({
+  seenIds: [],
+  lastFetched: 0,
+  markSeen: (id) => set((state) => ({
+    seenIds: state.seenIds.includes(id) ? state.seenIds : [...state.seenIds, id],
+  })),
+  setLastFetched: (ts) => set({ lastFetched: ts }),
 }));

@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, ImageBackground } from 'react-native';
+import { View, Text, ActivityIndicator, ImageBackground, Modal, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation';
 import { loadSettings } from './src/services/settings';
-import { useSettingsStore, useMemberStore } from './src/store';
+import { useSettingsStore, useMemberStore, useAnnouncementStore } from './src/store';
 import { loadMembers } from './src/utils/members';
-import { fetchJsonStrict } from './src/utils/network';
+import { fetchJson, fetchJsonStrict } from './src/utils/network';
 import { initWasm, WebViewSigner } from './src/auth';
 import { FadeInView, ScalePressable } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
+import { NOTICE_URL } from './src/constants';
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -19,6 +20,31 @@ export default function App() {
   const [backgroundLoadError, setBackgroundLoadError] = useState('');
   const splashBg = appTheme === 'dark' ? '#111111' : '#fff7fb';
   const splashText = appTheme === 'dark' ? '#eeeeee' : '#555555';
+
+  // v2.6: Announcement modal
+  const { seenIds, markSeen, lastFetched } = useAnnouncementStore();
+  const [announceModal, setAnnounceModal] = useState<{ title: string; header: string; content: string; imageUrl: string; link: string } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const notice = await fetchJson<any>(`${NOTICE_URL}?t=${Date.now()}`);
+        if (!mounted || !notice?.show) return;
+        const id = String(notice.id || notice.noticeId || notice.version || '');
+        if (!id || seenIds.includes(id)) return;
+        markSeen(id);
+        setAnnounceModal({
+          title: notice.title || '',
+          header: notice.header || '公告',
+          content: (notice.fullContent || '').replace(/\\n/g, '\n'),
+          imageUrl: notice.imageUrl || '',
+          link: notice.link || '',
+        });
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -103,6 +129,35 @@ export default function App() {
       ) : null}
       <AppNavigator />
       <WebViewSigner />
+      {/* v2.6: Global announcement modal */}
+      <Modal visible={!!announceModal} transparent animationType="fade" onRequestClose={() => setAnnounceModal(null)}>
+        <View style={anStyles.overlay}>
+          <View style={[anStyles.card, appTheme === 'dark' && { backgroundColor: '#1e1e1e' }]}>
+            {announceModal?.header ? (
+              <Text style={[anStyles.header, { color: '#ff6f91' }]}>{announceModal.header}</Text>
+            ) : null}
+            {announceModal?.title ? (
+              <Text style={[anStyles.title, appTheme === 'dark' && { color: '#eee' }]}>{announceModal.title}</Text>
+            ) : null}
+            {announceModal?.imageUrl ? (
+              <Image source={{ uri: announceModal.imageUrl }} style={anStyles.image} resizeMode="contain" />
+            ) : null}
+            {announceModal?.content ? (
+              <Text style={[anStyles.content, appTheme === 'dark' && { color: '#ccc' }]}>{announceModal.content}</Text>
+            ) : null}
+            <View style={anStyles.btnRow}>
+              {announceModal?.link ? (
+                <TouchableOpacity style={[anStyles.btn, { backgroundColor: '#ff6f91' }]} onPress={() => { if (announceModal?.link) Linking.openURL(announceModal.link); }}>
+                  <Text style={anStyles.btnText}>查看详情</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={[anStyles.btn, { backgroundColor: 'rgba(128,128,128,0.2)' }]} onPress={() => setAnnounceModal(null)}>
+                <Text style={[anStyles.btnText, appTheme === 'dark' && { color: '#eee' }]}>关闭</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 
@@ -120,3 +175,16 @@ export default function App() {
     </ImageBackground>
   ) : content;
 }
+
+// v2.6: Announcement modal styles
+const anStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, maxWidth: 400, width: '100%', maxHeight: '80%' },
+  header: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  title: { fontSize: 15, fontWeight: '600', marginBottom: 10, color: '#333' },
+  image: { width: '100%', height: 160, borderRadius: 10, marginBottom: 10 },
+  content: { fontSize: 14, lineHeight: 22, color: '#555', marginBottom: 16 },
+  btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  btn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 },
+  btnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+});

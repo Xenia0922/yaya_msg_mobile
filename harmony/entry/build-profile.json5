@@ -1,0 +1,30 @@
+{
+  "apiType": "stageMode",
+  "buildOption": {
+    "arkOptions": {
+      "runtimeOnly": {
+        "packages": [
+          "@rnoh/react-native-openharmony"
+        ]
+      }
+    }
+  },
+  "buildOptionSet": [
+    {
+      "name": "release",
+      "arkOptions": {
+        "obfuscation": {
+          "ruleOptions": {
+            "enable": false
+          }
+        }
+      }
+    }
+  ],
+  "targets": [
+    {
+      "name": "default",
+      "applyToProducts": ["default"]
+    }
+  ]
+}

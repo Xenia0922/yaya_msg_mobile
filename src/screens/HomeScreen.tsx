@@ -28,36 +28,47 @@ interface CardSection {
 const CARDS: CardSection[] = [
   {
     title: '直播',
-    subtitle: '口袋直播、回放、B站源',
+    subtitle: '口袋、B站、回放',
     items: [
       { title: '直播', desc: '查看当前直播列表', route: 'Media' },
-      { title: '回放', desc: '进入录播与弹幕页', route: 'Media', params: { mode: 'vod' } },
-      { title: '上麦', desc: '进入房间电台', route: 'RoomRadioScreen' },
-      { title: 'B站', desc: '进入B站直播播放', route: 'BilibiliLiveScreen' },
+      { title: '回放', desc: '录播与弹幕', route: 'Media', params: { mode: 'vod' } },
+      { title: '上麦', desc: '房间电台', route: 'RoomRadioScreen' },
+      { title: 'B站', desc: 'B站直播播放', route: 'BilibiliLiveScreen' },
     ],
   },
   {
     title: '口袋',
-    subtitle: '关注房间、私信、相册、公演',
+    subtitle: '房间、私信、相册、公演',
     items: [
-      { title: '房间', desc: '关注房间和历史消息', route: 'Rooms' },
+      { title: '房间', desc: '关注房间消息', route: 'Rooms' },
       { title: '私信', desc: '口袋私信会话', route: 'PrivateMessagesScreen' },
       { title: '相册', desc: '按房间查看图片', route: 'RoomAlbumScreen' },
-      { title: '公演记录', desc: '成员公演与活动记录', route: 'OpenLiveScreen' },
+      { title: '公演', desc: '成员公演记录', route: 'OpenLiveScreen' },
+      { title: '会话', desc: 'IM 会话列表', route: 'ConversationScreen' },
     ],
   },
   {
     title: '翻牌',
-    subtitle: '翻牌、个人相册',
+    subtitle: '提问、历史、统计',
     items: [
-      { title: '提问', desc: '进入翻牌发送入口', route: 'FlipScreen', params: { mode: 'send' } },
-      { title: '历史', desc: '浏览历史翻牌内容', route: 'FlipScreen' },
-      { title: '房间相册', desc: '按大小房间获取图片和视频', route: 'RoomAlbumScreen' },
+      { title: '提问', desc: '发送翻牌', route: 'FlipScreen', params: { mode: 'send' } },
+      { title: '历史', desc: '浏览翻牌内容', route: 'FlipScreen' },
+      { title: '统计', desc: '翻牌数据分析', route: 'AnalysisScreen' },
+    ],
+  },
+  {
+    title: '成员',
+    subtitle: '档案、动态、微博、行程',
+    items: [
+      { title: '档案', desc: '成员资料与编年史', route: 'ProfileScreen' },
+      { title: '动态', desc: '成员口袋动态', route: 'MemberDynamicScreen' },
+      { title: '微博', desc: '成员微博动态', route: 'MemberWeiboScreen' },
+      { title: '行程', desc: '行程与票务', route: 'TripScreen' },
     ],
   },
   {
     title: '资源',
-    subtitle: '官方视频、音乐、电台资源',
+    subtitle: '视频、音乐、电台',
     items: [
       { title: '视频', desc: '查看视频资源', route: 'VideoLibraryScreen' },
       { title: '音乐', desc: '进入音乐列表', route: 'MusicLibraryScreen' },
@@ -66,21 +77,21 @@ const CARDS: CardSection[] = [
   },
   {
     title: '数据',
-    subtitle: '成员档案、分析统计',
+    subtitle: '统计、数据库、排行榜',
     items: [
-      { title: '成员档案', desc: '成员资料与细节', route: 'ProfileScreen' },
-      { title: '数据分析', desc: '房间/翻牌/礼物统计', route: 'AnalysisScreen' },
+      { title: '乱斗榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen' },
+      { title: '计分', desc: '官方计分投票', route: 'ScoreOfficialScreen' },
       { title: '数据库', desc: '查看附属数据', route: 'DatabaseScreen' },
     ],
   },
   {
     title: '通用',
-    subtitle: '账号、下载、小号和软件设置',
+    subtitle: '账号、下载、设置',
     items: [
-      { title: '账号资料', desc: '口袋/B站/头像/昵称', route: 'LoginScreen' },
-      { title: '下载管理', desc: '录播/语音/图片/视频', route: 'DownloadScreen' },
-      { title: '小号切换', desc: '按口袋大小号列表切换', route: 'LoginScreen' },
-      { title: '软件设置', desc: '主题、签到和接口工具', route: 'Settings' },
+      { title: '账号', desc: '口袋/B站/头像', route: 'LoginScreen' },
+      { title: '下载', desc: '录播/图片/视频', route: 'DownloadScreen' },
+      { title: '发票', desc: '鸡腿消费开票', route: 'InvoiceScreen' },
+      { title: '设置', desc: '主题、签到、工具', route: 'Settings' },
     ],
   },
 ];

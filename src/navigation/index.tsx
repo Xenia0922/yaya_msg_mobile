@@ -29,6 +29,13 @@ import AnalysisScreen from '../screens/AnalysisScreen';
 import DownloadScreen from '../screens/DownloadScreen';
 import DatabaseScreen from '../screens/DatabaseScreen';
 import ApiDiagnosticsScreen from '../screens/ApiDiagnosticsScreen';
+import TripScreen from '../screens/TripScreen';
+import MeleeRankScreen from '../screens/MeleeRankScreen';
+import MemberDynamicScreen from '../screens/MemberDynamicScreen';
+import MemberWeiboScreen from '../screens/MemberWeiboScreen';
+import InvoiceScreen from '../screens/InvoiceScreen';
+import ConversationScreen from '../screens/ConversationScreen';
+import ScoreOfficialScreen from '../screens/ScoreOfficialScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { mainTabBarStyle } from './tabBarStyle';
@@ -104,6 +111,13 @@ const AnalysisStackScreen = withPageMotion(AnalysisScreen, ui.motion.stackDurati
 const DownloadStackScreen = withPageMotion(DownloadScreen, ui.motion.stackDuration, 10);
 const DatabaseStackScreen = withPageMotion(DatabaseScreen, ui.motion.stackDuration, 10);
 const ApiDiagnosticsStackScreen = withPageMotion(ApiDiagnosticsScreen, ui.motion.stackDuration, 10);
+const TripStackScreen = withPageMotion(TripScreen, ui.motion.stackDuration, 10);
+const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDuration, 10);
+const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10);
+const MemberWeiboStackScreen = withPageMotion(MemberWeiboScreen, ui.motion.stackDuration, 10);
+const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10);
+const ConversationStackScreen = withPageMotion(ConversationScreen, ui.motion.stackDuration, 10);
+const ScoreOfficialStackScreen = withPageMotion(ScoreOfficialScreen, ui.motion.stackDuration, 10);
 
 function TabButton({
   focused,
@@ -317,6 +331,13 @@ export default function AppNavigator() {
           <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
           <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
           <Stack.Screen name="ApiDiagnosticsScreen" component={ApiDiagnosticsStackScreen} />
+          <Stack.Screen name="TripScreen" component={TripStackScreen} />
+          <Stack.Screen name="MeleeRankScreen" component={MeleeRankStackScreen} />
+          <Stack.Screen name="MemberDynamicScreen" component={MemberDynamicStackScreen} />
+          <Stack.Screen name="MemberWeiboScreen" component={MemberWeiboStackScreen} />
+          <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
+          <Stack.Screen name="ConversationScreen" component={ConversationStackScreen} />
+          <Stack.Screen name="ScoreOfficialScreen" component={ScoreOfficialStackScreen} />
         </Stack.Navigator>
         <AppToast />
       </>

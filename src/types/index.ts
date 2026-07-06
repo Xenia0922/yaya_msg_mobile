@@ -162,6 +162,138 @@ export type MessageFilter = 'all' | 'text' | 'audio' | 'image' | 'video' | 'repl
 
 export type Theme = 'light' | 'dark';
 
+export interface TripItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  date: string;
+  time: string;
+  showDate: string;
+  showTime: string;
+  members: string[];
+  location: string;
+  liveText: string;
+  ticketUrl: string;
+  groupId: number;
+  memberId: string;
+  userId: string;
+}
+
+export interface MeleeWeek {
+  weekRankId: number;
+  weekRankName: string;
+}
+
+export interface MeleeRankItem {
+  rankNum: number;
+  baseUserInfo: {
+    userName: string;
+    userAvatar: string;
+    userId: string;
+  };
+  topUserInfo: {
+    userName: string;
+    userAvatar: string;
+    userId: string;
+  };
+  melee: string;
+  resId?: number;
+  charmInfo?: Array<{
+    userName: string;
+    userAvatar: string;
+    userId: string;
+    charm: string;
+    isPrivacy: boolean;
+  }>;
+}
+
+export interface DynamicItem {
+  id: string;
+  title: string;
+  content: string;
+  coverUrls: string[];
+  time: number;
+  ownerId: string;
+  ownerName: string;
+  ownerAvatar: string;
+}
+
+export interface WeiboItem {
+  id: string;
+  title: string;
+  content: string;
+  imageUrls: string[];
+  jumpUrl: string;
+  time: number;
+  ownerId: string;
+  ownerName: string;
+  ownerAvatar: string;
+}
+
+export interface InvoiceOrder {
+  dataId: string;
+  goodsName: string;
+  summary: string;
+  invoiceStatus: number;
+  invoiceNo: string;
+  totalFee: string;
+  tradeTime: string;
+  tradeTimeLong: number;
+  companyId: string;
+}
+
+export interface InvoiceConfig {
+  companyId: string;
+  saleName: string;
+  maxFee: string;
+  defaultFlag: boolean;
+}
+
+export interface ConversationItem {
+  targetUserId: string;
+  userId: string;
+  nickname: string;
+  avatar: string;
+  lastMessage: string;
+  lastTime: number;
+  unreadNum: number;
+  isStar: boolean;
+}
+
+export interface VoteStatus {
+  voteId: string;
+  voteName: string;
+  startTime: number;
+  endTime: number;
+  status: number;
+}
+
+export interface PageantryItem {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+export interface AnnouncementData {
+  id: string;
+  header: string;
+  title: string;
+  fullContent: string;
+  imageUrl: string;
+  link: string;
+  show: boolean;
+  version?: string;
+}
+
+export interface Meet48Auth {
+  token?: string;
+  cookie?: string;
+  deviceId?: string;
+  disabled?: boolean;
+}
+
 export interface AppSettings {
   theme: Theme;
   p48Token: string;
@@ -177,4 +309,6 @@ export interface AppSettings {
   yaya_auto_checkin_last_user: string;
   customBackgroundFile: string;
   customBackgroundUpdatedAt: number;
+  yaya_trip_show_all: boolean;
+  meet48Auth?: Meet48Auth | null;
 }

@@ -1,0 +1,10 @@
+{
+  "modelVersion": "6.0.1",
+  "name": "yayamsg",
+  "version": "1.0.0",
+  "description": "牙牙消息",
+  "main": "",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {}
+}
