@@ -108,7 +108,7 @@ export default function VideoLibraryScreen() {
     return (
       <View style={styles.playerPage}>
         <ScreenHeader title={playing?.title || '视频'} onBack={() => setPlayUrl('')} />
-        <Video source={{ uri: playUrl }} style={styles.videoPlayer} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
+        <Video source={{ uri: playUrl }} style={styles.videoPlayer} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" onError={() => setPlayUrl('')} />
       </View>
     );
   }

@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
+import React, { useCallback } from 'react';
+import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
 interface Props {
@@ -11,10 +11,11 @@ interface Props {
 
 export default function ScreenHeader({ title, onBack, right, style }: Props) {
   const navigation = useNavigation();
-  const goBack = onBack || (() => navigation.goBack());
+  const goBack = useCallback(onBack || (() => navigation.goBack()), [onBack, navigation]);
+  const topPad = Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 24) + 14;
 
   return (
-    <View style={[styles.header, style]}>
+    <View style={[styles.header, { paddingTop: topPad }, style]}>
       <TouchableOpacity onPress={goBack} style={styles.backWrap}>
         <Text style={styles.backText}>返回</Text>
       </TouchableOpacity>
@@ -26,7 +27,6 @@ export default function ScreenHeader({ title, onBack, right, style }: Props) {
 
 const styles = StyleSheet.create({
   header: {
-    paddingTop: 54,
     paddingHorizontal: 20,
     paddingBottom: 14,
     marginBottom: 4,

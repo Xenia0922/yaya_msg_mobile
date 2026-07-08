@@ -538,7 +538,7 @@ export default function MediaScreen() {
     setTab(next);
     setNextCursor(0);
     setHasMore(true);
-    doFetch(next, 0);
+    // rely on useEffect to trigger fetch
   };
 
   const refreshList = () => {

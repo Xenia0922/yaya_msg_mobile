@@ -77,7 +77,8 @@ function isIdolMessage(item: any, member: Member | null) {
   if (!member) return false;
   const sid = senderId(item);
   if (!sid) return false;
-  const ownerIds = [member.id, (member as any).userId, (member as any).memberId, member.serverId, member.channelId]
+  // Only compare against member's user IDs, not room IDs (serverId/channelId)
+  const ownerIds = [member.id, (member as any).userId, (member as any).memberId]
     .map(String).filter(Boolean);
   return ownerIds.includes(String(sid));
 }

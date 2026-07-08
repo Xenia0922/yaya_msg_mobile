@@ -147,7 +147,7 @@ export default function MemberDynamicScreen() {
           }
         />
       </FadeInView>
-      <ZoomImageModal url={zoomUrl} visible={!!zoomUrl} onClose={() => setZoomUrl('')} />
+      <ZoomImageModal url={zoomUrl} onClose={() => setZoomUrl('')} />
     </View>
   );
 }

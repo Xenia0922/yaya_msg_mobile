@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -31,6 +31,8 @@ export default function MeleeRankScreen() {
   const [member, setMember] = useState<Member | null>(null);
   const [weeks, setWeeks] = useState<WeekItem[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<WeekItem | null>(null);
+  const selectedWeekRef = useRef(selectedWeek);
+  selectedWeekRef.current = selectedWeek;
   const [ranks, setRanks] = useState<any[]>([]);
   const [personRanks, setPersonRanks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,7 +62,7 @@ export default function MeleeRankScreen() {
         }))
         .filter((w: WeekItem) => w.weekRankId > 0);
       setWeeks(items);
-      if (items.length > 0 && !selectedWeek) setSelectedWeek(items[items.length - 1]);
+      if (items.length > 0 && !selectedWeekRef.current) setSelectedWeek(items[items.length - 1]);
     } catch (e: any) {
       setError(errorMessage(e));
     } finally {
@@ -216,7 +218,7 @@ export default function MeleeRankScreen() {
           <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
             <FlatList
               data={ranks}
-              keyExtractor={(_, idx) => String(idx)}
+              keyExtractor={(item: any) => String(item.userId || item.rankNum || item.resId || Math.random())}
               contentContainerStyle={styles.list}
               initialNumToRender={12}
               maxToRenderPerBatch={12}
@@ -237,7 +239,7 @@ export default function MeleeRankScreen() {
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
           <FlatList
             data={personRanks}
-            keyExtractor={(_, idx) => String(idx)}
+            keyExtractor={(item: any) => String(item.userId || item.charm || Math.random())}
             contentContainerStyle={styles.list}
             initialNumToRender={12}
             maxToRenderPerBatch={12}

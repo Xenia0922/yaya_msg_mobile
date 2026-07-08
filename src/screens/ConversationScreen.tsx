@@ -70,7 +70,7 @@ export default function ConversationScreen() {
     <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
       <TouchableOpacity
         style={[styles.card, isDark && styles.cardDark]}
-        onPress={() => navigation.navigate('PrivateMessagesScreen')}
+        onPress={() => navigation.navigate('PrivateMessagesScreen', { targetUserId: item.targetUserId, targetName: item.name })}
         activeOpacity={0.85}
       >
         {item.avatar ? (

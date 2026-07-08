@@ -33,7 +33,6 @@ export default function BilibiliLiveScreen() {
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
-  const [roomInput, setRoomInput] = useState('');
   const currentCandidate = candidates[candidateIndex];
   const streamUrl = currentCandidate?.url || '';
 
@@ -110,14 +109,16 @@ export default function BilibiliLiveScreen() {
     }
   };
 
-  const switchToNextCandidate = (reason: string) => {
-    if (candidateIndex + 1 < candidates.length) {
-      setPlayerError(`${reason}，已切换下一条线路`);
-      setCandidateIndex((prev) => prev + 1);
-      return;
-    }
-    setPlayerError(`${reason}。所有线路都试过了，建议先确认该房间真的在播，或登录 B站账号后重试。`);
-  };
+  const switchToNextCandidate = useCallback((reason: string) => {
+    setCandidateIndex((prev) => {
+      if (prev + 1 < candidates.length) {
+        setPlayerError(`${reason}，已切换下一条线路`);
+        return prev + 1;
+      }
+      setPlayerError(`${reason}。所有线路都试过了，建议先确认该房间真的在播，或登录 B站账号后重试。`);
+      return prev;
+    });
+  }, [candidates.length]);
 
   if (streamUrl) {
     return (

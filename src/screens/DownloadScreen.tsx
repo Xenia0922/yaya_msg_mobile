@@ -27,8 +27,9 @@ import {
 type Nav = StackNavigationProp<RootStackParamList, 'DownloadScreen'>;
 
 function formatBytes(value?: number) {
+  if (value === undefined || value === null) return '--';
   const bytes = Number(value) || 0;
-  if (!bytes) return '--';
+  if (bytes <= 0) return '0 B';
   if (bytes > 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
   if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes > 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -64,10 +65,6 @@ export default function DownloadScreen() {
   const refresh = useCallback(async () => {
     setItems(await loadDownloadItems());
   }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   useFocusEffect(useCallback(() => {
     refresh();

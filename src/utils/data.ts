@@ -103,12 +103,21 @@ export function messagePayload(item: any): any {
 
 export function messageText(item: any): string {
   const body = messagePayload(item);
-  if (typeof body === 'string') return replaceEmojiText(body);
   const type = String(item?.msgType || body?.msgType || body?.messageType || body?.type || '').toUpperCase();
 
-  if (type === 'EXPRESSIMAGE' || type === 'EXPRESS') {
+  // Media types: don't return raw body (file names, URLs) — let media card handle it
+  if (type === 'AUDIO' || type === 'VIDEO' || type === 'IMAGE' || type === 'LIVEPUSH' || type === 'SHARE_LIVE' || type === 'EXPRESSIMAGE' || type === 'EXPRESS') {
+    // Only return text if there's a meaningful caption alongside the media
+    if (body && typeof body === 'object') {
+      const caption = (body as any).text || (body as any).caption || (body as any).description || '';
+      if (typeof caption === 'string' && caption.trim() && !/^(https?:\/\/|voice_|video_|img_|live_)/i.test(caption)) {
+        return replaceEmojiText(caption);
+      }
+    }
     return '';
   }
+
+  if (typeof body === 'string') return replaceEmojiText(body);
 
   if (type === 'TEXT') {
     if (body && typeof body === 'object') {

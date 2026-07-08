@@ -58,7 +58,7 @@ export default function MusicLibraryScreen() {
   const loadingRef = useRef(false);
   const videoRef = useRef<any>(null);
   // Keep MusicEngine ref in sync whenever Video element exists
-  useEffect(() => { MusicEngine.setVideoRef(videoRef.current); }, [playbackState, playUrl]);
+  useEffect(() => { if (videoRef.current) MusicEngine.setVideoRef(videoRef.current); }, [playbackState, playUrl]);
 
   const filteredSongs = useMemo(() => {
     const keyword = query.trim().toLowerCase();

@@ -39,10 +39,13 @@ function parseAlbumBody(item: any) {
   const direct = parseMaybeJson(raw);
   if (direct && typeof direct === 'object') return direct;
   try {
-    let clean = raw.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    // Only attempt cleaning if JSON parse fails
+    const direct = parseMaybeJson(raw);
+    if (direct && typeof direct === 'object') return direct;
+    // Clean double-escaped strings: \\" -> " and \\ -> \
+    let clean = raw.replace(/\\\\"/g, '"').replace(/\\\\\\\\/g, '\\\\');
     if (clean.startsWith('"') && clean.endsWith('"')) clean = clean.slice(1, -1);
-    const parsed = JSON.parse(clean);
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    try { return JSON.parse(clean) || {}; } catch { return {}; }
   } catch {
     return {};
   }
@@ -176,6 +179,7 @@ export default function RoomAlbumScreen() {
     setItems([]);
     setNextTime(0);
     setHasMore(false);
+    setRoomMode(mode); // update UI immediately, don't wait for loadAlbum
     loadAlbum(selectedMember, mode, false);
   };
 
@@ -201,7 +205,7 @@ export default function RoomAlbumScreen() {
     return (
       <View style={styles.playerPage}>
         <ScreenHeader title={playing.title} onBack={() => setPlaying(null)} />
-        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" />
+        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" onError={() => setPlaying(null)} />
       </View>
     );
   }

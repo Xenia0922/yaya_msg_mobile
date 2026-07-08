@@ -25,6 +25,7 @@ export default function RechargeScreen() {
   useEffect(() => { refreshBalance(); }, []);
 
   const refreshBalance = async () => {
+    if (loading) return;
     setLoading(true);
     setStatus('正在刷新余额...');
     try {
@@ -49,7 +50,7 @@ export default function RechargeScreen() {
 
       <View style={[styles.statusBar, isDark && styles.statusBarDark]}>
         <Text style={[styles.statusText, isDark && styles.statusTextDark]}>
-          {balance ? `当前余额：${balance} 鸡腿 · ` : ''}{status}
+          {balance !== '' ? `当前余额：${balance} 鸡腿 · ` : ''}{status}
         </Text>
         {loading ? <ActivityIndicator color="#ff6f91" style={styles.loading} /> : null}
       </View>

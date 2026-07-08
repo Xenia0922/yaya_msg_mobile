@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
 } from 'react-native';
@@ -104,6 +104,8 @@ export default function LoginScreen() {
   const setSettings = useSettingsStore((state) => state.setSettings);
   const showToast = useUiStore((state) => state.showToast);
   const isDark = settings.theme === 'dark';
+  const pollingRef = useRef(true);
+  useEffect(() => { return () => { pollingRef.current = false; }; }, []);
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [manualToken, setManualToken] = useState(settings.p48Token || '');
@@ -227,6 +229,7 @@ export default function LoginScreen() {
   const pollBiliLogin = async (key: string) => {
     for (let i = 0; i < 30; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (!pollingRef.current) return; // abort if unmounted
       if (qrKey && key !== qrKey) return;
       try {
         const res = await bilibiliApi.pollQrCode(key);

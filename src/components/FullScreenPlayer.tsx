@@ -21,8 +21,10 @@ const ANIM_DURATION = 300;
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
-  const m = Math.floor(seconds / 60);
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
@@ -65,6 +67,9 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
 
   const spin = rotationAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   const panResponder = useRef(PanResponder.create({
     onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 15 || Math.abs(gs.dy) > 15,
     onPanResponderMove: (_, gs) => slideAnim.setValue(gs.dx),
@@ -76,7 +81,7 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
           if (dir > 0) MusicEngine.prev(); else MusicEngine.next();
         });
       } else if (gs.dy > 60) {
-        onClose();
+        onCloseRef.current();
         slideAnim.setValue(0);
       } else {
         Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
@@ -86,7 +91,7 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
 
   useEffect(() => {
     if (lrcIdx >= 0 && showLyrics && lyricScrollRef.current) {
-      try { lyricScrollRef.current.scrollTo({ y: lrcIdx * (lyricSize * 1.6) - 80, animated: true }); } catch {}
+      try { lyricScrollRef.current.scrollTo({ y: Math.max(0, lrcIdx * (lyricSize * 1.6) - 80), animated: true }); } catch {}
     }
   }, [lrcIdx, showLyrics, lyricSize]);
 

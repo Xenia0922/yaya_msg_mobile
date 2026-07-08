@@ -12,7 +12,7 @@ export type RootStackParamList = {
   RoomAlbumScreen: undefined;
   RoomRadioScreen: undefined;
   OpenLiveScreen: undefined;
-  PrivateMessagesScreen: undefined;
+  PrivateMessagesScreen: { targetUserId?: string; targetName?: string } | undefined;
   BilibiliLiveScreen: undefined;
   VideoLibraryScreen: undefined;
   MusicLibraryScreen: undefined;

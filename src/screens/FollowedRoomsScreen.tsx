@@ -551,7 +551,11 @@ function roomMedia(item: any): RoomMedia | null {
   }
   if (!url && !liveId) return null;
   const type = liveId ? 'live' : classifyMedia(url, msgType, text);
-  const duration = firstTextFrom([item, ext, body], ['duration', 'time', 'second', 'audioTime', 'voiceTime', 'length', 'message.time']);
+  const duration = firstTextFrom([item, ext, body], [
+    'duration', 'time', 'second', 'seconds', 'audioTime', 'voiceTime', 'voiceLength',
+    'length', 'timeLength', 'mediaLength', 'playTime', 'totalTime',
+    'message.duration', 'content.duration', 'data.duration',
+  ]);
   // Audio/video always use clean labels; other types use message text
   const title = type === 'audio' ? '语音消息'
     : type === 'video' ? '视频消息'
@@ -563,7 +567,9 @@ function roomMedia(item: any): RoomMedia | null {
     'coverUrl', 'coverPath', 'cover', 'liveCover', 'picPath', 'picturePath', 'imageUrl', 'poster', 'thumb',
     'videoCover', 'videoPoster', 'thumbnail', 'thumbUrl',
     'message.coverUrl', 'message.cover', 'content.coverUrl', 'data.coverUrl',
-  ]) || '');
+  ]) || '') || normalizeUrl(deepFindText([item, ext, body], [
+    'coverUrl', 'cover', 'liveCover', 'picPath', 'coverPath', 'imageUrl', 'poster', 'thumb',
+  ]));
   return { type, url, title, duration, liveId, cover };
 }
 
@@ -995,9 +1001,6 @@ export default function FollowedRoomsScreen() {
         selectedRoom.ownerName,
         selectedRoom.team,
         selectedRoom.groupName,
-        (item as any).senderName,
-        (item as any).senderNickName,
-        (item as any).nickName,
       ].some((value) => String(value || '').toLowerCase().includes(q));
     });
   }, [roomMessages, roomSearchQuery, selectedRoom]);

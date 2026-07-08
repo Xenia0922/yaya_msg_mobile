@@ -72,7 +72,6 @@ export default function FetchScreen() {
     }
     setLoading(true);
     setStatus('抓取中...');
-    setResults([]);
     try {
       let list = await fetchOnce(selectedMember, roomMode);
       let usedRoomMode = roomMode;

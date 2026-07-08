@@ -51,6 +51,7 @@ export default function ScoreOfficialScreen() {
   }), [voteToken, appToken]);
 
   const handleLogin = async () => {
+    if (!appToken.trim()) { setError('请先输入或设置 App Token'); return; }
     setLoading(true); setError('');
     try {
       const res = await pocketApi.loginElectionVote(buildPayload());

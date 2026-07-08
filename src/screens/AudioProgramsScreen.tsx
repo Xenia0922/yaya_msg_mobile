@@ -61,20 +61,22 @@ export default function AudioProgramsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [nextCtime, setNextCtime] = useState(0);
   const loadingRef = useRef(false);
+  const nextCtimeRef = useRef(0);
 
   const load = async (refresh = true) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
-    const cursor = refresh ? 0 : nextCtime;
-    if (refresh) setLoading(true);
-    else setLoadingMore(true);
+    const cursor = refresh ? 0 : nextCtimeRef.current;
+    if (refresh) setLoading(true); else setLoadingMore(true);
     setStatus(refresh ? '加载中...官方电台...' : '加载中...更多电台...');
     try {
       const res = await officialMediaApi.getTalkList({ ctime: cursor, groupId: 0, limit: 20 });
       const list = normalizeTalks(res);
       setPrograms((prev) => (refresh ? mergeUniqueTalks([], list) : mergeUniqueTalks(prev, list)));
-      setNextCtime(nextCtimeFrom(list));
-      setHasMore(list.length >= 20 && nextCtimeFrom(list) > 0);
+      const nct = nextCtimeFrom(list);
+      nextCtimeRef.current = nct;
+      setNextCtime(nct);
+      setHasMore(list.length >= 20 && nct > 0);
       const loadedCount = refresh ? list.length : mergeUniqueTalks(programs, list).length;
       setStatus(loadedCount ? `已加载 ${loadedCount} 个节目` : '官方接口暂无电台资源');
     } catch (error) {

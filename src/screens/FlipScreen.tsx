@@ -133,24 +133,22 @@ function parseMedia(raw: string): { text: string; url: string; duration: number 
   }
 }
 
-function answerMediaDuration(item: any): number {
+function parseAnswer(item: any): { text: string; url: string; duration: number } {
   const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
-  return parseMedia(raw).duration;
+  if (!raw) return { text: '', url: '', duration: 0 };
+  const m = parseMedia(raw);
+  // For audio/video, set appropriate text labels
+  if (Number(item.answerType) === 2 && !m.text) m.text = '语音回复';
+  if (Number(item.answerType) === 3 && !m.text) m.text = '视频回复';
+  // Fallback to raw text if nothing else
+  if (!m.text && !m.url) m.text = raw;
+  else if (!m.text && m.url) m.text = m.url; // fallback: show URL if no text
+  return m;
 }
 
-function answerText(item: any): string {
-  const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
-  if (!raw) return '';
-  const parsed = parseMedia(raw);
-  if (Number(item.answerType) === 2) return parsed.text || '语音回复';
-  if (Number(item.answerType) === 3) return parsed.text || '视频回复';
-  return parsed.text || parsed.url || raw;
-}
-
-function answerMediaUrl(item: any): string {
-  const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
-  return parseMedia(raw).url;
-}
+function answerMediaUrl(item: any): string { return parseAnswer(item).url; }
+function answerText(item: any): string { return parseAnswer(item).text; }
+function answerMediaDuration(item: any): number { return parseAnswer(item).duration; }
 
 function priceFor(config: FlipPriceConfig | undefined, privacyType: PrivacyType): number {
   if (!config) return 0;
@@ -396,10 +394,11 @@ export default function FlipScreen() {
           windowSize={7}
           removeClippedSubviews
           renderItem={({ item, index }) => {
-            const answer = answerText(item);
-            const answerUrl = answerMediaUrl(item);
+            const parsed = parseAnswer(item);
+            const answer = parsed.text;
+            const answerUrl = parsed.url;
             const flipAnswerType = Number(item.answerType);
-            const ansDur = answerMediaDuration(item);
+            const ansDur = parsed.duration;
             const qTime = Number(item.qtime || item.createTime || 0);
             const aTime = Number(item.answerTime || 0);
             const deadline = qTime ? qTime + 7 * 86400000 : 0;

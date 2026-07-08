@@ -52,17 +52,9 @@ interface MusicPlayerState {
   prev: () => Track | null;
 }
 
-function shuffleArray<T>(arr: T[], excludeIndex: number): T[] {
-  const others = arr.filter((_, i) => i !== excludeIndex);
-  for (let i = others.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [others[i], others[j]] = [others[j], others[i]];
-  }
-  return others;
-}
-
 function nextIndex(current: number, length: number, mode: PlayMode): number {
   if (length === 0) return -1;
+  if (mode === 'single') return current;
   if (mode === 'random') return Math.floor(Math.random() * length);
   return (current + 1) % length;
 }
@@ -85,23 +77,29 @@ export const useMusicPlayerStore = create<MusicPlayerState>((set, get) => ({
     return { queue: [...s.queue, track] };
   }),
 
-  removeFromQueue: (id) => set((s) => ({
-    queue: s.queue.filter((t) => (t.musicId || t.id) !== id),
-    currentIndex: (s.queue[(s.currentIndex)]?.musicId || s.queue[(s.currentIndex)]?.id) === id ? -1 : s.currentIndex,
-  })),
+  removeFromQueue: (id) => set((s) => {
+    const removedIdx = s.queue.findIndex((t) => (t.musicId || t.id) === id);
+    const newQueue = s.queue.filter((t) => (t.musicId || t.id) !== id);
+    let newIdx = s.currentIndex;
+    if (removedIdx >= 0 && removedIdx < s.currentIndex) newIdx = s.currentIndex - 1;
+    else if (removedIdx === s.currentIndex) newIdx = newQueue.length > 0 ? Math.min(s.currentIndex, newQueue.length - 1) : -1;
+    return { queue: newQueue, currentIndex: newIdx };
+  }),
 
   clearQueue: () => set({ queue: [], currentIndex: -1 }),
 
   play: (track, queue) => set((s) => {
     const q = queue || s.queue;
     const idx = q.findIndex((t) => (t.musicId || t.id) === (track.musicId || track.id));
+    const sameTrack = idx >= 0 && idx === s.currentIndex;
     return {
       queue: q,
       currentIndex: idx >= 0 ? idx : 0,
       playbackState: 'loading',
-      duration: 0,
-      position: 0,
-      lyrics: [],
+      // Keep position/duration if same track (resume), else reset
+      duration: sameTrack ? s.duration : 0,
+      position: sameTrack ? s.position : 0,
+      lyrics: s.lyrics, // Preserve lyrics
       error: null,
     };
   }),

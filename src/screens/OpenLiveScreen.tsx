@@ -274,7 +274,7 @@ export default function OpenLiveScreen() {
         <ScreenHeader title={playing.title} onBack={() => setPlaying(null)} right={
           <TouchableOpacity onPress={toggleOrientation}><Text style={styles.headerAction}>{isLandscape ? '竖屏' : '横屏'}</Text></TouchableOpacity>
         } />
-        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} />
+        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} onError={() => setPlaying(null)} />
         <TouchableOpacity style={styles.externalBtn} onPress={() => Linking.openURL(playing.url)}>
           <Text style={styles.externalText}>外部打开</Text>
         </TouchableOpacity>

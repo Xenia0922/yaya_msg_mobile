@@ -281,6 +281,9 @@ export default function PrivateMessagesScreen() {
   const [msgs, setMsgs] = useState<any[]>([]);
   const [text, setText] = useState('');
   const [uid, setUid] = useState('');
+  const token = useSettingsStore((s) => s.settings.p48Token);
+  // Reset uid when token changes, so next openConv re-fetches
+  useEffect(() => { setUid(''); }, [token]);
   const [prices, setPrices] = useState<any[]>([]);
   const [money, setMoney] = useState('');
   const [flipType, setFlipType] = useState(0);
@@ -382,7 +385,7 @@ export default function PrivateMessagesScreen() {
         const p = prices.find((x) => x.answerType === flipType);
         const cost = p ? (p.privateCost || p.normalCost || lowestPrice(p)) : 0;
         await pocketApi.sendFlipQuestion({
-          memberId: parseInt(member.id, 10),
+          memberId: parseInt(String(member.id), 10) || 0,
           content: txt,
           type: 2,
           cost,
