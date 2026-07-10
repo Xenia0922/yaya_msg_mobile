@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import { FlatList, Image, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
@@ -337,7 +339,7 @@ export default function AnalysisScreen() {
 
       {tab === 'dates' ? (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <FlatList
+          <PerfFlatList
             data={dateStats}
             keyExtractor={(item) => item.date}
             contentContainerStyle={styles.content}
@@ -372,7 +374,7 @@ export default function AnalysisScreen() {
 
       {tab === 'senders' ? (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <FlatList
+          <PerfFlatList
             data={senders}
             keyExtractor={(item) => item.key}
             contentContainerStyle={styles.content}
@@ -395,7 +397,7 @@ export default function AnalysisScreen() {
 
       {tab === 'media' ? (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <FlatList
+          <PerfFlatList
             data={messages.filter((item) => isMedia(item, 'image') || isMedia(item, 'audio') || isMedia(item, 'video'))}
             keyExtractor={(item, index) => `media-${index}`}
             contentContainerStyle={styles.content}
@@ -448,7 +450,7 @@ export default function AnalysisScreen() {
       ) : null}
 
       {tab === 'flip' ? (
-        <FlatList
+        <PerfFlatList
           data={filteredFlips}
           keyExtractor={(item, index) => String(item.questionId || item.id || item.answerId || index)}
           contentContainerStyle={styles.content}

@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { PerfFlatList } from './/PerfFlatList';
+
 import {
   FlatList,
   StyleSheet,
@@ -51,7 +53,7 @@ export default function MemberPicker({
       />
       {selectedMember ? <Text style={styles.selected}>已选择：{selectedMember.ownerName}</Text> : null}
       {!membersLoaded ? <Text style={[styles.hint, isDark && styles.hintDark]}>成员数据加载中...</Text> : null}
-      <FlatList
+      <PerfFlatList
         data={filtered}
         horizontal
         keyboardShouldPersistTaps="handled"

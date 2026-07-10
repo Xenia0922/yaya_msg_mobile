@@ -1,4 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+import { NetworkImage } from '../components/NetworkImage';
+
 import {
   FlatList,
   Image,
@@ -188,7 +191,7 @@ export default function RoomAlbumScreen() {
     loadAlbum(selectedMember, roomMode, true);
   };
 
-  const downloadItem = async (item: AlbumItem) => {
+  const downloadItem = useCallback(async (item: AlbumItem) => {
     try {
       await enqueueDownload({
         url: item.url,
@@ -199,7 +202,21 @@ export default function RoomAlbumScreen() {
     } catch (error) {
       showToast(`下载失败：${errorMessage(error)}`);
     }
-  };
+  }, [selectedMember, showToast]);
+
+  // 稳定回调：让网格行组件可被 React.memo 记忆，避免父组件状态变化引发整网格重渲染/重解码。
+  const handleOpen = useCallback((item: AlbumItem) => {
+    if (item.type === 'video') setPlaying(item);
+    else setPreviewUrl(item.url);
+  }, [setPlaying, setPreviewUrl]);
+
+  const handleLong = useCallback((item: AlbumItem) => {
+    downloadItem(item);
+  }, [downloadItem]);
+
+  const renderAlbumItem = useCallback(({ item }: { item: AlbumItem }) => (
+    <AlbumGridItem item={item} isDark={isDark} onOpen={handleOpen} onLongPress={handleLong} />
+  ), [isDark, handleOpen, handleLong]);
 
   if (playing) {
     return (
@@ -236,7 +253,7 @@ export default function RoomAlbumScreen() {
         </View>
 
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
-        <FlatList
+        <PerfFlatList
           data={items}
           numColumns={2}
             keyExtractor={(item) => `${item.roomMode}-${item.id}`}
@@ -245,29 +262,7 @@ export default function RoomAlbumScreen() {
             maxToRenderPerBatch={12}
             windowSize={7}
             removeClippedSubviews
-            renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300} style={{ flex: 1 }}>
-              <TouchableOpacity
-                style={[styles.mediaCard, isDark && styles.mediaCardDark]}
-                activeOpacity={0.9}
-                onPress={() => item.type === 'video' ? setPlaying(item) : setPreviewUrl(item.url)}
-                onLongPress={() => downloadItem(item)}
-              >
-                {item.type === 'video' ? (
-                  <View style={styles.videoThumb}>
-                    <Text style={styles.videoBadge}>视频</Text>
-                    <Text style={styles.playMark}>播放</Text>
-                  </View>
-                ) : (
-                  <Image source={{ uri: item.url }} style={styles.photo} resizeMode="cover" />
-                )}
-                <View style={styles.info}>
-                  <Text style={[styles.mediaTitle, isDark && styles.textLight]} numberOfLines={1}>{item.title}</Text>
-                  <Text style={[styles.mediaMeta, isDark && styles.textSubLight]}>{item.roomMode === 'small' ? '小房间' : '大房间'} · {formatTimestamp(item.time)}</Text>
-                </View>
-              </TouchableOpacity>
-            </FadeInView>
-          )}
+            renderItem={renderAlbumItem}
           ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '加载中...' : '暂无相册内容'}</Text>}
           onEndReached={loadMoreAlbum}
           onEndReachedThreshold={0.35}
@@ -279,6 +274,43 @@ export default function RoomAlbumScreen() {
     </View>
   );
 }
+
+// --- 模块级记忆化网格项：避免翻页/loading 状态变化引发整网格重渲染 ---
+const AlbumGridItem = React.memo(function AlbumGridItem({
+  item,
+  isDark,
+  onOpen,
+  onLongPress,
+}: {
+  item: AlbumItem;
+  isDark: boolean;
+  onOpen: (item: AlbumItem) => void;
+  onLongPress: (item: AlbumItem) => void;
+}) {
+  return (
+    <FadeInView duration={300} style={{ flex: 1 }}>
+      <TouchableOpacity
+        style={[styles.mediaCard, isDark && styles.mediaCardDark]}
+        activeOpacity={0.9}
+        onPress={() => onOpen(item)}
+        onLongPress={() => onLongPress(item)}
+      >
+        {item.type === 'video' ? (
+          <View style={styles.videoThumb}>
+            <Text style={styles.videoBadge}>视频</Text>
+            <Text style={styles.playMark}>播放</Text>
+          </View>
+        ) : (
+          <NetworkImage source={{ uri: item.url }} style={styles.photo} resizeMode="cover" />
+        )}
+        <View style={styles.info}>
+          <Text style={[styles.mediaTitle, isDark && styles.textLight]} numberOfLines={1}>{item.title}</Text>
+          <Text style={[styles.mediaMeta, isDark && styles.textSubLight]}>{item.roomMode === 'small' ? '小房间' : '大房间'} · {formatTimestamp(item.time)}</Text>
+        </View>
+      </TouchableOpacity>
+    </FadeInView>
+  );
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },

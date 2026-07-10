@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   FlatList,
   StyleSheet,
@@ -129,7 +131,7 @@ export default function MusicLibraryScreen() {
       />
       {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={filteredSongs}
           keyExtractor={(item, index) => String(item.musicId || item.id || index)}
             contentContainerStyle={[styles.listContent, playbackState !== 'idle' && { paddingBottom: 80 }]}

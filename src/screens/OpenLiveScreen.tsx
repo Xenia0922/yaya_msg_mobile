@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   ActivityIndicator,
   BackHandler,
@@ -303,7 +305,7 @@ export default function OpenLiveScreen() {
           <Text style={[styles.status, isDark && styles.textSubLight]}>{loading && !items.length ? '加载中...' : status}</Text>
         </View>
 
-        <FlatList
+        <PerfFlatList
           data={filtered}
             keyExtractor={(item) => item.key}
             contentContainerStyle={styles.list}

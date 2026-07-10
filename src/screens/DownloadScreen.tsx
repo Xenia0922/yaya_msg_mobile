@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   FlatList,
   Image,
@@ -126,7 +128,7 @@ export default function DownloadScreen() {
           </TouchableOpacity>
         </View>
 
-        <FlatList
+        <PerfFlatList
           data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}

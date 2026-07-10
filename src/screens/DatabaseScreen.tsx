@@ -33,7 +33,6 @@ export default function DatabaseScreen() {
         if (!alive) return;
         if (localMembers.length > storeMembers.length) {
           setStoreMembers(localMembers);
-          setStatus(`已加载随包成员库：${localMembers.length} 位`);
         }
 
         const res = await pocketApi.getGroupTeamStar();

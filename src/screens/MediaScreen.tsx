@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   ActivityIndicator,
   BackHandler,
@@ -944,7 +946,7 @@ export default function MediaScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={list}
           keyExtractor={(item, index) => item.liveId || String(index)}
           renderItem={({ item, index }) => {

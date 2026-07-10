@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   FlatList,
   StyleSheet,
@@ -144,7 +146,7 @@ export default function AudioProgramsScreen() {
 
       {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={programs}
           keyExtractor={(item, index) => String(item.talkId || item.id || index)}
           contentContainerStyle={styles.listContent}

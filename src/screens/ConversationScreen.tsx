@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   ActivityIndicator,
   FlatList,
@@ -66,11 +68,67 @@ export default function ConversationScreen() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const renderItem = ({ item, index }: { item: ConvItem; index: number }) => (
-    <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
+  // 行组件记忆化：父组件刷新（如下拉加载）时不重渲染所有可见行。
+  const renderItem = useCallback(
+    ({ item }: { item: ConvItem }) => (
+      <ConvCard
+        item={item}
+        isDark={isDark}
+        onPress={() => navigation.navigate('PrivateMessagesScreen', { targetUserId: item.targetUserId, targetName: item.name })}
+      />
+    ),
+    [isDark, navigation],
+  );
+
+  return (
+    <View style={[styles.container, isDark && styles.containerDark]}>
+      <ScreenHeader title="会话列表" onBack={() => navigation.goBack()} right={
+        <TouchableOpacity onPress={fetchData}>
+          <Text style={styles.headerAction}>刷新</Text>
+        </TouchableOpacity>
+      } />
+      {error ? (
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
+            <Text style={styles.retryText}>重试</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <PerfFlatList
+          data={items}
+          keyExtractor={(item) => item.key}
+          contentContainerStyle={styles.list}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
+          getItemLayout={(_, index) => ({ length: 80, offset: 80 * index, index })}
+          refreshing={loading}
+          onRefresh={fetchData}
+          renderItem={renderItem}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              {loading ? <ActivityIndicator color="#ff6f91" /> : null}
+              <Text style={[styles.empty, isDark && styles.textSubLight]}>
+                {loading ? '加载中...' : '暂无会话'}
+              </Text>
+            </View>
+          }
+        />
+      </FadeInView>
+    </View>
+  );
+}
+
+// --- 模块级记忆化行组件 ---
+const ConvCard = React.memo(function ConvCard({ item, isDark, onPress }: { item: ConvItem; isDark: boolean; onPress: () => void }) {
+  return (
+    <FadeInView duration={300}>
       <TouchableOpacity
         style={[styles.card, isDark && styles.cardDark]}
-        onPress={() => navigation.navigate('PrivateMessagesScreen', { targetUserId: item.targetUserId, targetName: item.name })}
+        onPress={onPress}
         activeOpacity={0.85}
       >
         {item.avatar ? (
@@ -93,47 +151,7 @@ export default function ConversationScreen() {
       </TouchableOpacity>
     </FadeInView>
   );
-
-  return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="会话列表" onBack={() => navigation.goBack()} right={
-        <TouchableOpacity onPress={fetchData}>
-          <Text style={styles.headerAction}>刷新</Text>
-        </TouchableOpacity>
-      } />
-      {error ? (
-        <View style={styles.errorWrap}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
-            <Text style={styles.retryText}>重试</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.key}
-          contentContainerStyle={styles.list}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
-          removeClippedSubviews
-          refreshing={loading}
-          onRefresh={fetchData}
-          renderItem={renderItem}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              {loading ? <ActivityIndicator color="#ff6f91" /> : null}
-              <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                {loading ? '加载中...' : '暂无会话'}
-              </Text>
-            </View>
-          }
-        />
-      </FadeInView>
-    </View>
-  );
-}
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },

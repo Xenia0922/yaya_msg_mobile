@@ -2,5 +2,25 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  "include": [
+    "src",
+    "App.tsx",
+    "index.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "oh_modules",
+    "**/oh_modules",
+    "harmony",
+    "dist",
+    "src_backup_20260513211107",
+    "android",
+    "ios",
+    "**/*.wasm",
+    "scripts",
+    ".expo",
+    ".github",
+    ".opencode"
+  ]
 }

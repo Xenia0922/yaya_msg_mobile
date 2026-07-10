@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native';
@@ -22,6 +22,7 @@ export default function RoomRadioScreen() {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [roomMode, setRoomMode] = useState<'big' | 'small'>('big');
+  const playerRef = useRef<any>(null);
   const startRadio = async (member: Member) => {
     setSelectedMember(member);
     setLoading(true);

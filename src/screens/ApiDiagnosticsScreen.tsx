@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   ActivityIndicator,
   FlatList,
@@ -135,7 +137,7 @@ export default function ApiDiagnosticsScreen() {
         {running ? <ActivityIndicator color="#ff6f91" style={{ padding: 16 }} /> : null}
 
         <FadeInView delay={80} duration={300}>
-          <FlatList
+          <PerfFlatList
             data={rows}
             scrollEnabled={false}
             keyExtractor={(item) => item.key}

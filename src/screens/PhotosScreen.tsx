@@ -1,4 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+import { NetworkImage } from '../components/NetworkImage';
+
 import {
   View, Text, TouchableOpacity, FlatList, Image, StyleSheet,
 } from 'react-native';
@@ -163,7 +166,7 @@ export default function PhotosScreen() {
         <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
           {url ? (
             <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadPhoto(url)}>
-              <Image source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+              <NetworkImage source={{ uri: url }} style={styles.photo} resizeMode="cover" />
             </TouchableOpacity>
           ) : <View style={styles.photo} />}
           <Text style={[styles.photoTitle, isDark && styles.textDark]} numberOfLines={1}>{item.name || item.title || ''}</Text>
@@ -181,7 +184,7 @@ export default function PhotosScreen() {
           {status ? <Text style={[styles.status, isDark && styles.textDark]}>{status}</Text> : null}
         </View>
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
-        <FlatList
+        <PerfFlatList
           data={photos}
           numColumns={2}
           keyExtractor={(item, index) => String(item.id || item.nftId || index)}

@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   FlatList,
   ScrollView,
@@ -386,7 +388,7 @@ export default function FlipScreen() {
       } />
       {status ? <Text style={styles.statusText}>{status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={flips}
           keyExtractor={(item, index) => String(item.questionId || item.id || index)}
           initialNumToRender={12}

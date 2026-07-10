@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   yaya_auto_checkin_enabled: false,
   yaya_auto_checkin_last_date: '',
   yaya_auto_checkin_last_user: '',
+  yaya_trip_show_all: false,
   customBackgroundFile: '',
   customBackgroundUpdatedAt: 0,
 };

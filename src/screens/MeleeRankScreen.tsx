@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   ActivityIndicator,
   FlatList,
@@ -131,54 +133,19 @@ export default function MeleeRankScreen() {
     );
   };
 
-  const renderRankItem = ({ item, index }: { item: any; index: number }) => {
-    const rankNum = Number(item.rankNum || item.rank || item.no || index + 1);
-    // User info can be at baseUserInfo, userInfo, user, or top-level
-    const u = item.baseUserInfo || item.userInfo || item.user || item;
-    const topU = item.topUserInfo || item.topUser || {};
-    const name = String(u.userName || u.nickname || u.nickName || u.name || '');
-    const avatar = String(u.userAvatar || u.avatar || u.headImg || u.headUrl || '');
-    const topUser = String(topU.userName || topU.nickname || '');
-    const melee = String(item.melee || item.meleeValue || item.score || item.total || '0');
-
-    return (
-      <FadeInView delay={80 + index * 30} duration={300}>
-        <View style={[styles.rankCard, isDark && styles.cardDark]}>
-          <View style={styles.rankNumWrap}>
-            <Text style={[styles.rankNum, rankNum <= 3 && styles.rankTop3]}>
-              {rankNum <= 3 ? ['🥇', '🥈', '🥉'][rankNum - 1] : `#${rankNum}`}
-            </Text>
-          </View>
-          {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} /> : <View style={[styles.avatar, styles.avatarPlaceholder]} />}
-          <View style={styles.rankInfo}>
-            <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{name || `用户 ${rankNum}`}</Text>
-            {topUser ? <Text style={[styles.rankMeta, isDark && styles.textSubLight]} numberOfLines={1}>🏆 榜首: {topUser}</Text> : null}
-          </View>
-          <Text style={styles.meleeValue}>{melee}</Text>
-        </View>
-      </FadeInView>
-    );
-  };
-
-  const renderPersonItem = ({ item, index }: { item: any; index: number }) => {
-    const name = String(item.userName || item.nickname || item.nickName || item.name || '');
-    const avatar = String(item.userAvatar || item.avatar || item.headImg || '');
-    const userId = String(item.userId || item.id || item.uid || '');
-    const charm = String(item.charm || item.charmValue || item.total || item.score || '0');
-
-    return (
-      <FadeInView delay={80 + index * 30} duration={300}>
-        <View style={[styles.rankCard, isDark && styles.cardDark]}>
-          {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} /> : <View style={[styles.avatar, styles.avatarPlaceholder]} />}
-          <View style={styles.rankInfo}>
-            <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{name || '未知用户'}</Text>
-            <Text style={[styles.rankMeta, isDark && styles.textSubLight]} numberOfLines={1}>ID: {userId}</Text>
-          </View>
-          <Text style={styles.meleeValue}>{charm}</Text>
-        </View>
-      </FadeInView>
-    );
-  };
+  // 行组件提取为模块级 React.memo，配合 useCallback，避免父组件状态变化导致整列表重渲染。
+  const renderRank = useCallback(
+    ({ item, index }: { item: any; index: number }) => (
+      <RankCard item={item} index={index} isDark={isDark} />
+    ),
+    [isDark],
+  );
+  const renderPerson = useCallback(
+    ({ item, index }: { item: any; index: number }) => (
+      <PersonCard item={item} index={index} isDark={isDark} />
+    ),
+    [isDark],
+  );
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
@@ -206,7 +173,7 @@ export default function MeleeRankScreen() {
 
       {mode === 'total' && (
         <>
-          <FlatList
+          <PerfFlatList
             horizontal
             data={weeks}
             keyExtractor={(item) => String(item.weekRankId)}
@@ -216,7 +183,7 @@ export default function MeleeRankScreen() {
             showsHorizontalScrollIndicator={false}
           />
           <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-            <FlatList
+            <PerfFlatList
               data={ranks}
               keyExtractor={(item: any) => String(item.userId || item.rankNum || item.resId || Math.random())}
               contentContainerStyle={styles.list}
@@ -224,7 +191,8 @@ export default function MeleeRankScreen() {
               maxToRenderPerBatch={12}
               windowSize={7}
               removeClippedSubviews
-              renderItem={renderRankItem}
+              getItemLayout={(_, index) => ({ length: 72, offset: 72 * index, index })}
+              renderItem={renderRank}
               ListEmptyComponent={
                 <Text style={[styles.empty, isDark && styles.textSubLight]}>
                   {loading ? '加载中...' : selectedWeek ? '暂无排名数据' : '选择排行榜查看详情'}
@@ -236,16 +204,17 @@ export default function MeleeRankScreen() {
       )}
 
       {mode === 'person' && (
-        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <FlatList
-            data={personRanks}
-            keyExtractor={(item: any) => String(item.userId || item.charm || Math.random())}
-            contentContainerStyle={styles.list}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-            removeClippedSubviews
-            renderItem={renderPersonItem}
+          <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+            <PerfFlatList
+              data={personRanks}
+              keyExtractor={(item: any) => String(item.userId || item.charm || Math.random())}
+              contentContainerStyle={styles.list}
+              initialNumToRender={12}
+              maxToRenderPerBatch={12}
+              windowSize={7}
+              removeClippedSubviews
+              getItemLayout={(_, index) => ({ length: 72, offset: 72 * index, index })}
+              renderItem={renderPerson}
             ListEmptyComponent={
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
                 {loading ? '加载中...' : member ? '暂无贡献数据' : '请选择成员查看贡献榜'}
@@ -259,6 +228,55 @@ export default function MeleeRankScreen() {
     </View>
   );
 }
+
+// --- 模块级记忆化行组件：避免父组件状态变化引发整列表重渲染 ---
+const RankCard = React.memo(function RankCard({ item, index, isDark }: { item: any; index: number; isDark: boolean }) {
+  const rankNum = Number(item.rankNum || item.rank || item.no || index + 1);
+  const u = item.baseUserInfo || item.userInfo || item.user || item;
+  const topU = item.topUserInfo || item.topUser || {};
+  const name = String(u.userName || u.nickname || u.nickName || u.name || '');
+  const avatar = String(u.userAvatar || u.avatar || u.headImg || u.headUrl || '');
+  const topUser = String(topU.userName || topU.nickname || '');
+  const melee = String(item.melee || item.meleeValue || item.score || item.total || '0');
+
+  return (
+    <FadeInView delay={80 + index * 30} duration={300}>
+      <View style={[styles.rankCard, isDark && styles.cardDark]}>
+        <View style={styles.rankNumWrap}>
+          <Text style={[styles.rankNum, rankNum <= 3 && styles.rankTop3]}>
+            {rankNum <= 3 ? ['🥇', '🥈', '🥉'][rankNum - 1] : `#${rankNum}`}
+          </Text>
+        </View>
+        {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} /> : <View style={[styles.avatar, styles.avatarPlaceholder]} />}
+        <View style={styles.rankInfo}>
+          <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{name || `用户 ${rankNum}`}</Text>
+          {topUser ? <Text style={[styles.rankMeta, isDark && styles.textSubLight]} numberOfLines={1}>🏆 榜首: {topUser}</Text> : null}
+        </View>
+        <Text style={styles.meleeValue}>{melee}</Text>
+      </View>
+    </FadeInView>
+  );
+});
+
+const PersonCard = React.memo(function PersonCard({ item, index, isDark }: { item: any; index: number; isDark: boolean }) {
+  const name = String(item.userName || item.nickname || item.nickName || item.name || '');
+  const avatar = String(item.userAvatar || item.avatar || item.headImg || '');
+  const userId = String(item.userId || item.id || item.uid || '');
+  const charm = String(item.charm || item.charmValue || item.total || item.score || '0');
+
+  return (
+    <FadeInView delay={80 + index * 30} duration={300}>
+      <View style={[styles.rankCard, isDark && styles.cardDark]}>
+        {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} /> : <View style={[styles.avatar, styles.avatarPlaceholder]} />}
+        <View style={styles.rankInfo}>
+          <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{name || '未知用户'}</Text>
+          <Text style={[styles.rankMeta, isDark && styles.textSubLight]} numberOfLines={1}>ID: {userId}</Text>
+        </View>
+        <Text style={styles.meleeValue}>{charm}</Text>
+      </View>
+    </FadeInView>
+  );
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },

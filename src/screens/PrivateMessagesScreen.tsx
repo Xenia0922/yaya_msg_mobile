@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   FlatList,
   Image,
@@ -407,7 +409,7 @@ export default function PrivateMessagesScreen() {
     return (
       <View style={[styles.screen, isDark && styles.screenDark]}>
         <ScreenHeader title={convName(sel)} onBack={() => setSel(null)} />
-        <FlatList
+        <PerfFlatList
           ref={flatRef}
           data={msgs}
           keyExtractor={(item, i) => msgId(item, i)}
@@ -485,7 +487,7 @@ export default function PrivateMessagesScreen() {
         <TouchableOpacity onPress={loadConvs}><Text style={styles.refreshBtn}>刷新</Text></TouchableOpacity>
       } />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={convs}
           keyExtractor={(item, i) => String(convTargetId(item) || i)}
           initialNumToRender={12}

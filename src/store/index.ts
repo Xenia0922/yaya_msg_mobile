@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, Member } from '../types';
 
 interface SettingsState {
@@ -64,57 +65,14 @@ export const useUiStore = create<UiState>((set) => ({
   hideToast: () => set({ toastMessage: '' }),
 }));
 
-interface AppState {
-  isLoggedIn: boolean;
-  currentView: string;
-  messageFilter: string;
-  selectedMember: Member | null;
-  searchQuery: string;
-  searchUser: string;
-  dateYear: string;
-  dateMonth: string;
-  dateDay: string;
-  sortOrder: 'asc' | 'desc';
-  setIsLoggedIn: (v: boolean) => void;
-  setCurrentView: (v: string) => void;
-  setMessageFilter: (v: string) => void;
-  setSelectedMember: (m: Member | null) => void;
-  setSearchQuery: (v: string) => void;
-  setSearchUser: (v: string) => void;
-  setDateYear: (v: string) => void;
-  setDateMonth: (v: string) => void;
-  setDateDay: (v: string) => void;
-  setSortOrder: (v: 'asc' | 'desc') => void;
-}
-
-export const useAppStore = create<AppState>((set) => ({
-  isLoggedIn: false,
-  currentView: 'home',
-  messageFilter: 'all',
-  selectedMember: null,
-  searchQuery: '',
-  searchUser: '',
-  dateYear: 'all',
-  dateMonth: 'all',
-  dateDay: 'all',
-  sortOrder: 'desc',
-  setIsLoggedIn: (v) => set({ isLoggedIn: v }),
-  setCurrentView: (v) => set({ currentView: v }),
-  setMessageFilter: (v) => set({ messageFilter: v }),
-  setSelectedMember: (m) => set({ selectedMember: m }),
-  setSearchQuery: (v) => set({ searchQuery: v }),
-  setSearchUser: (v) => set({ searchUser: v }),
-  setDateYear: (v) => set({ dateYear: v }),
-  setDateMonth: (v) => set({ dateMonth: v }),
-  setDateDay: (v) => set({ dateDay: v }),
-  setSortOrder: (v) => set({ sortOrder: v }),
-}));
-
 // --- v2.6: Announcement store ---
+
+const ANNOUNCEMENT_SEEN_KEY = 'yaya_announcement_seen';
 
 interface AnnouncementState {
   seenIds: string[];
   lastFetched: number;
+  hydrated: boolean;
   markSeen: (id: string) => void;
   setLastFetched: (ts: number) => void;
 }
@@ -122,8 +80,26 @@ interface AnnouncementState {
 export const useAnnouncementStore = create<AnnouncementState>((set) => ({
   seenIds: [],
   lastFetched: 0,
-  markSeen: (id) => set((state) => ({
-    seenIds: state.seenIds.includes(id) ? state.seenIds : [...state.seenIds, id],
-  })),
+  hydrated: false,
+  markSeen: (id) =>
+    set((state) => {
+      if (state.seenIds.includes(id)) return {};
+      const next = [...state.seenIds, id];
+      AsyncStorage.setItem(ANNOUNCEMENT_SEEN_KEY, JSON.stringify(next)).catch(() => {});
+      return { seenIds: next };
+    }),
   setLastFetched: (ts) => set({ lastFetched: ts }),
 }));
+
+// Persist seen announcement ids so the modal doesn't re-pop on every cold launch.
+AsyncStorage.getItem(ANNOUNCEMENT_SEEN_KEY)
+  .then((raw) => {
+    const ids: string[] = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(ids) && ids.length) {
+      useAnnouncementStore.setState({ seenIds: ids });
+    }
+  })
+  .catch(() => {})
+  .finally(() => {
+    useAnnouncementStore.setState({ hydrated: true });
+  });

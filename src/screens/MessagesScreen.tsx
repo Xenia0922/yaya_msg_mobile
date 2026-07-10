@@ -1,4 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Modal,
 } from 'react-native';
@@ -114,7 +116,7 @@ export default function MessagesScreen() {
             value={pickerQuery}
             onChangeText={setPickerQuery}
           />
-          <FlatList
+          <PerfFlatList
             data={pickerList}
             keyExtractor={(item) => `${item.id}-${item.channelId}`}
             renderItem={({ item }) => (
@@ -135,7 +137,7 @@ export default function MessagesScreen() {
       </Modal>
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={filtered}
           keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || index)}
           renderItem={renderMsgItem}

@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   ActivityIndicator,
   FlatList,
@@ -200,7 +202,7 @@ export default function BilibiliLiveScreen() {
       {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
       {loading ? <ActivityIndicator color="#ff6f91" style={{ padding: 12 }} /> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={rooms}
           keyExtractor={(item, index) => item.roomId || String(index)}
           renderItem={({ item, index }) => (

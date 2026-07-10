@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   BackHandler,
   Image,
@@ -803,7 +805,10 @@ export default function FollowedRoomsScreen() {
   }, []);
 
   const loadFollowed = useCallback(async (silent = false) => {
-    if (!token) { if (!silent) showToast('需登录后刷新'); return; }
+    if (!token) {
+      setFollowed([]);
+      return;
+    }
     setLoading(true);
     try {
       const idsRes = await pocketApi.getFollowedIds();
@@ -1106,7 +1111,7 @@ export default function FollowedRoomsScreen() {
         </View>
 
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <FlatList
+          <PerfFlatList
             data={filteredRoomMessages}
             keyExtractor={(item, index) => messageKey(item, index)}
             contentContainerStyle={styles.chatContent}
@@ -1292,7 +1297,7 @@ export default function FollowedRoomsScreen() {
       />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={filtered}
           keyExtractor={(item) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
@@ -1318,7 +1323,18 @@ export default function FollowedRoomsScreen() {
               </TouchableOpacity>
             </FadeInView>
           )}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '加载中...' : '暂无关注房间'}</Text>}
+          ListEmptyComponent={loading ? (
+            <Text style={[styles.empty, isDark && styles.emptyDark]}>加载中...</Text>
+          ) : !token ? (
+            <View style={styles.emptyWrap}>
+              <Text style={[styles.empty, isDark && styles.emptyDark]}>登录后可查看关注房间和最新消息</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('LoginScreen')} style={styles.emptyLink}>
+                <Text style={styles.refreshText}>去登录</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={[styles.empty, isDark && styles.emptyDark]}>暂无关注房间</Text>
+          )}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
@@ -1454,4 +1470,6 @@ const styles = StyleSheet.create({
   textSubDark: { color: '#eeeeee' },
   empty: { textAlign: 'center', color: '#3f3f3f', marginTop: 60, fontSize: 14, paddingHorizontal: 24, lineHeight: 20 },
   emptyDark: { color: '#aaa' },
+  emptyWrap: { alignItems: 'center', paddingVertical: 60 },
+  emptyLink: { marginTop: 12 },
 });

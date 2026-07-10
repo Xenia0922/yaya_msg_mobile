@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   ActivityIndicator,
   FlatList,
@@ -129,7 +131,7 @@ export default function MemberWeiboScreen() {
       } />
       <MemberPicker selectedMember={member} onSelect={setMember} placeholder="搜索成员查看微博..." />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={items}
           keyExtractor={(item) => item.key}
           contentContainerStyle={styles.list}

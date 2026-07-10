@@ -22,10 +22,11 @@ export default function App() {
   const splashText = appTheme === 'dark' ? '#eeeeee' : '#555555';
 
   // v2.6: Announcement modal
-  const { seenIds, markSeen, lastFetched } = useAnnouncementStore();
+  const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
   const [announceModal, setAnnounceModal] = useState<{ title: string; header: string; content: string; imageUrl: string; link: string } | null>(null);
 
   useEffect(() => {
+    if (!hydrated) return;
     let mounted = true;
     (async () => {
       try {
@@ -44,7 +45,7 @@ export default function App() {
       } catch {}
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [hydrated]);
 
   useEffect(() => {
     let mounted = true;
@@ -109,7 +110,6 @@ export default function App() {
         <ScalePressable style={{ marginTop: 20, padding: 16 }} onPress={() => setReady(true)}>
           <Text style={{ color: '#ff6f91', fontSize: 14, fontWeight: '600' }}>跳过等待，进入应用</Text>
         </ScalePressable>
-        <WebViewSigner />
       </FadeInView>
     );
   }

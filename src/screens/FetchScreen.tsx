@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   FlatList,
   StyleSheet,
@@ -125,7 +127,7 @@ export default function FetchScreen() {
           {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text> : null}
         </View>
 
-        <FlatList
+        <PerfFlatList
           data={results}
           keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || item.clientMsgId || index)}
           initialNumToRender={12}

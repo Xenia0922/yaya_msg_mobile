@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { PerfFlatList } from '../components/PerfFlatList';
+
 import {
   ActivityIndicator,
   FlatList,
@@ -124,7 +126,7 @@ export default function TripScreen() {
       } />
       <MemberPicker selectedMember={member} onSelect={setMember} placeholder="搜索成员查看行程..." />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <FlatList
+        <PerfFlatList
           data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
