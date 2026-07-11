@@ -26,7 +26,6 @@ export type RootStackParamList = {
   MemberDynamicScreen: undefined;
   MemberWeiboScreen: undefined;
   InvoiceScreen: undefined;
-  ConversationScreen: undefined;
   ScoreOfficialScreen: undefined;
 };
 

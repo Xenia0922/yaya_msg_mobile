@@ -28,6 +28,7 @@ interface MusicPlayerState {
   playMode: PlayMode;
   // Timing
   url: string;
+  coverUrl: string;
   duration: number;
   position: number;
   // Lyrics
@@ -65,6 +66,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>((set, get) => ({
   playbackState: 'idle',
   playMode: 'sequential',
   url: '',
+  coverUrl: '',
   duration: 0,
   position: 0,
   lyrics: [],
@@ -92,14 +94,17 @@ export const useMusicPlayerStore = create<MusicPlayerState>((set, get) => ({
     const q = queue || s.queue;
     const idx = q.findIndex((t) => (t.musicId || t.id) === (track.musicId || track.id));
     const sameTrack = idx >= 0 && idx === s.currentIndex;
+    const raw = track.thumbPath || track.cover || '';
+    const cover = raw ? (raw.startsWith('http') ? raw : `https://source.48.cn${raw.startsWith('/') ? raw : '/' + raw}`) : '';
     return {
       queue: q,
       currentIndex: idx >= 0 ? idx : 0,
       playbackState: 'loading',
-      // Keep position/duration if same track (resume), else reset
+      url: '',
+      coverUrl: cover || s.coverUrl,
       duration: sameTrack ? s.duration : 0,
       position: sameTrack ? s.position : 0,
-      lyrics: s.lyrics, // Preserve lyrics
+      lyrics: s.lyrics,
       error: null,
     };
   }),

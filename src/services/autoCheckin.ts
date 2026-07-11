@@ -1,6 +1,6 @@
 import pocketApi from '../api/pocket48';
 import { saveSettings } from './settings';
-import { useSettingsStore, useUiStore } from '../store';
+import { useSettingsStore } from '../store';
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -45,7 +45,6 @@ function isCheckedToday(res: any) {
 
 export async function runAutoCheckinIfNeeded() {
   const { settings, setSettings } = useSettingsStore.getState();
-  const showToast = useUiStore.getState().showToast;
   if (!settings.yaya_auto_checkin_enabled || !settings.p48Token) return { skipped: true, message: '自动签到未开启或未登录' };
 
   const today = todayKey();
@@ -78,8 +77,6 @@ export async function runAutoCheckinIfNeeded() {
       message = '今日已经签到过了';
       alreadyChecked = true;
     } else {
-      const errorMessage = error?.message || String(error);
-      showToast(`自动签到失败：${errorMessage}`);
       throw error;
     }
   }
@@ -90,8 +87,5 @@ export async function runAutoCheckinIfNeeded() {
   };
   setSettings(patch);
   await saveSettings(patch);
-  if (!alreadyChecked && message !== '今日已经签到过了') {
-    showToast(message);
-  }
   return { success: true, message };
 }

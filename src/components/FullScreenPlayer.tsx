@@ -3,6 +3,7 @@ import {
   Animated,
   Dimensions,
   Easing,
+  Image,
   PanResponder,
   Pressable,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { useSettingsStore } from '../store';
 import { MusicEngine } from '../services/musicPlayer';
@@ -42,17 +44,28 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   const duration = useMusicPlayerStore((s) => s.duration);
   const position = useMusicPlayerStore((s) => s.position);
   const lyrics = useMusicPlayerStore((s) => s.lyrics);
+  const coverUrl = useMusicPlayerStore((s) => s.coverUrl);
   const track = queue[currentIndex] || null;
 
   const isPlaying = playbackState === 'playing';
   const progress = duration > 0 ? position / duration : 0;
   const lrcIdx = lyricIndexAt(lyrics, position);
+  const progRef2 = useRef<View>(null);
+  const progW2 = useRef(0);
+  const seekProg = (px: number) => {
+    if (duration <= 0) return;
+    progRef2.current?.measure((_x, _y, _w, _h, x0) => {
+      const r = Math.max(0, Math.min(1, (px - x0) / progW2.current));
+      MusicEngine.seek(r * duration);
+    });
+  };
 
   const [showLyrics, setShowLyrics] = useState(false);
   const [lyricSize, setLyricSize] = useState(17);
   const rotationAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const lyricScrollRef = useRef<ScrollView>(null);
+  const lrcScrollH = useRef(400);
 
   useEffect(() => {
     if (isPlaying) {
@@ -90,14 +103,17 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   })).current;
 
   useEffect(() => {
-    if (lrcIdx >= 0 && showLyrics && lyricScrollRef.current) {
-      try { lyricScrollRef.current.scrollTo({ y: Math.max(0, lrcIdx * (lyricSize * 1.6) - 80), animated: true }); } catch {}
-    }
+    if (lrcIdx < 0 || !showLyrics || !lyricScrollRef.current) return;
+    const lineH = lyricSize * 1.6 + 16; // inline lineHeight + paddingVertical*2
+    const timer = setTimeout(() => {
+      lyricScrollRef.current?.scrollTo?.({ y: Math.max(0, (lrcIdx - 8) * lineH), animated: true });
+    }, 30);
+    return () => clearTimeout(timer);
   }, [lrcIdx, showLyrics, lyricSize]);
 
   if (!visible || !track) return null;
 
-  const modeLabel = playMode === 'sequential' ? '🔁' : playMode === 'random' ? '🔀' : '🔂';
+  const modeLabel = playMode === 'sequential' ? '→→' : playMode === 'random' ? '⇄' : '↻';
 
   return (
     <View style={styles.root}>
@@ -129,8 +145,9 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
                 <Text style={styles.lyricToolT}>A+</Text>
               </Pressable>
             </View>
-            <ScrollView ref={lyricScrollRef} style={styles.lyricScroll} showsVerticalScrollIndicator={false}>
-              <View style={{ height: 120 }} />
+            <ScrollView ref={lyricScrollRef} style={styles.lyricScroll} showsVerticalScrollIndicator={false}
+              onLayout={e => { lrcScrollH.current = e.nativeEvent.layout.height; }}>
+              <View style={{ height: 8 }} />
               {lyrics.length > 0 ? lyrics.map((l, i) => (
                 <Pressable key={i} onPress={() => { const t = lyricTimeForIndex(lyrics, i); if (t >= 0) MusicEngine.seek(t); }}>
                   <Text style={[styles.lyricLine, { fontSize: lyricSize, lineHeight: lyricSize * 1.6 }, i === lrcIdx && styles.lyricLineOn, isDark && styles.lyricLineD]}>
@@ -138,15 +155,19 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
                   </Text>
                 </Pressable>
               )) : <Text style={[styles.lyricLine, isDark && styles.lyricLineD]}>暂无歌词</Text>}
-              <View style={{ height: 200 }} />
+              <View style={{ height: 8 }} />
             </ScrollView>
           </>
         ) : (
           <View style={styles.discWrap}>
             <Animated.View style={[styles.disc, { transform: [{ rotate: spin }] }]}>
-              <View style={styles.discInner}>
-                <Text style={styles.discText}>♪</Text>
-              </View>
+              {coverUrl ? (
+                <Image source={{ uri: coverUrl }} style={styles.discImg} />
+              ) : (
+                <View style={styles.discInner}>
+                  <Text style={styles.discText}>♪</Text>
+                </View>
+              )}
             </Animated.View>
           </View>
         )}
@@ -155,26 +176,26 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
         <View style={styles.ctrlWrap}>
           <View style={styles.progressRow}>
             <Text style={[styles.progTime, isDark && styles.tS]}>{formatTime(position)}</Text>
-            <View style={styles.progBg}>
+            <Pressable ref={progRef2} style={styles.progBg} onLayout={e => { progW2.current = e.nativeEvent.layout.width; }} onPress={e => seekProg(e.nativeEvent.pageX)}>
               <View style={[styles.progFg, { width: `${progress * 100}%` as any }]} />
-            </View>
+            </Pressable>
             <Text style={[styles.progTime, isDark && styles.tS]}>{formatTime(duration)}</Text>
           </View>
           <View style={styles.btnRow}>
             <Pressable onPress={MusicEngine.cycleMode} style={styles.sideBtn}>
-              <Text style={styles.modeLabel}>{modeLabel}</Text>
+              <Icon name={playMode === 'single' ? 'repeat-once' : playMode === 'random' ? 'shuffle-variant' : 'repeat'} size={22} color={isDark ? '#ccc' : '#666'} />
             </Pressable>
             <Pressable onPress={() => MusicEngine.prev()} style={styles.sideBtn}>
-              <Text style={styles.sideIcon}>⏮</Text>
+              <Icon name="skip-previous" size={30} color={isDark ? '#eee' : '#333'} />
             </Pressable>
             <Pressable onPress={MusicEngine.togglePause} style={styles.playBtn}>
-              <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+              <Icon name={isPlaying ? 'pause' : 'play'} size={38} color="#fff" />
             </Pressable>
             <Pressable onPress={() => MusicEngine.next()} style={styles.sideBtn}>
-              <Text style={styles.sideIcon}>⏭</Text>
+              <Icon name="skip-next" size={30} color={isDark ? '#eee' : '#333'} />
             </Pressable>
             <Pressable onPress={() => {}} style={styles.sideBtn}>
-              <Text style={styles.sideIcon}>≡</Text>
+              <Icon name="playlist-music" size={22} color={isDark ? '#ccc' : '#666'} />
             </Pressable>
           </View>
         </View>
@@ -185,8 +206,8 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
 
 const styles = StyleSheet.create({
   root: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 999, elevation: 999 },
-  backdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.96)' },
-  backdropD: { backgroundColor: 'rgba(10,10,10,0.96)' },
+  backdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#ffffff' },
+  backdropD: { backgroundColor: '#111111' },
   page: { flex: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 48, paddingBottom: 8 },
   topBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
@@ -196,7 +217,8 @@ const styles = StyleSheet.create({
   topTitle: { fontSize: 16, fontWeight: '700', color: '#222' },
   topSub: { fontSize: 11, color: '#888', marginTop: 2 },
   discWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  disc: { width: 240, height: 240, borderRadius: 120, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center', borderWidth: 8, borderColor: 'rgba(0,0,0,0.12)' },
+  disc: { width: 240, height: 240, borderRadius: 120, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center', borderWidth: 8, borderColor: 'rgba(0,0,0,0.12)', overflow: 'hidden' },
+  discImg: { width: 240, height: 240, borderRadius: 120 },
   discInner: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   discText: { color: '#fff', fontSize: 32 },
   lyricScroll: { flex: 1 },
@@ -209,8 +231,8 @@ const styles = StyleSheet.create({
   ctrlWrap: { paddingHorizontal: 20, paddingBottom: 32 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   progTime: { fontSize: 10, color: '#888', width: 40, textAlign: 'center' },
-  progBg: { flex: 1, height: 3, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' },
-  progFg: { height: 3, borderRadius: 2, backgroundColor: '#ff6f91' },
+  progBg: { flex: 1, height: 24, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 2, overflow: 'hidden' },
+  progFg: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
   btnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   sideBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   sideIcon: { fontSize: 20, color: '#ff6f91' },

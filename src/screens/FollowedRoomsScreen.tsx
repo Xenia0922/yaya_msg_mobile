@@ -1411,7 +1411,7 @@ const styles = StyleSheet.create({
   giftImageFallback: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   giftEmoji: { color: '#fff', fontSize: 13, fontWeight: '800' },
   giftTextWrap: { flex: 1, minWidth: 0 },
-  giftName: { fontSize: 13, color: '#eb2f96', fontWeight: '800' },
+  giftName: { fontSize: 13, color: '#ff6f91', fontWeight: '800' },
   giftMeta: { marginTop: 3, fontSize: 11, color: '#666' },
   giftMetaDark: { color: '#aaa' },
   mediaCard: { marginTop: 8, minWidth: 214, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)' },

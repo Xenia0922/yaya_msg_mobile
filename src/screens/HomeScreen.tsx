@@ -44,7 +44,6 @@ const CARDS: CardSection[] = [
       { title: '私信', desc: '口袋私信会话', route: 'PrivateMessagesScreen' },
       { title: '相册', desc: '按房间查看图片', route: 'RoomAlbumScreen' },
       { title: '公演', desc: '成员公演记录', route: 'OpenLiveScreen' },
-      { title: '会话', desc: 'IM 会话列表', route: 'ConversationScreen' },
     ],
   },
   {
@@ -79,7 +78,7 @@ const CARDS: CardSection[] = [
     title: '数据',
     subtitle: '统计、数据库、排行榜',
     items: [
-      { title: '乱斗榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen' },
+      { title: '鸡腿榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen' },
       { title: '计分', desc: '官方计分投票', route: 'ScoreOfficialScreen' },
       { title: '数据库', desc: '查看附属数据', route: 'DatabaseScreen' },
     ],
@@ -121,7 +120,6 @@ export default function HomeScreen() {
     <View style={[styles.container, isDark && styles.containerDark]}>
       <FadeInView style={styles.header} distance={8}>
         <Text style={styles.headerTitle}>牙牙消息</Text>
-        <Text style={[styles.headerSub, isDark && styles.headerSubDark]}>成员 {membersLoaded ? members.length : 0} 位</Text>
       </FadeInView>
 
       {showTip && !token ? (

@@ -34,7 +34,6 @@ import MeleeRankScreen from '../screens/MeleeRankScreen';
 import MemberDynamicScreen from '../screens/MemberDynamicScreen';
 import MemberWeiboScreen from '../screens/MemberWeiboScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
-import ConversationScreen from '../screens/ConversationScreen';
 import ScoreOfficialScreen from '../screens/ScoreOfficialScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
@@ -116,7 +115,6 @@ const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDura
 const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10);
 const MemberWeiboStackScreen = withPageMotion(MemberWeiboScreen, ui.motion.stackDuration, 10);
 const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10);
-const ConversationStackScreen = withPageMotion(ConversationScreen, ui.motion.stackDuration, 10);
 const ScoreOfficialStackScreen = withPageMotion(ScoreOfficialScreen, ui.motion.stackDuration, 10);
 
 function TabButton({
@@ -336,7 +334,6 @@ export default function AppNavigator() {
           <Stack.Screen name="MemberDynamicScreen" component={MemberDynamicStackScreen} />
           <Stack.Screen name="MemberWeiboScreen" component={MemberWeiboStackScreen} />
           <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
-          <Stack.Screen name="ConversationScreen" component={ConversationStackScreen} />
           <Stack.Screen name="ScoreOfficialScreen" component={ScoreOfficialStackScreen} />
         </Stack.Navigator>
         <AppToast />

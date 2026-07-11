@@ -16,7 +16,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
-import { errorMessage, unwrapList } from '../utils/data';
+import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { Member } from '../types';
 
 interface WeekItem {
@@ -235,7 +235,7 @@ const RankCard = React.memo(function RankCard({ item, index, isDark }: { item: a
   const u = item.baseUserInfo || item.userInfo || item.user || item;
   const topU = item.topUserInfo || item.topUser || {};
   const name = String(u.userName || u.nickname || u.nickName || u.name || '');
-  const avatar = String(u.userAvatar || u.avatar || u.headImg || u.headUrl || '');
+  const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
   const topUser = String(topU.userName || topU.nickname || '');
   const melee = String(item.melee || item.meleeValue || item.score || item.total || '0');
 
@@ -260,7 +260,8 @@ const RankCard = React.memo(function RankCard({ item, index, isDark }: { item: a
 
 const PersonCard = React.memo(function PersonCard({ item, index, isDark }: { item: any; index: number; isDark: boolean }) {
   const name = String(item.userName || item.nickname || item.nickName || item.name || '');
-  const avatar = String(item.userAvatar || item.avatar || item.headImg || '');
+  const u = item.baseUserInfo || item.userInfo || item.user || item;
+  const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || item.userAvatar || item.avatar || item.headImg || ''));
   const userId = String(item.userId || item.id || item.uid || '');
   const charm = String(item.charm || item.charmValue || item.total || item.score || '0');
 

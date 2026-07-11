@@ -493,7 +493,7 @@ export default function AnalysisScreen() {
               <View style={styles.flipTypeRow}>
                 <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(24,144,255,0.12)', color: '#1890ff' }]}>文字 {flipStats.typeStats.text}</Text>
                 <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(114,46,209,0.12)', color: '#722ed1' }]}>语音 {flipStats.typeStats.audio}</Text>
-                <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(235,47,150,0.12)', color: '#eb2f96' }]}>视频 {flipStats.typeStats.video}</Text>
+                <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(255,111,145,0.12)', color: '#ff6f91' }]}>视频 {flipStats.typeStats.video}</Text>
               </View>
               <Text style={[styles.sectionSub, isDark && styles.textSubLight]}>成员排名 · {flipStats.memberRank.length} 人 · 共 {flipStats.totalCount} 条</Text>
               {flipStats.memberRank.map((m, idx) => {

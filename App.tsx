@@ -7,7 +7,7 @@ import { useSettingsStore, useMemberStore, useAnnouncementStore } from './src/st
 import { loadMembers } from './src/utils/members';
 import { fetchJson, fetchJsonStrict } from './src/utils/network';
 import { initWasm, WebViewSigner } from './src/auth';
-import { FadeInView, ScalePressable } from './src/components/Motion';
+import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { NOTICE_URL } from './src/constants';
 
@@ -19,7 +19,6 @@ export default function App() {
   const customBackgroundUpdatedAt = useSettingsStore((state) => state.settings.customBackgroundUpdatedAt);
   const [backgroundLoadError, setBackgroundLoadError] = useState('');
   const splashBg = appTheme === 'dark' ? '#111111' : '#fff7fb';
-  const splashText = appTheme === 'dark' ? '#eeeeee' : '#555555';
 
   // v2.6: Announcement modal
   const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
@@ -103,14 +102,10 @@ export default function App() {
 
   if (!ready) {
     return (
-      <FadeInView style={{ flex: 1, backgroundColor: splashBg, alignItems: 'center', justifyContent: 'center', padding: 24 }} distance={8} duration={220}>
-        <Text style={{ color: '#ff6f91', fontSize: 28, fontWeight: 'bold', marginBottom: 16 }}>牙牙消息</Text>
+      <View style={{ flex: 1, backgroundColor: splashBg, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: '#ff6f91', fontSize: 28, fontWeight: 'bold', marginBottom: 20 }}>牙牙消息</Text>
         <ActivityIndicator color="#ff6f91" size="large" />
-        <Text style={{ color: splashText, marginTop: 12, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>{message}</Text>
-        <ScalePressable style={{ marginTop: 20, padding: 16 }} onPress={() => setReady(true)}>
-          <Text style={{ color: '#ff6f91', fontSize: 14, fontWeight: '600' }}>跳过等待，进入应用</Text>
-        </ScalePressable>
-      </FadeInView>
+      </View>
     );
   }
 

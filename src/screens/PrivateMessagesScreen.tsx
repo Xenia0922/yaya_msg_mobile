@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
   msgText: { fontSize: 14, color: '#333', lineHeight: 20 },
   msgTextMine: { color: '#fff' },
   msgTime: { fontSize: 10, color: '#777', marginTop: 4 },
-  msgTimeMine: { color: '#b35d6e' },
+  msgTimeMine: { color: '#7a4a7e' },
   mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.08)', alignSelf: 'flex-start' },
   mediaBtnText: { fontSize: 12, fontWeight: '800', color: '#ff6f91' },
   inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)' },
