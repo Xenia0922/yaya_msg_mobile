@@ -32,6 +32,10 @@ export interface DownloadItem {
 const STORAGE_KEY = 'yaya_download_items_v1';
 const DOWNLOAD_DIR = `${FileSystem.documentDirectory || ''}downloads/`;
 
+// 缓存上限：4GB LRU。
+// 超过后按「创建时间最早优先」淘汰已完成的下载文件，避免无限增长占满存储。
+const MAX_CACHE_BYTES = 4 * 1024 * 1024 * 1024;
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const chars: string[] = [];
@@ -168,9 +172,11 @@ export async function enqueueDownload(params: {
       const downloadedUri = result?.uri;
       const done = { status: 'done' as const, progress: 1, localUri: downloadedUri || localUri };
       await updateItem(item.id, done);
+      // 下载完成后按额度淘汰最早的缓存（离线优先但不过度占存储）
+      await enforceCacheQuota().catch(() => undefined);
 
-      // Auto-save to gallery so user can find it
-      if (item.type === 'image' || item.type === 'video') {
+      // Auto-save to gallery so user can find it (图片/视频/录播均进系统相册)
+      if (item.type === 'image' || item.type === 'video' || item.type === 'replay') {
         try {
           const { status } = await MediaLibrary.requestPermissionsAsync();
           if (status === 'granted') {
@@ -186,9 +192,10 @@ export async function enqueueDownload(params: {
     const { uri: downloadedUri } = await FileSystem.downloadAsync(url, localUri, { headers });
     const done = { status: 'done' as const, progress: 1, localUri: downloadedUri || localUri };
     await updateItem(item.id, done);
+    await enforceCacheQuota().catch(() => undefined);
 
-    // Auto-save to gallery so user can find it
-    if (item.type === 'image' || item.type === 'video') {
+    // Auto-save to gallery so user can find it (图片/视频/录播均进系统相册)
+    if (item.type === 'image' || item.type === 'video' || item.type === 'replay') {
       try {
         const { status } = await MediaLibrary.requestPermissionsAsync();
         if (status === 'granted') {
@@ -224,9 +231,56 @@ export async function clearFinishedDownloads() {
   await saveDownloadItems(items.filter((item) => item.status === 'downloading' || item.status === 'queued'));
 }
 
+/**
+ * 缓存额度淘汰（LRU by 创建时间）。
+ * 在每次下载完成时调用：超出 MAX_CACHE_BYTES 后，从最早的「已完成」项开始删文件，直到回到额度内。
+ */
+export async function enforceCacheQuota(maxBytes: number = MAX_CACHE_BYTES): Promise<void> {
+  let items = await loadDownloadItems();
+  const done = items.filter((i) => i.status === 'done' && i.localUri && (i.totalBytes || 0) > 0);
+  let total = done.reduce((sum, i) => sum + (i.totalBytes || 0), 0);
+  if (total <= maxBytes) return;
+
+  const oldestFirst = [...done].sort((a, b) => a.createdAt - b.createdAt);
+  for (const target of oldestFirst) {
+    if (total <= maxBytes) break;
+    await FileSystem.deleteAsync(target.localUri!, { idempotent: true }).catch(() => undefined);
+    items = items.filter((i) => i.id !== target.id);
+    total -= target.totalBytes || 0;
+  }
+  await saveDownloadItems(items);
+}
+
+/**
+ * 离线优先解析播放地址 —— 被动观看缓存与主动下载共用同一缓存。
+ * 若该 url 已有「已完成」的本地下载且文件仍在，直接返回本地路径，省流量、可离线。
+ */
+export async function resolvePlayableUri(url: string): Promise<string | null> {
+  const target = String(url || '').trim();
+  if (!/^https?:\/\//i.test(target)) return null;
+  const items = await loadDownloadItems();
+  const hit = items.find((i) => i.status === 'done' && i.url === target && i.localUri);
+  if (!hit) return null;
+  const info = await FileSystem.getInfoAsync(hit.localUri!).catch(() => null);
+  return info && info.exists ? hit.localUri! : null;
+}
+
 export async function openDownloadItem(item: DownloadItem) {
-  const target = item.localUri || item.url;
-  if (!target) return;
+  let target: string | undefined = item.localUri || undefined;
+
+  // 离线兜底：本地文件若已被系统清理/丢失，优雅降级而非崩溃
+  if (target) {
+    const info = await FileSystem.getInfoAsync(target).catch(() => null);
+    if (!info || !info.exists) target = undefined;
+  }
+  if (!target && /^https?:\/\//i.test(item.url || '')) {
+    // 缓存缺失时回退在线地址（忽略缓存错误，保证可播）
+    target = item.url;
+  }
+  if (!target) {
+    Alert.alert('无法打开', '本地文件已失效，且无法在线打开');
+    return;
+  }
 
   // For images/videos: save to device gallery then open
   if (item.type === 'image' || item.type === 'video') {

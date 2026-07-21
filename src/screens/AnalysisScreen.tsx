@@ -10,6 +10,7 @@ import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
+import { Skeleton } from '../components/Skeleton';
 import { useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { errorMessage, messagePayload, messageText, pickText, unwrapList } from '../utils/data';
@@ -229,18 +230,18 @@ export default function AnalysisScreen() {
   const loadRoomStats = async (nextMember: Member) => {
     setMember(nextMember);
     setLoading(true);
-    setStatus('加载中...统计数据...');
+    setStatus('');
     setMessages([]);
     try {
       let nextTime = 0;
       const collected: any[] = [];
-      for (let page = 0; page < 5; page += 1) {
+      for (let page = 0; page < 20; page += 1) {
         const res = await pocketApi.getRoomMessages({
           channelId: String(nextMember.channelId || ''),
           serverId: String(nextMember.serverId || ''),
           nextTime,
           fetchAll: true,
-          limit: 50,
+          limit: 100,
         });
         const list = unwrapList(res, ['content.messageList', 'content.message', 'content.list', 'content.messages', 'data.messageList', 'data.message', 'messageList', 'message', 'list']);
         if (!list.length) break;
@@ -270,13 +271,22 @@ export default function AnalysisScreen() {
 
   const loadFlipStats = async () => {
     setLoading(true);
-    setStatus('加载中...翻牌统计...');
     try {
-      const pages = await Promise.all([0, 50, 100, 150].map((begin) => pocketApi.getFlipList(begin, 50).catch(() => null)));
-      const list = pages.flatMap((res) => unwrapList(res, ['content.questions', 'content.list', 'content.data', 'data.questions', 'questions', 'list']));
-      setFlips(list);
-      setStatus(list.length ? `已加载 ${list.length} 条翻牌记录` : '暂无翻牌记录');
-      showToast(list.length ? `已加载 ${list.length} 条翻牌` : '无翻牌记录');
+      // 循环拉取直到拉完，移除原先 [0,50,100,150] 的 200 条上限
+      const collected: any[] = [];
+      let begin = 0;
+      for (let i = 0; i < 24; i++) {
+        const res = await pocketApi.getFlipList(begin, 100).catch(() => null);
+        const list = res ? unwrapList(res, ['content.questions', 'content.list', 'content.data', 'data.questions', 'questions', 'list']) : [];
+        if (!list.length) break;
+        collected.push(...list);
+        const next = Number((res as any)?.content?.next ?? (res as any)?.data?.next ?? 0);
+        if (!next || next <= begin) break;
+        begin = next;
+      }
+      setFlips(collected);
+      setStatus(collected.length ? `已加载 ${collected.length} 条翻牌记录` : '暂无翻牌记录');
+      showToast(collected.length ? `已加载 ${collected.length} 条翻牌` : '无翻牌记录');
     } catch (error) {
       setStatus(`翻牌统计失败：${errorMessage(error)}`);
     } finally {
@@ -304,7 +314,11 @@ export default function AnalysisScreen() {
 
       <View style={styles.pickerWrap}>
         <MemberPicker selectedMember={member} onSelect={loadRoomStats} />
-        <Text style={[styles.statusText, isDark && styles.textSubLight]}>{loading ? '加载中...' : status}</Text>
+        {loading ? (
+          <Skeleton width={160} height={14} radius={7} dark={isDark} style={{ marginVertical: 4 }} />
+        ) : (
+          <Text style={[styles.statusText, isDark && styles.textSubLight]}>{status}</Text>
+        )}
       </View>
 
       <View style={styles.tabs}>

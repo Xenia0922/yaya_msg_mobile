@@ -17,6 +17,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
+import { SkeletonList } from '../components/Skeleton';
 
 export default function ScoreOfficialScreen() {
   const navigation = useNavigation<any>();
@@ -136,7 +137,7 @@ export default function ScoreOfficialScreen() {
         </TouchableOpacity>
       } />
       <ScrollView contentContainerStyle={styles.scroll}>
-        {loading && <ActivityIndicator color="#ff6f91" style={{ padding: 16 }} />}
+        {loading && <SkeletonList count={6} dark={isDark} />}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {userInfo ? (

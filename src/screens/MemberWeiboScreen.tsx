@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
+import { SkeletonList } from '../components/Skeleton';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import MemberPicker from '../components/MemberPicker';
@@ -144,14 +145,14 @@ export default function MemberWeiboScreen() {
           renderItem={renderItem}
           ListFooterComponent={
             items.length ? <Text style={[styles.footer, isDark && styles.textSubLight]}>
-              {loadingMore ? '加载中...' : hasMore ? '上滑继续加载' : '没有更多了'}
+              {loadingMore ? '' : hasMore ? '上滑加载更多' : '没有更多了'}
             </Text> : null
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              {loading ? <ActivityIndicator color="#ff6f91" /> : null}
+              {loading ? <SkeletonList count={6} dark={isDark} /> : null}
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                {loading ? '加载中...' : member ? (error ? error : '暂无微博') : '请搜索选择成员查看微博'}
+                {loading ? '' : member ? (error ? error : '暂无微博') : '请搜索选择成员查看微博'}
               </Text>
             </View>
           }

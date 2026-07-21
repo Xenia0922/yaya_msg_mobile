@@ -154,7 +154,7 @@ export default function RoomAlbumScreen() {
     setSelectedMember(member);
     setRoomMode(mode);
     setLoading(true);
-    setStatus(`加载中...${mode === 'small' ? '小房间' : '大房间'}相册...`);
+    setStatus('');
     try {
       const res = await pocketApi.getRoomAlbum({ channelId, nextTime: append ? nextTime : 0 });
       const nextItems = normalizeAlbumItems(res, mode);
@@ -249,7 +249,7 @@ export default function RoomAlbumScreen() {
           <Text style={[styles.channelText, isDark && styles.textSubLight]}>
             当前 channelId：{currentChannelId || '--'}
           </Text>
-          <Text style={[styles.status, isDark && styles.textSubLight]}>{loading ? '加载中...' : status}</Text>
+          <Text style={[styles.status, isDark && styles.textSubLight]}>{loading ? '' : status}</Text>
         </View>
 
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
@@ -263,11 +263,11 @@ export default function RoomAlbumScreen() {
             windowSize={7}
             removeClippedSubviews
             renderItem={renderAlbumItem}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '加载中...' : '暂无相册内容'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '' : '暂无相册内容'}</Text>}
           onEndReached={loadMoreAlbum}
           onEndReachedThreshold={0.35}
           ListFooterComponent={hasMore ? (
-            <Text style={[styles.footerText, isDark && styles.textSubLight]}>{loading ? '加载中...' : '上滑继续加载'}</Text>
+            <Text style={[styles.footerText, isDark && styles.textSubLight]}>{loading ? '' : '上滑加载更多'}</Text>
           ) : null}
         />
       </FadeInView>

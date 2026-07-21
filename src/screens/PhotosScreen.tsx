@@ -190,7 +190,7 @@ export default function PhotosScreen() {
           keyExtractor={(item, index) => String(item.id || item.nftId || index)}
           contentContainerStyle={{ padding: 8 }}
           renderItem={renderPhotoItem}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textDark]}>{loading ? '加载中...' : '暂无图片'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textDark]}>{loading ? '' : '暂无图片'}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}

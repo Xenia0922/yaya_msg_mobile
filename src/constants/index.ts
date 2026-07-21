@@ -6,6 +6,11 @@ export const BILIBILI_API = 'https://api.bilibili.com';
 
 export const MEMBERS_URL = 'https://yaya-data.pages.dev/members.json';
 
+export const APP_VERSION = '2.6.2';
+
+// 成员数据原始仓库（yk1z 的牙牙消息电脑版），数据由其维护并发布。
+export const MEMBER_DATA_SOURCE_URL = 'https://github.com/yk1z/yaya_msg';
+
 export const BILIBILI_LIVE_CONFIG_URL = 'https://yaya-data.pages.dev/bilibili-live.json';
 
 export const LYRICS_INDEX_URL = 'https://yaya-data.pages.dev/lyrics-index.json';

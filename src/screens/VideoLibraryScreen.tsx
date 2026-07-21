@@ -50,7 +50,7 @@ export default function VideoLibraryScreen() {
   const [videos, setVideos] = useState<any[]>([]);
   const [playing, setPlaying] = useState<any | null>(null);
   const [playUrl, setPlayUrl] = useState('');
-  const [status, setStatus] = useState('加载中...');
+  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -63,7 +63,7 @@ export default function VideoLibraryScreen() {
     const cursor = refresh ? 0 : nextCtime;
     if (refresh) setLoading(true);
     else setLoadingMore(true);
-    setStatus(refresh ? '加载中...官方视频...' : '加载中...更多视频...');
+    setStatus(refresh ? '' : '');
     try {
       const res = await officialMediaApi.getVideoList({ ctime: cursor, typeId: 0, groupId: 0, limit: 20 });
       const list = normalizeVideos(res);
@@ -122,7 +122,7 @@ export default function VideoLibraryScreen() {
           <Text style={[styles.backBtn, loading && styles.disabledText]}>刷新</Text>
         </TouchableOpacity>
       } />
-      {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text> : null}
+      {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '' : status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={videos}

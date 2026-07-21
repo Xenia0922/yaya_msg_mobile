@@ -449,7 +449,7 @@ export default function PrivateMessagesScreen() {
               </FadeInView>
             );
           }}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '加载中...' : '暂无消息'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '' : '暂无消息'}</Text>}
         />
         {member ? (
           <View style={[styles.flipBar, isDark && styles.flipBarDark]}>
@@ -505,7 +505,7 @@ export default function PrivateMessagesScreen() {
               </TouchableOpacity>
             </FadeInView>
           )}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '加载中...' : '暂无私信'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '' : '暂无私信'}</Text>}
         />
       </FadeInView>
     </View>

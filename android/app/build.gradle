@@ -99,8 +99,8 @@ android {
         applicationId 'com.yk1z.yayamsg'
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 31)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2060000
-        versionName "2.6.0"
+        versionCode 2060002
+        versionName "2.6.2"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

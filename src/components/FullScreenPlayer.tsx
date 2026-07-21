@@ -3,7 +3,9 @@ import {
   Animated,
   Dimensions,
   Easing,
-  Image,
+  FlatList,
+  GestureResponderEvent,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -17,6 +19,7 @@ import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { useSettingsStore } from '../store';
 import { MusicEngine } from '../services/musicPlayer';
 import { lyricIndexAt, lyricTimeForIndex } from '../utils/lyrics';
+import CoverArt from './CoverArt';
 
 const { width: SW } = Dimensions.get('window');
 const ANIM_DURATION = 300;
@@ -45,6 +48,7 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   const position = useMusicPlayerStore((s) => s.position);
   const lyrics = useMusicPlayerStore((s) => s.lyrics);
   const coverUrl = useMusicPlayerStore((s) => s.coverUrl);
+  const [showQueue, setShowQueue] = useState(false);
   const track = queue[currentIndex] || null;
 
   const isPlaying = playbackState === 'playing';
@@ -52,30 +56,54 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   const lrcIdx = lyricIndexAt(lyrics, position);
   const progRef2 = useRef<View>(null);
   const progW2 = useRef(0);
-  const seekProg = (px: number) => {
-    if (duration <= 0) return;
-    progRef2.current?.measure((_x, _y, _w, _h, x0) => {
-      const r = Math.max(0, Math.min(1, (px - x0) / progW2.current));
-      MusicEngine.seek(r * duration);
-    });
+  // 拖拽预览：按下/移动时本地实时跟手，松手才真正 seek（避免频繁打断播放）
+  const [dragRatio, setDragRatio] = useState<number | null>(null);
+  // 用 ref 缓存最近一次有效 ratio：松手事件（onResponderRelease）的 locationX 常为 0，
+  // 直接读会导致 seek(0) 弹回开头；改用 grant/move 时记下的真实 ratio。
+  const dragRatioRef = useRef<number>(0);
+  const ratioFromX = (x: number): number => {
+    const w = progW2.current || 1;
+    return Math.max(0, Math.min(1, x / w));
+  };
+  const onProgGrant = (e: any) => {
+    const r = ratioFromX(e.nativeEvent.locationX);
+    dragRatioRef.current = r;
+    setDragRatio(r);
+  };
+  const onProgMove = (e: any) => {
+    const r = ratioFromX(e.nativeEvent.locationX);
+    dragRatioRef.current = r;
+    setDragRatio(r);
+  };
+  const onProgRelease = () => {
+    const r = dragRatioRef.current;
+    if (duration > 0) MusicEngine.seek(r * duration);
+    dragRatioRef.current = 0;
+    setDragRatio(null);
   };
 
   const [showLyrics, setShowLyrics] = useState(false);
   const [lyricSize, setLyricSize] = useState(17);
+  const [spacerH, setSpacerH] = useState(160);
   const rotationAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const lyricScrollRef = useRef<ScrollView>(null);
   const lrcScrollH = useRef(400);
+  // 每行歌词在 ScrollView 内容里的 y 偏移（onLayout 实测），用于自适应居中滚动
+  const lineYOffsets = useRef<number[]>([]);
+
+  // 歌词变化：重置实测偏移数组
+  useEffect(() => { lineYOffsets.current = new Array(lyrics.length).fill(0); }, [lyrics]);
 
   useEffect(() => {
-    if (isPlaying) {
-      rotationAnim.setValue(0);
-      Animated.loop(
-        Animated.timing(rotationAnim, { toValue: 1, duration: 12000, easing: Easing.linear, useNativeDriver: true }),
-      ).start();
-    } else {
-      rotationAnim.stopAnimation();
-    }
+    if (!isPlaying) return;
+    // 不重置到 0：从当前角度继续转，暂停时冻结在原角度，恢复无跳变。
+    // loop 在 1->0 回绕时 interpolate 360°->0° 视觉位置相同，无缝。
+    const loop = Animated.loop(
+      Animated.timing(rotationAnim, { toValue: 1, duration: 12000, easing: Easing.linear, useNativeDriver: true }),
+    );
+    loop.start();
+    return () => { loop.stop(); };
   }, [isPlaying, currentIndex]);
 
   const spin = rotationAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
@@ -84,16 +112,10 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   onCloseRef.current = onClose;
 
   const panResponder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 15 || Math.abs(gs.dy) > 15,
-    onPanResponderMove: (_, gs) => slideAnim.setValue(gs.dx),
+    onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 15,
+    onPanResponderMove: (_, gs) => { if (Math.abs(gs.dy) > 15) slideAnim.setValue(gs.dy); },
     onPanResponderRelease: (_, gs) => {
-      if (Math.abs(gs.dx) > SW * 0.25) {
-        const dir = gs.dx > 0 ? 1 : -1;
-        Animated.timing(slideAnim, { toValue: dir * SW, duration: ANIM_DURATION, easing: Easing.inOut(Easing.ease), useNativeDriver: true }).start(() => {
-          slideAnim.setValue(0);
-          if (dir > 0) MusicEngine.prev(); else MusicEngine.next();
-        });
-      } else if (gs.dy > 60) {
+      if (gs.dy > 60) {
         onCloseRef.current();
         slideAnim.setValue(0);
       } else {
@@ -102,18 +124,22 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
     },
   })).current;
 
+  // 自适应歌词滚动：用实测的每行 y 偏移 + ScrollView 可视高度做居中，
+  // 不再写死「-8 行」，自动适配字号、行高、屏幕尺寸。
   useEffect(() => {
     if (lrcIdx < 0 || !showLyrics || !lyricScrollRef.current) return;
-    const lineH = lyricSize * 1.6 + 16; // inline lineHeight + paddingVertical*2
+    const y = lineYOffsets.current[lrcIdx] ?? 0;
+    const lineH = lyricSize * 1.6 + 16;
     const timer = setTimeout(() => {
-      lyricScrollRef.current?.scrollTo?.({ y: Math.max(0, (lrcIdx - 8) * lineH), animated: true });
+      const target = Math.max(0, y - lrcScrollH.current / 2 + lineH / 2);
+      lyricScrollRef.current?.scrollTo?.({ y: target, animated: true });
     }, 30);
     return () => clearTimeout(timer);
-  }, [lrcIdx, showLyrics, lyricSize]);
+  }, [lrcIdx, showLyrics, lyricSize, lyrics]);
 
   if (!visible || !track) return null;
 
-  const modeLabel = playMode === 'sequential' ? '→→' : playMode === 'random' ? '⇄' : '↻';
+  const modeText = playMode === 'sequential' ? '顺序播放' : playMode === 'random' ? '随机播放' : '单曲循环';
 
   return (
     <View style={styles.root}>
@@ -146,39 +172,49 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
               </Pressable>
             </View>
             <ScrollView ref={lyricScrollRef} style={styles.lyricScroll} showsVerticalScrollIndicator={false}
-              onLayout={e => { lrcScrollH.current = e.nativeEvent.layout.height; }}>
-              <View style={{ height: 8 }} />
+              onLayout={e => { lrcScrollH.current = e.nativeEvent.layout.height; setSpacerH(Math.max(120, lrcScrollH.current / 2)); }}>
+              <View style={{ height: spacerH }} />
               {lyrics.length > 0 ? lyrics.map((l, i) => (
-                <Pressable key={i} onPress={() => { const t = lyricTimeForIndex(lyrics, i); if (t >= 0) MusicEngine.seek(t); }}>
+                <Pressable
+                  key={i}
+                  onLayout={e => { lineYOffsets.current[i] = e.nativeEvent.layout.y; }}
+                  onPress={() => { const t = lyricTimeForIndex(lyrics, i); if (t >= 0) MusicEngine.seek(t); }}
+                >
                   <Text style={[styles.lyricLine, { fontSize: lyricSize, lineHeight: lyricSize * 1.6 }, i === lrcIdx && styles.lyricLineOn, isDark && styles.lyricLineD]}>
                     {l.text}
                   </Text>
                 </Pressable>
               )) : <Text style={[styles.lyricLine, isDark && styles.lyricLineD]}>暂无歌词</Text>}
-              <View style={{ height: 8 }} />
+              <View style={{ height: spacerH }} />
             </ScrollView>
           </>
         ) : (
           <View style={styles.discWrap}>
             <Animated.View style={[styles.disc, { transform: [{ rotate: spin }] }]}>
-              {coverUrl ? (
-                <Image source={{ uri: coverUrl }} style={styles.discImg} />
-              ) : (
-                <View style={styles.discInner}>
-                  <Text style={styles.discText}>♪</Text>
-                </View>
-              )}
+              <CoverArt uri={coverUrl || undefined} title={track.title || '♪'} size={240} round />
             </Animated.View>
           </View>
         )}
 
         {/* Controls */}
         <View style={styles.ctrlWrap}>
+          <Text style={[styles.modeLabel, isDark && styles.tS]}>{modeText}</Text>
           <View style={styles.progressRow}>
             <Text style={[styles.progTime, isDark && styles.tS]}>{formatTime(position)}</Text>
-            <Pressable ref={progRef2} style={styles.progBg} onLayout={e => { progW2.current = e.nativeEvent.layout.width; }} onPress={e => seekProg(e.nativeEvent.pageX)}>
-              <View style={[styles.progFg, { width: `${progress * 100}%` as any }]} />
-            </Pressable>
+            <View
+              ref={progRef2}
+              style={styles.progBg}
+              onLayout={e => { progW2.current = e.nativeEvent.layout.width; }}
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderGrant={onProgGrant}
+              onResponderMove={onProgMove}
+              onResponderRelease={onProgRelease}
+            >
+              <View style={[styles.progTrack, isDark && styles.progTrackD]} />
+              <View style={[styles.progFg, { width: `${(dragRatio ?? progress) * 100}%` as any }]} />
+              <View style={[styles.progThumb, { left: `${(dragRatio ?? progress) * 100}%` as any }, isDark && styles.progThumbD]} />
+            </View>
             <Text style={[styles.progTime, isDark && styles.tS]}>{formatTime(duration)}</Text>
           </View>
           <View style={styles.btnRow}>
@@ -194,12 +230,51 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
             <Pressable onPress={() => MusicEngine.next()} style={styles.sideBtn}>
               <Icon name="skip-next" size={30} color={isDark ? '#eee' : '#333'} />
             </Pressable>
-            <Pressable onPress={() => {}} style={styles.sideBtn}>
+            <Pressable onPress={() => setShowQueue(true)} style={styles.sideBtn}>
               <Icon name="playlist-music" size={22} color={isDark ? '#ccc' : '#666'} />
             </Pressable>
           </View>
         </View>
       </Animated.View>
+      <Modal visible={showQueue} transparent animationType="slide" onRequestClose={() => setShowQueue(false)}>
+        <TouchableOpacity style={styles.queueMask} activeOpacity={1} onPress={() => setShowQueue(false)}>
+          <View style={[styles.queueSheet, isDark && styles.queueSheetD]} onStartShouldSetResponder={() => true}>
+            <View style={styles.queueHandle} />
+            <View style={styles.queueHeader}>
+              <Text style={[styles.queueTitle, isDark && styles.tL]}>播放列表（{queue.length}）</Text>
+              <TouchableOpacity onPress={() => setShowQueue(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Icon name="close" size={20} color={isDark ? '#ccc' : '#666'} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={queue}
+              keyExtractor={(t, i) => String(t.musicId || t.id || i)}
+              initialNumToRender={12}
+              renderItem={({ item, index }) => {
+                const active = index === currentIndex;
+                const id = String(item.musicId || item.id || index);
+                const cu = (item.coverUrl || item.cover || item.thumbPath || '') as string;
+                const uri = cu ? (cu.startsWith('http') ? cu : `https://source.48.cn${cu.startsWith('/') ? cu : '/' + cu}`) : undefined;
+                return (
+                  <TouchableOpacity
+                    style={[styles.queueItem, isDark && styles.queueItemD, active && styles.queueItemActive]}
+                    onPress={() => { MusicEngine.playAt(index); setShowQueue(false); }}
+                  >
+                    <CoverArt uri={uri} title={item.title || '♪'} size={42} round active={active} />
+                    <View style={styles.queueInfo}>
+                      <Text style={[styles.queueTitle2, isDark && styles.tL]} numberOfLines={1}>{item.title || '未知'}</Text>
+                      <Text style={[styles.queueSub, isDark && styles.tS]} numberOfLines={1}>
+                        {[item.albumName || item.album, item.joinMemberNames || item.artist].filter(Boolean).join(' · ') || '官方音乐'}
+                      </Text>
+                    </View>
+                    {active ? <Icon name="volume-high" size={18} color="#ff6f91" /> : null}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -217,22 +292,23 @@ const styles = StyleSheet.create({
   topTitle: { fontSize: 16, fontWeight: '700', color: '#222' },
   topSub: { fontSize: 11, color: '#888', marginTop: 2 },
   discWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  disc: { width: 240, height: 240, borderRadius: 120, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center', borderWidth: 8, borderColor: 'rgba(0,0,0,0.12)', overflow: 'hidden' },
-  discImg: { width: 240, height: 240, borderRadius: 120 },
-  discInner: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
-  discText: { color: '#fff', fontSize: 32 },
+  disc: { width: 240, height: 240, borderRadius: 120, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center', borderWidth: 8, borderColor: '#0d0d0d', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
   lyricScroll: { flex: 1 },
   lyricToolRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, paddingVertical: 6 },
   lyricToolBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.06)' },
   lyricToolT: { fontSize: 12, color: '#555' },
   lyricLine: { fontSize: 15, color: '#999', textAlign: 'center', paddingVertical: 8, lineHeight: 26 },
   lyricLineD: { color: '#555' },
-  lyricLineOn: { color: '#ff6f91', fontWeight: '900', fontSize: 21, textShadowColor: 'rgba(255,111,145,0.3)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 },
+  lyricLineOn: { color: '#ff6f91', fontWeight: '900', textShadowColor: 'rgba(255,111,145,0.3)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 },
   ctrlWrap: { paddingHorizontal: 20, paddingBottom: 32 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   progTime: { fontSize: 10, color: '#888', width: 40, textAlign: 'center' },
-  progBg: { flex: 1, height: 24, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 2, overflow: 'hidden' },
-  progFg: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
+  progBg: { flex: 1, height: 28, justifyContent: 'center' },
+  progTrack: { position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.12)' },
+  progTrackD: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  progFg: { position: 'absolute', left: 0, height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
+  progThumb: { position: 'absolute', top: 7, width: 14, height: 14, borderRadius: 7, backgroundColor: '#ff6f91', borderWidth: 2, borderColor: '#fff', transform: [{ translateX: -7 }] },
+  progThumbD: { borderColor: '#222' },
   btnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   sideBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   sideIcon: { fontSize: 20, color: '#ff6f91' },
@@ -240,4 +316,18 @@ const styles = StyleSheet.create({
   playBtn: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   playIcon: { fontSize: 26, color: '#fff' },
   tL: { color: '#eee' }, tS: { color: '#aaa' },
+  // 播放列表
+  queueMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  queueSheet: { maxHeight: '82%', backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingBottom: 18 },
+  queueSheetD: { backgroundColor: '#1b1b1b' },
+  queueHandle: { width: 38, height: 4, borderRadius: 2, backgroundColor: '#ddd', alignSelf: 'center', marginTop: 8, marginBottom: 4 },
+  queueHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
+  queueTitle: { fontSize: 16, fontWeight: '800', color: '#222' },
+  queueItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  queueItemD: { borderBottomColor: 'rgba(255,255,255,0.08)' },
+  queueItemActive: { backgroundColor: 'rgba(255,111,145,0.10)' },
+  queueInfo: { flex: 1, minWidth: 0 },
+  queueTitle2: { fontSize: 14, fontWeight: '700', color: '#222' },
+  queueSub: { fontSize: 11, color: '#888', marginTop: 2 },
+  queueUnavail: { fontSize: 10, color: '#ffd479', fontWeight: '700' },
 });

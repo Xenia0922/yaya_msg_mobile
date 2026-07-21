@@ -18,6 +18,7 @@ import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { Member } from '../types';
+import { SkeletonList } from '../components/Skeleton';
 
 interface WeekItem {
   weekRankId: number;
@@ -195,7 +196,7 @@ export default function MeleeRankScreen() {
               renderItem={renderRank}
               ListEmptyComponent={
                 <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                  {loading ? '加载中...' : selectedWeek ? '暂无排名数据' : '选择排行榜查看详情'}
+                  {loading ? '' : selectedWeek ? '暂无排名数据' : '选择排行榜查看详情'}
                 </Text>
               }
             />
@@ -217,7 +218,7 @@ export default function MeleeRankScreen() {
               renderItem={renderPerson}
             ListEmptyComponent={
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                {loading ? '加载中...' : member ? '暂无贡献数据' : '请选择成员查看贡献榜'}
+                {loading ? '' : member ? '暂无贡献数据' : '请选择成员查看贡献榜'}
               </Text>
             }
           />

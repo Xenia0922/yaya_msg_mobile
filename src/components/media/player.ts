@@ -1,5 +1,6 @@
-export function getPlayerHtml(streamUrl: string, posterUrl?: string): string {
+export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime?: number): string {
   const poster = posterUrl || '';
+  const startTime = Number.isFinite(initialTime) && (initialTime as number) > 0 ? (initialTime as number) : 0;
 
   return `<!DOCTYPE html>
 <html>
@@ -24,7 +25,6 @@ export function getPlayerHtml(streamUrl: string, posterUrl?: string): string {
   <video id="video" controls autoplay playsinline webkit-playsinline poster="${poster}"></video>
   <div id="loading">
     <div class="spinner"></div>
-    <div>加载中...</div>
   </div>
   <div id="error"></div>
 </div>
@@ -43,6 +43,30 @@ export function getPlayerHtml(streamUrl: string, posterUrl?: string): string {
   function hideLoading() {
     loading.style.display = 'none';
   }
+
+  var startTime = ${JSON.stringify(startTime)};
+
+  // 续播位置回传：定期 + 暂停时上报当前进度（由 RN 侧落盘）
+  function reportProgress() {
+    if (window.ReactNativeWebView && video.currentTime > 0) {
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'progress', time: video.currentTime }));
+      } catch (e) {}
+    }
+  }
+  video.addEventListener('pause', reportProgress);
+  video.addEventListener('ended', function() {
+    if (window.ReactNativeWebView) {
+      try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ended' })); } catch (e) {}
+    }
+  });
+  setInterval(reportProgress, 2000);
+
+  video.addEventListener('loadedmetadata', function() {
+    if (startTime && startTime > 0) {
+      try { video.currentTime = startTime; } catch (e) {}
+    }
+  });
 
   var url = ${JSON.stringify(streamUrl)};
   var ext = url.split('?')[0].split('#')[0].toLowerCase();

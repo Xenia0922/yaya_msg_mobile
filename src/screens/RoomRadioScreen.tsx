@@ -70,7 +70,7 @@ export default function RoomRadioScreen() {
         </View>
         <View style={[styles.playerCard, isDark && styles.playerCardDark]}>
           <Text style={[styles.playerTitle, isDark && styles.textDark]}>{selectedMember?.ownerName || '暂无数据'}</Text>
-          <Text style={[styles.playerStatus, isDark && styles.textSubDark]}>{loading ? '加载中...' : status || '暂无电台地址'}</Text>
+          <Text style={[styles.playerStatus, isDark && styles.textSubDark]}>{loading ? '' : status || '暂无电台地址'}</Text>
 
           {radioUrl ? (
             <>

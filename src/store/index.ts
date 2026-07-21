@@ -24,6 +24,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     customBackgroundFile: '',
     customBackgroundUpdatedAt: 0,
     yaya_trip_show_all: false,
+    memberDataAutoUpdate: true,
     meet48Auth: null,
   },
   setSettings: (patch) =>

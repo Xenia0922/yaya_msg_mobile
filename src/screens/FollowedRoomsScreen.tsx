@@ -20,6 +20,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import Video from 'react-native-video';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
+import { SkeletonList, SkeletonRow } from '../components/Skeleton';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
@@ -945,7 +946,7 @@ export default function FollowedRoomsScreen() {
       return;
     }
     setRankVisible(true);
-    setRankStatus('加载中...贡献榜...');
+    setRankStatus('');
     try {
       const res = await pocketApi.getLiveRank(String(roomPlayer.liveId));
       const rows = normalizeLiveRank(res);
@@ -1125,9 +1126,9 @@ export default function FollowedRoomsScreen() {
             roomMessages.length ? (
               <View style={styles.chatFooter}>
                 {loadingMoreMessages ? (
-                  <Text style={[styles.empty, isDark && styles.emptyDark]}>继续加载中...</Text>
+                  <SkeletonRow dark={isDark} />
                 ) : hasMoreMessages ? (
-                  <Text style={[styles.empty, isDark && styles.emptyDark]}>上滑继续加载</Text>
+                  <Text style={[styles.empty, isDark && styles.emptyDark]}>上滑加载更多</Text>
                 ) : (
                   <Text style={[styles.empty, isDark && styles.emptyDark]}>没有更多消息</Text>
                 )}
@@ -1274,7 +1275,7 @@ export default function FollowedRoomsScreen() {
               </FadeInView>
             );
           }}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '加载中...' : '暂无消息'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '' : '暂无消息'}</Text>}
         />
         </FadeInView>
       </View>
@@ -1324,7 +1325,7 @@ export default function FollowedRoomsScreen() {
             </FadeInView>
           )}
           ListEmptyComponent={loading ? (
-            <Text style={[styles.empty, isDark && styles.emptyDark]}>加载中...</Text>
+            <SkeletonList count={8} dark={isDark} />
           ) : !token ? (
             <View style={styles.emptyWrap}>
               <Text style={[styles.empty, isDark && styles.emptyDark]}>登录后可查看关注房间和最新消息</Text>

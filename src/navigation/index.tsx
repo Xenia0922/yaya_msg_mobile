@@ -3,7 +3,7 @@ import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@r
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
 import { useSettingsStore, useUiStore } from '../store';
 import { RootStackParamList, TabParamList } from './types';
 import HomeScreen from '../screens/HomeScreen';
@@ -28,7 +28,6 @@ import AudioProgramsScreen from '../screens/AudioProgramsScreen';
 import AnalysisScreen from '../screens/AnalysisScreen';
 import DownloadScreen from '../screens/DownloadScreen';
 import DatabaseScreen from '../screens/DatabaseScreen';
-import ApiDiagnosticsScreen from '../screens/ApiDiagnosticsScreen';
 import TripScreen from '../screens/TripScreen';
 import MeleeRankScreen from '../screens/MeleeRankScreen';
 import MemberDynamicScreen from '../screens/MemberDynamicScreen';
@@ -38,6 +37,7 @@ import ScoreOfficialScreen from '../screens/ScoreOfficialScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { mainTabBarStyle } from './tabBarStyle';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import { ui } from '../theme/ui';
 
@@ -45,10 +45,10 @@ const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
 const TAB_LABELS: Record<string, { icon: string; label: string }> = {
-  Home: { icon: '主', label: '主页' },
-  Media: { icon: '直', label: '直播' },
-  Rooms: { icon: '房', label: '房间' },
-  Settings: { icon: '设', label: '设置' },
+  Home: { icon: 'home', label: '主页' },
+  Media: { icon: 'video', label: '直播' },
+  Rooms: { icon: 'account-group', label: '房间' },
+  Settings: { icon: 'cog', label: '设置' },
 };
 
 function withPageMotion<T extends object>(
@@ -109,7 +109,6 @@ const AudioProgramsStackScreen = withPageMotion(AudioProgramsScreen, ui.motion.s
 const AnalysisStackScreen = withPageMotion(AnalysisScreen, ui.motion.stackDuration, 10);
 const DownloadStackScreen = withPageMotion(DownloadScreen, ui.motion.stackDuration, 10);
 const DatabaseStackScreen = withPageMotion(DatabaseScreen, ui.motion.stackDuration, 10);
-const ApiDiagnosticsStackScreen = withPageMotion(ApiDiagnosticsScreen, ui.motion.stackDuration, 10);
 const TripStackScreen = withPageMotion(TripScreen, ui.motion.stackDuration, 10);
 const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDuration, 10);
 const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10);
@@ -144,6 +143,9 @@ function TabButton({
   const scale = active.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
   const translateY = active.interpolate({ inputRange: [0, 1], outputRange: [0, -2] });
 
+  // 图标尺寸随屏幕宽度自适应（不写死），窄屏略小、宽屏略大，整体比旧 24 放大一点点
+  const TAB_ICON = Math.round(Math.min(30, Math.max(24, Dimensions.get('window').width / 15)));
+
   return (
     <ScalePressable
       accessibilityRole="button"
@@ -154,7 +156,7 @@ function TabButton({
       pressedScale={0.92}
     >
       <Animated.View style={[styles.tabInner, { transform: [{ scale }, { translateY }] }]}>
-        <Text style={[styles.tabIcon, { color }]}>{icon}</Text>
+        <Icon name={icon} size={TAB_ICON} style={styles.tabIcon} color={color} />
         <Text style={[styles.tabLabel, { color }]}>{label}</Text>
       </Animated.View>
     </ScalePressable>
@@ -328,7 +330,6 @@ export default function AppNavigator() {
           <Stack.Screen name="AnalysisScreen" component={AnalysisStackScreen} />
           <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
           <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
-          <Stack.Screen name="ApiDiagnosticsScreen" component={ApiDiagnosticsStackScreen} />
           <Stack.Screen name="TripScreen" component={TripStackScreen} />
           <Stack.Screen name="MeleeRankScreen" component={MeleeRankStackScreen} />
           <Stack.Screen name="MemberDynamicScreen" component={MemberDynamicStackScreen} />

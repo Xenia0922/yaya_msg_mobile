@@ -129,7 +129,7 @@ export default function HomeScreen() {
         </FadeInView>
       ) : null}
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {CARDS.map((card, index) => (
           <FadeInView
             key={card.title}

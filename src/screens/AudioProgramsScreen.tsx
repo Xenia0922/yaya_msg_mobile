@@ -57,7 +57,7 @@ export default function AudioProgramsScreen() {
   const [playing, setPlaying] = useState<any | null>(null);
   const [playUrls, setPlayUrls] = useState<string[]>([]);
   const [urlIndex, setUrlIndex] = useState(0);
-  const [status, setStatus] = useState('加载中...');
+  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -70,7 +70,7 @@ export default function AudioProgramsScreen() {
     loadingRef.current = true;
     const cursor = refresh ? 0 : nextCtimeRef.current;
     if (refresh) setLoading(true); else setLoadingMore(true);
-    setStatus(refresh ? '加载中...官方电台...' : '加载中...更多电台...');
+    setStatus(refresh ? '' : '');
     try {
       const res = await officialMediaApi.getTalkList({ ctime: cursor, groupId: 0, limit: 20 });
       const list = normalizeTalks(res);
@@ -144,7 +144,7 @@ export default function AudioProgramsScreen() {
         </View>
       ) : null}
 
-      {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text> : null}
+      {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '' : status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={programs}

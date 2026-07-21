@@ -17,6 +17,7 @@ export const MusicEngine = {
   get state() { return useMusicPlayerStore.getState(); },
   _urlResolver: null as TrackUrlResolver | null,
   _videoRef: null as any,
+  _seekLockUntil: 0,
 
   setUrlResolver(resolver: TrackUrlResolver) {
     this._urlResolver = resolver;
@@ -45,11 +46,18 @@ export const MusicEngine = {
       store.setUrl(url);
       store.setPlaybackState('playing');
     } catch (e: any) {
-      store.setError(e?.message || 'play failed');
+      const id = String(track.musicId || track.id || '');
+      if (id) store.addFailedId(id);
+      const st = useMusicPlayerStore.getState();
+      st.setError(e?.message || 'play failed');
+      // 已下架/无效的歌曲自动跳到下一首；但若全部失效则停止，避免死循环
+      if (st.failedIds.length < st.queue.length) this.next();
     }
   },
 
   onProgress(currentTime: number) {
+    // seek 后短暂抑制进度回调，避免 video 还没 seek 完就把 position 覆盖回旧值（进度条弹回开头）
+    if (Date.now() < this._seekLockUntil) return;
     useMusicPlayerStore.getState().setPosition(currentTime);
   },
 
@@ -73,19 +81,48 @@ export const MusicEngine = {
     return prevTrack;
   },
 
+  /** 跳到播放列表指定下标 */
+  async playAt(index: number) {
+    const s = useMusicPlayerStore.getState();
+    if (index < 0 || index >= s.queue.length) return null;
+    const t = s.queue[index];
+    if (!t) return null;
+    useMusicPlayerStore.setState({ currentIndex: index });
+    await this.playTrack(t, s.queue);
+    return t;
+  },
+
   togglePause() {
     const s = useMusicPlayerStore.getState();
+    // 记忆恢复后首次播放：url 是瞬时的、重启后为空，需要先重新解析地址并跳到记忆进度
+    if (!s.url && s.queue[s.currentIndex]) {
+      this.resume();
+      return;
+    }
     s.setPlaybackState(s.playbackState === 'playing' ? 'paused' : 'playing');
+  },
+
+  /** 记忆恢复后续播：重新解析当前曲目地址，并 seek 到记忆位置 */
+  async resume() {
+    const s = useMusicPlayerStore.getState();
+    const t = s.queue[s.currentIndex];
+    if (!t) return null;
+    const saved = s.position;
+    s.setPendingSeek(saved);
+    await this.playTrack(t, s.queue);
+    return t;
   },
 
   cycleMode() {
     const s = useMusicPlayerStore.getState();
     const next = s.playMode === 'sequential' ? 'random' : s.playMode === 'random' ? 'single' : 'sequential';
-    s.setPlayMode(next);
+    s.setMode(next);
   },
 
   seek(seconds: number) {
     useMusicPlayerStore.getState().setPosition(seconds);
+    // 加锁 600ms：期间忽略 onProgress，等 video 真正 seek 到位
+    this._seekLockUntil = Date.now() + 600;
     if (this._videoRef) {
       this._videoRef.seek(seconds);
     }
@@ -96,17 +133,24 @@ export const MusicEngine = {
   async _fetchLyrics(track: Track) {
     const title = String(track.title || '').trim();
     if (!title) return;
+    // 团体字段来源：旧移动端源用 joinMemberNames/subTitle；官网源用 groupLabel（如 "SNH48"）。
+    // 带团体能命中匹配器的 Tier3/4 精确档，命中率远高于仅歌名模糊匹配。
+    const group = (track as any).joinMemberNames || (track as any).subTitle ||
+      (track as any).groupLabel || (track as any).artist || '';
     try {
       const { matcher } = await getLyricsMatcher();
-      const result = matcher.match({
-        song: title,
-        group: track.joinMemberNames || track.subTitle || '',
-      });
+      const result = matcher.match({ song: title, group });
       if (result) {
-        const lrcResp = await fetch(`${LYRICS_BASE_URL}/${result.entry.filePath}`);
+        // filePath 含空格与中文，必须规范编码，否则 Cloudflare 返回 404（整批歌词失效）
+        const url = `${LYRICS_BASE_URL}/${encodeURI(result.entry.filePath)}`;
+        const lrcResp = await fetch(url);
         const raw = await lrcResp.text();
         useMusicPlayerStore.getState().setLyrics(parseLrc(raw));
+      } else {
+        console.warn('[lyrics] no match for', title, 'group=', group);
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[lyrics] fetch failed', title, e);
+    }
   },
 };

@@ -21,6 +21,7 @@ import { externalApi } from '../api/external';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage } from '../utils/data';
 import { getPlayerHtml } from '../components/media/player';
+import { SkeletonList } from '../components/Skeleton';
 
 export default function BilibiliLiveScreen() {
   const navigation = useNavigation<any>();
@@ -31,7 +32,7 @@ export default function BilibiliLiveScreen() {
   const [streamTitle, setStreamTitle] = useState('B站直播');
   const [liveStatuses, setLiveStatuses] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('加载中...直播间列表...');
+  const [status, setStatus] = useState('');
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
@@ -200,7 +201,7 @@ export default function BilibiliLiveScreen() {
         </TouchableOpacity>
       } />
       {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
-      {loading ? <ActivityIndicator color="#ff6f91" style={{ padding: 12 }} /> : null}
+      {loading ? <SkeletonList count={6} dark={isDark} /> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={rooms}

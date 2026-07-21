@@ -3,7 +3,6 @@ import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TextInput,
@@ -12,38 +11,21 @@ import {
 } from 'react-native';
 import Video from 'react-native-video';
 import officialMediaApi from '../api/officialMedia';
-import { useSettingsStore } from '../store';
+import { loadOfficialSiteMusic } from '../api/officialSiteMusic';
+import { useSettingsStore, useUiStore } from '../store';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine, mediaUrl as buildMediaUrl } from '../services/musicPlayer';
-import { errorMessage, unwrapList } from '../utils/data';
+import { errorMessage } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
 import MiniPlayerBar from '../components/MiniPlayerBar';
 import FullScreenPlayer from '../components/FullScreenPlayer';
-
-function normalizeMusic(res: any): any[] {
-  return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
-}
-
-function mergeUniqueMusic(current: any[], next: any[]): any[] {
-  const seen = new Set(current.map((item) => String(item.musicId || item.id)).filter(Boolean));
-  const merged = [...current];
-  next.forEach((item) => {
-    const key = String(item.musicId || item.id || '');
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    merged.push(item);
-  });
-  return merged;
-}
-
-function nextCtimeFrom(list: any[]): number {
-  const times = list.map((item) => Number(item.ctime)).filter((item) => Number.isFinite(item) && item > 0);
-  return times.length ? Math.min(...times) : 0;
-}
+import CoverArt from '../components/CoverArt';
+import { SkeletonGrid } from '../components/Skeleton';
 
 export default function MusicLibraryScreen() {
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const showToast = useUiStore((state) => state.showToast);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
   const playUrl = useMusicPlayerStore((s) => s.url);
   const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
@@ -52,11 +34,9 @@ export default function MusicLibraryScreen() {
   const [songs, setSongs] = useState<any[]>([]);
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('ALL');
-  const [status, setStatus] = useState('加载中...');
+  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [nextCtime, setNextCtime] = useState(0);
   const [showFullScreen, setShowFullScreen] = useState(false);
   const loadingRef = useRef(false);
   const videoRef = useRef<any>(null);
@@ -66,66 +46,57 @@ export default function MusicLibraryScreen() {
   const filteredSongs = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     let list = songs;
-    if (group !== 'ALL') list = list.filter(item => (item.subTitle || item.joinMemberNames || '').toUpperCase().includes(group));
-    if (keyword) list = list.filter(item => [item.title, item.subTitle, item.albumName, item.joinMemberNames].filter(Boolean).join(' ').toLowerCase().includes(keyword));
+    if (group !== 'ALL') list = list.filter(item => (item.groupLabel || '') === group);
+    if (keyword) list = list.filter(item => [item.title, item.artist, item.album, item.groupLabel].filter(Boolean).join(' ').toLowerCase().includes(keyword));
     return list;
   }, [query, songs, group]);
 
-  const load = async (refresh = true) => {
+  // 官方音乐库：从口袋48官网静态 JS 脚本一次拉全部曲库（无 token、无分页）。
+  // 之前的移动端实现错用了 /media/api 移动端接口，未登录只返回约 56 首公开子集，
+  // 这才导致「列表里好多歌不显示」。改用官网源后拿到的就是完整曲库。
+  const loadAll = async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
-    const cursor = refresh ? 0 : nextCtime;
-    if (refresh) setLoading(true);
-    else setLoadingMore(true);
-    setStatus(refresh ? '加载中...' : '加载更多...');
+    setLoading(true);
+    setStatus('');
     try {
-      const res = await officialMediaApi.getMusicList({ ctime: cursor, limit: 20 });
-      const list = normalizeMusic(res);
-      setSongs((prev) => (refresh ? mergeUniqueMusic([], list) : mergeUniqueMusic(prev, list)));
-      const nct = nextCtimeFrom(list);
-      setNextCtime(nct);
-      const more = list.length >= 20 && nct > 0;
-      setHasMore(more);
-      setStatus(refresh ? (list.length ? `已加载 ${list.length} 首` : '暂无资源') : '');
+      const all = await loadOfficialSiteMusic(false);
+      setSongs(all);
+      setHasMore(false);
     } catch (error) {
       setStatus(`加载失败：${errorMessage(error)}`);
-      setHasMore(false);
     } finally {
       loadingRef.current = false;
       setLoading(false);
-      setLoadingMore(false);
     }
   };
 
   useEffect(() => {
-    load(true);
-    MusicEngine.setUrlResolver(async (track) => {
-      const res = await officialMediaApi.getMusic(String(track.musicId || track.id));
-      const data = res?.content?.data || res?.content || res?.data || {};
-      return buildMediaUrl(String(data.filePath || data.musicPath || data.playStreamPath || data.audioPath || data.url || ''));
+    loadAll();
+    MusicEngine.setUrlResolver(async (track: any) => {
+      // 官方源歌曲的 mp3 直链即可播放
+      if (track?.mp3 && /^https?:/i.test(String(track.mp3))) return String(track.mp3);
+      // 回退：个别非官网源曲目尝试移动端接口解析地址
+      try {
+        const res = await officialMediaApi.getMusic(String(track.musicId || track.id));
+        const data = res?.content?.data || res?.content || res?.data || {};
+        const url = buildMediaUrl(String(data.filePath || data.musicPath || data.playStreamPath || data.audioPath || data.url || ''));
+        if (url) return url;
+      } catch { /* ignore */ }
+      const fb = buildMediaUrl(String((track as any).filePath || (track as any).musicPath || (track as any).playStreamPath || (track as any).audioPath || (track as any).url || ''));
+      if (!fb) throw new Error('无法解析播放地址');
+      return fb;
     });
   }, []);
 
-  // 自动翻页：每次加载完毕且有更多数据时，继续加载（桌面版行为）
-  useEffect(() => {
-    if (loading || loadingMore || !hasMore) return;
-    const id = setTimeout(() => load(false), 300);
-    return () => clearTimeout(id);
-  }, [loading, loadingMore, hasMore]);
-
-  const loadMore = () => {
-    if (loading || loadingMore || loadingRef.current || !hasMore) return;
-    load(false);
-  };
-
-  const playSong = async (item: any) => {
-    await MusicEngine.playTrack(item, songs);
+  const playSong = (item: any) => {
+    MusicEngine.playTrack(item, songs);
   };
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title="音乐" right={
-        <TouchableOpacity onPress={() => load(true)} disabled={loading}>
+        <TouchableOpacity onPress={() => loadAll()} disabled={loading}>
           <Text style={[styles.backBtn, loading && styles.disabledText]}>刷新</Text>
         </TouchableOpacity>
       } />
@@ -145,20 +116,29 @@ export default function MusicLibraryScreen() {
       </View>
       {status ? (
         <View pointerEvents="none" style={styles.statusOverlay}>
-          <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '加载中...' : status}</Text>
+          <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text>
         </View>
       ) : null}
+      {loading && songs.length === 0 ? (
+        <View style={{ flex: 1 }}>
+          <SkeletonGrid count={8} dark={isDark} />
+        </View>
+      ) : !loading && songs.length === 0 && !status ? (
+        <View style={styles.emptyWrap}>
+          <Text style={[styles.status, isDark && styles.textSubDark]}>暂无音乐</Text>
+        </View>
+      ) : (
       <PerfFlatList
           data={filteredSongs}
           keyExtractor={(item, index) => String(item.musicId || item.id || index)}
           numColumns={2}
+          removeClippedSubviews={false}
           contentContainerStyle={[styles.listContent, playbackState !== 'idle' && { paddingBottom: 80 }]}
           columnWrapperStyle={styles.gridRow}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.4}
           renderItem={({ item, index }) => {
-            const active = queue[currentIndex] && (String(queue[currentIndex].musicId || queue[currentIndex].id) === String(item.musicId || item.id));
-            const coverUrl = item.thumbPath ? `https://source.48.cn${item.thumbPath}` : '';
+            const id = String(item.musicId || item.id || '');
+            const active = queue[currentIndex] && (String(queue[currentIndex].musicId || queue[currentIndex].id) === id);
+            const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
             return (
               <TouchableOpacity
                 style={[styles.songItem, isDark && styles.cardDark, active && styles.songItemActive]}
@@ -166,27 +146,24 @@ export default function MusicLibraryScreen() {
                 activeOpacity={0.7}
               >
                 <View style={styles.coverWrap}>
-                  {coverUrl ? (
-                    <Image source={{ uri: coverUrl }} style={styles.coverImg} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.coverPlaceholder, active && { backgroundColor: '#ff6f91' }]}>
-                      <Text style={styles.coverPlaceholderText}>♪</Text>
-                    </View>
-                  )}
+                  <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
                 </View>
                 <View style={styles.songInfo}>
                   <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
                   <Text style={[styles.songArtist, isDark && styles.textSubDark]} numberOfLines={1}>
-                    {item.joinMemberNames || item.subTitle || item.albumName || ''}
+                    {[item.album, item.artist].filter(Boolean).join(' · ') || ''}
                   </Text>
-                  <Text style={[styles.dateText, isDark && styles.textSubDark]}>
-                    {formatTimestamp(item.ctime).slice(0, 10)}
-                  </Text>
+                  {item.ctime ? (
+                    <Text style={[styles.dateText, isDark && styles.textSubDark]}>
+                      {formatTimestamp(item.ctime).slice(0, 10)}
+                    </Text>
+                  ) : null}
                 </View>
               </TouchableOpacity>
             );
           }}
         />
+      )}
       {playbackState !== 'idle' && playUrl ? (
         <Video
           ref={videoRef}
@@ -194,7 +171,14 @@ export default function MusicLibraryScreen() {
           style={styles.tinyPlayer}
           paused={playbackState !== 'playing'}
           ignoreSilentSwitch="ignore"
-          onLoad={(e) => MusicEngine.onLoad(e.duration || 0)}
+          onLoad={(e) => {
+            MusicEngine.onLoad(e.duration || 0);
+            const ps = useMusicPlayerStore.getState().pendingSeek;
+            if (ps != null && videoRef.current) {
+              videoRef.current.seek(ps);
+              useMusicPlayerStore.getState().setPendingSeek(null);
+            }
+          }}
           onProgress={(e) => MusicEngine.onProgress(e.currentTime || 0)}
           onEnd={() => {
             if (playMode === 'single') {
@@ -205,7 +189,11 @@ export default function MusicLibraryScreen() {
               MusicEngine.next();
             }
           }}
-          onError={() => { MusicEngine.next(); }}
+          onError={() => {
+            const t = queue[currentIndex];
+            showToast(`《${t?.title || '该歌曲'}》无法播放，已跳过`);
+            MusicEngine.next();
+          }}
         />
       ) : null}
       <MiniPlayerBar onOpenFullScreen={() => setShowFullScreen(true)} />
@@ -229,6 +217,7 @@ const styles = StyleSheet.create({
   status: { color: '#ff6f91', fontSize: 12, fontWeight: '700' },
   statusOverlay: { position: 'absolute', top: 140, left: 0, right: 0, zIndex: 10, alignItems: 'center' },
   listContent: { paddingHorizontal: 12, paddingBottom: 120 },
+  emptyWrap: { alignItems: 'center', marginTop: 80 },
   gridRow: { justifyContent: 'space-between' as const },
   songItem: { width: '48%', marginBottom: 12, borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.82)' },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.72)' },
@@ -237,6 +226,8 @@ const styles = StyleSheet.create({
   coverImg: { width: '100%', height: '100%' },
   coverPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e8e8e8' },
   coverPlaceholderText: { color: '#fff', fontSize: 28, fontWeight: '800', opacity: 0.5 },
+  unavailableBadge: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  unavailableText: { color: '#ffd479', fontSize: 10, fontWeight: '700' },
   songInfo: { padding: 8 },
   songTitle: { fontSize: 13, fontWeight: '700', color: '#222', lineHeight: 17 },
   songArtist: { fontSize: 11, color: '#888', marginTop: 3 },

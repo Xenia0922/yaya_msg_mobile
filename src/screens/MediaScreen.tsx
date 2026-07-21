@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
-  ActivityIndicator,
+  Animated,
   BackHandler,
   DeviceEventEmitter,
   FlatList,
@@ -15,21 +15,29 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Video from 'react-native-video';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
-import { useSettingsStore, useUiStore } from '../store';
+import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
-import { VODItem } from '../types';
+import { VODItem, Member } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
+import { getResumePosition, saveResumePosition, clearResumePosition } from '../utils/resumePosition';
 import pocketApi from '../api/pocket48';
 import { getPlayerHtml } from '../components/media/player';
 import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
+import { DanmakuOverlay } from '../components/DanmakuOverlay';
+import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
+import { parseDanmaku, DanmakuItem } from '../utils/danmaku';
+import { memberSearchText } from '../utils/members';
+import { ScreenSkeleton, SkeletonList, Skeleton } from '../components/Skeleton';
 
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
 
@@ -103,6 +111,111 @@ function liveStreamScore(url: string): number {
   if (lower.startsWith('http://') && lower.includes('.flv')) return 95;
   if (lower.includes('.m3u8') || lower.includes('format=hls')) return 80;
   return streamScore(url);
+}
+
+/**
+ * 为直播/录播项构造可搜索文本 + 数字串，支持「时间搜索」。
+ * 数字串同时给出「补零」与「不补零」两种形态，使 2026-07-20 / 0720 / 7-20 / 2026/7/20
+ * 等自然输入都能命中，解决原先只能匹配 YYYY-MM-DD HH:mm:ss 单一格式的问题。
+ */
+function buildMediaSearchText(item: any): { text: string; digits: string } {
+  const ts = formatTimestamp(item.startTime);
+  const d = new Date(String(item.startTime || '').replace(/-/g, '/'));
+  let padded = '';
+  let loose = '';
+  if (!Number.isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    const hh = d.getHours();
+    const mm = d.getMinutes();
+    const ss = d.getSeconds();
+    padded = `${y}${String(m).padStart(2, '0')}${String(day).padStart(2, '0')}${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}${String(ss).padStart(2, '0')}`;
+    loose = `${y}${m}${day}${hh}${mm}${ss}`;
+  }
+  const text = [item.title, item.nickname, item.liveRoomTitle, String(item.liveId || ''), ts]
+    .filter(Boolean).join(' ').toLowerCase();
+  const digits = [ts.replace(/\D/g, ''), padded, loose].filter(Boolean).join('');
+  return { text, digits };
+}
+
+// 取录制时间的日期键 YYYY-MM-DD，用于日历筛选精确匹配
+function dateKeyOf(startTime: any): string {
+  const d = new Date(String(startTime || '').replace(/-/g, '/'));
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// 录播日历选择弹层（纯 RN 月历，零依赖，对标 pocket48_lite 的 CalendarMonth 按钮 + DatePicker）
+function CalendarSheet({
+  visible,
+  initial,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  initial: Date | null;
+  onSelect: (d: Date) => void;
+  onClose: () => void;
+}) {
+  const isDarkC = useSettingsStore((s) => s.settings.theme === 'dark');
+  const base = initial || new Date();
+  const [view, setView] = useState(() => new Date(base.getFullYear(), base.getMonth(), 1));
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.calMask} activeOpacity={1} onPress={onClose}>
+        <View style={styles.calSheet} onStartShouldSetResponder={() => true}>
+          <View style={styles.calHeader}>
+            <TouchableOpacity onPress={() => setView(new Date(year, month - 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+              <MaterialCommunityIcons name="chevron-left" size={24} color={isDarkC ? '#eee' : '#333'} />
+            </TouchableOpacity>
+            <Text style={[styles.calTitle]}>{year} 年 {month + 1} 月</Text>
+            <TouchableOpacity onPress={() => setView(new Date(year, month + 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={isDarkC ? '#eee' : '#333'} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.calWeekRow}>
+            {weekdays.map((w) => (
+              <Text key={w} style={[styles.calWeek]}>{w}</Text>
+            ))}
+          </View>
+          <View style={styles.calGrid}>
+            {cells.map((d, i) =>
+              d ? (
+                <TouchableOpacity key={i} style={styles.calDay} onPress={() => onSelect(new Date(year, month, d))}>
+                  <Text style={[styles.calDayText]}>{d}</Text>
+                </TouchableOpacity>
+              ) : (
+                <View key={i} style={styles.calDay} />
+              ),
+            )}
+          </View>
+          <View style={styles.calFooter}>
+            <TouchableOpacity onPress={onClose} style={styles.calCancel}>
+              <Text style={[styles.calCancelText]}>取消</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { onSelect(new Date()); onClose(); }}
+              style={styles.calToday}
+            >
+              <Text style={styles.calTodayText}>今天</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
 }
 
 function pickPlayableUrls(raw: any, preferLive = false): string[] {
@@ -338,22 +451,104 @@ function acceptUserId(item: any): string {
   return String(item?.userInfo?.userId || item?.user?.userId || item?.userId || item?.ownerId || item?.memberId || '');
 }
 
+function fmtTime(sec: number): string {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r < 10 ? '0' : ''}${r}`;
+}
+
+interface PlayerControlsProps {
+  paused: boolean;
+  currentTime: number;
+  duration: number;
+  playbackRate: number;
+  showDanmaku: boolean;
+  onTogglePlay: () => void;
+  onSeek: (t: number) => void;
+  onToggleDanmaku: () => void;
+  onCycleRate: () => void;
+}
+
+/** 哔哩哔哩风格底部控制条：播放/暂停、可拖动进度、时间、弹幕开关、倍速。 */
+function PlayerControls({
+  paused,
+  currentTime,
+  duration,
+  playbackRate,
+  showDanmaku,
+  onTogglePlay,
+  onSeek,
+  onToggleDanmaku,
+  onCycleRate,
+}: PlayerControlsProps) {
+  const trackWidth = useRef(0);
+  const dragRatioRef = useRef(0);
+  const [dragTime, setDragTime] = useState<number | null>(null);
+  const ratioFromX = (x: number): number => {
+    const w = trackWidth.current || 1;
+    return Math.max(0, Math.min(1, x / w));
+  };
+  // 拖动过程实时跟手：dragTime 优先显示，松手才真正 seek。
+  // 用 dragRatioRef 缓存最近一次有效 ratio：松手事件 locationX 常为 0，
+  // 直接读会算成 ratio=0 → seek 回开头（回弹）；改读 grant/move 记下的真实 ratio。
+  const onTrackGrant = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setDragTime(r * duration); };
+  const onTrackMove = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setDragTime(r * duration); };
+  const onTrackRelease = () => { const r = dragRatioRef.current; if (duration > 0) onSeek(r * duration); dragRatioRef.current = 0; setDragTime(null); };
+  const displayTime = dragTime ?? currentTime;
+  const pct = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;
+  return (
+    <View style={styles.controlsBar} pointerEvents="box-none">
+      <TouchableOpacity onPress={onTogglePlay} style={styles.ctrlBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <MaterialCommunityIcons name={paused ? 'play' : 'pause'} size={22} color="#fff" />
+      </TouchableOpacity>
+      <Text style={styles.ctrlTime}>{fmtTime(displayTime)}</Text>
+      <View
+        style={styles.ctrlTrack}
+        onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={onTrackGrant}
+        onResponderMove={onTrackMove}
+        onResponderRelease={onTrackRelease}
+      >
+        <View style={styles.ctrlBar}>
+          <View style={[styles.ctrlFill, { width: `${pct}%` }]} />
+          <View style={[styles.ctrlKnob, { left: `${pct}%` }]} />
+        </View>
+      </View>
+      <Text style={styles.ctrlTime}>{fmtTime(duration)}</Text>
+      <TouchableOpacity onPress={onToggleDanmaku} style={styles.ctrlBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <Text style={[styles.ctrlIcon, showDanmaku && styles.ctrlIconOn]}>弹</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onCycleRate} style={styles.ctrlBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <Text style={styles.ctrlRate}>{playbackRate}x</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function MediaScreen() {
   const route = useRoute<MediaRouteProp>();
   const navigation = useNavigation<any>();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
   const showToast = useUiStore((state) => state.showToast);
+  const members = useMemberStore((state) => state.members);
   const [tab, setTab] = useState<'live' | 'vod'>(route.params?.mode ?? 'live');
   const [vodList, setVodList] = useState<VODItem[]>([]);
   const [liveList, setLiveList] = useState<VODItem[]>([]);
   const [loading, setLoading] = useState(false);
+  // 骨架屏常驻：用透明度交叉淡入淡出，避免加载态反复挂载/卸载造成闪屏
+  const skeletonOpacity = useRef(new Animated.Value(0)).current;
   const [nextCursor, setNextCursor] = useState(0);
   const [error, setError] = useState('');
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playing, setPlaying] = useState<{ url: string; urls: string[]; title: string; cover?: string; item: any; isLive: boolean; needsVlc: boolean } | null>(null);
+  // 续播位置：打开回放时读取上次进度，播放中由 WebView 回传进度落盘
+  const [webResumeTime, setWebResumeTime] = useState(0);
   const [giftVisible, setGiftVisible] = useState(false);
   const [gifts, setGifts] = useState<any[]>([]);
   const [selectedGift, setSelectedGift] = useState<any | null>(null);
@@ -363,6 +558,119 @@ export default function MediaScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [rankVisible, setRankVisible] = useState(false);
   const [rankRows, setRankRows] = useState<any[]>([]);
+
+  // 打开回放时读取上次观看进度，用于 WebView 续播
+  useEffect(() => {
+    if (!playing?.url) {
+      setWebResumeTime(0);
+      return;
+    }
+    let alive = true;
+    getResumePosition(playing.url)
+      .then((t) => { if (alive) setWebResumeTime(t); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [playing?.url]);
+
+  // 拉取/轮询弹幕并解析；失败静默，不拖垮播放
+  useEffect(() => {
+    if (!playing) {
+      setDanmaku([]);
+      setShowDanmaku(false);
+      return;
+    }
+    const lid = String(playing.item?.liveId || playing.item?.id || '');
+    if (!lid) { setDanmaku([]); setShowDanmaku(false); return; }
+    let alive = true;
+    const seenMsg = new Set<string>();
+    const collect = (infos: any[]): DanmakuItem[] => {
+      const flat: DanmakuItem[] = [];
+      for (const b of infos) {
+        const parsed = parseDanmaku(b.content);
+        if (parsed.length) flat.push(...parsed);
+        else flat.push({ time: Number(b.time) || 0, text: String(b.content || ''), ...(b.user ? { nick: b.user } : {}) });
+      }
+      let items = flat.filter((d) => d && d.text) as DanmakuItem[];
+      if (!items.length) return items;
+      // 时间轴归一化：覆盖接口返回的多种 time 形态，保证弹幕能对上视频相对进度飘出来
+      //  1) 毫秒时间戳（>1e6）：先转秒
+      //  2) 绝对秒时间戳（>1e7，远超任何视频时长）：以最早弹幕为 0 做相对偏移
+      //  3) 全 0 / 异常（maxT<=0）：按序均匀分配，至少保证弹幕能飘
+      const rangeOf = (arr: DanmakuItem[]) => arr.reduce(
+        (acc, d) => ({ max: Math.max(acc.max, d.time), min: Math.min(acc.min, d.time) }),
+        { max: 0, min: Infinity },
+      );
+      let { max: maxT, min: minT } = rangeOf(items);
+      if (maxT > 1e6) {
+        items.forEach((d) => { d.time = d.time / 1000; });
+        ({ max: maxT, min: minT } = rangeOf(items));
+      }
+      if (maxT > 1e7) {
+        const base = minT;
+        items.forEach((d) => { d.time = d.time - base; });
+        ({ max: maxT } = rangeOf(items));
+      }
+      if (maxT <= 0) {
+        items.forEach((d, i) => { d.time = i * 1.2; });
+      }
+      items.sort((a, b) => a.time - b.time);
+      return items;
+    };
+    if (playing.isLive) {
+      // 直播：轮询 barrage/list 累积实时弹幕
+      const poll = async () => {
+        try {
+          const infos = await pocketApi.getLiveBarrage(lid);
+          if (!alive) return;
+          const items = collect(infos);
+          if (!items.length) return;
+          setDanmaku((prev) => {
+            const merged = [...prev];
+            for (const it of items) {
+              const key = it.nick ? `${it.nick}:${it.text}` : it.text;
+              if (!seenMsg.has(key)) { seenMsg.add(key); merged.push(it); }
+            }
+            merged.sort((a, b) => a.time - b.time);
+            return merged.slice(-800);
+          });
+          setShowDanmaku(true);
+        } catch {}
+      };
+      poll();
+      const id = setInterval(poll, 5000);
+      return () => { alive = false; clearInterval(id); };
+    }
+    // 回放：从 LRC 文件拉取（参考 pocket48_lite：录播弹幕在 getLiveOne 的
+    // content.msgFilePath 指向的 LRC 文件，而非 barrage/list；格式 [hh:mm:ss.fff]昵称\t内容，
+    // 已由 parseDanmaku 解析为「秒」对上 playbackTime）
+    pocketApi.getLiveLrc(lid)
+      .then((text) => {
+        if (!alive) return;
+        if (!text) {
+          setDanmaku([]);
+          setShowDanmaku(false);
+          showToast('该视频暂无弹幕');
+          return;
+        }
+        const items = parseDanmaku(text);
+        setDanmaku(items);
+        setShowDanmaku(items.length > 0);
+        showToast(items.length > 0 ? `弹幕 ${items.length} 条` : '该视频暂无弹幕');
+      })
+      .catch(() => { if (alive) setDanmaku([]); });
+    return () => { alive = false; };
+  }, [playing?.url, playing?.isLive]);
+
+  // 回放时推进播放进度驱动弹幕：
+  //  - 网页播放器(WebView)无逐帧 onProgress，用 250ms 插值平滑（每 2s 由 onMessage 校正）
+  //  - 原生 Video 已有 onProgress 实时驱动，无需插值，避免与真实进度冲突
+  useEffect(() => {
+    if (!playing || playing.isLive) { setPlaybackTime(0); return; }
+    if (!useWebPlayer) { setPlaybackTime(webResumeTime || 0); return; }
+    setPlaybackTime(webResumeTime || 0);
+    const id = setInterval(() => setPlaybackTime((t) => t + 0.25), 250);
+    return () => clearInterval(id);
+  }, [playing?.url, playing?.isLive, webResumeTime, useWebPlayer]);
   const [rankStatus, setRankStatus] = useState('');
   const [announcement, setAnnouncement] = useState('');
   const [announceVisible, setAnnounceVisible] = useState(false);
@@ -372,6 +680,48 @@ export default function MediaScreen() {
   // v2.6: group filter + search
   const [groupId, setGroupId] = useState(0);
   const [search, setSearch] = useState('');
+  // 弹幕：解析后的弹幕数组 + 是否显示 + 当前播放进度（驱动弹幕发射）
+  const [danmaku, setDanmaku] = useState<DanmakuItem[]>([]);
+  const [showDanmaku, setShowDanmaku] = useState(false);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  // 播放器控制（哔哩哔哩风格自定义控制条）
+  const videoRef = useRef<any>(null);
+  const [duration, setDuration] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  // 搜索：选中成员后，搜索框转为「该成员的标题/日期」过滤
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [dateFilter, setDateFilter] = useState<Date | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showDanmakuSettings, setShowDanmakuSettings] = useState(false);
+  // 播放器控制条（B站式沉浸：点击视频区显隐，播放中自动隐藏）
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const controlsOpacity = useRef(new Animated.Value(1)).current;
+  const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pausedRef = useRef(paused);
+  const seekLockRef = useRef(0);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  const showControls = useCallback((autoHide = true) => {
+    setControlsVisible(true);
+    Animated.timing(controlsOpacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    if (autoHide && !pausedRef.current) {
+      hideControlsTimer.current = setTimeout(() => {
+        setControlsVisible(false);
+        Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+      }, 3000);
+    }
+  }, [controlsOpacity]);
+  const toggleControls = useCallback(() => {
+    if (controlsVisible) {
+      setControlsVisible(false);
+      Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+    } else {
+      showControls();
+    }
+  }, [controlsVisible, showControls]);
+  // 新视频载入即显示控制条，播放中 3 秒无操作自动隐藏（B站式沉浸）
+  useEffect(() => { if (playing?.url) showControls(true); }, [playing?.url, showControls]);
 
   const GROUPS: { label: string; id: number; match: string }[] = [
     { label: '全部', id: 0, match: '' },
@@ -383,7 +733,7 @@ export default function MediaScreen() {
   ];
   const list = useMemo(() => {
     let raw = tab === 'live' ? liveList : vodList;
-    // v2.6: client-side group filter by nickname/title text match
+    // 团体筛选
     if (groupId !== 0) {
       const g = GROUPS.find((x) => x.id === groupId);
       if (g && g.match) {
@@ -394,17 +744,50 @@ export default function MediaScreen() {
         );
       }
     }
+    // 选中成员后：先把列表收敛到该成员（昵称/标题/房间名/ID 命中），再叠加关键词搜索
+    if (selectedMember) {
+      const key = selectedMember.ownerName.toLowerCase();
+      const mid = String(selectedMember.id || '');
+      raw = raw.filter((item) =>
+        (item.nickname || '').toLowerCase().includes(key) ||
+        (item.title || '').toLowerCase().includes(key) ||
+        (item.liveRoomTitle || '').toLowerCase().includes(key) ||
+        (mid && String(item.liveId || '').includes(mid))
+      );
+    }
+    // 日历日期筛选：按录制日期(YYYY-MM-DD)精确过滤
+    if (dateFilter) {
+      const key = dateKeyOf(dateFilter);
+      raw = raw.filter((item: any) => dateKeyOf(item.startTime) === key);
+    }
     if (!search.trim()) return raw;
     const q = search.trim().toLowerCase();
+    const qDigits = q.replace(/[^0-9]/g, '');
     return raw.filter((item) => {
-      const timeStr = formatTimestamp(item.startTime);
-      return (item.title || '').toLowerCase().includes(q)
-        || (item.nickname || '').toLowerCase().includes(q)
-        || (item.liveRoomTitle || '').toLowerCase().includes(q)
-        || timeStr.includes(q)
-        || String(item.liveId || '').includes(q);
+      const { text, digits } = buildMediaSearchText(item);
+      // 数字优先：时间搜索（2026-07-20 / 0720 / 7-20 / 2026/7/20 等自然输入都能命中）
+      if (qDigits.length >= 3 && digits.includes(qDigits)) return true;
+      if (text.includes(q)) return true;
+      return false;
     });
-  }, [tab, liveList, vodList, search, groupId]);
+  }, [tab, liveList, vodList, search, groupId, selectedMember, dateFilter]);
+
+  // 骨架屏显隐：仅首屏（列表为空且在加载）时显示，用透明度交叉淡入淡出，避免挂载/卸载闪屏
+  const showSkeleton = loading && list.length === 0;
+  useEffect(() => {
+    Animated.timing(skeletonOpacity, {
+      toValue: showSkeleton ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [showSkeleton, skeletonOpacity]);
+
+  // 成员联想：未选成员时，输入命中成员名/缩写则弹出选择框
+  const memberHits = useMemo(() => {
+    if (selectedMember || !search.trim()) return [];
+    const q = search.trim().toLowerCase();
+    return members.filter((m) => memberSearchText(m).includes(q)).slice(0, 8);
+  }, [members, search, selectedMember]);
   const selectedGiftTotal = useMemo(
     () => (selectedGift ? giftCost(selectedGift) * (Number(giftNum) || 1) : 0),
     [giftNum, selectedGift],
@@ -491,6 +874,27 @@ export default function MediaScreen() {
   // initial load
   useEffect(() => { doFetch(tab, 0); }, [doFetch, tab]);
 
+  // 选中成员时切到「回放」并重置列表，立即触发首屏加载。
+  // 用 setTimeout(0) 让上面的 setState 先提交，避免读到切换前的旧 tab；
+  // 覆盖「已在 vod tab 时初始加载 effect 不触发」以及「切 tab 时 loadingRef 把自动翻页挡掉」两种情况。
+  // 首屏加载后，下方自动翻页 effect 会在未命中该成员时继续补齐更多页。
+  useEffect(() => {
+    if (!selectedMember) return;
+    setVodList([]); setNextCursor(0); setHasMore(true);
+    setTab('vod');
+    const id = setTimeout(() => doFetch('vod', 0), 0);
+    return () => clearTimeout(id);
+  }, [selectedMember, doFetch]);
+
+  // 搜索 / 选中成员后：当前列表未命中且仍有更多页时，自动翻页直到命中或无更多，解决「搜成员录播太慢」
+  useEffect(() => {
+    if (loadingRef.current || loading) return;
+    const haveFilter = !!search.trim() || !!selectedMember;
+    if (!haveFilter || list.length > 0 || !hasMore) return;
+    const id = setTimeout(() => loadMore(), 200);
+    return () => clearTimeout(id);
+  }, [search, selectedMember, list.length, hasMore, loading]);
+
   useEffect(() => () => {
     setLiveImmersiveMode(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
@@ -544,7 +948,6 @@ export default function MediaScreen() {
   };
 
   const refreshList = () => {
-    setSearch('');
     reloadList();
   };
 
@@ -559,6 +962,9 @@ export default function MediaScreen() {
     setUseWebPlayer(false);
     setIsFullscreen(false);
     setLiveImmersiveMode(false);
+    setPaused(false);
+    setDuration(0);
+    setPlaybackTime(0);
     setLoading(true);
     try {
       let urls = pickPlayableUrls(item, tab === 'live');
@@ -626,7 +1032,7 @@ export default function MediaScreen() {
       return;
     }
     setGiftVisible(true);
-    setGiftStatus('加载中...礼物...');
+    setGiftStatus('');
     setSelectedGift(null);
     try {
       const [giftRes, moneyRes] = await Promise.all([
@@ -678,7 +1084,7 @@ export default function MediaScreen() {
       return;
     }
     setRankVisible(true);
-    setRankStatus('加载中...贡献榜...');
+    setRankStatus('');
     try {
       const res = await pocketApi.getLiveRank(String(source.item.liveId));
       const rows = normalizeLiveRank(res);
@@ -722,7 +1128,7 @@ export default function MediaScreen() {
     return (
       <View style={[styles.playerPage, isFullscreen && styles.playerPageFullscreen]}>
         {!isFullscreen ? (
-        <View style={styles.playerToolbar}>
+        <Animated.View style={[styles.topChrome, { paddingTop: 44, backgroundColor: 'rgba(10,10,10,0.45)', opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none' }]}>
           <TouchableOpacity onPress={closePlayer} style={styles.glassBtn}>
             <Text style={styles.glassBtnText}>返回</Text>
           </TouchableOpacity>
@@ -738,6 +1144,16 @@ export default function MediaScreen() {
             <TouchableOpacity onPress={() => openRankPanel()} style={styles.glassBtn}>
               <Text style={styles.glassBtnText}>贡献榜</Text>
             </TouchableOpacity>
+            {!playing.isLive ? (
+              <TouchableOpacity onPress={() => setShowDanmaku((v) => !v)} style={[styles.glassBtn, showDanmaku && styles.glassBtnActive]}>
+                <Text style={styles.glassBtnText}>{showDanmaku ? '弹幕开' : '弹幕'}</Text>
+              </TouchableOpacity>
+            ) : null}
+            {!playing.isLive ? (
+              <TouchableOpacity onPress={() => setShowDanmakuSettings(true)} style={styles.glassBtn}>
+                <MaterialCommunityIcons name="cog" size={20} color="#fff" />
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.glassBtn}>
               <Text style={styles.glassBtnText}>全屏</Text>
             </TouchableOpacity>
@@ -748,7 +1164,7 @@ export default function MediaScreen() {
             ) : null}
           </View>
           <View style={{ minWidth: 44 }} />
-        </View>
+        </Animated.View>
         ) : (
           <TouchableOpacity onPress={() => setIsFullscreen(false)} style={styles.exitFullscreenBtn}>
             <Text style={styles.exitFullscreenText}>退出全屏</Text>
@@ -780,7 +1196,7 @@ export default function MediaScreen() {
           </View>
         ) : useWebPlayer ? (
           <WebView
-            source={{ html: getPlayerHtml(playing.url, playing.cover) }}
+            source={{ html: getPlayerHtml(playing.url, playing.cover, webResumeTime) }}
             style={styles.player}
             javaScriptEnabled
             domStorageEnabled
@@ -789,31 +1205,73 @@ export default function MediaScreen() {
             originWhitelist={['*']}
             mixedContentMode="always"
             allowsFullscreenVideo
+            onMessage={(e) => {
+              try {
+                const data = JSON.parse(e.nativeEvent.data);
+                if (!playing?.url) return;
+                if (data.type === 'progress') {
+                  const t = Number(data.time) || 0;
+                  saveResumePosition(playing.url, t);
+                  setPlaybackTime(t); // 校正弹幕时间轴，消除插值漂移
+                } else if (data.type === 'ended') clearResumePosition(playing.url);
+              } catch {}
+            }}
           />
         ) : (
           <View style={styles.player}>
             <Video
+              ref={videoRef}
               source={playerSource(playing.url)}
               style={styles.nativeVideo}
-              controls
               resizeMode="contain"
-              paused={false}
+              paused={paused}
+              rate={playbackRate}
+              progressUpdateInterval={250}
               playInBackground={false}
               playWhenInactive={false}
               ignoreSilentSwitch="ignore"
+              onLoad={(e) => { setDuration(e.duration || 0); setPlaybackTime(webResumeTime || 0); setPlayerError(''); }}
+              onProgress={(e) => { if (Date.now() < seekLockRef.current) return; if (!paused) setPlaybackTime(e.currentTime || 0); }}
+              onEnd={() => clearResumePosition(playing.url)}
               onError={(event) => setPlayerError(`原生播放器失败：${JSON.stringify(event?.error || event).slice(0, 220)}`)}
-              onLoad={() => setPlayerError('')}
             />
             {playerError ? (
               <View style={styles.playerError}>
                 <Text style={styles.playerErrorText}>{playerError}</Text>
-                <TouchableOpacity style={styles.webFallbackBtn} onPress={() => setUseWebPlayer(true)}>
+                <TouchableOpacity style={styles.webFallbackBtn} onPress={() => { setUseWebPlayer(true); setPaused(false); }}>
                   <Text style={styles.webFallbackText}>切换网页播放器</Text>
                 </TouchableOpacity>
               </View>
-            ) : null}
+            ) : (
+              <>
+                {/* 点击视频区切换控制显隐（B站式沉浸） */}
+                <View style={StyleSheet.absoluteFill} onStartShouldSetResponder={() => true} onResponderRelease={toggleControls} />
+                {!playing.isLive ? (
+                  <Animated.View style={[styles.controlsDock, { opacity: controlsOpacity, pointerEvents: controlsVisible ? 'auto' : 'none' }]}>
+                    <PlayerControls
+                      paused={paused}
+                      currentTime={playbackTime}
+                      duration={duration}
+                      playbackRate={playbackRate}
+                      showDanmaku={showDanmaku}
+                      onTogglePlay={() => setPaused((p) => !p)}
+                      onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
+                      onToggleDanmaku={() => setShowDanmaku((v) => !v)}
+                      onCycleRate={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
+                    />
+                  </Animated.View>
+                ) : null}
+              </>
+            )}
           </View>
         )}
+
+        <DanmakuOverlay
+          danmaku={danmaku}
+          currentTime={playbackTime}
+          visible={showDanmaku && !!playing}
+          live={!!playing?.isLive}
+        />
 
         <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.modalShade}>
@@ -896,6 +1354,7 @@ export default function MediaScreen() {
             </View>
           </View>
         </Modal>
+        <DanmakuSettingsSheet visible={showDanmakuSettings} onClose={() => setShowDanmakuSettings(false)} />
       </View>
     );
   }
@@ -926,34 +1385,75 @@ export default function MediaScreen() {
           </TouchableOpacity>
         ))}
       </ScrollView>
-      {/* v2.6: search bar */}
+      {/* 搜索：未选成员时按「成员名/缩写」联想出选择框；选中成员后搜索框转为搜该成员标题/日期 */}
       <View style={styles.searchWrap}>
+        {selectedMember ? (
+          <TouchableOpacity onPress={() => setSelectedMember(null)} style={styles.memberChip}>
+            <Text style={[styles.memberChipText, isDark && styles.memberChipTextDark]}>{selectedMember.ownerName}</Text>
+            <MaterialCommunityIcons name="close" size={16} color="#fff" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity onPress={() => setShowCalendar(true)} style={[styles.calBtn, dateFilter && styles.calBtnActive]} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+          <MaterialCommunityIcons name="calendar-month" size={20} color={dateFilter ? '#ff6f91' : (isDark ? '#ccc' : '#666')} />
+        </TouchableOpacity>
         <TextInput
-          style={[styles.searchInput, isDark && styles.searchInputDark]}
-          placeholder="搜索成员名、标题、时间..."
+          style={[styles.searchInput, isDark && styles.searchInputDark, selectedMember && styles.searchInputActive]}
+          placeholder={selectedMember ? '搜索该成员的标题 / 日期...' : '搜索成员名、标题、时间...'}
           placeholderTextColor={isDark ? '#888' : '#999'}
           value={search}
           onChangeText={setSearch}
           returnKeyType="search"
         />
         {search.trim() ? (
-          <TouchableOpacity onPress={() => setSearch('')} style={styles.searchClear}>
-            <Text style={{ color: '#ff6f91', fontWeight: '700', fontSize: 13 }}>清除</Text>
+          <TouchableOpacity onPress={() => setSearch('')} style={styles.searchClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <MaterialCommunityIcons name="close-circle" size={18} color={isDark ? '#aaa' : '#999'} />
           </TouchableOpacity>
         ) : null}
       </View>
+      {dateFilter ? (
+        <View style={styles.dateChipRow}>
+          <TouchableOpacity style={styles.dateChip} onPress={() => setShowCalendar(true)}>
+            <MaterialCommunityIcons name="calendar-month" size={14} color="#ff6f91" />
+            <Text style={styles.dateChipText}>{dateKeyOf(dateFilter)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setDateFilter(null)} style={styles.dateChipClear}>
+            <MaterialCommunityIcons name="close-circle" size={16} color={isDark ? '#aaa' : '#999'} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {memberHits.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.memberHits} contentContainerStyle={styles.memberHitsContent}>
+          {memberHits.map((m) => (
+            <TouchableOpacity
+              key={m.id}
+              style={[styles.memberHitChip, isDark && styles.memberHitChipDark]}
+              onPress={() => { setSelectedMember(m); setSearch(''); }}
+            >
+              <Text style={[styles.memberHitText, isDark && styles.memberHitTextDark]}>{m.ownerName.split('-').pop()}</Text>
+              {m.team ? <Text style={[styles.memberHitTeam, isDark && styles.memberHitTeamDark]}>{m.team}</Text> : null}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
+      <CalendarSheet
+        visible={showCalendar}
+        initial={dateFilter}
+        onSelect={(d) => { setDateFilter(d); setShowCalendar(false); }}
+        onClose={() => setShowCalendar(false)}
+      />
+
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <PerfFlatList
-          data={list}
-          keyExtractor={(item, index) => item.liveId || String(index)}
-          renderItem={({ item, index }) => {
-            const coverUrl = item.liveCover || item.coverPath;
-            const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
-            return (
-              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
+        <View style={{ flex: 1 }}>
+          <PerfFlatList
+            data={list}
+            keyExtractor={(item, index) => item.liveId || String(index)}
+            renderItem={({ item, index }) => {
+              const coverUrl = item.liveCover || item.coverPath;
+              const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
+              return (
                 <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => startPlay(item)}>
                   {coverUrl ? (
                     <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
@@ -979,43 +1479,42 @@ export default function MediaScreen() {
                     </View>
                   </View>
                 </TouchableOpacity>
-              </FadeInView>
-            );
-          }}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <Text style={[styles.empty, isDark && styles.emptyDark]}>
-                {search.trim() ? '没有匹配的直播/录播' : loading ? '加载中...' : '暂无数据'}
-              </Text>
-              {loading ? <ActivityIndicator style={{ marginTop: 8 }} color="#ff6f91" /> : null}
-            </View>
-          }
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.35}
-          ListFooterComponent={
-            list.length > 0 ? (
-              <View style={styles.footer}>
-                {loading ? (
-                  <ActivityIndicator color="#ff6f91" />
-                ) : hasMore ? (
-                  search.trim() ? (
-                    <TouchableOpacity onPress={loadMore} style={styles.loadMoreBtn}>
-                      <Text style={styles.loadMoreText}>加载更多...</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <Text style={[styles.empty, isDark && styles.emptyDark]}>上滑继续加载</Text>
-                  )
-                ) : (
-                  <Text style={[styles.empty, isDark && styles.emptyDark]}>没有更多了</Text>
-                )}
+              );
+            }}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <Text style={[styles.empty, isDark && styles.emptyDark]}>
+                  {search.trim() ? '没有匹配的直播/录播' : '暂无数据'}
+                </Text>
               </View>
-            ) : null
-          }
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
-          removeClippedSubviews
-        />
+            }
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.35}
+            ListFooterComponent={
+              // 仅在有内容且正在加载更多时显示一个低调的转圈，不再显示「上滑加载更多 / 没有更多了」字样
+              list.length > 0 && loading ? (
+                <View style={styles.footer}>
+                  <ActivityIndicator
+                    size="small"
+                    color={isDark ? '#5a5a5a' : '#c4c4c4'}
+                    style={styles.footerSpinner}
+                  />
+                </View>
+              ) : null
+            }
+            contentContainerStyle={list.length === 0 ? { flex: 1 } : undefined}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+          />
+          {/* 骨架屏常驻底层：加载时淡入覆盖，加载完淡出露出列表，不闪 */}
+          <Animated.View
+            pointerEvents={showSkeleton ? 'auto' : 'none'}
+            style={[StyleSheet.absoluteFill, { opacity: skeletonOpacity, backgroundColor: isDark ? '#121212' : '#f6f6f8' }]}
+          >
+            <SkeletonList count={8} dark={isDark} />
+          </Animated.View>
+        </View>
       </FadeInView>
     </View>
   );
@@ -1026,9 +1525,10 @@ const styles = StyleSheet.create({
   containerDark: { backgroundColor: 'transparent' },
   tabRow: { flexDirection: 'row', gap: 8 },
   toolbarRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 8, alignItems: 'center' },
-  playerToolbar: { flexDirection: 'row', paddingHorizontal: 8, paddingTop: 44, paddingBottom: 6, backgroundColor: '#0a0a0a', alignItems: 'center' },
+  playerToolbar: { flexDirection: 'row', paddingHorizontal: 8, paddingTop: 44, paddingBottom: 6, backgroundColor: 'rgba(10,10,10,0.55)', alignItems: 'center' },
   playerToolbarCenter: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 6, flexWrap: 'wrap' },
   glassBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
+  glassBtnActive: { backgroundColor: '#ff6f91', borderColor: '#ff6f91' },
   glassBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   tabBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.38)' },
   tabBtnActive: { backgroundColor: '#ff6f91' },
@@ -1040,7 +1540,8 @@ const styles = StyleSheet.create({
   tabBtnTextDark: { color: '#aaa' },
   refreshBtnDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   refreshTextDark: { color: '#aaa' },
-  footer: { padding: 18, alignItems: 'center' },
+  footer: { paddingVertical: 14, alignItems: 'center' },
+  footerSpinner: { opacity: 0.6 },
   error: { margin: 12, padding: 10, borderRadius: 18, backgroundColor: '#fff3cd', color: '#8a5a00', fontSize: 12, lineHeight: 18 },
   playerPage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999, elevation: 999, backgroundColor: '#000' },
   playerPageFullscreen: { backgroundColor: '#000' },
@@ -1080,6 +1581,21 @@ const styles = StyleSheet.create({
   playerErrorText: { color: '#fff', fontSize: 12, lineHeight: 18 },
   webFallbackBtn: { marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#ff6f91', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   webFallbackText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  // 哔哩哔哩风格底部控制条（停靠在 controlsDock 内）
+  controlsBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: 'rgba(0,0,0,0.55)' },
+  ctrlBtn: { paddingHorizontal: 8, paddingVertical: 4, minWidth: 30, alignItems: 'center', justifyContent: 'center' },
+  ctrlIcon: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  ctrlIconOn: { color: '#ff6f91' },
+  ctrlRate: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  ctrlTime: { color: '#fff', fontSize: 11, minWidth: 34, textAlign: 'center' },
+  // 进度条：外层是更高的触控区（跟手），内层才是 4px 视觉条
+  ctrlTrack: { flex: 1, height: 24, justifyContent: 'center', marginHorizontal: 8, position: 'relative' },
+  ctrlBar: { position: 'relative', height: 4, width: '100%', borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)' },
+  ctrlFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2, backgroundColor: '#ff6f91' },
+  ctrlKnob: { position: 'absolute', top: -3, width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff', marginLeft: -5 },
+  // 底部控制停靠层（B站式沉浸：随 controlsVisible 显隐）
+  controlsDock: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, pointerEvents: 'box-none' },
+  topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, pointerEvents: 'box-none' },
   card: { flexDirection: 'row', padding: 12, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 12, marginVertical: 6, borderRadius: 16 },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
   cover: { width: 112, height: 78, borderRadius: 18, backgroundColor: '#e0e0e0' },
@@ -1110,7 +1626,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.52)', color: '#333', fontSize: 13,
   },
   searchInputDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444', color: '#eee' },
-  searchClear: { paddingHorizontal: 12, paddingVertical: 8 },
+  searchInputActive: { borderColor: '#ff6f91' },
+  searchClear: { paddingHorizontal: 8, paddingVertical: 8 },
+  // 成员选择框
+  memberChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#ff6f91', marginRight: 8 },
+  memberChipText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  memberChipTextDark: { color: '#fff' },
+  memberHits: { maxHeight: 52, marginBottom: 2 },
+  memberHitsContent: { paddingHorizontal: 12, alignItems: 'center', gap: 6 },
+  memberHitChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.04)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.12)' },
+  memberHitChipDark: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.16)' },
+  memberHitText: { fontSize: 12, color: '#555', fontWeight: '700' },
+  memberHitTextDark: { color: '#ccc' },
+  memberHitTeam: { fontSize: 9, color: '#999', marginLeft: 6, opacity: 0.85 },
+  memberHitTeamDark: { color: '#999' },
   loadMoreBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91' },
   loadMoreText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   textLight: { color: '#eee' },
@@ -1144,4 +1673,25 @@ const styles = StyleSheet.create({
   rankInfo: { flex: 1 },
   rankName: { color: '#f5f5f5', fontSize: 14, fontWeight: '800' },
   rankValue: { color: '#d8d8d8', fontSize: 11, marginTop: 2 },
+  // 日历筛选
+  calBtn: { padding: 6, marginRight: 2, justifyContent: 'center' },
+  calBtnActive: { backgroundColor: 'rgba(255,111,145,0.14)', borderRadius: 10 },
+  dateChipRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginTop: 8 },
+  dateChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(255,111,145,0.16)', borderWidth: 1, borderColor: 'rgba(255,111,145,0.4)' },
+  dateChipText: { color: '#ff6f91', fontSize: 12, fontWeight: '700' },
+  dateChipClear: { marginLeft: 6 },
+  calMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  calSheet: { width: '88%', maxWidth: 360, backgroundColor: '#fff', borderRadius: 18, padding: 16, elevation: 8 },
+  calHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  calTitle: { fontSize: 17, fontWeight: '800', color: '#222' },
+  calWeekRow: { flexDirection: 'row', marginBottom: 6 },
+  calWeek: { flex: 1, textAlign: 'center', fontSize: 12, color: '#999', fontWeight: '700' },
+  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  calDay: { width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  calDayText: { fontSize: 15, color: '#333' },
+  calFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#eee' },
+  calCancel: { paddingHorizontal: 14, paddingVertical: 6 },
+  calCancelText: { fontSize: 14, color: '#888' },
+  calToday: { backgroundColor: '#ff6f91', borderRadius: 14, paddingHorizontal: 18, paddingVertical: 6 },
+  calTodayText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });

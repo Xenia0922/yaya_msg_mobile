@@ -14,7 +14,7 @@ export const ui = {
     horizontalInset: 42,
     bottom: 14,
     height: 74,
-    radius: 24,
+    radius: 32,
     itemHeight: 56,
   },
   text: {

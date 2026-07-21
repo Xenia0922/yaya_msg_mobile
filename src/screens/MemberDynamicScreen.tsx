@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
+import { usePaginator } from '../hooks/usePaginator';
 
 import {
   ActivityIndicator,
@@ -20,6 +21,7 @@ import pocketApi from '../api/pocket48';
 import { errorMessage, parseMaybeJson } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { Member } from '../types';
+import { SkeletonList } from '../components/Skeleton';
 
 interface DynItem {
   key: string;
@@ -62,32 +64,34 @@ export default function MemberDynamicScreen() {
   const navigation = useNavigation<any>();
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
   const [member, setMember] = useState<Member | null>(null);
-  const [items, setItems] = useState<DynItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
-  const [nextTime, setNextTime] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
   const [zoomUrl, setZoomUrl] = useState('');
 
-  const fetchData = useCallback(async (reset = false) => {
-    if (!member) return;
-    if (reset) { setLoading(true); setNextTime(0); } else { setLoadingMore(true); }
+  // 翻页串行化：
+  // 用同步 ref 锁挡住 onEndReached 连发，再用 runId 丢弃过期响应，避免重复请求/重复追加/cursor 漂移
+  const fetchPage = useCallback(async (cursor: number) => {
+    if (!member) return { items: [] as DynItem[], nextCursor: cursor, hasMore: false };
     setError('');
     try {
-      const res = await pocketApi.getMemberDynamic({ ownerId: member.id, nextTime: reset ? 0 : nextTime });
+      const res = await pocketApi.getMemberDynamic({ ownerId: member.id, nextTime: cursor });
       const data = res?.content || res?.data || {};
       const list = Array.isArray(data?.messageList || data?.message || data?.list || data)
         ? (data?.messageList || data?.message || data?.list || data) : [];
       const normalized = list.map((item: any, idx: number) => normalizeItem(item, idx)).filter(Boolean) as DynItem[];
-      if (reset) setItems(normalized); else setItems((prev) => [...prev, ...normalized]);
-      const cursor = Number(data?.nextTime || data?.next || 0);
-      setNextTime(cursor); setHasMore(cursor > 0 && normalized.length > 0);
-    } catch (e: any) { setError(errorMessage(e)); }
-    finally { setLoading(false); setLoadingMore(false); }
-  }, [member, nextTime]);
+      const nextCursor = Number(data?.nextTime || data?.next || 0);
+      return { items: normalized, nextCursor, hasMore: nextCursor > 0 && normalized.length > 0 };
+    } catch (e: any) {
+      setError(errorMessage(e));
+      return { items: [] as DynItem[], nextCursor: cursor, hasMore: false };
+    }
+  }, [member]);
 
-  useEffect(() => { if (member) fetchData(true); }, [member]);
+  const pag = usePaginator<DynItem>({ fetchPage, initialCursor: 0 });
+  const { items, loading, hasMore, refresh, loadMore } = pag;
+
+  useEffect(() => {
+    if (member) refresh();
+  }, [member, refresh]);
 
   const renderItem = ({ item, index }: { item: DynItem; index: number }) => (
     <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
@@ -117,7 +121,7 @@ export default function MemberDynamicScreen() {
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title="成员动态" onBack={() => navigation.goBack()} right={
-        <TouchableOpacity disabled={!member || loading} onPress={() => fetchData(true)}>
+        <TouchableOpacity disabled={!member || loading} onPress={() => refresh()}>
           <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>刷新</Text>
         </TouchableOpacity>
       } />
@@ -131,19 +135,19 @@ export default function MemberDynamicScreen() {
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
-          onEndReached={() => { if (hasMore && !loadingMore) fetchData(false); }}
+          onEndReached={loadMore}
           onEndReachedThreshold={0.35}
           renderItem={renderItem}
           ListFooterComponent={
             items.length ? <Text style={[styles.footer, isDark && styles.textSubLight]}>
-              {loadingMore ? '加载中...' : hasMore ? '上滑继续加载' : '没有更多了'}
+              {loading ? '' : hasMore ? '上滑继续加载' : '没有更多了'}
             </Text> : null
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              {loading ? <ActivityIndicator color="#ff6f91" /> : null}
+              {loading ? <SkeletonList count={6} dark={isDark} /> : null}
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                {loading ? '加载中...' : member ? (error ? error : '暂无动态') : '请搜索选择成员查看动态'}
+                {loading ? '' : member ? (error ? error : '暂无动态') : '请搜索选择成员查看动态'}
               </Text>
             </View>
           }

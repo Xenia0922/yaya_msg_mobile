@@ -1,6 +1,6 @@
 {
   "name": "yaya_msg-mobile",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "口袋48 第三方 React Native 移动客户端",
   "homepage": "https://github.com/Xenia0922/yaya_msg_mobile",
   "repository": {
@@ -36,9 +36,9 @@
     "expo-blur": "~15.0.8",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.22",
-    "expo-image-picker": "^55.0.20",
-    "expo-media-library": "^55.0.17",
-    "expo-screen-orientation": "^55.0.14",
+    "expo-image-picker": "~17.0.11",
+    "expo-media-library": "~18.2.1",
+    "expo-screen-orientation": "~9.0.9",
     "expo-status-bar": "~3.0.9",
     "qrcode": "^1.5.4",
     "react": "19.1.0",

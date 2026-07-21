@@ -1,6 +1,7 @@
 import { useMemberStore, useSettingsStore } from '../store';
 import { generatePa, generatePaAsync, getWasmError, initWasm } from '../auth';
 import { requestJson, xhrPost } from '../utils/network';
+import { unwrapList } from '../utils/data';
 
 const BASE = 'https://pocketapi.48.cn';
 const APP_VERSION = '7.0.41';
@@ -630,7 +631,7 @@ export const pocketApi = {
       ]
       : [{ url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner' }];
     const attempts: Array<{ url: string; payload: any; modern?: boolean; signed?: boolean; label: string }> = [];
-    const limit = params.limit || 50;
+    const limit = params.limit || 100;
     const next = params.nextTime || 0;
     // Try both channelId and fallbackChannelId
     const cids = [channelId, ...(fallbackCid && fallbackCid !== channelId ? [fallbackCid] : [])];
@@ -814,6 +815,65 @@ export const pocketApi = {
         label: 'live one rtmp',
       },
     ], '获取直播详情失败');
+  },
+
+  /**
+   * 获取直播间弹幕（录播回放）。接口失败/无数据返回空数组，绝不抛错，
+   * 保证弹幕只是「锦上添花」，不会拖垮播放。
+   */
+  async getLiveBarrage(liveId: string): Promise<Array<{ messageId: string; content: string; color: string; time: number; user: string }>> {
+    const id = String(liveId || '');
+    if (!id) return [];
+    try {
+      const res = await tryPocketPost([
+        { url: `${BASE}/live/api/v1/live/barrage/list`, payload: { liveId: id, time: 0 }, tokenRequired: false, label: 'barrage' },
+        { url: `${BASE}/live/api/v1/live/barrage/list`, payload: { liveId: id, lastTime: 0 }, tokenRequired: false, label: 'barrage lastTime' },
+      ], '获取弹幕失败');
+      const infos = unwrapList(res, [
+        'content.barrageInfos',
+        'content.list',
+        'content.data',
+        'barrageInfos',
+        'data.barrageInfos',
+        'list',
+      ]);
+      return infos.map((b: any) => ({
+        messageId: String(b.messageId || b.id || ''),
+        content: String(b.content || b.msg || b.text || ''),
+        color: String(b.color || ''),
+        time: Number(b.time || b.t || 0) || 0,
+        user: String(b.user || b.nickName || b.userName || b.name || ''),
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * 获取录播弹幕的 LRC 文本。
+   * 关键：录播弹幕不在 barrage/list，而在 getLiveOne 返回的 content.msgFilePath（或 lrcUrl）
+   * 指向的 LRC 文件（纯文本，格式 [hh:mm:ss.fff]昵称\t内容）。参考 pocket48_lite 实现。
+   * 拉到 LRC 文本后由 parseDanmaku 解析（已支持该格式）。
+   * 失败/无数据返回 null，弹幕只是锦上添花，绝不拖垮播放。
+   */
+  async getLiveLrc(liveId: string): Promise<string | null> {
+    const id = String(liveId || '');
+    if (!id) return null;
+    try {
+      const one: any = await pocketApi.getLiveOne(id);
+      const content = (one && one.content) || one || {};
+      const lrcUrl: string = content.msgFilePath || content.lrcUrl || '';
+      if (!lrcUrl) return null;
+      const url = /^https?:\/\//i.test(lrcUrl)
+        ? lrcUrl
+        : `${BASE}${lrcUrl.startsWith('/') ? '' : '/'}${lrcUrl}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const text = await res.text();
+      return text && text.trim() ? text : null;
+    } catch {
+      return null;
+    }
   },
 
   async getOpenLivePublicList(params: { groupId?: number; next?: number; record?: boolean }) {

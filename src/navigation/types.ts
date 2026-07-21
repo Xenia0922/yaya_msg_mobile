@@ -20,7 +20,6 @@ export type RootStackParamList = {
   AnalysisScreen: undefined;
   DownloadScreen: undefined;
   DatabaseScreen: undefined;
-  ApiDiagnosticsScreen: undefined;
   TripScreen: undefined;
   MeleeRankScreen: undefined;
   MemberDynamicScreen: undefined;

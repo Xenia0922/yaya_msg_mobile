@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
+import { SkeletonList } from '../components/Skeleton';
 
 import {
   FlatList,
@@ -188,7 +189,7 @@ export default function FlipScreen() {
     setLoading(true);
     setStatus('');
     try {
-      const res = await pocketApi.getFlipList((nextPage - 1) * 50, 50);
+      const res = await pocketApi.getFlipList((nextPage - 1) * 100, 100);
       const list = normalizeFlipList(res);
       setFlips((prev) => (nextPage === 1 ? list : [...prev, ...list]));
       setStatus(list.length ? `已加载 ${nextPage === 1 ? list.length : flips.length + list.length} 条翻牌记录` : '暂无翻牌记录');
@@ -227,7 +228,7 @@ export default function FlipScreen() {
     setAnswerType(null);
     setPrivacyType('1');
     setCost('');
-    setStatus('正在加载翻牌配置...');
+    setStatus('');
     try {
       const res = await pocketApi.getFlipPrices(member.id);
       const list = normalizePriceList(res);
@@ -470,7 +471,7 @@ export default function FlipScreen() {
             loadFlips(nextPage);
           }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={<Text style={styles.empty}>{loading ? '加载中...' : '暂无翻牌记录'}</Text>}
+          ListEmptyComponent={loading ? <SkeletonList count={6} dark={isDark} /> : <Text style={styles.empty}>暂无翻牌记录</Text>}
         />
       </FadeInView>
     </View>

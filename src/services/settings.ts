@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   yaya_trip_show_all: false,
   customBackgroundFile: '',
   customBackgroundUpdatedAt: 0,
+  memberDataAutoUpdate: true,
 };
 
 export async function loadSettings(): Promise<AppSettings> {

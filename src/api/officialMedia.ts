@@ -1,3 +1,5 @@
+import { useSettingsStore } from '../store';
+
 const BASE = 'https://pocketapi.48.cn';
 
 const DESKTOP_APP_INFO = JSON.stringify({

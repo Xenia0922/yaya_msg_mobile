@@ -19,6 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import { useSettingsStore, useUiStore } from '../store';
+import { SkeletonList } from '../components/Skeleton';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import pocketApi from '../api/pocket48';
@@ -202,7 +203,7 @@ export default function OpenLiveScreen() {
       setNextTime(0);
       setHasMore(false);
     }
-    setStatus(`加载中... ${shortMemberName(nextMember)} 的公演记录...`);
+    setStatus('');
     try {
       const cursor = append ? nextTime : 0;
       const res = await pocketApi.getOpenLive({ memberId: nextMember.id, nextTime: cursor });
@@ -302,7 +303,7 @@ export default function OpenLiveScreen() {
             value={query}
             onChangeText={setQuery}
           />
-          <Text style={[styles.status, isDark && styles.textSubLight]}>{loading && !items.length ? '加载中...' : status}</Text>
+          <Text style={[styles.status, isDark && styles.textSubLight]}>{loading && !items.length ? '' : status}</Text>
         </View>
 
         <PerfFlatList
@@ -317,13 +318,13 @@ export default function OpenLiveScreen() {
           onEndReachedThreshold={0.35}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              {loading ? <ActivityIndicator color="#ff6f91" /> : null}
-              <Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '加载中...' : '暂无公演记录'}</Text>
+              {loading ? <SkeletonList count={6} dark={isDark} /> : null}
+              <Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '' : '暂无公演记录'}</Text>
             </View>
           }
           ListFooterComponent={items.length ? (
             <Text style={[styles.footerText, isDark && styles.textSubLight]}>
-              {loading ? '加载中...' : hasMore ? '上滑继续加载' : '没有更多了'}
+              {loading ? '' : hasMore ? '上滑加载更多' : '没有更多了'}
             </Text>
           ) : null}
           renderItem={({ item, index }) => (

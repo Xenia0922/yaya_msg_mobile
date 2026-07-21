@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,11 +15,11 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
 import { RootStackParamList, TabParamList } from '../navigation/types';
-import { useSettingsStore, useUiStore } from '../store';
+import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { saveSettings } from '../services/settings';
 import ScreenHeader from '../components/ScreenHeader';
-import { getWasmError, isWasmReady } from '../auth';
-import { checkNetworkStatus } from '../utils/network';
+import { APP_VERSION } from '../constants';
+import { getMemberDataMeta, updateMemberData, MemberDataMeta } from '../services/memberData';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
@@ -27,18 +29,6 @@ type SettingsNavProp = CompositeNavigationProp<
 const THEME_OPTIONS = [
   { label: '浅色', value: 'light' },
   { label: '深色', value: 'dark' },
-];
-
-const MUSIC_MODES = [
-  { label: '顺序', value: 'sequential' },
-  { label: '随机', value: 'random' },
-  { label: '单曲循环', value: 'single' },
-];
-
-const AUDIO_MODES = [
-  { label: '顺序', value: 'sequential' },
-  { label: '随机', value: 'random' },
-  { label: '单集循环', value: 'single' },
 ];
 
 function Section({ title, children, isDark }: { title: string; children: React.ReactNode; isDark: boolean }) {
@@ -68,22 +58,34 @@ function ChipRow<T>({ options, value, isDark, onChange }: { options: { label: st
   );
 }
 
+function formatTime(ts: number): string {
+  if (!ts) return '尚未同步';
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function SettingsScreen() {
   const navigation = useNavigation<SettingsNavProp>();
   const settings = useSettingsStore((state) => state.settings);
   const setSettings = useSettingsStore((state) => state.setSettings);
   const showToast = useUiStore((state) => state.showToast);
+  const memberCount = useMemberStore((state) => state.members.length);
   const isDark = settings.theme === 'dark';
-  const [networkStatus, setNetworkStatus] = useState('');
   const [manualBgUrl, setManualBgUrl] = useState('');
-  const [bgStatus, setBgStatus] = useState('');
+  const [meta, setMeta] = useState<MemberDataMeta | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    getMemberDataMeta().then(setMeta).catch(() => {});
+  }, []);
 
   const backgroundValue = settings.customBackgroundFile?.trim() || '';
-  const backgroundInfo = useMemo(() => {
+  const backgroundInfo = (() => {
     if (!backgroundValue) return '未设置';
     if (backgroundValue.startsWith('data:')) return `本地图片已保存，约 ${Math.round(backgroundValue.length / 1024)}KB`;
     return backgroundValue.length > 60 ? `${backgroundValue.slice(0, 60)}...` : backgroundValue;
-  }, [backgroundValue]);
+  })();
 
   const update = async (key: string, value: any, extra: any = {}) => {
     const patch = { [key]: value, ...extra };
@@ -92,13 +94,17 @@ export default function SettingsScreen() {
     showToast('设置已保存');
   };
 
-  const handleNetworkCheck = async () => {
-    setNetworkStatus('检测中...');
+  const handleCheckUpdate = async () => {
+    if (checking) return;
+    setChecking(true);
     try {
-      const report = await checkNetworkStatus();
-      setNetworkStatus(report.results.map((item) => `${item.ok ? '✓' : '✗'} ${item.name}: ${item.message}`).join('\n'));
+      const result = await updateMemberData({ force: false });
+      setMeta(await getMemberDataMeta());
+      showToast(result.message);
     } catch (error: any) {
-      setNetworkStatus(error?.message || '联网自检失败');
+      showToast(`成员数据更新失败：${error?.message || String(error)}`);
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -124,8 +130,39 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <ScreenHeader title="设置" />
+
+      <Section title="关于 牙牙消息" isDark={isDark}>
+        <View style={styles.aboutHero}>
+          <Text style={[styles.aboutName, isDark && styles.textLight]}>牙牙消息</Text>
+          <Text style={[styles.aboutSub, isDark && styles.textSubLight]}>Yaya Message · 口袋48 第三方客户端</Text>
+        </View>
+
+        <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://github.com/yk1z')}>
+          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>作者 GitHub</Text>
+          <Text style={styles.linkRowValue}>yk1z ↗</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile')}>
+          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>本项目仓库</Text>
+          <Text style={styles.linkRowValue}>Xenia0922/yaya_msg_mobile ↗</Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.blockTitle, isDark && styles.textLight]}>致谢</Text>
+        <Text style={[styles.ackText, isDark && styles.textSubLight]}>
+          成员数据库与签名方案由 yk1z 提供，在此致谢。
+        </Text>
+        <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://github.com/yk1z/yaya_msg')}>
+          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>数据来源仓库</Text>
+          <Text style={styles.linkRowValue}>yk1z/yaya_msg ↗</Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.blockTitle, isDark && styles.textLight]}>开源协议</Text>
+        <Text style={[styles.ackText, isDark && styles.textSubLight]}>
+          本项目基于 MIT 协议开源，仅供学习交流使用。软件不上传任何数据到云端，仅在本地缓存以维持功能可用。
+        </Text>
+      </Section>
 
       <Section title="账号" isDark={isDark}>
         <Text style={[styles.sub, isDark && styles.textSubLight]}>口袋登录、大小号切换、B站登录、修改昵称和头像</Text>
@@ -161,14 +198,6 @@ export default function SettingsScreen() {
         ) : null}
       </Section>
 
-      <Section title="音乐播放" isDark={isDark}>
-        <ChipRow options={MUSIC_MODES} value={settings.yaya_music_play_mode} isDark={isDark} onChange={(v) => update('yaya_music_play_mode', v)} />
-      </Section>
-
-      <Section title="电台播放" isDark={isDark}>
-        <ChipRow options={AUDIO_MODES} value={settings.yaya_audio_program_play_mode} isDark={isDark} onChange={(v) => update('yaya_audio_program_play_mode', v)} />
-      </Section>
-
       <Section title="自动签到" isDark={isDark}>
         <ChipRow options={[{ label: '关闭', value: false as any }, { label: '开启', value: true as any }]} value={settings.yaya_auto_checkin_enabled} isDark={isDark} onChange={(v) => update('yaya_auto_checkin_enabled', v)} />
         {settings.yaya_auto_checkin_enabled ? (
@@ -179,30 +208,35 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="工具" isDark={isDark}>
+        <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('DownloadScreen')}>
+          <Text style={styles.linkText}>下载管理</Text>
+        </TouchableOpacity>
+      </Section>
+
+      <Section title="成员数据" isDark={isDark}>
+        <Text style={[styles.sub, isDark && styles.textSubLight]}>
+          {'当前成员：'}{memberCount}{' 位\n'}{'最近更新：'}{meta ? formatTime(meta.savedAt) : '尚未同步'}
+        </Text>
         <View style={styles.chipRow}>
-          <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('DownloadScreen')}>
-            <Text style={styles.linkText}>下载管理</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('ApiDiagnosticsScreen')}>
-            <Text style={styles.linkText}>接口自检</Text>
+          <TouchableOpacity style={[styles.linkBtn, checking && styles.linkBtnDisabled]} onPress={handleCheckUpdate} disabled={checking}>
+            {checking ? <ActivityIndicator color="#fff" /> : <Text style={styles.linkText}>检查更新</Text>}
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.subBtn} onPress={handleNetworkCheck}>
-          <Text style={styles.subBtnText}>联网自检</Text>
-        </TouchableOpacity>
-        {networkStatus ? <Text style={[styles.networkText, isDark && styles.textSubLight]}>{networkStatus}</Text> : null}
+        <View style={styles.toggleRow}>
+          <Text style={[styles.sub, isDark && styles.textSubLight]}>启动时自动检查更新</Text>
+          <TouchableOpacity
+            style={[styles.toggle, settings.memberDataAutoUpdate && styles.toggleOn]}
+            onPress={() => update('memberDataAutoUpdate', !settings.memberDataAutoUpdate)}
+          >
+            <View style={[styles.toggleKnob, settings.memberDataAutoUpdate && styles.toggleKnobOn]} />
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.note, isDark && styles.textSubLight]}>
+          成员数据来自 yk1z 的牙牙消息电脑版，由 yk1z 维护并发布。
+        </Text>
       </Section>
 
-      <Section title="运行状态" isDark={isDark}>
-        <Text style={[styles.sub, isDark && styles.textSubLight]}>
-          签名模块：{isWasmReady() ? '已就绪' : '未就绪'}
-        </Text>
-        <Text style={[styles.sub, isDark && styles.textSubLight]}>
-          成员库：{useSettingsStore.getState().settings.p48Token ? '已加载' : '待加载'}
-        </Text>
-      </Section>
-
-      <Text style={[styles.footer, isDark && styles.textSubLight]}>Yaya Message v2.6.1</Text>
+      <Text style={[styles.footer, isDark && styles.textSubLight]}>版本 {APP_VERSION}</Text>
     </ScrollView>
   );
 }
@@ -225,12 +259,27 @@ const styles = StyleSheet.create({
   input: { minHeight: 42, padding: 10, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.04)', color: '#222', fontSize: 13, marginTop: 6 },
   inputDark: { backgroundColor: 'rgba(255,255,255,0.06)', color: '#fff' },
   linkBtn: { flex: 1, minHeight: 40, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  linkBtnDisabled: { opacity: 0.7 },
   linkText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   subBtn: { minHeight: 40, borderRadius: 18, backgroundColor: '#4f4f4f', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, marginTop: 8 },
   subBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   clearBtn: { marginTop: 8, minHeight: 36, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,0,0,0.08)' },
   clearText: { color: '#e74c3c', fontWeight: '800', fontSize: 12 },
-  networkText: { marginTop: 8, fontSize: 11, color: '#555', lineHeight: 16 },
+  note: { marginTop: 8, fontSize: 11, color: '#888', lineHeight: 16 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  toggle: { width: 46, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.18)', padding: 3 },
+  toggleOn: { backgroundColor: '#ff6f91' },
+  toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
+  toggleKnobOn: { transform: [{ translateX: 20 }] },
+  aboutHero: { alignItems: 'center', paddingVertical: 10 },
+  aboutName: { fontSize: 22, fontWeight: '900', color: '#222' },
+  aboutSub: { fontSize: 12, color: '#666', marginTop: 4 },
+  aboutVer: { fontSize: 12, color: '#999', marginTop: 2 },
+  linkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
+  linkRowLabel: { fontSize: 13, fontWeight: '700', color: '#333' },
+  linkRowValue: { fontSize: 13, color: '#ff6f91', fontWeight: '800' },
+  blockTitle: { fontSize: 13, fontWeight: '800', color: '#333', marginTop: 12, marginBottom: 4 },
+  ackText: { fontSize: 12, color: '#666', lineHeight: 18 },
   footer: { textAlign: 'center', color: '#999', fontSize: 12, marginTop: 16 },
   textLight: { color: '#fff' },
   textSubLight: { color: '#ddd' },

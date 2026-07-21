@@ -141,7 +141,7 @@ export default function MessagesScreen() {
           data={filtered}
           keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || index)}
           renderItem={renderMsgItem}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '加载中...' : '暂无消息'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '' : '暂无消息'}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}

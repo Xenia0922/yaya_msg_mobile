@@ -5,7 +5,8 @@ import AppNavigator from './src/navigation';
 import { loadSettings } from './src/services/settings';
 import { useSettingsStore, useMemberStore, useAnnouncementStore } from './src/store';
 import { loadMembers } from './src/utils/members';
-import { fetchJson, fetchJsonStrict } from './src/utils/network';
+import { fetchJson } from './src/utils/network';
+import { loadCachedMemberData, updateMemberData } from './src/services/memberData';
 import { initWasm, WebViewSigner } from './src/auth';
 import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
@@ -68,17 +69,20 @@ export default function App() {
         useMemberStore.getState().setMembers(localMembers);
         if (mounted) setMessage(`已加载随包成员库 ${localMembers.length} 位`);
 
-        try {
-          const json = await fetchJsonStrict<any[]>('https://yaya-data.pages.dev/members.json');
-          const remoteMembers = await loadMembers(json);
-          if (remoteMembers.length >= localMembers.length) {
-            useMemberStore.getState().setMembers(remoteMembers);
-            if (mounted) setMessage(`联网成功，已同步成员库 ${remoteMembers.length} 位`);
-          } else if (mounted) {
-            setMessage(`线上成员库较旧，继续使用随包成员库 ${localMembers.length} 位`);
-          }
-        } catch (error: any) {
-          if (mounted) setMessage(`联网成员库不可用，继续使用随包成员库 ${localMembers.length} 位：${error?.message || String(error)}`);
+        // Prefer a previously downloaded update if it is at least as complete.
+        const cached = await loadCachedMemberData();
+        if (cached && cached.length >= localMembers.length) {
+          useMemberStore.getState().setMembers(cached);
+        }
+
+        // Auto-update member data on launch when enabled (non-blocking).
+        const auto = useSettingsStore.getState().settings.memberDataAutoUpdate;
+        if (auto !== false) {
+          updateMemberData()
+            .then((r) => { if (mounted) setMessage(r.message); })
+            .catch((error: any) => {
+              if (mounted) setMessage(`成员数据更新失败，使用本地数据：${error?.message || String(error)}`);
+            });
         }
       } catch (error: any) {
         if (mounted) setMessage(`成员数据加载失败：${error?.message || String(error)}`);

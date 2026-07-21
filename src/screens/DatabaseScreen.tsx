@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -19,13 +18,11 @@ export default function DatabaseScreen() {
   const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
   const setStoreMembers = useMemberStore((s) => s.setMembers);
   const storeMembers = useMemberStore((s) => s.members);
-  const [webLoading, setWebLoading] = useState(true);
   const [webError, setWebError] = useState('');
   const webViewRef = useRef<WebView>(null);
 
   const reloadWebView = useCallback(() => {
     setWebError('');
-    setWebLoading(true);
     webViewRef.current?.reload();
   }, []);
 
@@ -66,9 +63,6 @@ export default function DatabaseScreen() {
           <Text style={styles.headerAction}>刷新</Text>
         </TouchableOpacity>
         } />
-      {webLoading && (
-        <ActivityIndicator color="#ff6f91" size="large" style={styles.loader} />
-      )}
       {webError ? (
         <View style={styles.errorWrap}>
           <Text style={styles.errorText}>{webError}</Text>
@@ -78,7 +72,6 @@ export default function DatabaseScreen() {
         ref={webViewRef}
         source={{ uri: 'https://gnz.hk/database' }}
         style={styles.webview}
-        onLoadEnd={() => setWebLoading(false)}
         onError={(e) => setWebError(e.nativeEvent.description || '加载失败')}
         javaScriptEnabled
         domStorageEnabled
@@ -106,7 +99,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
-  loader: { position: 'absolute', top: '50%', left: '50%', marginLeft: -20, marginTop: -20, zIndex: 10 },
   webview: { flex: 1 },
   errorWrap: { padding: 40, alignItems: 'center' },
   errorText: { color: '#ff6f91', fontSize: 14 },
