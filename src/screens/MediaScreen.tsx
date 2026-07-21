@@ -1076,7 +1076,7 @@ export default function MediaScreen() {
           <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} />
         </TouchableWithoutFeedback>
 
-        <Animated.View style={[{ opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none', zIndex: 30 }]}>
+        <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none', zIndex: 30 }]}>
           <PlayerTopBar
             onBack={isFullscreen ? () => setIsFullscreen(false) : closePlayer}
             title={playing.title || (playing.isLive ? '口袋直播' : '回放')}
@@ -1169,7 +1169,7 @@ export default function MediaScreen() {
         />
 
         {/* 底部控制坞：哔哩哔哩风格单排（播放 · 进度 · 弹幕 · 倍速 · 翻转 · 全屏 · 更多），口袋专属功能收进「更多」 */}
-        <Animated.View style={[{ opacity: controlsOpacity, pointerEvents: controlsVisible ? 'auto' : 'none', zIndex: 30 }]}>
+        <Animated.View style={[{ position: 'absolute', bottom: 0, left: 0, right: 0, opacity: controlsOpacity, pointerEvents: controlsVisible ? 'auto' : 'none', zIndex: 30 }]}>
           <PlayerBottomBar
             isLive={!!playing.isLive}
             paused={paused}

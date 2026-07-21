@@ -50,15 +50,14 @@ export const chromeStyles = StyleSheet.create({
   ctrlBar: { position: 'relative', height: 4, width: '100%', borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.32)' },
   ctrlFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2, backgroundColor: BILI_PINK },
   ctrlKnob: { position: 'absolute', top: -3, width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff', marginLeft: -5 },
-  // 直播标识（替代进度条）：中性「直播」文字，无红色圆点
+  // 直播标识（替代进度条）：红色圆点 + 已播时长（还原用户偏好，不用文字）
   liveChip: {
     flex: 1, flexDirection: 'row', alignItems: 'center', marginHorizontal: 8,
   },
-  liveLabel: {
-    color: '#fff', fontSize: 12, fontWeight: '700',
-    backgroundColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+  liveDot: {
+    width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#ff4d4f', marginRight: 6,
   },
-  liveChipTime: { color: 'rgba(255,255,255,0.8)', fontSize: 11, marginLeft: 8 },
+  liveChipTime: { color: 'rgba(255,255,255,0.8)', fontSize: 11 },
   // 工具按钮（弹幕 / 倍速 / 更多）
   toolBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -199,7 +198,7 @@ export function PlayerBottomBar({
 
       {isLive ? (
         <View style={chromeStyles.liveChip}>
-          <Text style={chromeStyles.liveLabel}>直播</Text>
+          <View style={chromeStyles.liveDot} />
           {typeof elapsed === 'number' ? <Text style={chromeStyles.liveChipTime}>{fmtTime(elapsed)}</Text> : null}
         </View>
       ) : (
@@ -244,7 +243,7 @@ export function PlayerBottomBar({
 
       {onRotate ? (
         <TouchableOpacity style={chromeStyles.toolBtn} onPress={onRotate} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-          <MaterialCommunityIcons name="orientation-landscape" size={22} color="#fff" />
+          <MaterialCommunityIcons name="fullscreen" size={22} color="#fff" />
         </TouchableOpacity>
       ) : null}
 

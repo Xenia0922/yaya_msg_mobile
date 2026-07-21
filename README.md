@@ -1,8 +1,8 @@
-# Yaya Message Mobile
+# Yaya Message Mobile · 牙牙消息
 
-> 口袋48 第三方移动客户端 · React Native 跨平台实现
+> 口袋48 第三方移动客户端 · React Native 跨平台实现（当前仅维护 Android）
 
-[![Version](https://img.shields.io/badge/version-2.4.1-ff6f91)](https://github.com/Xenia0922/yaya_msg_mobile)
+[![Version](https://img.shields.io/badge/version-2.6.2-ff6f91)](https://github.com/Xenia0922/yaya_msg_mobile)
 [![Android](https://img.shields.io/badge/platform-Android-3DDC84?logo=android)](https://github.com/Xenia0922/yaya_msg_mobile)
 [![Expo](https://img.shields.io/badge/expo-54-4630EB?logo=expo)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/react_native-0.81-61DAFB?logo=react)](https://reactnative.dev)
@@ -12,24 +12,41 @@
 
 ---
 
-## 平台
+## 平台状态
 
-| 平台 | 状态 |
-|:--|:--|
-| Android | 正式可用 |
-| iOS | 开发中 |
-| HarmonyOS | 开发中 |
+| 平台 | 状态 | 说明 |
+|:--|:--|:--|
+| Android | 正式可用 | 唯一活跃维护平台，Expo bare 构建 |
+| iOS | 已剥离 | 2026-07-22 起不再维护 |
+| HarmonyOS | 已剥离 | 2026-07-22 起不再维护 |
+
+> 工程仅保留 `android/` 构建链路，已移除 iOS / HarmonyOS 相关依赖与脚本。
 
 ---
 
-## 功能
+## 功能一览
 
 - **房间消息** — 关注房间时间线、回复引用、口袋表情与贴纸、礼物感谢文字
 - **私信 & 翻牌** — 私信会话、翻牌问答（文字/语音/视频，含七天倒计时与回复耗时）
-- **直播 & 回放** — ExoPlayer 原生渲染，RTMP/HLS 多源回退，直播公告实时展示、送礼与贡献榜
+- **口袋直播 & 回放** — 原生 `react-native-video` / ExoPlayer 渲染，RTMP/HLS/FLV 多源回退，直播公告实时展示、送礼与贡献榜
+- **B站直播** — 复用同一套哔哩哔哩风格播放器外壳（顶栏 + 底部控制坞），进入直播间自动横屏全屏，支持线路回退与网页播放器兜底
 - **翻牌统计** — 类型分布、回复耗时分析、成员排名、按成员筛选
 - **成员数据库** — 接入官方实时接口，含拼音首字母检索、档案与历史
 - **鸡腿充值** — 余额查询、官方充值页内嵌
+
+---
+
+## 播放器（统一哔哩哔哩风格外壳）
+
+`src/components/media/PlayerChrome.tsx` 提供跨「口袋直播/录播」与「B站直播」复用的播放器外壳：
+
+- **顶栏 `PlayerTopBar`** — 返回、标题/副标题、更多入口
+- **底部控制坞 `PlayerBottomBar`** — 播放/暂停 · 进度条（录播）/ 红点直播标识（直播）· 刷新 · 横屏全屏切换 · 更多面板
+- **沉浸式控制条** — 点击画面切换显隐，播放中 3 秒无操作自动隐藏；暂停时常驻
+- **横屏按钮** — 使用 MaterialCommunityIcons `fullscreen`（一次点击即进入横屏全屏沉浸，再点退出）
+- **直播标识** — 红色圆点 `#ff4d4f` + 已播时长，不使用文字标签
+
+> 注：口袋直播/录播与 B站直播共享同一套外壳与自动隐藏逻辑，保证两端视觉与交互一致。
 
 ---
 
@@ -40,6 +57,7 @@
 - Node.js ≥ 18
 - JDK 17+
 - Android SDK（API 34+）
+- 本地构建工具链可放在 `sdk/`（含 Android SDK + Gradle + JDK），避免污染系统环境
 
 ### 安装依赖
 
@@ -47,7 +65,7 @@
 npm install --legacy-peer-deps
 ```
 
-### 打包 Android APK
+### 打包 Android APK（Release）
 
 ```bash
 # Windows PowerShell
@@ -65,12 +83,32 @@ cd android
 
 | 层 | 技术 |
 |:--|:--|
-| 框架 | React Native 0.81 + Expo SDK 54 (bare) |
+| 框架 | React Native 0.81 + Expo SDK 54 (bare) + React 19 |
 | 导航 | React Navigation 7 |
-| 状态管理 | Zustand |
-| 直播引擎 | ExoPlayer (Android) / AVPlayer (iOS / HarmonyOS) |
+| 状态管理 | Zustand 5 |
+| 直播引擎 | react-native-video（ExoPlayer 后端，Android） |
+| WebView 兜底 | react-native-webview（HLS/FLV via hls.js / flv.js） |
 | 认证 | WebAssembly + WebView fallback |
-| 网络 | Pocket48 API（签名 + 非签名双通道） |
+| 网络 | Pocket48 API（签名 + 非签名双通道）/ B站直播 API |
+
+---
+
+## 目录速览
+
+```
+src/
+├── api/            Pocket48 & B站 接口封装
+├── components/
+│   ├── media/
+│   │   ├── PlayerChrome.tsx   # 统一播放器外壳（顶栏/底栏/更多面板）
+│   │   └── player.ts          # WebView HTML5 播放器（hls.js / flv.js）
+│   └── ...
+├── screens/
+│   ├── MediaScreen.tsx        # 口袋直播/录播
+│   └── BilibiliLiveScreen.tsx # B站直播（自动横屏 + 沉浸控制条）
+├── store/          Zustand 全局状态
+└── types/          类型定义
+```
 
 ---
 
@@ -91,8 +129,6 @@ cd android
 ---
 
 > *"暴雨过后会出现流星！大家好我是 GNZ48 TEAM G 的鲍雨欣！"*
->
-> [![鲍雨欣](assets/baoyuxin.jpg)](https://github.com/Xenia0922/yaya_msg_mobile)
 >
 > 献给 **GNZ48 鲍雨欣** —— 因为值得，所以坚持。
 

@@ -3,10 +3,12 @@ import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   ActivityIndicator,
+  Animated,
   Dimensions,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -39,6 +41,32 @@ export default function BilibiliLiveScreen() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
+  // 控制条沉浸显隐（B站式：点击画面切换，播放中 3 秒无操作自动隐藏）
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const controlsOpacity = useRef(new Animated.Value(1)).current;
+  const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pausedRef = useRef(paused);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  const showControls = useCallback((autoHide = true) => {
+    setControlsVisible(true);
+    Animated.timing(controlsOpacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    if (autoHide && !pausedRef.current) {
+      hideControlsTimer.current = setTimeout(() => {
+        setControlsVisible(false);
+        Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+      }, 3000);
+    }
+  }, [controlsOpacity]);
+  const toggleControls = useCallback(() => {
+    if (controlsVisible) {
+      setControlsVisible(false);
+      Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+    } else {
+      showControls();
+    }
+  }, [controlsVisible, showControls]);
+  const videoRef = useRef<any>(null);
   // 画面旋转（翻转）：0/90/180/270，每按一次步进 90°
   const [videoRotate, setVideoRotate] = useState(0);
   const biliScreen = Dimensions.get('window');
@@ -118,6 +146,8 @@ export default function BilibiliLiveScreen() {
       setStreamTitle(info.title || room.name || 'B站直播');
       setCandidates(list);
       setStatus('');
+      showControls();
+      setIsFullscreen(true); // 进入直播间即自动横屏全屏（用户偏好：B站直播只看横屏）
     } catch (error) {
       setStatus(`获取直播流失败：${errorMessage(error)}`);
     } finally {
@@ -155,6 +185,7 @@ export default function BilibiliLiveScreen() {
             <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
               <View style={{ width: videoBoxW, height: videoBoxH, transform: [{ rotate: videoRotateDeg }] }}>
                 <Video
+                  ref={videoRef}
                   key={streamUrl}
                   source={{
                     uri: streamUrl,
@@ -164,7 +195,7 @@ export default function BilibiliLiveScreen() {
                   resizeMode="contain"
                   paused={paused}
                   ignoreSilentSwitch="ignore"
-                  onLoad={() => setPlayerError('')}
+                  onLoad={() => { setPlayerError(''); videoRef.current?.resume?.(); }}
                   onError={(event) => {
                     const detail = JSON.stringify(event?.error || event).slice(0, 180);
                     switchToNextCandidate(`原生播放器失败：${detail}`);
@@ -190,26 +221,37 @@ export default function BilibiliLiveScreen() {
           ) : null}
         </View>
 
-        {/* 哔哩哔哩风格顶栏：返回 / 标题 / 横屏切换 / 更多（仅右上角） */}
-        <PlayerTopBar
-          onBack={closePlayer}
-          title={streamTitle || 'B站直播'}
-          subtitle={`线路 ${candidateIndex + 1}/${candidates.length} · ${currentCandidate?.formatName || 'unknown'}`}
-          onMore={() => setMoreVisible(true)}
-        />
+        {/* 全屏点击层：始终可点，用于切换控制栏显隐。
+            zIndex 20 低于控制栏(30)、高于视频(0)；控制栏可见时按钮优先接收点击，
+            隐藏时(pointerEvents none)点击穿透到本层 → 重新唤出。 */}
+        <TouchableWithoutFeedback onPress={toggleControls}>
+          <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} />
+        </TouchableWithoutFeedback>
+
+        {/* 哔哩哔哩风格顶栏：返回 / 标题 / 更多（仅右上角） */}
+        <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none', zIndex: 30 }]}>
+          <PlayerTopBar
+            onBack={closePlayer}
+            title={streamTitle || 'B站直播'}
+            subtitle={`线路 ${candidateIndex + 1}/${candidates.length} · ${currentCandidate?.formatName || 'unknown'}`}
+            onMore={() => setMoreVisible(true)}
+          />
+        </Animated.View>
 
         {/* 哔哩哔哩风格底部控制坞：播放 · 直播标识 · 刷新 · 横屏（一次点击横屏+全屏） */}
-        <PlayerBottomBar
-          isLive
-          paused={paused}
-          currentTime={0}
-          duration={0}
-          showDanmaku={false}
-          onTogglePlay={() => setPaused((p) => !p)}
-          onSeek={() => {}}
-          onRefresh={() => activeRoom && startWatch(activeRoom)}
-          onRotate={() => setIsFullscreen((v) => !v)}
-        />
+        <Animated.View style={[{ position: 'absolute', bottom: 0, left: 0, right: 0, opacity: controlsOpacity, pointerEvents: controlsVisible ? 'auto' : 'none', zIndex: 30 }]}>
+          <PlayerBottomBar
+            isLive
+            paused={paused}
+            currentTime={0}
+            duration={0}
+            showDanmaku={false}
+            onTogglePlay={() => setPaused((p) => !p)}
+            onSeek={() => {}}
+            onRefresh={() => activeRoom && startWatch(activeRoom)}
+            onRotate={() => setIsFullscreen((v) => !v)}
+          />
+        </Animated.View>
 
         <PlayerMorePanel
           visible={moreVisible}
