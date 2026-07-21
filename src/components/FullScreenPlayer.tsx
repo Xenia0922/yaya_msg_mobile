@@ -139,8 +139,6 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
 
   if (!visible || !track) return null;
 
-  const modeText = playMode === 'sequential' ? '顺序播放' : playMode === 'random' ? '随机播放' : '单曲循环';
-
   return (
     <View style={styles.root}>
       <View style={[styles.backdrop, isDark && styles.backdropD]} />
@@ -198,7 +196,6 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
 
         {/* Controls */}
         <View style={styles.ctrlWrap}>
-          <Text style={[styles.modeLabel, isDark && styles.tS]}>{modeText}</Text>
           <View style={styles.progressRow}>
             <Text style={[styles.progTime, isDark && styles.tS]}>{formatTime(position)}</Text>
             <View
@@ -311,8 +308,6 @@ const styles = StyleSheet.create({
   progThumbD: { borderColor: '#222' },
   btnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   sideBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  sideIcon: { fontSize: 20, color: '#ff6f91' },
-  modeLabel: { fontSize: 16 },
   playBtn: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   playIcon: { fontSize: 26, color: '#fff' },
   tL: { color: '#eee' }, tS: { color: '#aaa' },

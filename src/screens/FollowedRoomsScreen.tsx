@@ -1286,7 +1286,7 @@ export default function FollowedRoomsScreen() {
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title="口袋房间" right={
         <TouchableOpacity onPress={() => loadFollowed()}>
-          <Text style={styles.refreshText}>刷新</Text>
+          <Text style={styles.headerAction}>刷新</Text>
         </TouchableOpacity>
       } />
       <Text style={[styles.subtitle, isDark && styles.textSubDark]}>关注房间、大房间和小房间消息</Text>
@@ -1330,7 +1330,7 @@ export default function FollowedRoomsScreen() {
             <View style={styles.emptyWrap}>
               <Text style={[styles.empty, isDark && styles.emptyDark]}>登录后可查看关注房间和最新消息</Text>
               <TouchableOpacity onPress={() => navigation.navigate('LoginScreen')} style={styles.emptyLink}>
-                <Text style={styles.refreshText}>去登录</Text>
+                <Text style={[styles.loginLink, isDark && styles.loginLinkDark]}>去登录</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -1364,6 +1364,9 @@ const styles = StyleSheet.create({
   refreshBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91', justifyContent: 'center' },
   refreshBtnDisabled: { opacity: 0.5 },
   refreshText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  headerAction: { color: '#ff6f91', fontWeight: '800', fontSize: 13 },
+  loginLink: { color: '#333', fontWeight: '800', fontSize: 13 },
+  loginLinkDark: { color: '#eee', fontWeight: '800', fontSize: 13 },
   status: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
   mediaStatus: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, marginTop: 4, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
   statusDark: { color: '#ffe2a0', backgroundColor: 'rgba(70,52,12,0.82)' },

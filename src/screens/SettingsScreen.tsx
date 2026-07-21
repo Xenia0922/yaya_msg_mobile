@@ -131,19 +131,18 @@ export default function SettingsScreen() {
           <Text style={[styles.aboutSub, isDark && styles.textSubLight]}>Yaya Message · 口袋48 第三方客户端</Text>
         </View>
 
+        <Text style={[styles.blockTitle, isDark && styles.textLight]}>致谢</Text>
+        <Text style={[styles.ackText, isDark && styles.textSubLight]}>
+          本软件是基于{' '}
+          <Text style={styles.ackLink} onPress={() => Linking.openURL('https://github.com/yk1z/yaya_msg')}>yk1z/yaya_msg</Text>
+          {' '}二次开发的移动端版本，感谢原作者的开源贡献。
+        </Text>
         <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile')}>
-          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>本项目仓库</Text>
+          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>数据来源仓库</Text>
           <Text style={styles.linkRowValue}>Xenia0922/yaya_msg_mobile ↗</Text>
         </TouchableOpacity>
 
-        <Text style={[styles.blockTitle, isDark && styles.textLight]}>致谢</Text>
-        <Text style={[styles.ackText, isDark && styles.textSubLight]}>
-          成员数据库与签名方案由 yk1z 提供，在此致谢。
-        </Text>
-        <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://github.com/yk1z/yaya_msg')}>
-          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>数据来源仓库</Text>
-          <Text style={styles.linkRowValue}>yk1z/yaya_msg ↗</Text>
-        </TouchableOpacity>
+        <View style={styles.divider} />
 
         <Text style={[styles.blockTitle, isDark && styles.textLight]}>开源协议</Text>
         <Text style={[styles.ackText, isDark && styles.textSubLight]}>
@@ -212,7 +211,7 @@ export default function SettingsScreen() {
         </Text>
       </Section>
 
-      <Text style={[styles.footer, isDark && styles.textSubLight]}>版本 {APP_VERSION}</Text>
+      <Text style={[styles.footer, isDark && styles.textSubLight]}>Version {APP_VERSION}</Text>
     </ScrollView>
   );
 }
@@ -256,6 +255,7 @@ const styles = StyleSheet.create({
   linkRowValue: { fontSize: 13, color: '#ff6f91', fontWeight: '800' },
   blockTitle: { fontSize: 13, fontWeight: '800', color: '#333', marginTop: 12, marginBottom: 4 },
   ackText: { fontSize: 12, color: '#666', lineHeight: 18 },
+  ackLink: { color: '#ff6f91', fontWeight: '700' },
   footer: { textAlign: 'center', color: '#999', fontSize: 12, marginTop: 16 },
   textLight: { color: '#fff' },
   textSubLight: { color: '#ddd' },

@@ -5,6 +5,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Animated, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
 import { useSettingsStore, useUiStore } from '../store';
+import { ensureMemberData } from '../services/memberData';
 import { RootStackParamList, TabParamList } from './types';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
@@ -33,7 +34,6 @@ import MeleeRankScreen from '../screens/MeleeRankScreen';
 import MemberDynamicScreen from '../screens/MemberDynamicScreen';
 import MemberWeiboScreen from '../screens/MemberWeiboScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
-import ScoreOfficialScreen from '../screens/ScoreOfficialScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { mainTabBarStyle } from './tabBarStyle';
@@ -114,7 +114,6 @@ const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDura
 const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10);
 const MemberWeiboStackScreen = withPageMotion(MemberWeiboScreen, ui.motion.stackDuration, 10);
 const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10);
-const ScoreOfficialStackScreen = withPageMotion(ScoreOfficialScreen, ui.motion.stackDuration, 10);
 
 function TabButton({
   focused,
@@ -298,6 +297,12 @@ export default function AppNavigator() {
     ? { ...navTheme, colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' } }
     : navTheme;
 
+  // 启动即同步成员数据库（受「自动更新成员数据」开关控制，默认开启）
+  useEffect(() => {
+    const auto = useSettingsStore.getState().settings.memberDataAutoUpdate;
+    if (auto) ensureMemberData().catch(() => {});
+  }, []);
+
   return (
     <ErrorBoundary>
     <NavigationContainer theme={themed}>
@@ -335,7 +340,6 @@ export default function AppNavigator() {
           <Stack.Screen name="MemberDynamicScreen" component={MemberDynamicStackScreen} />
           <Stack.Screen name="MemberWeiboScreen" component={MemberWeiboStackScreen} />
           <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
-          <Stack.Screen name="ScoreOfficialScreen" component={ScoreOfficialStackScreen} />
         </Stack.Navigator>
         <AppToast />
       </>

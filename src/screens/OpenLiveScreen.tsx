@@ -14,12 +14,12 @@ import {
   View,
 } from 'react-native';
 import Video from 'react-native-video';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useNavigation } from '@react-navigation/native';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import { useSettingsStore, useUiStore } from '../store';
-import { SkeletonList } from '../components/Skeleton';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import pocketApi from '../api/pocket48';
@@ -308,19 +308,24 @@ export default function OpenLiveScreen() {
 
         <PerfFlatList
           data={filtered}
-            keyExtractor={(item) => item.key}
-            contentContainerStyle={styles.list}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-            removeClippedSubviews
-            onEndReached={loadMore}
+          keyExtractor={(item) => item.key}
+          contentContainerStyle={styles.list}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
+          onEndReached={loadMore}
           onEndReachedThreshold={0.35}
           ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              {loading ? <SkeletonList count={6} dark={isDark} /> : null}
-              <Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '' : '暂无公演记录'}</Text>
-            </View>
+            loading ? (
+              <View style={styles.emptyWrap}>
+                <ActivityIndicator size="large" color={isDark ? '#5a5a5a' : '#ff6f91'} />
+              </View>
+            ) : (
+              <View style={styles.emptyWrap}>
+                <Text style={[styles.empty, isDark && styles.textSubLight]}>暂无公演记录</Text>
+              </View>
+            )
           }
           ListFooterComponent={items.length ? (
             <Text style={[styles.footerText, isDark && styles.textSubLight]}>
@@ -335,7 +340,7 @@ export default function OpenLiveScreen() {
                 onPress={() => playItem(item)}
                 onLongPress={() => downloadItem(item)}
               >
-                {item.cover ? <Image source={{ uri: item.cover }} style={styles.cover} resizeMode="cover" /> : <View style={styles.coverPlaceholder}><Text style={styles.coverText}>LIVE</Text></View>}
+                {item.cover ? <Image source={{ uri: item.cover }} style={styles.cover} resizeMode="cover" /> : <View style={styles.coverPlaceholder}><MaterialCommunityIcons name="play" size={28} color="#ff6f91" /></View>}
                 <View style={styles.cardBody}>
                   <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>{item.title}</Text>
                   <Text style={[styles.meta, isDark && styles.textSubLight]} numberOfLines={1}>{item.nickname || shortMemberName(member) || '成员'}</Text>
@@ -364,7 +369,6 @@ const styles = StyleSheet.create({
   cardDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.14)' },
   cover: { width: 82, height: 82, borderRadius: 10, backgroundColor: '#111111' },
   coverPlaceholder: { width: 82, height: 82, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111111' },
-  coverText: { color: '#ff6f91', fontSize: 13, fontWeight: '900' },
   cardBody: { flex: 1, minWidth: 0, paddingLeft: 12, justifyContent: 'space-between' },
   cardTitle: { color: '#222222', fontSize: 15, fontWeight: '900', lineHeight: 21 },
   meta: { color: '#555555', fontSize: 12 },

@@ -79,7 +79,6 @@ const CARDS: CardSection[] = [
     subtitle: '统计、数据库、排行榜',
     items: [
       { title: '鸡腿榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen' },
-      { title: '计分', desc: '官方计分投票', route: 'ScoreOfficialScreen' },
       { title: '数据库', desc: '查看附属数据', route: 'DatabaseScreen' },
     ],
   },
@@ -154,7 +153,7 @@ export default function HomeScreen() {
             </View>
           </FadeInView>
         ))}
-        <Text style={[styles.footer, isDark && styles.footerDark]}>presented by Xenia</Text>
+        <Text style={[styles.footer, isDark && styles.footerDark]}>Presented by Xenia</Text>
       </ScrollView>
     </View>
   );

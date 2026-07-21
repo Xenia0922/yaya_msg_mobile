@@ -6,7 +6,7 @@
  *   - 用与真实内容同构的占位块 + 微光呼吸，降低「等待感」
  *   - 纯 RN Animated 实现，零额外依赖
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, View, ViewStyle } from 'react-native';
 
 const BASE = '#e9e9ef';
@@ -116,3 +116,60 @@ const styles = StyleSheet.create({
   barDark: { borderColor: 'rgba(255,255,255,0.08)' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', padding: 8 },
 });
+
+/**
+ * 骨架屏边界容器：用透明度「交叉淡入淡出」在骨架屏与真实内容之间过渡，
+ * 彻底消除「硬切换闪一下」的问题。骨架常驻到淡出动画结束才卸载，避免微光循环常驻。
+ *
+ * 用法：
+ *   <SkeletonBoundary loading={loading && list.length === 0} skeleton={<SkeletonList .../>}>
+ *     <ContentList ... />
+ *   </SkeletonBoundary>
+ */
+export function SkeletonBoundary({
+  loading,
+  skeleton,
+  children,
+  style,
+}: {
+  loading: boolean;
+  skeleton: React.ReactNode;
+  children: React.ReactNode;
+  style?: ViewStyle;
+}) {
+  const skeletonOpacity = useRef(new Animated.Value(loading ? 1 : 0)).current;
+  const contentOpacity = useRef(new Animated.Value(loading ? 0 : 1)).current;
+  const [renderSkeleton, setRenderSkeleton] = useState(loading);
+
+  useEffect(() => {
+    if (loading) {
+      setRenderSkeleton(true);
+      Animated.timing(contentOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+      Animated.timing(skeletonOpacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(contentOpacity, { toValue: 1, duration: 320, useNativeDriver: true }).start();
+      Animated.timing(skeletonOpacity, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }).start(() => setRenderSkeleton(false));
+    }
+  }, [loading, skeletonOpacity, contentOpacity]);
+
+  return (
+    <View style={[{ flex: 1 }, style]}>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { opacity: contentOpacity, pointerEvents: loading ? 'none' : 'box-none' }]}
+      >
+        {children}
+      </Animated.View>
+      {renderSkeleton ? (
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { opacity: skeletonOpacity, pointerEvents: 'none' }]}
+        >
+          {skeleton}
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}

@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   ActivityIndicator,
-  FlatList,
+  Dimensions,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -21,7 +21,7 @@ import { externalApi } from '../api/external';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage } from '../utils/data';
 import { getPlayerHtml } from '../components/media/player';
-import { SkeletonList } from '../components/Skeleton';
+import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel } from '../components/media/PlayerChrome';
 
 export default function BilibiliLiveScreen() {
   const navigation = useNavigation<any>();
@@ -30,12 +30,22 @@ export default function BilibiliLiveScreen() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [streamTitle, setStreamTitle] = useState('B站直播');
+  const [activeRoom, setActiveRoom] = useState<BilibiliLiveRoom | null>(null);
   const [liveStatuses, setLiveStatuses] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
-  const [isLandscape, setIsLandscape] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [moreVisible, setMoreVisible] = useState(false);
+  // 画面旋转（翻转）：0/90/180/270，每按一次步进 90°
+  const [videoRotate, setVideoRotate] = useState(0);
+  const biliScreen = Dimensions.get('window');
+  const biliRotated = videoRotate === 90 || videoRotate === 270;
+  const videoBoxW = biliRotated ? biliScreen.height : biliScreen.width;
+  const videoBoxH = biliRotated ? biliScreen.width : biliScreen.height;
+  const videoRotateDeg = `${videoRotate}deg`;
   const currentCandidate = candidates[candidateIndex];
   const streamUrl = currentCandidate?.url || '';
 
@@ -61,21 +71,23 @@ export default function BilibiliLiveScreen() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
+  // 横屏/全屏联动：一次点击「横屏」即进入横屏全屏沉浸，再点退出
+  useEffect(() => {
+    ScreenOrientation.lockAsync(
+      isFullscreen ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP,
+    ).catch(() => {});
+  }, [isFullscreen]);
+
   const closePlayer = () => {
     setCandidates([]);
-    setIsLandscape(false);
+    setActiveRoom(null);
+    setPlayerError('');
+    setIsFullscreen(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   };
 
-  const toggleOrientation = () => {
-    const next = !isLandscape;
-    setIsLandscape(next);
-    ScreenOrientation.lockAsync(
-      next ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP,
-    ).catch(() => {});
-  };
-
   const checkStatuses = async () => {
+    if (!rooms.length) return;
     setLoading(true);
     setStatus('正在刷新开播状态...');
     const next: Record<string, boolean> = {};
@@ -99,6 +111,7 @@ export default function BilibiliLiveScreen() {
     setUseWebPlayer(false);
     setCandidates([]);
     setCandidateIndex(0);
+    setActiveRoom(room);
     try {
       const info = await bilibiliApi.resolveLive(room.roomId);
       const list = info.streamCandidates?.length ? info.streamCandidates : [{ url: info.streamUrl }];
@@ -126,107 +139,135 @@ export default function BilibiliLiveScreen() {
   if (streamUrl) {
     return (
       <View style={styles.playerPage}>
-        <View style={styles.playerToolbar}>
-          <TouchableOpacity onPress={closePlayer} style={styles.glassBtn}>
-            <Text style={styles.glassBtnText}>返回</Text>
-          </TouchableOpacity>
-          <Text style={styles.playerLineInfo} numberOfLines={1}>
-            线路 {candidateIndex + 1}/{candidates.length} · {currentCandidate?.formatName || 'unknown'}
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TouchableOpacity onPress={() => setUseWebPlayer((prev) => !prev)} style={styles.glassBtn}>
-              <Text style={styles.glassBtnText}>{useWebPlayer ? '原生' : '网页'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={toggleOrientation} style={styles.glassBtn}>
-              <Text style={styles.glassBtnText}>{isLandscape ? '竖屏' : '横屏'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        {useWebPlayer ? (
-          <WebView
-            source={{ html: getPlayerHtml(streamUrl) }}
-            style={styles.player}
-            javaScriptEnabled
-            domStorageEnabled
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            mixedContentMode="always"
-            allowsFullscreenVideo
-          />
-        ) : (
-          <View style={styles.player}>
-            <Video
-              key={streamUrl}
-              source={{
-                uri: streamUrl,
-                headers: bilibiliApi.headers(currentCandidate?.realRoomId),
-              }}
+        <View style={styles.player}>
+          {useWebPlayer ? (
+            <WebView
+              source={{ html: getPlayerHtml(streamUrl) }}
               style={styles.nativeVideo}
-              controls
-              resizeMode="contain"
-              paused={false}
-              ignoreSilentSwitch="ignore"
-              onLoad={() => setPlayerError('')}
-              onError={(event) => {
-                const detail = JSON.stringify(event?.error || event).slice(0, 180);
-                switchToNextCandidate(`原生播放器失败：${detail}`);
-              }}
+              javaScriptEnabled
+              domStorageEnabled
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              mixedContentMode="always"
+              allowsFullscreenVideo
             />
-            {playerError ? (
-              <View style={styles.playerError}>
-                <Text style={styles.playerErrorText}>{playerError}</Text>
-                <View style={styles.playerActions}>
-                  <TouchableOpacity style={styles.webFallbackBtn} onPress={() => setUseWebPlayer(true)}>
-                    <Text style={styles.webFallbackText}>网页播放器</Text>
-                  </TouchableOpacity>
-                  {candidateIndex + 1 < candidates.length ? (
-                    <TouchableOpacity style={styles.webFallbackBtn} onPress={() => setCandidateIndex((prev) => prev + 1)}>
-                      <Text style={styles.webFallbackText}>下一线路</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+              <View style={{ width: videoBoxW, height: videoBoxH, transform: [{ rotate: videoRotateDeg }] }}>
+                <Video
+                  key={streamUrl}
+                  source={{
+                    uri: streamUrl,
+                    headers: bilibiliApi.headers(currentCandidate?.realRoomId),
+                  }}
+                  style={[styles.nativeVideo, { transform: [{ rotate: videoRotateDeg }] }]}
+                  resizeMode="contain"
+                  paused={paused}
+                  ignoreSilentSwitch="ignore"
+                  onLoad={() => setPlayerError('')}
+                  onError={(event) => {
+                    const detail = JSON.stringify(event?.error || event).slice(0, 180);
+                    switchToNextCandidate(`原生播放器失败：${detail}`);
+                  }}
+                />
               </View>
-            ) : null}
-          </View>
-        )}
+            </View>
+          )}
+          {playerError ? (
+            <View style={styles.playerError}>
+              <Text style={styles.playerErrorText}>{playerError}</Text>
+              <View style={styles.playerActions}>
+                <TouchableOpacity style={styles.webFallbackBtn} onPress={() => setUseWebPlayer(true)}>
+                  <Text style={styles.webFallbackText}>网页播放器</Text>
+                </TouchableOpacity>
+                {candidateIndex + 1 < candidates.length ? (
+                  <TouchableOpacity style={styles.webFallbackBtn} onPress={() => setCandidateIndex((prev) => prev + 1)}>
+                    <Text style={styles.webFallbackText}>下一线路</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        {/* 哔哩哔哩风格顶栏：返回 / 标题 / 横屏切换 / 更多（仅右上角） */}
+        <PlayerTopBar
+          onBack={closePlayer}
+          title={streamTitle || 'B站直播'}
+          subtitle={`线路 ${candidateIndex + 1}/${candidates.length} · ${currentCandidate?.formatName || 'unknown'}`}
+          onMore={() => setMoreVisible(true)}
+        />
+
+        {/* 哔哩哔哩风格底部控制坞：播放 · 直播标识 · 刷新 · 横屏（一次点击横屏+全屏） */}
+        <PlayerBottomBar
+          isLive
+          paused={paused}
+          currentTime={0}
+          duration={0}
+          showDanmaku={false}
+          onTogglePlay={() => setPaused((p) => !p)}
+          onSeek={() => {}}
+          onRefresh={() => activeRoom && startWatch(activeRoom)}
+          onRotate={() => setIsFullscreen((v) => !v)}
+        />
+
+        <PlayerMorePanel
+          visible={moreVisible}
+          onClose={() => setMoreVisible(false)}
+          title="播放器功能"
+          items={[
+            { key: 'web', icon: useWebPlayer ? 'cellphone' : 'web', label: useWebPlayer ? '原生' : '网页', onPress: () => setUseWebPlayer((p) => !p), active: useWebPlayer },
+            ...(candidateIndex + 1 < candidates.length ? [{ key: 'next', icon: 'playlist-check', label: '下一线路', onPress: () => setCandidateIndex((prev) => Math.min(prev + 1, candidates.length - 1)) }] : []),
+          ]}
+        />
       </View>
     );
   }
 
+  // 首屏（列表为空且加载中）显示居中转圈；刷新时列表保持不变，仅头部显示加载指示，避免闪屏
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title="B站直播" right={
-        <TouchableOpacity onPress={checkStatuses}>
-          <Text style={styles.refresh}>刷新状态</Text>
-        </TouchableOpacity>
+        loading ? (
+          <ActivityIndicator color="#ff6f91" />
+        ) : (
+          <TouchableOpacity onPress={checkStatuses}>
+            <Text style={styles.refresh}>刷新状态</Text>
+          </TouchableOpacity>
+        )
       } />
       {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
-      {loading ? <SkeletonList count={6} dark={isDark} /> : null}
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <PerfFlatList
-          data={rooms}
-          keyExtractor={(item, index) => item.roomId || String(index)}
-          renderItem={({ item, index }) => (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-              <TouchableOpacity
-                style={[styles.roomItem, isDark && styles.roomItemDark]}
-                onPress={() => startWatch(item)}
-              >
-                <View style={styles.roomInfo}>
-                  <Text style={[styles.roomName, isDark && styles.textLight]}>{item.name || `房间号：${item.roomId}`}</Text>
-                  <Text style={[styles.roomId, isDark && styles.roomIdDark]}>房间号：{item.roomId}</Text>
-                </View>
-                <View style={[styles.statusDot, liveStatuses[item.roomId] ? styles.liveDot : styles.offlineDot]} />
-              </TouchableOpacity>
-            </FadeInView>
-          )}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>暂无直播间</Text>}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
-          removeClippedSubviews
-        />
-      </FadeInView>
+      <PerfFlatList
+        data={rooms}
+        keyExtractor={(item, index) => item.roomId || String(index)}
+        renderItem={({ item, index }) => (
+          <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
+            <TouchableOpacity
+              style={[styles.roomItem, isDark && styles.roomItemDark]}
+              onPress={() => startWatch(item)}
+            >
+              <View style={styles.roomInfo}>
+                <Text style={[styles.roomName, isDark && styles.textLight]}>{item.name || `房间号：${item.roomId}`}</Text>
+                <Text style={[styles.roomId, isDark && styles.roomIdDark]}>房间号：{item.roomId}</Text>
+              </View>
+              <View style={[styles.statusDot, liveStatuses[item.roomId] ? styles.liveDot : styles.offlineDot]} />
+            </TouchableOpacity>
+          </FadeInView>
+        )}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyWrap}>
+              <ActivityIndicator size="large" color={isDark ? '#5a5a5a' : '#ff6f91'} />
+            </View>
+          ) : (
+            <Text style={[styles.empty, isDark && styles.emptyDark]}>暂无直播间</Text>
+          )
+        }
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        removeClippedSubviews
+      />
     </View>
   );
 }
@@ -238,19 +279,12 @@ const styles = StyleSheet.create({
   status: { margin: 12, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.72)', color: '#555', fontSize: 12, textAlign: 'center' },
   statusDark: { backgroundColor: 'rgba(30,30,30,0.78)', color: '#aaa' },
   playerPage: { flex: 1, backgroundColor: '#000' },
-  switchPlayerBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18, backgroundColor: '#222' },
-  switchPlayerText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
-  playerToolbar: { flexDirection: 'row', paddingHorizontal: 8, paddingTop: 44, paddingBottom: 6, backgroundColor: '#0a0a0a', alignItems: 'center', gap: 8 },
-  playerLineInfo: { flex: 1, color: '#999', fontSize: 11, textAlign: 'center' },
-  glassBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
-  glassBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  lineInfo: { color: '#eeeeee', backgroundColor: '#111', fontSize: 11, paddingHorizontal: 12, paddingVertical: 6 },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },
-  playerError: { position: 'absolute', left: 16, right: 16, bottom: 24, padding: 12, borderRadius: 16, backgroundColor: 'rgba(20,20,20,0.88)' },
+  playerError: { position: 'absolute', left: 16, right: 16, bottom: 110, padding: 12, borderRadius: 16, backgroundColor: 'rgba(20,20,20,0.88)' },
   playerErrorText: { color: '#fff', fontSize: 12, lineHeight: 18 },
   playerActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  webFallbackBtn: { backgroundColor: '#ff6f91', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
+  webFallbackBtn: { backgroundColor: '#ff6f91', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, alignSelf: 'flex-start' },
   webFallbackText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   roomItem: { flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 16, marginVertical: 4, borderRadius: 16 },
   roomItemDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
@@ -264,4 +298,5 @@ const styles = StyleSheet.create({
   textLight: { color: '#eee' },
   empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
   emptyDark: { color: '#aaa' },
+  emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
 });

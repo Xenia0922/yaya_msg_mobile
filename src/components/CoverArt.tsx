@@ -50,7 +50,15 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
   const initial = (title || '♪').replace(/\s/g, '').charAt(0) || '♪';
 
   if (uri) {
-    return <Image source={{ uri }} style={boxStyle} />;
+    return (
+      <Image
+        source={{ uri }}
+        style={boxStyle}
+        resizeMode="cover"
+        // 用 resize 解码到目标尺寸，避免 Android 默认 scale 导致的发糊
+        resizeMethod="resize"
+      />
+    );
   }
 
   return (

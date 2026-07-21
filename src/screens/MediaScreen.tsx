@@ -5,6 +5,7 @@ import {
   Animated,
   BackHandler,
   DeviceEventEmitter,
+  Dimensions,
   FlatList,
   Image,
   Modal,
@@ -13,6 +14,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   TouchableOpacity,
   View,
   ActivityIndicator,
@@ -37,7 +39,7 @@ import { DanmakuOverlay } from '../components/DanmakuOverlay';
 import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
 import { parseDanmaku, DanmakuItem } from '../utils/danmaku';
 import { memberSearchText } from '../utils/members';
-import { ScreenSkeleton, SkeletonList, Skeleton } from '../components/Skeleton';
+import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel, MoreItem } from '../components/media/PlayerChrome';
 
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
 
@@ -451,141 +453,6 @@ function acceptUserId(item: any): string {
   return String(item?.userInfo?.userId || item?.user?.userId || item?.userId || item?.ownerId || item?.memberId || '');
 }
 
-function fmtTime(sec: number): string {
-  const s = Math.max(0, Math.floor(sec || 0));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${r < 10 ? '0' : ''}${r}`;
-}
-
-interface PlayerControlsProps {
-  paused: boolean;
-  currentTime: number;
-  duration: number;
-  playbackRate: number;
-  showDanmaku: boolean;
-  onTogglePlay: () => void;
-  onSeek: (t: number) => void;
-  onToggleDanmaku: () => void;
-  onCycleRate: () => void;
-}
-
-/** 哔哩哔哩风格底部控制条：播放/暂停、可拖动进度、时间、弹幕开关、倍速。 */
-function PlayerControls({
-  paused,
-  currentTime,
-  duration,
-  playbackRate,
-  showDanmaku,
-  onTogglePlay,
-  onSeek,
-  onToggleDanmaku,
-  onCycleRate,
-}: PlayerControlsProps) {
-  const trackWidth = useRef(0);
-  const dragRatioRef = useRef(0);
-  const [dragTime, setDragTime] = useState<number | null>(null);
-  const ratioFromX = (x: number): number => {
-    const w = trackWidth.current || 1;
-    return Math.max(0, Math.min(1, x / w));
-  };
-  // 拖动过程实时跟手：dragTime 优先显示，松手才真正 seek。
-  // 用 dragRatioRef 缓存最近一次有效 ratio：松手事件 locationX 常为 0，
-  // 直接读会算成 ratio=0 → seek 回开头（回弹）；改读 grant/move 记下的真实 ratio。
-  const onTrackGrant = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setDragTime(r * duration); };
-  const onTrackMove = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setDragTime(r * duration); };
-  const onTrackRelease = () => { const r = dragRatioRef.current; if (duration > 0) onSeek(r * duration); dragRatioRef.current = 0; setDragTime(null); };
-  const displayTime = dragTime ?? currentTime;
-  const pct = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;
-  return (
-    <View style={styles.controlsBar} pointerEvents="box-none">
-      <TouchableOpacity onPress={onTogglePlay} style={styles.ctrlBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <MaterialCommunityIcons name={paused ? 'play' : 'pause'} size={22} color="#fff" />
-      </TouchableOpacity>
-      <Text style={styles.ctrlTime}>{fmtTime(displayTime)}</Text>
-      <View
-        style={styles.ctrlTrack}
-        onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderGrant={onTrackGrant}
-        onResponderMove={onTrackMove}
-        onResponderRelease={onTrackRelease}
-      >
-        <View style={styles.ctrlBar}>
-          <View style={[styles.ctrlFill, { width: `${pct}%` }]} />
-          <View style={[styles.ctrlKnob, { left: `${pct}%` }]} />
-        </View>
-      </View>
-      <Text style={styles.ctrlTime}>{fmtTime(duration)}</Text>
-      <TouchableOpacity onPress={onToggleDanmaku} style={styles.ctrlBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <Text style={[styles.ctrlIcon, showDanmaku && styles.ctrlIconOn]}>弹</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={onCycleRate} style={styles.ctrlBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <Text style={styles.ctrlRate}>{playbackRate}x</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-/** 底部功能栏：把原先顶部 chrome 的「礼物 / 刷新 / 贡献榜 / 弹幕设置 / 全屏 / 公告」等图标
- *  统一收到底部控制坞，配合 MSG48 式沉浸显隐（点击视频区切换、播放中自动隐藏）。 */
-function PlayerFuncBar({
-  isLive,
-  announceVisible,
-  announceExpanded,
-  onRefresh,
-  onGift,
-  onRank,
-  onDanmakuSettings,
-  onFullscreen,
-  onToggleAnnounce,
-}: {
-  isLive: boolean;
-  announceVisible: boolean;
-  announceExpanded: boolean;
-  onRefresh: () => void;
-  onGift: () => void;
-  onRank: () => void;
-  onDanmakuSettings: () => void;
-  onFullscreen: () => void;
-  onToggleAnnounce: () => void;
-}) {
-  return (
-    <View style={styles.funcRow}>
-      <TouchableOpacity style={styles.funcBtn} onPress={onRefresh}>
-        <MaterialCommunityIcons name="refresh" size={22} color="#fff" />
-        <Text style={styles.funcBtnText}>刷新</Text>
-      </TouchableOpacity>
-      {isLive ? (
-        <TouchableOpacity style={styles.funcBtn} onPress={onGift}>
-          <MaterialCommunityIcons name="gift" size={22} color="#fff" />
-          <Text style={styles.funcBtnText}>礼物</Text>
-        </TouchableOpacity>
-      ) : null}
-      <TouchableOpacity style={styles.funcBtn} onPress={onRank}>
-        <MaterialCommunityIcons name="trophy" size={22} color="#fff" />
-        <Text style={styles.funcBtnText}>贡献榜</Text>
-      </TouchableOpacity>
-      {!isLive ? (
-        <TouchableOpacity style={styles.funcBtn} onPress={onDanmakuSettings}>
-          <MaterialCommunityIcons name="cog" size={22} color="#fff" />
-          <Text style={styles.funcBtnText}>弹幕设置</Text>
-        </TouchableOpacity>
-      ) : null}
-      <TouchableOpacity style={styles.funcBtn} onPress={onFullscreen}>
-        <MaterialCommunityIcons name="fullscreen" size={22} color="#fff" />
-        <Text style={styles.funcBtnText}>全屏</Text>
-      </TouchableOpacity>
-      {announceVisible ? (
-        <TouchableOpacity style={[styles.funcBtn, announceExpanded && styles.funcBtnActive]} onPress={onToggleAnnounce}>
-          <MaterialCommunityIcons name="bullhorn" size={22} color={announceExpanded ? '#ff6f91' : '#fff'} />
-          <Text style={[styles.funcBtnText, announceExpanded && styles.funcBtnTextActive]}>公告</Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
-}
 
 export default function MediaScreen() {
   const route = useRoute<MediaRouteProp>();
@@ -598,13 +465,15 @@ export default function MediaScreen() {
   const [vodList, setVodList] = useState<VODItem[]>([]);
   const [liveList, setLiveList] = useState<VODItem[]>([]);
   const [loading, setLoading] = useState(false);
-  // 骨架屏常驻：用透明度交叉淡入淡出，避免加载态反复挂载/卸载造成闪屏
-  const skeletonOpacity = useRef(new Animated.Value(0)).current;
   const [nextCursor, setNextCursor] = useState(0);
   const [error, setError] = useState('');
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // 横屏/竖屏切换（与全屏沉浸联动，由 isFullscreen effect 统一处理方向锁）
+  const [isLandscape, setIsLandscape] = useState(false);
+  // 画面旋转（翻转）：0/90/180/270，每按一次步进 90°
+  const [videoRotate, setVideoRotate] = useState(0);
   const [playing, setPlaying] = useState<{ url: string; urls: string[]; title: string; cover?: string; item: any; isLive: boolean; needsVlc: boolean } | null>(null);
   // 续播位置：打开回放时读取上次进度，播放中由 WebView 回传进度落盘
   const [webResumeTime, setWebResumeTime] = useState(0);
@@ -733,7 +602,7 @@ export default function MediaScreen() {
   const [rankStatus, setRankStatus] = useState('');
   const [announcement, setAnnouncement] = useState('');
   const [announceVisible, setAnnounceVisible] = useState(false);
-  const [announceExpanded, setAnnounceExpanded] = useState(true);
+  const [announceExpanded, setAnnounceExpanded] = useState(false);
   const loadingRef = useRef(false);
   const playingRef = useRef<typeof playing>(null);
   // v2.6: group filter + search
@@ -753,6 +622,7 @@ export default function MediaScreen() {
   const [dateFilter, setDateFilter] = useState<Date | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showDanmakuSettings, setShowDanmakuSettings] = useState(false);
+  const [moreVisible, setMoreVisible] = useState(false);
   // 播放器控制条（B站式沉浸：点击视频区显隐，播放中自动隐藏）
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
@@ -831,16 +701,6 @@ export default function MediaScreen() {
     });
   }, [tab, liveList, vodList, search, groupId, selectedMember, dateFilter]);
 
-  // 骨架屏显隐：仅首屏（列表为空且在加载）时显示，用透明度交叉淡入淡出，避免挂载/卸载闪屏
-  const showSkeleton = loading && list.length === 0;
-  useEffect(() => {
-    Animated.timing(skeletonOpacity, {
-      toValue: showSkeleton ? 1 : 0,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-  }, [showSkeleton, skeletonOpacity]);
-
   // 成员联想：未选成员时，输入命中成员名/缩写则弹出选择框
   const memberHits = useMemo(() => {
     if (selectedMember || !search.trim()) return [];
@@ -913,7 +773,9 @@ export default function MediaScreen() {
       const next = normalizeLiveList(res);
       const nextToken = Number((res as any)?.content?.next ?? (res as any)?.data?.next ?? (res as any)?.next ?? 0) || 0;
       setNextCursor(nextToken);
-      setHasMore(next.length > 0 && nextToken > 0);
+      // 翻页终止条件：本页有数据 且 游标确有前进（nextToken>0 且不等于本次请求的 cursor）。
+      // 加 `nextToken !== cursor` 兜底，防止接口返回不变游标却持续吐相同数据导致的死循环。
+      setHasMore(next.length > 0 && nextToken > 0 && nextToken !== cursor);
       if (mode === 'live') setLiveList((prev) => (append ? mergeUniqueLiveItems(prev, next) : next));
       else setVodList((prev) => (append ? mergeUniqueLiveItems(prev, next) : next));
     } catch (err) {
@@ -926,7 +788,9 @@ export default function MediaScreen() {
   }, []); // stable ref, reads groupId from groupIdRef
 
   const reloadList = useCallback(() => {
-    setLiveList([]); setVodList([]); setNextCursor(0); setHasMore(true);
+    // 刷新时保留当前列表内容，避免列表被清空导致骨架屏闪一下；
+    // 仅当列表本就为空（首屏）时才走骨架屏逻辑。
+    setNextCursor(0); setHasMore(true);
     doFetch(tab, 0);
   }, [doFetch, tab]);
 
@@ -945,14 +809,17 @@ export default function MediaScreen() {
     return () => clearTimeout(id);
   }, [selectedMember, doFetch]);
 
-  // 搜索 / 选中成员后：当前列表未命中且仍有更多页时，自动翻页直到命中或无更多，解决「搜成员录播太慢」
+  // 搜索 / 选中成员后：自动翻页直到「翻完所有页」，收集该成员/关键词下的全部录播，
+  // 不再只翻到命中 1 条就停（修复「选定成员后只加载一条、刷新也还是一条」）。
+  // 未筛选时（无搜索、无成员）不自动翻页，仅靠用户上滑 onEndReached 触发。
   useEffect(() => {
     if (loadingRef.current || loading) return;
     const haveFilter = !!search.trim() || !!selectedMember;
-    if (!haveFilter || list.length > 0 || !hasMore) return;
-    const id = setTimeout(() => loadMore(), 200);
+    if (!haveFilter || !hasMore) return;
+    if (selectedMember && tab !== 'vod') return; // 成员检索固定在录播页，等 tab 切到 vod 再翻
+    const id = setTimeout(() => loadMore(), 150);
     return () => clearTimeout(id);
-  }, [search, selectedMember, list.length, hasMore, loading]);
+  }, [search, selectedMember, hasMore, loading, tab]);
 
   useEffect(() => () => {
     setLiveImmersiveMode(false);
@@ -961,7 +828,14 @@ export default function MediaScreen() {
 
   useEffect(() => {
     setLiveImmersiveMode(!!playing && isFullscreen);
-    return () => setLiveImmersiveMode(false);
+    if (!playing) return;
+    if (isFullscreen) {
+      setIsLandscape(true);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    } else {
+      setIsLandscape(false);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    }
   }, [isFullscreen, playing]);
 
   const closePlayer = () => {
@@ -1183,32 +1057,32 @@ export default function MediaScreen() {
     return () => sub.remove();
   }, []);
 
+  // 画面旋转（翻转）：旋转 90° 时交换容器宽高，使视频填满屏幕且不裁剪
+  const screen = Dimensions.get('window');
+  const videoRotated = videoRotate === 90 || videoRotate === 270;
+  const videoBoxW = videoRotated ? screen.height : screen.width;
+  const videoBoxH = videoRotated ? screen.width : screen.height;
+  const videoRotateDeg = `${videoRotate}deg`;
+
   if (playing) {
     return (
       <View style={[styles.playerPage, isFullscreen && styles.playerPageFullscreen]}>
-        {!isFullscreen ? (
-          <Animated.View style={[styles.topChrome, { opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none' }]}>
-            <TouchableOpacity onPress={closePlayer} style={styles.glassBtn}>
-              <Text style={styles.glassBtnText}>返回</Text>
-            </TouchableOpacity>
-            <View style={styles.playerToolbarCenter}>
-              {announceVisible && announcement ? (
-                <TouchableOpacity style={[styles.glassBtn, styles.announceHeaderBtn]} onPress={() => setAnnounceExpanded(v => !v)}>
-                  <Text style={[styles.glassBtnText, styles.announceHeaderText]}>{announceExpanded ? '收起' : '公告'}</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-            <View style={{ minWidth: 44 }} />
-          </Animated.View>
-        ) : (
-          <Animated.View style={[styles.topChrome, { opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none' }]}>
-            <TouchableOpacity onPress={() => setIsFullscreen(false)} style={styles.glassBtn}>
-              <Text style={styles.glassBtnText}>退出全屏</Text>
-            </TouchableOpacity>
-            <View style={{ flex: 1 }} />
-            <View style={{ minWidth: 44 }} />
-          </Animated.View>
-        )}
+        {/* 全屏点击层：始终可点，用于切换控制栏显隐。
+            zIndex 20 低于控制栏(30)、高于视频(0)，故：
+            - 控制栏可见时，其按钮(z30)优先接收点击；
+            - 控制栏隐藏时(pointerEvents none)点击穿透到本层 → 重新唤出。
+            用 TouchableWithoutFeedback 而非 responder，规避原生 Video 吞触摸导致「隐藏后再也唤不回」的 bug。 */}
+        <TouchableWithoutFeedback onPress={toggleControls}>
+          <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} />
+        </TouchableWithoutFeedback>
+
+        <Animated.View style={[{ opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none', zIndex: 30 }]}>
+          <PlayerTopBar
+            onBack={isFullscreen ? () => setIsFullscreen(false) : closePlayer}
+            title={playing.title || (playing.isLive ? '口袋直播' : '回放')}
+            onMore={() => setMoreVisible(true)}
+          />
+        </Animated.View>
 
         {announceExpanded && announceVisible && announcement ? (
           <View style={styles.announcePanel}>
@@ -1257,33 +1131,33 @@ export default function MediaScreen() {
             }}
           />
         ) : (
-          <View style={styles.player}>
-            <Video
-              ref={videoRef}
-              source={playerSource(playing.url)}
-              style={styles.nativeVideo}
-              resizeMode="contain"
-              paused={paused}
-              rate={playbackRate}
-              progressUpdateInterval={250}
-              playInBackground={false}
-              playWhenInactive={false}
-              ignoreSilentSwitch="ignore"
-              onLoad={(e) => { setDuration(e.duration || 0); setPlaybackTime(webResumeTime || 0); setPlayerError(''); }}
-              onProgress={(e) => { if (Date.now() < seekLockRef.current) return; if (!paused) setPlaybackTime(e.currentTime || 0); }}
-              onEnd={() => clearResumePosition(playing.url)}
-              onError={(event) => setPlayerError(`原生播放器失败：${JSON.stringify(event?.error || event).slice(0, 220)}`)}
-            />
-            {playerError ? (
-              <View style={styles.playerError}>
-                <Text style={styles.playerErrorText}>{playerError}</Text>
-                <TouchableOpacity style={styles.webFallbackBtn} onPress={() => { setUseWebPlayer(true); setPaused(false); }}>
-                  <Text style={styles.webFallbackText}>切换网页播放器</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={StyleSheet.absoluteFill} onStartShouldSetResponder={() => true} onResponderRelease={toggleControls} />
-            )}
+          <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+            <View style={{ width: videoBoxW, height: videoBoxH, transform: [{ rotate: videoRotateDeg }] }}>
+              <Video
+                ref={videoRef}
+                source={playerSource(playing.url)}
+                style={[styles.nativeVideo, { transform: [{ rotate: videoRotateDeg }] }]}
+                resizeMode="contain"
+                paused={paused}
+                rate={playbackRate}
+                progressUpdateInterval={250}
+                playInBackground={false}
+                playWhenInactive={false}
+                ignoreSilentSwitch="ignore"
+                onLoad={(e) => { setDuration(e.duration || 0); setPlaybackTime(webResumeTime || 0); setPlayerError(''); }}
+                onProgress={(e) => { if (Date.now() < seekLockRef.current) return; if (!paused) setPlaybackTime(e.currentTime || 0); }}
+                onEnd={() => clearResumePosition(playing.url)}
+                onError={(event) => setPlayerError(`原生播放器失败：${JSON.stringify(event?.error || event).slice(0, 220)}`)}
+              />
+              {playerError ? (
+                <View style={styles.playerError}>
+                  <Text style={styles.playerErrorText}>{playerError}</Text>
+                  <TouchableOpacity style={styles.webFallbackBtn} onPress={() => { setUseWebPlayer(true); setPaused(false); }}>
+                    <Text style={styles.webFallbackText}>切换网页播放器</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
           </View>
         )}
 
@@ -1294,38 +1168,37 @@ export default function MediaScreen() {
           live={!!playing?.isLive}
         />
 
-        {/* 底部控制坞：进度/播放（仅原生回放）+ 功能图标，统一沉浸显隐（MSG48 风格） */}
-        <Animated.View style={[styles.bottomDock, { opacity: controlsOpacity, pointerEvents: controlsVisible ? 'auto' : 'none' }]}>
-          {!playing.isLive && !useWebPlayer && !playing.needsVlc ? (
-            <PlayerControls
-              paused={paused}
-              currentTime={playbackTime}
-              duration={duration}
-              playbackRate={playbackRate}
-              showDanmaku={showDanmaku}
-              onTogglePlay={() => setPaused((p) => !p)}
-              onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
-              onToggleDanmaku={() => setShowDanmaku((v) => !v)}
-              onCycleRate={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
-            />
-          ) : playing.isLive ? (
-            <View style={styles.liveBadgeRow}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveBadgeText}>直播中</Text>
-            </View>
-          ) : null}
-          <PlayerFuncBar
-            isLive={playing.isLive}
-            announceVisible={!!(announceVisible && announcement)}
-            announceExpanded={announceExpanded}
+        {/* 底部控制坞：哔哩哔哩风格单排（播放 · 进度 · 弹幕 · 倍速 · 翻转 · 全屏 · 更多），口袋专属功能收进「更多」 */}
+        <Animated.View style={[{ opacity: controlsOpacity, pointerEvents: controlsVisible ? 'auto' : 'none', zIndex: 30 }]}>
+          <PlayerBottomBar
+            isLive={!!playing.isLive}
+            paused={paused}
+            currentTime={playbackTime}
+            duration={duration}
+            showDanmaku={!useWebPlayer}
+            danmakuOn={showDanmaku}
+            onToggleDanmaku={() => setShowDanmaku((v) => !v)}
+            showRate={!playing.isLive && !useWebPlayer && !playing.needsVlc}
+            rate={playbackRate}
+            onCycleRate={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
+            onTogglePlay={() => setPaused((p) => !p)}
+            onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
             onRefresh={() => startPlay(playing.item)}
-            onGift={() => openGiftPanel()}
-            onRank={() => openRankPanel()}
-            onDanmakuSettings={() => setShowDanmakuSettings(true)}
-            onFullscreen={() => setIsFullscreen(true)}
-            onToggleAnnounce={() => setAnnounceExpanded(v => !v)}
+            onRotate={() => setIsFullscreen((v) => !v)}
           />
         </Animated.View>
+
+        <PlayerMorePanel
+          visible={moreVisible}
+          onClose={() => setMoreVisible(false)}
+          title="播放器功能"
+          items={[
+            ...(playing.isLive ? [{ key: 'gift', icon: 'gift', label: '礼物', onPress: () => openGiftPanel() }] : []),
+            { key: 'rank', icon: 'trophy', label: '贡献榜', onPress: () => openRankPanel() },
+            ...((announceVisible && announcement) ? [{ key: 'announce', icon: 'bullhorn', label: '公告', active: announceExpanded, onPress: () => setAnnounceExpanded((v) => !v) }] : []),
+            { key: 'danmaku', icon: 'cog', label: '弹幕设置', onPress: () => setShowDanmakuSettings(true) },
+          ]}
+        />
 
         <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.modalShade}>
@@ -1499,15 +1372,15 @@ export default function MediaScreen() {
         onClose={() => setShowCalendar(false)}
       />
 
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <View style={{ flex: 1 }}>
-          <PerfFlatList
-            data={list}
-            keyExtractor={(item, index) => item.liveId || String(index)}
-            renderItem={({ item, index }) => {
-              const coverUrl = item.liveCover || item.coverPath;
-              const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
-              return (
+      <View style={{ flex: 1 }}>
+        <PerfFlatList
+          data={list}
+          keyExtractor={(item, index) => item.liveId || String(index)}
+          renderItem={({ item, index }) => {
+            const coverUrl = item.liveCover || item.coverPath;
+            const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
+            return (
+              <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300}>
                 <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => startPlay(item)}>
                   {coverUrl ? (
                     <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
@@ -1533,43 +1406,40 @@ export default function MediaScreen() {
                     </View>
                   </View>
                 </TouchableOpacity>
-              );
-            }}
-            ListEmptyComponent={
-              <View style={styles.emptyWrap}>
+              </FadeInView>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.emptyWrap}>
+              {loading ? (
+                <ActivityIndicator size="large" color={isDark ? '#5a5a5a' : '#ff6f91'} />
+              ) : (
                 <Text style={[styles.empty, isDark && styles.emptyDark]}>
                   {search.trim() ? '没有匹配的直播/录播' : '暂无数据'}
                 </Text>
+              )}
+            </View>
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            // 仅在有内容且正在加载更多时显示一个低调的转圈，不再显示「上滑加载更多 / 没有更多了」字样
+            list.length > 0 && loading ? (
+              <View style={styles.footer}>
+                <ActivityIndicator
+                  size="small"
+                  color={isDark ? '#5a5a5a' : '#c4c4c4'}
+                  style={styles.footerSpinner}
+                />
               </View>
-            }
-            onEndReached={loadMore}
-            onEndReachedThreshold={0.35}
-            ListFooterComponent={
-              // 仅在有内容且正在加载更多时显示一个低调的转圈，不再显示「上滑加载更多 / 没有更多了」字样
-              list.length > 0 && loading ? (
-                <View style={styles.footer}>
-                  <ActivityIndicator
-                    size="small"
-                    color={isDark ? '#5a5a5a' : '#c4c4c4'}
-                    style={styles.footerSpinner}
-                  />
-                </View>
-              ) : null
-            }
-            contentContainerStyle={list.length === 0 ? { flex: 1 } : undefined}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-          />
-          {/* 骨架屏常驻底层：加载时淡入覆盖，加载完淡出露出列表，不闪 */}
-          <Animated.View
-            pointerEvents={showSkeleton ? 'auto' : 'none'}
-            style={[StyleSheet.absoluteFill, { opacity: skeletonOpacity, backgroundColor: isDark ? '#121212' : '#f6f6f8' }]}
-          >
-            <SkeletonList count={8} dark={isDark} />
-          </Animated.View>
-        </View>
-      </FadeInView>
+            ) : null
+          }
+          contentContainerStyle={list.length === 0 ? { flex: 1 } : undefined}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+        />
+      </View>
     </View>
   );
 }
@@ -1612,7 +1482,7 @@ const styles = StyleSheet.create({
   exitFullscreenText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   announcePill: { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(255,140,22,0.20)', borderWidth: 1, borderColor: 'rgba(255,140,22,0.3)', marginVertical: 4 },
   announcePillText: { color: '#fa8c16', fontSize: 11, fontWeight: '700' },
-  announcePanel: { borderRadius: 12, backgroundColor: 'rgba(20,20,20,0.85)', borderWidth: 1, borderColor: 'rgba(255,140,22,0.2)', marginHorizontal: 8, marginBottom: 4, overflow: 'hidden' },
+  announcePanel: { zIndex: 31, borderRadius: 12, backgroundColor: 'rgba(20,20,20,0.85)', borderWidth: 1, borderColor: 'rgba(255,140,22,0.2)', marginHorizontal: 8, marginBottom: 4, overflow: 'hidden' },
   announcePanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,140,22,0.15)' },
   announcePanelTitle: { color: '#fa8c16', fontSize: 12, fontWeight: '800', flex: 1 },
   announcePanelBtns: { flexDirection: 'row', gap: 6 },
