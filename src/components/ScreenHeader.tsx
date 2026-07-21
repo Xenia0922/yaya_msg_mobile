@@ -35,7 +35,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   backWrap: { minWidth: 54 },
-  backText: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
-  title: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: '800', color: '#ff6f91' },
+  backText: { color: '#ff6f91', fontSize: 14, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  title: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: '800', color: '#ff6f91', textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   rightSlot: { minWidth: 54, alignItems: 'flex-end' },
 });

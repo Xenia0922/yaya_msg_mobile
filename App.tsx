@@ -169,7 +169,7 @@ export default function App() {
       onLoad={() => setBackgroundLoadError('')}
       onError={(event) => setBackgroundLoadError(`背景图加载失败：${backgroundSource.uri} ${event.nativeEvent?.error || ''}`)}
     >
-      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: appTheme === 'dark' ? 'rgba(0,0,0,0.24)' : 'rgba(255,255,255,0.08)' }} />
+      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: appTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)' }} />
       {content}
     </ImageBackground>
   ) : content;

@@ -528,6 +528,65 @@ function PlayerControls({
   );
 }
 
+/** 底部功能栏：把原先顶部 chrome 的「礼物 / 刷新 / 贡献榜 / 弹幕设置 / 全屏 / 公告」等图标
+ *  统一收到底部控制坞，配合 MSG48 式沉浸显隐（点击视频区切换、播放中自动隐藏）。 */
+function PlayerFuncBar({
+  isLive,
+  announceVisible,
+  announceExpanded,
+  onRefresh,
+  onGift,
+  onRank,
+  onDanmakuSettings,
+  onFullscreen,
+  onToggleAnnounce,
+}: {
+  isLive: boolean;
+  announceVisible: boolean;
+  announceExpanded: boolean;
+  onRefresh: () => void;
+  onGift: () => void;
+  onRank: () => void;
+  onDanmakuSettings: () => void;
+  onFullscreen: () => void;
+  onToggleAnnounce: () => void;
+}) {
+  return (
+    <View style={styles.funcRow}>
+      <TouchableOpacity style={styles.funcBtn} onPress={onRefresh}>
+        <MaterialCommunityIcons name="refresh" size={22} color="#fff" />
+        <Text style={styles.funcBtnText}>刷新</Text>
+      </TouchableOpacity>
+      {isLive ? (
+        <TouchableOpacity style={styles.funcBtn} onPress={onGift}>
+          <MaterialCommunityIcons name="gift" size={22} color="#fff" />
+          <Text style={styles.funcBtnText}>礼物</Text>
+        </TouchableOpacity>
+      ) : null}
+      <TouchableOpacity style={styles.funcBtn} onPress={onRank}>
+        <MaterialCommunityIcons name="trophy" size={22} color="#fff" />
+        <Text style={styles.funcBtnText}>贡献榜</Text>
+      </TouchableOpacity>
+      {!isLive ? (
+        <TouchableOpacity style={styles.funcBtn} onPress={onDanmakuSettings}>
+          <MaterialCommunityIcons name="cog" size={22} color="#fff" />
+          <Text style={styles.funcBtnText}>弹幕设置</Text>
+        </TouchableOpacity>
+      ) : null}
+      <TouchableOpacity style={styles.funcBtn} onPress={onFullscreen}>
+        <MaterialCommunityIcons name="fullscreen" size={22} color="#fff" />
+        <Text style={styles.funcBtnText}>全屏</Text>
+      </TouchableOpacity>
+      {announceVisible ? (
+        <TouchableOpacity style={[styles.funcBtn, announceExpanded && styles.funcBtnActive]} onPress={onToggleAnnounce}>
+          <MaterialCommunityIcons name="bullhorn" size={22} color={announceExpanded ? '#ff6f91' : '#fff'} />
+          <Text style={[styles.funcBtnText, announceExpanded && styles.funcBtnTextActive]}>公告</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
 export default function MediaScreen() {
   const route = useRoute<MediaRouteProp>();
   const navigation = useNavigation<any>();
@@ -1128,47 +1187,27 @@ export default function MediaScreen() {
     return (
       <View style={[styles.playerPage, isFullscreen && styles.playerPageFullscreen]}>
         {!isFullscreen ? (
-        <Animated.View style={[styles.topChrome, { paddingTop: 44, backgroundColor: 'rgba(10,10,10,0.45)', opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none' }]}>
-          <TouchableOpacity onPress={closePlayer} style={styles.glassBtn}>
-            <Text style={styles.glassBtnText}>返回</Text>
-          </TouchableOpacity>
-          <View style={styles.playerToolbarCenter}>
-            {playing.isLive ? (
-              <TouchableOpacity onPress={() => openGiftPanel()} style={styles.giftBtn}>
-                <Text style={styles.giftBtnText}>礼物</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity onPress={() => startPlay(playing.item)} style={styles.glassBtn}>
-              <Text style={styles.glassBtnText}>刷新</Text>
+          <Animated.View style={[styles.topChrome, { opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none' }]}>
+            <TouchableOpacity onPress={closePlayer} style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>返回</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => openRankPanel()} style={styles.glassBtn}>
-              <Text style={styles.glassBtnText}>贡献榜</Text>
-            </TouchableOpacity>
-            {!playing.isLive ? (
-              <TouchableOpacity onPress={() => setShowDanmaku((v) => !v)} style={[styles.glassBtn, showDanmaku && styles.glassBtnActive]}>
-                <Text style={styles.glassBtnText}>{showDanmaku ? '弹幕开' : '弹幕'}</Text>
-              </TouchableOpacity>
-            ) : null}
-            {!playing.isLive ? (
-              <TouchableOpacity onPress={() => setShowDanmakuSettings(true)} style={styles.glassBtn}>
-                <MaterialCommunityIcons name="cog" size={20} color="#fff" />
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity onPress={() => setIsFullscreen(true)} style={styles.glassBtn}>
-              <Text style={styles.glassBtnText}>全屏</Text>
-            </TouchableOpacity>
-            {announceVisible && announcement ? (
-              <TouchableOpacity style={[styles.glassBtn, styles.announceHeaderBtn]} onPress={() => setAnnounceExpanded(v => !v)}>
-                <Text style={[styles.glassBtnText, styles.announceHeaderText]}>{announceExpanded ? '收起' : '公告'}</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          <View style={{ minWidth: 44 }} />
-        </Animated.View>
+            <View style={styles.playerToolbarCenter}>
+              {announceVisible && announcement ? (
+                <TouchableOpacity style={[styles.glassBtn, styles.announceHeaderBtn]} onPress={() => setAnnounceExpanded(v => !v)}>
+                  <Text style={[styles.glassBtnText, styles.announceHeaderText]}>{announceExpanded ? '收起' : '公告'}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <View style={{ minWidth: 44 }} />
+          </Animated.View>
         ) : (
-          <TouchableOpacity onPress={() => setIsFullscreen(false)} style={styles.exitFullscreenBtn}>
-            <Text style={styles.exitFullscreenText}>退出全屏</Text>
-          </TouchableOpacity>
+          <Animated.View style={[styles.topChrome, { opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none' }]}>
+            <TouchableOpacity onPress={() => setIsFullscreen(false)} style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>退出全屏</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+            <View style={{ minWidth: 44 }} />
+          </Animated.View>
         )}
 
         {announceExpanded && announceVisible && announcement ? (
@@ -1243,25 +1282,7 @@ export default function MediaScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <>
-                {/* 点击视频区切换控制显隐（B站式沉浸） */}
-                <View style={StyleSheet.absoluteFill} onStartShouldSetResponder={() => true} onResponderRelease={toggleControls} />
-                {!playing.isLive ? (
-                  <Animated.View style={[styles.controlsDock, { opacity: controlsOpacity, pointerEvents: controlsVisible ? 'auto' : 'none' }]}>
-                    <PlayerControls
-                      paused={paused}
-                      currentTime={playbackTime}
-                      duration={duration}
-                      playbackRate={playbackRate}
-                      showDanmaku={showDanmaku}
-                      onTogglePlay={() => setPaused((p) => !p)}
-                      onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
-                      onToggleDanmaku={() => setShowDanmaku((v) => !v)}
-                      onCycleRate={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
-                    />
-                  </Animated.View>
-                ) : null}
-              </>
+              <View style={StyleSheet.absoluteFill} onStartShouldSetResponder={() => true} onResponderRelease={toggleControls} />
             )}
           </View>
         )}
@@ -1272,6 +1293,39 @@ export default function MediaScreen() {
           visible={showDanmaku && !!playing}
           live={!!playing?.isLive}
         />
+
+        {/* 底部控制坞：进度/播放（仅原生回放）+ 功能图标，统一沉浸显隐（MSG48 风格） */}
+        <Animated.View style={[styles.bottomDock, { opacity: controlsOpacity, pointerEvents: controlsVisible ? 'auto' : 'none' }]}>
+          {!playing.isLive && !useWebPlayer && !playing.needsVlc ? (
+            <PlayerControls
+              paused={paused}
+              currentTime={playbackTime}
+              duration={duration}
+              playbackRate={playbackRate}
+              showDanmaku={showDanmaku}
+              onTogglePlay={() => setPaused((p) => !p)}
+              onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
+              onToggleDanmaku={() => setShowDanmaku((v) => !v)}
+              onCycleRate={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
+            />
+          ) : playing.isLive ? (
+            <View style={styles.liveBadgeRow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveBadgeText}>直播中</Text>
+            </View>
+          ) : null}
+          <PlayerFuncBar
+            isLive={playing.isLive}
+            announceVisible={!!(announceVisible && announcement)}
+            announceExpanded={announceExpanded}
+            onRefresh={() => startPlay(playing.item)}
+            onGift={() => openGiftPanel()}
+            onRank={() => openRankPanel()}
+            onDanmakuSettings={() => setShowDanmakuSettings(true)}
+            onFullscreen={() => setIsFullscreen(true)}
+            onToggleAnnounce={() => setAnnounceExpanded(v => !v)}
+          />
+        </Animated.View>
 
         <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.modalShade}>
@@ -1581,7 +1635,7 @@ const styles = StyleSheet.create({
   playerErrorText: { color: '#fff', fontSize: 12, lineHeight: 18 },
   webFallbackBtn: { marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#ff6f91', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   webFallbackText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  // 哔哩哔哩风格底部控制条（停靠在 controlsDock 内）
+  // 哔哩哔哩风格底部控制条（停靠在 bottomDock 内）
   controlsBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: 'rgba(0,0,0,0.55)' },
   ctrlBtn: { paddingHorizontal: 8, paddingVertical: 4, minWidth: 30, alignItems: 'center', justifyContent: 'center' },
   ctrlIcon: { color: '#fff', fontSize: 18, fontWeight: '800' },
@@ -1593,9 +1647,17 @@ const styles = StyleSheet.create({
   ctrlBar: { position: 'relative', height: 4, width: '100%', borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)' },
   ctrlFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2, backgroundColor: '#ff6f91' },
   ctrlKnob: { position: 'absolute', top: -3, width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff', marginLeft: -5 },
-  // 底部控制停靠层（B站式沉浸：随 controlsVisible 显隐）
-  controlsDock: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, pointerEvents: 'box-none' },
-  topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, pointerEvents: 'box-none' },
+  // 底部控制坞（MSG48 风格：半透明黑底，进度/功能图标统一沉浸显隐）
+  bottomDock: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, paddingTop: 10, paddingBottom: 16, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.55)' },
+  funcRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', alignItems: 'center', marginTop: 10, gap: 4 },
+  funcBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 4, minWidth: 48 },
+  funcBtnActive: { opacity: 1 },
+  funcBtnText: { color: '#fff', fontSize: 11, fontWeight: '700', marginTop: 3 },
+  funcBtnTextActive: { color: '#ff6f91' },
+  liveBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, gap: 8 },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff4d4f' },
+  liveBadgeText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 44, paddingHorizontal: 12, paddingBottom: 8, pointerEvents: 'box-none' },
   card: { flexDirection: 'row', padding: 12, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 12, marginVertical: 6, borderRadius: 16 },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
   cover: { width: 112, height: 78, borderRadius: 18, backgroundColor: '#e0e0e0' },

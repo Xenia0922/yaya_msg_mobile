@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -72,7 +71,6 @@ export default function SettingsScreen() {
   const showToast = useUiStore((state) => state.showToast);
   const memberCount = useMemberStore((state) => state.members.length);
   const isDark = settings.theme === 'dark';
-  const [manualBgUrl, setManualBgUrl] = useState('');
   const [meta, setMeta] = useState<MemberDataMeta | null>(null);
   const [checking, setChecking] = useState(false);
 
@@ -123,12 +121,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const applyBgUrl = () => {
-    const url = manualBgUrl.trim();
-    if (!url) return;
-    update('customBackgroundFile', url, { customBackgroundUpdatedAt: Date.now() });
-  };
-
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <ScreenHeader title="设置" />
@@ -138,11 +130,6 @@ export default function SettingsScreen() {
           <Text style={[styles.aboutName, isDark && styles.textLight]}>牙牙消息</Text>
           <Text style={[styles.aboutSub, isDark && styles.textSubLight]}>Yaya Message · 口袋48 第三方客户端</Text>
         </View>
-
-        <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://github.com/yk1z')}>
-          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>作者 GitHub</Text>
-          <Text style={styles.linkRowValue}>yk1z ↗</Text>
-        </TouchableOpacity>
 
         <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile')}>
           <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>本项目仓库</Text>
@@ -175,24 +162,13 @@ export default function SettingsScreen() {
         <ChipRow options={THEME_OPTIONS} value={settings.theme} isDark={isDark} onChange={(v) => update('theme', v)} />
         <View style={styles.divider} />
         <Text style={[styles.sub, isDark && styles.textSubLight]}>背景图：{backgroundInfo}</Text>
-        <TextInput
-          style={[styles.input, isDark && styles.inputDark]}
-          placeholder="粘贴背景图 URL"
-          placeholderTextColor={isDark ? '#aaa' : '#666'}
-          value={manualBgUrl}
-          onChangeText={setManualBgUrl}
-          autoCapitalize="none"
-        />
         <View style={styles.chipRow}>
-          <TouchableOpacity style={styles.linkBtn} onPress={applyBgUrl}>
-            <Text style={styles.linkText}>应用 URL</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.subBtn} onPress={pickBg}>
-            <Text style={styles.subBtnText}>本地图片</Text>
+          <TouchableOpacity style={styles.linkBtn} onPress={pickBg}>
+            <Text style={styles.linkText}>选择本地图片</Text>
           </TouchableOpacity>
         </View>
         {backgroundValue ? (
-          <TouchableOpacity style={styles.clearBtn} onPress={() => { update('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() }); setManualBgUrl(''); }}>
+          <TouchableOpacity style={styles.clearBtn} onPress={() => { update('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() }); }}>
             <Text style={styles.clearText}>恢复默认背景</Text>
           </TouchableOpacity>
         ) : null}
