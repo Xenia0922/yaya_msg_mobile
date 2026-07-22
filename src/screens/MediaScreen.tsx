@@ -40,23 +40,11 @@ import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
 import { parseDanmaku, DanmakuItem } from '../utils/danmaku';
 import { memberSearchText } from '../utils/members';
 import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel, MoreItem } from '../components/media/PlayerChrome';
-import { Skeleton } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 
-/** 回放列表加载骨架：与卡片同构（左封面 + 右侧两行），统一用 Skeleton 微光，避免「转圈 + 文字」混排闪烁 */
+/** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
 function VodCardSkeleton({ dark }: { dark?: boolean }) {
-  return (
-    <View style={{ paddingHorizontal: 12, paddingTop: 6 }}>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <View key={i} style={[styles.card, dark && styles.cardDark]}>
-          <Skeleton width={112} height={78} radius={18} dark={dark} />
-          <View style={[styles.cardInfo, { gap: 8 }]}>
-            <Skeleton width="82%" height={14} radius={6} dark={dark} />
-            <Skeleton width="55%" height={12} radius={6} dark={dark} />
-          </View>
-        </View>
-      ))}
-    </View>
-  );
+  return <CenterSpinner dark={dark} text="加载中…" />;
 }
 
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
@@ -1458,10 +1446,10 @@ export default function MediaScreen() {
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
           ListFooterComponent={
-            // 仅在有内容且正在加载更多时显示一条低调的微光条，动画语言与骨架屏一致（不再用转圈）
+            // 仅在有内容且正在加载更多时显示一条低调的加载指示（不再用骨架微光条）
             list.length > 0 && loading ? (
               <View style={styles.footer}>
-                <Skeleton width={120} height={14} radius={7} dark={isDark} />
+                <CenterSpinner dark={isDark} text="加载更多…" />
               </View>
             ) : null
           }

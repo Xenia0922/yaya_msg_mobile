@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
-import { SkeletonRow } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
@@ -203,7 +203,7 @@ export default function ProfileScreen() {
       ) : null}
 
       </FadeInView>
-      {loading ? <SkeletonRow dark={isDark} /> : null}
+      {loading ? <CenterSpinner dark={isDark} /> : null}
     </ScrollView>
   );
 }

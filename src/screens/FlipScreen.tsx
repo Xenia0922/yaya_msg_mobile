@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
-import { SkeletonList } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 
 import {
   FlatList,
@@ -471,7 +471,7 @@ export default function FlipScreen() {
             loadFlips(nextPage);
           }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={loading ? <SkeletonList count={6} dark={isDark} /> : <Text style={styles.empty}>暂无翻牌记录</Text>}
+          ListEmptyComponent={loading ? <CenterSpinner dark={isDark} text="加载中…" /> : <Text style={styles.empty}>暂无翻牌记录</Text>}
         />
       </FadeInView>
     </View>

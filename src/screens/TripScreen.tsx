@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
-import { SkeletonList } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import MemberPicker from '../components/MemberPicker';
@@ -145,7 +145,7 @@ export default function TripScreen() {
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              {loading ? <SkeletonList count={6} dark={isDark} /> : null}
+              {loading ? <CenterSpinner dark={isDark} /> : null}
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
                 {loading ? '' : member ? (error ? error : '暂无行程') : '请搜索选择成员查看行程'}
               </Text>

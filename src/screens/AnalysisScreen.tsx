@@ -10,7 +10,7 @@ import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
-import { Skeleton } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 import { useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { errorMessage, messagePayload, messageText, pickText, unwrapList } from '../utils/data';
@@ -315,7 +315,7 @@ export default function AnalysisScreen() {
       <View style={styles.pickerWrap}>
         <MemberPicker selectedMember={member} onSelect={loadRoomStats} />
         {loading ? (
-          <Skeleton width={160} height={14} radius={7} dark={isDark} style={{ marginVertical: 4 }} />
+          <CenterSpinner dark={isDark} text="加载中…" />
         ) : (
           <Text style={[styles.statusText, isDark && styles.textSubLight]}>{status}</Text>
         )}

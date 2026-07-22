@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { PerfFlatList } from './/PerfFlatList';
-import { SkeletonRow } from './Skeleton';
+import { CenterSpinner } from './Loaders';
 
 import {
   FlatList,
@@ -53,7 +53,7 @@ export default function MemberPicker({
         onChangeText={setQuery}
       />
       {selectedMember ? <Text style={styles.selected}>已选择：{selectedMember.ownerName}</Text> : null}
-      {!membersLoaded ? <SkeletonRow dark={isDark} /> : null}
+      {!membersLoaded ? <CenterSpinner dark={isDark} /> : null}
       <PerfFlatList
         data={filtered}
         horizontal

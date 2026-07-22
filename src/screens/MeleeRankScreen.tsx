@@ -19,7 +19,7 @@ import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
 import { errorMessage, normalizeUrl } from '../utils/data';
 import { Member } from '../types';
-import { SkeletonList } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 
 interface WeekItem {
   weekRankId: number;
@@ -249,7 +249,7 @@ export default function MeleeRankScreen() {
       ) : (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
           {showSkeleton ? (
-            <SkeletonList count={8} dark={isDark} />
+            <CenterSpinner dark={isDark} text="加载中…" />
           ) : (
             <PerfFlatList
               data={ranks}

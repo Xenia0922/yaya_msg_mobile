@@ -21,7 +21,7 @@ import pocketApi from '../api/pocket48';
 import { errorMessage, parseMaybeJson } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { Member } from '../types';
-import { SkeletonList } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 
 interface DynItem {
   key: string;
@@ -145,7 +145,7 @@ export default function MemberDynamicScreen() {
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              {loading ? <SkeletonList count={6} dark={isDark} /> : null}
+              {loading ? <CenterSpinner dark={isDark} /> : null}
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
                 {loading ? '' : member ? (error ? error : '暂无动态') : '请搜索选择成员查看动态'}
               </Text>

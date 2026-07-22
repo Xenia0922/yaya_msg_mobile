@@ -13,7 +13,6 @@ import {
 import Video from 'react-native-video';
 import officialMediaApi from '../api/officialMedia';
 import { loadOfficialSiteMusic } from '../api/officialSiteMusic';
-import { getR2Music, r2ToTrack } from '../api/r2Music';
 import { useSettingsStore, useUiStore } from '../store';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine, mediaUrl as buildMediaUrl } from '../services/musicPlayer';
@@ -23,8 +22,20 @@ import ScreenHeader from '../components/ScreenHeader';
 import MiniPlayerBar from '../components/MiniPlayerBar';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import CoverArt from '../components/CoverArt';
-import { SkeletonGrid } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+
+// 仅放行 48 官方 CDN 域名。R2/gnz.hk 等位于 Cloudflare 之后的第三方源会返回
+// 403 HTML 而非音频，一旦交给原生 ExoPlayer 就会触发进程级崩溃（闪退）。
+// 用白名单从根上拦截：任何非官方域名一律视为不可播放、走 onError 跳过。
+function isPlayableHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host.endsWith('.48.cn') || host === 'snh48.com' || host === 'www.snh48.com';
+  } catch {
+    return false;
+  }
+}
 
 export default function MusicLibraryScreen() {
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
@@ -60,30 +71,18 @@ export default function MusicLibraryScreen() {
     return list;
   }, [query, songs, group, favorites]);
 
-  // 两路歌曲源合并：
-  //   1) 官网源（口袋48官网静态 JS，一次全量、无 token）—— 完整官方曲库；
-  //   2) yk1z 的 R2 音乐库（/api/r2-music）—— 与官网源并列的第二路源。
-  // 两路都拉，按 (mp3|title|artist) 去重合并，确保「同一首歌的两个源都在列表里」。
+  // 仅使用官方源（口袋48官网静态 JS，一次全量、无 token）—— 完整官方曲库。
+  // 注：曾并列的 yk1z R2 音乐库（gnz.hk）已移除。该 host 位于 Cloudflare 之后，
+  // 对移动端 ExoPlayer 的请求返回 403 HTML 而非音频，导致原生播放器解析失败、App 闪退，
+  // 详见播放崩溃根因说明。仅保留官方源可彻底消除该崩溃。
   const loadAll = async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
     setStatus('');
     try {
-      const [official, r2] = await Promise.all([
-        loadOfficialSiteMusic(false),
-        getR2Music(),
-      ]);
-      const merged = [...official];
-      const seen = new Set(official.map((o: any) => `${o.mp3 || ''}|${o.title || ''}|${o.artist || o.joinMemberNames || ''}`.toLowerCase()));
-      for (const t of r2) {
-        const tr = r2ToTrack(t);
-        const key = `${tr.mp3}|${tr.title}|${tr.artist}`.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        merged.push(tr);
-      }
-      setSongs(merged);
+      const official = await loadOfficialSiteMusic(false);
+      setSongs(official);
       setHasMore(false);
     } catch (error) {
       setStatus(`加载失败：${errorMessage(error)}`);
@@ -97,16 +96,26 @@ export default function MusicLibraryScreen() {
     loadAll();
     MusicEngine.setUrlResolver(async (track: any) => {
       // 官方源歌曲的 mp3 直链即可播放
-      if (track?.mp3 && /^https?:/i.test(String(track.mp3))) return String(track.mp3);
+      if (track?.mp3 && /^https?:/i.test(String(track.mp3))) {
+        const u = String(track.mp3);
+        if (!isPlayableHost(u)) throw new Error('不支持的播放源');
+        return u;
+      }
       // 回退：个别非官网源曲目尝试移动端接口解析地址
       try {
         const res = await officialMediaApi.getMusic(String(track.musicId || track.id));
         const data = res?.content?.data || res?.content || res?.data || {};
         const url = buildMediaUrl(String(data.filePath || data.musicPath || data.playStreamPath || data.audioPath || data.url || ''));
-        if (url) return url;
+        if (url) {
+          if (!isPlayableHost(url)) throw new Error('不支持的播放源');
+          return url;
+        }
       } catch { /* ignore */ }
       const fb = buildMediaUrl(String((track as any).filePath || (track as any).musicPath || (track as any).playStreamPath || (track as any).audioPath || (track as any).url || ''));
       if (!fb) throw new Error('无法解析播放地址');
+      // 最后一道防线：非 48 官方 CDN 域名（如曾导致闪退的 R2/gnz.hk）一律拒绝，
+      // 避免把 Cloudflare 403 HTML 页面喂给原生 ExoPlayer 触发进程级崩溃。
+      if (!isPlayableHost(fb)) throw new Error('不支持的播放源');
       return fb;
     });
   }, []);
@@ -140,8 +149,8 @@ export default function MusicLibraryScreen() {
         style={styles.groupsWrap}
       >
         {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48','FAV'].map(g => (
-          <TouchableOpacity key={g} onPress={() => onGroupChange(g)} style={[styles.gChip, group === g && styles.gChipOn]}>
-            <Text style={[styles.gText, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
+          <TouchableOpacity key={g} onPress={() => onGroupChange(g)} style={[styles.gChip, isDark && styles.gChipDark, group === g && styles.gChipOn]}>
+            <Text style={[styles.gText, isDark && styles.gTextDark, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -152,7 +161,7 @@ export default function MusicLibraryScreen() {
       ) : null}
       {loading && songs.length === 0 ? (
         <View style={{ flex: 1 }}>
-          <SkeletonGrid count={8} dark={isDark} />
+          <CenterSpinner dark={isDark} text="加载中…" />
         </View>
       ) : !loading && songs.length === 0 && !status ? (
         <View style={styles.emptyWrap}>
@@ -172,7 +181,7 @@ export default function MusicLibraryScreen() {
             const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
             return (
               <TouchableOpacity
-                style={[styles.songItem, isDark && styles.cardDark, active && styles.songItemActive]}
+                style={[styles.songItem, isDark && styles.cardDark, active && styles.songItemActive, active && isDark && styles.songItemActiveDark]}
                 onPress={() => playSong(item)}
                 activeOpacity={0.7}
               >
@@ -257,11 +266,13 @@ const styles = StyleSheet.create({
   disabledText: { opacity: 0.45 },
   searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
   searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
-  groups: { flexDirection: 'row', paddingHorizontal: 12, gap: 6 },
-  groupsWrap: { marginBottom: 4 },
-  gChip: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
+  groups: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 6 },
+  groupsWrap: { marginBottom: 6, maxHeight: 40 },
+  gChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', alignSelf: 'center' },
+  gChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
   gChipOn: { backgroundColor: '#ff6f91' },
   gText: { fontSize: 12, color: '#555', fontWeight: '600' },
+  gTextDark: { color: '#d6d6d6' },
   gTextOn: { color: '#fff' },
   status: { color: '#ff6f91', fontSize: 12, fontWeight: '700' },
   statusOverlay: { position: 'absolute', top: 140, left: 0, right: 0, zIndex: 10, alignItems: 'center' },
@@ -270,6 +281,7 @@ const styles = StyleSheet.create({
   gridRow: { justifyContent: 'space-between' as const },
   songItem: { width: '48%', marginBottom: 12, borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.82)' },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.72)' },
+  songItemActiveDark: { borderColor: '#ff8fa8' },
   songItemActive: { borderWidth: 2, borderColor: '#ff6f91' },
   coverWrap: { width: '100%', aspectRatio: 1, backgroundColor: '#111' },
   favBtn: { position: 'absolute', top: 6, right: 6, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.32)' },

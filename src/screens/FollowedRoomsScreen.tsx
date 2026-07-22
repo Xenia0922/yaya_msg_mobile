@@ -14,13 +14,14 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import Video from 'react-native-video';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
-import { SkeletonList, SkeletonRow } from '../components/Skeleton';
+import { CenterSpinner } from '../components/Loaders';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
@@ -787,6 +788,8 @@ export default function FollowedRoomsScreen() {
   const [rankVisible, setRankVisible] = useState(false);
   const [rankRows, setRankRows] = useState<any[]>([]);
   const [rankStatus, setRankStatus] = useState('');
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
+  const [followBusy, setFollowBusy] = useState<Set<string>>(new Set());
 
   useFocusEffect(useCallback(() => {
     setTabBarHidden(!!selectedRoom || !!roomPlayer);
@@ -871,6 +874,25 @@ export default function FollowedRoomsScreen() {
     await AsyncStorage.setItem('yaya_pinned_rooms', JSON.stringify(next));
   };
 
+  const toggleFollow = useCallback(async (member: Member) => {
+    if (!token) { showToast('请先登录后再关注成员'); return; }
+    const id = String(member.id || '');
+    if (!id || id === '0') { showToast('该成员缺少可关注的 ID'); return; }
+    const isFollowing = followedIds.has(id);
+    setFollowedIds((prev) => { const n = new Set(prev); if (isFollowing) n.delete(id); else n.add(id); return n; });
+    setFollowBusy((prev) => { const b = new Set(prev); b.add(id); return b; });
+    try {
+      if (isFollowing) await pocketApi.unfollowMember(id);
+      else await pocketApi.followMember(id);
+      showToast(isFollowing ? `已取消关注 ${member.ownerName}` : `已关注 ${member.ownerName}`);
+    } catch (e) {
+      setFollowedIds((prev) => { const r = new Set(prev); if (isFollowing) r.add(id); else r.delete(id); return r; });
+      showToast(`操作失败：${errorMessage(e)}`);
+    } finally {
+      setFollowBusy((prev) => { const b = new Set(prev); b.delete(id); return b; });
+    }
+  }, [token, showToast]);
+
   useEffect(() => {
     AsyncStorage.getItem('yaya_pinned_rooms').then((v) => {
       if (v) { try { setPinned(JSON.parse(v)); } catch { setPinned([]); } }
@@ -886,6 +908,7 @@ export default function FollowedRoomsScreen() {
     try {
       const idsRes = await pocketApi.getFollowedIds();
       const idsArr = unwrapList(idsRes, ['content.data', 'content', 'data', 'list']).map(String);
+      setFollowedIds(new Set(idsArr));
       const followedMembers = idsArr.map((id: string) => {
         const member = members.find((item: any) => String(item.id || item.userId) === id);
         return { memberId: id, member };
@@ -1198,7 +1221,7 @@ export default function FollowedRoomsScreen() {
             roomMessages.length ? (
               <View style={styles.chatFooter}>
                 {loadingMoreMessages ? (
-                  <SkeletonRow dark={isDark} />
+                  <CenterSpinner dark={isDark} />
                 ) : hasMoreMessages ? (
                   <Text style={[styles.empty, isDark && styles.emptyDark]}>上滑加载更多</Text>
                 ) : (
@@ -1379,11 +1402,28 @@ export default function FollowedRoomsScreen() {
           data={filtered}
           keyExtractor={(item) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item, index }) => (
+          renderItem={({ item, index }) => {
+            const fid = String(item.member?.id || item.memberId);
+            const isFollowing = followedIds.has(fid);
+            const busy = followBusy.has(fid);
+            return (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <TouchableOpacity style={[styles.roomItem, isDark && styles.roomItemDark]} onPress={() => item.member && openRoom(item.member)}>
                 <View style={styles.roomTop}>
                   <Text style={[styles.roomName, isDark && styles.textDark]} numberOfLines={1}>{shortName(item.member, item.memberId)}</Text>
+                  {item.member ? (
+                    <TouchableOpacity
+                      style={[styles.followBtn, isFollowing && styles.followBtnOn]}
+                      disabled={busy}
+                      onPress={() => toggleFollow(item.member!)}
+                    >
+                      {busy ? (
+                        <ActivityIndicator color={isFollowing ? '#ff6f91' : '#ffffff'} size="small" />
+                      ) : (
+                        <Text style={[styles.followBtnText, isFollowing && styles.followBtnTextOn]}>{isFollowing ? '已关注' : '关注'}</Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
                   <Text style={styles.roomTeam}>{item.member?.team || item.member?.groupName || '未匹配成员库'}</Text>
                   <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(item.memberId)}>
                     <Text style={styles.pinBtnText}>{pinned.includes(item.memberId) ? '取消置顶' : '置顶'}</Text>
@@ -1400,9 +1440,10 @@ export default function FollowedRoomsScreen() {
                 </Text>
               </TouchableOpacity>
             </FadeInView>
-          )}
+            );
+          }}
           ListEmptyComponent={loading ? (
-            <SkeletonList count={8} dark={isDark} />
+            <CenterSpinner dark={isDark} text="加载中…" />
           ) : !token ? (
             <View style={styles.emptyWrap}>
               <Text style={[styles.empty, isDark && styles.emptyDark]}>登录后可查看关注房间和最新消息</Text>
@@ -1456,6 +1497,10 @@ const styles = StyleSheet.create({
   roomTeam: { fontSize: 11, color: '#ff6f91', fontWeight: '800' },
   pinBtn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(255,111,145,0.12)' },
   pinBtnText: { fontSize: 9, color: '#ff6f91', fontWeight: '800' },
+  followBtn: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center', minWidth: 46, height: 24 },
+  followBtnOn: { backgroundColor: 'rgba(255,111,145,0.16)' },
+  followBtnText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  followBtnTextOn: { color: '#ff6f91' },
   roomMetaRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   roomMeta: { fontSize: 10, color: '#3f3f3f', backgroundColor: 'rgba(255,111,145,0.14)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
   lastMessage: { fontSize: 12, color: '#3f3f3f', marginTop: 6 },
