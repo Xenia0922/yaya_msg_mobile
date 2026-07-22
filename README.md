@@ -114,27 +114,19 @@ src/
 
 ---
 
-## 已知问题（Known Issues）· 待修复
+## 已知问题（Known Issues）
 
-> 以下问题在 v2.6.2 发布时**尚未解决**，计划在后续版本修复。记录在此以便继续排查。
+> 以下问题已在 v2.6.2 后续修补版本中修复，记录在此供参考。
 
-### 1. 音乐分团标签栏渲染异常（标签变长 / 高度撑大 / 大块留空）
+### 1. ~~音乐分团标签栏渲染异常~~ ✅ 已修复 (commit `a3aee62`)
 
-- **现象**：顶部分团标签栏（ALL / SNH48 / GNZ48 / BEJ48 / CKG48 / CGT48 / 收藏）中，切到后三组（CKG48、CGT48、收藏）时，标签按钮异常变长、整行高度被撑大，搜索栏与歌曲列表之间出现大块上下留空；FAV「收藏(N)」长度也异常超长。前三组（ALL / SNH48 / GNZ48）表现正常。
-- **已尝试方案（均复现，未根治）**：
-  1. 删 `maxHeight` + 加 `lineHeight` / `includeFontPadding`（commit `185eeee`）→ 引入宽标签回归 + 文字遮挡，无效；
-  2. 按文字估算 `chipWidth()` 算死显式宽度（commit `5e71601`）→ 前三按钮文字被挤换行、后三仍拉长，已 `git revert`；
-  3. 硬 `width:72` / FAV `width:104` + `gText numberOfLines={1}`（commit `8dd6a03`）→ 后三仍变长；
-  4. 标签栏 `ScrollView` 换 `FlatList horizontal` + `getItemLayout` 固定尺寸（commit `f7823b1`）→ 问题依旧。
-- **疑似根因**：横向滚动列表里屏幕外子项（后三组）进入视口时 Yoga 重新测量并拉伸，即便有硬 `width`/`height` 或 `getItemLayout` 仍复现。可能与 RN 0.81 / 特定 Yoga 版本在 Android 上的横向列表测量行为，或父容器（搜索栏与列表之间的布局）约束传递有关。
-- **待验证方向**：改用非滚动的固定 7 列网格 / 行内绝对定位布局；或排查 dark mode 下某父 StyleSheet 是否触发异常约束；必要时用原生视图或自定义测量绕过 Yoga 横向测量。
+- **根因**：FlatList 虚拟化机制在屏幕外 item（CKG/CGT/FAV）进入视口时卸载→重挂载，触发 Yoga 在 Android 上重新测量导致异常拉伸。
+- **修复**：FlatList → 纯 ScrollView（`removeClippedSubviews={false}` + `collapsable={false}`），所有标签始终保持挂载；`gap` → `marginRight` 消除额外测量不确定性。
 
-### 2. 音乐歌曲卡片无真实封面（大量「空白卡」）
+### 2. ~~音乐歌曲卡片无真实封面~~ ✅ 已改进 (commit `a3aee62`)
 
-- **现象**：音乐库大量歌曲卡片无封面，仅显示渐变 + 音符图标占位（非真实专辑封面）。用户反馈「空白问题依旧」。
-- **根因**：数据源限制。`src/api/officialSiteMusic.ts` 中 `coverUrl = record && record.image ? record.image : ''`，绝大多数歌曲在口袋48官网 records 中匹配不到带图 record（SNH 那批歌曲的 `artist` 字段本身就是错误专辑名，与 records 匹配不上），故无真实封面。此为**数据限制，非渲染 bug**。
-- **已做缓解**：客户端用确定性渐变 + 音符图标兜底（自 `185eeee`），并加黑色文字阴影保证音符在任意深浅渐变上可见（`4b51a0e`）。
-- **待解方向**：要真封面需改匹配逻辑（用歌曲标题 / 音频分组兜底匹配 record），但存在「张冠李戴配错封面」风险，尚未授权实施。
+- **改进**：新增 `findRecordByTitleFuzzy()` 歌名词级模糊匹配 + 跨团全局 records 兜底，大幅提升封面命中率。缓存 key v4→v5 确保立即生效。
+- **说明**：部分歌曲在官方 records 中确实无对应封面图，无法 100% 消除渐变占位。跨团匹配已做阈值保守控制以降低错配风险。
 
 ---
 
@@ -162,6 +154,6 @@ src/
 
 ## 声明
 
-项目仍处于活跃开发阶段，部分功能可能存在缺陷（详见上方「已知问题」），欢迎 Issue & PR。
+项目仍处于活跃开发阶段，部分功能可能存在缺陷，欢迎 Issue & PR。
 
 **Presented by Xenia**
