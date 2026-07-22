@@ -159,8 +159,8 @@ export default function MusicLibraryScreen() {
         style={styles.groupsWrap}
       >
         {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48','FAV'].map(g => (
-          <TouchableOpacity key={g} onPress={() => onGroupChange(g)} style={[styles.gChip, isDark && styles.gChipDark, group === g && styles.gChipOn]}>
-            <Text style={[styles.gText, isDark && styles.gTextDark, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
+          <TouchableOpacity key={g} onPress={() => onGroupChange(g)} style={[styles.gChip, isDark && styles.gChipDark, group === g && styles.gChipOn, g === 'FAV' && styles.gChipFav]}>
+            <Text numberOfLines={1} style={[styles.gText, isDark && styles.gTextDark, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -282,9 +282,10 @@ const styles = StyleSheet.create({
   // 文字不加 lineHeight/includeFontPadding，用 Android 默认行高，杜绝纵向裁字。
   groups: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 },
   groupsWrap: { marginTop: 2, marginBottom: 8, width: '100%', height: 40 },
-  gChip: { height: 28, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
+  gChip: { width: 72, height: 28, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', flexShrink: 0, flexGrow: 0, alignItems: 'center', justifyContent: 'center' },
   gChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
   gChipOn: { backgroundColor: '#ff6f91' },
+  gChipFav: { width: 104 },
   gText: { fontSize: 13, color: '#555', fontWeight: '600' },
   gTextDark: { color: '#d6d6d6' },
   gTextOn: { color: '#fff' },
