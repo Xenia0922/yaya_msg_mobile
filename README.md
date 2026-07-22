@@ -6,7 +6,7 @@
 [![Android](https://img.shields.io/badge/platform-Android-3DDC84?logo=android)](https://github.com/Xenia0922/yaya_msg_mobile)
 [![Expo](https://img.shields.io/badge/expo-54-4630EB?logo=expo)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/react_native-0.81-61DAFB?logo=react)](https://reactnative.dev)
-[![License](https://img.shields.io/badge/license-MIT-green)](/LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](/LICENSE)
 
 基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg)（[桌面端](https://github.com/yk1z/yaya_msg) / [网页端](https://gnz.hk)）二次开发的移动端版本。
 
@@ -33,6 +33,7 @@
 - **翻牌统计** — 类型分布、回复耗时分析、成员排名、按成员筛选
 - **成员数据库** — 接入官方实时接口，含拼音首字母检索、档案与历史
 - **鸡腿充值** — 余额查询、官方充值页内嵌
+- **音乐库** — 官方源全量歌曲，分团筛选（ALL / SNH48 / GNZ48 / BEJ48 / CKG48 / CGT48 / 收藏）、搜索、播放队列与收藏；无真实封面歌曲以确定性渐变 + 音符图标兜底
 
 ---
 
@@ -97,7 +98,7 @@ cd android
 
 ```
 src/
-├── api/            Pocket48 & B站 接口封装
+├── api/            Pocket48 & B站 接口封装（含 officialSiteMusic.ts 音乐源）
 ├── components/
 │   ├── media/
 │   │   ├── PlayerChrome.tsx   # 统一播放器外壳（顶栏/底栏/更多面板）
@@ -105,10 +106,35 @@ src/
 │   └── ...
 ├── screens/
 │   ├── MediaScreen.tsx        # 口袋直播/录播
-│   └── BilibiliLiveScreen.tsx # B站直播（自动横屏 + 沉浸控制条）
+│   ├── BilibiliLiveScreen.tsx # B站直播（自动横屏 + 沉浸控制条）
+│   └── MusicLibraryScreen.tsx # 音乐库（分团标签栏 + 歌曲网格）
 ├── store/          Zustand 全局状态
 └── types/          类型定义
 ```
+
+---
+
+## 已知问题（Known Issues）· 待修复
+
+> 以下问题在 v2.6.2 发布时**尚未解决**，计划在后续版本修复。记录在此以便继续排查。
+
+### 1. 音乐分团标签栏渲染异常（标签变长 / 高度撑大 / 大块留空）
+
+- **现象**：顶部分团标签栏（ALL / SNH48 / GNZ48 / BEJ48 / CKG48 / CGT48 / 收藏）中，切到后三组（CKG48、CGT48、收藏）时，标签按钮异常变长、整行高度被撑大，搜索栏与歌曲列表之间出现大块上下留空；FAV「收藏(N)」长度也异常超长。前三组（ALL / SNH48 / GNZ48）表现正常。
+- **已尝试方案（均复现，未根治）**：
+  1. 删 `maxHeight` + 加 `lineHeight` / `includeFontPadding`（commit `185eeee`）→ 引入宽标签回归 + 文字遮挡，无效；
+  2. 按文字估算 `chipWidth()` 算死显式宽度（commit `5e71601`）→ 前三按钮文字被挤换行、后三仍拉长，已 `git revert`；
+  3. 硬 `width:72` / FAV `width:104` + `gText numberOfLines={1}`（commit `8dd6a03`）→ 后三仍变长；
+  4. 标签栏 `ScrollView` 换 `FlatList horizontal` + `getItemLayout` 固定尺寸（commit `f7823b1`）→ 问题依旧。
+- **疑似根因**：横向滚动列表里屏幕外子项（后三组）进入视口时 Yoga 重新测量并拉伸，即便有硬 `width`/`height` 或 `getItemLayout` 仍复现。可能与 RN 0.81 / 特定 Yoga 版本在 Android 上的横向列表测量行为，或父容器（搜索栏与列表之间的布局）约束传递有关。
+- **待验证方向**：改用非滚动的固定 7 列网格 / 行内绝对定位布局；或排查 dark mode 下某父 StyleSheet 是否触发异常约束；必要时用原生视图或自定义测量绕过 Yoga 横向测量。
+
+### 2. 音乐歌曲卡片无真实封面（大量「空白卡」）
+
+- **现象**：音乐库大量歌曲卡片无封面，仅显示渐变 + 音符图标占位（非真实专辑封面）。用户反馈「空白问题依旧」。
+- **根因**：数据源限制。`src/api/officialSiteMusic.ts` 中 `coverUrl = record && record.image ? record.image : ''`，绝大多数歌曲在口袋48官网 records 中匹配不到带图 record（SNH 那批歌曲的 `artist` 字段本身就是错误专辑名，与 records 匹配不上），故无真实封面。此为**数据限制，非渲染 bug**。
+- **已做缓解**：客户端用确定性渐变 + 音符图标兜底（自 `185eeee`），并加黑色文字阴影保证音符在任意深浅渐变上可见（`4b51a0e`）。
+- **待解方向**：要真封面需改匹配逻辑（用歌曲标题 / 音频分组兜底匹配 record），但存在「张冠李戴配错封面」风险，尚未授权实施。
 
 ---
 
@@ -136,6 +162,6 @@ src/
 
 ## 声明
 
-项目仍处于活跃开发阶段，部分功能可能存在缺陷，欢迎 Issue & PR。
+项目仍处于活跃开发阶段，部分功能可能存在缺陷（详见上方「已知问题」），欢迎 Issue & PR。
 
 **Presented by Xenia**
