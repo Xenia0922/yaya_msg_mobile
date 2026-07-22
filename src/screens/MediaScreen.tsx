@@ -3,6 +3,7 @@ import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   Animated,
+  AppState,
   BackHandler,
   DeviceEventEmitter,
   Dimensions,
@@ -842,6 +843,16 @@ export default function MediaScreen() {
   useEffect(() => () => {
     setLiveImmersiveMode(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, []);
+
+  // 切到后台时复位横屏锁（防退到桌面/其它 App 仍锁横屏）；回到前台由上方 effect 按状态重新锁定
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // 横屏/全屏解耦：全屏=沉浸+横屏；横屏切换=仅旋转。两者任一为真即锁定横屏。

@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import wasmGlueSource from './wasmGlueSource';
 import wasmBase64 from './wasmBase64';
+import { wasmBase64MatchesPin } from './wasmHash';
 
 type PendingRequest = {
   resolve: (value: string | null) => void;
@@ -54,9 +55,11 @@ function waitForReady(timeoutMs: number): Promise<boolean> {
 }
 
 function makeHtml(wasmBase64: string) {
-  const glue = wasmGlueSource
-    .replace(/import\.meta/g, '({})')
-    .replace(/module\.require/g, 'undefined');
+  // 不再对 glue 做字符串手术（import.meta / module.require 正则替换在 wasm-bindgen 升级时易失效）。
+  // 改为在脚本顶部注入 module / import 垫片，让未修改的 glue 在 WebView（无模块系统）中直接运行。
+  const shim = `var module = (typeof module !== 'undefined') ? module : {};
+module.require = function() { return undefined; };
+var import = { meta: {} };`;
 
   return `<!doctype html>
 <html>
@@ -66,7 +69,8 @@ function makeHtml(wasmBase64: string) {
 window.onerror = function(message) {
   window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', error: String(message) }));
 };
-${glue}
+${shim}
+${wasmGlueSource}
 function bytesFromBase64(base64) {
   var binary = atob(base64);
   var len = binary.length;
@@ -137,7 +141,15 @@ export function WebViewSigner() {
     };
   }, []);
 
-  const html = useMemo(() => makeHtml(wasmBase64), []);
+  const html = useMemo(() => {
+    // 双份 wasm 漂移检测：内联副本必须与 assets/2.wasm 哈希一致，否则 WebView 兜底会算出
+    // 与原生通道不同的 pa，导致偶发签名失败。不一致仅告警（内联副本本身是 APK 签名产物，可信），
+    // 由 scripts/gen-wasm-base64.mjs 重新生成即可对齐。
+    if (!wasmBase64MatchesPin(wasmBase64)) {
+      console.warn('[wasm] 内联 wasmBase64 与 assets/2.wasm 哈希不一致，疑似双份漂移；请运行 node scripts/gen-wasm-base64.mjs 重新生成');
+    }
+    return makeHtml(wasmBase64);
+  }, []);
 
   return (
     <View

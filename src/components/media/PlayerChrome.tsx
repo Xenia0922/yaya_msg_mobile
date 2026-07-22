@@ -217,7 +217,7 @@ export function PlayerBottomBar({
     setHeldTime(r > 0 ? r * duration : null);
   };
   useEffect(() => {
-    if (heldTime != null && !dragTime && Math.abs(currentTime - heldTime) < 0.75) setHeldTime(null);
+    if (heldTime != null && !dragTime && Math.abs(currentTime - heldTime) < 1.5) setHeldTime(null);
   }, [currentTime, heldTime, dragTime]);
   const displayTime = dragTime ?? heldTime ?? currentTime;
   const pct = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;

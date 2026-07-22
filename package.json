@@ -19,6 +19,7 @@
     "android": "expo run:android",
     "web": "expo start --web",
     "build:android": "cd android && gradlew assembleRelease",
+    "gen:wasm": "node scripts/gen-wasm-base64.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
