@@ -790,6 +790,13 @@ export default function FollowedRoomsScreen() {
   const [rankStatus, setRankStatus] = useState('');
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [followBusy, setFollowBusy] = useState<Set<string>>(new Set());
+  // 用 ref 持有最新值，避免 toggleFollow 的 useCallback 闭包捕获到过期的 followedIds/followBusy
+  const followedIdsRef = useRef(followedIds);
+  const followBusyRef = useRef(followBusy);
+  followedIdsRef.current = followedIds;
+  followBusyRef.current = followBusy;
+  // loadFollowed 定义在 toggleFollow 之后，用 ref 持有以避免前向引用报错
+  const loadFollowedRef = useRef<(silent?: boolean) => void>(() => {});
 
   useFocusEffect(useCallback(() => {
     setTabBarHidden(!!selectedRoom || !!roomPlayer);
@@ -876,15 +883,27 @@ export default function FollowedRoomsScreen() {
 
   const toggleFollow = useCallback(async (member: Member) => {
     if (!token) { showToast('请先登录后再关注成员'); return; }
-    const id = String(member.id || '');
+    const id = String((member as any).id || (member as any).userId || '');
     if (!id || id === '0') { showToast('该成员缺少可关注的 ID'); return; }
-    const isFollowing = followedIds.has(id);
+    if (followBusyRef.current.has(id)) return;
+    // 关键：用 ref 读取最新关注状态，避免 useCallback 闭包捕获到过期的 followedIds，
+    // 否则「已关注」状态下再次点击会误判为未关注而重复调用 followMember（表现为取消关注无效）
+    const isFollowing = followedIdsRef.current.has(id);
     setFollowedIds((prev) => { const n = new Set(prev); if (isFollowing) n.delete(id); else n.add(id); return n; });
     setFollowBusy((prev) => { const b = new Set(prev); b.add(id); return b; });
     try {
       if (isFollowing) await pocketApi.unfollowMember(id);
       else await pocketApi.followMember(id);
       showToast(isFollowing ? `已取消关注 ${member.ownerName}` : `已关注 ${member.ownerName}`);
+      // 让房间里的关注/取关结果立即反映到关注列表（无需回列表手动刷新）
+      setFollowed((prev) => {
+        const exists = prev.some((p) => String(p.memberId) === id);
+        if (isFollowing) return prev.filter((p) => String(p.memberId) !== id);
+        if (exists) return prev;
+        return [{ memberId: id, member }, ...prev];
+      });
+      // 与电脑版一致：操作后延迟从服务器拉取最新关注列表，保证状态权威同步
+      setTimeout(() => { loadFollowedRef.current(true); }, 600);
     } catch (e) {
       setFollowedIds((prev) => { const r = new Set(prev); if (isFollowing) r.add(id); else r.delete(id); return r; });
       showToast(`操作失败：${errorMessage(e)}`);
@@ -924,6 +943,7 @@ export default function FollowedRoomsScreen() {
     } catch (e) { if (!silent) showToast(`加载失败：${errorMessage(e)}`); }
     finally { setLoading(false); }
   }, [members, showToast, token]);
+  loadFollowedRef.current = loadFollowed;
 
   useEffect(() => { loadFollowed(true); }, [loadFollowed]);
 
@@ -1107,6 +1127,9 @@ export default function FollowedRoomsScreen() {
   }, [roomMessages, roomSearchQuery, selectedRoom]);
 
   if (selectedRoom) {
+    const fid = String(selectedRoom.id || '');
+    const isFollowingRoom = followedIds.has(fid);
+    const followBusyRoom = followBusy.has(fid);
     return (
       <View style={[styles.container, isDark && styles.containerDark]}>
         {roomPlayer ? (
@@ -1170,9 +1193,22 @@ export default function FollowedRoomsScreen() {
         ) : null}
         <ZoomImageModal url={fullImageUrl} onClose={() => setFullImageUrl('')} />
         <ScreenHeader title={shortName(selectedRoom)} onBack={closeRoom} right={
-          <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(String(selectedRoom.id || ''))}>
-            <Text style={styles.pinBtnText}>{pinned.includes(String(selectedRoom.id || '')) ? '取消置顶' : '置顶'}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.followBtn, isFollowingRoom && styles.followBtnOn]}
+              disabled={followBusyRoom}
+              onPress={() => toggleFollow(selectedRoom)}
+            >
+              {followBusyRoom ? (
+                <ActivityIndicator color={isFollowingRoom ? '#ff6f91' : '#ffffff'} size="small" />
+              ) : (
+                <Text style={[styles.followBtnText, isFollowingRoom && styles.followBtnTextOn]}>{isFollowingRoom ? '已关注' : '关注'}</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(String(selectedRoom.id || ''))}>
+              <Text style={styles.pinBtnText}>{pinned.includes(String(selectedRoom.id || '')) ? '取消置顶' : '置顶'}</Text>
+            </TouchableOpacity>
+          </View>
         } />
 
         <View style={styles.chatTools}>

@@ -17,6 +17,7 @@ import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { saveSettings } from '../services/settings';
 import ScreenHeader from '../components/ScreenHeader';
+import RuntimeLogViewer from '../components/RuntimeLogViewer';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { APP_VERSION } from '../constants';
 import { getMemberDataMeta, MemberDataMeta } from '../services/memberData';
@@ -73,6 +74,7 @@ export default function SettingsScreen() {
   const memberCount = useMemberStore((state) => state.members.length);
   const isDark = settings.theme === 'dark';
   const [meta, setMeta] = useState<MemberDataMeta | null>(null);
+  const [logVisible, setLogVisible] = useState(false);
 
   useEffect(() => {
     getMemberDataMeta().then(setMeta).catch(() => {});
@@ -108,7 +110,8 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <>
+      <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <ScreenHeader title="设置" />
 
       <Section title="关于 牙牙消息" isDark={isDark}>
@@ -180,9 +183,15 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="工具" isDark={isDark}>
-        <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('DownloadScreen')}>
-          <Text style={styles.linkText}>下载管理</Text>
-        </TouchableOpacity>
+        <View style={styles.toolRow}>
+          <TouchableOpacity style={[styles.linkBtn, { marginRight: 8 }]} onPress={() => navigation.navigate('DownloadScreen')}>
+            <Text style={styles.linkText}>下载管理</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.linkBtn} onPress={() => setLogVisible(true)}>
+            <Text style={styles.linkText}>运行日志</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.sub, isDark && styles.textSubLight]}>记录运行信息、报错与 JS 闪退，便于排查优化</Text>
       </Section>
 
       <Section title="成员数据" isDark={isDark}>
@@ -208,6 +217,8 @@ export default function SettingsScreen() {
 
       <Text style={[styles.footer, isDark && styles.textSubLight]}>Version {APP_VERSION}</Text>
     </ScrollView>
+      <RuntimeLogViewer visible={logVisible} onClose={() => setLogVisible(false)} />
+    </>
   );
 }
 
@@ -242,6 +253,7 @@ const styles = StyleSheet.create({
   toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
   toggleKnobOn: { transform: [{ translateX: 20 }] },
   aboutHero: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderRadius: 12, overflow: 'hidden' },
+  toolRow: { flexDirection: 'row' },
   aboutName: { fontSize: 22, fontWeight: '900', color: '#222' },
   aboutSub: { fontSize: 12, color: '#666', marginTop: 4 },
   aboutVer: { fontSize: 12, color: '#999', marginTop: 2 },

@@ -75,8 +75,16 @@ export const MusicEngine = {
   /** Play a specific track. Optionally sets queue at the same time. */
   async playTrack(track: Track, queue?: Track[]) {
     const store = useMusicPlayerStore.getState();
+    const prev = store.queue[store.currentIndex];
+    const isSame = !!prev && (prev.musicId || prev.id) === (track.musicId || track.id);
     store.play(track, queue);
     this._fetchLyrics(track);
+    // 进度记忆：同一首且已有播放进度，标记续播点，onLoad 时 seek 回去，
+    // 而不是从头开始（之前 loadQueueAt 把 position 清零，导致进度记忆失效）。
+    if (isSame) {
+      const pos = useMusicPlayerStore.getState().position;
+      if (pos > 0) useMusicPlayerStore.getState().setPendingSeek(pos);
+    }
     if (!this._urlResolver) { store.setError('no url resolver'); return; }
     try {
       const url = await this._urlResolver(track);

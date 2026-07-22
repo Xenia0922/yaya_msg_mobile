@@ -121,10 +121,20 @@ export default function MusicLibraryScreen() {
   }, []);
 
   const playSong = (item: any) => {
-    // 队列 = 当前展示列表（团体筛选 / 搜索结果 / 收藏列表），而非全部歌曲。
-    // 进入播放页但不自动播放：载入队列并定位到该曲（保留进度记忆），打开播放页，
-    // 真正播放等用户按播放键，避免「一进去就自动播放」。
-    MusicEngine.loadQueueAt(item, filteredSongs);
+    // 用户主动点歌 → 立即播放（不是「进播放页不播」）。
+    // 进音乐列表本身不会自动播放（列表挂载只 loadAll，从不调 play），所以
+    // 「不自动播放」应作用于「进入列表」而非「点歌」——之前做反了。
+    const st = useMusicPlayerStore.getState();
+    const cur = st.queue[st.currentIndex];
+    const sameAsCurrent = !!cur && (cur.musicId || cur.id) === (item.musicId || item.id);
+    if (sameAsCurrent && st.playbackState === 'playing') {
+      // 已经在放这首，直接打开播放页即可，不重启（避免重新缓冲）
+      setShowFullScreen(true);
+      return;
+    }
+    // 克隆队列：播放器 store 与列表 songs 解耦，避免共享同一批对象引用时，
+    // 任何播放态写入（或 FlatList 复用）反噬列表渲染。
+    MusicEngine.playTrack(item, filteredSongs.map((t) => ({ ...t })));
     setShowFullScreen(true);
   };
 
@@ -206,7 +216,7 @@ export default function MusicLibraryScreen() {
                 <View style={styles.songInfo}>
                   <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
                   <Text style={[styles.songArtist, isDark && styles.textSubDark]} numberOfLines={1}>
-                    {[item.album, item.artist].filter(Boolean).join(' · ') || ''}
+                    {[item.album, item.artist, item.groupLabel].filter(Boolean).join(' · ') || '官方音乐'}
                   </Text>
                   {item.ctime ? (
                     <Text style={[styles.dateText, isDark && styles.textSubDark]}>
@@ -267,8 +277,8 @@ const styles = StyleSheet.create({
   searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
   searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
   groups: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 6 },
-  groupsWrap: { marginBottom: 6, maxHeight: 40 },
-  gChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', alignSelf: 'center' },
+  groupsWrap: { marginBottom: 6, maxHeight: 40, width: '100%' },
+  gChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', flexShrink: 0 },
   gChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
   gChipOn: { backgroundColor: '#ff6f91' },
   gText: { fontSize: 12, color: '#555', fontWeight: '600' },

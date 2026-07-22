@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSettingsStore } from '../store';
+import { logCrash } from '../utils/runtimeLog';
 
 interface Props { children: ReactNode; }
 interface State { error: Error | null; }
@@ -23,6 +24,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   static getDerivedStateFromError(error: Error) { return { error }; }
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.warn('ErrorBoundary caught:', error.message, info.componentStack?.slice(0, 200));
+    logCrash(error, `render:${info.componentStack?.split('\n')[1]?.trim().slice(0, 80) || 'unknown'}`);
   }
   render() {
     if (this.state.error) {

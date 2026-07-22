@@ -127,7 +127,10 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       play: (track, queue) => set((s) => {
         const q = queue || s.queue;
         const idx = q.findIndex((t) => (t.musicId || t.id) === (track.musicId || track.id));
-        const sameTrack = idx >= 0 && idx === s.currentIndex;
+        // 同一首以「id 相等」判定，而非「下标相等」：列表经筛选/排序后下标会变，
+        // 用下标相等会误判成不同首、把进度清零（进度记忆丢失）。
+        const prev = s.queue[s.currentIndex];
+        const sameTrack = !!prev && (prev.musicId || prev.id) === (track.musicId || track.id);
         const cover = coverFrom(track);
         return {
           queue: q,
@@ -139,6 +142,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
           position: sameTrack ? s.position : 0,
           lyrics: s.lyrics,
           error: null,
+          pendingSeek: null,
         };
       }),
 

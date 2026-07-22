@@ -11,6 +11,29 @@ import { initWasm, WebViewSigner } from './src/auth';
 import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { NOTICE_URL } from './src/constants';
+import { initRuntimeLog, logCrash } from './src/utils/runtimeLog';
+
+// 全局 JS 闪退捕获：生产环境红盒不可见，写入本地日志便于排查。
+// 同时保留原有 handler（开发环境红盒 / 默认崩溃行为）。
+function installGlobalErrorHandler() {
+  const g = global as unknown as { ErrorUtils?: { setGlobalHandler?: (h: (e: unknown, isFatal?: boolean) => void) => void; getGlobalHandler?: () => ((e: unknown, isFatal?: boolean) => void) | undefined } };
+  const eu = g.ErrorUtils;
+  if (!eu || typeof eu.setGlobalHandler !== 'function') return;
+  const prev = eu.getGlobalHandler ? eu.getGlobalHandler() : undefined;
+  eu.setGlobalHandler((error: unknown, isFatal?: boolean) => {
+    logCrash(error, isFatal ? 'global:fatal' : 'global');
+    if (prev) {
+      try {
+        prev(error, isFatal);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+}
+
+installGlobalErrorHandler();
+initRuntimeLog().catch(() => {});
 
 export default function App() {
   const [ready, setReady] = useState(false);

@@ -44,32 +44,36 @@ interface Props {
 export default function CoverArt({ uri, title, size, fill, round, active }: Props) {
   const [c1, c2] = PALETTE[hashStr(title || '♪') % PALETTE.length];
   const [errored, setErrored] = React.useState(false);
+  // 关键修复：uri 变化（FlatList 回收单元格复用本组件实例去显示另一首歌）时，
+  // 必须重置 errored。否则上一首封面加载失败的 errored=true 会被带到本该有封面的
+  // 新歌上，导致它错误地显示成「无封面/白块」。现象即「每首歌都白过 + 播过的歌返回后变白」。
+  React.useEffect(() => { setErrored(false); }, [uri]);
   const boxStyle: any = fill
     ? { width: '100%', height: '100%', borderRadius: round ? 999 : 0 }
     : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
   const inner = (fill ? 0 : size || 0) * 0.42 || 64;
   const initial = (title || '♪').replace(/\s/g, '').charAt(0) || '♪';
 
-  // 图片加载失败时回退到确定性渐变占位，绝不留下空白（避免「封面变白加载不回来」）
-  if (uri && !errored) {
-    return (
-      <Image
-        source={{ uri }}
-        style={boxStyle}
-        resizeMode="cover"
-        // scale：保留原图分辨率由 GPU 缩放，比 resize 预解码缩放更锐利（修复封面发糊）
-        resizeMethod="scale"
-        fadeDuration={0}
-        onError={() => setErrored(true)}
-      />
-    );
-  }
-
+  // 渐变 + 首字永远作为底图渲染；图片叠加在上层。
+  // 这样即使某些 coverUrl 是坏链、RN 未触发 onError（静默失败），
+  // 底下仍有彩色渐变 + 首字兜底，不可能出现「纯白块」。图片加载成功则盖住底图。
+  const showImage = !!uri && !errored;
   return (
     <View style={[styles.box, boxStyle, { backgroundColor: c1 }]}>
       <View style={[styles.overlay, { backgroundColor: c2, opacity: 0.55, transform: [{ rotate: '35deg' }] }]} />
       {!fill ? (
         <View style={[styles.ring, { width: inner, height: inner, borderRadius: inner / 2, borderColor: 'rgba(255,255,255,0.85)' }]} />
+      ) : null}
+      {showImage ? (
+        <Image
+          source={{ uri }}
+          style={[StyleSheet.absoluteFill, { borderRadius: round ? 999 : 0 }]}
+          resizeMode="cover"
+          // scale：保留原图分辨率由 GPU 缩放，比 resize 预解码缩放更锐利（修复封面发糊）
+          resizeMethod="scale"
+          fadeDuration={0}
+          onError={() => setErrored(true)}
+        />
       ) : null}
       <Text
         style={[
