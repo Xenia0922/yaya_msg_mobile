@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { CenterSpinner } from '../components/Loaders';
 
@@ -167,9 +167,11 @@ export default function FlipScreen() {
   const mode = route.params?.mode || 'view';
 
   const [flips, setFlips] = useState<any[]>([]);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [status, setStatus] = useState('');
+  const pageRef = useRef(1);
+  const loadingRef = useRef(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [prices, setPrices] = useState<FlipPriceConfig[]>([]);
   const [answerType, setAnswerType] = useState<number | null>(null);
@@ -185,23 +187,34 @@ export default function FlipScreen() {
   );
   const minCost = priceFor(selectedPrice, privacyType);
 
-  const loadFlips = useCallback(async (nextPage = 1) => {
+  const loadFlips = useCallback(async (nextPage = 1, replace = false) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setStatus('');
     try {
       const res = await pocketApi.getFlipList((nextPage - 1) * 100, 100);
       const list = normalizeFlipList(res);
-      setFlips((prev) => (nextPage === 1 ? list : [...prev, ...list]));
-      setStatus(list.length ? `已加载 ${nextPage === 1 ? list.length : flips.length + list.length} 条翻牌记录` : '暂无翻牌记录');
+      setFlips((prev) => (replace ? list : [...prev, ...list]));
+      setHasMore(list.length >= 100);
+      if (list.length === 0 && replace) {
+        setStatus('');
+      } else if (replace) {
+        setStatus(`已加载 ${list.length} 条翻牌记录`);
+      }
     } catch (error) {
       setStatus(`加载翻牌记录失败：${errorMessage(error)}`);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  }, [flips.length]);
+  }, []);
 
   useEffect(() => {
-    if (mode === 'view') loadFlips(1);
+    if (mode === 'view') {
+      pageRef.current = 1;
+      loadFlips(1, true);
+    }
   }, [loadFlips, mode]);
 
   useEffect(() => {
@@ -465,13 +478,13 @@ export default function FlipScreen() {
             );
           }}
           onEndReached={() => {
-            if (loading) return;
-            const nextPage = page + 1;
-            setPage(nextPage);
+            if (loadingRef.current || !hasMore) return;
+            const nextPage = pageRef.current + 1;
+            pageRef.current = nextPage;
             loadFlips(nextPage);
           }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={loading ? <CenterSpinner dark={isDark} text="加载中…" /> : <Text style={styles.empty}>暂无翻牌记录</Text>}
+          ListEmptyComponent={loading ? <CenterSpinner dark={isDark} text="加载中…" /> : !status ? <Text style={styles.empty}>暂无翻牌记录</Text> : null}
         />
       </FadeInView>
     </View>
