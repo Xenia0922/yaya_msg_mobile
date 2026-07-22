@@ -3,7 +3,6 @@ import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   FlatList,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -52,6 +51,14 @@ export default function MusicLibraryScreen() {
   const [query, setQuery] = useState(() => useMusicPlayerStore.getState().libraryQuery || '');
   const [group, setGroup] = useState(() => useMusicPlayerStore.getState().libraryGroup || 'ALL');
   const onQueryChange = (q: string) => { setQuery(q); useMusicPlayerStore.getState().setLibraryQuery(q); };
+  const GROUP_TABS = ['ALL', 'SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'FAV'];
+  const groupTabWidth = (g: string) => (g === 'FAV' ? 104 : 72);
+  const GROUP_OFFSETS: number[] = (() => {
+    const out: number[] = [];
+    let acc = 0;
+    for (const g of GROUP_TABS) { out.push(acc); acc += groupTabWidth(g) + 8; }
+    return out;
+  })();
   const onGroupChange = (g: string) => { setGroup(g); useMusicPlayerStore.getState().setLibraryGroup(g); };
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
@@ -152,18 +159,20 @@ export default function MusicLibraryScreen() {
         placeholderTextColor={isDark ? '#aaa' : '#4a4a4a'}
         style={[styles.searchInput, isDark && styles.searchInputDark]}
       />
-      <ScrollView
+      <FlatList
         horizontal
+        data={GROUP_TABS}
+        keyExtractor={(g) => g}
         showsHorizontalScrollIndicator={false}
+        getItemLayout={(_, index) => ({ length: groupTabWidth(GROUP_TABS[index]), offset: GROUP_OFFSETS[index], index })}
         contentContainerStyle={styles.groups}
         style={styles.groupsWrap}
-      >
-        {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48','FAV'].map(g => (
-          <TouchableOpacity key={g} onPress={() => onGroupChange(g)} style={[styles.gChip, isDark && styles.gChipDark, group === g && styles.gChipOn, g === 'FAV' && styles.gChipFav]}>
+        renderItem={({ item: g }) => (
+          <TouchableOpacity onPress={() => onGroupChange(g)} style={[styles.gChip, isDark && styles.gChipDark, group === g && styles.gChipOn, g === 'FAV' && styles.gChipFav]}>
             <Text numberOfLines={1} style={[styles.gText, isDark && styles.gTextDark, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        )}
+      />
       {status ? (
         <View pointerEvents="none" style={styles.statusOverlay}>
           <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text>
