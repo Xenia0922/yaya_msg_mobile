@@ -61,23 +61,32 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   // 用 ref 缓存最近一次有效 ratio：松手事件（onResponderRelease）的 locationX 常为 0，
   // 直接读会导致 seek(0) 弹回开头；改用 grant/move 时记下的真实 ratio。
   const dragRatioRef = useRef<number>(0);
-  const ratioFromX = (x: number): number => {
-    const w = progW2.current || 1;
+  // 手势有效性守卫：只有「按下时轨道宽度已测到」才算有效拖拽；否则（全屏页刚弹出首帧、
+  // 旋转后布局未就绪，progW2 仍为 0）ratioFromX 会因 `|| 1` 把任意位置算成 0/100%，误 seek 到开头/结尾。
+  const gestureActive = useRef(false);
+  const ratioFromX = (x: number): number | null => {
+    const w = progW2.current;
+    if (!w || w < 2) return null;
     return Math.max(0, Math.min(1, x / w));
   };
   const onProgGrant = (e: any) => {
     const r = ratioFromX(e.nativeEvent.locationX);
+    if (r == null) { gestureActive.current = false; return; }
+    gestureActive.current = true;
     dragRatioRef.current = r;
     setDragRatio(r);
   };
   const onProgMove = (e: any) => {
     const r = ratioFromX(e.nativeEvent.locationX);
+    if (r == null) return;
     dragRatioRef.current = r;
     setDragRatio(r);
   };
   const onProgRelease = () => {
     const r = dragRatioRef.current;
-    if (duration > 0) MusicEngine.seek(r * duration);
+    // 仅有效手势才真正 seek；无效手势（宽度未知）不碰进度，杜绝误跳开头/结尾
+    if (gestureActive.current && duration > 0) MusicEngine.seek(r * duration);
+    gestureActive.current = false;
     dragRatioRef.current = 0;
     setDragRatio(null);
   };

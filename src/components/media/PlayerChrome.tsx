@@ -186,18 +186,39 @@ export function PlayerBottomBar({
 }) {
   const trackWidth = useRef(0);
   const dragRatioRef = useRef(0);
+  // 手势有效性守卫：只有「按下时轨道宽度已测到」才算一次有效拖拽。
+  // 否则（控件刚出现 / 旋转后首帧布局未就绪，trackWidth 仍为 0）ratioFromX 会回退到缓存的 0，
+  // 松手时 onSeek(0) 误把进度弹回开头 —— 这正是「拖动进度条有概率乱跳 / 回跳开头」的真因。
+  const gestureActive = useRef(false);
   const [dragTime, setDragTime] = useState<number | null>(null);
   // 松手后保持目标进度，直到播放器上报的 currentTime 追上目标值附近，避免「松手后回跳再前跳」的乱跳
   const [heldTime, setHeldTime] = useState<number | null>(null);
-  const ratioFromX = (x: number): number => {
+  // 宽度未知时返回 null（而非回退到 0），让 grant/move/release 直接忽略本次手势，绝不会误 seek 到 0
+  const ratioFromX = (x: number): number | null => {
     const w = trackWidth.current;
-    // 轨道宽度尚未测到时不更新比例，避免被当作 0 宽度而跳到 0%/100%
-    if (!w || w < 2) return dragRatioRef.current;
+    if (!w || w < 2) return null;
     return Math.max(0, Math.min(1, x / w));
   };
-  const onTrackGrant = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setHeldTime(null); setDragTime(r * duration); };
-  const onTrackMove = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setDragTime(r * duration); };
-  const onTrackRelease = () => { const r = dragRatioRef.current; if (duration > 0) onSeek(r * duration); dragRatioRef.current = 0; setDragTime(null); setHeldTime(r * duration); };
+  const onTrackGrant = (e: any) => {
+    const r = ratioFromX(e.nativeEvent.locationX);
+    if (r == null) { gestureActive.current = false; return; }
+    gestureActive.current = true;
+    dragRatioRef.current = r; setHeldTime(null); setDragTime(r * duration);
+  };
+  const onTrackMove = (e: any) => {
+    const r = ratioFromX(e.nativeEvent.locationX);
+    if (r == null) return;
+    dragRatioRef.current = r; setDragTime(r * duration);
+  };
+  const onTrackRelease = () => {
+    const r = dragRatioRef.current;
+    // 仅当本次手势有效（按下时宽度已知）才真正 seek；无效手势不碰进度，杜绝误跳开头
+    if (gestureActive.current && duration > 0) onSeek(r * duration);
+    gestureActive.current = false;
+    dragRatioRef.current = 0; setDragTime(null);
+    // 有效手势且松手位置明确：保持目标进度直到播放器上报追上，消除松手回跳
+    setHeldTime(r > 0 ? r * duration : null);
+  };
   useEffect(() => {
     if (heldTime != null && !dragTime && Math.abs(currentTime - heldTime) < 0.75) setHeldTime(null);
   }, [currentTime, heldTime, dragTime]);

@@ -182,9 +182,11 @@ export default function MusicLibraryScreen() {
           onProgress={(e) => MusicEngine.onProgress(e.currentTime || 0)}
           onEnd={() => {
             if (playMode === 'single') {
+              // 单曲循环：必须显式 seek 回 0，否则真实 Video 停在结尾、仅改 store 进度不会重播，
+              // 表现为「单曲循环不继续播放」。MusicEngine.seek 内含 600ms 进度锁，避免 onProgress 把进度覆盖回结尾。
               useMusicPlayerStore.getState().setPosition(0);
-              useMusicPlayerStore.getState().setPlaybackState('paused');
-              setTimeout(() => useMusicPlayerStore.getState().setPlaybackState('playing'), 50);
+              MusicEngine.seek(0);
+              useMusicPlayerStore.getState().setPlaybackState('playing');
             } else {
               MusicEngine.next();
             }

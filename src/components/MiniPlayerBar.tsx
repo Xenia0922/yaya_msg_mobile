@@ -53,11 +53,12 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
   const coverUri = rawCover ? (rawCover.startsWith('http') ? rawCover : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`) : '';
 
   const progRef = useRef<View>(null);
-  const progW = useRef(0);
   const seekProgress = (px: number) => {
     if (duration <= 0) return;
-    progRef.current?.measure((_x, _y, _w, _h, x0) => {
-      const ratio = Math.max(0, Math.min(1, (px - x0) / progW.current));
+    progRef.current?.measure((_x, _y, w, _h, x0) => {
+      // 用 measure 实测宽度；宽度未知（<2）时跳过，避免除零得到 Infinity 被 clamp 到 1 而误跳结尾
+      if (!w || w < 2) return;
+      const ratio = Math.max(0, Math.min(1, (px - x0) / w));
       MusicEngine.seek(ratio * duration);
     });
   };
@@ -106,7 +107,7 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
 
   return (
     <Animated.View style={[styles.bar, isDark && styles.barD, SHADOW, { transform: [{ translateY }] }]} {...panResponder.panHandlers}>
-      <View ref={progRef} style={styles.progressBar} onLayout={e => { progW.current = e.nativeEvent.layout.width; }} {...progPanMini.panHandlers}>
+      <View ref={progRef} style={styles.progressBar} {...progPanMini.panHandlers}>
         <View style={[styles.progressTrack, isDark && styles.progressTrackD]} />
         <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         <View style={[styles.progressThumb, { left: `${progress * 100}%` }, isDark && styles.progressThumbD]} />
