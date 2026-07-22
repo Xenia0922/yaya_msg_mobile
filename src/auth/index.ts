@@ -5,19 +5,28 @@ import { verifyWasm } from './wasmHash';
 let WASM_READY = false;
 let _paGen: (() => string | null) | null = null;
 let _lastError = '';
+// 原生通道是否曾经成功（用于区分「原生不支持/失败」与「WebView 兜底未就绪」）
+let _nativeSucceeded = false;
 
-export function getWasmError(): string { return isWebViewSignerReady() ? '' : (_lastError || getWebViewSignerError()); }
+export function getWasmError(): string {
+  // 原生已成功但 pa 仍为空 → 真实阻塞点在 WebView 兜底，优先报 WebView 错误，避免把原生引导期的
+  // 中间态（如 "WebAssembly undefined" 守卫串）误当成设备不支持而吓到用户。
+  if (_nativeSucceeded && !isWebViewSignerReady()) return getWebViewSignerError() || _lastError || '';
+  if (isWebViewSignerReady()) return '';
+  return _lastError || getWebViewSignerError() || '';
+}
 export function isWasmReady(): boolean { return (WASM_READY && _paGen !== null) || isWebViewSignerReady(); }
 
 let _initPromise: Promise<void> | null = null;
 
 export function initWasm(): Promise<void> {
-  if (WASM_READY) return Promise.resolve();
+  if (WASM_READY && _paGen) return Promise.resolve();
   if (_initPromise) return _initPromise;
   _initPromise = (async () => {
     try {
       if (typeof WebAssembly === 'undefined') {
-        throw new Error('当前手机环境不支持 WebAssembly');
+        // 真实设备几乎不会走到这里；仅作守卫，不当作致命错误污染用户可见文案
+        throw new Error('当前运行环境缺少 WebAssembly 支持');
       }
       const m = require('./wasm');
       const initFn = m.default || m;
@@ -28,6 +37,7 @@ export function initWasm(): Promise<void> {
       await initFn(buf);
       _paGen = paFn;
       WASM_READY = true;
+      _nativeSucceeded = true;
     } catch (e: any) {
       _lastError = e?.message || String(e);
       // 失败不置 WASM_READY：原生通道可重试（下次调用重跑），generatePaAsync 仍会兜底 WebView。
@@ -82,10 +92,16 @@ export function generatePa(): string | null {
 }
 
 export async function generatePaAsync(): Promise<string | null> {
+  // 先等原生通道初始化完成再判定（避免「initWasm 还在异步加载、_paGen 尚为 null」就误判为不可用，
+  // 进而过早落到 WebView 兜底并被 6s 超时打断 —— 这正是 1305 后「设备不支持 WebAssembly」误报的根因）。
+  if ((!WASM_READY || !_paGen) && _initPromise) {
+    try { await _initPromise; } catch { /* 原生失败则继续走 WebView 兜底 */ }
+  }
   const localPa = generatePa();
   if (localPa) return localPa;
   try {
-    return await generatePaViaWebView(6000);
+    // 冷启动 WebView 签名容器需要时间预热，给足 10s（同 1305 之前的默认），避免首调超时误报
+    return await generatePaViaWebView(10000);
   } catch (e: any) {
     _lastError = e?.message || String(e);
     return null;
