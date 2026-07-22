@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -106,18 +106,20 @@ export interface MoreItem {
   active?: boolean;
 }
 
-/** 顶部沉浸栏：返回 / 标题 / 更多（哔哩哔哩风格） */
+/** 顶部沉浸栏：返回 / 标题 / 刷新 / 更多（哔哩哔哩风格） */
 export function PlayerTopBar({
   onBack,
   title,
   subtitle,
   onMore,
+  onRefresh,
   showMore = true,
 }: {
   onBack: () => void;
   title: string;
   subtitle?: string;
   onMore?: () => void;
+  onRefresh?: () => void;
   showMore?: boolean;
 }) {
   return (
@@ -129,6 +131,11 @@ export function PlayerTopBar({
         <Text style={chromeStyles.titleText} numberOfLines={1}>{title}</Text>
         {subtitle ? <Text style={chromeStyles.subtitleText} numberOfLines={1}>{subtitle}</Text> : null}
       </View>
+      {onRefresh ? (
+        <TouchableOpacity style={chromeStyles.navBtn} onPress={onRefresh} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <MaterialCommunityIcons name="refresh" size={20} color="#fff" />
+        </TouchableOpacity>
+      ) : null}
       {showMore && onMore ? (
         <TouchableOpacity style={chromeStyles.navBtn} onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <MaterialCommunityIcons name="dots-vertical" size={22} color="#fff" />
@@ -154,7 +161,7 @@ export function PlayerBottomBar({
   onTogglePlay,
   onSeek,
   onMore,
-  onRefresh,
+  onFullscreen,
   onRotate,
 }: {
   isLive: boolean;
@@ -172,22 +179,29 @@ export function PlayerBottomBar({
   onSeek: (t: number) => void;
   /** 「更多」面板入口；不传则不显示该按钮（默认收进顶栏右上角） */
   onMore?: () => void;
-  /** 刷新流/重连；不传则不显示该按钮 */
-  onRefresh?: () => void;
-  /** 横屏/竖屏切换（一次点击同时进入全屏沉浸）；不传则不显示该按钮 */
+  /** 全屏（沉浸隐藏系统栏并锁定横屏）；不传则不显示该按钮 */
+  onFullscreen?: () => void;
+  /** 横屏/竖屏切换（仅旋转，不影响沉浸）；不传则不显示该按钮 */
   onRotate?: () => void;
 }) {
   const trackWidth = useRef(0);
   const dragRatioRef = useRef(0);
   const [dragTime, setDragTime] = useState<number | null>(null);
+  // 松手后保持目标进度，直到播放器上报的 currentTime 追上目标值附近，避免「松手后回跳再前跳」的乱跳
+  const [heldTime, setHeldTime] = useState<number | null>(null);
   const ratioFromX = (x: number): number => {
-    const w = trackWidth.current || 1;
+    const w = trackWidth.current;
+    // 轨道宽度尚未测到时不更新比例，避免被当作 0 宽度而跳到 0%/100%
+    if (!w || w < 2) return dragRatioRef.current;
     return Math.max(0, Math.min(1, x / w));
   };
-  const onTrackGrant = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setDragTime(r * duration); };
+  const onTrackGrant = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setHeldTime(null); setDragTime(r * duration); };
   const onTrackMove = (e: any) => { const r = ratioFromX(e.nativeEvent.locationX); dragRatioRef.current = r; setDragTime(r * duration); };
-  const onTrackRelease = () => { const r = dragRatioRef.current; if (duration > 0) onSeek(r * duration); dragRatioRef.current = 0; setDragTime(null); };
-  const displayTime = dragTime ?? currentTime;
+  const onTrackRelease = () => { const r = dragRatioRef.current; if (duration > 0) onSeek(r * duration); dragRatioRef.current = 0; setDragTime(null); setHeldTime(r * duration); };
+  useEffect(() => {
+    if (heldTime != null && !dragTime && Math.abs(currentTime - heldTime) < 0.75) setHeldTime(null);
+  }, [currentTime, heldTime, dragTime]);
+  const displayTime = dragTime ?? heldTime ?? currentTime;
   const pct = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;
 
   return (
@@ -235,14 +249,14 @@ export function PlayerBottomBar({
         </TouchableOpacity>
       ) : null}
 
-      {onRefresh ? (
-        <TouchableOpacity style={chromeStyles.toolBtn} onPress={onRefresh} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-          <MaterialCommunityIcons name="refresh" size={22} color="#fff" />
+      {onRotate ? (
+        <TouchableOpacity style={chromeStyles.toolBtn} onPress={onRotate} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+          <MaterialCommunityIcons name="screen-rotation" size={22} color="#fff" />
         </TouchableOpacity>
       ) : null}
 
-      {onRotate ? (
-        <TouchableOpacity style={chromeStyles.toolBtn} onPress={onRotate} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+      {onFullscreen ? (
+        <TouchableOpacity style={chromeStyles.toolBtn} onPress={onFullscreen} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
           <MaterialCommunityIcons name="fullscreen" size={22} color="#fff" />
         </TouchableOpacity>
       ) : null}

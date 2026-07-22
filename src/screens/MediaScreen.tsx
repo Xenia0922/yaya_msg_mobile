@@ -470,7 +470,7 @@ export default function MediaScreen() {
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // 横屏/竖屏切换（与全屏沉浸联动，由 isFullscreen effect 统一处理方向锁）
+  // 横屏/竖屏切换（仅旋转，独立于「全屏」沉浸；方向锁由下方统一 effect 处理）
   const [isLandscape, setIsLandscape] = useState(false);
   // 画面旋转（翻转）：0/90/180/270，每按一次步进 90°
   const [videoRotate, setVideoRotate] = useState(0);
@@ -755,6 +755,7 @@ export default function MediaScreen() {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!playing) return false;
       setIsFullscreen(false);
+      setIsLandscape(false);
       setLiveImmersiveMode(false);
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
       setPlaying(null);
@@ -826,20 +827,19 @@ export default function MediaScreen() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
+  // 横屏/全屏解耦：全屏=沉浸+横屏；横屏切换=仅旋转。两者任一为真即锁定横屏。
   useEffect(() => {
-    setLiveImmersiveMode(!!playing && isFullscreen);
     if (!playing) return;
-    if (isFullscreen) {
-      setIsLandscape(true);
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
-    } else {
-      setIsLandscape(false);
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-    }
-  }, [isFullscreen, playing]);
+    const wantLandscape = isFullscreen || isLandscape;
+    setLiveImmersiveMode(!!playing && isFullscreen);
+    ScreenOrientation.lockAsync(
+      wantLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP,
+    ).catch(() => {});
+  }, [isFullscreen, isLandscape, playing]);
 
   const closePlayer = () => {
     setIsFullscreen(false);
+    setIsLandscape(false);
     setLiveImmersiveMode(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     setPlaying(null);
@@ -1081,6 +1081,7 @@ export default function MediaScreen() {
             onBack={isFullscreen ? () => setIsFullscreen(false) : closePlayer}
             title={playing.title || (playing.isLive ? '口袋直播' : '回放')}
             onMore={() => setMoreVisible(true)}
+            onRefresh={() => startPlay(playing.item)}
           />
         </Animated.View>
 
@@ -1183,8 +1184,8 @@ export default function MediaScreen() {
             onCycleRate={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
             onTogglePlay={() => setPaused((p) => !p)}
             onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
-            onRefresh={() => startPlay(playing.item)}
-            onRotate={() => setIsFullscreen((v) => !v)}
+            onRotate={() => setIsLandscape((v) => !v)}
+            onFullscreen={() => setIsFullscreen((v) => !v)}
           />
         </Animated.View>
 
@@ -1476,20 +1477,20 @@ const styles = StyleSheet.create({
   switchPlayerText: { color: '#ff6f91', fontSize: 11, fontWeight: '800' },
   retryPlayerBtn: { backgroundColor: '#ff6f91' },
   retryPlayerText: { color: '#fff' },
-  announceHeaderBtn: { backgroundColor: 'rgba(255,140,22,0.25)' },
-  announceHeaderText: { color: '#fa8c16' },
+  announceHeaderBtn: { backgroundColor: 'rgba(251,114,153,0.25)' },
+  announceHeaderText: { color: '#fb7299' },
   exitFullscreenBtn: { position: 'absolute', top: 28, right: 16, zIndex: 1001, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.62)' },
   exitFullscreenText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  announcePill: { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(255,140,22,0.20)', borderWidth: 1, borderColor: 'rgba(255,140,22,0.3)', marginVertical: 4 },
-  announcePillText: { color: '#fa8c16', fontSize: 11, fontWeight: '700' },
-  announcePanel: { zIndex: 31, borderRadius: 12, backgroundColor: 'rgba(20,20,20,0.85)', borderWidth: 1, borderColor: 'rgba(255,140,22,0.2)', marginHorizontal: 8, marginBottom: 4, overflow: 'hidden' },
-  announcePanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,140,22,0.15)' },
-  announcePanelTitle: { color: '#fa8c16', fontSize: 12, fontWeight: '800', flex: 1 },
-  announcePanelBtns: { flexDirection: 'row', gap: 6 },
-  announceSmallBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(255,140,22,0.18)' },
-  announceSmallBtnText: { color: '#fa8c16', fontSize: 10, fontWeight: '700' },
-  announcePanelBody: { paddingHorizontal: 12, paddingVertical: 8, maxHeight: 140 },
-  announcePanelText: { color: '#eee', fontSize: 12, lineHeight: 20 },
+  announcePill: { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(251,114,153,0.20)', borderWidth: 1, borderColor: 'rgba(251,114,153,0.3)', marginVertical: 4 },
+  announcePillText: { color: '#fb7299', fontSize: 11, fontWeight: '700' },
+  announcePanel: { zIndex: 31, borderRadius: 14, backgroundColor: 'rgba(18,18,20,0.92)', borderWidth: 1, borderColor: 'rgba(251,114,153,0.32)', marginHorizontal: 10, marginBottom: 6, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6 },
+  announcePanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(251,114,153,0.18)' },
+  announcePanelTitle: { color: '#fff', fontSize: 13, fontWeight: '800', flex: 1 },
+  announcePanelBtns: { flexDirection: 'row', gap: 8 },
+  announceSmallBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(251,114,153,0.16)' },
+  announceSmallBtnText: { color: '#fb7299', fontSize: 11, fontWeight: '700' },
+  announcePanelBody: { paddingHorizontal: 14, paddingVertical: 10, maxHeight: 150 },
+  announcePanelText: { color: '#f2f2f2', fontSize: 12.5, lineHeight: 21 },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },
   vlcGate: { flex: 1, backgroundColor: '#050505', justifyContent: 'center', padding: 22 },

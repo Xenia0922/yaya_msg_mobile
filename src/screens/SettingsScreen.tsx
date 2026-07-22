@@ -138,7 +138,7 @@ export default function SettingsScreen() {
           {' '}二次开发的移动端版本，感谢原作者的开源贡献。
         </Text>
         <TouchableOpacity style={styles.linkRow} onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile')}>
-          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>数据来源仓库</Text>
+          <Text style={[styles.linkRowLabel, isDark && styles.textLight]}>本项目仓库</Text>
           <Text style={styles.linkRowValue}>Xenia0922/yaya_msg_mobile ↗</Text>
         </TouchableOpacity>
 

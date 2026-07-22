@@ -22,6 +22,7 @@ import { BilibiliLiveRoom } from '../types';
 import { externalApi } from '../api/external';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage } from '../utils/data';
+import { setLiveImmersiveMode } from '../native/LivePlayer';
 import { getPlayerHtml } from '../components/media/player';
 import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel } from '../components/media/PlayerChrome';
 
@@ -39,6 +40,7 @@ export default function BilibiliLiveScreen() {
   const [playerError, setPlayerError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(false);
   const [paused, setPaused] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   // 控制条沉浸显隐（B站式：点击画面切换，播放中 3 秒无操作自动隐藏）
@@ -99,18 +101,22 @@ export default function BilibiliLiveScreen() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
-  // 横屏/全屏联动：一次点击「横屏」即进入横屏全屏沉浸，再点退出
+  // 横屏/全屏解耦：全屏=沉浸+横屏；横屏切换=仅旋转。两者任一为真即锁定横屏。
   useEffect(() => {
+    const wantLandscape = isFullscreen || isLandscape;
+    setLiveImmersiveMode(!!streamUrl && isFullscreen);
     ScreenOrientation.lockAsync(
-      isFullscreen ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      wantLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP,
     ).catch(() => {});
-  }, [isFullscreen]);
+  }, [isFullscreen, isLandscape, streamUrl]);
 
   const closePlayer = () => {
     setCandidates([]);
     setActiveRoom(null);
     setPlayerError('');
     setIsFullscreen(false);
+    setIsLandscape(false);
+    setLiveImmersiveMode(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   };
 
@@ -147,7 +153,8 @@ export default function BilibiliLiveScreen() {
       setCandidates(list);
       setStatus('');
       showControls();
-      setIsFullscreen(true); // 进入直播间即自动横屏全屏（用户偏好：B站直播只看横屏）
+      setIsLandscape(true);
+      setIsFullscreen(true); // 进入直播间即自动横屏+全屏沉浸（用户偏好：B站直播只看横屏）
     } catch (error) {
       setStatus(`获取直播流失败：${errorMessage(error)}`);
     } finally {
@@ -235,6 +242,7 @@ export default function BilibiliLiveScreen() {
             title={streamTitle || 'B站直播'}
             subtitle={`线路 ${candidateIndex + 1}/${candidates.length} · ${currentCandidate?.formatName || 'unknown'}`}
             onMore={() => setMoreVisible(true)}
+            onRefresh={() => activeRoom && startWatch(activeRoom)}
           />
         </Animated.View>
 
@@ -248,8 +256,8 @@ export default function BilibiliLiveScreen() {
             showDanmaku={false}
             onTogglePlay={() => setPaused((p) => !p)}
             onSeek={() => {}}
-            onRefresh={() => activeRoom && startWatch(activeRoom)}
-            onRotate={() => setIsFullscreen((v) => !v)}
+            onRotate={() => setIsLandscape((v) => !v)}
+            onFullscreen={() => setIsFullscreen((v) => !v)}
           />
         </Animated.View>
 
