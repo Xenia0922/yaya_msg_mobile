@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // 口袋48官网源的音乐对象只有 mp3/artist/title，没有封面图。
 // 这里用「歌名哈希 -> 固定调色板」生成确定性渐变封面（每首歌配色稳定），
@@ -46,24 +47,19 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
   const [errored, setErrored] = React.useState(false);
   // 关键修复：uri 变化（FlatList 回收单元格复用本组件实例去显示另一首歌）时，
   // 必须重置 errored。否则上一首封面加载失败的 errored=true 会被带到本该有封面的
-  // 新歌上，导致它错误地显示成「无封面/白块」。现象即「每首歌都白过 + 播过的歌返回后变白」。
+  // 新歌上，导致它错误地显示成「无封面」。现象即「每首歌都白过 + 播过的歌返回后变白」。
   React.useEffect(() => { setErrored(false); }, [uri]);
   const boxStyle: any = fill
     ? { width: '100%', height: '100%', borderRadius: round ? 999 : 0 }
     : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
-  const inner = (fill ? 0 : size || 0) * 0.42 || 64;
-  const initial = (title || '♪').replace(/\s/g, '').charAt(0) || '♪';
-
-  // 渐变 + 首字永远作为底图渲染；图片叠加在上层。
-  // 这样即使某些 coverUrl 是坏链、RN 未触发 onError（静默失败），
-  // 底下仍有彩色渐变 + 首字兜底，不可能出现「纯白块」。图片加载成功则盖住底图。
   const showImage = !!uri && !errored;
+  const iconSize = fill ? 44 : Math.round((size || 0) * 0.34);
+
+  // 有封面图 → 只显示图片，绝不叠加任何文字（修复「歌名首字压在封面上」的叠字问题）。
+  // 无封面 / 加载失败 → 显示确定性渐变 + 居中音符图标兜底，干净、不空白、不叠字。
   return (
     <View style={[styles.box, boxStyle, { backgroundColor: c1 }]}>
-      <View style={[styles.overlay, { backgroundColor: c2, opacity: 0.55, transform: [{ rotate: '35deg' }] }]} />
-      {!fill ? (
-        <View style={[styles.ring, { width: inner, height: inner, borderRadius: inner / 2, borderColor: 'rgba(255,255,255,0.85)' }]} />
-      ) : null}
+      <View style={[styles.overlay, { backgroundColor: c2, opacity: 0.5, transform: [{ rotate: '35deg' }] }]} />
       {showImage ? (
         <Image
           source={{ uri }}
@@ -74,21 +70,9 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
           fadeDuration={0}
           onError={() => setErrored(true)}
         />
-      ) : null}
-      <Text
-        style={[
-          styles.initial,
-          {
-            color: '#fff',
-            fontSize: fill ? 0 : (size || 0) * 0.3,
-            textShadowColor: 'rgba(0,0,0,0.18)',
-            textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 2,
-          },
-        ]}
-      >
-        {initial}
-      </Text>
+      ) : (
+        <MaterialCommunityIcons name="music" size={iconSize} color="rgba(255,255,255,0.92)" />
+      )}
       {active ? <View style={[styles.activeDot, { backgroundColor: '#fff' }]} /> : null}
     </View>
   );
@@ -97,7 +81,5 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
 const styles = StyleSheet.create({
   box: { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   overlay: { position: 'absolute', left: '-30%', top: '-30%', width: '160%', height: '160%' },
-  ring: { position: 'absolute', borderWidth: 1.5 },
-  initial: { fontWeight: '800' },
   activeDot: { position: 'absolute', right: 6, bottom: 6, width: 10, height: 10, borderRadius: 5 },
 });
