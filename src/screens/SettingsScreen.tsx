@@ -113,7 +113,7 @@ export default function SettingsScreen() {
 
       <Section title="关于 牙牙消息" isDark={isDark}>
         <View style={[styles.aboutHero, isDark && styles.aboutHeroDark]}>
-          <Image source={require('../../assets/icon.png')} style={styles.aboutLogoImg} />
+          <Image source={require('../../assets/logo.jpg')} style={styles.aboutLogoImg} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.aboutName, isDark && styles.textLight]}>牙牙消息</Text>
             <Text style={[styles.aboutSub, isDark && styles.textSubLight]}>Yaya Message · 口袋48 第三方客户端</Text>
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
   toggleOn: { backgroundColor: '#ff6f91' },
   toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
   toggleKnobOn: { transform: [{ translateX: 20 }] },
-  aboutHero: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  aboutHero: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderRadius: 12, overflow: 'hidden' },
   aboutName: { fontSize: 22, fontWeight: '900', color: '#222' },
   aboutSub: { fontSize: 12, color: '#666', marginTop: 4 },
   aboutVer: { fontSize: 12, color: '#999', marginTop: 2 },

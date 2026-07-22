@@ -55,6 +55,17 @@ export const MusicEngine = {
       lyrics: [],
       error: null,
     });
+    // 若解析器已就绪，提前把播放地址解析并写入 url（保持 paused 不自动播放）。
+    // 这样「按播放键」只需做一次 state 翻转（setPlaybackState），不走异步 resume 路径，更稳。
+    // 解析失败则留空，按原生 onError 兜底跳过，不影响其它曲。
+    if (this._urlResolver) {
+      Promise.resolve()
+        .then(() => this._urlResolver!(track))
+        .then((resolved) => {
+          if (resolved) useMusicPlayerStore.setState({ url: resolved });
+        })
+        .catch(() => { /* 解析失败，忽略，按 onError 兜底 */ });
+    }
   },
 
   /** Play a specific track. Optionally sets queue at the same time. */

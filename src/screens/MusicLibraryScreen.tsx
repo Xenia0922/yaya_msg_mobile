@@ -3,6 +3,7 @@ import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -109,9 +110,10 @@ export default function MusicLibraryScreen() {
 
   const playSong = (item: any) => {
     // 队列 = 当前展示列表（团体筛选 / 搜索结果 / 收藏列表），而非全部歌曲。
-    // 注意：进入播放页不自动播放——仅载入队列并定位到该曲（保留进度记忆），
+    // 进入播放页但不自动播放：载入队列并定位到该曲（保留进度记忆），打开播放页，
     // 真正播放等用户按播放键，避免「一进去就自动播放」。
     MusicEngine.loadQueueAt(item, filteredSongs);
+    setShowFullScreen(true);
   };
 
   return (
@@ -128,13 +130,18 @@ export default function MusicLibraryScreen() {
         placeholderTextColor={isDark ? '#aaa' : '#4a4a4a'}
         style={[styles.searchInput, isDark && styles.searchInputDark]}
       />
-      <View style={styles.groups}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.groups}
+        style={styles.groupsWrap}
+      >
         {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48','FAV'].map(g => (
           <TouchableOpacity key={g} onPress={() => setGroup(g)} style={[styles.gChip, group === g && styles.gChipOn]}>
             <Text style={[styles.gText, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
       {status ? (
         <View pointerEvents="none" style={styles.statusOverlay}>
           <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text>
@@ -247,7 +254,8 @@ const styles = StyleSheet.create({
   disabledText: { opacity: 0.45 },
   searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
   searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
-  groups: { flexDirection: 'row', paddingHorizontal: 12, marginBottom: 4, gap: 6 },
+  groups: { flexDirection: 'row', paddingHorizontal: 12, gap: 6 },
+  groupsWrap: { marginBottom: 4 },
   gChip: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
   gChipOn: { backgroundColor: '#ff6f91' },
   gText: { fontSize: 12, color: '#555', fontWeight: '600' },
