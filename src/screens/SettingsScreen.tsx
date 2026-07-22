@@ -191,7 +191,6 @@ export default function SettingsScreen() {
             <Text style={styles.linkText}>运行日志</Text>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.sub, isDark && styles.textSubLight]}>记录运行信息、报错与 JS 闪退，便于排查优化</Text>
       </Section>
 
       <Section title="成员数据" isDark={isDark}>
