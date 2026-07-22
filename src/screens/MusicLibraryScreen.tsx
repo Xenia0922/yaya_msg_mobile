@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
-  FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -52,13 +52,6 @@ export default function MusicLibraryScreen() {
   const [group, setGroup] = useState(() => useMusicPlayerStore.getState().libraryGroup || 'ALL');
   const onQueryChange = (q: string) => { setQuery(q); useMusicPlayerStore.getState().setLibraryQuery(q); };
   const GROUP_TABS = ['ALL', 'SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'FAV'];
-  const groupTabWidth = (g: string) => (g === 'FAV' ? 104 : 72);
-  const GROUP_OFFSETS: number[] = (() => {
-    const out: number[] = [];
-    let acc = 0;
-    for (const g of GROUP_TABS) { out.push(acc); acc += groupTabWidth(g) + 8; }
-    return out;
-  })();
   const onGroupChange = (g: string) => { setGroup(g); useMusicPlayerStore.getState().setLibraryGroup(g); };
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
@@ -159,20 +152,30 @@ export default function MusicLibraryScreen() {
         placeholderTextColor={isDark ? '#aaa' : '#4a4a4a'}
         style={[styles.searchInput, isDark && styles.searchInputDark]}
       />
-      <FlatList
+      <ScrollView
         horizontal
-        data={GROUP_TABS}
-        keyExtractor={(g) => g}
         showsHorizontalScrollIndicator={false}
-        getItemLayout={(_, index) => ({ length: groupTabWidth(GROUP_TABS[index]), offset: GROUP_OFFSETS[index], index })}
-        contentContainerStyle={styles.groups}
+        removeClippedSubviews={false}
+        collapsable={false}
         style={styles.groupsWrap}
-        renderItem={({ item: g }) => (
-          <TouchableOpacity onPress={() => onGroupChange(g)} style={[styles.gChip, isDark && styles.gChipDark, group === g && styles.gChipOn, g === 'FAV' && styles.gChipFav]}>
-            <Text numberOfLines={1} style={[styles.gText, isDark && styles.gTextDark, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
+        contentContainerStyle={styles.groups}
+      >
+        {GROUP_TABS.map((g, idx) => (
+          <TouchableOpacity
+            key={g}
+            onPress={() => onGroupChange(g)}
+            style={[
+              styles.gChip, isDark && styles.gChipDark, group === g && styles.gChipOn,
+              g === 'FAV' && styles.gChipFav,
+              idx < GROUP_TABS.length - 1 && styles.gChipGap,
+            ]}
+          >
+            <Text numberOfLines={1} style={[styles.gText, isDark && styles.gTextDark, group === g && styles.gTextOn]}>
+              {g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}
+            </Text>
           </TouchableOpacity>
-        )}
-      />
+        ))}
+      </ScrollView>
       {status ? (
         <View pointerEvents="none" style={styles.statusOverlay}>
           <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text>
@@ -285,13 +288,14 @@ const styles = StyleSheet.create({
   disabledText: { opacity: 0.45 },
   searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
   searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
-  // 横向 ScrollView 必须给显式高度并让 chip 固定高度 + flexShrink:0（绝不伸缩），
-  // 否则在 flex 列里 ScrollView 高度不稳定：①无高度时会纵向裁掉文字（标签下半被遮挡）；
-  // ②内容容器在部分机型被拉伸成宽标签（切到后几个标签时标签变特别宽）。
-  // 文字不加 lineHeight/includeFontPadding，用 Android 默认行高，杜绝纵向裁字。
-  groups: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 },
+  // 横向标签栏：用纯 ScrollView（非 FlatList/虚拟化列表），所有子项始终保持挂载，
+  // 杜绝 Yoga 在屏幕外 item 进入视口时重新测量导致标签异常拉伸。
+  // 每 chip 固定宽度 + flexShrink:0 + flexGrow:0（绝不伸缩），显式高度防纵向裁切。
+  // gap 在 ScrollView contentContainerStyle 中可能触发额外测量，改用 marginRight。
+  groups: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
   groupsWrap: { marginTop: 2, marginBottom: 8, width: '100%', height: 40 },
   gChip: { width: 72, height: 28, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', flexShrink: 0, flexGrow: 0, alignItems: 'center', justifyContent: 'center' },
+  gChipGap: { marginRight: 8 },
   gChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
   gChipOn: { backgroundColor: '#ff6f91' },
   gChipFav: { width: 104 },

@@ -142,11 +142,42 @@ function findRecordForAlbum(recordsMap: Map<string, any>, album: string): any {
   const normalizedAlbum = normalizeAlbumName(album);
   const exact = recordsMap.get(album) || recordsMap.get(normalizedAlbum);
   if (exact) return exact;
-  const records = recordsMap.get('__records') || [];
+  const records: any[] = recordsMap.get('__records') || [];
   return records.find((record: any) => {
     const normalizedTitle = normalizeAlbumName(record.title);
     return normalizedTitle && (normalizedAlbum.includes(normalizedTitle) || normalizedTitle.includes(normalizedAlbum));
   }) || null;
+}
+
+/** 用歌曲标题做词级模糊匹配 records（比 findRecordForAlbum 的 includes 更精准） */
+function findRecordByTitleFuzzy(recordsMap: Map<string, any>, title: string): any {
+  if (!title) return null;
+  const nt = normalizeAlbumName(title);
+  if (!nt || nt.length < 2) return null;
+  // 先精确
+  const exact = recordsMap.get(title) || recordsMap.get(nt);
+  if (exact && exact.image) return exact;
+  const records: any[] = recordsMap.get('__records') || [];
+  // 拆分歌名为词（按常见分隔符），至少 2 个字符的词才参与匹配
+  const titleWords = nt.split(/[\s\-_·、，,.·]+/).filter((w) => w.length >= 2);
+  if (titleWords.length === 0) return null;
+  let best: any = null;
+  let bestScore = 0;
+  for (const r of records) {
+    if (!r.image) continue;
+    const rn = normalizeAlbumName(r.title);
+    if (!rn) continue;
+    const recordWords = rn.split(/[\s\-_·、，,.·]+/).filter((w) => w.length >= 2);
+    // 计算共有词数
+    const common = titleWords.filter((tw) => recordWords.some((rw) => rw.includes(tw) || tw.includes(rw)));
+    const score = common.length;
+    // 要求至少 2 个词匹配，或唯一长词（≥5字符）精确包含在 record 名中
+    if (score >= 2 && score > bestScore) { bestScore = score; best = r; }
+    else if (score === 1 && titleWords.length === 1 && titleWords[0].length >= 5 && rn.includes(titleWords[0])) {
+      if (1 > bestScore) { bestScore = 1; best = r; }
+    }
+  }
+  return best;
 }
 
 // 由 mp3 文件名前缀推断「音频分组键」，用于 SNH 的 前缀→专辑 映射
@@ -283,7 +314,13 @@ function buildSongRecordMap(songsData: any): Map<string, any> {
   return songRecordMap;
 }
 
-function buildTracks(group: { key: string; label: string }, list: any[], recordsMap: Map<string, any>, songRecordMap: Map<string, any>): OfficialSiteTrack[] {
+function buildTracks(
+  group: { key: string; label: string },
+  list: any[],
+  recordsMap: Map<string, any>,
+  songRecordMap: Map<string, any>,
+  globalRecordsMap?: Map<string, any>,
+): OfficialSiteTrack[] {
   const sourceList: any[] = [];
   const seenSourceKeys = new Set<string>();
   (Array.isArray(list) ? list : []).forEach((item) => {
@@ -342,8 +379,27 @@ function buildTracks(group: { key: string; label: string }, list: any[], records
       if (record && record.title) {
         album = record.title;
       }
-      const singer = (record && record.team) || group.label;
-      const coverUrl = record && record.image ? record.image : '';
+      let singer = (record && record.team) || group.label;
+      let coverUrl = record && record.image ? record.image : '';
+      // 兜底 1：当前团 records 中用歌曲标题做词级模糊匹配（比 album 匹配更广）
+      if (!coverUrl) {
+        const titleRecordFuzzy = findRecordByTitleFuzzy(recordsMap, item && item.title);
+        if (titleRecordFuzzy && titleRecordFuzzy.image) {
+          coverUrl = titleRecordFuzzy.image;
+          if (!album && titleRecordFuzzy.title) album = titleRecordFuzzy.title;
+          record = titleRecordFuzzy;
+          singer = (record && record.team) || singer;
+        }
+      }
+      // 兜底 2：跨团全局 records 精确匹配（仅当全局 record 标题精确包含歌名且 record 有封面时采用）
+      if (!coverUrl && globalRecordsMap && globalRecordsMap.size > 0) {
+        const globalMatch = findRecordForAlbum(globalRecordsMap, item && item.title);
+        if (globalMatch && globalMatch.image) {
+          coverUrl = globalMatch.image;
+          if (!album && globalMatch.title) album = globalMatch.title;
+          singer = (globalMatch && globalMatch.team) || singer;
+        }
+      }
       return {
         id: `${group.key}-${index}`,
         musicId: mp3,
@@ -366,7 +422,7 @@ function buildTracks(group: { key: string; label: string }, list: any[], records
     .filter(Boolean) as OfficialSiteTrack[];
 }
 
-const CACHE_KEY = 'yaya_official_site_music_cache_v4';
+const CACHE_KEY = 'yaya_official_site_music_cache_v5';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 export async function loadOfficialSiteMusic(force = false): Promise<OfficialSiteTrack[]> {
@@ -383,31 +439,49 @@ export async function loadOfficialSiteMusic(force = false): Promise<OfficialSite
       /* ignore cache errors */
     }
   }
-  const results = await Promise.allSettled(
+  // 第一轮：拉取所有团的脚本并提取 records（用于构建跨团全局兜底匹配）
+  const groupDataArr = await Promise.allSettled(
     GROUPS.map(async (group) => {
       const text = await fetchScriptText(`${SCRIPT_BASE}/${group.script}`);
       const list = extractAssignedValue(text, group.listVar);
       let recordsMap = new Map<string, any>();
       let songRecordMap = new Map<string, any>();
-      try {
-        recordsMap = buildRecordMap(extractAssignedValue(text, group.recordsVar));
-      } catch {
-        /* ignore */
-      }
-      try {
-        songRecordMap = buildSongRecordMap(extractAssignedValue(text, group.songsVar));
-      } catch {
-        /* ignore */
-      }
-      return buildTracks(group, list, recordsMap, songRecordMap);
+      try { recordsMap = buildRecordMap(extractAssignedValue(text, group.recordsVar)); } catch { /* ignore */ }
+      try { songRecordMap = buildSongRecordMap(extractAssignedValue(text, group.songsVar)); } catch { /* ignore */ }
+      return { group, list, recordsMap, songRecordMap };
     }),
   );
+
+  // 构建全局 records map（跨团兜底）
+  const globalRecordsMap = new Map<string, any>();
+  const globalRecordsList: any[] = [];
+  for (const r of groupDataArr) {
+    if (r.status !== 'fulfilled') continue;
+    const records: any[] = r.value.recordsMap.get('__records') || [];
+    for (const rec of records) {
+      if (!rec.image) continue;
+      const title = String(rec.title || '').trim();
+      if (!title) continue;
+      globalRecordsMap.set(title, rec);
+      globalRecordsMap.set(normalizeAlbumName(title), rec);
+      globalRecordsList.push(rec);
+    }
+  }
+  globalRecordsMap.set('__records', globalRecordsList);
+
+  // 第二轮：为每个团构建 tracks，传入全局兜底 map
+  const tracksArr = groupDataArr.map((r) => {
+    if (r.status !== 'fulfilled') return [];
+    const { group, list, recordsMap, songRecordMap } = r.value;
+    return buildTracks(group, list, recordsMap, songRecordMap, globalRecordsMap);
+  });
+
   const all: OfficialSiteTrack[] = [];
-  results.forEach((r) => {
-    if (r.status === 'fulfilled' && Array.isArray(r.value)) all.push(...r.value);
+  tracksArr.forEach((tracks) => {
+    if (Array.isArray(tracks)) all.push(...tracks);
   });
   if (all.length === 0) {
-    const anyRejected = results.find((r) => r.status === 'rejected');
+    const anyRejected = groupDataArr.find((r) => r.status === 'rejected');
     if (anyRejected && (anyRejected as PromiseRejectedResult).reason) {
       throw (anyRejected as PromiseRejectedResult).reason;
     }
