@@ -276,12 +276,16 @@ const styles = StyleSheet.create({
   disabledText: { opacity: 0.45 },
   searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
   searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
-  groups: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8, paddingVertical: 4 },
-  groupsWrap: { marginTop: 2, marginBottom: 10, width: '100%' },
-  gChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.06)', flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
+  // 横向 ScrollView 必须给显式高度并让 chip 固定高度 + flexShrink:0（绝不伸缩），
+  // 否则在 flex 列里 ScrollView 高度不稳定：①无高度时会纵向裁掉文字（标签下半被遮挡）；
+  // ②内容容器在部分机型被拉伸成宽标签（切到后几个标签时标签变特别宽）。
+  // 文字不加 lineHeight/includeFontPadding，用 Android 默认行高，杜绝纵向裁字。
+  groups: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 },
+  groupsWrap: { marginTop: 2, marginBottom: 8, width: '100%', height: 40 },
+  gChip: { height: 28, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   gChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
   gChipOn: { backgroundColor: '#ff6f91' },
-  gText: { fontSize: 13, lineHeight: 18, color: '#555', fontWeight: '600', includeFontPadding: false },
+  gText: { fontSize: 13, color: '#555', fontWeight: '600' },
   gTextDark: { color: '#d6d6d6' },
   gTextOn: { color: '#fff' },
   status: { color: '#ff6f91', fontSize: 12, fontWeight: '700' },

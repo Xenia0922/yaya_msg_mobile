@@ -71,7 +71,12 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
           onError={() => setErrored(true)}
         />
       ) : (
-        <MaterialCommunityIcons name="music" size={iconSize} color="rgba(255,255,255,0.92)" />
+        <MaterialCommunityIcons
+          name="music"
+          size={iconSize}
+          color="rgba(255,255,255,0.95)"
+          style={{ textShadowColor: 'rgba(0,0,0,0.38)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }}
+        />
       )}
       {active ? <View style={[styles.activeDot, { backgroundColor: '#fff' }]} /> : null}
     </View>
