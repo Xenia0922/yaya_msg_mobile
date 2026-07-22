@@ -43,20 +43,24 @@ interface Props {
 
 export default function CoverArt({ uri, title, size, fill, round, active }: Props) {
   const [c1, c2] = PALETTE[hashStr(title || '♪') % PALETTE.length];
+  const [errored, setErrored] = React.useState(false);
   const boxStyle: any = fill
     ? { width: '100%', height: '100%', borderRadius: round ? 999 : 0 }
     : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
   const inner = (fill ? 0 : size || 0) * 0.42 || 64;
   const initial = (title || '♪').replace(/\s/g, '').charAt(0) || '♪';
 
-  if (uri) {
+  // 图片加载失败时回退到确定性渐变占位，绝不留下空白（避免「封面变白加载不回来」）
+  if (uri && !errored) {
     return (
       <Image
         source={{ uri }}
         style={boxStyle}
         resizeMode="cover"
-        // 用 resize 解码到目标尺寸，避免 Android 默认 scale 导致的发糊
-        resizeMethod="resize"
+        // scale：保留原图分辨率由 GPU 缩放，比 resize 预解码缩放更锐利（修复封面发糊）
+        resizeMethod="scale"
+        fadeDuration={0}
+        onError={() => setErrored(true)}
       />
     );
   }

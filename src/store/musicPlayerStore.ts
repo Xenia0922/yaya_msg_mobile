@@ -41,6 +41,8 @@ interface MusicPlayerState {
   error: string | null;
   // 已下架/无效（服务端删除）的歌曲 id，用于列表中标注，避免用户以为「音乐不见了」
   failedIds: string[];
+  // 收藏歌曲的 musicId 列表（持久化）
+  favorites: string[];
   // 续播：记忆恢复后首次播放要跳到的进度（不持久化）
   pendingSeek: number | null;
 
@@ -59,6 +61,8 @@ interface MusicPlayerState {
   setError: (e: string | null) => void;
   addFailedId: (id: string) => void;
   setPendingSeek: (p: number | null) => void;
+  isFavorite: (id: string) => boolean;
+  toggleFavorite: (id: string) => void;
   next: () => Track | null;
   prev: () => Track | null;
 }
@@ -90,6 +94,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       lyrics: [],
       error: null,
       failedIds: [],
+      favorites: [],
       pendingSeek: null,
 
       setQueue: (tracks) => set({ queue: tracks, currentIndex: tracks.length > 0 ? 0 : -1 }),
@@ -146,6 +151,16 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
 
       setPendingSeek: (pendingSeek) => set({ pendingSeek }),
 
+      isFavorite: (id) => get().favorites.includes(id),
+
+      toggleFavorite: (id) => set((s) => {
+        if (!id) return s;
+        if (s.favorites.includes(id)) {
+          return { favorites: s.favorites.filter((f) => f !== id) };
+        }
+        return { favorites: [...s.favorites, id] };
+      }),
+
       next: () => {
         const s = get();
         if (s.queue.length === 0) return null;
@@ -173,6 +188,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
         coverUrl: s.coverUrl,
         playMode: s.playMode,
         failedIds: s.failedIds,
+        favorites: s.favorites,
         lyrics: s.lyrics,
         duration: s.duration,
       }),

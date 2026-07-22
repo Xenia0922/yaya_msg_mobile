@@ -22,6 +22,7 @@ import MiniPlayerBar from '../components/MiniPlayerBar';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import CoverArt from '../components/CoverArt';
 import { SkeletonGrid } from '../components/Skeleton';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function MusicLibraryScreen() {
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
@@ -31,6 +32,8 @@ export default function MusicLibraryScreen() {
   const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
   const queue = useMusicPlayerStore((s) => s.queue);
   const playMode = useMusicPlayerStore((s) => s.playMode);
+  const favorites = useMusicPlayerStore((s) => s.favorites);
+  const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
   const [songs, setSongs] = useState<any[]>([]);
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('ALL');
@@ -46,10 +49,11 @@ export default function MusicLibraryScreen() {
   const filteredSongs = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     let list = songs;
-    if (group !== 'ALL') list = list.filter(item => (item.groupLabel || '') === group);
+    if (group === 'FAV') list = list.filter(item => favorites.includes(String(item.musicId || item.id || '')));
+    else if (group !== 'ALL') list = list.filter(item => (item.groupLabel || '') === group);
     if (keyword) list = list.filter(item => [item.title, item.artist, item.album, item.groupLabel].filter(Boolean).join(' ').toLowerCase().includes(keyword));
     return list;
-  }, [query, songs, group]);
+  }, [query, songs, group, favorites]);
 
   // 官方音乐库：从口袋48官网静态 JS 脚本一次拉全部曲库（无 token、无分页）。
   // 之前的移动端实现错用了 /media/api 移动端接口，未登录只返回约 56 首公开子集，
@@ -90,7 +94,8 @@ export default function MusicLibraryScreen() {
   }, []);
 
   const playSong = (item: any) => {
-    MusicEngine.playTrack(item, songs);
+    // 队列 = 当前展示列表（团体筛选 / 搜索结果 / 收藏列表），而非全部歌曲
+    MusicEngine.playTrack(item, filteredSongs);
   };
 
   return (
@@ -108,9 +113,9 @@ export default function MusicLibraryScreen() {
         style={[styles.searchInput, isDark && styles.searchInputDark]}
       />
       <View style={styles.groups}>
-        {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48'].map(g => (
+        {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48','FAV'].map(g => (
           <TouchableOpacity key={g} onPress={() => setGroup(g)} style={[styles.gChip, group === g && styles.gChipOn]}>
-            <Text style={[styles.gText, group === g && styles.gTextOn]}>{g}</Text>
+            <Text style={[styles.gText, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -130,7 +135,7 @@ export default function MusicLibraryScreen() {
       ) : (
       <PerfFlatList
           data={filteredSongs}
-          keyExtractor={(item, index) => String(item.musicId || item.id || index)}
+          keyExtractor={(item, index) => `${item.groupKey || ''}-${item.musicId || item.id || ''}-${index}`}
           numColumns={2}
           removeClippedSubviews={false}
           contentContainerStyle={[styles.listContent, playbackState !== 'idle' && { paddingBottom: 80 }]}
@@ -147,6 +152,21 @@ export default function MusicLibraryScreen() {
               >
                 <View style={styles.coverWrap}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
+                  <TouchableOpacity
+                    style={styles.favBtn}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      const fid = String(item.musicId || item.id || '');
+                      if (fid) toggleFavorite(fid);
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name={favorites.includes(String(item.musicId || item.id || '')) ? 'heart' : 'heart-outline'}
+                      size={20}
+                      color={favorites.includes(String(item.musicId || item.id || '')) ? '#ff3b5c' : '#fff'}
+                    />
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.songInfo}>
                   <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
@@ -225,6 +245,7 @@ const styles = StyleSheet.create({
   cardDark: { backgroundColor: 'rgba(20,20,20,0.72)' },
   songItemActive: { borderWidth: 2, borderColor: '#ff6f91' },
   coverWrap: { width: '100%', aspectRatio: 1, backgroundColor: '#111' },
+  favBtn: { position: 'absolute', top: 6, right: 6, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.32)' },
   coverImg: { width: '100%', height: '100%' },
   coverPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e8e8e8' },
   coverPlaceholderText: { color: '#fff', fontSize: 28, fontWeight: '800', opacity: 0.5 },

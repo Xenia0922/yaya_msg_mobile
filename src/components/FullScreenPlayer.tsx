@@ -48,8 +48,12 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   const position = useMusicPlayerStore((s) => s.position);
   const lyrics = useMusicPlayerStore((s) => s.lyrics);
   const coverUrl = useMusicPlayerStore((s) => s.coverUrl);
+  const favorites = useMusicPlayerStore((s) => s.favorites);
+  const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
   const [showQueue, setShowQueue] = useState(false);
   const track = queue[currentIndex] || null;
+  const trackFavId = track ? String(track.musicId || track.id || '') : '';
+  const isFav = trackFavId ? favorites.includes(trackFavId) : false;
 
   const isPlaying = playbackState === 'playing';
   const progress = duration > 0 ? position / duration : 0;
@@ -165,6 +169,9 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
           </View>
           <Pressable onPress={() => setShowLyrics(!showLyrics)} style={styles.topBtn}>
             <Text style={[styles.topBtnT, lyrics.length > 0 && styles.topBtnOn]}>词</Text>
+          </Pressable>
+          <Pressable onPress={() => { if (trackFavId) toggleFavorite(trackFavId); }} style={styles.topBtn}>
+            <Icon name={isFav ? 'heart' : 'heart-outline'} size={20} color={isFav ? '#ff3b5c' : (isDark ? '#ccc' : '#666')} />
           </Pressable>
         </View>
 

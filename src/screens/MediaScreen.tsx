@@ -644,6 +644,8 @@ export default function MediaScreen() {
   // 播放器控制条（B站式沉浸：点击视频区显隐，播放中自动隐藏）
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
+  // 公告面板 top 偏移：顶栏可见时位于顶栏之下（不重叠），顶/底栏自动隐藏后平滑上滑贴近顶部
+  const announceTopAnim = useRef(new Animated.Value(96)).current;
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pausedRef = useRef(paused);
   const seekLockRef = useRef(0);
@@ -651,11 +653,15 @@ export default function MediaScreen() {
   const showControls = useCallback((autoHide = true) => {
     setControlsVisible(true);
     Animated.timing(controlsOpacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    // 顶栏可见 → 公告面板停在顶栏之下（top≈96）
+    Animated.timing(announceTopAnim, { toValue: 96, duration: 180, useNativeDriver: false }).start();
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
     if (autoHide && !pausedRef.current) {
       hideControlsTimer.current = setTimeout(() => {
         setControlsVisible(false);
         Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+        // 顶/底栏自动隐藏 → 公告面板上滑贴近顶部（top≈12）
+        Animated.timing(announceTopAnim, { toValue: 12, duration: 180, useNativeDriver: false }).start();
       }, 3000);
     }
   }, [controlsOpacity]);
@@ -663,6 +669,7 @@ export default function MediaScreen() {
     if (controlsVisible) {
       setControlsVisible(false);
       Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+      Animated.timing(announceTopAnim, { toValue: 12, duration: 180, useNativeDriver: false }).start();
     } else {
       showControls();
     }
@@ -1114,7 +1121,7 @@ export default function MediaScreen() {
         </Animated.View>
 
         {announceExpanded && announceVisible && announcement ? (
-          <View style={styles.announcePanel}>
+          <Animated.View style={[styles.announcePanel, { top: announceTopAnim }]}>
             <View style={styles.announcePanelTop}>
               <Text style={styles.announcePanelTitle} numberOfLines={1}>📢 公告</Text>
               <View style={styles.announcePanelBtns}>
@@ -1129,7 +1136,7 @@ export default function MediaScreen() {
             <ScrollView style={styles.announcePanelBody}>
               <Text style={styles.announcePanelText}>{announcement}</Text>
             </ScrollView>
-          </View>
+          </Animated.View>
         ) : null}
 
         {playing.needsVlc && Platform.OS === 'android' && LiveExoView ? (
@@ -1506,7 +1513,7 @@ const styles = StyleSheet.create({
   exitFullscreenText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   announcePill: { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(251,114,153,0.20)', borderWidth: 1, borderColor: 'rgba(251,114,153,0.3)', marginVertical: 4 },
   announcePillText: { color: '#fb7299', fontSize: 11, fontWeight: '700' },
-  announcePanel: { zIndex: 31, borderRadius: 14, backgroundColor: 'rgba(18,18,20,0.92)', borderWidth: 1, borderColor: 'rgba(251,114,153,0.32)', marginHorizontal: 10, marginBottom: 6, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6 },
+  announcePanel: { position: 'absolute', left: 10, right: 10, zIndex: 29, borderRadius: 14, backgroundColor: 'rgba(18,18,20,0.92)', borderWidth: 1, borderColor: 'rgba(251,114,153,0.32)', marginHorizontal: 0, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6 },
   announcePanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(251,114,153,0.18)' },
   announcePanelTitle: { color: '#fff', fontSize: 13, fontWeight: '800', flex: 1 },
   announcePanelBtns: { flexDirection: 'row', gap: 8 },

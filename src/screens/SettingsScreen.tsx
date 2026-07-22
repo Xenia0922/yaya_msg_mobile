@@ -11,6 +11,7 @@ import {
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
@@ -112,9 +113,7 @@ export default function SettingsScreen() {
 
       <Section title="关于 牙牙消息" isDark={isDark}>
         <View style={[styles.aboutHero, isDark && styles.aboutHeroDark]}>
-          <View style={styles.aboutLogo}>
-            <Text style={styles.aboutLogoText}>牙</Text>
-          </View>
+          <Image source={require('../../assets/icon.png')} style={styles.aboutLogoImg} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.aboutName, isDark && styles.textLight]}>牙牙消息</Text>
             <Text style={[styles.aboutSub, isDark && styles.textSubLight]}>Yaya Message · 口袋48 第三方客户端</Text>
@@ -144,7 +143,7 @@ export default function SettingsScreen() {
 
         <Text style={[styles.blockTitle, isDark && styles.textLight]}>开源协议</Text>
         <Text style={[styles.ackText, isDark && styles.textSubLight]}>
-          基于 MIT 协议开源，仅供学习交流。软件不上传任何数据到云端，仅在本地缓存以维持功能可用。
+          基于 GPL-3.0 协议开源，仅供学习交流。软件不上传任何数据到云端，仅在本地缓存以维持功能可用。完整许可证见仓库 LICENSE 文件。
         </Text>
       </Section>
 
@@ -203,7 +202,7 @@ export default function SettingsScreen() {
           <Text style={[styles.autoSyncText, isDark && styles.textSubLight]}>进入软件时自动同步成员数据</Text>
         </View>
         <Text style={[styles.note, isDark && styles.textSubLight]}>
-          成员数据来自 yk1z 的牙牙消息电脑版，由 yk1z 维护并发布。
+          成员数据共 {memberCount} 位，由本应用维护并发布于 yaya-data.pages.dev，进入软件时自动同步最新。
         </Text>
       </Section>
 
@@ -256,8 +255,7 @@ const styles = StyleSheet.create({
   textLight: { color: '#fff' },
   textSubLight: { color: '#ddd' },
   aboutHeroDark: { backgroundColor: 'rgba(255,111,145,0.10)' },
-  aboutLogo: { width: 52, height: 52, borderRadius: 16, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  aboutLogoText: { color: '#fff', fontSize: 26, fontWeight: '900' },
+  aboutLogoImg: { width: 52, height: 52, borderRadius: 14, marginRight: 12, backgroundColor: '#f0f0f0' },
   verChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(255,111,145,0.14)' },
   verChipText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
   linkCard: { flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 12, borderRadius: 14, backgroundColor: 'rgba(255,111,145,0.08)' },
