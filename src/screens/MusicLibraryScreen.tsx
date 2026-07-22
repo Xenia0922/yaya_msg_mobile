@@ -12,6 +12,7 @@ import {
 import Video from 'react-native-video';
 import officialMediaApi from '../api/officialMedia';
 import { loadOfficialSiteMusic } from '../api/officialSiteMusic';
+import { getR2Music, r2ToTrack } from '../api/r2Music';
 import { useSettingsStore, useUiStore } from '../store';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine, mediaUrl as buildMediaUrl } from '../services/musicPlayer';
@@ -55,17 +56,30 @@ export default function MusicLibraryScreen() {
     return list;
   }, [query, songs, group, favorites]);
 
-  // 官方音乐库：从口袋48官网静态 JS 脚本一次拉全部曲库（无 token、无分页）。
-  // 之前的移动端实现错用了 /media/api 移动端接口，未登录只返回约 56 首公开子集，
-  // 这才导致「列表里好多歌不显示」。改用官网源后拿到的就是完整曲库。
+  // 两路歌曲源合并：
+  //   1) 官网源（口袋48官网静态 JS，一次全量、无 token）—— 完整官方曲库；
+  //   2) yk1z 的 R2 音乐库（/api/r2-music）—— 与官网源并列的第二路源。
+  // 两路都拉，按 (mp3|title|artist) 去重合并，确保「同一首歌的两个源都在列表里」。
   const loadAll = async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
     setStatus('');
     try {
-      const all = await loadOfficialSiteMusic(false);
-      setSongs(all);
+      const [official, r2] = await Promise.all([
+        loadOfficialSiteMusic(false),
+        getR2Music(),
+      ]);
+      const merged = [...official];
+      const seen = new Set(official.map((o: any) => `${o.mp3 || ''}|${o.title || ''}|${o.artist || o.joinMemberNames || ''}`.toLowerCase()));
+      for (const t of r2) {
+        const tr = r2ToTrack(t);
+        const key = `${tr.mp3}|${tr.title}|${tr.artist}`.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(tr);
+      }
+      setSongs(merged);
       setHasMore(false);
     } catch (error) {
       setStatus(`加载失败：${errorMessage(error)}`);
@@ -94,8 +108,10 @@ export default function MusicLibraryScreen() {
   }, []);
 
   const playSong = (item: any) => {
-    // 队列 = 当前展示列表（团体筛选 / 搜索结果 / 收藏列表），而非全部歌曲
-    MusicEngine.playTrack(item, filteredSongs);
+    // 队列 = 当前展示列表（团体筛选 / 搜索结果 / 收藏列表），而非全部歌曲。
+    // 注意：进入播放页不自动播放——仅载入队列并定位到该曲（保留进度记忆），
+    // 真正播放等用户按播放键，避免「一进去就自动播放」。
+    MusicEngine.loadQueueAt(item, filteredSongs);
   };
 
   return (

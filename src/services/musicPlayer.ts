@@ -34,6 +34,29 @@ export const MusicEngine = {
     if (tracks.length > 0) store.play(tracks[0], tracks);
   },
 
+  /**
+   * 载入队列并定位到指定曲目，但不自动播放（不自动续播）。
+   * 用于「点歌进播放页」场景：保留进度记忆，等用户主动按播放键。
+   * 若记忆里有同一首且带进度，会显示迷你栏「已暂停」态，用户点播放后才续播。
+   */
+  loadQueueAt(track: Track, queue?: Track[]) {
+    const store = useMusicPlayerStore.getState();
+    const q = queue || store.queue;
+    const idx = q.findIndex((t) => (t.musicId || t.id) === (track.musicId || track.id));
+    const cover = (track.coverUrl || track.cover || track.thumbPath || '') as string;
+    store.setQueue(q);
+    useMusicPlayerStore.setState({
+      currentIndex: idx >= 0 ? idx : 0,
+      playbackState: 'paused',
+      url: '',
+      coverUrl: cover ? (cover.startsWith('http') ? cover : `https://source.48.cn${cover.startsWith('/') ? cover : '/' + cover}`) : store.coverUrl,
+      duration: 0,
+      position: 0,
+      lyrics: [],
+      error: null,
+    });
+  },
+
   /** Play a specific track. Optionally sets queue at the same time. */
   async playTrack(track: Track, queue?: Track[]) {
     const store = useMusicPlayerStore.getState();

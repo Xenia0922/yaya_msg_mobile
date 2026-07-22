@@ -4,6 +4,8 @@ export const API_BASE = 'https://pocketapi.48.cn';
 
 export const BILIBILI_API = 'https://api.bilibili.com';
 
+// 成员数据权威源：yk1z 数据库（yk1z/yaya_msg 电脑版所用的同一份数据，发布于 yaya-data.pages.dev）。
+// 进入软件由 AppNavigator 调用 ensureMemberData() 无条件同步最新。
 export const MEMBERS_URL = 'https://yaya-data.pages.dev/members.json';
 
 export const APP_VERSION = '2.6.2';

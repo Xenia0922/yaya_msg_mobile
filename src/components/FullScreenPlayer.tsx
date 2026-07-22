@@ -108,15 +108,25 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   // 歌词变化：重置实测偏移数组
   useEffect(() => { lineYOffsets.current = new Array(lyrics.length).fill(0); }, [lyrics]);
 
+  // 黑胶旋转：仅在播放时转，暂停冻结原角度；用「递增值 + 递归 timing」保证 loop 边界不冻结、持续旋转。
   useEffect(() => {
     if (!isPlaying) return;
-    // 不重置到 0：从当前角度继续转，暂停时冻结在原角度，恢复无跳变。
-    // loop 在 1->0 回绕时 interpolate 360°->0° 视觉位置相同，无缝。
-    const loop = Animated.loop(
-      Animated.timing(rotationAnim, { toValue: 1, duration: 12000, easing: Easing.linear, useNativeDriver: true }),
-    );
-    loop.start();
-    return () => { loop.stop(); };
+    let cancelled = false;
+    let current = (rotationAnim as any).__turns ?? 0;
+    const step = () => {
+      if (cancelled) return;
+      const next = current + 1;
+      Animated.timing(rotationAnim, {
+        toValue: next,
+        duration: 12000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && !cancelled) { current = next; (rotationAnim as any).__turns = current; step(); }
+      });
+    };
+    step();
+    return () => { cancelled = true; rotationAnim.stopAnimation(); };
   }, [isPlaying, currentIndex]);
 
   const spin = rotationAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
@@ -156,7 +166,7 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
     <View style={styles.root}>
       <View style={[styles.backdrop, isDark && styles.backdropD]} />
       <Animated.View style={[styles.page, { transform: [{ translateX: slideAnim }] }]} {...panResponder.panHandlers}>
-        {/* Top bar */}
+        {/* Top bar：左侧关闭，中间歌名居中（右侧留等宽占位保证歌名真正居中） */}
         <View style={styles.topBar}>
           <Pressable onPress={onClose} style={styles.topBtn}>
             <Text style={styles.topBtnT}>▾</Text>
@@ -167,12 +177,7 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
               {[track.joinMemberNames, track.subTitle, track.albumName].filter(Boolean).join(' · ') || '官方音乐'}
             </Text>
           </View>
-          <Pressable onPress={() => setShowLyrics(!showLyrics)} style={styles.topBtn}>
-            <Text style={[styles.topBtnT, lyrics.length > 0 && styles.topBtnOn]}>词</Text>
-          </Pressable>
-          <Pressable onPress={() => { if (trackFavId) toggleFavorite(trackFavId); }} style={styles.topBtn}>
-            <Icon name={isFav ? 'heart' : 'heart-outline'} size={20} color={isFav ? '#ff3b5c' : (isDark ? '#ccc' : '#666')} />
-          </Pressable>
+          <View style={styles.topBtn} />
         </View>
 
         {showLyrics ? (
@@ -231,6 +236,12 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
             <Text style={[styles.progTime, isDark && styles.tS]}>{formatTime(duration)}</Text>
           </View>
           <View style={styles.btnRow}>
+            <Pressable
+              onPress={() => { if (trackFavId) toggleFavorite(trackFavId); }}
+              style={[styles.sideBtn, isFav && styles.favOn]}
+            >
+              <Icon name={isFav ? 'heart' : 'heart-outline'} size={22} color={isFav ? '#ff3b5c' : (isDark ? '#ccc' : '#666')} />
+            </Pressable>
             <Pressable onPress={MusicEngine.cycleMode} style={styles.sideBtn}>
               <Icon name={playMode === 'single' ? 'repeat-once' : playMode === 'random' ? 'shuffle-variant' : 'repeat'} size={22} color={isDark ? '#ccc' : '#666'} />
             </Pressable>
@@ -242,6 +253,9 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
             </Pressable>
             <Pressable onPress={() => MusicEngine.next()} style={styles.sideBtn}>
               <Icon name="skip-next" size={30} color={isDark ? '#eee' : '#333'} />
+            </Pressable>
+            <Pressable onPress={() => setShowLyrics(!showLyrics)} style={[styles.sideBtn, showLyrics && styles.lyricOn]}>
+              <Text style={[styles.btnLabel, isDark && styles.btnLabelD, showLyrics && styles.btnLabelOn]}>词</Text>
             </Pressable>
             <Pressable onPress={() => setShowQueue(true)} style={styles.sideBtn}>
               <Icon name="playlist-music" size={22} color={isDark ? '#ccc' : '#666'} />
@@ -322,8 +336,13 @@ const styles = StyleSheet.create({
   progFg: { position: 'absolute', left: 0, height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
   progThumb: { position: 'absolute', top: 7, width: 14, height: 14, borderRadius: 7, backgroundColor: '#ff6f91', borderWidth: 2, borderColor: '#fff', transform: [{ translateX: -7 }] },
   progThumbD: { borderColor: '#222' },
-  btnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  btnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   sideBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  favOn: { backgroundColor: 'rgba(255,59,92,0.12)' },
+  lyricOn: { backgroundColor: 'rgba(255,111,145,0.12)' },
+  btnLabel: { fontSize: 16, fontWeight: '800', color: '#666' },
+  btnLabelD: { color: '#ccc' },
+  btnLabelOn: { color: '#ff6f91' },
   playBtn: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   playIcon: { fontSize: 26, color: '#fff' },
   tL: { color: '#eee' }, tS: { color: '#aaa' },

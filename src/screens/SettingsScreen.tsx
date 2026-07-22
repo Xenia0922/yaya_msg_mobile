@@ -202,7 +202,7 @@ export default function SettingsScreen() {
           <Text style={[styles.autoSyncText, isDark && styles.textSubLight]}>进入软件时自动同步成员数据</Text>
         </View>
         <Text style={[styles.note, isDark && styles.textSubLight]}>
-          成员数据共 {memberCount} 位，由本应用维护并发布于 yaya-data.pages.dev，进入软件时自动同步最新。
+          成员数据共 {memberCount} 位，数据来源于 yk1z 数据库（yk1z/yaya_msg），进入软件时自动同步最新。
         </Text>
       </Section>
 
@@ -255,10 +255,10 @@ const styles = StyleSheet.create({
   textLight: { color: '#fff' },
   textSubLight: { color: '#ddd' },
   aboutHeroDark: { backgroundColor: 'rgba(255,111,145,0.10)' },
-  aboutLogoImg: { width: 52, height: 52, borderRadius: 14, marginRight: 12, backgroundColor: '#f0f0f0' },
-  verChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(255,111,145,0.14)' },
+  aboutLogoImg: { width: 52, height: 52, borderRadius: 16, marginRight: 12, backgroundColor: '#f0f0f0' },
+  verChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, backgroundColor: 'rgba(255,111,145,0.14)' },
   verChipText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
-  linkCard: { flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 12, borderRadius: 14, backgroundColor: 'rgba(255,111,145,0.08)' },
+  linkCard: { flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 12, borderRadius: 16, backgroundColor: 'rgba(255,111,145,0.08)' },
   linkCardDark: { backgroundColor: 'rgba(255,111,145,0.12)' },
   linkCardLabel: { fontSize: 13, fontWeight: '700', color: '#333' },
   linkCardValue: { fontSize: 11, color: '#888', marginTop: 2 },
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   memberStatNum: { fontSize: 18, fontWeight: '900', color: '#222' },
   memberStatLabel: { fontSize: 11, color: '#888', marginTop: 2 },
   memberStatDivider: { width: 1, height: 32, backgroundColor: 'rgba(0,0,0,0.08)' },
-  autoSyncRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(255,111,145,0.08)' },
+  autoSyncRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 16, backgroundColor: 'rgba(255,111,145,0.08)' },
   autoSyncRowDark: { backgroundColor: 'rgba(255,111,145,0.12)' },
   autoSyncText: { fontSize: 12, color: '#666', marginLeft: 8, fontWeight: '600' },
 });
