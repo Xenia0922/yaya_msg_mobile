@@ -15,6 +15,27 @@ let signerReady = false;
 let signerError = '';
 let signerRequest: ((timeoutMs?: number) => Promise<string | null>) | null = null;
 let readyWaiters: Array<(ready: boolean) => void> = [];
+let mountWaiters: Array<(ready: boolean) => void> = [];
+
+function notifyMount(ready: boolean) {
+  const waiters = mountWaiters;
+  mountWaiters = [];
+  waiters.forEach((resolve) => resolve(ready));
+}
+function waitForMount(timeoutMs: number): Promise<boolean> {
+  if (signerRequest) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      mountWaiters = mountWaiters.filter((item) => item !== done);
+      resolve(false);
+    }, timeoutMs);
+    const done = (ready: boolean) => {
+      clearTimeout(timer);
+      resolve(ready);
+    };
+    mountWaiters.push(done);
+  });
+}
 
 export function isWebViewSignerReady(): boolean {
   return signerReady;
@@ -26,8 +47,11 @@ export function getWebViewSignerError(): string {
 
 export async function generatePaViaWebView(timeoutMs = 10000): Promise<string | null> {
   if (!signerRequest) {
-    signerError = 'WebView 签名容器尚未挂载';
-    return null;
+    const mounted = await waitForMount(timeoutMs);
+    if (!mounted || !signerRequest) {
+      signerError = signerError || 'WebView 签名容器尚未挂载';
+      return null;
+    }
   }
   return signerRequest(timeoutMs);
 }
@@ -58,8 +82,7 @@ function makeHtml(wasmBase64: string) {
   // 不再对 glue 做字符串手术（import.meta / module.require 正则替换在 wasm-bindgen 升级时易失效）。
   // 改为在脚本顶部注入 module / import 垫片，让未修改的 glue 在 WebView（无模块系统）中直接运行。
   const shim = `var module = (typeof module !== 'undefined') ? module : {};
-module.require = function() { return undefined; };
-var import = { meta: {} };`;
+module.require = function() { return undefined; };`;
 
   return `<!doctype html>
 <html>
@@ -128,11 +151,13 @@ export function WebViewSigner() {
       webRef.current.postMessage(JSON.stringify({ type: 'pa', id }));
       });
     };
+    notifyMount(true);
     return () => {
       signerRequest = null;
       signerReady = false;
       signerError = 'WebView 签名容器已卸载';
       notifyReady(false);
+      notifyMount(false);
       Object.values(pending.current).forEach((item) => {
         clearTimeout(item.timer);
         item.resolve(null);

@@ -13,7 +13,8 @@ export function getWasmError(): string {
   // 中间态（如 "WebAssembly undefined" 守卫串）误当成设备不支持而吓到用户。
   if (_nativeSucceeded && !isWebViewSignerReady()) return getWebViewSignerError() || _lastError || '';
   if (isWebViewSignerReady()) return '';
-  return _lastError || getWebViewSignerError() || '';
+  // WebView 是实际依赖的兜底通道：若它未就绪，优先报其错误而非原生引导期的守卫串
+  return getWebViewSignerError() || _lastError || '';
 }
 export function isWasmReady(): boolean { return (WASM_READY && _paGen !== null) || isWebViewSignerReady(); }
 
