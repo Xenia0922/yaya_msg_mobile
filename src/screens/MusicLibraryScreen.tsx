@@ -37,19 +37,6 @@ function isPlayableHost(url: string): boolean {
   }
 }
 
-// 给每个分团标签算死显式宽度，彻底消除横向 ScrollView 在部分 RN 版本上
-// 对「初始不可见区子项」重新测量时被拉伸（flex 测量歧义）的问题。
-// 有了显式 width + flexShrink:0 + flexGrow:0，Yoga 没有任何「决定宽度」的余地，
-// 不论滚动到哪、选中哪个，7 个按钮宽度恒定，绝不会被拉宽。
-function chipWidth(text: string): number {
-  let w = 0;
-  for (const ch of text) {
-    // 中日韩字符按 ~1.05 字宽，拉丁字符按 ~0.6 字宽（fontSize=13）
-    w += /[一-鿿]/.test(ch) ? 13 * 1.05 : 13 * 0.6;
-  }
-  return Math.max(46, Math.ceil(w) + 28); // 28 = 左右 padding 各 14
-}
-
 export default function MusicLibraryScreen() {
   const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
   const showToast = useUiStore((state) => state.showToast);
@@ -171,14 +158,11 @@ export default function MusicLibraryScreen() {
         contentContainerStyle={styles.groups}
         style={styles.groupsWrap}
       >
-        {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48','FAV'].map(g => {
-          const label = g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g;
-          return (
-            <TouchableOpacity key={g} onPress={() => onGroupChange(g)} style={[styles.gChip, { width: chipWidth(label) }, isDark && styles.gChipDark, group === g && styles.gChipOn]}>
-              <Text style={[styles.gText, isDark && styles.gTextDark, group === g && styles.gTextOn]}>{label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+        {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48','FAV'].map(g => (
+          <TouchableOpacity key={g} onPress={() => onGroupChange(g)} style={[styles.gChip, isDark && styles.gChipDark, group === g && styles.gChipOn]}>
+            <Text style={[styles.gText, isDark && styles.gTextDark, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
       {status ? (
         <View pointerEvents="none" style={styles.statusOverlay}>
@@ -298,7 +282,7 @@ const styles = StyleSheet.create({
   // 文字不加 lineHeight/includeFontPadding，用 Android 默认行高，杜绝纵向裁字。
   groups: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 },
   groupsWrap: { marginTop: 2, marginBottom: 8, width: '100%', height: 40 },
-  gChip: { height: 28, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', flexShrink: 0, flexGrow: 0, alignItems: 'center', justifyContent: 'center' },
+  gChip: { height: 28, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)', flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   gChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
   gChipOn: { backgroundColor: '#ff6f91' },
   gText: { fontSize: 13, color: '#555', fontWeight: '600' },
