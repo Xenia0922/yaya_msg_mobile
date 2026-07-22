@@ -297,10 +297,9 @@ export default function AppNavigator() {
     ? { ...navTheme, colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' } }
     : navTheme;
 
-  // 启动即同步成员数据库（受「自动更新成员数据」开关控制，默认开启）
+  // 启动即自动同步成员数据库（进入软件自动更新；失败静默忽略，不阻塞启动）
   useEffect(() => {
-    const auto = useSettingsStore.getState().settings.memberDataAutoUpdate;
-    if (auto) ensureMemberData().catch(() => {});
+    ensureMemberData().catch(() => {});
   }, []);
 
   return (

@@ -257,7 +257,6 @@ export default function BilibiliLiveScreen() {
             onTogglePlay={() => setPaused((p) => !p)}
             onSeek={() => {}}
             onRotate={() => setIsLandscape((v) => !v)}
-            onFullscreen={() => setIsFullscreen((v) => !v)}
           />
         </Animated.View>
 

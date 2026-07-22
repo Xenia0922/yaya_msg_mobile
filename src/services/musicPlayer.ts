@@ -123,8 +123,13 @@ export const MusicEngine = {
     useMusicPlayerStore.getState().setPosition(seconds);
     // 加锁 600ms：期间忽略 onProgress，等 video 真正 seek 到位
     this._seekLockUntil = Date.now() + 600;
-    if (this._videoRef) {
-      this._videoRef.seek(seconds);
+    // 防御：native seek 在个别状态下可能抛错（如已 ended 的播放器），不能让一次 seek 把整个 app 带崩
+    try {
+      if (this._videoRef && typeof this._videoRef.seek === 'function') {
+        this._videoRef.seek(seconds);
+      }
+    } catch (e) {
+      console.warn('[music] seek failed', e);
     }
     return seconds;
   },

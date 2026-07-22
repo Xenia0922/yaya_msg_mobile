@@ -20,6 +20,17 @@ allprojects {
     jcenter()
     maven { url 'https://www.jitpack.io' }
   }
+  // react-native-video 6.19.x 编译字节码依赖 androidx.media3(ExoPlayer) 的 DefaultLoadControl ABI。
+  // 较新 Android(15/16) 会把 media3 解析到更新大版本，构造函数签名变化导致挂载 <Video> 即
+  // NoSuchMethodError 闪退。钉到 1.8.0 恢复兼容（社区已验证）。
+  configurations.all {
+    resolutionStrategy.eachDependency { details ->
+      if (details.requested.group == 'androidx.media3') {
+        details.useVersion '1.8.0'
+        details.because 'Pin to react-native-video 6.19.x compatible ExoPlayer (DefaultLoadControl ABI)'
+      }
+    }
+  }
 }
 
 apply plugin: "expo-root-project"

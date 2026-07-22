@@ -107,7 +107,7 @@ export async function updateMemberData(opts: { force?: boolean } = {}): Promise<
  *   1. 先同步展示本地已缓存数据（避免空白）；
  *   2. 再拉取最新远程数据库（MEMBERS_URL 指向的 yaya_msg 成员库，数量以实际拉取为准），
  *      仅当签名或数量变化时才覆盖，保证「打开即是最新」。
- * 由 AppNavigator 在挂载时调用，受 settings.memberDataAutoUpdate 控制。
+ * 由 AppNavigator 在挂载时调用（进入软件即自动同步，无条件）。
  */
 export async function ensureMemberData(): Promise<void> {
   try {

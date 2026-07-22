@@ -161,7 +161,6 @@ export function PlayerBottomBar({
   onTogglePlay,
   onSeek,
   onMore,
-  onFullscreen,
   onRotate,
 }: {
   isLive: boolean;
@@ -179,8 +178,6 @@ export function PlayerBottomBar({
   onSeek: (t: number) => void;
   /** 「更多」面板入口；不传则不显示该按钮（默认收进顶栏右上角） */
   onMore?: () => void;
-  /** 全屏（沉浸隐藏系统栏并锁定横屏）；不传则不显示该按钮 */
-  onFullscreen?: () => void;
   /** 横屏/竖屏切换（仅旋转，不影响沉浸）；不传则不显示该按钮 */
   onRotate?: () => void;
 }) {
@@ -273,12 +270,6 @@ export function PlayerBottomBar({
       {onRotate ? (
         <TouchableOpacity style={chromeStyles.toolBtn} onPress={onRotate} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
           <MaterialCommunityIcons name="screen-rotation" size={22} color="#fff" />
-        </TouchableOpacity>
-      ) : null}
-
-      {onFullscreen ? (
-        <TouchableOpacity style={chromeStyles.toolBtn} onPress={onFullscreen} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-          <MaterialCommunityIcons name="fullscreen" size={22} color="#fff" />
         </TouchableOpacity>
       ) : null}
 

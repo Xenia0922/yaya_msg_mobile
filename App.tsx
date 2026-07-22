@@ -6,7 +6,7 @@ import { loadSettings } from './src/services/settings';
 import { useSettingsStore, useMemberStore, useAnnouncementStore } from './src/store';
 import { loadMembers } from './src/utils/members';
 import { fetchJson } from './src/utils/network';
-import { loadCachedMemberData, updateMemberData } from './src/services/memberData';
+import { loadCachedMemberData } from './src/services/memberData';
 import { initWasm, WebViewSigner } from './src/auth';
 import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
@@ -75,15 +75,6 @@ export default function App() {
           useMemberStore.getState().setMembers(cached);
         }
 
-        // Auto-update member data on launch when enabled (non-blocking).
-        const auto = useSettingsStore.getState().settings.memberDataAutoUpdate;
-        if (auto !== false) {
-          updateMemberData()
-            .then((r) => { if (mounted) setMessage(r.message); })
-            .catch((error: any) => {
-              if (mounted) setMessage(`成员数据更新失败，使用本地数据：${error?.message || String(error)}`);
-            });
-        }
       } catch (error: any) {
         if (mounted) setMessage(`成员数据加载失败：${error?.message || String(error)}`);
       }

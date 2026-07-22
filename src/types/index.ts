@@ -310,6 +310,5 @@ export interface AppSettings {
   customBackgroundFile: string;
   customBackgroundUpdatedAt: number;
   yaya_trip_show_all: boolean;
-  memberDataAutoUpdate: boolean;
   meet48Auth?: Meet48Auth | null;
 }

@@ -17,7 +17,6 @@ import {
   TouchableWithoutFeedback,
   TouchableOpacity,
   View,
-  ActivityIndicator,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Video from 'react-native-video';
@@ -40,6 +39,24 @@ import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
 import { parseDanmaku, DanmakuItem } from '../utils/danmaku';
 import { memberSearchText } from '../utils/members';
 import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel, MoreItem } from '../components/media/PlayerChrome';
+import { Skeleton } from '../components/Skeleton';
+
+/** 回放列表加载骨架：与卡片同构（左封面 + 右侧两行），统一用 Skeleton 微光，避免「转圈 + 文字」混排闪烁 */
+function VodCardSkeleton({ dark }: { dark?: boolean }) {
+  return (
+    <View style={{ paddingHorizontal: 12, paddingTop: 6 }}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <View key={i} style={[styles.card, dark && styles.cardDark]}>
+          <Skeleton width={112} height={78} radius={18} dark={dark} />
+          <View style={[styles.cardInfo, { gap: 8 }]}>
+            <Skeleton width="82%" height={14} radius={6} dark={dark} />
+            <Skeleton width="55%" height={12} radius={6} dark={dark} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
 
@@ -1185,7 +1202,6 @@ export default function MediaScreen() {
             onTogglePlay={() => setPaused((p) => !p)}
             onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
             onRotate={() => setIsLandscape((v) => !v)}
-            onFullscreen={() => setIsFullscreen((v) => !v)}
           />
         </Animated.View>
 
@@ -1411,27 +1427,23 @@ export default function MediaScreen() {
             );
           }}
           ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              {loading ? (
-                <ActivityIndicator size="large" color={isDark ? '#5a5a5a' : '#ff6f91'} />
-              ) : (
+            loading ? (
+              <VodCardSkeleton dark={isDark} />
+            ) : (
+              <View style={styles.emptyWrap}>
                 <Text style={[styles.empty, isDark && styles.emptyDark]}>
                   {search.trim() ? '没有匹配的直播/录播' : '暂无数据'}
                 </Text>
-              )}
-            </View>
+              </View>
+            )
           }
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
           ListFooterComponent={
-            // 仅在有内容且正在加载更多时显示一个低调的转圈，不再显示「上滑加载更多 / 没有更多了」字样
+            // 仅在有内容且正在加载更多时显示一条低调的微光条，动画语言与骨架屏一致（不再用转圈）
             list.length > 0 && loading ? (
               <View style={styles.footer}>
-                <ActivityIndicator
-                  size="small"
-                  color={isDark ? '#5a5a5a' : '#c4c4c4'}
-                  style={styles.footerSpinner}
-                />
+                <Skeleton width={120} height={14} radius={7} dark={isDark} />
               </View>
             ) : null
           }
