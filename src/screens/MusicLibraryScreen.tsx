@@ -37,8 +37,11 @@ export default function MusicLibraryScreen() {
   const favorites = useMusicPlayerStore((s) => s.favorites);
   const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
   const [songs, setSongs] = useState<any[]>([]);
-  const [query, setQuery] = useState('');
-  const [group, setGroup] = useState('ALL');
+  // 搜索词 / 分团：从 player store 初始化并回写，确保离开音乐页再回来时筛选条件不丢失
+  const [query, setQuery] = useState(() => useMusicPlayerStore.getState().libraryQuery || '');
+  const [group, setGroup] = useState(() => useMusicPlayerStore.getState().libraryGroup || 'ALL');
+  const onQueryChange = (q: string) => { setQuery(q); useMusicPlayerStore.getState().setLibraryQuery(q); };
+  const onGroupChange = (g: string) => { setGroup(g); useMusicPlayerStore.getState().setLibraryGroup(g); };
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -125,7 +128,7 @@ export default function MusicLibraryScreen() {
       } />
       <TextInput
         value={query}
-        onChangeText={setQuery}
+        onChangeText={onQueryChange}
         placeholder="搜索歌曲、成员、专辑"
         placeholderTextColor={isDark ? '#aaa' : '#4a4a4a'}
         style={[styles.searchInput, isDark && styles.searchInputDark]}
@@ -137,7 +140,7 @@ export default function MusicLibraryScreen() {
         style={styles.groupsWrap}
       >
         {['ALL','SNH48','GNZ48','BEJ48','CKG48','CGT48','FAV'].map(g => (
-          <TouchableOpacity key={g} onPress={() => setGroup(g)} style={[styles.gChip, group === g && styles.gChipOn]}>
+          <TouchableOpacity key={g} onPress={() => onGroupChange(g)} style={[styles.gChip, group === g && styles.gChipOn]}>
             <Text style={[styles.gText, group === g && styles.gTextOn]}>{g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}</Text>
           </TouchableOpacity>
         ))}

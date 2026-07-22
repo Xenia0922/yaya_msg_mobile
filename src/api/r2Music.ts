@@ -45,16 +45,36 @@ export function r2Absolute(path: string): string {
 }
 
 /**
+ * 清洗 R2 曲目标题。
+ * 有些 R2 条目的 title 实际是「文件路径 / S3 key / 长 URL」而非歌名，
+ * 直接当标题会在列表/播放页渲染成一长串（用户反馈的「这么长的东西」）。
+ * 规则：标题本身是干净歌名（无路径分隔、非 URL、长度合理）就直接用；
+ * 否则从 key/mp3 的文件名派生（去掉路径与扩展名）。
+ */
+export function cleanR2Title(t: R2Track): string {
+  const raw = String((t as any).title || '').trim();
+  // 去掉结尾的音频扩展名（如「歌名.mp3」）
+  const stripped = raw.replace(/\.(mp3|flac|wav|m4a|ogg|aac)$/i, '').trim();
+  if (stripped && !stripped.includes('/') && !/^https?:/i.test(stripped) && stripped.length <= 80) {
+    return stripped;
+  }
+  const fromKey = String(t.key || (t as any).mp3 || '').split('/').pop() || '';
+  const name = fromKey.replace(/\.[^./\\]+$/, '').replace(/[_-]+/g, ' ').trim();
+  return name || stripped || '未命名歌曲';
+}
+
+/**
  * 把 R2 曲目转成与官方源一致的 Track 形状，便于两路合并到同一队列。
  * 去重键优先用 (mp3|title|artist)：同歌不同源天然保留；同歌同源不重复。
  */
 export function r2ToTrack(t: R2Track): any {
   const absMp3 = r2Absolute(t.mp3);
   const absCover = r2Absolute(t.coverUrl);
+  const title = cleanR2Title(t);
   return {
     id: t.id || `R2-${t.key}`,
     musicId: `r2:${t.key}`,
-    title: t.title || '未命名歌曲',
+    title,
     album: t.album || '',
     albumName: t.album || '',
     artist: t.groupLabel || '',

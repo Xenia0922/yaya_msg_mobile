@@ -45,6 +45,11 @@ interface MusicPlayerState {
   favorites: string[];
   // 续播：记忆恢复后首次播放要跳到的进度（不持久化）
   pendingSeek: number | null;
+  // 音乐库筛选状态（搜索词 / 分团）：存于 store 而非组件局部 state，
+  // 这样从音乐详情返回或屏幕重挂载后，搜索条件不会丢失（用户反馈「搜索的歌回到列表就消失」）。
+  // 仅会话内有效，不持久化到磁盘。
+  libraryQuery: string;
+  libraryGroup: string;
 
   // Actions
   setQueue: (tracks: Track[]) => void;
@@ -61,6 +66,8 @@ interface MusicPlayerState {
   setError: (e: string | null) => void;
   addFailedId: (id: string) => void;
   setPendingSeek: (p: number | null) => void;
+  setLibraryQuery: (q: string) => void;
+  setLibraryGroup: (g: string) => void;
   isFavorite: (id: string) => boolean;
   toggleFavorite: (id: string) => void;
   next: () => Track | null;
@@ -96,6 +103,8 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       failedIds: [],
       favorites: [],
       pendingSeek: null,
+      libraryQuery: '',
+      libraryGroup: 'ALL',
 
       setQueue: (tracks) => set({ queue: tracks, currentIndex: tracks.length > 0 ? 0 : -1 }),
 
@@ -150,6 +159,10 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       addFailedId: (id) => set((s) => (s.failedIds.includes(id) ? s : { failedIds: [...s.failedIds, id] })),
 
       setPendingSeek: (pendingSeek) => set({ pendingSeek }),
+
+      setLibraryQuery: (libraryQuery) => set({ libraryQuery }),
+
+      setLibraryGroup: (libraryGroup) => set({ libraryGroup }),
 
       isFavorite: (id) => get().favorites.includes(id),
 

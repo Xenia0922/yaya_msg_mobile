@@ -66,6 +66,10 @@ export const MusicEngine = {
         })
         .catch(() => { /* 解析失败，忽略，按 onError 兜底 */ });
     }
+    // 预拉歌词：loadQueueAt 不自动播放，若等用户按播放键才取歌词，
+    // 而此时 url 已预解析、togglePause 只做 state 翻转不会走 playTrack，
+    // 会导致歌词永远为空（1539 回归）。这里提前把歌词取好，按播放键时歌词已就绪。
+    this._fetchLyrics(track);
   },
 
   /** Play a specific track. Optionally sets queue at the same time. */
@@ -133,7 +137,12 @@ export const MusicEngine = {
       this.resume();
       return;
     }
-    s.setPlaybackState(s.playbackState === 'playing' ? 'paused' : 'playing');
+    const willPlay = s.playbackState !== 'playing';
+    s.setPlaybackState(willPlay ? 'playing' : 'paused');
+    // 兜底：进入播放态但歌词仍为空（如预拉失败），立即补拉一次
+    if (willPlay && s.queue[s.currentIndex] && (!s.lyrics || s.lyrics.length === 0)) {
+      this._fetchLyrics(s.queue[s.currentIndex]);
+    }
   },
 
   /** 记忆恢复后续播：重新解析当前曲目地址，并 seek 到记忆位置 */
