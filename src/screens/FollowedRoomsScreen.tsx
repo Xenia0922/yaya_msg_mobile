@@ -554,14 +554,11 @@ function roomMedia(item: any): RoomMedia | null {
   }
   if (!url && !liveId) return null;
   const type = liveId ? 'live' : classifyMedia(url, msgType, text);
-  const duration = firstTextFrom([item, ext, body], [
-    'duration', 'time', 'second', 'seconds', 'audioTime', 'voiceTime', 'voiceLength',
-    'length', 'timeLength', 'mediaLength', 'playTime', 'totalTime',
-    'message.duration', 'content.duration', 'data.duration',
-  ]);
-  // Audio/video always use clean labels; other types use message text
-  const title = type === 'audio' ? '语音消息'
-    : type === 'video' ? '视频消息'
+  const durationSec = [item, ext, body].reduce((best, src) => best || deepFindDuration(src), 0);
+  const duration = durationSec > 0 ? String(Math.round(durationSec)) : '';
+  // Audio/video 在房间里只用两个字前缀，避免「语音 语音消息」这种重复；live 保留完整标签
+  const title = type === 'audio' ? '语音'
+    : type === 'video' ? '视频'
     : type === 'live' ? '直播 / 录播'
     : type === 'image' ? '图片'
     : text && !text.startsWith('[') && text !== url ? text
@@ -608,6 +605,47 @@ function playerSource(url: string) {
       Referer: 'https://h5.48.cn/',
     },
   };
+}
+
+function VideoCoverCard({ media, onPress, onLongPress }: { media: RoomMedia; onPress: () => void; onLongPress: () => void }) {
+  const [loaded, setLoaded] = useState(false);
+  const hasCover = !!media.cover;
+  return (
+    <TouchableOpacity style={styles.videoCoverWrap} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.9}>
+      {hasCover ? (
+        <Image source={{ uri: media.cover }} style={styles.videoCoverImg} resizeMode="cover" />
+      ) : (
+        <View style={styles.videoCoverImg}>
+          <Video
+            source={playerSource(media.url)}
+            style={StyleSheet.absoluteFill}
+            paused
+            controls={false}
+            resizeMode="cover"
+            muted
+            playWhenInactive={false}
+            playInBackground={false}
+            onLoad={() => setLoaded(true)}
+          />
+          {!loaded ? (
+            <View style={styles.videoCoverPlaceholder}>
+              <Text style={styles.videoCoverPlaceholderText}>视频</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+      <View style={styles.videoCoverOverlay}>
+        <View style={styles.livePlayCircle}>
+          <Text style={styles.livePlayIcon}>▶</Text>
+        </View>
+      </View>
+      {media.duration ? (
+        <View style={styles.videoCoverDuration}>
+          <Text style={styles.videoCoverDurationText}>{media.duration}s</Text>
+        </View>
+      ) : null}
+    </TouchableOpacity>
+  );
 }
 
 function normalizeLiveRank(res: any): any[] {
@@ -684,6 +722,40 @@ function normalizeLiveRank(res: any): any[] {
 
 function avatarInitial(name: string) {
   return (name || '用').trim().slice(0, 1).toUpperCase();
+}
+
+const DURATION_KEYS = new Set([
+  'duration', 'audioTime', 'voiceTime', 'voiceLength', 'fileDuration',
+  'mediaDuration', 'msgDuration', 'seconds', 'playTime', 'totalTime',
+  'length', 'timeLength', 'mediaLength', 'videoTime', 'time',
+]);
+
+function deepFindDuration(value: any, depth = 0): number {
+  if (!value || depth > 5) return 0;
+  if (typeof value === 'number') return value > 0 ? value : 0;
+  if (typeof value === 'string') {
+    const n = parseFloat(value.trim());
+    return n > 0 ? n : 0;
+  }
+  if (typeof value !== 'object') return 0;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const d = deepFindDuration(item, depth + 1);
+      if (d > 0) return d;
+    }
+    return 0;
+  }
+  for (const [key, v] of Object.entries(value)) {
+    if (DURATION_KEYS.has(key)) {
+      const n = typeof v === 'number' ? v : parseFloat(String(v || '').trim());
+      if (n > 0) return n;
+    }
+  }
+  for (const child of Object.values(value)) {
+    const d = deepFindDuration(child, depth + 1);
+    if (d > 0) return d;
+  }
+  return 0;
 }
 
 export default function FollowedRoomsScreen() {
@@ -1207,8 +1279,8 @@ export default function FollowedRoomsScreen() {
                           <Image source={{ uri: media.url }} style={media.title === '表情' ? styles.inlineSticker : styles.inlineImage} resizeMode="cover" />
                         </TouchableOpacity>
                       </>
-                    ) : (media.type === 'live' || media.type === 'video') && media.cover ? (
-                      // Live/Video with cover: image + centered play button overlay
+                    ) : media.type === 'live' && media.cover ? (
+                      // 直播/录播：封面 + 播放按钮 + 底部标题条
                       <TouchableOpacity style={styles.liveCardWrap} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} activeOpacity={0.9}>
                         <Image source={{ uri: media.cover }} style={styles.liveCardImg} resizeMode="cover" />
                         <View style={styles.liveCardOverlay}>
@@ -1220,6 +1292,9 @@ export default function FollowedRoomsScreen() {
                           <Text style={styles.liveCardTitle} numberOfLines={1}>{media.title}</Text>
                         </View>
                       </TouchableOpacity>
+                    ) : media.type === 'video' && media.url ? (
+                      // 视频消息：优先用服务器封面，否则用视频首帧（paused 渲染）做封面
+                      <VideoCoverCard media={media} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} />
                     ) : (
                       <TouchableOpacity style={[styles.mediaCard, (idol || mine) && styles.mediaCardHighlight]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)} onPress={() => media.type === 'live' ? playMedia(media) : undefined}>
                         {media.cover ? (
@@ -1227,7 +1302,9 @@ export default function FollowedRoomsScreen() {
                         ) : null}
                         <View style={styles.mediaMeta}>
                           <Text style={[styles.mediaIcon, (idol || mine) && styles.mediaTextHighlight]}>{mediaLabel(media.type)}</Text>
-                          <Text style={[styles.mediaTitle, (idol || mine) && styles.mediaTextHighlight, isDark && !(idol || mine) && styles.mediaTitleDark]} numberOfLines={2}>{media.title}</Text>
+                          {media.type !== 'audio' && media.type !== 'video' && media.title ? (
+                            <Text style={[styles.mediaTitle, (idol || mine) && styles.mediaTextHighlight, isDark && !(idol || mine) && styles.mediaTitleDark]} numberOfLines={2}>{media.title}</Text>
+                          ) : null}
                           {media.duration ? <Text style={[styles.mediaDuration, (idol || mine) && styles.mediaTextHighlight, isDark && !(idol || mine) && styles.mediaDurationDark]}>{media.duration}s</Text> : null}
                         </View>
                         <TouchableOpacity
@@ -1421,9 +1498,16 @@ const styles = StyleSheet.create({
   mediaCard: { marginTop: 8, minWidth: 214, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)' },
   mediaCardHighlight: { backgroundColor: 'rgba(255,255,255,0.20)', borderColor: 'rgba(255,255,255,0.30)' },
   liveCover: { width: '100%', height: 130, borderRadius: 10, marginBottom: 8, backgroundColor: 'rgba(128,128,128,0.1)' },
-  liveCardWrap: { marginTop: 8, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.1)' },
-  liveCardImg: { width: '100%', height: 180, borderRadius: 14 },
+  liveCardWrap: { marginTop: 8, width: 228, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.1)' },
+  liveCardImg: { width: 228, height: 228, borderRadius: 14 },
   liveCardOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 36, alignItems: 'center', justifyContent: 'center' },
+  videoCoverWrap: { marginTop: 8, width: 228, height: 228, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center' },
+  videoCoverImg: { width: 228, height: 228, borderRadius: 14 },
+  videoCoverOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  videoCoverDuration: { position: 'absolute', right: 8, bottom: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.5)' },
+  videoCoverDurationText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  videoCoverPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)' },
+  videoCoverPlaceholderText: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
   livePlayCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   livePlayIcon: { color: '#fff', fontSize: 24, marginLeft: 4 },
   liveCardTitleBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: 'rgba(0,0,0,0.5)' },
