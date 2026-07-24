@@ -1,9 +1,25 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import wasmGlueSource from './wasmGlueSource';
 import wasmBase64 from './wasmBase64';
-import { wasmBase64MatchesPin } from './wasmHash';
+import wasmGlueSource from './wasmGlueSource';
+import { verifyWasm, wasmBase64MatchesPin } from './wasmHash';
+
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b1 = bytes[i];
+    const b2 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const b3 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    out += B64[b1 >> 2];
+    out += B64[((b1 & 3) << 4) | (b2 >> 4)];
+    out += i + 1 < bytes.length ? B64[((b2 & 15) << 2) | (b3 >> 6)] : '=';
+    out += i + 2 < bytes.length ? B64[b3 & 63] : '=';
+  }
+  return out;
+}
 
 type PendingRequest = {
   resolve: (value: string | null) => void;
@@ -23,14 +39,17 @@ function notifyMount(ready: boolean) {
   waiters.forEach((resolve) => resolve(ready));
 }
 function waitForMount(timeoutMs: number): Promise<boolean> {
+  console.error('[waitForMount] Called, signerRequest:', !!signerRequest);
   if (signerRequest) return Promise.resolve(true);
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       mountWaiters = mountWaiters.filter((item) => item !== done);
+      console.error('[waitForMount] Timeout');
       resolve(false);
     }, timeoutMs);
     const done = (ready: boolean) => {
       clearTimeout(timer);
+      console.error('[waitForMount] Resolved:', ready);
       resolve(ready);
     };
     mountWaiters.push(done);
@@ -46,13 +65,17 @@ export function getWebViewSignerError(): string {
 }
 
 export async function generatePaViaWebView(timeoutMs = 10000): Promise<string | null> {
+  console.error('[generatePaViaWebView] Called, signerRequest:', !!signerRequest, 'signerReady:', signerReady);
   if (!signerRequest) {
     const mounted = await waitForMount(timeoutMs);
+    console.error('[generatePaViaWebView] waitForMount result:', mounted);
     if (!mounted || !signerRequest) {
       signerError = signerError || 'WebView 签名容器尚未挂载';
+      console.error('[generatePaViaWebView] WebView not mounted, error:', signerError);
       return null;
     }
   }
+  console.error('[generatePaViaWebView] Calling signerRequest...');
   return signerRequest(timeoutMs);
 }
 
@@ -68,10 +91,12 @@ function waitForReady(timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       readyWaiters = readyWaiters.filter((item) => item !== done);
+      console.error('[waitForReady] Timeout');
       resolve(false);
     }, timeoutMs);
     const done = (ready: boolean) => {
       clearTimeout(timer);
+      console.error('[waitForReady] Resolved:', ready);
       resolve(ready);
     };
     readyWaiters.push(done);
@@ -79,8 +104,6 @@ function waitForReady(timeoutMs: number): Promise<boolean> {
 }
 
 function makeHtml(wasmBase64: string) {
-  // 不再对 glue 做字符串手术（import.meta / module.require 正则替换在 wasm-bindgen 升级时易失效）。
-  // 改为在脚本顶部注入 module / import 垫片，让未修改的 glue 在 WebView（无模块系统）中直接运行。
   const shim = `var module = (typeof module !== 'undefined') ? module : {};
 module.require = function() { return undefined; };`;
 
@@ -128,31 +151,81 @@ export function WebViewSigner() {
   const webRef = useRef<WebView>(null);
   const pending = useRef<Record<string, PendingRequest>>({});
   const seq = useRef(1);
+  const [html, setHtml] = useState<string>('');
+  const htmlRef = useRef<string>('');
 
   useEffect(() => {
+    let mounted = true;
     signerError = '';
+
+    console.error('[WebViewSigner] Effect mounted, starting wasm injection');
+
+    // 使用构建期内联的 wasm base64，避免运行时 Asset.loadAsync 在 release 包中失效
+    // wasmBase64.ts 由 scripts/gen-wasm-base64.mjs 从同一份 assets/2.wasm 生成，确保字节一致
+    (async () => {
+      try {
+        console.error('[WebViewSigner] Verifying wasmBase64 hash...');
+        // 完整性校验（与原生通道相同的哈希）
+        if (!wasmBase64MatchesPin(wasmBase64)) {
+          throw new Error('内联 wasmBase64 完整性校验失败');
+        }
+        console.error('[WebViewSigner] Hash verified, setting HTML...');
+        const built = makeHtml(wasmBase64);
+        htmlRef.current = built;
+        if (mounted) {
+          setHtml(built);
+          console.error('[WebViewSigner] HTML set, waiting for WebView ready...');
+        }
+      } catch (e: any) {
+        if (mounted) {
+          signerError = e?.message || String(e);
+          console.error('[WebViewSigner] wasm base64 校验失败:', signerError);
+        }
+      }
+    })();
+
     signerRequest = async (timeoutMs = 10000) => {
+      console.error('[WebViewSigner] signerRequest called, html:', !!htmlRef.current, 'webRef:', !!webRef.current);
+      if (!htmlRef.current) {
+        // 等待 wasm 注入完成
+        let waited = 0;
+        while (!htmlRef.current && waited < timeoutMs) {
+          await new Promise(r => setTimeout(r, 50));
+          waited += 50;
+        }
+        if (!htmlRef.current) {
+          signerError = signerError || 'WebView wasm 注入超时';
+          console.error('[WebViewSigner] wasm注入超时');
+          return null;
+        }
+      }
+      console.error('[WebViewSigner] Waiting for WebView ready...');
       const ready = await waitForReady(timeoutMs);
       if (!ready) {
         signerError = signerError || 'WebView 签名初始化超时';
+        console.error('[WebViewSigner] WebView初始化超时');
         return null;
       }
+      console.error('[WebViewSigner] WebView ready, requesting PA...');
       return new Promise((resolve, reject) => {
-      if (!webRef.current) {
-        resolve(null);
-        return;
-      }
-      const id = String(seq.current++);
-      const timer = setTimeout(() => {
-        delete pending.current[id];
-        reject(new Error('签名生成超时'));
-      }, timeoutMs);
-      pending.current[id] = { resolve, reject, timer };
-      webRef.current.postMessage(JSON.stringify({ type: 'pa', id }));
+        if (!webRef.current) {
+          console.error('[WebViewSigner] webRef.current is null!');
+          resolve(null);
+          return;
+        }
+        const id = String(seq.current++);
+        const timer = setTimeout(() => {
+          delete pending.current[id];
+          reject(new Error('签名生成超时'));
+        }, timeoutMs);
+        pending.current[id] = { resolve, reject, timer };
+        console.error('[WebViewSigner] Sending PA request to WebView, id:', id);
+        webRef.current.postMessage(JSON.stringify({ type: 'pa', id }));
       });
     };
     notifyMount(true);
     return () => {
+      mounted = false;
       signerRequest = null;
       signerReady = false;
       signerError = 'WebView 签名容器已卸载';
@@ -164,16 +237,6 @@ export function WebViewSigner() {
       });
       pending.current = {};
     };
-  }, []);
-
-  const html = useMemo(() => {
-    // 双份 wasm 漂移检测：内联副本必须与 assets/2.wasm 哈希一致，否则 WebView 兜底会算出
-    // 与原生通道不同的 pa，导致偶发签名失败。不一致仅告警（内联副本本身是 APK 签名产物，可信），
-    // 由 scripts/gen-wasm-base64.mjs 重新生成即可对齐。
-    if (!wasmBase64MatchesPin(wasmBase64)) {
-      console.warn('[wasm] 内联 wasmBase64 与 assets/2.wasm 哈希不一致，疑似双份漂移；请运行 node scripts/gen-wasm-base64.mjs 重新生成');
-    }
-    return makeHtml(wasmBase64);
   }, []);
 
   return (
@@ -191,10 +254,12 @@ export function WebViewSigner() {
       <WebView
         ref={webRef}
         originWhitelist={['*']}
-        source={{ html }}
+        source={html ? { html } : { html: loadingHtml }}
         javaScriptEnabled
-        mixedContentMode="always"
         domStorageEnabled
+        onLoad={() => console.error('[WebViewSigner] ERROR-LEVEL: WebView onLoad fired')}
+        onLoadEnd={(e) => console.error('[WebViewSigner] ERROR-LEVEL: WebView onLoadEnd, canGoBack:', e.nativeEvent.canGoBack, 'loading:', e.nativeEvent.loading, 'url:', e.nativeEvent.url, 'title:', e.nativeEvent.title)}
+        onError={(e) => console.error('[WebViewSigner] ERROR-LEVEL: WebView onError:', e.nativeEvent)}
         onMessage={(event) => {
           let payload: any;
           try { payload = JSON.parse(event.nativeEvent.data); } catch { return; }
@@ -202,11 +267,13 @@ export function WebViewSigner() {
             signerReady = true;
             signerError = '';
             notifyReady(true);
+            console.error('[WebViewSigner] ERROR-LEVEL: Received ready message');
             return;
           }
           if (payload.type === 'error') {
             signerReady = false;
             signerError = payload.error || 'WebView 签名模块异常';
+            console.error('[WebViewSigner] ERROR-LEVEL: Received error:', signerError);
             Object.values(pending.current).forEach((item) => {
               clearTimeout(item.timer);
               item.reject(new Error(signerError));
@@ -228,3 +295,16 @@ export function WebViewSigner() {
     </View>
   );
 }
+
+// 启动加载页 HTML（仅显示空白，等待 wasm base64 注入）
+const loadingHtml = `<!doctype html>
+<html>
+<head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body><script>
+window.onerror = function(message) {
+  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', error: String(message) }));
+};
+var module = (typeof module !== 'undefined') ? module : {};
+module.require = function() { return undefined; };
+</script></body>
+</html>`;

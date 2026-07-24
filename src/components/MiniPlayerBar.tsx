@@ -12,7 +12,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { useSettingsStore } from '../store';
-import { MusicEngine } from '../services/musicPlayer';
+import { isPlayableHost, MusicEngine } from '../services/musicPlayer';
 import CoverArt from './CoverArt';
 
 const ANIM_DURATION = 300;
@@ -33,44 +33,48 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-interface Props {
+interface MiniPlayerBarInnerProps {
   onOpenFullScreen?: () => void;
+  isDark: boolean;
+  track: any;
+  isPlaying: boolean;
+  progress: number;
+  duration: number;
+  position: number;
+  playMode: string;
+  playUrl: string;
 }
 
-export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
-  const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
-  const queue = useMusicPlayerStore((s) => s.queue);
-  const playbackState = useMusicPlayerStore((s) => s.playbackState);
-  const playMode = useMusicPlayerStore((s) => s.playMode);
-  const duration = useMusicPlayerStore((s) => s.duration);
-  const position = useMusicPlayerStore((s) => s.position);
-
-  const track = queue[currentIndex] || null;
-  const isPlaying = playbackState === 'playing';
-  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
-  const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
-  const coverUri = rawCover ? (rawCover.startsWith('http') ? rawCover : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`) : '';
-
+function MiniPlayerBarInner({
+  onOpenFullScreen,
+  isDark,
+  track,
+  isPlaying,
+  progress,
+  duration,
+  position,
+  playMode,
+  playUrl,
+}: MiniPlayerBarInnerProps) {
   const progRef = useRef<View>(null);
   const seekProgress = (px: number) => {
     if (duration <= 0) return;
     progRef.current?.measure((_x, _y, w, _h, x0) => {
-      // 用 measure 实测宽度；宽度未知（<2）时跳过，避免除零得到 Infinity 被 clamp 到 1 而误跳结尾
       if (!w || w < 2) return;
       const ratio = Math.max(0, Math.min(1, (px - x0) / w));
-      MusicEngine.seek(ratio * duration);
+      useMusicPlayerStore.getState().setSeekTarget(ratio * duration);
     });
   };
 
-  // 进度条拖拽：按下即 seek，移动实时跟手
-  const progPanMini = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (e: GestureResponderEvent) => seekProgress(e.nativeEvent.pageX),
-    onPanResponderMove: (e: GestureResponderEvent) => seekProgress(e.nativeEvent.pageX),
-    onPanResponderRelease: () => {},
-  })).current;
+  const progPanMini = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e: GestureResponderEvent) => seekProgress(e.nativeEvent.pageX),
+      onPanResponderMove: (e: GestureResponderEvent) => seekProgress(e.nativeEvent.pageX),
+      onPanResponderRelease: () => {},
+    })
+  ).current;
 
   const rotationAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -78,32 +82,77 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
 
   useEffect(() => {
     if (!isPlaying) return;
-    // 不重置到 0：暂停冻结在原角度，恢复无跳变、loop 回绕无缝
-    const loop = Animated.loop(
-      Animated.timing(rotationAnim, { toValue: 1, duration: 8000, easing: Easing.linear, useNativeDriver: true }),
-    );
-    loop.start();
-    return () => { loop.stop(); };
-  }, [isPlaying, currentIndex]);
+    let cancelled = false;
+    let current = (rotationAnim as any).__turns ?? 0;
+    const step = () => {
+      if (cancelled) return;
+      const next = current + 1;
+      Animated.timing(rotationAnim, {
+        toValue: next,
+        duration: 8000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished && !cancelled) {
+          current = next;
+          (rotationAnim as any).__turns = current;
+          step();
+        }
+      });
+    };
+    step();
+    return () => { cancelled = true; rotationAnim.stopAnimation(); };
+  }, [isPlaying, track?.id]);
 
   const spin = rotationAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
-  const panResponder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 8,
-    onPanResponderMove: (_, gs) => { if (gs.dy > 0) translateY.setValue(gs.dy); },
-    onPanResponderRelease: (_, gs) => {
-      if (gs.dy > 50) {
-        Animated.timing(translateY, { toValue: 200, duration: ANIM_DURATION, easing: Easing.inOut(Easing.ease), useNativeDriver: true }).start();
-      } else {
-        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-      }
-    },
-  })).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 8,
+      onPanResponderMove: (_, gs) => { if (Math.abs(gs.dy) > 8) translateY.setValue(gs.dy); },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 50) {
+          Animated.timing(translateY, { toValue: 200, duration: ANIM_DURATION, easing: Easing.inOut(Easing.ease), useNativeDriver: true }).start();
+        } else {
+          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+        }
+      },
+    })
+  ).current;
 
   const pressIn = () => Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true, bounciness: 4 }).start();
   const pressOut = () => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 4 }).start();
 
-  if (!track || playbackState === 'idle') return null;
+  const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
+  const coverUri = rawCover ? (rawCover.startsWith('http') ? rawCover : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`) : '';
+
+  const handleToggle = useCallback(() => {
+    try {
+      if (!isPlayableHost(playUrl)) {
+        console.warn('[MiniPlayerBar] toggle blocked: invalid url');
+        return;
+      }
+      MusicEngine.togglePause();
+    } catch (e) {
+      console.warn('[MiniPlayerBar] toggle error:', e);
+    }
+  }, [playUrl]);
+
+  const handleNext = useCallback(() => {
+    try {
+      MusicEngine.next();
+    } catch (e) {
+      console.warn('[MiniPlayerBar] next error:', e);
+    }
+  }, []);
+
+  const handleMode = useCallback(() => {
+    try {
+      MusicEngine.cycleMode();
+    } catch (e) {
+      console.warn('[MiniPlayerBar] mode error:', e);
+    }
+  }, []);
 
   return (
     <Animated.View style={[styles.bar, isDark && styles.barD, SHADOW, { transform: [{ translateY }] }]} {...panResponder.panHandlers}>
@@ -123,20 +172,56 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
           </Text>
         </View>
         <View style={styles.actions}>
-          <Pressable onPress={MusicEngine.cycleMode} onPressIn={pressIn} onPressOut={pressOut} style={styles.modeBtn}>
+          <Pressable onPress={handleMode} onPressIn={pressIn} onPressOut={pressOut} style={styles.modeBtn}>
             <Icon name={playMode === 'single' ? 'repeat-once' : playMode === 'random' ? 'shuffle-variant' : 'repeat'} size={16} color={isDark ? '#aaa' : '#888'} />
           </Pressable>
           <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <Pressable onPress={MusicEngine.togglePause} onPressIn={pressIn} onPressOut={pressOut} style={styles.btn}>
+            <Pressable onPress={handleToggle} onPressIn={pressIn} onPressOut={pressOut} style={styles.btn}>
               <Icon name={isPlaying ? 'pause-circle' : 'play-circle'} size={30} color="#ff6f91" />
             </Pressable>
           </Animated.View>
-          <Pressable onPress={() => MusicEngine.next()} onPressIn={pressIn} onPressOut={pressOut} style={styles.btn}>
+          <Pressable onPress={handleNext} onPressIn={pressIn} onPressOut={pressOut} style={styles.btn}>
             <Icon name="skip-next-circle" size={30} color="#ff6f91" />
           </Pressable>
         </View>
       </Pressable>
     </Animated.View>
+  );
+}
+
+interface Props {
+  onOpenFullScreen?: () => void;
+}
+
+export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
+  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
+  const queue = useMusicPlayerStore((s) => s.queue);
+  const playbackState = useMusicPlayerStore((s) => s.playbackState);
+  const playMode = useMusicPlayerStore((s) => s.playMode);
+  const duration = useMusicPlayerStore((s) => s.duration);
+  const position = useMusicPlayerStore((s) => s.position);
+  const playUrl = useMusicPlayerStore((s) => s.url);
+
+  const track = queue[currentIndex] || null;
+  const isPlaying = playbackState === 'playing';
+  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
+
+  // Conditional render BEFORE inner component hooks
+  if (!track || playbackState === 'idle' || !isPlayableHost(playUrl)) return null;
+
+  return (
+    <MiniPlayerBarInner
+      onOpenFullScreen={onOpenFullScreen}
+      isDark={isDark}
+      track={track}
+      isPlaying={isPlaying}
+      progress={progress}
+      duration={duration}
+      position={position}
+      playMode={playMode}
+      playUrl={playUrl}
+    />
   );
 }
 

@@ -5,26 +5,47 @@ import { getLyricsMatcher } from '../utils/lyricsIndex';
 
 const LYRICS_BASE_URL = 'https://yaya-data.pages.dev/lyrics';
 
+/** 48 官方域名白名单 —— 纯函数、无副作用、可安全静态导入 */
+export function isPlayableHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host.endsWith('.48.cn') || host === 'snh48.com' || host === 'www.snh48.com';
+  } catch {
+    return false;
+  }
+}
+
 export function mediaUrl(path: string): string {
   if (!path) return '';
   if (path.startsWith('http')) return path;
   return path.startsWith('/') ? `https://mp4.48.cn${path}` : normalizeUrl(path);
 }
 
-type TrackUrlResolver = (track: Track) => Promise<string>;
+type TrackUrlResolver = (track: Track) => Promise<string | null>;
 
+/**
+ * MusicEngine —— 纯状态编排器。
+ *
+ * 不再持有 Video ref、不再做 seek、不再拦截 onProgress。
+ * Video 的 seek / progress / duration 由 MusicLibraryScreen 上的 <Video> 独立管理。
+ */
 export const MusicEngine = {
   get state() { return useMusicPlayerStore.getState(); },
   _urlResolver: null as TrackUrlResolver | null,
-  _videoRef: null as any,
-  _seekLockUntil: 0,
 
   setUrlResolver(resolver: TrackUrlResolver) {
     this._urlResolver = resolver;
   },
 
-  setVideoRef(ref: any) {
-    this._videoRef = ref;
+  /** 等待解析器就绪（最多等待 3 秒） */
+  async _waitForResolver(timeoutMs = 3000): Promise<TrackUrlResolver | null> {
+    if (this._urlResolver) return this._urlResolver;
+    let waited = 0;
+    while (!this._urlResolver && waited < timeoutMs) {
+      await new Promise(r => setTimeout(r, 50));
+      waited += 50;
+    }
+    return this._urlResolver;
   },
 
   /** Set queue and play from index 0 */
@@ -35,80 +56,92 @@ export const MusicEngine = {
   },
 
   /**
-   * 载入队列并定位到指定曲目，但不自动播放（不自动续播）。
-   * 用于「点歌进播放页」场景：保留进度记忆，等用户主动按播放键。
-   * 若记忆里有同一首且带进度，会显示迷你栏「已暂停」态，用户点播放后才续播。
+   * 默认 URL 解析器：直接用 track.mp3 / path 字段。
+   * 页面挂载后可通过 setUrlResolver() 覆盖为更优实现（如含 officialMediaApi 回退）。
+   * 不使用 dynamic import（消除与 MusicLibraryScreen 的循环引用）。
+   */
+  _initDefaultResolver() {
+    if (this._urlResolver) return;
+    this._urlResolver = async (track: Track) => {
+      // 1. 优先用 track.mp3（官方源直接可播放）
+      if (track?.mp3 && /^https?:/i.test(String(track.mp3))) {
+        const u = String(track.mp3);
+        if (isPlayableHost(u)) return u;
+      }
+      // 2. 兜底：track 自带的各种 path 字段
+      const fb = String(
+        (track as any).filePath ||
+        (track as any).musicPath ||
+        (track as any).playStreamPath ||
+        (track as any).audioPath ||
+        (track as any).url ||
+        ''
+      );
+      if (fb && /^https?:/i.test(fb)) {
+        if (isPlayableHost(fb)) return fb;
+      }
+      // 3. 通过 mediaUrl 规范化
+      const normalized = mediaUrl(fb);
+      if (normalized) {
+        if (isPlayableHost(normalized)) return normalized;
+      }
+      return null;
+    };
+  },
+
+  /**
+   * 载入队列并定位到指定曲目，但不自动播放。
+   * 预解析 URL + 歌词，等用户按播放键时已就绪。
    */
   loadQueueAt(track: Track, queue?: Track[]) {
     const store = useMusicPlayerStore.getState();
     const q = queue || store.queue;
     const idx = q.findIndex((t) => (t.musicId || t.id) === (track.musicId || track.id));
-    const cover = (track.coverUrl || track.cover || track.thumbPath || '') as string;
     store.setQueue(q);
     useMusicPlayerStore.setState({
       currentIndex: idx >= 0 ? idx : 0,
       playbackState: 'paused',
       url: '',
-      coverUrl: cover ? (cover.startsWith('http') ? cover : `https://source.48.cn${cover.startsWith('/') ? cover : '/' + cover}`) : store.coverUrl,
       duration: 0,
       position: 0,
       lyrics: [],
       error: null,
     });
-    // 若解析器已就绪，提前把播放地址解析并写入 url（保持 paused 不自动播放）。
-    // 这样「按播放键」只需做一次 state 翻转（setPlaybackState），不走异步 resume 路径，更稳。
-    // 解析失败则留空，按原生 onError 兜底跳过，不影响其它曲。
-    if (this._urlResolver) {
-      Promise.resolve()
-        .then(() => this._urlResolver!(track))
-        .then((resolved) => {
+    this._initDefaultResolver();
+    this._waitForResolver().then(resolver => {
+      if (resolver) {
+        resolver(track).then(resolved => {
           if (resolved) useMusicPlayerStore.setState({ url: resolved });
-        })
-        .catch(() => { /* 解析失败，忽略，按 onError 兜底 */ });
-    }
-    // 预拉歌词：loadQueueAt 不自动播放，若等用户按播放键才取歌词，
-    // 而此时 url 已预解析、togglePause 只做 state 翻转不会走 playTrack，
-    // 会导致歌词永远为空（1539 回归）。这里提前把歌词取好，按播放键时歌词已就绪。
+        }).catch(() => {});
+      }
+    });
     this._fetchLyrics(track);
   },
 
-  /** Play a specific track. Optionally sets queue at the same time. */
+  /**
+   * 核心播放：解析 URL → setUrl + setPlaybackState('playing')。
+   * 不再持有/操作 Video ref，不放 seek 锁。
+   */
   async playTrack(track: Track, queue?: Track[]) {
     const store = useMusicPlayerStore.getState();
-    const prev = store.queue[store.currentIndex];
-    const isSame = !!prev && (prev.musicId || prev.id) === (track.musicId || track.id);
     store.play(track, queue);
     this._fetchLyrics(track);
-    // 进度记忆：同一首且已有播放进度，标记续播点，onLoad 时 seek 回去，
-    // 而不是从头开始（之前 loadQueueAt 把 position 清零，导致进度记忆失效）。
-    if (isSame) {
-      const pos = useMusicPlayerStore.getState().position;
-      if (pos > 0) useMusicPlayerStore.getState().setPendingSeek(pos);
-    }
-    if (!this._urlResolver) { store.setError('no url resolver'); return; }
+    this._initDefaultResolver();
+    const resolver = await this._waitForResolver();
+    if (!resolver) { store.setError('解析器未就绪'); return; }
     try {
-      const url = await this._urlResolver(track);
+      const url = await resolver(track);
       if (!url) throw new Error('no url');
+      if (!isPlayableHost(url)) throw new Error('不支持的播放源');
+      if (!/^https?:\/\//i.test(url)) throw new Error('非法播放地址');
       store.setUrl(url);
       store.setPlaybackState('playing');
     } catch (e: any) {
-      const id = String(track.musicId || track.id || '');
-      if (id) store.addFailedId(id);
+      store.setError(e?.message || 'play failed');
+      // 无效的歌曲自动跳到下一首
       const st = useMusicPlayerStore.getState();
-      st.setError(e?.message || 'play failed');
-      // 已下架/无效的歌曲自动跳到下一首；但若全部失效则停止，避免死循环
-      if (st.failedIds.length < st.queue.length) this.next();
+      if (st.queue.length > 1) this.next();
     }
-  },
-
-  onProgress(currentTime: number) {
-    // seek 后短暂抑制进度回调，避免 video 还没 seek 完就把 position 覆盖回旧值（进度条弹回开头）
-    if (Date.now() < this._seekLockUntil) return;
-    useMusicPlayerStore.getState().setPosition(currentTime);
-  },
-
-  onLoad(duration: number) {
-    useMusicPlayerStore.getState().setDuration(duration);
   },
 
   /** Next track, fetch URL and play */
@@ -138,30 +171,46 @@ export const MusicEngine = {
     return t;
   },
 
+  /**
+   * 暂停/播放切换。
+   * - URL 为空（记忆恢复后首次）→ 重新解析地址再播放
+   * - URL 非法 → 静默拒绝（防止 Video source 异常）
+   * - 正常 → 翻转 playbackState
+   * 不再调用 resume() → playTrack 重建 Video；resume 改为内联轻量解析路径。
+   */
   togglePause() {
     const s = useMusicPlayerStore.getState();
-    // 记忆恢复后首次播放：url 是瞬时的、重启后为空，需要先重新解析地址并跳到记忆进度
+    // 记忆恢复后首次播放：url 为空，需要先重新解析地址
     if (!s.url && s.queue[s.currentIndex]) {
-      this.resume();
+      const t = s.queue[s.currentIndex];
+      this._initDefaultResolver();
+      this._waitForResolver().then(async (resolver) => {
+        if (!resolver) { s.setError('解析器未就绪'); return; }
+        try {
+          const url = await resolver(t);
+          if (!url || !isPlayableHost(url) || !/^https?:\/\//i.test(url)) {
+            console.warn('[MusicEngine] resume url invalid');
+            return;
+          }
+          s.setUrl(url);
+          s.setPlaybackState('playing');
+          if (!s.lyrics || s.lyrics.length === 0) this._fetchLyrics(t);
+        } catch (e: any) {
+          s.setError(e?.message || '播放恢复失败');
+        }
+      });
+      return;
+    }
+    // URL 非法/空 → 禁止状态翻转
+    if (!s.url || !/^https?:\/\//i.test(s.url) || !isPlayableHost(s.url)) {
+      console.warn('[MusicEngine] togglePause blocked: invalid url', s.url);
       return;
     }
     const willPlay = s.playbackState !== 'playing';
     s.setPlaybackState(willPlay ? 'playing' : 'paused');
-    // 兜底：进入播放态但歌词仍为空（如预拉失败），立即补拉一次
     if (willPlay && s.queue[s.currentIndex] && (!s.lyrics || s.lyrics.length === 0)) {
       this._fetchLyrics(s.queue[s.currentIndex]);
     }
-  },
-
-  /** 记忆恢复后续播：重新解析当前曲目地址，并 seek 到记忆位置 */
-  async resume() {
-    const s = useMusicPlayerStore.getState();
-    const t = s.queue[s.currentIndex];
-    if (!t) return null;
-    const saved = s.position;
-    s.setPendingSeek(saved);
-    await this.playTrack(t, s.queue);
-    return t;
   },
 
   cycleMode() {
@@ -170,34 +219,16 @@ export const MusicEngine = {
     s.setMode(next);
   },
 
-  seek(seconds: number) {
-    useMusicPlayerStore.getState().setPosition(seconds);
-    // 加锁 600ms：期间忽略 onProgress，等 video 真正 seek 到位
-    this._seekLockUntil = Date.now() + 600;
-    // 防御：native seek 在个别状态下可能抛错（如已 ended 的播放器），不能让一次 seek 把整个 app 带崩
-    try {
-      if (this._videoRef && typeof this._videoRef.seek === 'function') {
-        this._videoRef.seek(seconds);
-      }
-    } catch (e) {
-      console.warn('[music] seek failed', e);
-    }
-    return seconds;
-  },
-
   // --- Lyrics ---
   async _fetchLyrics(track: Track) {
     const title = String(track.title || '').trim();
     if (!title) return;
-    // 团体字段来源：旧移动端源用 joinMemberNames/subTitle；官网源用 groupLabel（如 "SNH48"）。
-    // 带团体能命中匹配器的 Tier3/4 精确档，命中率远高于仅歌名模糊匹配。
     const group = (track as any).joinMemberNames || (track as any).subTitle ||
       (track as any).groupLabel || (track as any).artist || '';
     try {
       const { matcher } = await getLyricsMatcher();
       const result = matcher.match({ song: title, group });
       if (result) {
-        // filePath 含空格与中文，必须规范编码，否则 Cloudflare 返回 404（整批歌词失效）
         const url = `${LYRICS_BASE_URL}/${encodeURI(result.entry.filePath)}`;
         const lrcResp = await fetch(url);
         const raw = await lrcResp.text();

@@ -1,6 +1,6 @@
 // 官方音乐库（口袋48官网源）
 // 源数据来自 yk1z/yaya_msg 电脑版（github.com/yk1z/yaya_msg）的 official-site-music-feature，
-// 一次性全量、无 token。关键修正（之前"全显示热恋专属"的根因）：
+// 一次性全量、无 token。关键修正：
 //   - ix_mp3list_xxx 每首只有 mp3/artist/title，且 artist 字段其实是「专辑名」（全都写成"热恋专属 Love Ver."），
 //     所以不能直接拿 artist 当专辑/歌手。
 //   - 真实专辑名来自两条路径：
@@ -9,7 +9,7 @@
 //       (c) 兜底：同一音频分组（mp3 前缀）里第一首歌的标题当作专辑名，再去 records 里模糊匹配。
 //   - 真实封面与演唱者（team）来自 records_xxx：按专辑名匹配到 record，record.image 是封面、
 //     record.team 是演唱者（SNH48 / 袁一琦 / 7SENSES / 鞠婧祎 …）。
-// 这样列表/详情里专辑与歌手就都正确且各不相同，封面也变成真实专辑封面。
+//   - 现在不再要求 record.image 非空才保留元数据 —— 无封面时 coverUrl=''，交给 CoverArt 渐变兜底。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const OFFICIAL_SITE_ORIGIN = 'https://www.snh48.com';
@@ -171,9 +171,9 @@ function findRecordByTitleFuzzy(recordsMap: Map<string, any>, title: string): an
     // 计算共有词数
     const common = titleWords.filter((tw) => recordWords.some((rw) => rw.includes(tw) || tw.includes(rw)));
     const score = common.length;
-    // 要求至少 2 个词匹配，或唯一长词（≥5字符）精确包含在 record 名中
-    if (score >= 2 && score > bestScore) { bestScore = score; best = r; }
-    else if (score === 1 && titleWords.length === 1 && titleWords[0].length >= 5 && rn.includes(titleWords[0])) {
+    // 放宽：至少 1 个词匹配，或唯一长词（≥4字符）精确包含在 record 名中
+    if (score >= 1 && score > bestScore) { bestScore = score; best = r; }
+    else if (score === 1 && titleWords.length === 1 && titleWords[0].length >= 4 && rn.includes(titleWords[0])) {
       if (1 > bestScore) { bestScore = 1; best = r; }
     }
   }
@@ -391,6 +391,26 @@ function buildTracks(
           singer = (record && record.team) || singer;
         }
       }
+      // 兜底 1.5：尝试用 item.artist（SNH下即专辑名）匹配 records
+      if (!coverUrl) {
+        const artistRecord = findRecordForAlbum(recordsMap, item && item.artist);
+        if (artistRecord && artistRecord.image) {
+          coverUrl = artistRecord.image;
+          if (!album && artistRecord.title) album = artistRecord.title;
+          record = artistRecord;
+          singer = (record && record.team) || singer;
+        }
+      }
+      // 兜底 1.8：尝试用 audioGroupKey 匹配 records（同一音频分组通常同专辑）
+      if (!coverUrl && audioGroupKey) {
+        const groupRecord = findRecordForAlbum(recordsMap, audioGroupKey);
+        if (groupRecord && groupRecord.image) {
+          coverUrl = groupRecord.image;
+          if (!album && groupRecord.title) album = groupRecord.title;
+          record = groupRecord;
+          singer = (record && record.team) || singer;
+        }
+      }
       // 兜底 2：跨团全局 records 精确匹配（仅当全局 record 标题精确包含歌名且 record 有封面时采用）
       if (!coverUrl && globalRecordsMap && globalRecordsMap.size > 0) {
         const globalMatch = findRecordForAlbum(globalRecordsMap, item && item.title);
@@ -400,6 +420,8 @@ function buildTracks(
           singer = (globalMatch && globalMatch.team) || singer;
         }
       }
+      // 关键：保留所有元数据，即使 coverUrl 为空（CoverArt 渐变兜底）。
+      // 仅在 mp3 为空时才返回 null（过滤掉无效条目）。
       return {
         id: `${group.key}-${index}`,
         musicId: mp3,
@@ -422,7 +444,7 @@ function buildTracks(
     .filter(Boolean) as OfficialSiteTrack[];
 }
 
-const CACHE_KEY = 'yaya_official_site_music_cache_v5';
+const CACHE_KEY = 'yaya_official_site_music_cache_v6';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 export async function loadOfficialSiteMusic(force = false): Promise<OfficialSiteTrack[]> {

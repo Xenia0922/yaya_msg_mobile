@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { useSettingsStore, useUiStore } from '../store';
 import {
   clearLog,
@@ -78,6 +79,16 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
     }
   };
 
+  const onCopyEntry = (entry: any) => {
+    const lines = [
+      `[${fmtTime(entry.t)}] [${entry.level.toUpperCase()}]${entry.ctx ? ` [${entry.ctx}]` : ''}`,
+      entry.msg,
+      entry.stack ? `\n${entry.stack}` : '',
+    ].filter(Boolean);
+    Clipboard.setString(lines.join('\n'));
+    showToast('已复制该条日志');
+  };
+
   const onClear = () => {
     Alert.alert('清空运行日志', '将删除本地保存的全部运行记录，确认？', [
       { text: '取消', style: 'cancel' },
@@ -126,7 +137,12 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
             <Text style={[styles.empty, isDark && styles.textSubLight]}>暂无记录</Text>
           ) : (
             filtered.map((e) => (
-              <View key={e.id} style={[styles.row, isDark && styles.rowDark]}>
+              <TouchableOpacity
+                key={e.id}
+                style={[styles.row, isDark && styles.rowDark]}
+                onLongPress={() => onCopyEntry(e)}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              >
                 <View style={styles.rowTop}>
                   <Text style={[styles.time, isDark && styles.textSubLight]}>{fmtTime(e.t)}</Text>
                   <View style={[styles.badge, { backgroundColor: levelColor(e.level, isDark) }]}>
@@ -140,7 +156,7 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
                     {e.stack}
                   </Text>
                 ) : null}
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </ScrollView>

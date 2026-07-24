@@ -5,17 +5,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export type PlayMode = 'sequential' | 'random' | 'single';
 export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
+/**
+ * 精简后的曲目接口：不再包含 [key: string]: any。
+ * 封面由 CoverArt 内部自决 raw 字段（coverUrl / cover / thumbPath），store 不参与拼 URL。
+ */
 export interface Track {
   musicId?: string;
   id?: string;
   title: string;
   subTitle?: string;
   albumName?: string;
+  album?: string;
   joinMemberNames?: string;
+  artist?: string;
   coverUrl?: string;
   cover?: string;
   thumbPath?: string;
-  [key: string]: any;
+  groupLabel?: string;
+  mp3?: string;
+  /** 其他字段（音轨/时长等）通过此兜底保留但不用 any 污染索引 */
+  extra?: Record<string, unknown>;
 }
 
 export interface LyricLine {
@@ -32,30 +41,26 @@ interface MusicPlayerState {
   playMode: PlayMode;
   // Timing
   url: string;
-  coverUrl: string;
   duration: number;
   position: number;
   // Lyrics
   lyrics: LyricLine[];
   // Error
   error: string | null;
-  // 已下架/无效（服务端删除）的歌曲 id，用于列表中标注，避免用户以为「音乐不见了」
-  failedIds: string[];
-  // 收藏歌曲的 musicId 列表（持久化）
+  // Favorites (persisted)
   favorites: string[];
-  // 续播：记忆恢复后首次播放要跳到的进度（不持久化）
-  pendingSeek: number | null;
-  // 音乐库筛选状态（搜索词 / 分团）：存于 store 而非组件局部 state，
-  // 这样从音乐详情返回或屏幕重挂载后，搜索条件不会丢失（用户反馈「搜索的歌回到列表就消失」）。
-  // 仅会话内有效，不持久化到磁盘。
-  libraryQuery: string;
-  libraryGroup: string;
+  /**
+   * Seek 指令：组件写，Video onLoad / effect 检测后执行 seek 并清零。
+   * 不持久化（持久化 seek 位置通过 position 字段实现）。
+   */
+  seekTarget: number;
 
   // Actions
   setQueue: (tracks: Track[]) => void;
   addToQueue: (track: Track) => void;
   removeFromQueue: (id: string) => void;
   clearQueue: () => void;
+  /** 载入曲目到队列并置为 loading 态（不自动播放）。URL 由 MusicEngine 异步解析后 setUrl。 */
   play: (track: Track, queue?: Track[]) => void;
   setUrl: (url: string) => void;
   setPlaybackState: (state: PlaybackState) => void;
@@ -64,10 +69,7 @@ interface MusicPlayerState {
   setPosition: (p: number) => void;
   setLyrics: (lines: LyricLine[]) => void;
   setError: (e: string | null) => void;
-  addFailedId: (id: string) => void;
-  setPendingSeek: (p: number | null) => void;
-  setLibraryQuery: (q: string) => void;
-  setLibraryGroup: (g: string) => void;
+  setSeekTarget: (t: number) => void;
   isFavorite: (id: string) => boolean;
   toggleFavorite: (id: string) => void;
   next: () => Track | null;
@@ -81,12 +83,6 @@ function nextIndex(current: number, length: number, mode: PlayMode): number {
   return (current + 1) % length;
 }
 
-function coverFrom(track: Track): string {
-  const raw = track.coverUrl || track.cover || track.thumbPath || '';
-  if (!raw) return '';
-  return raw.startsWith('http') ? raw : `https://source.48.cn${raw.startsWith('/') ? raw : '/' + raw}`;
-}
-
 export const useMusicPlayerStore = create<MusicPlayerState>()(
   persist(
     (set, get) => ({
@@ -95,16 +91,12 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       playbackState: 'idle',
       playMode: 'sequential',
       url: '',
-      coverUrl: '',
       duration: 0,
       position: 0,
       lyrics: [],
       error: null,
-      failedIds: [],
       favorites: [],
-      pendingSeek: null,
-      libraryQuery: '',
-      libraryGroup: 'ALL',
+      seekTarget: 0,
 
       setQueue: (tracks) => set({ queue: tracks, currentIndex: tracks.length > 0 ? 0 : -1 }),
 
@@ -124,25 +116,23 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
 
       clearQueue: () => set({ queue: [], currentIndex: -1 }),
 
+      /**
+       * 载入曲目到队列并置为 loading 态，但不写 url —— url 由 MusicEngine 异步解析后
+       * 通过 setUrl 单独写入，从而避免 Video 经历 url:'' → url:http 的 source 翻转。
+       */
       play: (track, queue) => set((s) => {
         const q = queue || s.queue;
         const idx = q.findIndex((t) => (t.musicId || t.id) === (track.musicId || track.id));
-        // 同一首以「id 相等」判定，而非「下标相等」：列表经筛选/排序后下标会变，
-        // 用下标相等会误判成不同首、把进度清零（进度记忆丢失）。
-        const prev = s.queue[s.currentIndex];
-        const sameTrack = !!prev && (prev.musicId || prev.id) === (track.musicId || track.id);
-        const cover = coverFrom(track);
         return {
           queue: q,
           currentIndex: idx >= 0 ? idx : 0,
           playbackState: 'loading',
-          url: '',
-          coverUrl: cover || s.coverUrl,
-          duration: sameTrack ? s.duration : 0,
-          position: sameTrack ? s.position : 0,
-          lyrics: s.lyrics,
+          url: '',            // 暂空，等 setUrl 写入后 Video 挂载一次即稳定
+          duration: 0,
+          position: 0,
+          lyrics: [],
           error: null,
-          pendingSeek: null,
+          seekTarget: 0,
         };
       }),
 
@@ -160,13 +150,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
 
       setError: (error) => set({ error, playbackState: error ? 'error' : 'idle' }),
 
-      addFailedId: (id) => set((s) => (s.failedIds.includes(id) ? s : { failedIds: [...s.failedIds, id] })),
-
-      setPendingSeek: (pendingSeek) => set({ pendingSeek }),
-
-      setLibraryQuery: (libraryQuery) => set({ libraryQuery }),
-
-      setLibraryGroup: (libraryGroup) => set({ libraryGroup }),
+      setSeekTarget: (seekTarget) => set({ seekTarget }),
 
       isFavorite: (id) => get().favorites.includes(id),
 
@@ -182,7 +166,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
         const s = get();
         if (s.queue.length === 0) return null;
         const idx = nextIndex(s.currentIndex, s.queue.length, s.playMode);
-        set({ currentIndex: idx, duration: 0, position: 0, lyrics: [], error: null });
+        set({ currentIndex: idx, duration: 0, position: 0, lyrics: [], error: null, seekTarget: 0 });
         return s.queue[idx] || null;
       },
 
@@ -190,27 +174,23 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
         const s = get();
         if (s.queue.length === 0) return null;
         const idx = s.currentIndex <= 0 ? s.queue.length - 1 : s.currentIndex - 1;
-        set({ currentIndex: idx, duration: 0, position: 0, lyrics: [], error: null });
+        set({ currentIndex: idx, duration: 0, position: 0, lyrics: [], error: null, seekTarget: 0 });
         return s.queue[idx] || null;
       },
     }),
     {
-      name: 'yaya_music_player_v1',
+      name: 'yaya_music_player_v2',
       storage: createJSONStorage(() => AsyncStorage),
-      // 只持久化「记忆」所需的字段；url 是瞬时的不存，playbackState 由 onRehydrate 重设
       partialize: (s) => ({
         queue: s.queue,
         currentIndex: s.currentIndex,
         position: s.position,
-        coverUrl: s.coverUrl,
         playMode: s.playMode,
-        failedIds: s.failedIds,
         favorites: s.favorites,
         lyrics: s.lyrics,
         duration: s.duration,
       }),
       onRehydrateStorage: () => (state) => {
-        // 记忆恢复后，若有当前曲目则显示迷你栏为「已暂停」态，等用户点播放续播
         if (state && state.currentIndex >= 0 && state.queue.length > 0) {
           useMusicPlayerStore.setState({ playbackState: 'paused' });
         }

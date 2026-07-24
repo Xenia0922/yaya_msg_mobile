@@ -63,7 +63,7 @@ export function sha256Hex(buf: ArrayBuffer): string {
     .join('');
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array {
   const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const lut = new Int16Array(128).fill(-1);
   for (let i = 0; i < B64.length; i++) lut[B64.charCodeAt(i)] = i;

@@ -17,7 +17,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { useSettingsStore } from '../store';
-import { MusicEngine } from '../services/musicPlayer';
+import { isPlayableHost, MusicEngine } from '../services/musicPlayer';
 import { lyricIndexAt, lyricTimeForIndex } from '../utils/lyrics';
 import CoverArt from './CoverArt';
 
@@ -33,41 +33,53 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-interface Props {
+interface FullScreenPlayerInnerProps {
   visible: boolean;
   onClose: () => void;
+  // Injected data from parent selectors (hooks always called in parent)
+  isDark: boolean;
+  track: any;
+  isPlaying: boolean;
+  progress: number;
+  duration: number;
+  position: number;
+  playMode: string;
+  lyrics: any[];
+  favorites: string[];
+  toggleFavorite: (id: string) => void;
+  currentIndex: number;
+  queue: any[];
 }
 
-export default function FullScreenPlayer({ visible, onClose }: Props) {
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
-  const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
-  const queue = useMusicPlayerStore((s) => s.queue);
-  const playbackState = useMusicPlayerStore((s) => s.playbackState);
-  const playMode = useMusicPlayerStore((s) => s.playMode);
-  const duration = useMusicPlayerStore((s) => s.duration);
-  const position = useMusicPlayerStore((s) => s.position);
-  const lyrics = useMusicPlayerStore((s) => s.lyrics);
-  const coverUrl = useMusicPlayerStore((s) => s.coverUrl);
-  const favorites = useMusicPlayerStore((s) => s.favorites);
-  const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
-  const [showQueue, setShowQueue] = useState(false);
-  const track = queue[currentIndex] || null;
+function FullScreenPlayerInner({
+  visible,
+  onClose,
+  isDark,
+  track,
+  isPlaying,
+  progress,
+  duration,
+  position,
+  playMode,
+  lyrics,
+  favorites,
+  toggleFavorite,
+  currentIndex,
+  queue,
+}: FullScreenPlayerInnerProps) {
   const trackFavId = track ? String(track.musicId || track.id || '') : '';
   const isFav = trackFavId ? favorites.includes(trackFavId) : false;
+  const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
+  const coverUri = rawCover ? (rawCover.startsWith('http') ? rawCover : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`) : '';
 
-  const isPlaying = playbackState === 'playing';
-  const progress = duration > 0 ? position / duration : 0;
   const lrcIdx = lyricIndexAt(lyrics, position);
   const progRef2 = useRef<View>(null);
   const progW2 = useRef(0);
-  // 拖拽预览：按下/移动时本地实时跟手，松手才真正 seek（避免频繁打断播放）
   const [dragRatio, setDragRatio] = useState<number | null>(null);
-  // 用 ref 缓存最近一次有效 ratio：松手事件（onResponderRelease）的 locationX 常为 0，
-  // 直接读会导致 seek(0) 弹回开头；改用 grant/move 时记下的真实 ratio。
   const dragRatioRef = useRef<number>(0);
-  // 手势有效性守卫：只有「按下时轨道宽度已测到」才算有效拖拽；否则（全屏页刚弹出首帧、
-  // 旋转后布局未就绪，progW2 仍为 0）ratioFromX 会因 `|| 1` 把任意位置算成 0/100%，误 seek 到开头/结尾。
   const gestureActive = useRef(false);
+  const [showQueue, setShowQueue] = useState(false);
+
   const ratioFromX = (x: number): number | null => {
     const w = progW2.current;
     if (!w || w < 2) return null;
@@ -88,8 +100,9 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   };
   const onProgRelease = () => {
     const r = dragRatioRef.current;
-    // 仅有效手势才真正 seek；无效手势（宽度未知）不碰进度，杜绝误跳开头/结尾
-    if (gestureActive.current && duration > 0) MusicEngine.seek(r * duration);
+    if (gestureActive.current && duration > 0) {
+      useMusicPlayerStore.getState().setSeekTarget(r * duration);
+    }
     gestureActive.current = false;
     dragRatioRef.current = 0;
     setDragRatio(null);
@@ -102,13 +115,10 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const lyricScrollRef = useRef<ScrollView>(null);
   const lrcScrollH = useRef(400);
-  // 每行歌词在 ScrollView 内容里的 y 偏移（onLayout 实测），用于自适应居中滚动
   const lineYOffsets = useRef<number[]>([]);
 
-  // 歌词变化：重置实测偏移数组
   useEffect(() => { lineYOffsets.current = new Array(lyrics.length).fill(0); }, [lyrics]);
 
-  // 黑胶旋转：仅在播放时转，暂停冻结原角度；用「递增值 + 递归 timing」保证 loop 边界不冻结、持续旋转。
   useEffect(() => {
     if (!isPlaying) return;
     let cancelled = false;
@@ -147,8 +157,6 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
     },
   })).current;
 
-  // 自适应歌词滚动：用实测的每行 y 偏移 + ScrollView 可视高度做居中，
-  // 不再写死「-8 行」，自动适配字号、行高、屏幕尺寸。
   useEffect(() => {
     if (lrcIdx < 0 || !showLyrics || !lyricScrollRef.current) return;
     const y = lineYOffsets.current[lrcIdx] ?? 0;
@@ -166,7 +174,6 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
     <View style={styles.root}>
       <View style={[styles.backdrop, isDark && styles.backdropD]} />
       <Animated.View style={[styles.page, { transform: [{ translateX: slideAnim }] }]} {...panResponder.panHandlers}>
-        {/* Top bar：左侧关闭，中间歌名居中（右侧留等宽占位保证歌名真正居中） */}
         <View style={styles.topBar}>
           <Pressable onPress={onClose} style={styles.topBtn}>
             <Text style={styles.topBtnT}>▾</Text>
@@ -197,7 +204,7 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
                 <Pressable
                   key={i}
                   onLayout={e => { lineYOffsets.current[i] = e.nativeEvent.layout.y; }}
-                  onPress={() => { const t = lyricTimeForIndex(lyrics, i); if (t >= 0) MusicEngine.seek(t); }}
+                  onPress={() => { const t = lyricTimeForIndex(lyrics, i); if (t >= 0) useMusicPlayerStore.getState().setSeekTarget(t); }}
                 >
                   <Text style={[styles.lyricLine, { fontSize: lyricSize, lineHeight: lyricSize * 1.6 }, i === lrcIdx && styles.lyricLineOn, isDark && styles.lyricLineD]}>
                     {l.text}
@@ -210,12 +217,11 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
         ) : (
           <View style={styles.discWrap}>
             <Animated.View style={[styles.disc, { transform: [{ rotate: spin }] }]}>
-              <CoverArt uri={coverUrl || undefined} title={track.title || '♪'} size={240} round />
+              <CoverArt uri={coverUri || undefined} title={track.title || '♪'} size={240} round />
             </Animated.View>
           </View>
         )}
 
-        {/* Controls */}
         <View style={styles.ctrlWrap}>
           <View style={styles.progressRow}>
             <Text style={[styles.progTime, isDark && styles.tS]}>{formatTime(position)}</Text>
@@ -242,16 +248,16 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
             >
               <Icon name={isFav ? 'heart' : 'heart-outline'} size={22} color={isFav ? '#ff3b5c' : (isDark ? '#ccc' : '#666')} />
             </Pressable>
-            <Pressable onPress={MusicEngine.cycleMode} style={styles.sideBtn}>
+            <Pressable onPress={() => { MusicEngine.cycleMode(); }} style={styles.sideBtn}>
               <Icon name={playMode === 'single' ? 'repeat-once' : playMode === 'random' ? 'shuffle-variant' : 'repeat'} size={22} color={isDark ? '#ccc' : '#666'} />
             </Pressable>
-            <Pressable onPress={() => MusicEngine.prev()} style={styles.sideBtn}>
+            <Pressable onPress={() => { MusicEngine.prev(); }} style={styles.sideBtn}>
               <Icon name="skip-previous" size={30} color={isDark ? '#eee' : '#333'} />
             </Pressable>
-            <Pressable onPress={MusicEngine.togglePause} style={styles.playBtn}>
+            <Pressable onPress={() => { MusicEngine.togglePause(); }} style={styles.playBtn}>
               <Icon name={isPlaying ? 'pause' : 'play'} size={38} color="#fff" />
             </Pressable>
-            <Pressable onPress={() => MusicEngine.next()} style={styles.sideBtn}>
+            <Pressable onPress={() => { MusicEngine.next(); }} style={styles.sideBtn}>
               <Icon name="skip-next" size={30} color={isDark ? '#eee' : '#333'} />
             </Pressable>
             <Pressable onPress={() => setShowLyrics(!showLyrics)} style={[styles.sideBtn, showLyrics && styles.lyricOn]}>
@@ -306,6 +312,50 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   );
 }
 
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+}
+
+export default function FullScreenPlayer({ visible, onClose }: Props) {
+  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
+  const queue = useMusicPlayerStore((s) => s.queue);
+  const playbackState = useMusicPlayerStore((s) => s.playbackState);
+  const playMode = useMusicPlayerStore((s) => s.playMode);
+  const duration = useMusicPlayerStore((s) => s.duration);
+  const position = useMusicPlayerStore((s) => s.position);
+  const lyrics = useMusicPlayerStore((s) => s.lyrics);
+  const favorites = useMusicPlayerStore((s) => s.favorites);
+  const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
+
+  const track = queue[currentIndex] || null;
+  const isPlaying = playbackState === 'playing';
+  const progress = duration > 0 ? position / duration : 0;
+
+  // Conditional render BEFORE inner component hooks
+  if (!visible || !track) return null;
+
+  return (
+    <FullScreenPlayerInner
+      visible={visible}
+      onClose={onClose}
+      isDark={isDark}
+      track={track}
+      isPlaying={isPlaying}
+      progress={progress}
+      duration={duration}
+      position={position}
+      playMode={playMode}
+      lyrics={lyrics}
+      favorites={favorites}
+      toggleFavorite={toggleFavorite}
+      currentIndex={currentIndex}
+      queue={queue}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   root: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 999, elevation: 999 },
   backdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#ffffff' },
@@ -346,7 +396,6 @@ const styles = StyleSheet.create({
   playBtn: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   playIcon: { fontSize: 26, color: '#fff' },
   tL: { color: '#eee' }, tS: { color: '#aaa' },
-  // 播放列表
   queueMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   queueSheet: { maxHeight: '82%', backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingBottom: 18 },
   queueSheetD: { backgroundColor: '#1b1b1b' },

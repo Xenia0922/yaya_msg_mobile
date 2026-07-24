@@ -39,6 +39,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { mainTabBarStyle } from './tabBarStyle';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FadeInView, ScalePressable } from '../components/Motion';
+import { WebViewSigner } from '../auth/webviewSigner';
 import { ui } from '../theme/ui';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -306,6 +307,7 @@ export default function AppNavigator() {
     <ErrorBoundary>
     <NavigationContainer theme={themed}>
       <>
+        <WebViewSigner />
         <Stack.Navigator
           screenOptions={{
             headerShown: false,
