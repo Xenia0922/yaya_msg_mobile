@@ -9,6 +9,9 @@ interface Props {
   style?: ViewStyle;
 }
 
+// 三栏内联布局：左栏(返回) | 中栏(标题, 占满剩余) | 右栏(右侧操作)。
+// 关键点：三栏均为正常 flex 流，互不重叠 —— 返回按钮在独立左栏，永远可点，
+// 不再用 absolute + pointerEvents 的脆弱 hack（absolute 满宽标题曾盖住返回/右侧，导致点击失效）。
 export default function ScreenHeader({ title, onBack, right, style }: Props) {
   const navigation = useNavigation();
   const goBack = useCallback(onBack || (() => navigation.goBack()), [onBack, navigation]);
@@ -16,15 +19,17 @@ export default function ScreenHeader({ title, onBack, right, style }: Props) {
 
   return (
     <View style={[styles.header, { paddingTop: topPad }, style]}>
-      {/* 返回/右侧贴边绝对定位，仅占用自身宽度，不挤占标题空间 */}
-      <TouchableOpacity onPress={goBack} style={[styles.backWrap, { top: topPad, bottom: 14 }]}>
-        <Text style={styles.backText}>返回</Text>
-      </TouchableOpacity>
-      {/* 标题回到正常 flex 流：flex:1 独占整行宽度，textAlign:center 即在整屏水平居中，
-          垂直方向随 header 的 alignItems:'center' 与左右按钮自动对齐，避免绝对定位导致的偏移/遮挡。
-          pointerEvents:none 让触摸穿透到被它（满宽）覆盖的返回/右侧按钮，修复返回键失效回归。 */}
-      <Text style={styles.title} numberOfLines={1} pointerEvents="none">{title}</Text>
-      <View style={[styles.rightSlot, { top: topPad, bottom: 14 }]}>{right}</View>
+      <View style={styles.sideLeft}>
+        <TouchableOpacity
+          onPress={goBack}
+          style={styles.backBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.backText}>返回</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.title} numberOfLines={1}>{title}</Text>
+      <View style={styles.sideRight}>{right}</View>
     </View>
   );
 }
@@ -32,18 +37,16 @@ export default function ScreenHeader({ title, onBack, right, style }: Props) {
 const styles = StyleSheet.create({
   header: {
     position: 'relative',
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    marginBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingBottom: 14,
+    marginBottom: 4,
   },
-  backWrap: {
-    position: 'absolute',
-    left: 20,
-    justifyContent: 'center',
-  },
+  // 左右等宽，把标题顶到屏幕正中；两栏各自独占空间，绝不与标题重叠
+  sideLeft: { width: 80, alignItems: 'flex-start', justifyContent: 'center' },
+  sideRight: { width: 80, alignItems: 'flex-end', justifyContent: 'center' },
+  backBtn: { paddingVertical: 2, paddingRight: 6 },
   backText: { color: '#ff6f91', fontSize: 14, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   title: {
     flex: 1,
@@ -51,15 +54,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: '#ff6f91',
-    paddingHorizontal: 70,
+    paddingHorizontal: 4,
     textShadowColor: 'rgba(0,0,0,0.28)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
-  },
-  rightSlot: {
-    position: 'absolute',
-    right: 20,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
   },
 });
