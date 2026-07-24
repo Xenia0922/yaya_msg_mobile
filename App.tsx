@@ -42,7 +42,7 @@ export default function App() {
   const customBackgroundFile = useSettingsStore((state) => state.settings.customBackgroundFile);
   const customBackgroundUpdatedAt = useSettingsStore((state) => state.settings.customBackgroundUpdatedAt);
   const [backgroundLoadError, setBackgroundLoadError] = useState('');
-  const splashBg = appTheme === 'dark' ? '#111111' : '#fff7fb';
+  const splashBg = appTheme === 'dark' ? '#1c1c1e' : '#fff7fb';
 
   // v2.6: Announcement modal
   const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
@@ -121,6 +121,7 @@ export default function App() {
   if (!ready) {
     return (
       <View style={{ flex: 1, backgroundColor: splashBg, alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={require('./assets/splash-icon.png')} style={{ width: 140, height: 140, marginBottom: 20, resizeMode: 'contain' }} />
         <Text style={{ color: '#ff6f91', fontSize: 28, fontWeight: 'bold', marginBottom: 20 }}>牙牙消息</Text>
         <ActivityIndicator color="#ff6f91" size="large" />
       </View>
@@ -133,7 +134,7 @@ export default function App() {
     : null;
 
   const content = (
-    <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : (appTheme === 'dark' ? '#111111' : '#fff7fb') }}>
+    <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : (appTheme === 'dark' ? '#1c1c1e' : '#fff7fb') }}>
       <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
       {backgroundLoadError ? (
         <View pointerEvents="none" style={{ position: 'absolute', left: 10, right: 10, top: 36, zIndex: 9999, padding: 8, borderRadius: 8, backgroundColor: 'rgba(180,0,0,0.82)' }}>

@@ -14,7 +14,7 @@ export const Colors = {
   bgCard: 'rgba(255,255,255,0.72)',
   bgCardDark: 'rgba(20,20,20,0.68)',
   bgScreen: 'transparent',
-  bgDark: '#000000',
+  bgDark: '#1c1c1e',
 
   border: 'rgba(0,0,0,0.06)',
   borderDark: 'rgba(255,255,255,0.08)',
