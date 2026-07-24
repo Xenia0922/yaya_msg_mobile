@@ -12,6 +12,7 @@ import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { NOTICE_URL } from './src/constants';
 import { initRuntimeLog, logCrash } from './src/utils/runtimeLog';
+import { Colors } from './src/theme/colors';
 
 // 全局 JS 闪退捕获：生产环境红盒不可见，写入本地日志便于排查。
 // 同时保留原有 handler（开发环境红盒 / 默认崩溃行为）。
@@ -42,7 +43,7 @@ export default function App() {
   const customBackgroundFile = useSettingsStore((state) => state.settings.customBackgroundFile);
   const customBackgroundUpdatedAt = useSettingsStore((state) => state.settings.customBackgroundUpdatedAt);
   const [backgroundLoadError, setBackgroundLoadError] = useState('');
-  const splashBg = appTheme === 'dark' ? '#1c1c1e' : '#fff7fb';
+  const splashBg = appTheme === 'dark' ? 'Colors.bgDark' : '#fff7fb';
 
   // v2.6: Announcement modal
   const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
@@ -129,7 +130,7 @@ export default function App() {
     : null;
 
   const content = (
-    <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : (appTheme === 'dark' ? '#1c1c1e' : '#fff7fb') }}>
+    <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : (appTheme === 'dark' ? 'Colors.bgDark' : '#fff7fb') }}>
       <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
       {backgroundLoadError ? (
         <View pointerEvents="none" style={{ position: 'absolute', left: 10, right: 10, top: 36, zIndex: 9999, padding: 8, borderRadius: 8, backgroundColor: 'rgba(180,0,0,0.82)' }}>

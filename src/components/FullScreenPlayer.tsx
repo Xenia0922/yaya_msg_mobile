@@ -17,6 +17,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { useSettingsStore } from '../store';
+import { Colors } from '../theme/colors';
 import { isPlayableHost, MusicEngine } from '../services/musicPlayer';
 import { lyricIndexAt, lyricTimeForIndex } from '../utils/lyrics';
 import CoverArt from './CoverArt';
@@ -176,7 +177,7 @@ function FullScreenPlayerInner({
       <Animated.View style={[styles.page, { transform: [{ translateX: slideAnim }] }]} {...panResponder.panHandlers}>
         <View style={styles.topBar}>
           <Pressable onPress={onClose} style={styles.topBtn}>
-            <Text style={styles.topBtnT}>▾</Text>
+            <Text style={[styles.topBtnT, isDark && styles.topBtnTD]}>▾</Text>
           </Pressable>
           <View style={styles.topCenter}>
             <Text style={[styles.topTitle, isDark && styles.tL]} numberOfLines={1}>{track.title || '未知'}</Text>
@@ -190,11 +191,11 @@ function FullScreenPlayerInner({
         {showLyrics ? (
           <>
             <View style={styles.lyricToolRow}>
-              <Pressable onPress={() => setLyricSize((s) => Math.max(13, s - 2))} style={styles.lyricToolBtn}>
-                <Text style={styles.lyricToolT}>A-</Text>
+              <Pressable onPress={() => setLyricSize((s) => Math.max(13, s - 2))} style={[styles.lyricToolBtn, isDark && styles.lyricToolBtnD]}>
+                <Text style={[styles.lyricToolT, isDark && styles.lyricToolTD]}>A-</Text>
               </Pressable>
-              <Pressable onPress={() => setLyricSize((s) => Math.min(24, s + 2))} style={styles.lyricToolBtn}>
-                <Text style={styles.lyricToolT}>A+</Text>
+              <Pressable onPress={() => setLyricSize((s) => Math.min(24, s + 2))} style={[styles.lyricToolBtn, isDark && styles.lyricToolBtnD]}>
+                <Text style={[styles.lyricToolT, isDark && styles.lyricToolTD]}>A+</Text>
               </Pressable>
             </View>
             <ScrollView ref={lyricScrollRef} style={styles.lyricScroll} showsVerticalScrollIndicator={false}
@@ -359,11 +360,12 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
 const styles = StyleSheet.create({
   root: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 999, elevation: 999 },
   backdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#ffffff' },
-  backdropD: { backgroundColor: '#111111' },
+  backdropD: { backgroundColor: Colors.bgDark },
   page: { flex: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 48, paddingBottom: 8 },
   topBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   topBtnT: { fontSize: 22, color: '#333' },
+  topBtnTD: { color: '#eeeeee' },
   topBtnOn: { color: '#ff6f91', fontWeight: '800' },
   topCenter: { flex: 1, alignItems: 'center' },
   topTitle: { fontSize: 16, fontWeight: '700', color: '#222' },
@@ -373,9 +375,11 @@ const styles = StyleSheet.create({
   lyricScroll: { flex: 1 },
   lyricToolRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, paddingVertical: 6 },
   lyricToolBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.06)' },
+  lyricToolBtnD: { backgroundColor: 'rgba(255,255,255,0.12)' },
   lyricToolT: { fontSize: 12, color: '#555' },
+  lyricToolTD: { color: '#cccccc' },
   lyricLine: { fontSize: 15, color: '#999', textAlign: 'center', paddingVertical: 8, lineHeight: 26 },
-  lyricLineD: { color: '#555' },
+  lyricLineD: { color: '#aaaaaa' },
   lyricLineOn: { color: '#ff6f91', fontWeight: '900', textShadowColor: 'rgba(255,111,145,0.3)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 8 },
   ctrlWrap: { paddingHorizontal: 20, paddingBottom: 32 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
@@ -398,7 +402,7 @@ const styles = StyleSheet.create({
   tL: { color: '#eee' }, tS: { color: '#aaa' },
   queueMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   queueSheet: { maxHeight: '82%', backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingBottom: 18 },
-  queueSheetD: { backgroundColor: '#1b1b1b' },
+  queueSheetD: { backgroundColor: Colors.bgDark },
   queueHandle: { width: 38, height: 4, borderRadius: 2, backgroundColor: '#ddd', alignSelf: 'center', marginTop: 8, marginBottom: 4 },
   queueHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
   queueTitle: { fontSize: 16, fontWeight: '800', color: '#222' },

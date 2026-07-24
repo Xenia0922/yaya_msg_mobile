@@ -12,9 +12,9 @@ export const Colors = {
   darkTextTertiary: '#cccccc',
 
   bgCard: 'rgba(255,255,255,0.72)',
-  bgCardDark: 'rgba(20,20,20,0.68)',
+  bgCardDark: 'rgba(45,45,50,0.72)',
   bgScreen: 'transparent',
-  bgDark: '#1c1c1e',
+  bgDark: '#222226',
 
   border: 'rgba(0,0,0,0.06)',
   borderDark: 'rgba(255,255,255,0.08)',

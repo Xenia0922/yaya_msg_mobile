@@ -5,6 +5,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Animated, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
 import { useSettingsStore, useUiStore } from '../store';
+import { Colors } from '../theme/colors';
 import { ensureMemberData } from '../services/memberData';
 import { RootStackParamList, TabParamList } from './types';
 import HomeScreen from '../screens/HomeScreen';
@@ -214,7 +215,7 @@ function MainTabs() {
       tabBar={(props) => <MainTabBar {...props} hasBackground={hasBackground} hidden={tabBarHidden} />}
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: hasBackground ? 'transparent' : (isDark ? '#111111' : ui.colors.pageBg) },
+        sceneStyle: { backgroundColor: hasBackground ? 'transparent' : (isDark ? Colors.bgDark : ui.colors.pageBg) },
         animation: 'none',
       }}
     >

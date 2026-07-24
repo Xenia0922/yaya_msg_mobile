@@ -5,7 +5,7 @@
     "version": "2.6.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -19,7 +19,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.yk1z.yayamsg",
-      "versionCode": 2060100,
+      "versionCode": 2060002,
       "usesCleartextTraffic": true,
       "permissions": [
         "INTERNET",
