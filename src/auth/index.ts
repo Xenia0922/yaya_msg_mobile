@@ -27,7 +27,8 @@ export function initWasm(): Promise<void> {
     try {
       console.log('[initWasm] Starting native WASM initialization...');
       if (typeof WebAssembly === 'undefined') {
-        // 真实设备几乎不会走到这里；仅作守卫，不当作致命错误污染用户可见文案
+        // RN Hermes 引擎默认不暴露 WebAssembly，此守卫在真机上是正常命中路径（非异常）；
+      // 原生通道不可用即降级到 WebView 签名器，不当作致命错误。
         throw new Error('当前运行环境缺少 WebAssembly 支持');
       }
       console.log('[initWasm] Loading wasm module...');
@@ -46,7 +47,9 @@ export function initWasm(): Promise<void> {
       console.log('[initWasm] Native WASM initialization SUCCESS');
     } catch (e: any) {
       _lastError = e?.message || String(e);
-      console.error('[initWasm] Native WASM initialization FAILED:', _lastError);
+      // Hermes 上原生 WASM 本就不可用，WebView 签名器才是实际通道；降级为 log 记录，
+      // 不当作错误污染用户可见日志（getWasmError 在 WebView 就绪时已返回 ''）。
+      console.log('[initWasm] Native WASM unavailable (Hermes), falling back to WebView signer:', _lastError);
       // 失败不置 WASM_READY：原生通道可重试（下次调用重跑），generatePaAsync 仍会兜底 WebView。
     } finally {
       _initPromise = null;
