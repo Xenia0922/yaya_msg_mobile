@@ -21,8 +21,9 @@ export default function ScreenHeader({ title, onBack, right, style }: Props) {
         <Text style={styles.backText}>返回</Text>
       </TouchableOpacity>
       {/* 标题回到正常 flex 流：flex:1 独占整行宽度，textAlign:center 即在整屏水平居中，
-          垂直方向随 header 的 alignItems:'center' 与左右按钮自动对齐，避免绝对定位导致的偏移/遮挡 */}
-      <Text style={styles.title} numberOfLines={1}>{title}</Text>
+          垂直方向随 header 的 alignItems:'center' 与左右按钮自动对齐，避免绝对定位导致的偏移/遮挡。
+          pointerEvents:none 让触摸穿透到被它（满宽）覆盖的返回/右侧按钮，修复返回键失效回归。 */}
+      <Text style={styles.title} numberOfLines={1} pointerEvents="none">{title}</Text>
       <View style={[styles.rightSlot, { top: topPad, bottom: 14 }]}>{right}</View>
     </View>
   );

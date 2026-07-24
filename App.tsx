@@ -119,13 +119,8 @@ export default function App() {
   }, [ready]);
 
   if (!ready) {
-    return (
-      <View style={{ flex: 1, backgroundColor: splashBg, alignItems: 'center', justifyContent: 'center' }}>
-        <Image source={require('./assets/splash-icon.png')} style={{ width: 140, height: 140, marginBottom: 20, resizeMode: 'contain' }} />
-        <Text style={{ color: '#ff6f91', fontSize: 28, fontWeight: 'bold', marginBottom: 20 }}>牙牙消息</Text>
-        <ActivityIndicator color="#ff6f91" size="large" />
-      </View>
-    );
+    // 原生开屏已展示 app 图标（与开屏同色纯背景，避免黑屏闪烁）；不再叠加 JS 加载 UI
+    return <View style={{ flex: 1, backgroundColor: splashBg }} />;
   }
 
   const backgroundUri = customBackgroundFile?.trim();
