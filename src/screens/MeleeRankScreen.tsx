@@ -40,19 +40,48 @@ const MODE_LABELS: { key: ViewMode; label: string; icon: string }[] = [
 function extractRankList(data: any): any[] {
   if (!data || typeof data !== 'object') return [];
   const candidates = [
-    data.rankList, data.list, data.data, data.ranks,
-    data.content?.rankList, data.content?.list, data.content?.data,
-    data.content?.ranks, data.data?.rankList, data.data?.list,
+    data.rankList, data.list, data.data, data.ranks, data.result, data.records,
+    data.content?.rankList, data.content?.list, data.content?.data, data.content?.ranks,
+    data.content?.result, data.content?.records,
+    data.data?.rankList, data.data?.list, data.data?.result, data.data?.records,
   ];
   for (const c of candidates) {
     if (Array.isArray(c) && c.length) return c;
   }
-  // 兜底：遍历一层找首个数组
+  // 兜底：遍历一层找首个对象数组
   for (const key of Object.keys(data)) {
     const v = (data as any)[key];
     if (Array.isArray(v) && v.length && typeof v[0] === 'object') return v;
   }
   return [];
+}
+
+/** 从返回体中递归找出“周列表”（含 weekRankId / weekRankName 的数组）。 */
+function extractWeeks(data: any): WeekItem[] {
+  if (!data || typeof data !== 'object') return [];
+  const scan = (node: any): WeekItem[] => {
+    if (Array.isArray(node)) {
+      const mapped = node
+        .map((it: any) => ({
+          weekRankId: Number(it?.weekRankId ?? it?.rankId ?? it?.id ?? it?.week ?? 0),
+          weekRankName: String(it?.weekRankName ?? it?.rankName ?? it?.name ?? it?.title ?? ''),
+        }))
+        .filter((w: WeekItem) => w.weekRankId > 0 && w.weekRankName);
+      if (mapped.length) return mapped;
+    }
+    if (node && typeof node === 'object') {
+      for (const k of ['weekList', 'weeks', 'weekRankList', 'rankList', 'list']) {
+        const r = scan((node as any)[k]);
+        if (r.length) return r;
+      }
+      for (const k of Object.keys(node)) {
+        const r = scan((node as any)[k]);
+        if (r.length) return r;
+      }
+    }
+    return [];
+  };
+  return scan(data);
 }
 
 export default function MeleeRankScreen() {
@@ -69,97 +98,85 @@ export default function MeleeRankScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchWeeks = useCallback(async () => {
+  const switchMode = (m: ViewMode) => {
+    setRanks([]);
+    setPersonRanks([]);
+    setError('');
+    setMode(m);
+  };
+
+  const loadRank = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await pocketApi.getMeleeRankPage();
-      const data = res?.content || res?.data || res || {};
-      const list =
-        data?.weekList || data?.list || data?.rankList || data?.data;
-      let items: WeekItem[] = [];
-      if (Array.isArray(list) && list.length) {
-        items = list
-          .map((item: any) => ({
-            weekRankId: Number(item.weekRankId || item.rankId || item.id || item.week || 0),
-            weekRankName: String(item.weekRankName || item.rankName || item.name || item.title || ''),
-          }))
-          .filter((w: WeekItem) => w.weekRankId > 0);
+      let res: any;
+      if (mode === 'year') res = await pocketApi.getMeleeYearRankPage();
+      else if (mode === 'total') res = await pocketApi.getMeleeRankPage();
+      else if (mode === 'week') {
+        res = selectedWeekRef.current
+          ? await pocketApi.getMeleeWeekRank(selectedWeekRef.current.weekRankId)
+          : await pocketApi.getMeleeRankPage();
       } else {
-        // 顶层直接是排名（无周列表）→ 视为总榜
-        const top = extractRankList(data);
-        if (top.length) setRanks(top);
+        return;
       }
-      setWeeks(items);
-      if (items.length > 0 && !selectedWeekRef.current) setSelectedWeek(items[items.length - 1]);
+      const data = res?.content ?? res?.data ?? res ?? {};
+      // 优先从返回体补齐周列表（部分接口把 weekList 挂在 content 下）
+      const ws = extractWeeks(data);
+      if (ws.length) {
+        setWeeks((prev) => (prev.length ? prev : ws));
+        if (!selectedWeekRef.current) setSelectedWeek(ws[ws.length - 1]);
+      }
+      const list = extractRankList(data);
+      setRanks(list);
+      if (!list.length) setError(mode === 'year' ? '暂无年榜数据' : '暂无排名数据');
     } catch (e: any) {
       setError(errorMessage(e));
+      setRanks([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode]);
 
-  const fetchWeekRank = useCallback(async (week: WeekItem) => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await pocketApi.getMeleeWeekRank(week.weekRankId);
-      const data = res?.content || res?.data || res || {};
-      setRanks(extractRankList(data));
-    } catch (e: any) {
-      setError(errorMessage(e));
-    } finally {
+  const loadPerson = useCallback(async (m: Member) => {
+    if (!m?.id) {
+      setPersonRanks([]);
       setLoading(false);
+      return;
     }
-  }, []);
-
-  const fetchYearRank = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await pocketApi.getMeleeYearRankPage();
-      const data = res?.content || res?.data || res || {};
-      setRanks(extractRankList(data));
-      if (!ranks.length && !extractRankList(data).length) setError('暂无年榜数据');
-    } catch (e: any) {
-      setError(errorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchPersonRank = useCallback(async (m: Member) => {
-    if (!m?.id) return;
     setLoading(true);
     setError('');
     try {
       const res = await pocketApi.getPersonMeleeRankPage(Number(m.id));
-      const data = res?.content || res?.data || {};
+      const data = res?.content ?? res?.data ?? {};
       const list = Array.isArray(data?.charmInfo) ? data.charmInfo : extractRankList(data);
       setPersonRanks(list);
+      if (!list.length) setError('暂无鸡腿贡献数据');
     } catch (e: any) {
       setError(errorMessage(e));
+      setPersonRanks([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchWeeks(); }, []);
   useEffect(() => {
-    if (mode === 'week' && selectedWeek) fetchWeekRank(selectedWeek);
-    else if (mode === 'year') fetchYearRank();
-    else if (mode === 'total' && weeks.length) fetchWeekRank(selectedWeek || weeks[weeks.length - 1]);
-  }, [mode, selectedWeek, weeks]);
-  useEffect(() => {
-    if (mode === 'person' && member) fetchPersonRank(member);
-  }, [mode, member]);
+    if (mode === 'person') {
+      if (member) loadPerson(member);
+      else {
+        setPersonRanks([]);
+        setLoading(false);
+      }
+    } else {
+      loadRank();
+    }
+  }, [mode, selectedWeek, member, loadRank, loadPerson]);
 
   const renderWeekChip = ({ item }: { item: WeekItem }) => {
     const active = selectedWeek?.weekRankId === item.weekRankId;
     return (
       <TouchableOpacity
         style={[styles.weekChip, isDark && styles.weekChipDark, active && styles.weekChipActive]}
-        onPress={() => setSelectedWeek(item)}
+        onPress={() => { setRanks([]); setSelectedWeek(item); }}
       >
         <Text style={[styles.weekChipText, isDark && styles.textSubLight, active && styles.weekChipTextActive]}>
           {item.weekRankName}
@@ -181,7 +198,8 @@ export default function MeleeRankScreen() {
     [isDark],
   );
 
-  const showSkeleton = loading && ranks.length === 0 && personRanks.length === 0 && mode !== 'person';
+  const showSkeleton = loading && ranks.length === 0 && mode !== 'person';
+  const showPersonSkeleton = loading && personRanks.length === 0 && mode === 'person';
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
@@ -194,7 +212,7 @@ export default function MeleeRankScreen() {
             <TouchableOpacity
               key={m.key}
               style={[styles.modeBtn, active && styles.modeBtnActive]}
-              onPress={() => { setRanks([]); setError(''); setMode(m.key); }}
+              onPress={() => switchMode(m.key)}
             >
               <MaterialCommunityIcons name={m.icon as any} size={14} color={active ? '#fff' : (isDark ? '#eeeeee' : '#555555')} />
               <Text style={[styles.modeText, isDark && styles.textSubLight, active && styles.modeTextActive]}>{m.label}</Text>
@@ -206,7 +224,8 @@ export default function MeleeRankScreen() {
       {mode === 'person' && (
         <MemberPicker selectedMember={member} onSelect={(m) => { setPersonRanks([]); setMember(m); }} placeholder="搜索成员查看鸡腿贡献..." />
       )}
-      {mode === 'week' && (
+
+      {mode === 'week' && weeks.length > 0 && (
         <PerfFlatList
           horizontal
           data={weeks}
@@ -221,7 +240,7 @@ export default function MeleeRankScreen() {
       {error ? (
         <View style={styles.errorWrap}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={fetchWeeks}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => (mode === 'person' && member ? loadPerson(member) : loadRank())}>
             <Text style={styles.retryText}>重试</Text>
           </TouchableOpacity>
         </View>
@@ -229,22 +248,24 @@ export default function MeleeRankScreen() {
 
       {mode === 'person' ? (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <PerfFlatList
-            data={personRanks}
-            keyExtractor={(item: any) => String(item.userId || item.id || item.uid || Math.random())}
-            contentContainerStyle={styles.list}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-            removeClippedSubviews
-            getItemLayout={(_, index) => ({ length: 72, offset: 72 * index, index })}
-            renderItem={renderPerson}
-            ListEmptyComponent={
-              <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                {loading ? '' : member ? '暂无鸡腿贡献数据' : '请选择成员查看贡献榜'}
-              </Text>
-            }
-          />
+          {showPersonSkeleton ? (
+            <CenterSpinner dark={isDark} text="加载中…" />
+          ) : (
+            <PerfFlatList
+              data={personRanks}
+              keyExtractor={(item: any, index: number) => String(item.userId || item.id || item.uid || item.resId || `p${index}`)}
+              contentContainerStyle={styles.list}
+              initialNumToRender={12}
+              maxToRenderPerBatch={12}
+              windowSize={7}
+              renderItem={renderPerson}
+              ListEmptyComponent={
+                <Text style={[styles.empty, isDark && styles.textSubLight]}>
+                  {loading ? '' : member ? '暂无鸡腿贡献数据' : '请选择成员查看贡献榜'}
+                </Text>
+              }
+            />
+          )}
         </FadeInView>
       ) : (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
@@ -253,13 +274,11 @@ export default function MeleeRankScreen() {
           ) : (
             <PerfFlatList
               data={ranks}
-              keyExtractor={(item: any) => String(item.userId || item.rankNum || item.resId || Math.random())}
+              keyExtractor={(item: any, index: number) => String(item.userId || item.rankNum || item.resId || item.id || `r${index}`)}
               contentContainerStyle={styles.list}
               initialNumToRender={12}
               maxToRenderPerBatch={12}
               windowSize={7}
-              removeClippedSubviews
-              getItemLayout={(_, index) => ({ length: 72, offset: 72 * index, index })}
               renderItem={renderRank}
               ListEmptyComponent={
                 <Text style={[styles.empty, isDark && styles.textSubLight]}>
