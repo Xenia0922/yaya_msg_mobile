@@ -101,12 +101,11 @@ export async function clearLog() {
   await AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
 }
 
-export function exportLogText(): string {
+export function exportLogText(entries?: LogEntry[]): string {
+  const src = (entries ?? buffer).slice().reverse(); // 与现有顺序保持一致（最新在前）
   const os = `${Platform.OS} ${String(Platform.Version)}`;
   const header = `牙牙消息 v${APP_VERSION} · ${os} · 日志导出 ${new Date().toLocaleString()}\n${'='.repeat(40)}`;
-  const body = buffer
-    .slice()
-    .reverse()
+  const body = src
     .map((e) => {
       const d = new Date(e.t);
       const ts = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;

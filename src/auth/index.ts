@@ -62,7 +62,9 @@ async function fetchWasm(): Promise<ArrayBuffer> {
       throw new Error('内联 wasmBase64 完整性校验失败');
     }
     const bytes = base64ToBytes(wasmBase64);
-    return bytes.buffer.slice(0, bytes.length);
+    // 类型修正：base64ToBytes 返回的 Uint8Array 底层为常规 ArrayBuffer（非 SharedArrayBuffer），
+    // 此处转换仅为通过 tsc 的 ArrayBufferLike 收窄，不改变运行时行为。
+    return bytes.buffer.slice(0, bytes.length) as ArrayBuffer;
   } catch (e: any) {
     _lastError = e.message || String(e);
   }
@@ -117,7 +119,7 @@ export function generatePa(): string | null {
 export async function generatePaAsync(): Promise<string | null> {
   // 先等原生通道初始化完成再判定（避免「initWasm 还在异步加载、_paGen 尚为 null」就误判为不可用，
   // 进而过早落到 WebView 兜底并被 6s 超时打断 —— 这正是 1305 后「设备不支持 WebAssembly」误报的根因）。
-  console.error('[generatePaAsync] ERROR-LEVEL: Checking native WASM status, WASM_READY:', WASM_READY, '_paGen:', !!_paGen, '_initPromise:', !!_initPromise);
+  console.log('[generatePaAsync] ERROR-LEVEL: Checking native WASM status, WASM_READY:', WASM_READY, '_paGen:', !!_paGen, '_initPromise:', !!_initPromise);
   if ((!WASM_READY || !_paGen) && _initPromise) {
     try { 
       console.log('[generatePaAsync] Waiting for native initPromise...');
@@ -134,7 +136,7 @@ export async function generatePaAsync(): Promise<string | null> {
     return localPa;
   }
   console.log('[generatePaAsync] Native PA unavailable, trying WebView...');
-  console.error('[generatePaAsync] ERROR-LEVEL: isWebViewSignerReady:', isWebViewSignerReady(), 'getWebViewSignerError:', getWebViewSignerError());
+  console.log('[generatePaAsync] ERROR-LEVEL: isWebViewSignerReady:', isWebViewSignerReady(), 'getWebViewSignerError:', getWebViewSignerError());
   try {
     // 冷启动 WebView 签名容器需要时间预热，给足 10s（同 1305 之前的默认），避免首调超时误报
     const webviewPa = await generatePaViaWebView(10000);

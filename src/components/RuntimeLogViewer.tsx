@@ -70,13 +70,15 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
 
   const refresh = () => setEntries(getLogEntries());
 
-  const onCopy = async () => {
-    const text = exportLogText();
-    try {
-      await Share.share({ title: '牙牙消息运行日志', message: text });
-    } catch {
-      showToast('分享失败');
-    }
+  const onCopy = () => {
+    const text = exportLogText(filtered);
+    Clipboard.setString(text);
+    showToast(`已复制 ${filtered.length} 条日志`);
+  };
+
+  const onShare = () => {
+    const text = exportLogText(filtered);
+    Share.share({ title: '牙牙消息运行日志', message: text }).catch(() => showToast('分享失败'));
   };
 
   const onCopyEntry = (entry: any) => {
@@ -166,7 +168,10 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
             <Text style={[styles.toolText, isDark && styles.textLight]}>刷新</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.toolBtn, isDark && styles.toolBtnDark]} onPress={onCopy}>
-            <Text style={[styles.toolText, isDark && styles.textLight]}>复制/分享</Text>
+            <Text style={[styles.toolText, isDark && styles.textLight]}>复制</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.toolBtn, isDark && styles.toolBtnDark]} onPress={onShare}>
+            <Text style={[styles.toolText, isDark && styles.textLight]}>分享</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.toolBtnDanger} onPress={onClear}>
             <Text style={styles.toolTextDanger}>清空</Text>
