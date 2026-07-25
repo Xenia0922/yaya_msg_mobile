@@ -99,8 +99,8 @@ android {
         applicationId 'com.yk1z.yayamsg'
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 31)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2060002
-        versionName "2.6.2"
+        versionCode 2060003
+        versionName "2.6.3"
 
         // 真机架构 + 模拟器架构。MuMu 等安卓模拟器为 x86_64，缺此 ABI 会导致 libhermes 等原生库
         // 无法加载（UnsatisfiedLinkError），表现为「启动即闪退进不去」。为兼容模拟器测试必须保留。

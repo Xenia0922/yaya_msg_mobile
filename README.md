@@ -2,7 +2,7 @@
 
 > 口袋48 第三方移动客户端 · React Native 跨平台实现（当前仅维护 Android）
 
-[![Version](https://img.shields.io/badge/version-2.6.2-ff6f91)](https://github.com/Xenia0922/yaya_msg_mobile)
+[![Version](https://img.shields.io/badge/version-2.6.3-ff6f91)](https://github.com/Xenia0922/yaya_msg_mobile)
 [![Android](https://img.shields.io/badge/platform-Android-3DDC84?logo=android)](https://github.com/Xenia0922/yaya_msg_mobile)
 [![Expo](https://img.shields.io/badge/expo-54-4630EB?logo=expo)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/react_native-0.81-61DAFB?logo=react)](https://reactnative.dev)
@@ -116,7 +116,7 @@ src/
 
 ## 已知问题（Known Issues）· 待修复
 
-> 以下问题在 v2.6.2 发布时**尚未解决**，计划在后续版本修复。记录在此以便继续排查。
+> 以下问题在 v2.6.3 发布时**尚未解决**，计划在后续版本修复。记录在此以便继续排查。
 
 ### 1. 音乐分团标签栏渲染异常（标签变长 / 高度撑大 / 大块留空）
 
