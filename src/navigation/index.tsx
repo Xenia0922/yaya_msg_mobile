@@ -42,6 +42,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import { WebViewSigner } from '../auth/webviewSigner';
 import { ui } from '../theme/ui';
+import { useAppTheme, useResolvedTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -171,7 +173,8 @@ function MainTabBar({
   hasBackground,
   hidden,
 }: BottomTabBarProps & { hasBackground: boolean; hidden: boolean }) {
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   if (hidden) return null;
 
   return (
@@ -180,10 +183,13 @@ function MainTabBar({
         {state.routes.map((route, index) => {
           const focused = state.index === index;
           const optionLabel = descriptors[route.key]?.options.tabBarLabel;
-          const fallback = TAB_LABELS[route.name] || {
-            icon: route.name.slice(0, 1),
-            label: typeof optionLabel === 'string' ? optionLabel : route.name,
-          };
+          const tabMeta = TAB_LABELS[route.name];
+          const fallback = tabMeta
+            ? { icon: tabMeta.icon, label: t(tabMeta.label) }
+            : {
+                icon: route.name.slice(0, 1),
+                label: typeof optionLabel === 'string' ? t(optionLabel) : route.name,
+              };
           const color = focused ? '#ff6f91' : (isDark ? '#eeeeee' : '#555555');
 
           return (
@@ -207,7 +213,7 @@ function MainTabBar({
 
 function MainTabs() {
   const hasBackground = !!useSettingsStore((state) => state.settings.customBackgroundFile?.trim());
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
   const tabBarHidden = useUiStore((state) => state.tabBarHidden);
 
   return (
@@ -292,7 +298,7 @@ const AppDarkTheme = {
 };
 
 export default function AppNavigator() {
-  const theme = useSettingsStore((state) => state.settings.theme);
+  const theme = useResolvedTheme();
   const hasBackground = !!useSettingsStore((state) => state.settings.customBackgroundFile?.trim());
   const navTheme = theme === 'dark' ? AppDarkTheme : AppTheme;
   const themed = hasBackground

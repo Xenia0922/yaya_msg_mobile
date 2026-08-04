@@ -17,6 +17,8 @@ import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 import {
   clearFinishedDownloads,
   deleteDownloadItem,
@@ -49,7 +51,8 @@ function typeLabel(type: DownloadItem['type']) {
 
 export default function DownloadScreen() {
   const navigation = useNavigation<Nav>();
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
   const [items, setItems] = useState<DownloadItem[]>([]);
   const [url, setUrl] = useState('');
@@ -61,7 +64,7 @@ export default function DownloadScreen() {
       setImgPreview(item.localUri);
       return;
     }
-    try { await openDownloadItem(item); } catch (e: any) { showToast(`打开失败：${e?.message || e}`); }
+    try { await openDownloadItem(item); } catch (e: any) { showToast(t('打开失败：{msg}', { msg: e?.message || e })); }
   };
 
   const refresh = useCallback(async () => {
@@ -86,9 +89,9 @@ export default function DownloadScreen() {
         onProgress: refresh,
       });
       setUrl('');
-      showToast('下载完成');
+      showToast(t('下载完成'));
     } catch (error: any) {
-      showToast(`下载失败：${error?.message || error}`);
+      showToast(t('下载失败：{msg}', { msg: error?.message || error }));
     } finally {
       setBusy(false);
       refresh();
@@ -107,9 +110,9 @@ export default function DownloadScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="下载管理" right={
+      <ScreenHeader title={t('下载管理')} right={
         <TouchableOpacity onPress={clearDone}>
-          <Text style={styles.clearBtn}>清理完成</Text>
+          <Text style={styles.clearBtn}>{t('清理完成')}</Text>
         </TouchableOpacity>
       } />
 
@@ -117,14 +120,14 @@ export default function DownloadScreen() {
         <View style={[styles.manualCard, isDark && styles.cardDark]}>
           <TextInput
             style={[styles.urlInput, isDark && styles.urlInputDark]}
-            placeholder="粘贴图片、语音、视频或录播地址"
+            placeholder={t('粘贴图片、语音、视频或录播地址')}
             placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
             value={url}
             onChangeText={setUrl}
             autoCapitalize="none"
           />
           <TouchableOpacity style={[styles.addBtn, busy && styles.btnDisabled]} onPress={startManualDownload} disabled={busy}>
-            <Text style={styles.addBtnText}>{busy ? '下载中' : '添加下载'}</Text>
+            <Text style={styles.addBtnText}>{busy ? t('下载中') : t('添加下载')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -132,7 +135,7 @@ export default function DownloadScreen() {
           data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>暂无下载项目</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无下载项目')}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
@@ -141,7 +144,7 @@ export default function DownloadScreen() {
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <View style={[styles.task, isDark && styles.cardDark]}>
                 <View style={styles.taskHead}>
-                  <Text style={[styles.typeTag, isDark && styles.typeTagDark]}>{typeLabel(item.type)}</Text>
+                  <Text style={[styles.typeTag, isDark && styles.typeTagDark]}>{t(typeLabel(item.type))}</Text>
                   <Text style={[styles.taskName, isDark && styles.textLight]} numberOfLines={1}>{item.name}</Text>
                 </View>
                 <View style={styles.progressBar}>
@@ -153,14 +156,14 @@ export default function DownloadScreen() {
                 </View>
                 <View style={styles.taskMeta}>
                   <Text style={[styles.taskStatus, isDark && styles.textSubLight]}>
-                    {item.status === 'done' ? '完成' : item.status === 'failed' ? `失败：${item.error || ''}` : `下载中 ${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalBytes)}`}
+                    {item.status === 'done' ? t('完成') : item.status === 'failed' ? t('失败：{msg}', { msg: item.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(item.downloadedBytes), total: formatBytes(item.totalBytes) })}
                   </Text>
                   <View style={styles.taskActions}>
-                    <TouchableOpacity onPress={() => handleOpen(item).catch((error: any) => showToast(`打开失败：${error?.message || error}`))}>
-                      <Text style={styles.actionText}>打开</Text>
+                    <TouchableOpacity onPress={() => handleOpen(item).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))}>
+                      <Text style={styles.actionText}>{t('打开')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => remove(item.id)}>
-                      <Text style={[styles.actionText, styles.deleteText]}>删除</Text>
+                      <Text style={[styles.actionText, styles.deleteText]}>{t('删除')}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>

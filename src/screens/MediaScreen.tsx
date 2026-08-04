@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
+  Alert,
   Animated,
   AppState,
   BackHandler,
@@ -23,7 +24,7 @@ import { WebView } from 'react-native-webview';
 import Video from 'react-native-video';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
@@ -41,10 +42,13 @@ import { parseDanmaku, DanmakuItem } from '../utils/danmaku';
 import { memberSearchText } from '../utils/members';
 import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel, MoreItem } from '../components/media/PlayerChrome';
 import { CenterSpinner } from '../components/Loaders';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { translate, useI18n } from '../i18n';
 
 /** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
 function VodCardSkeleton({ dark }: { dark?: boolean }) {
-  return <CenterSpinner dark={dark} text="加载中…" />;
+  const { t } = useI18n();
+  return <CenterSpinner dark={dark} text={t('加载中…')} />;
 }
 
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
@@ -169,7 +173,8 @@ function CalendarSheet({
   onSelect: (d: Date) => void;
   onClose: () => void;
 }) {
-  const isDarkC = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDarkC = useAppTheme();
+  const { t } = useI18n();
   const base = initial || new Date();
   const [view, setView] = useState(() => new Date(base.getFullYear(), base.getMonth(), 1));
   const year = view.getFullYear();
@@ -179,7 +184,7 @@ function CalendarSheet({
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'].map((w) => t(w));
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.calMask} activeOpacity={1} onPress={onClose}>
@@ -188,7 +193,7 @@ function CalendarSheet({
             <TouchableOpacity onPress={() => setView(new Date(year, month - 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
               <MaterialCommunityIcons name="chevron-left" size={24} color={isDarkC ? '#eee' : '#333'} />
             </TouchableOpacity>
-            <Text style={[styles.calTitle]}>{year} 年 {month + 1} 月</Text>
+            <Text style={[styles.calTitle]}>{t('{year} 年 {month} 月', { year, month: month + 1 })}</Text>
             <TouchableOpacity onPress={() => setView(new Date(year, month + 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
               <MaterialCommunityIcons name="chevron-right" size={24} color={isDarkC ? '#eee' : '#333'} />
             </TouchableOpacity>
@@ -211,13 +216,13 @@ function CalendarSheet({
           </View>
           <View style={styles.calFooter}>
             <TouchableOpacity onPress={onClose} style={styles.calCancel}>
-              <Text style={[styles.calCancelText]}>取消</Text>
+              <Text style={[styles.calCancelText]}>{t('取消')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => { onSelect(new Date()); onClose(); }}
               style={styles.calToday}
             >
-              <Text style={styles.calTodayText}>今天</Text>
+              <Text style={styles.calTodayText}>{t('今天')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -280,7 +285,7 @@ function normalizeLiveList(res: any): VODItem[] {
   return source.map((raw: any, index: number) => ({
     ...raw,
     liveId: String(pickText(raw, ['liveId', 'id', 'live_id', 'roomId'], String(index))),
-    title: pickText(raw, ['title', 'liveTitle', 'liveRoomTitle', 'roomName', 'subject'], '无标题'),
+    title: pickText(raw, ['title', 'liveTitle', 'liveRoomTitle', 'roomName', 'subject'], translate('无标题')),
     liveRoomTitle: pickText(raw, ['liveRoomTitle', 'title', 'liveTitle']),
     nickname: pickText(raw, ['nickname', 'nickName', 'userInfo.nickname', 'userInfo.nickName', 'ownerName']),
     startTime: raw.startTime || raw.stime || raw.start_time || raw.ctime || raw.liveStartTime || raw.beginTime,
@@ -444,7 +449,7 @@ function profileFromUserRes(res: any) {
 }
 
 function giftName(gift: any): string {
-  return String(gift.giftName || gift.name || '未知礼物');
+  return String(gift.giftName || gift.name || translate('未知礼物'));
 }
 
 function giftCost(gift: any): number {
@@ -463,7 +468,8 @@ function acceptUserId(item: any): string {
 export default function MediaScreen() {
   const route = useRoute<MediaRouteProp>();
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
   const showToast = useUiStore((state) => state.showToast);
   const members = useMemberStore((state) => state.members);
@@ -583,13 +589,13 @@ export default function MediaScreen() {
         if (!text) {
           setDanmaku([]);
           setShowDanmaku(false);
-          showToast('该视频暂无弹幕');
+          showToast(t('该视频暂无弹幕'));
           return;
         }
         const items = parseDanmaku(text);
         setDanmaku(items);
         setShowDanmaku(items.length > 0);
-        showToast(items.length > 0 ? `弹幕 ${items.length} 条` : '该视频暂无弹幕');
+        showToast(items.length > 0 ? t('弹幕 {count} 条', { count: items.length }) : t('该视频暂无弹幕'));
       })
       .catch(() => { if (alive) setDanmaku([]); });
     return () => { alive = false; };
@@ -729,20 +735,38 @@ export default function MediaScreen() {
     playingRef.current = playing;
   }, [playing]);
 
-  // v2.6: auto-play when navigated from room with playLiveId
+  // v2.6: auto-play when navigated from room with playLiveId/playUrl
   useEffect(() => {
     const lid = route.params?.playLiveId;
-    if (!lid) return;
+    const directUrl = route.params?.playUrl;
+    if (!lid && !directUrl) return;
     const isLive = route.params?.mode !== 'vod';
     (async () => {
       try {
+        if (directUrl) {
+          // 房间页已解析出可用地址：直接播放，不再二次请求接口
+          const title = route.params?.playTitle || t('直播');
+          const cover = route.params?.playCover || '';
+          setPlaying({
+            url: directUrl,
+            urls: [directUrl],
+            title,
+            cover: normalizeUrl(cover),
+            item: { liveId: lid || '', title, liveCover: cover },
+            isLive,
+            needsVlc: streamNeedsProxy(directUrl),
+          });
+          if (!isLive && tab !== 'vod') switchTab('vod');
+          return;
+        }
+        if (!lid) return;
         let detail: any = await pocketApi.getLiveOne(lid).catch(() => null);
         if (!detail) detail = await pocketApi.getOpenLiveOne(lid).catch(() => null);
         const item = (detail?.content || detail?.data || detail || {}) as any;
         const urls = pickPlayableUrls(item, isLive);
         const url = urls[0] || '';
-        if (!url) { showToast('未解析到播放地址'); return; }
-        const title = route.params?.playTitle || item.title || item.liveRoomTitle || '直播';
+        if (!url) { Alert.alert(t('播放失败'), t('未解析到播放地址，请稍后重试。')); return; }
+        const title = route.params?.playTitle || item.title || item.liveRoomTitle || t('直播');
         const cover = route.params?.playCover || item.liveCover || item.coverPath || '';
         setPlaying({
           url,
@@ -755,14 +779,20 @@ export default function MediaScreen() {
         });
         // Switch tab to match mode
         if (!isLive && tab !== 'vod') switchTab('vod');
-      } catch (e) { showToast(`播放失败：${errorMessage(e)}`); }
+      } catch (e) { showToast(t('播放失败：{error}', { error: errorMessage(e) })); }
     })();
-  }, [route.params?.playLiveId]);
+  }, [route.params?.playLiveId, route.params?.playUrl, route.params?.playNonce]);
 
   useEffect(() => {
     setTabBarHidden(!!playing);
     return () => setTabBarHidden(false);
   }, [playing, setTabBarHidden]);
+
+  // 从房间导航进来时，房间页失焦会把 tabBarHidden 重置为 false；
+  // 这里在获得焦点时兜底一次，确保播放状态下底部导航始终隐藏。
+  useFocusEffect(useCallback(() => {
+    if (playing) setTabBarHidden(true);
+  }, [playing, setTabBarHidden]));
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -886,11 +916,11 @@ export default function MediaScreen() {
       const detail2 = !detail ? await pocketApi.getOpenLiveOne(playing.item.liveId).catch(() => null) : null;
       const d = (detail || detail2 || {}) as any;
       const annText = d?.content?.announcement || d?.announcement || d?.data?.announcement || '';
-      setAnnouncement(annText || '暂无公告');
+      setAnnouncement(annText || t('暂无公告'));
       setAnnounceVisible(true);
       setAnnounceExpanded(true);
     } catch {
-      setAnnouncement('公告加载失败');
+      setAnnouncement(t('公告加载失败'));
       setAnnounceVisible(true);
       setAnnounceExpanded(true);
     }
@@ -930,7 +960,7 @@ export default function MediaScreen() {
         setPlaying({
           url: initialUrl,
           urls,
-          title: item.title || item.liveRoomTitle || '直播 / 回放',
+          title: item.title || item.liveRoomTitle || t('直播 / 回放'),
           cover: item.liveCover || item.coverPath,
           item,
           isLive: tab === 'live',
@@ -962,13 +992,13 @@ export default function MediaScreen() {
       urls = Array.from(new Set(urls.filter(Boolean)));
       const baseUrl = urls[0] || '';
       if (!baseUrl) {
-        setError('这个条目没有可播放地址，接口也没有返回播放流');
+        setError(t('这个条目没有可播放地址，接口也没有返回播放流'));
         return;
       }
       setPlaying({
         url: baseUrl,
         urls,
-        title: item.title || item.liveRoomTitle || '直播 / 回放',
+        title: item.title || item.liveRoomTitle || t('直播 / 回放'),
         cover: item.liveCover || item.coverPath,
         item: { ...item, ...(detail?.content || detail?.data || detail) },
         isLive: tab === 'live',
@@ -983,7 +1013,7 @@ export default function MediaScreen() {
 
   const openGiftPanel = async (source = playingRef.current || playing) => {
     if (!source?.item?.liveId) {
-      setGiftStatus('当前直播缺少 liveId，不能送礼');
+      setGiftStatus(t('当前直播缺少 liveId，不能送礼'));
       setGiftVisible(true);
       return;
     }
@@ -998,25 +1028,25 @@ export default function MediaScreen() {
       const next = normalizeGiftList(giftRes);
       setGifts(next);
       setBalance(moneyRes?.content?.moneyTotal !== undefined ? String(moneyRes.content.moneyTotal) : '');
-      setGiftStatus(next.length ? `已加载 ${next.length} 个礼物` : '礼物列表为空');
+      setGiftStatus(next.length ? t('已加载 {count} 个礼物', { count: next.length }) : t('礼物列表为空'));
     } catch (err) {
       setGifts([]);
-      setGiftStatus(`加载礼物失败：${errorMessage(err)}`);
+      setGiftStatus(t('加载礼物失败：{error}', { error: errorMessage(err) }));
     }
   };
 
   const sendGift = async () => {
     if (!playing || !selectedGift) {
-      setGiftStatus('请先选择礼物');
+      setGiftStatus(t('请先选择礼物'));
       return;
     }
     const num = Math.max(1, Math.floor(Number(giftNum) || 1));
     const targetUserId = acceptUserId(playing.item);
     if (!targetUserId) {
-      setGiftStatus('无法获取主播 ID，不能送礼');
+      setGiftStatus(t('无法获取主播 ID，不能送礼'));
       return;
     }
-    setGiftStatus('正在发送...');
+    setGiftStatus(t('正在发送...'));
     try {
       await pocketApi.sendGift({
         giftId: String(selectedGift.giftId || selectedGift.id),
@@ -1024,18 +1054,18 @@ export default function MediaScreen() {
         acceptUserId: targetUserId,
         giftNum: num,
       });
-      setGiftStatus(`已送出 ${num} 个 ${giftName(selectedGift)}`);
+      setGiftStatus(t('已送出 {num} 个 {giftName}', { num, giftName: giftName(selectedGift) }));
       const money = await pocketApi.getUserMoney().catch(() => null);
       if (money?.content?.moneyTotal !== undefined) setBalance(String(money.content.moneyTotal));
     } catch (err) {
-      setGiftStatus(`送礼失败：${errorMessage(err)}`);
+      setGiftStatus(t('送礼失败：{error}', { error: errorMessage(err) }));
     }
   };
 
   const openRankPanel = async (source = playingRef.current || playing) => {
     if (!source?.item?.liveId) {
       setRankRows([]);
-      setRankStatus('当前直播缺少 liveId，不能获取贡献榜');
+      setRankStatus(t('当前直播缺少 liveId，不能获取贡献榜'));
       setRankVisible(true);
       return;
     }
@@ -1046,7 +1076,7 @@ export default function MediaScreen() {
       const rows = normalizeLiveRank(res);
       setRankRows(rows);
       if (rows.some((row, index) => row.userId && (!row.avatar || rankNameIsFallback(row, index)))) {
-        setRankStatus(`\u6b63\u5728\u8865\u5168 ${rows.length} \u4f4d\u8d21\u732e\u7528\u6237\u8d44\u6599...`);
+        setRankStatus(t('正在补充 {count} 位贡献用户资料...', { count: rows.length }));
         const enriched = await Promise.all(rows.map(async (row, index) => {
           if (!row.userId || (row.avatar && !rankNameIsFallback(row, index))) return row;
           try {
@@ -1057,13 +1087,13 @@ export default function MediaScreen() {
           }
         }));
         setRankRows(enriched);
-        setRankStatus(enriched.length ? `\u5df2\u52a0\u8f7d ${enriched.length} \u4f4d\u8d21\u732e\u7528\u6237` : '\u8d21\u732e\u699c\u4e3a\u7a7a');
+        setRankStatus(enriched.length ? t('已加载 {count} 位贡献用户', { count: enriched.length }) : t('贡献榜为空'));
       } else {
-        setRankStatus(rows.length ? `\u5df2\u52a0\u8f7d ${rows.length} \u4f4d\u8d21\u732e\u7528\u6237` : '\u8d21\u732e\u699c\u4e3a\u7a7a');
+        setRankStatus(rows.length ? t('已加载 {count} 位贡献用户', { count: rows.length }) : t('贡献榜为空'));
       }
     } catch (err) {
       setRankRows([]);
-      setRankStatus(`贡献榜加载失败：${errorMessage(err)}`);
+      setRankStatus(t('贡献榜加载失败：{error}', { error: errorMessage(err) }));
     }
   };
 
@@ -1071,7 +1101,7 @@ export default function MediaScreen() {
     const sub = DeviceEventEmitter.addListener('LivePlayerGiftRequested', () => {
       const current = playingRef.current;
       if (!current?.isLive) {
-        setGiftStatus('当前没有可送礼的直播上下文');
+        setGiftStatus(t('当前没有可送礼的直播上下文'));
         setGiftVisible(true);
         return;
       }
@@ -1102,7 +1132,7 @@ export default function MediaScreen() {
         <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none', zIndex: 30 }]}>
           <PlayerTopBar
             onBack={isFullscreen ? () => setIsFullscreen(false) : closePlayer}
-            title={playing.title || (playing.isLive ? '口袋直播' : '回放')}
+            title={playing.title || (playing.isLive ? t('口袋直播') : t('回放'))}
             onMore={() => setMoreVisible(true)}
             onRefresh={() => startPlay(playing.item)}
           />
@@ -1111,13 +1141,13 @@ export default function MediaScreen() {
         {announceExpanded && announceVisible && announcement ? (
           <Animated.View style={[styles.announcePanel, { top: announceTopAnim }]}>
             <View style={styles.announcePanelTop}>
-              <Text style={styles.announcePanelTitle} numberOfLines={1}>📢 公告</Text>
+              <Text style={styles.announcePanelTitle} numberOfLines={1}>📢 {t('公告')}</Text>
               <View style={styles.announcePanelBtns}>
                 <TouchableOpacity onPress={refreshAnnouncement} style={styles.announceSmallBtn}>
-                  <Text style={styles.announceSmallBtnText}>刷新</Text>
+                  <Text style={styles.announceSmallBtnText}>{t('刷新')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setAnnounceExpanded(false)} style={styles.announceSmallBtn}>
-                  <Text style={styles.announceSmallBtnText}>收起</Text>
+                  <Text style={styles.announceSmallBtnText}>{t('收起')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1171,13 +1201,13 @@ export default function MediaScreen() {
                 onLoad={(e) => { setDuration(e.duration || 0); setPlaybackTime(webResumeTime || 0); setPlayerError(''); }}
                 onProgress={(e) => { if (Date.now() < seekLockRef.current) return; if (!paused) setPlaybackTime(e.currentTime || 0); }}
                 onEnd={() => clearResumePosition(playing.url)}
-                onError={(event) => setPlayerError(`原生播放器失败：${JSON.stringify(event?.error || event).slice(0, 220)}`)}
+                onError={(event) => setPlayerError(t('原生播放器失败：{detail}', { detail: JSON.stringify(event?.error || event).slice(0, 220) }))}
               />
               {playerError ? (
                 <View style={styles.playerError}>
                   <Text style={styles.playerErrorText}>{playerError}</Text>
                   <TouchableOpacity style={styles.webFallbackBtn} onPress={() => { setUseWebPlayer(true); setPaused(false); }}>
-                    <Text style={styles.webFallbackText}>切换网页播放器</Text>
+                    <Text style={styles.webFallbackText}>{t('切换网页播放器')}</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -1214,12 +1244,12 @@ export default function MediaScreen() {
         <PlayerMorePanel
           visible={moreVisible}
           onClose={() => setMoreVisible(false)}
-          title="播放器功能"
+          title={t('播放器功能')}
           items={[
-            ...(playing.isLive ? [{ key: 'gift', icon: 'gift', label: '礼物', onPress: () => openGiftPanel() }] : []),
-            { key: 'rank', icon: 'trophy', label: '贡献榜', onPress: () => openRankPanel() },
-            ...((announceVisible && announcement) ? [{ key: 'announce', icon: 'bullhorn', label: '公告', active: announceExpanded, onPress: () => setAnnounceExpanded((v) => !v) }] : []),
-            { key: 'danmaku', icon: 'cog', label: '弹幕设置', onPress: () => setShowDanmakuSettings(true) },
+            ...(playing.isLive ? [{ key: 'gift', icon: 'gift', label: t('礼物'), onPress: () => openGiftPanel() }] : []),
+            { key: 'rank', icon: 'trophy', label: t('贡献榜'), onPress: () => openRankPanel() },
+            ...((announceVisible && announcement) ? [{ key: 'announce', icon: 'bullhorn', label: t('公告'), active: announceExpanded, onPress: () => setAnnounceExpanded((v) => !v) }] : []),
+            { key: 'danmaku', icon: 'cog', label: t('弹幕设置'), onPress: () => setShowDanmakuSettings(true) },
           ]}
         />
 
@@ -1227,14 +1257,14 @@ export default function MediaScreen() {
           <View style={styles.modalShade}>
             <View style={[styles.giftPanel, isDark && styles.giftPanelDark]}>
               <View style={styles.giftHeader}>
-                <Text style={[styles.giftTitle, isDark && styles.textLight]}>直播送礼</Text>
+                <Text style={[styles.giftTitle, isDark && styles.textLight]}>{t('直播送礼')}</Text>
                 <TouchableOpacity onPress={() => setGiftVisible(false)}>
-                  <Text style={styles.backBtnTextPink}>关闭</Text>
+                  <Text style={styles.backBtnTextPink}>{t('关闭')}</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={styles.giftTip}>直播送礼主播看不到赠送，仅能统计贡献值</Text>
+              <Text style={styles.giftTip}>{t('直播送礼主播看不到赠送，仅能统计贡献值')}</Text>
               <Text style={styles.giftStatus}>
-                {balance ? `余额：${balance} 鸡腿 · ` : ''}{giftStatus}
+                {balance ? `${t('余额：{balance} 鸡腿', { balance })} · ` : ''}{giftStatus}
               </Text>
               <ScrollView style={styles.giftGrid}>
                 <View style={styles.giftGridInner}>
@@ -1248,7 +1278,7 @@ export default function MediaScreen() {
                       >
                         {giftImage(gift) ? <Image source={{ uri: giftImage(gift) }} style={styles.giftImage} /> : <View style={styles.giftImage} />}
                         <Text style={styles.giftName} numberOfLines={1}>{giftName(gift)}</Text>
-                        <Text style={styles.giftCost}>{giftCost(gift)} 鸡腿</Text>
+                        <Text style={styles.giftCost}>{t('{count} 鸡腿', { count: giftCost(gift) })}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -1263,7 +1293,7 @@ export default function MediaScreen() {
                 />
                 <TouchableOpacity style={styles.sendGiftBtn} onPress={sendGift}>
                   <Text style={styles.sendGiftText}>
-                    {selectedGift ? `送出 · ${selectedGiftTotal}` : '选择礼物'}
+                    {selectedGift ? t('送出 · {count}', { count: selectedGiftTotal }) : t('选择礼物')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1274,7 +1304,7 @@ export default function MediaScreen() {
                   (navigation as any).navigate('RechargeScreen');
                 }}
               >
-                <Text style={styles.rechargeText}>余额不足？去充值鸡腿</Text>
+                <Text style={styles.rechargeText}>{t('余额不足？去充值鸡腿')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1283,9 +1313,9 @@ export default function MediaScreen() {
           <View style={styles.modalShade}>
             <View style={[styles.giftPanel, isDark && styles.giftPanelDark]}>
               <View style={styles.giftHeader}>
-                <Text style={[styles.giftTitle, isDark && styles.textLight]}>贡献榜</Text>
+                <Text style={[styles.giftTitle, isDark && styles.textLight]}>{t('贡献榜')}</Text>
                 <TouchableOpacity onPress={() => setRankVisible(false)}>
-                  <Text style={styles.backBtnTextPink}>关闭</Text>
+                  <Text style={styles.backBtnTextPink}>{t('关闭')}</Text>
                 </TouchableOpacity>
               </View>
               <Text style={styles.giftStatus}>{rankStatus}</Text>
@@ -1296,7 +1326,7 @@ export default function MediaScreen() {
                     {row.avatar ? <Image source={{ uri: row.avatar }} style={styles.rankAvatar} /> : <View style={styles.rankAvatar} />}
                     <View style={styles.rankInfo}>
                       <Text style={styles.rankName} numberOfLines={1}>{row.name}</Text>
-                      <Text style={styles.rankValue} numberOfLines={1}>{row.value ? `贡献 ${row.value}` : '贡献用户'}</Text>
+                      <Text style={styles.rankValue} numberOfLines={1}>{row.value ? t('贡献 {value}', { value: row.value }) : t('贡献用户')}</Text>
                     </View>
                   </View>
                 ))}
@@ -1311,16 +1341,16 @@ export default function MediaScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="直播 · 回放" />
+      <ScreenHeader title={t('直播 · 回放')} />
       <View style={styles.toolbarRow}>
         <TouchableOpacity style={[styles.tabBtn, tab === 'live' && styles.tabBtnActive, isDark && tab !== 'live' && styles.tabBtnDark]} onPress={() => switchTab('live')}>
-          <Text style={[styles.tabBtnText, tab === 'live' && styles.tabBtnTextActive, isDark && tab !== 'live' && styles.tabBtnTextDark]}>直播</Text>
+          <Text style={[styles.tabBtnText, tab === 'live' && styles.tabBtnTextActive, isDark && tab !== 'live' && styles.tabBtnTextDark]}>{t('直播')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.tabBtn, tab === 'vod' && styles.tabBtnActive, isDark && tab !== 'vod' && styles.tabBtnDark]} onPress={() => switchTab('vod')}>
-          <Text style={[styles.tabBtnText, tab === 'vod' && styles.tabBtnTextActive, isDark && tab !== 'vod' && styles.tabBtnTextDark]}>回放</Text>
+          <Text style={[styles.tabBtnText, tab === 'vod' && styles.tabBtnTextActive, isDark && tab !== 'vod' && styles.tabBtnTextDark]}>{t('回放')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.refreshBtn, isDark && styles.refreshBtnDark]} onPress={refreshList}>
-          <Text style={[styles.refreshText, isDark && styles.refreshTextDark]}>刷新</Text>
+          <Text style={[styles.refreshText, isDark && styles.refreshTextDark]}>{t('刷新')}</Text>
         </TouchableOpacity>
       </View>
       {/* v2.6: group selector — client-side text match filter */}
@@ -1331,7 +1361,7 @@ export default function MediaScreen() {
             style={[styles.groupChip, isDark && styles.groupChipDark, groupId === item.id && styles.groupChipActive]}
             onPress={() => setGroupId(item.id)}
           >
-            <Text style={[styles.groupChipText, isDark && styles.groupChipTextDark, groupId === item.id && styles.groupChipTextActive]}>{item.label}</Text>
+            <Text style={[styles.groupChipText, isDark && styles.groupChipTextDark, groupId === item.id && styles.groupChipTextActive]}>{t(item.label)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -1348,7 +1378,7 @@ export default function MediaScreen() {
         </TouchableOpacity>
         <TextInput
           style={[styles.searchInput, isDark && styles.searchInputDark, selectedMember && styles.searchInputActive]}
-          placeholder={selectedMember ? '搜索该成员的标题 / 日期...' : '搜索成员名、标题、时间...'}
+          placeholder={selectedMember ? t('搜索该成员的标题 / 日期...') : t('搜索成员名、标题、时间...')}
           placeholderTextColor={isDark ? '#888' : '#999'}
           value={search}
           onChangeText={setSearch}
@@ -1409,21 +1439,21 @@ export default function MediaScreen() {
                     <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
                   ) : (
                     <View style={[styles.cover, styles.coverPlaceholder]}>
-                      <Text style={[styles.coverPlaceholderText, isDark && styles.coverPlaceholderTextDark]}>视频</Text>
+                      <Text style={[styles.coverPlaceholderText, isDark && styles.coverPlaceholderTextDark]}>{t('视频')}</Text>
                     </View>
                   )}
                   <View style={styles.cardInfo}>
                     <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>
-                      {item.title || item.liveRoomTitle || '无标题'}
+                      {item.title || item.liveRoomTitle || t('无标题')}
                     </Text>
                     {subtitle ? <Text style={[styles.cardSub, isDark && styles.cardSubDark]}>{subtitle}</Text> : null}
                     <View style={styles.typeRow}>
                       <View style={styles.typeTag}>
-                        <Text style={styles.typeText}>{item.liveType === 2 ? '电台' : '视频'}</Text>
+                        <Text style={styles.typeText}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
                       </View>
                       {tab === 'live' ? (
                         <View style={[styles.typeTag, styles.giftTag]}>
-                          <Text style={styles.typeText}>可送礼</Text>
+                          <Text style={styles.typeText}>{t('可送礼')}</Text>
                         </View>
                       ) : null}
                     </View>
@@ -1438,7 +1468,7 @@ export default function MediaScreen() {
             ) : (
               <View style={styles.emptyWrap}>
                 <Text style={[styles.empty, isDark && styles.emptyDark]}>
-                  {search.trim() ? '没有匹配的直播/录播' : '暂无数据'}
+                  {search.trim() ? t('没有匹配的直播/录播') : t('暂无数据')}
                 </Text>
               </View>
             )
@@ -1449,7 +1479,7 @@ export default function MediaScreen() {
             // 仅在有内容且正在加载更多时显示一条低调的加载指示（不再用骨架微光条）
             list.length > 0 && loading ? (
               <View style={styles.footer}>
-                <CenterSpinner dark={isDark} text="加载更多…" />
+                <CenterSpinner dark={isDark} text={t('加载更多…')} />
               </View>
             ) : null
           }

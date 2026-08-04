@@ -19,6 +19,8 @@ import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
 import { Member, TripItem } from '../types';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 function parseTripDate(raw: string): { date: string; time: string } {
   const str = String(raw || '');
@@ -61,7 +63,8 @@ function normalizeTripList(res: any): TripItem[] {
 
 export default function TripScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [member, setMember] = useState<Member | null>(null);
   const [items, setItems] = useState<TripItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -111,7 +114,7 @@ export default function TripScreen() {
         </View>
         {item.ticketUrl ? (
           <TouchableOpacity style={styles.linkBtn} onPress={() => Linking.openURL(item.ticketUrl)}>
-            <Text style={styles.linkBtnText}>票务链接</Text>
+            <Text style={styles.linkBtnText}>{t('票务链接')}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -120,12 +123,12 @@ export default function TripScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="行程" onBack={() => navigation.goBack()} right={
+      <ScreenHeader title={t('行程')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity disabled={!member || loading} onPress={() => fetchTrips(true)}>
-          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>刷新</Text>
+          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
-      <MemberPicker selectedMember={member} onSelect={setMember} placeholder="搜索成员查看行程..." />
+      <MemberPicker selectedMember={member} onSelect={setMember} placeholder={t('搜索成员查看行程...')} />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={items}
@@ -140,14 +143,14 @@ export default function TripScreen() {
           renderItem={renderItem}
           ListFooterComponent={
             items.length ? <Text style={[styles.footer, isDark && styles.textSubLight]}>
-              {loadingMore ? '' : hasMore ? '上滑加载更多' : '没有更多了'}
+              {loadingMore ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
             </Text> : null
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               {loading ? <CenterSpinner dark={isDark} /> : null}
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                {loading ? '' : member ? (error ? error : '暂无行程') : '请搜索选择成员查看行程'}
+                {loading ? '' : member ? (error ? error : t('暂无行程')) : t('请搜索选择成员查看行程')}
               </Text>
             </View>
           }

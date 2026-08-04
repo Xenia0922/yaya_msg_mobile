@@ -14,6 +14,8 @@ import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { useSettingsStore } from '../store';
 import { isPlayableHost, MusicEngine } from '../services/musicPlayer';
 import CoverArt from './CoverArt';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 const ANIM_DURATION = 300;
 const SHADOW = {
@@ -56,6 +58,7 @@ function MiniPlayerBarInner({
   playMode,
   playUrl,
 }: MiniPlayerBarInnerProps) {
+  const { t } = useI18n();
   const progRef = useRef<View>(null);
   const seekProgress = (px: number) => {
     if (duration <= 0) return;
@@ -166,9 +169,9 @@ function MiniPlayerBarInner({
           <CoverArt uri={coverUri || undefined} title={track.title || '♪'} size={52} round />
         </Animated.View>
         <View style={styles.info}>
-          <Text style={[styles.title, isDark && styles.tL]} numberOfLines={1}>{track.title || '未知'}</Text>
+          <Text style={[styles.title, isDark && styles.tL]} numberOfLines={1}>{track.title || t('未知')}</Text>
           <Text style={[styles.artist, isDark && styles.tS]} numberOfLines={1}>
-            {[track.joinMemberNames, track.subTitle, track.albumName].filter(Boolean).join(' · ') || '官方音乐'}
+            {[track.joinMemberNames, track.subTitle, track.albumName].filter(Boolean).join(' · ') || t('官方音乐')}
           </Text>
         </View>
         <View style={styles.actions}>
@@ -194,7 +197,7 @@ interface Props {
 }
 
 export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
   const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
   const queue = useMusicPlayerStore((s) => s.queue);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);

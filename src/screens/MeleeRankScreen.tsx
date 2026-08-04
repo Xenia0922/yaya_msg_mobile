@@ -17,10 +17,12 @@ import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
+import { useI18n } from '../i18n';
 import { errorMessage, normalizeUrl } from '../utils/data';
 import { Member } from '../types';
 import { CenterSpinner } from '../components/Loaders';
 import { extractRankList, extractWeeks, WeekItem } from '../utils/meleeParse';
+import { useAppTheme } from '../hooks/useAppTheme';
 
 // 参考电脑版鸡腿榜：周榜 / 总榜 / 年榜 + 成员贡献榜
 type ViewMode = 'week' | 'total' | 'year' | 'person';
@@ -34,7 +36,8 @@ const MODE_LABELS: { key: ViewMode; label: string; icon: string }[] = [
 
 export default function MeleeRankScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [mode, setMode] = useState<ViewMode>('week');
   const [member, setMember] = useState<Member | null>(null);
   const [weeks, setWeeks] = useState<WeekItem[]>([]);
@@ -76,14 +79,14 @@ export default function MeleeRankScreen() {
       }
       const list = extractRankList(data);
       setRanks(list);
-      if (!list.length) setError(mode === 'year' ? '暂无年榜数据' : '暂无排名数据');
+      if (!list.length) setError(mode === 'year' ? t('暂无年榜数据') : t('暂无排名数据'));
     } catch (e: any) {
       setError(errorMessage(e));
       setRanks([]);
     } finally {
       setLoading(false);
     }
-  }, [mode]);
+  }, [mode, t]);
 
   const loadPerson = useCallback(async (m: Member) => {
     if (!m?.id) {
@@ -98,14 +101,14 @@ export default function MeleeRankScreen() {
       const data = res?.content ?? res?.data ?? {};
       const list = Array.isArray(data?.charmInfo) ? data.charmInfo : extractRankList(data);
       setPersonRanks(list);
-      if (!list.length) setError('暂无鸡腿贡献数据');
+      if (!list.length) setError(t('暂无鸡腿贡献数据'));
     } catch (e: any) {
       setError(errorMessage(e));
       setPersonRanks([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (mode === 'person') {
@@ -151,7 +154,7 @@ export default function MeleeRankScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="鸡腿榜 🍗" onBack={() => navigation.goBack()} />
+      <ScreenHeader title={t('鸡腿榜 🍗')} onBack={() => navigation.goBack()} />
 
       <View style={styles.modeBar}>
         {MODE_LABELS.map((m) => {
@@ -163,14 +166,14 @@ export default function MeleeRankScreen() {
               onPress={() => switchMode(m.key)}
             >
               <MaterialCommunityIcons name={m.icon as any} size={14} color={active ? '#fff' : (isDark ? '#eeeeee' : '#555555')} />
-              <Text style={[styles.modeText, isDark && styles.textSubLight, active && styles.modeTextActive]}>{m.label}</Text>
+              <Text style={[styles.modeText, isDark && styles.textSubLight, active && styles.modeTextActive]}>{t(m.label)}</Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
       {mode === 'person' && (
-        <MemberPicker selectedMember={member} onSelect={(m) => { setPersonRanks([]); setMember(m); }} placeholder="搜索成员查看鸡腿贡献..." />
+        <MemberPicker selectedMember={member} onSelect={(m) => { setPersonRanks([]); setMember(m); }} placeholder={t('搜索成员查看鸡腿贡献...')} />
       )}
 
       {mode === 'week' && weeks.length > 0 && (
@@ -189,7 +192,7 @@ export default function MeleeRankScreen() {
         <View style={styles.errorWrap}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryBtn} onPress={() => (mode === 'person' && member ? loadPerson(member) : loadRank())}>
-            <Text style={styles.retryText}>重试</Text>
+            <Text style={styles.retryText}>{t('重试')}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -197,7 +200,7 @@ export default function MeleeRankScreen() {
       {mode === 'person' ? (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
           {showPersonSkeleton ? (
-            <CenterSpinner dark={isDark} text="加载中…" />
+            <CenterSpinner dark={isDark} text={t('加载中…')} />
           ) : (
             <PerfFlatList
               data={personRanks}
@@ -209,7 +212,7 @@ export default function MeleeRankScreen() {
               renderItem={renderPerson}
               ListEmptyComponent={
                 <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                  {loading ? '' : member ? '暂无鸡腿贡献数据' : '请选择成员查看贡献榜'}
+                  {loading ? '' : member ? t('暂无鸡腿贡献数据') : t('请选择成员查看贡献榜')}
                 </Text>
               }
             />
@@ -218,7 +221,7 @@ export default function MeleeRankScreen() {
       ) : (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
           {showSkeleton ? (
-            <CenterSpinner dark={isDark} text="加载中…" />
+            <CenterSpinner dark={isDark} text={t('加载中…')} />
           ) : (
             <PerfFlatList
               data={ranks}
@@ -230,7 +233,7 @@ export default function MeleeRankScreen() {
               renderItem={renderRank}
               ListEmptyComponent={
                 <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                  {loading ? '' : '暂无排名数据'}
+                  {loading ? '' : t('暂无排名数据')}
                 </Text>
               }
               ListFooterComponent={loading ? <ActivityIndicator color="#ff6f91" style={{ padding: 12 }} /> : null}
@@ -243,6 +246,7 @@ export default function MeleeRankScreen() {
 }
 
 const RankCard = React.memo(function RankCard({ item, index, isDark }: { item: any; index: number; isDark: boolean }) {
+  const { t } = useI18n();
   const rankNum = Number(item.rankNum || item.rank || item.no || index + 1);
   const u = item.baseUserInfo || item.userInfo || item.user || item;
   const topU = item.topUserInfo || item.topUser || {};
@@ -261,8 +265,8 @@ const RankCard = React.memo(function RankCard({ item, index, isDark }: { item: a
         </View>
         {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} /> : <View style={[styles.avatar, styles.avatarPlaceholder]} />}
         <View style={styles.rankInfo}>
-          <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{name || `用户 ${rankNum}`}</Text>
-          {topUser ? <Text style={[styles.rankMeta, isDark && styles.textSubLight]} numberOfLines={1}>🏆 榜首: {topUser}</Text> : null}
+          <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{name || t('用户 {rank}', { rank: rankNum })}</Text>
+          {topUser ? <Text style={[styles.rankMeta, isDark && styles.textSubLight]} numberOfLines={1}>{t('🏆 榜首: {topUser}', { topUser })}</Text> : null}
         </View>
         <View style={styles.meleeWrap}>
           <Text style={styles.meleeEmoji}>🍗</Text>
@@ -274,6 +278,7 @@ const RankCard = React.memo(function RankCard({ item, index, isDark }: { item: a
 });
 
 const PersonCard = React.memo(function PersonCard({ item, index, isDark }: { item: any; index: number; isDark: boolean }) {
+  const { t } = useI18n();
   const name = String(item.userName || item.nickname || item.nickName || item.name || '');
   const u = item.baseUserInfo || item.userInfo || item.user || item;
   const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || item.userAvatar || item.avatar || item.headImg || ''));
@@ -285,8 +290,8 @@ const PersonCard = React.memo(function PersonCard({ item, index, isDark }: { ite
       <View style={[styles.rankCard, isDark && styles.cardDark]}>
         {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} /> : <View style={[styles.avatar, styles.avatarPlaceholder]} />}
         <View style={styles.rankInfo}>
-          <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{name || '未知用户'}</Text>
-          <Text style={[styles.rankMeta, isDark && styles.textSubLight]} numberOfLines={1}>ID: {userId}</Text>
+          <Text style={[styles.rankName, isDark && styles.textLight]} numberOfLines={1}>{name || t('未知用户')}</Text>
+          <Text style={[styles.rankMeta, isDark && styles.textSubLight]} numberOfLines={1}>{t('ID: {id}', { id: userId })}</Text>
         </View>
         <View style={styles.meleeWrap}>
           <Text style={styles.meleeEmoji}>🍗</Text>

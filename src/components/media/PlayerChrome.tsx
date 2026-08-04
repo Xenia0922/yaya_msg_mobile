@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useI18n } from '../../i18n';
 
 /**
  * 真正的哔哩哔哩风格播放器外壳：
@@ -181,6 +182,7 @@ export function PlayerBottomBar({
   /** 横屏/竖屏切换（仅旋转，不影响沉浸）；不传则不显示该按钮 */
   onRotate?: () => void;
 }) {
+  const { t } = useI18n();
   const trackWidth = useRef(0);
   const dragRatioRef = useRef(0);
   // 手势有效性守卫：只有「按下时轨道宽度已测到」才算一次有效拖拽。
@@ -257,7 +259,7 @@ export function PlayerBottomBar({
       {showDanmaku && onToggleDanmaku ? (
         <TouchableOpacity style={chromeStyles.toolBtn} onPress={onToggleDanmaku} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
           <MaterialCommunityIcons name={danmakuOn ? 'comment-text' : 'comment-text-outline'} size={20} color={danmakuOn ? BILI_PINK : '#fff'} />
-          <Text style={[chromeStyles.toolText, danmakuOn && chromeStyles.toolTextOn]}>弹幕</Text>
+          <Text style={[chromeStyles.toolText, danmakuOn && chromeStyles.toolTextOn]}>{t('弹幕')}</Text>
         </TouchableOpacity>
       ) : null}
 

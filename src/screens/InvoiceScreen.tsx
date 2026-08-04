@@ -15,6 +15,8 @@ import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 interface OrderItem {
   dataId: string;
@@ -26,12 +28,12 @@ interface OrderItem {
   selected: boolean;
 }
 
-const STATUS_LABELS = ['可开票', '申请中', '已开票'];
-
 export default function InvoiceScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
+  const statusLabels = [t('可开票'), t('申请中'), t('已开票')];
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -77,9 +79,9 @@ export default function InvoiceScreen() {
 
   const handleSubmit = async () => {
     const selected = orders.filter((o) => o.selected);
-    if (!selected.length) { Alert.alert('提示', '请选择要开票的订单'); return; }
-    if (!buyerName.trim()) { Alert.alert('提示', '请填写发票抬头'); return; }
-    if (!notifyEmail.trim()) { Alert.alert('提示', '请填写接收邮箱'); return; }
+    if (!selected.length) { Alert.alert(t('提示'), t('请选择要开票的订单')); return; }
+    if (!buyerName.trim()) { Alert.alert(t('提示'), t('请填写发票抬头')); return; }
+    if (!notifyEmail.trim()) { Alert.alert(t('提示'), t('请填写接收邮箱')); return; }
     setSubmitting(true);
     try {
       await pocketApi.applyElectronicInvoice({
@@ -87,9 +89,9 @@ export default function InvoiceScreen() {
         buyerBankName, buyerBankAccount, notifyEmail, notifyMobile,
         orderDataId: selected.map((o) => o.dataId),
       });
-      showToast('开票申请已提交');
+      showToast(t('开票申请已提交'));
       fetchOrders();
-    } catch (e: any) { Alert.alert('提交失败', errorMessage(e)); }
+    } catch (e: any) { Alert.alert(t('提交失败'), errorMessage(e)); }
     finally { setSubmitting(false); }
   };
 
@@ -113,7 +115,7 @@ export default function InvoiceScreen() {
             <Text style={[styles.orderMeta, isDark && styles.textSubLight]}>¥{item.totalFee} · {item.tradeTime}</Text>
           </View>
           <Text style={[styles.statusText, { color: disabled ? (isDark ? '#aaaaaa' : '#888888') : '#20a464' }]}>
-            {STATUS_LABELS[item.invoiceStatus] || '未知'}
+            {statusLabels[item.invoiceStatus] || t('未知')}
           </Text>
         </TouchableOpacity>
       </FadeInView>
@@ -122,62 +124,62 @@ export default function InvoiceScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="电子发票" onBack={() => navigation.goBack()} right={
+      <ScreenHeader title={t('电子发票')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity onPress={fetchOrders}>
-          <Text style={styles.headerAction}>刷新</Text>
+          <Text style={styles.headerAction}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={[styles.sectionTitle, isDark && styles.textLight]}>
-          可开票订单 ({canInvoice}){selectedCount > 0 ? ` · 已选 ${selectedCount} 单` : ''}
+          {t('可开票订单 ({count})', { count: canInvoice })}{selectedCount > 0 ? t(' · 已选 {count} 单', { count: selectedCount }) : ''}
         </Text>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {orders.map((item, index) => renderOrder({ item, index }))}
         {orders.length === 0 && !loading ? (
-          <Text style={[styles.empty, isDark && styles.textSubLight]}>暂无订单</Text>
+          <Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无订单')}</Text>
         ) : null}
         {loading && <ActivityIndicator color="#ff6f91" style={{ padding: 16 }} />}
 
         <View style={styles.formWrap}>
-          <Text style={[styles.sectionTitle, isDark && styles.textLight, { marginTop: 12 }]}>开票信息</Text>
+          <Text style={[styles.sectionTitle, isDark && styles.textLight, { marginTop: 12 }]}>{t('开票信息')}</Text>
 
           <View style={styles.typeRow}>
             <TouchableOpacity
               style={[styles.typeBtn, buyerType === 0 && styles.typeBtnActive]}
               onPress={() => setBuyerType(0)}
             >
-              <Text style={[styles.typeText, isDark && styles.textSubLight, buyerType === 0 && styles.typeTextActive]}>个人</Text>
+              <Text style={[styles.typeText, isDark && styles.textSubLight, buyerType === 0 && styles.typeTextActive]}>{t('个人')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.typeBtn, buyerType === 1 && styles.typeBtnActive]}
               onPress={() => setBuyerType(1)}
             >
-              <Text style={[styles.typeText, isDark && styles.textSubLight, buyerType === 1 && styles.typeTextActive]}>企业</Text>
+              <Text style={[styles.typeText, isDark && styles.textSubLight, buyerType === 1 && styles.typeTextActive]}>{t('企业')}</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.label, isDark && styles.textSubLight]}>发票抬头</Text>
-          <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerName} onChangeText={setBuyerName} placeholder="输入发票抬头" placeholderTextColor={isDark ? '#888' : '#999'} />
+          <Text style={[styles.label, isDark && styles.textSubLight]}>{t('发票抬头')}</Text>
+          <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerName} onChangeText={setBuyerName} placeholder={t('输入发票抬头')} placeholderTextColor={isDark ? '#888' : '#999'} />
 
           {buyerType === 1 && (
             <>
-              <Text style={[styles.label, isDark && styles.textSubLight]}>纳税人识别号</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerTaxNo} onChangeText={setBuyerTaxNo} placeholder="输入纳税人识别号" placeholderTextColor={isDark ? '#888' : '#999'} autoCapitalize="characters" />
-              <Text style={[styles.label, isDark && styles.textSubLight]}>企业地址</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerAddress} onChangeText={setBuyerAddress} placeholder="输入企业地址" placeholderTextColor={isDark ? '#888' : '#999'} />
-              <Text style={[styles.label, isDark && styles.textSubLight]}>企业电话</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerPhone} onChangeText={setBuyerPhone} placeholder="输入企业电话" placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="phone-pad" />
-              <Text style={[styles.label, isDark && styles.textSubLight]}>开户银行</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerBankName} onChangeText={setBuyerBankName} placeholder="输入开户银行" placeholderTextColor={isDark ? '#888' : '#999'} />
-              <Text style={[styles.label, isDark && styles.textSubLight]}>银行账号</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerBankAccount} onChangeText={setBuyerBankAccount} placeholder="输入银行账号" placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="numeric" />
+              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('纳税人识别号')}</Text>
+              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerTaxNo} onChangeText={setBuyerTaxNo} placeholder={t('输入纳税人识别号')} placeholderTextColor={isDark ? '#888' : '#999'} autoCapitalize="characters" />
+              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('企业地址')}</Text>
+              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerAddress} onChangeText={setBuyerAddress} placeholder={t('输入企业地址')} placeholderTextColor={isDark ? '#888' : '#999'} />
+              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('企业电话')}</Text>
+              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerPhone} onChangeText={setBuyerPhone} placeholder={t('输入企业电话')} placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="phone-pad" />
+              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('开户银行')}</Text>
+              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerBankName} onChangeText={setBuyerBankName} placeholder={t('输入开户银行')} placeholderTextColor={isDark ? '#888' : '#999'} />
+              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('银行账号')}</Text>
+              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerBankAccount} onChangeText={setBuyerBankAccount} placeholder={t('输入银行账号')} placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="numeric" />
             </>
           )}
 
-          <Text style={[styles.label, isDark && styles.textSubLight]}>接收邮箱</Text>
-          <TextInput style={[styles.input, isDark && styles.inputDark]} value={notifyEmail} onChangeText={setNotifyEmail} placeholder="输入邮箱地址" placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="email-address" />
-          <Text style={[styles.label, isDark && styles.textSubLight]}>手机号</Text>
-          <TextInput style={[styles.input, isDark && styles.inputDark]} value={notifyMobile} onChangeText={setNotifyMobile} placeholder="输入手机号" placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="phone-pad" />
+          <Text style={[styles.label, isDark && styles.textSubLight]}>{t('接收邮箱')}</Text>
+          <TextInput style={[styles.input, isDark && styles.inputDark]} value={notifyEmail} onChangeText={setNotifyEmail} placeholder={t('输入邮箱地址')} placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="email-address" />
+          <Text style={[styles.label, isDark && styles.textSubLight]}>{t('手机号')}</Text>
+          <TextInput style={[styles.input, isDark && styles.inputDark]} value={notifyMobile} onChangeText={setNotifyMobile} placeholder={t('输入手机号')} placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="phone-pad" />
 
           <TouchableOpacity
             style={[styles.submitBtn, (submitting || !selectedCount) && { opacity: 0.45 }]}
@@ -185,7 +187,7 @@ export default function InvoiceScreen() {
             disabled={submitting || !selectedCount}
           >
             <Text style={styles.submitText}>
-              {submitting ? '提交中...' : `提交申请 (已选 ${selectedCount} 单)`}
+              {submitting ? t('提交中...') : t('提交申请 (已选 {count} 单)', { count: selectedCount })}
             </Text>
           </TouchableOpacity>
         </View>

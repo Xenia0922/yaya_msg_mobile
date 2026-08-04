@@ -11,12 +11,14 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
+import { useI18n } from '../i18n';
 import pocketApi from '../api/pocket48';
 import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
+import { useAppTheme } from '../hooks/useAppTheme';
 
 type MessageMode = 'all' | 'owner';
 type RoomMode = 'big' | 'small';
@@ -47,7 +49,8 @@ function getChannelId(member: Member, roomMode: RoomMode): string {
 
 export default function FetchScreen() {
   const navigation = useNavigation();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [messageMode, setMessageMode] = useState<MessageMode>('all');
   const [roomMode, setRoomMode] = useState<RoomMode>('big');
@@ -57,7 +60,7 @@ export default function FetchScreen() {
 
   const fetchOnce = async (member: Member, targetRoomMode: RoomMode) => {
     const channelId = getChannelId(member, targetRoomMode);
-    if (!channelId) throw new Error(targetRoomMode === 'small' ? '该成员没有小房间 channelId' : '该成员没有房间 channelId');
+    if (!channelId) throw new Error(targetRoomMode === 'small' ? t('该成员没有小房间 channelId') : t('该成员没有房间 channelId'));
     const res = await pocketApi.getRoomMessages({
       channelId,
       serverId: member.serverId,
@@ -69,25 +72,29 @@ export default function FetchScreen() {
 
   const startFetch = async () => {
     if (!selectedMember) {
-      setStatus('请先选择成员');
+      setStatus(t('请先选择成员'));
       return;
     }
     setLoading(true);
-    setStatus('抓取中...');
+    setStatus(t('抓取中...'));
     try {
       let list = await fetchOnce(selectedMember, roomMode);
       let usedRoomMode = roomMode;
 
       if (!list.length && roomMode === 'big' && selectedMember.yklzId) {
-        setStatus('大房间没有返回消息，正在尝试小房间...');
+        setStatus(t('大房间没有返回消息，正在尝试小房间...'));
         list = await fetchOnce(selectedMember, 'small');
         usedRoomMode = 'small';
       }
 
       setResults(list);
-      setStatus(`抓取完成：${list.length} 条消息 · ${usedRoomMode === 'small' ? '小房间' : '大房间'} · ${messageMode === 'all' ? '全部消息' : '成员消息'}`);
+      setStatus(t('抓取完成：{count} 条消息 · {room} · {mode}', {
+        count: list.length,
+        room: usedRoomMode === 'small' ? t('小房间') : t('大房间'),
+        mode: messageMode === 'all' ? t('全部消息') : t('成员消息'),
+      }));
     } catch (error) {
-      setStatus(`抓取失败：${errorMessage(error)}`);
+      setStatus(t('抓取失败：{error}', { error: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -95,7 +102,7 @@ export default function FetchScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="抓取消息" />
+      <ScreenHeader title={t('抓取消息')} />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={[styles.section, isDark && styles.sectionDark]}>
@@ -105,24 +112,24 @@ export default function FetchScreen() {
         <View style={[styles.section, isDark && styles.sectionDark]}>
           <View style={styles.row}>
             <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, messageMode === 'all' && styles.modeBtnActive]} onPress={() => setMessageMode('all')}>
-              <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'all' && styles.modeTextActive]}>全部消息</Text>
+              <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'all' && styles.modeTextActive]}>{t('全部消息')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, messageMode === 'owner' && styles.modeBtnActive]} onPress={() => setMessageMode('owner')}>
-              <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'owner' && styles.modeTextActive]}>成员消息</Text>
+              <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'owner' && styles.modeTextActive]}>{t('成员消息')}</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.row}>
             <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, roomMode === 'big' && styles.modeBtnActive]} onPress={() => setRoomMode('big')}>
-              <Text style={[styles.modeText, isDark && styles.textDark, roomMode === 'big' && styles.modeTextActive]}>大房间</Text>
+              <Text style={[styles.modeText, isDark && styles.textDark, roomMode === 'big' && styles.modeTextActive]}>{t('大房间')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, roomMode === 'small' && styles.modeBtnActive]} onPress={() => setRoomMode('small')}>
-              <Text style={[styles.modeText, isDark && styles.textDark, roomMode === 'small' && styles.modeTextActive]}>小房间</Text>
+              <Text style={[styles.modeText, isDark && styles.textDark, roomMode === 'small' && styles.modeTextActive]}>{t('小房间')}</Text>
             </TouchableOpacity>
           </View>
 
           <TouchableOpacity style={[styles.fetchBtn, loading && styles.fetchBtnDisabled]} onPress={startFetch} disabled={loading}>
-            <Text style={styles.fetchBtnText}>{loading ? '抓取中...' : '开始抓取'}</Text>
+            <Text style={styles.fetchBtnText}>{loading ? t('抓取中...') : t('开始抓取')}</Text>
           </TouchableOpacity>
           {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text> : null}
         </View>
@@ -141,12 +148,12 @@ export default function FetchScreen() {
                   {formatTimestamp(item.msgTime || item.time || item.ctime)}
                 </Text>
                 <Text style={[styles.msgText, isDark && styles.textDark]}>
-                  {(item.senderName || item.senderNickName || item.extInfo?.user?.nickName || '成员')}: {messageText(item) || '[空消息]'}
+                  {(item.senderName || item.senderNickName || item.extInfo?.user?.nickName || t('成员'))}: {messageText(item) || t('[空消息]')}
                 </Text>
               </View>
             </FadeInView>
           )}
-          ListEmptyComponent={!loading ? <Text style={[styles.empty, isDark && styles.textDark]}>暂无数据</Text> : null}
+          ListEmptyComponent={!loading ? <Text style={[styles.empty, isDark && styles.textDark]}>{t('暂无数据')}</Text> : null}
         />
       </FadeInView>
     </View>

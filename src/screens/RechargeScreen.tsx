@@ -12,14 +12,17 @@ import pocketApi from '../api/pocket48';
 import { useSettingsStore } from '../store';
 import { errorMessage } from '../utils/data';
 import ScreenHeader from '../components/ScreenHeader';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 const RECHARGE_URL = 'https://live.48.cn/Recharge/';
 
 export default function RechargeScreen() {
   const navigation = useNavigation();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [balance, setBalance] = useState('');
-  const [status, setStatus] = useState('暂无数据');
+  const [status, setStatus] = useState(t('暂无数据'));
   const [loading, setLoading] = useState(false);
 
   useEffect(() => { refreshBalance(); }, []);
@@ -27,14 +30,14 @@ export default function RechargeScreen() {
   const refreshBalance = async () => {
     if (loading) return;
     setLoading(true);
-    setStatus('正在刷新余额...');
+    setStatus(t('正在刷新余额...'));
     try {
       const res = await pocketApi.getUserMoney();
       const money = res?.content?.moneyTotal ?? res?.data?.moneyTotal ?? res?.content?.money ?? res?.data?.money ?? '';
       setBalance(String(money));
-      setStatus(money !== '' ? '余额已刷新' : '接口未返回余额');
+      setStatus(money !== '' ? t('余额已刷新') : t('接口未返回余额'));
     } catch (error) {
-      setStatus(`余额刷新失败：${errorMessage(error)}`);
+      setStatus(t('余额刷新失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -42,15 +45,15 @@ export default function RechargeScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="鸡腿充值" right={
+      <ScreenHeader title={t('鸡腿充值')} right={
         <TouchableOpacity onPress={refreshBalance}>
-          <Text style={styles.actionText}>刷新余额</Text>
+          <Text style={styles.actionText}>{t('刷新余额')}</Text>
         </TouchableOpacity>
       } />
 
       <View style={[styles.statusBar, isDark && styles.statusBarDark]}>
         <Text style={[styles.statusText, isDark && styles.statusTextDark]}>
-          {balance !== '' ? `当前余额：${balance} 鸡腿 · ` : ''}{status}
+          {balance !== '' ? `${t('当前余额：{balance} 鸡腿', { balance })} · ` : ''}{status}
         </Text>
         {loading ? <ActivityIndicator color="#ff6f91" style={styles.loading} /> : null}
       </View>
@@ -67,10 +70,10 @@ export default function RechargeScreen() {
       renderLoading={() => (
         <View style={[styles.webLoading, isDark && styles.webLoadingDark]}>
           <ActivityIndicator color="#ff6f91" />
-          <Text style={[styles.webLoadingText, isDark && styles.textLight]}>正在打开官方充值页...</Text>
+          <Text style={[styles.webLoadingText, isDark && styles.textLight]}>{t('正在打开官方充值页...')}</Text>
         </View>
       )}
-      onError={(event) => setStatus(`充值页加载失败：${event.nativeEvent.description}`)}
+      onError={(event) => setStatus(t('充值页加载失败：{msg}', { msg: event.nativeEvent.description }))}
     />
     </View>
   );

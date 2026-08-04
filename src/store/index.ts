@@ -10,6 +10,7 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>((set) => ({
   settings: {
     theme: 'light',
+    language: 'system',
     p48Token: '',
     bilibiliCookie: '',
     bilibiliUserInfo: null,

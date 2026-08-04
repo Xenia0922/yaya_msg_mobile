@@ -23,10 +23,12 @@ import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import pocketApi from '../api/pocket48';
+import { translate, useI18n } from '../i18n';
 import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { openNativeLivePlayer } from '../native/LivePlayer';
+import { useAppTheme } from '../hooks/useAppTheme';
 
 interface OpenLiveItem {
   key: string;
@@ -64,7 +66,7 @@ function normalizeOpenLiveMessage(item: any, index: number): OpenLiveItem | null
   const liveId = String(info.liveId || info.live_id || info.videoId || '').trim();
   const pageId = String(info.id || info.openLivePageId || liveId || '').trim();
   if (!liveId && !pageId) return null;
-  const title = String(info.title || info.liveTitle || item?.title || '公演记录');
+  const title = String(info.title || info.liveTitle || item?.title || translate('公演记录'));
   const nickname = String(info.user?.nickname || info.nickname || info.memberName || info.ownerName || '');
   const msgTime = messageTime(item);
   const msgId = String(item?.msgidClient || item?.msgId || item?.messageId || item?.id || '');
@@ -159,7 +161,8 @@ function shortMemberName(member?: Member | null) {
 
 export default function OpenLiveScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const [member, setMember] = useState<Member | null>(null);
   const [items, setItems] = useState<OpenLiveItem[]>([]);
@@ -167,7 +170,7 @@ export default function OpenLiveScreen() {
   const [nextTime, setNextTime] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('暂无公演记录');
+  const [status, setStatus] = useState(t('暂无公演记录'));
   const [playing, setPlaying] = useState<{ url: string; title: string } | null>(null);
   const [isLandscape, setIsLandscape] = useState(false);
   const loadingRef = useRef(false);
@@ -213,11 +216,11 @@ export default function OpenLiveScreen() {
       setItems((prev) => (append ? mergeOpenLive(prev, nextItems) : nextItems));
       setNextTime(nextCursor);
       setHasMore(nextItems.length > 0 && !!nextCursor && nextCursor !== cursor);
-      const text = merged.length ? `共 ${merged.length} 场` : '未找到相关记录';
+      const text = merged.length ? t('共 {count} 场', { count: merged.length }) : t('未找到相关记录');
       setStatus(text);
       showToast(text);
     } catch (error) {
-      const text = `加载失败：${errorMessage(error)}`;
+      const text = t('加载失败：{error}', { error: errorMessage(error) });
       setStatus(text);
       showToast(text);
     } finally {
@@ -234,12 +237,12 @@ export default function OpenLiveScreen() {
   const resolveStream = async (item: OpenLiveItem) => {
     const detail = await pocketApi.getOpenLiveOne(item.liveId);
     const url = pickPlayableUrl(detail);
-    if (!url) throw new Error('没有解析到播放地址');
+    if (!url) throw new Error(t('没有解析到播放地址'));
     return url;
   };
 
   const playItem = async (item: OpenLiveItem) => {
-    setStatus('正在解析播放地址...');
+    setStatus(t('正在解析播放地址...'));
     try {
       const url = await resolveStream(item);
       if (needsNative(url)) {
@@ -247,9 +250,9 @@ export default function OpenLiveScreen() {
       } else {
         setPlaying({ url, title: item.title });
       }
-      setStatus('播放地址已就绪');
+      setStatus(t('播放地址已就绪'));
     } catch (error) {
-      const text = `播放失败：${errorMessage(error)}`;
+      const text = t('播放失败：{error}', { error: errorMessage(error) });
       setStatus(text);
       showToast(text);
     }
@@ -259,9 +262,9 @@ export default function OpenLiveScreen() {
     try {
       const url = await resolveStream(item);
       await enqueueDownload({ url, type: 'replay', name: item.title });
-      showToast('已加入下载管理');
+      showToast(t('已加入下载管理'));
     } catch (error) {
-      showToast(`下载失败：${errorMessage(error)}`);
+      showToast(t('下载失败：{error}', { error: errorMessage(error) }));
     }
   };
 
@@ -275,11 +278,11 @@ export default function OpenLiveScreen() {
     return (
       <View style={styles.playerPage}>
         <ScreenHeader title={playing.title} onBack={() => setPlaying(null)} right={
-          <TouchableOpacity onPress={toggleOrientation}><Text style={styles.headerAction}>{isLandscape ? '竖屏' : '横屏'}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={toggleOrientation}><Text style={styles.headerAction}>{isLandscape ? t('竖屏') : t('横屏')}</Text></TouchableOpacity>
         } />
         <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} onError={() => setPlaying(null)} />
         <TouchableOpacity style={styles.externalBtn} onPress={() => Linking.openURL(playing.url)}>
-          <Text style={styles.externalText}>外部打开</Text>
+          <Text style={styles.externalText}>{t('外部打开')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -287,18 +290,18 @@ export default function OpenLiveScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="公演记录" right={
+      <ScreenHeader title={t('公演记录')} right={
         <TouchableOpacity disabled={!member || loading} onPress={() => member && loadMemberShows(member)}>
-          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>刷新</Text>
+          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.controls}>
-          <MemberPicker selectedMember={member} onSelect={(next) => loadMemberShows(next, false)} placeholder="搜索成员并打开公演记录..." />
+          <MemberPicker selectedMember={member} onSelect={(next) => loadMemberShows(next, false)} placeholder={t('搜索成员并打开公演记录...')} />
           <TextInput
             style={[styles.search, isDark && styles.searchDark]}
-            placeholder="筛选标题、成员、liveId..."
+            placeholder={t('筛选标题、成员、liveId...')}
             placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
             value={query}
             onChangeText={setQuery}
@@ -323,13 +326,13 @@ export default function OpenLiveScreen() {
               </View>
             ) : (
               <View style={styles.emptyWrap}>
-                <Text style={[styles.empty, isDark && styles.textSubLight]}>暂无公演记录</Text>
+                <Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无公演记录')}</Text>
               </View>
             )
           }
           ListFooterComponent={items.length ? (
             <Text style={[styles.footerText, isDark && styles.textSubLight]}>
-              {loading ? '' : hasMore ? '上滑加载更多' : '没有更多了'}
+              {loading ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
             </Text>
           ) : null}
           renderItem={({ item, index }) => (
@@ -343,7 +346,7 @@ export default function OpenLiveScreen() {
                 {item.cover ? <Image source={{ uri: item.cover }} style={styles.cover} resizeMode="cover" /> : <View style={styles.coverPlaceholder}><MaterialCommunityIcons name="play" size={28} color="#ff6f91" /></View>}
                 <View style={styles.cardBody}>
                   <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>{item.title}</Text>
-                  <Text style={[styles.meta, isDark && styles.textSubLight]} numberOfLines={1}>{item.nickname || shortMemberName(member) || '成员'}</Text>
+                  <Text style={[styles.meta, isDark && styles.textSubLight]} numberOfLines={1}>{item.nickname || shortMemberName(member) || t('成员')}</Text>
                   <Text style={[styles.time, isDark && styles.textSubLight]}>{formatTimestamp(item.msgTime)}</Text>
                 </View>
               </TouchableOpacity>

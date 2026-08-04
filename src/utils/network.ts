@@ -161,7 +161,7 @@ function probeUrl(url: string, timeout = 8000): Promise<{ ok: boolean; status: n
 
 async function checkNetworkStatus() {
   const targets = [
-    { name: '成员数据', url: 'https://yaya-data.pages.dev/members.json' },
+    { name: '成员数据', url: 'https://data.gnz.hk/members.json' },
     { name: '口袋接口', url: 'https://pocketapi.48.cn/' },
     { name: '资源域名', url: 'https://source.48.cn/' },
     { name: 'B站接口', url: 'https://api.bilibili.com/x/web-interface/nav' },

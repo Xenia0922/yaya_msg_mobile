@@ -99,8 +99,8 @@ android {
         applicationId 'com.yk1z.yayamsg'
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 31)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2060003
-        versionName "2.6.3"
+        versionCode 2060004
+        versionName "2.6.4"
 
         // 真机架构 + 模拟器架构。MuMu 等安卓模拟器为 x86_64，缺此 ABI 会导致 libhermes 等原生库
         // 无法加载（UnsatisfiedLinkError），表现为「启动即闪退进不去」。为兼容模拟器测试必须保留。
@@ -116,6 +116,10 @@ android {
             storePassword 'android'
             keyAlias 'androiddebugkey'
             keyPassword 'android'
+            // minSdk>23 时 AGP 默认关闭 v1 签名，导致 APK 仅 v2/v3 可签名：
+            // 大文件经 QQ/微信/网盘转存截断后整包无法解析。强制开启 v1 兜底。
+            v1SigningEnabled true
+            v2SigningEnabled true
         }
     }
     buildTypes {
@@ -142,6 +146,17 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+
+    // v2.6.4: 按 ABI 分包，规避 99MB 大包下载截断导致的「解析包时出现问题」。
+    // 排除 x86(32位)：ijkplayer 无 x86 产物，x86 分包不完整；x86_64 保留给模拟器。
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a', 'x86_64'
+            universalApk true
+        }
     }
 }
 

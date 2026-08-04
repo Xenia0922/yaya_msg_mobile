@@ -23,6 +23,9 @@ import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
+import { parseDurationSeconds } from '../utils/duration';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 type FlipNavProp = StackNavigationProp<RootStackParamList, 'FlipScreen'>;
 type FlipRouteProp = RouteProp<RootStackParamList, 'FlipScreen'>;
@@ -94,8 +97,8 @@ function toNumber(value: any): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-function memberName(item: any): string {
-  return pickText(item, ['memberName', 'baseUserInfo.nickname', 'baseUserInfo.nickName', 'starName'], '成员');
+function memberName(item: any, fallback = '成员'): string {
+  return pickText(item, ['memberName', 'baseUserInfo.nickname', 'baseUserInfo.nickName', 'starName'], fallback);
 }
 
 function answerTypeLabel(type: any): string {
@@ -129,20 +132,20 @@ function parseMedia(raw: string): { text: string; url: string; duration: number 
   try {
     const json = JSON.parse(raw);
     const url = normalizeUrl(pickText(json, ['url', 'mediaUrl', 'audioUrl', 'videoUrl']));
-    const dur = Number(json?.duration || json?.time || json?.second || json?.audioTime || json?.length || 0);
+    const dur = parseDurationSeconds(json?.duration || json?.time || json?.second || json?.audioTime || json?.length || 0);
     return { url, text: pickText(json, ['text', 'content'], ''), duration: Number.isFinite(dur) ? Math.round(dur) : 0 };
   } catch {
     return { text: raw, url: '', duration: 0 };
   }
 }
 
-function parseAnswer(item: any): { text: string; url: string; duration: number } {
+function parseAnswer(item: any, voiceLabel = '语音回复', videoLabel = '视频回复'): { text: string; url: string; duration: number } {
   const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
   if (!raw) return { text: '', url: '', duration: 0 };
   const m = parseMedia(raw);
   // For audio/video, set appropriate text labels
-  if (Number(item.answerType) === 2 && !m.text) m.text = '语音回复';
-  if (Number(item.answerType) === 3 && !m.text) m.text = '视频回复';
+  if (Number(item.answerType) === 2 && !m.text) m.text = voiceLabel;
+  if (Number(item.answerType) === 3 && !m.text) m.text = videoLabel;
   // Fallback to raw text if nothing else
   if (!m.text && !m.url) m.text = raw;
   else if (!m.text && m.url) m.text = m.url; // fallback: show URL if no text
@@ -163,7 +166,8 @@ function priceFor(config: FlipPriceConfig | undefined, privacyType: PrivacyType)
 export default function FlipScreen() {
   const navigation = useNavigation<FlipNavProp>();
   const route = useRoute<FlipRouteProp>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const mode = route.params?.mode || 'view';
 
   const [flips, setFlips] = useState<any[]>([]);
@@ -200,10 +204,10 @@ export default function FlipScreen() {
       if (list.length === 0 && replace) {
         setStatus('');
       } else if (replace) {
-        setStatus(`已加载 ${list.length} 条翻牌记录`);
+        setStatus(t('已加载 {count} 条翻牌记录', { count: list.length }));
       }
     } catch (error) {
-      setStatus(`加载翻牌记录失败：${errorMessage(error)}`);
+      setStatus(t('加载翻牌记录失败：{err}', { err: errorMessage(error) }));
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -247,38 +251,38 @@ export default function FlipScreen() {
       const list = normalizePriceList(res);
       setPrices(list);
       setAnswerType(list[0]?.answerType ?? null);
-      setStatus(list.length ? `已加载 ${list.length} 种回复形式` : '该成员暂未开放翻牌');
+      setStatus(list.length ? t('已加载 {count} 种回复形式', { count: list.length }) : t('该成员暂未开放翻牌'));
     } catch (error) {
-      setStatus(`加载翻牌配置失败：${errorMessage(error)}`);
+      setStatus(t('加载翻牌配置失败：{err}', { err: errorMessage(error) }));
     }
   };
 
   const sendFlip = async () => {
     const finalCost = toNumber(cost);
     if (!selectedMember) {
-      setStatus('请先选择成员');
+      setStatus(t('请先选择成员'));
       return;
     }
     if (!answerType || !selectedPrice) {
-      setStatus('请选择文字、语音或视频翻牌');
+      setStatus(t('请选择文字、语音或视频翻牌'));
       return;
     }
     if (!content.trim()) {
-      setStatus('请输入翻牌内容');
+      setStatus(t('请输入翻牌内容'));
       return;
     }
     if (!minCost) {
-      setStatus(`${answerTypeLabel(answerType)}翻牌的${privacyLabel(privacyType)}设置暂未开放`);
+      setStatus(t('{type}翻牌的{privacy}设置暂未开放', { type: t(answerTypeLabel(answerType)), privacy: t(privacyLabel(privacyType)) }));
       return;
     }
     if (finalCost < minCost) {
-      setStatus(`鸡腿数不能低于官方底价 ${minCost}`);
+      setStatus(t('鸡腿数不能低于官方底价 {min}', { min: minCost }));
       setCost(String(minCost));
       return;
     }
 
     setLoading(true);
-    setStatus('正在发送翻牌...');
+    setStatus(t('正在发送翻牌...'));
     try {
       await pocketApi.sendFlipQuestion({
         memberId: parseInt(selectedMember.id, 10),
@@ -288,9 +292,9 @@ export default function FlipScreen() {
         answerType,
       });
       setContent('');
-      setStatus('发送成功，已提交到口袋翻牌');
+      setStatus(t('发送成功，已提交到口袋翻牌'));
     } catch (error) {
-      setStatus(`发送翻牌失败：${errorMessage(error)}`);
+      setStatus(t('发送翻牌失败：{err}', { err: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -301,16 +305,16 @@ export default function FlipScreen() {
   if (mode === 'send') {
     return (
       <ScrollView style={pageStyle} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="发送翻牌" />
+        <ScreenHeader title={t('发送翻牌')} />
 
         <FadeInView delay={80} duration={300}>
           <View style={styles.section}>
-            <Text style={[styles.label, isDark && styles.textLight]}>选择成员</Text>
+            <Text style={[styles.label, isDark && styles.textLight]}>{t('选择成员')}</Text>
             <MemberPicker selectedMember={selectedMember} onSelect={selectMemberForPrice} />
           </View>
 
           <View style={styles.section}>
-            <Text style={[styles.label, isDark && styles.textLight]}>回复形式</Text>
+            <Text style={[styles.label, isDark && styles.textLight]}>{t('回复形式')}</Text>
           <View style={styles.optionRow}>
             {prices.map((item) => {
               const active = answerType === item.answerType;
@@ -321,17 +325,17 @@ export default function FlipScreen() {
                     onPress={() => setAnswerType(item.answerType)}
                   >
                     <Text style={[styles.optionText, active && styles.optionTextActive]}>
-                      {answerTypeLabel(item.answerType)}翻牌
+                      {t('{type}翻牌', { type: t(answerTypeLabel(item.answerType)) })}
                     </Text>
                   </TouchableOpacity>
               );
             })}
           </View>
-          {!prices.length ? <Text style={styles.hint}>选择成员后显示可用的文字、语音、视频翻牌</Text> : null}
+          {!prices.length ? <Text style={styles.hint}>{t('选择成员后显示可用的文字、语音、视频翻牌')}</Text> : null}
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.label, isDark && styles.textLight]}>公开设置</Text>
+          <Text style={[styles.label, isDark && styles.textLight]}>{t('公开设置')}</Text>
           <View style={styles.optionRow}>
             {PRIVACY_OPTIONS.map((item) => {
               const itemCost = priceFor(selectedPrice, item.value);
@@ -345,7 +349,7 @@ export default function FlipScreen() {
                   onPress={() => setPrivacyType(item.value)}
                 >
                   <Text style={[styles.optionText, active && styles.optionTextActive, disabled && styles.disabledText]}>
-                    {item.label}{selectedPrice ? ` ${itemCost || '未开放'}` : ''}
+                    {t(item.label)}{selectedPrice ? ` ${itemCost || t('未开放')}` : ''}
                   </Text>
                 </TouchableOpacity>
               );
@@ -354,27 +358,27 @@ export default function FlipScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.label, isDark && styles.textLight]}>鸡腿数</Text>
-          {balance ? <Text style={[styles.balanceText, isDark && styles.textSub]}>当前余额：{balance} 鸡腿</Text> : null}
+          <Text style={[styles.label, isDark && styles.textLight]}>{t('鸡腿数')}</Text>
+          {balance ? <Text style={[styles.balanceText, isDark && styles.textSub]}>{t('当前余额：{balance} 鸡腿', { balance })}</Text> : null}
           <TextInput
             style={[styles.input, isDark && styles.inputDark]}
             keyboardType="numeric"
             value={cost}
             onChangeText={setCost}
-            placeholder={minCost ? `最低 ${minCost}` : '先选择翻牌配置'}
+            placeholder={minCost ? t('最低 {min}', { min: minCost }) : t('先选择翻牌配置')}
             placeholderTextColor="#5a5a5a"
           />
-          {minCost ? <Text style={styles.hint}>当前最低：{minCost} 鸡腿</Text> : null}
+          {minCost ? <Text style={styles.hint}>{t('当前最低：{min} 鸡腿', { min: minCost })}</Text> : null}
           <TouchableOpacity style={styles.rechargeBtn} onPress={() => navigation.navigate('RechargeScreen')}>
-            <Text style={styles.rechargeText}>鸡腿不足？去充值</Text>
+            <Text style={styles.rechargeText}>{t('鸡腿不足？去充值')}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.label, isDark && styles.textLight]}>翻牌内容</Text>
+          <Text style={[styles.label, isDark && styles.textLight]}>{t('翻牌内容')}</Text>
           <TextInput
             style={[styles.textArea, isDark && styles.inputDark]}
-            placeholder="输入你想提问的内容..."
+            placeholder={t('输入你想提问的内容...')}
             placeholderTextColor="#5a5a5a"
             multiline
             value={content}
@@ -382,9 +386,9 @@ export default function FlipScreen() {
             maxLength={200}
             textAlignVertical="top"
           />
-          <Text style={styles.hint}>{content.length}/200</Text>
+          <Text style={styles.hint}>{t('{len}/200', { len: content.length })}</Text>
           <TouchableOpacity style={[styles.sendBtn, loading && styles.disabledBtn]} onPress={sendFlip} disabled={loading}>
-            <Text style={styles.sendBtnText}>{loading ? '发送中...' : '发送翻牌'}</Text>
+            <Text style={styles.sendBtnText}>{loading ? t('发送中...') : t('发送翻牌')}</Text>
           </TouchableOpacity>
           {status ? <Text style={styles.statusText}>{status}</Text> : null}
         </View>
@@ -395,9 +399,9 @@ export default function FlipScreen() {
 
   return (
       <View style={pageStyle}>
-      <ScreenHeader title="翻牌记录" right={
+      <ScreenHeader title={t('翻牌记录')} right={
         <TouchableOpacity onPress={() => navigation.navigate('FlipScreen', { mode: 'send' })}>
-          <Text style={styles.actionBtn}>发送翻牌</Text>
+          <Text style={styles.actionBtn}>{t('发送翻牌')}</Text>
         </TouchableOpacity>
       } />
       {status ? <Text style={styles.statusText}>{status}</Text> : null}
@@ -410,7 +414,7 @@ export default function FlipScreen() {
           windowSize={7}
           removeClippedSubviews
           renderItem={({ item, index }) => {
-            const parsed = parseAnswer(item);
+            const parsed = parseAnswer(item, t('语音回复'), t('视频回复'));
             const answer = parsed.text;
             const answerUrl = parsed.url;
             const flipAnswerType = Number(item.answerType);
@@ -422,34 +426,34 @@ export default function FlipScreen() {
             const remainingDays = Math.max(0, Math.floor(remaining / 86400000));
             const remainingHours = Math.max(0, Math.floor((remaining % 86400000) / 3600000));
             const remainingMinutes = Math.max(0, Math.floor((remaining % 3600000) / 60000));
-            const remainingStr = aTime ? '' : (remaining > 0 ? `剩${remainingDays > 0 ? `${remainingDays}天` : ''}${remainingHours > 0 ? `${remainingHours}小时` : ''}${remainingMinutes}分` : '已过期');
+            const remainingStr = aTime ? '' : (remaining > 0 ? t('剩{time}', { time: `${remainingDays > 0 ? t('{m}天', { m: remainingDays }) : ''}${remainingHours > 0 ? t('{m}小时', { m: remainingHours }) : ''}${t('{m}分', { m: remainingMinutes })}` }) : t('已过期'));
             const elapsed = aTime && qTime ? aTime - qTime : 0;
             const elapsedDays = Math.floor(elapsed / 86400000);
             const elapsedHours = Math.floor((elapsed % 86400000) / 3600000);
             const elapsedMinutes = Math.floor((elapsed % 3600000) / 60000);
-            const elapsedStr = elapsed > 0 ? `耗时${elapsedDays > 0 ? `${elapsedDays}天` : ''}${elapsedHours > 0 ? `${elapsedHours}小时` : ''}${elapsedMinutes}分` : '';
+            const elapsedStr = elapsed > 0 ? t('耗时 {time}', { time: `${elapsedDays > 0 ? t('{m}天', { m: elapsedDays }) : ''}${elapsedHours > 0 ? t('{m}小时', { m: elapsedHours }) : ''}${t('{m}分', { m: elapsedMinutes })}` }) : '';
             return (
               <FadeInView delay={80 + index * 30} duration={300}>
                 <View style={[styles.card, isDark && styles.cardDark]}>
                   <View style={styles.cardTop}>
                     <Text style={styles.cardDate}>{formatTimestamp(item.qtime || item.createTime)}</Text>
                     <View style={styles.tagRow}>
-                      <Text style={styles.typeTag}>{answerTypeLabel(item.answerType)}</Text>
-                      <Text style={styles.privacyTag}>{privacyLabel(item.type)}</Text>
+                      <Text style={styles.typeTag}>{t(answerTypeLabel(item.answerType))}</Text>
+                      <Text style={styles.privacyTag}>{t(privacyLabel(item.type))}</Text>
                     </View>
                   </View>
-                  <Text style={[styles.memberName, isDark && styles.textLight]}>{memberName(item)}</Text>
-                  <Text style={[styles.cardQ, isDark && styles.textLight]}>问：{questionText(item) || '未返回问题内容'}</Text>
+                  <Text style={[styles.memberName, isDark && styles.textLight]}>{memberName(item, t('成员'))}</Text>
+                  <Text style={[styles.cardQ, isDark && styles.textLight]}>{t('问：{text}', { text: questionText(item) || t('未返回问题内容') })}</Text>
                   {answer ? (
                     <>
-                      <Text style={[styles.cardA, isDark && styles.textSub]}>答：{answer}</Text>
+                      <Text style={[styles.cardA, isDark && styles.textSub]}>{t('答：{text}', { text: answer })}</Text>
                       {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
                         <View style={[styles.answerMediaCard, isDark && styles.answerMediaCardDark]}>
                           <TouchableOpacity
                             style={styles.answerMediaBtn}
                             onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
                           >
-                            <Text style={styles.answerMediaBtnText}>{playingAnswerUrl === answerUrl ? '收起' : `▶ ${ansDur > 0 ? (ansDur < 60 ? `${ansDur}s` : `${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`) : (flipAnswerType === 2 ? '语音' : '视频')}`}</Text>
+                            <Text style={styles.answerMediaBtnText}>{playingAnswerUrl === answerUrl ? t('收起') : `▶ ${ansDur > 0 ? (ansDur < 60 ? `${ansDur}s` : `${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`) : (flipAnswerType === 2 ? t('语音') : t('视频'))}`}</Text>
                           </TouchableOpacity>
                           {playingAnswerUrl === answerUrl ? (
                             <Video
@@ -465,13 +469,13 @@ export default function FlipScreen() {
                       ) : null}
                     </>
                   ) : (
-                    <Text style={styles.cardPending}>{statusLabel(item.status)}</Text>
+                    <Text style={styles.cardPending}>{t(statusLabel(item.status))}</Text>
                   )}
                   <Text style={styles.cardMeta}>
-                    {item.cost || 0} 鸡腿
+                    {t('{cost} 鸡腿', { cost: item.cost || 0 })}
                     {remainingStr ? ` · ${remainingStr}` : ''}
                     {elapsedStr ? ` · ${elapsedStr}` : ''}
-                    {item.answerTime ? ` · 回复于 ${formatTimestamp(item.answerTime)}` : ''}
+                    {item.answerTime ? ` · ${t('回复于 {time}', { time: formatTimestamp(item.answerTime) })}` : ''}
                   </Text>
                 </View>
               </FadeInView>
@@ -484,7 +488,7 @@ export default function FlipScreen() {
             loadFlips(nextPage);
           }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={loading ? <CenterSpinner dark={isDark} text="加载中…" /> : !status ? <Text style={styles.empty}>暂无翻牌记录</Text> : null}
+          ListEmptyComponent={loading ? <CenterSpinner dark={isDark} text={t('加载中…')} /> : !status ? <Text style={styles.empty}>{t('暂无翻牌记录')}</Text> : null}
         />
       </FadeInView>
     </View>

@@ -160,7 +160,9 @@ export interface VideoItem {
 
 export type MessageFilter = 'all' | 'text' | 'audio' | 'image' | 'video' | 'reply' | 'live-record';
 
-export type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark' | 'system';
+
+export type LanguageSetting = 'system' | 'zh-Hans' | 'zh-Hant' | 'en' | 'ja' | 'ko';
 
 export interface TripItem {
   id: string;
@@ -296,6 +298,7 @@ export interface Meet48Auth {
 
 export interface AppSettings {
   theme: Theme;
+  language: LanguageSetting;
   p48Token: string;
   bilibiliCookie: string;
   bilibiliUserInfo: any;

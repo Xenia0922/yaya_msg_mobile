@@ -34,8 +34,9 @@ export async function loadCachedMemberData(): Promise<Member[] | null> {
     const raw = await AsyncStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed.members)) return null;
-    return await loadMembers(parsed.members);
+    const members = await loadMembers(parsed.members);
+    if (!members.length) return null;
+    return members;
   } catch {
     return null;
   }

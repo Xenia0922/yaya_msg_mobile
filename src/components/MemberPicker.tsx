@@ -13,6 +13,8 @@ import {
 import { useMemberStore, useSettingsStore } from '../store';
 import { Member } from '../types';
 import { normalizeMember, memberSearchText } from '../utils/members';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 interface MemberPickerProps {
   selectedMember: Member | null;
@@ -31,10 +33,12 @@ export default function MemberPicker({
   placeholder = '搜索成员...',
   limit = 80,
 }: MemberPickerProps) {
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const members = useMemberStore((state) => state.members);
   const membersLoaded = useMemberStore((state) => state.membersLoaded);
   const [query, setQuery] = useState('');
+  const ph = placeholder === '搜索成员...' ? t('搜索成员...') : placeholder;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -47,12 +51,12 @@ export default function MemberPicker({
     <View style={styles.wrapper}>
       <TextInput
         style={[styles.input, isDark && styles.inputDark]}
-        placeholder={placeholder}
+        placeholder={ph}
         placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
         value={query}
         onChangeText={setQuery}
       />
-      {selectedMember ? <Text style={styles.selected}>已选择：{selectedMember.ownerName}</Text> : null}
+      {selectedMember ? <Text style={styles.selected}>{t('已选择：{name}', { name: selectedMember.ownerName })}</Text> : null}
       {!membersLoaded ? <CenterSpinner dark={isDark} /> : null}
       <PerfFlatList
         data={filtered}
@@ -77,7 +81,7 @@ export default function MemberPicker({
           );
         }}
         ListEmptyComponent={
-          <Text style={[styles.hint, isDark && styles.hintDark]}>{query.trim() ? (membersLoaded ? '没有匹配成员' : '暂无成员数据') : '搜索成员...'}</Text>
+          <Text style={[styles.hint, isDark && styles.hintDark]}>{query.trim() ? (membersLoaded ? t('没有匹配成员') : t('暂无成员数据')) : ph}</Text>
         }
       />
     </View>

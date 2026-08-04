@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useI18n } from '../i18n';
 
 interface Props {
   title: string;
@@ -14,6 +15,7 @@ interface Props {
 // 不再用 absolute + pointerEvents 的脆弱 hack（absolute 满宽标题曾盖住返回/右侧，导致点击失效）。
 export default function ScreenHeader({ title, onBack, right, style }: Props) {
   const navigation = useNavigation();
+  const { t } = useI18n();
   const goBack = useCallback(onBack || (() => navigation.goBack()), [onBack, navigation]);
   const topPad = Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 24) + 14;
 
@@ -25,7 +27,7 @@ export default function ScreenHeader({ title, onBack, right, style }: Props) {
           style={styles.backBtn}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={styles.backText}>返回</Text>
+          <Text style={styles.backText}>{t('返回')}</Text>
         </TouchableOpacity>
       </View>
       <Text style={styles.title} numberOfLines={1}>{title}</Text>

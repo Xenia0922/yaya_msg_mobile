@@ -15,6 +15,8 @@ import ZoomImageModal from '../components/ZoomImageModal';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 function normalizeImageUrl(value: any): string {
   const direct = normalizeUrl(value);
@@ -88,7 +90,8 @@ function deepFindImageUrl(value: any, depth = 0): string {
 
 export default function PhotosScreen() {
   const navigation = useNavigation();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [photos, setPhotos] = useState<any[]>([]);
@@ -99,7 +102,7 @@ export default function PhotosScreen() {
   const loadPhotos = async (member: Member) => {
     setSelectedMember(member);
     setLoading(true);
-    setStatus('加载个人相册...');
+    setStatus(t('加载个人相册...'));
     try {
       const [photoRes, archiveRes] = await Promise.all([
         pocketApi.getMemberPhotos(member.id).catch(() => null),
@@ -127,7 +130,7 @@ export default function PhotosScreen() {
       const archivePhotos = ['fullPhoto1', 'fullPhoto2', 'fullPhoto3', 'fullPhoto4', 'avatar', 'starAvatar']
         .map((key) => starInfo?.[key])
         .filter(Boolean)
-        .map((url, index) => ({ id: `archive-${index}`, url, title: '成员照片' }));
+        .map((url, index) => ({ id: `archive-${index}`, url, title: t('成员照片') }));
       const combined = [...list, ...archivePhotos];
       const seen = new Set<string>();
       const merged: any[] = [];
@@ -138,9 +141,9 @@ export default function PhotosScreen() {
         merged.push(item);
       }
       setPhotos(merged);
-      setStatus(`加载完成：${merged.length} 张图片`);
+      setStatus(t('加载完成：{count} 张图片', { count: merged.length }));
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      setStatus(t('加载失败：{msg}', { msg: errorMessage(error) }));
       setPhotos([]);
     } finally {
       setLoading(false);
@@ -150,11 +153,11 @@ export default function PhotosScreen() {
   const downloadPhoto = useCallback(async (url: string) => {
     try {
       await enqueueDownload({ url, type: 'image', name: selectedMember ? `${selectedMember.ownerName}-photo` : 'member-photo' });
-      showToast('已加入下载管理');
+      showToast(t('已加入下载管理'));
     } catch (error) {
-      showToast(`下载失败：${errorMessage(error)}`);
+      showToast(t('下载失败：{msg}', { msg: errorMessage(error) }));
     }
-  }, [selectedMember, showToast]);
+  }, [selectedMember, showToast, t]);
 
   const photoUrls = useMemo(() => photos.map((p) => deepFindImageUrl(p)), [photos]);
 
@@ -177,7 +180,7 @@ export default function PhotosScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="个人相册" />
+      <ScreenHeader title={t('个人相册')} />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.pickerWrap}>
           <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
@@ -190,7 +193,7 @@ export default function PhotosScreen() {
           keyExtractor={(item, index) => String(item.id || item.nftId || index)}
           contentContainerStyle={{ padding: 8 }}
           renderItem={renderPhotoItem}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textDark]}>{loading ? '' : '暂无图片'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textDark]}>{loading ? '' : t('暂无图片')}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}

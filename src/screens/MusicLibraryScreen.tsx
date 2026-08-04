@@ -23,6 +23,8 @@ import FullScreenPlayer from '../components/FullScreenPlayer';
 import CoverArt from '../components/CoverArt';
 import { CenterSpinner } from '../components/Loaders';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 const GROUP_TABS = ['ALL', 'SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'FAV'];
 const CHIP_BASE_WIDTH = 72;
@@ -32,7 +34,8 @@ const CHIP_HEIGHT = 28;
 const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
 
 export default function MusicLibraryScreen() {
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
   const playUrl = useMusicPlayerStore((s) => s.url);
@@ -75,7 +78,7 @@ export default function MusicLibraryScreen() {
       setSongs(official);
       setHasMore(false);
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      setStatus(t('加载失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -89,7 +92,7 @@ export default function MusicLibraryScreen() {
       // 官方源歌曲的 mp3 直链即可播放
       if (track?.mp3 && /^https?:/i.test(String(track.mp3))) {
         const u = String(track.mp3);
-        if (!isPlayableHost(u)) throw new Error('不支持的播放源');
+        if (!isPlayableHost(u)) throw new Error(t('不支持的播放源'));
         return u;
       }
       // 回退：个别非官网源曲目尝试移动端接口解析地址
@@ -98,13 +101,13 @@ export default function MusicLibraryScreen() {
         const data = res?.content?.data || res?.content || res?.data || {};
         const url = buildMediaUrl(String(data.filePath || data.musicPath || data.playStreamPath || data.audioPath || data.url || ''));
         if (url) {
-          if (!isPlayableHost(url)) throw new Error('不支持的播放源');
+          if (!isPlayableHost(url)) throw new Error(t('不支持的播放源'));
           return url;
         }
       } catch { /* ignore */ }
       const fb = buildMediaUrl(String((track as any).filePath || (track as any).musicPath || (track as any).playStreamPath || (track as any).audioPath || (track as any).url || ''));
-      if (!fb) throw new Error('无法解析播放地址');
-      if (!isPlayableHost(fb)) throw new Error('不支持的播放源');
+      if (!fb) throw new Error(t('无法解析播放地址'));
+      if (!isPlayableHost(fb)) throw new Error(t('不支持的播放源'));
       return fb;
     });
   }, []);
@@ -137,15 +140,15 @@ export default function MusicLibraryScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="音乐" right={
+      <ScreenHeader title={t('音乐')} right={
         <TouchableOpacity onPress={() => loadAll()} disabled={loading}>
-          <Text style={[styles.backBtn, loading && styles.disabledText]}>刷新</Text>
+          <Text style={[styles.backBtn, loading && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
       <TextInput
         value={query}
         onChangeText={onQueryChange}
-        placeholder="搜索歌曲、成员、专辑"
+        placeholder={t('搜索歌曲、成员、专辑')}
         placeholderTextColor={isDark ? '#aaa' : '#4a4a4a'}
         style={[styles.searchInput, isDark && styles.searchInputDark]}
       />
@@ -180,7 +183,7 @@ export default function MusicLibraryScreen() {
                   group === g && styles.gTextOn,
                 ]}
               >
-                {g === 'FAV' ? `收藏${favorites.length ? `(${favorites.length})` : ''}` : g}
+                {g === 'FAV' ? t('收藏{count}', { count: favorites.length ? `(${favorites.length})` : '' }) : g}
               </Text>
             </TouchableOpacity>
           ))}
@@ -193,11 +196,11 @@ export default function MusicLibraryScreen() {
       ) : null}
       {loading && songs.length === 0 ? (
         <View style={{ flex: 1 }}>
-          <CenterSpinner dark={isDark} text="加载中…" />
+          <CenterSpinner dark={isDark} text={t('加载中…')} />
         </View>
       ) : !loading && songs.length === 0 && !status ? (
         <View style={styles.emptyWrap}>
-          <Text style={[styles.status, isDark && styles.textSubDark]}>暂无音乐</Text>
+          <Text style={[styles.status, isDark && styles.textSubDark]}>{t('暂无音乐')}</Text>
         </View>
       ) : (
       <PerfFlatList
@@ -236,9 +239,9 @@ export default function MusicLibraryScreen() {
                   </TouchableOpacity>
                 </View>
                 <View style={styles.songInfo}>
-                  <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
+                  <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || t('无标题')}</Text>
                   <Text style={[styles.songArtist, isDark && styles.textSubDark]} numberOfLines={1}>
-                    {[item.album, item.artist, item.groupLabel].filter(Boolean).join(' · ') || '官方音乐'}
+                    {[item.album, item.artist, item.groupLabel].filter(Boolean).join(' · ') || t('官方音乐')}
                   </Text>
                   {item.ctime ? (
                     <Text style={[styles.dateText, isDark && styles.textSubDark]}>
@@ -286,8 +289,8 @@ export default function MusicLibraryScreen() {
         onError={(err) => {
           try {
             console.warn('[MusicLibraryScreen] onError:', err);
-            const t = queue[currentIndex];
-            showToast(`《${t?.title || '该歌曲'}》无法播放，已跳过`);
+            const track = queue[currentIndex];
+            showToast(t('《{title}》无法播放，已跳过', { title: track?.title || t('该歌曲') }));
             MusicEngine.next();
           } catch (e) {
             console.error('[MusicLibraryScreen] onError handler crashed:', e);

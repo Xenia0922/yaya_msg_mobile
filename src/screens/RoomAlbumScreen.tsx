@@ -22,6 +22,8 @@ import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { translate, useI18n } from '../i18n';
 
 type RoomMode = 'big' | 'small';
 
@@ -92,7 +94,7 @@ function normalizeAlbumItems(res: any, mode: RoomMode): AlbumItem[] {
       id: String(item.id || item.msgId || item.messageId || `${mode}-${item.createTime || item.msgTime || index}-${url}`),
       url,
       type,
-      title: pickText(item, ['starName', 'senderName', 'senderNickName', 'nickName'], type === 'video' ? '房间视频' : '房间图片'),
+      title: pickText(item, ['starName', 'senderName', 'senderNickName', 'nickName'], type === 'video' ? translate('房间视频') : translate('房间图片')),
       time: item.createTime || item.msgTime || item.ctime || body.time,
       roomMode: mode,
       raw: item,
@@ -125,7 +127,8 @@ function channelFor(member: Member, mode: RoomMode) {
 
 export default function RoomAlbumScreen() {
   const navigation = useNavigation();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [roomMode, setRoomMode] = useState<RoomMode>('big');
@@ -135,7 +138,7 @@ export default function RoomAlbumScreen() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [playing, setPlaying] = useState<AlbumItem | null>(null);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('暂无数据');
+  const [status, setStatus] = useState(t('暂无数据'));
   const loadingRef = useRef(false);
 
   const currentChannelId = useMemo(() => selectedMember ? channelFor(selectedMember, roomMode) : '', [roomMode, selectedMember]);
@@ -144,7 +147,7 @@ export default function RoomAlbumScreen() {
     if (loadingRef.current) return;
     const channelId = channelFor(member, mode);
     if (!channelId) {
-      setStatus(mode === 'small' ? '这个成员没有小房间 channelId。' : '这个成员没有大房间 channelId。');
+      setStatus(mode === 'small' ? t('这个成员没有小房间 channelId。') : t('这个成员没有大房间 channelId。'));
       setItems([]);
       setHasMore(false);
       return;
@@ -165,11 +168,11 @@ export default function RoomAlbumScreen() {
       setHasMore(nextItems.length > 0 && next > 0);
       const imageCount = merged.filter((item) => item.type === 'image').length;
       const videoCount = merged.filter((item) => item.type === 'video').length;
-      const text = `已加载 ${merged.length} 条 · 图片 ${imageCount} · 视频 ${videoCount}`;
+      const text = t('已加载 {count} 条 · 图片 {image} · 视频 {video}', { count: merged.length, image: imageCount, video: videoCount });
       setStatus(text);
       showToast(text);
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      setStatus(t('加载失败：{msg}', { msg: errorMessage(error) }));
       if (!append) setItems([]);
     } finally {
       loadingRef.current = false;
@@ -198,9 +201,9 @@ export default function RoomAlbumScreen() {
         type: item.type,
         name: selectedMember ? `${selectedMember.ownerName}-${item.roomMode}-${item.type}` : `room-${item.type}`,
       });
-      showToast('已加入下载管理');
+      showToast(t('已加入下载管理'));
     } catch (error) {
-      showToast(`下载失败：${errorMessage(error)}`);
+      showToast(t('下载失败：{msg}', { msg: errorMessage(error) }));
     }
   }, [selectedMember, showToast]);
 
@@ -229,9 +232,9 @@ export default function RoomAlbumScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="房间相册" right={
+      <ScreenHeader title={t('房间相册')} right={
         <TouchableOpacity onPress={() => selectedMember && loadAlbum(selectedMember, roomMode, false)}>
-          <Text style={styles.backBtn}>刷新</Text>
+          <Text style={styles.backBtn}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
 
@@ -240,14 +243,14 @@ export default function RoomAlbumScreen() {
           <MemberPicker selectedMember={selectedMember} onSelect={(member) => loadAlbum(member, 'big', false)} />
           <View style={styles.modeRow}>
             <TouchableOpacity style={[styles.modeBtn, isDark && roomMode !== 'big' && styles.modeBtnDark, roomMode === 'big' && styles.modeBtnActive]} onPress={() => switchMode('big')}>
-              <Text style={[styles.modeText, roomMode === 'big' && styles.modeTextActive, isDark && roomMode !== 'big' && styles.textLight]}>大房间</Text>
+              <Text style={[styles.modeText, roomMode === 'big' && styles.modeTextActive, isDark && roomMode !== 'big' && styles.textLight]}>{t('大房间')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modeBtn, isDark && roomMode !== 'small' && styles.modeBtnDark, roomMode === 'small' && styles.modeBtnActive, !selectedMember?.yklzId && styles.modeBtnDisabled]} onPress={() => switchMode('small')}>
-              <Text style={[styles.modeText, roomMode === 'small' && styles.modeTextActive, isDark && roomMode !== 'small' && styles.textLight]}>小房间</Text>
+              <Text style={[styles.modeText, roomMode === 'small' && styles.modeTextActive, isDark && roomMode !== 'small' && styles.textLight]}>{t('小房间')}</Text>
             </TouchableOpacity>
           </View>
           <Text style={[styles.channelText, isDark && styles.textSubLight]}>
-            当前 channelId：{currentChannelId || '--'}
+            {t('当前 channelId：{id}', { id: currentChannelId || '--' })}
           </Text>
           <Text style={[styles.status, isDark && styles.textSubLight]}>{loading ? '' : status}</Text>
         </View>
@@ -263,11 +266,11 @@ export default function RoomAlbumScreen() {
             windowSize={7}
             removeClippedSubviews
             renderItem={renderAlbumItem}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '' : '暂无相册内容'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '' : t('暂无相册内容')}</Text>}
           onEndReached={loadMoreAlbum}
           onEndReachedThreshold={0.35}
           ListFooterComponent={hasMore ? (
-            <Text style={[styles.footerText, isDark && styles.textSubLight]}>{loading ? '' : '上滑加载更多'}</Text>
+            <Text style={[styles.footerText, isDark && styles.textSubLight]}>{loading ? '' : t('上滑加载更多')}</Text>
           ) : null}
         />
       </FadeInView>
@@ -287,6 +290,7 @@ const AlbumGridItem = React.memo(function AlbumGridItem({
   onOpen: (item: AlbumItem) => void;
   onLongPress: (item: AlbumItem) => void;
 }) {
+  const { t } = useI18n();
   return (
     <FadeInView duration={300} style={{ flex: 1 }}>
       <TouchableOpacity
@@ -297,15 +301,15 @@ const AlbumGridItem = React.memo(function AlbumGridItem({
       >
         {item.type === 'video' ? (
           <View style={styles.videoThumb}>
-            <Text style={styles.videoBadge}>视频</Text>
-            <Text style={styles.playMark}>播放</Text>
+            <Text style={styles.videoBadge}>{t('视频')}</Text>
+            <Text style={styles.playMark}>{t('播放')}</Text>
           </View>
         ) : (
           <NetworkImage source={{ uri: item.url }} style={styles.photo} resizeMode="cover" />
         )}
         <View style={styles.info}>
           <Text style={[styles.mediaTitle, isDark && styles.textLight]} numberOfLines={1}>{item.title}</Text>
-          <Text style={[styles.mediaMeta, isDark && styles.textSubLight]}>{item.roomMode === 'small' ? '小房间' : '大房间'} · {formatTimestamp(item.time)}</Text>
+          <Text style={[styles.mediaMeta, isDark && styles.textSubLight]}>{item.roomMode === 'small' ? t('小房间') : t('大房间')} · {formatTimestamp(item.time)}</Text>
         </View>
       </TouchableOpacity>
     </FadeInView>

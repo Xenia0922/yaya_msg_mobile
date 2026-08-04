@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useSettingsStore, useUiStore } from '../store';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 import {
   clearLog,
   exportLogText,
@@ -49,7 +51,8 @@ function fmtTime(t: number): string {
 }
 
 export default function RuntimeLogViewer({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
   const [entries, setEntries] = useState(getLogEntries());
   const [filter, setFilter] = useState<FilterKey>('all');
@@ -73,12 +76,12 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
   const onCopy = () => {
     const text = exportLogText(filtered);
     Clipboard.setString(text);
-    showToast(`已复制 ${filtered.length} 条日志`);
+    showToast(t('已复制 {count} 条日志', { count: filtered.length }));
   };
 
   const onShare = () => {
     const text = exportLogText(filtered);
-    Share.share({ title: '牙牙消息运行日志', message: text }).catch(() => showToast('分享失败'));
+    Share.share({ title: t('牙牙消息运行日志'), message: text }).catch(() => showToast(t('分享失败')));
   };
 
   const onCopyEntry = (entry: any) => {
@@ -88,19 +91,19 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
       entry.stack ? `\n${entry.stack}` : '',
     ].filter(Boolean);
     Clipboard.setString(lines.join('\n'));
-    showToast('已复制该条日志');
+    showToast(t('已复制该条日志'));
   };
 
   const onClear = () => {
-    Alert.alert('清空运行日志', '将删除本地保存的全部运行记录，确认？', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('清空运行日志'), t('将删除本地保存的全部运行记录，确认？'), [
+      { text: t('取消'), style: 'cancel' },
       {
-        text: '清空',
+        text: t('清空'),
         style: 'destructive',
         onPress: async () => {
           await clearLog();
           setEntries([]);
-          showToast('已清空');
+          showToast(t('已清空'));
         },
       },
     ]);
@@ -110,9 +113,9 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.container, isDark && styles.containerDark]}>
         <View style={[styles.header, isDark && styles.headerDark]}>
-          <Text style={[styles.title, isDark && styles.textLight]}>运行日志</Text>
+          <Text style={[styles.title, isDark && styles.textLight]}>{t('运行日志')}</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={[styles.closeText, isDark && styles.textLight]}>关闭</Text>
+            <Text style={[styles.closeText, isDark && styles.textLight]}>{t('关闭')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -120,6 +123,7 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
           {LEVELS.map((lv) => {
             const c = lv.key === 'all' ? entries.length : counts[lv.key as LogLevel];
             const active = filter === lv.key;
+            const label = t(lv.label);
             return (
               <TouchableOpacity
                 key={lv.key}
@@ -127,7 +131,7 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
                 onPress={() => setFilter(lv.key)}
               >
                 <Text style={[styles.filterText, isDark && styles.textSubLight, active && styles.filterTextOn]}>
-                  {lv.label} {c}
+                  {label} {c}
                 </Text>
               </TouchableOpacity>
             );
@@ -136,7 +140,7 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
 
         <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator>
           {filtered.length === 0 ? (
-            <Text style={[styles.empty, isDark && styles.textSubLight]}>暂无记录</Text>
+            <Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无记录')}</Text>
           ) : (
             filtered.map((e) => (
               <TouchableOpacity
@@ -165,16 +169,16 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
 
         <View style={[styles.toolbar, isDark && styles.toolbarDark]}>
           <TouchableOpacity style={[styles.toolBtn, isDark && styles.toolBtnDark]} onPress={refresh}>
-            <Text style={[styles.toolText, isDark && styles.textLight]}>刷新</Text>
+            <Text style={[styles.toolText, isDark && styles.textLight]}>{t('刷新')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.toolBtn, isDark && styles.toolBtnDark]} onPress={onCopy}>
-            <Text style={[styles.toolText, isDark && styles.textLight]}>复制</Text>
+            <Text style={[styles.toolText, isDark && styles.textLight]}>{t('复制')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.toolBtn, isDark && styles.toolBtnDark]} onPress={onShare}>
-            <Text style={[styles.toolText, isDark && styles.textLight]}>分享</Text>
+            <Text style={[styles.toolText, isDark && styles.textLight]}>{t('分享')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.toolBtnDanger} onPress={onClear}>
-            <Text style={styles.toolTextDanger}>清空</Text>
+            <Text style={styles.toolTextDanger}>{t('清空')}</Text>
           </TouchableOpacity>
         </View>
       </View>

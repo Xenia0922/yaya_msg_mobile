@@ -8,13 +8,16 @@ import { useSettingsStore } from '../store';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
+import { useI18n } from '../i18n';
 import { FadeInView } from '../components/Motion';
 import { errorMessage, pickText } from '../utils/data';
 import pocketApi from '../api/pocket48';
+import { useAppTheme } from '../hooks/useAppTheme';
 
 export default function RoomRadioScreen() {
   const navigation = useNavigation();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [radioUrl, setRadioUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +29,7 @@ export default function RoomRadioScreen() {
   const startRadio = async (member: Member) => {
     setSelectedMember(member);
     setLoading(true);
-    setStatus('获取电台地址...');
+    setStatus(t('获取电台地址...'));
     setRadioUrl('');
     setPlaying(false);
     try {
@@ -35,13 +38,13 @@ export default function RoomRadioScreen() {
       const url = pickText(res, ['content.streamUrl', 'content.url', 'content.streamPath', 'content.playUrl', 'data.streamUrl', 'data.url', 'streamUrl', 'url']);
       if (url) {
         setRadioUrl(url);
-        setStatus('已连接，正在缓冲...');
+        setStatus(t('已连接，正在缓冲...'));
         setPlaying(true);
       } else {
-        setStatus('该房间当前没有开启语音电台');
+        setStatus(t('该房间当前没有开启语音电台'));
       }
     } catch (error) {
-      setStatus(`获取失败：${errorMessage(error)}`);
+      setStatus(t('获取失败：{error}', { error: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -50,39 +53,39 @@ export default function RoomRadioScreen() {
   const stopRadio = () => {
     setPlaying(false);
     setRadioUrl('');
-    setStatus('已停止');
+    setStatus(t('已停止'));
   };
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="房间电台" />
+      <ScreenHeader title={t('房间电台')} />
       <FadeInView delay={80} duration={300}>
         <View style={styles.pickerWrap}>
-          <MemberPicker selectedMember={selectedMember} onSelect={startRadio} placeholder="选择成员获取上麦音频..." />
+          <MemberPicker selectedMember={selectedMember} onSelect={startRadio} placeholder={t('选择成员获取上麦音频...')} />
           <View style={styles.modeRow}>
             <TouchableOpacity style={[styles.modePill, roomMode === 'big' && styles.modePillActive]} onPress={() => { setRoomMode('big'); if (selectedMember) startRadio(selectedMember); }}>
-              <Text style={[styles.modePillText, roomMode === 'big' && styles.modePillTextActive]}>大房间</Text>
+              <Text style={[styles.modePillText, roomMode === 'big' && styles.modePillTextActive]}>{t('大房间')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.modePill, roomMode === 'small' && styles.modePillActive]} onPress={() => { setRoomMode('small'); if (selectedMember) startRadio(selectedMember); }}>
-              <Text style={[styles.modePillText, roomMode === 'small' && styles.modePillTextActive]}>小房间</Text>
+              <Text style={[styles.modePillText, roomMode === 'small' && styles.modePillTextActive]}>{t('小房间')}</Text>
             </TouchableOpacity>
           </View>
         </View>
         <View style={[styles.playerCard, isDark && styles.playerCardDark]}>
-          <Text style={[styles.playerTitle, isDark && styles.textDark]}>{selectedMember?.ownerName || '暂无数据'}</Text>
-          <Text style={[styles.playerStatus, isDark && styles.textSubDark]}>{loading ? '' : status || '暂无电台地址'}</Text>
+          <Text style={[styles.playerTitle, isDark && styles.textDark]}>{selectedMember?.ownerName || t('暂无数据')}</Text>
+          <Text style={[styles.playerStatus, isDark && styles.textSubDark]}>{loading ? '' : status || t('暂无电台地址')}</Text>
 
           {radioUrl ? (
             <>
               <View style={styles.controlsRow}>
                 <TouchableOpacity style={styles.ctrlBtn} onPress={playing ? stopRadio : () => setPlaying(true)}>
-                  <Text style={styles.ctrlBtnText}>{playing ? '停止' : '播放'}</Text>
+                  <Text style={styles.ctrlBtnText}>{playing ? t('停止') : t('播放')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.ctrlBtn, styles.ctrlBtnGhost]} onPress={() => setMuted(v => !v)}>
-                  <Text style={[styles.ctrlBtnGhostText, isDark && { color: '#ddd' }]}>{muted ? '已静音' : '静音'}</Text>
+                  <Text style={[styles.ctrlBtnGhostText, isDark && { color: '#ddd' }]}>{muted ? t('已静音') : t('静音')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.ctrlBtn, styles.ctrlBtnGhost]} onPress={() => startRadio(selectedMember!)}>
-                  <Text style={[styles.ctrlBtnGhostText, isDark && { color: '#ddd' }]}>刷新</Text>
+                  <Text style={[styles.ctrlBtnGhostText, isDark && { color: '#ddd' }]}>{t('刷新')}</Text>
                 </TouchableOpacity>
               </View>
               {playing ? (
@@ -94,15 +97,15 @@ export default function RoomRadioScreen() {
                   muted={muted}
                   controls={false}
                   ignoreSilentSwitch="ignore"
-                  onLoad={() => setStatus('正在播放')}
-                  onError={(e: any) => setStatus(`播放失败：${JSON.stringify(e?.error || e).slice(0, 120)}`)}
-                  onEnd={() => { setStatus('上麦已结束'); setPlaying(false); }}
+                  onLoad={() => setStatus(t('正在播放'))}
+                  onError={(e: any) => setStatus(t('播放失败：{error}', { error: JSON.stringify(e?.error || e).slice(0, 120) }))}
+                  onEnd={() => { setStatus(t('上麦已结束')); setPlaying(false); }}
                 />
               ) : null}
             </>
           ) : selectedMember ? (
             <TouchableOpacity style={styles.playBtn} onPress={() => startRadio(selectedMember)}>
-              <Text style={styles.playBtnText}>刷新</Text>
+              <Text style={styles.playBtnText}>{t('刷新')}</Text>
             </TouchableOpacity>
           ) : null}
         </View>

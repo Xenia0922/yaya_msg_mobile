@@ -10,12 +10,14 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore } from '../store';
+import { useAppTheme } from '../hooks/useAppTheme';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { CenterSpinner } from '../components/Loaders';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
+import { translate, useI18n } from '../i18n';
 
 type ArchiveState = {
   data: any;
@@ -24,7 +26,7 @@ type ArchiveState = {
 };
 
 function displayName(member?: Member | null, starInfo?: any) {
-  return starInfo?.starName || member?.ownerName?.split('-').pop() || member?.ownerName || '未选择成员';
+  return starInfo?.starName || member?.ownerName?.split('-').pop() || member?.ownerName || translate('未选择成员');
 }
 
 function firstText(...values: any[]) {
@@ -48,8 +50,8 @@ function formatDate(time: any) {
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
-  const theme = useSettingsStore((s) => s.settings.theme);
-  const isDark = theme === 'dark';
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [archive, setArchive] = useState<ArchiveState>({ data: null, history: [], error: '' });
   const [loading, setLoading] = useState(false);
@@ -88,11 +90,11 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <ScreenHeader title="成员档案" />
+      <ScreenHeader title={t('成员档案')} />
 
       <FadeInView delay={80} duration={300}>
         <View style={styles.pickerWrap}>
-          <MemberPicker selectedMember={selectedMember} onSelect={loadProfile} placeholder="搜索成员查看档案..." />
+          <MemberPicker selectedMember={selectedMember} onSelect={loadProfile} placeholder={t('搜索成员查看档案...')} />
         </View>
 
         {selectedMember ? (
@@ -109,55 +111,55 @@ export default function ProfileScreen() {
 
           {archive.error ? (
             <View style={styles.notice}>
-              <Text style={styles.noticeTitle}>在线档案暂不可用</Text>
-              <Text style={[styles.noticeText, isDark && styles.textDark]}>已显示本地成员库资料；需要口袋签名的排行和经历可能无法加载。</Text>
+              <Text style={styles.noticeTitle}>{t('在线档案暂不可用')}</Text>
+              <Text style={[styles.noticeText, isDark && styles.textDark]}>{t('已显示本地成员库资料；需要口袋签名的排行和经历可能无法加载。')}</Text>
             </View>
           ) : null}
 
-          <Text style={styles.sectionTitle}>基本信息</Text>
+          <Text style={styles.sectionTitle}>{t('基本信息')}</Text>
           <View style={styles.infoGrid}>
-            <InfoItem label="成员 ID" value={firstText(selectedMember.id)} dark={isDark} />
-            <InfoItem label="拼音" value={firstText(selectedMember.pinyin)} dark={isDark} />
-            {raw.birthday ? <InfoItem label="生日" value={firstText(raw.birthday)} dark={isDark} /> : null}
-            {raw.birthplace ? <InfoItem label="出生地" value={firstText(raw.birthplace)} dark={isDark} /> : null}
-            {raw.constellation ? <InfoItem label="星座" value={firstText(raw.constellation)} dark={isDark} /> : null}
-            {raw.height ? <InfoItem label="身高" value={`${raw.height} cm`} dark={isDark} /> : null}
-            {raw.bloodType ? <InfoItem label="血型" value={`${raw.bloodType}型`} dark={isDark} /> : null}
-            {raw.hobbies ? <InfoItem label="爱好" value={firstText(raw.hobbies)} dark={isDark} /> : null}
-            {raw.specialty ? <InfoItem label="特长" value={firstText(raw.specialty)} dark={isDark} /> : null}
+            <InfoItem label={t('成员 ID')} value={firstText(selectedMember.id)} dark={isDark} />
+            <InfoItem label={t('拼音')} value={firstText(selectedMember.pinyin)} dark={isDark} />
+            {raw.birthday ? <InfoItem label={t('生日')} value={firstText(raw.birthday)} dark={isDark} /> : null}
+            {raw.birthplace ? <InfoItem label={t('出生地')} value={firstText(raw.birthplace)} dark={isDark} /> : null}
+            {raw.constellation ? <InfoItem label={t('星座')} value={firstText(raw.constellation)} dark={isDark} /> : null}
+            {raw.height ? <InfoItem label={t('身高')} value={`${raw.height} cm`} dark={isDark} /> : null}
+            {raw.bloodType ? <InfoItem label={t('血型')} value={t('{type}型', { type: raw.bloodType })} dark={isDark} /> : null}
+            {raw.hobbies ? <InfoItem label={t('爱好')} value={firstText(raw.hobbies)} dark={isDark} /> : null}
+            {raw.specialty ? <InfoItem label={t('特长')} value={firstText(raw.specialty)} dark={isDark} /> : null}
           </View>
 
-          <Text style={styles.sectionTitle}>生涯历程</Text>
+          <Text style={styles.sectionTitle}>{t('生涯历程')}</Text>
           <View style={styles.infoGrid}>
-            {raw.periodName ? <InfoItem label="期数" value={firstText(raw.periodName)} dark={isDark} /> : null}
-            {raw.rank ? <InfoItem label="最高排名" value={firstText(raw.rank)} dark={isDark} /> : null}
-            {raw.jtime ? <InfoItem label="加入时间" value={formatDate(raw.jtime)} dark={isDark} /> : null}
-            {raw.ptime ? <InfoItem label="升格时间" value={formatDate(raw.ptime)} dark={isDark} /> : null}
-            {raw.gtime ? <InfoItem label="毕业时间" value={formatDate(raw.gtime)} dark={isDark} /> : null}
-            {raw.qtime ? <InfoItem label="退团时间" value={formatDate(raw.qtime)} dark={isDark} /> : null}
+            {raw.periodName ? <InfoItem label={t('期数')} value={firstText(raw.periodName)} dark={isDark} /> : null}
+            {raw.rank ? <InfoItem label={t('最高排名')} value={firstText(raw.rank)} dark={isDark} /> : null}
+            {raw.jtime ? <InfoItem label={t('加入时间')} value={formatDate(raw.jtime)} dark={isDark} /> : null}
+            {raw.ptime ? <InfoItem label={t('升格时间')} value={formatDate(raw.ptime)} dark={isDark} /> : null}
+            {raw.gtime ? <InfoItem label={t('毕业时间')} value={formatDate(raw.gtime)} dark={isDark} /> : null}
+            {raw.qtime ? <InfoItem label={t('退团时间')} value={formatDate(raw.qtime)} dark={isDark} /> : null}
           </View>
 
-          <Text style={styles.sectionTitle}>技术参数</Text>
+          <Text style={styles.sectionTitle}>{t('技术参数')}</Text>
           <View style={styles.infoGrid}>
-            <InfoItem label="大房间" value={firstText(selectedMember.channelId)} dark={isDark} />
-            <InfoItem label="服务器" value={firstText(selectedMember.serverId)} dark={isDark} />
-            {selectedMember.yklzId ? <InfoItem label="小房间" value={firstText(selectedMember.yklzId)} dark={isDark} /> : null}
+            <InfoItem label={t('大房间')} value={firstText(selectedMember.channelId)} dark={isDark} />
+            <InfoItem label={t('服务器')} value={firstText(selectedMember.serverId)} dark={isDark} />
+            {selectedMember.yklzId ? <InfoItem label={t('小房间')} value={firstText(selectedMember.yklzId)} dark={isDark} /> : null}
             {selectedMember.roomId ? <InfoItem label="roomId" value={firstText(selectedMember.roomId)} dark={isDark} /> : null}
-            {selectedMember.liveRoomId ? <InfoItem label="直播间" value={firstText(selectedMember.liveRoomId)} dark={isDark} /> : null}
-            {raw.wbName ? <InfoItem label="微博" value={firstText(raw.wbName)} dark={isDark} /> : null}
-            {raw.wbUid ? <InfoItem label="微博UID" value={firstText(raw.wbUid)} dark={isDark} /> : null}
+            {selectedMember.liveRoomId ? <InfoItem label={t('直播间')} value={firstText(selectedMember.liveRoomId)} dark={isDark} /> : null}
+            {raw.wbName ? <InfoItem label={t('微博')} value={firstText(raw.wbName)} dark={isDark} /> : null}
+            {raw.wbUid ? <InfoItem label={t('微博UID')} value={firstText(raw.wbUid)} dark={isDark} /> : null}
           </View>
 
           {raw.note ? (
             <View style={styles.noteBox}>
-              <Text style={styles.noteLabel}>备注</Text>
+              <Text style={styles.noteLabel}>{t('备注')}</Text>
               <Text style={[styles.noteText, isDark && styles.textDark]}>{raw.note}</Text>
             </View>
           ) : null}
 
           {raw.fullPhoto1 ? (
             <View>
-              <Text style={styles.sectionTitle}>公式照</Text>
+              <Text style={styles.sectionTitle}>{t('公式照')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {['fullPhoto1', 'fullPhoto2', 'fullPhoto3', 'fullPhoto4'].filter((k) => raw[k]).map((k) => (
                   <Image key={k} source={{ uri: raw[k] }} style={styles.photoItem} resizeMode="cover" />
@@ -168,14 +170,14 @@ export default function ProfileScreen() {
         </View>
       ) : (
         <View style={[styles.emptyCard, isDark && styles.cardDark]}>
-          <Text style={[styles.emptyTitle, isDark && styles.textDark]}>暂无数据</Text>
-          <Text style={[styles.emptyText, isDark && styles.textDark]}>搜索成员查看档案</Text>
+          <Text style={[styles.emptyTitle, isDark && styles.textDark]}>{t('暂无数据')}</Text>
+          <Text style={[styles.emptyText, isDark && styles.textDark]}>{t('搜索成员查看档案')}</Text>
         </View>
       )}
 
       {fanRanks.length > 0 ? (
         <View style={[styles.card, isDark && styles.cardDark]}>
-          <Text style={styles.sectionTitle}>粉丝排行</Text>
+          <Text style={styles.sectionTitle}>{t('粉丝排行')}</Text>
           {fanRanks.slice(0, 10).map((fan: any, index: number) => (
             <View key={`${fan.userId || fan.nickName || index}`} style={styles.rankRow}>
               <Text style={styles.rankNo}>{index + 1}</Text>
@@ -190,7 +192,7 @@ export default function ProfileScreen() {
 
       {archive.history.length > 0 ? (
         <View style={[styles.card, isDark && styles.cardDark]}>
-          <Text style={styles.sectionTitle}>重要经历</Text>
+          <Text style={styles.sectionTitle}>{t('重要经历')}</Text>
           {archive.history.slice(0, 20).map((item: any, index: number) => (
             <View key={`${item.ctime || item.time || index}`} style={styles.timelineRow}>
               <Text style={styles.timelineTime}>{formatDate(item.ctime || item.time)}</Text>

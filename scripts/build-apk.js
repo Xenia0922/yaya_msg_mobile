@@ -10,18 +10,6 @@ const androidDir = path.join(projectRoot, 'android');
 const apkOutputDir = path.join('E:/yymsg/APK');
 const pkg = require(path.join(projectRoot, 'package.json'));
 
-function getFeatureDesc() {
-  // 从命令行参数读取功能描述，或从最近的 git commit message 取第一行
-  const arg = process.argv.find(a => a.startsWith('--desc='));
-  if (arg) return arg.split('=')[1].replace(/\s+/g, '-').toLowerCase();
-  try {
-    const msg = execSync('git log -1 --pretty=%s', { cwd: projectRoot, encoding: 'utf8' }).trim();
-    return msg.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]+/g, '-').toLowerCase().slice(0, 30);
-  } catch {
-    return 'release';
-  }
-}
-
 console.log('🔨 Building Android release APK...');
 const gradleCmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 try {
@@ -32,23 +20,46 @@ try {
 }
 
 const version = pkg.version;
-const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-const feature = getFeatureDesc();
-const srcApk = path.join(androidDir, 'app/build/outputs/apk/release/app-release.apk');
-const destName = `yaya-msg-mobile-v${version}-${date}-${feature}.apk`;
-const destApk = path.join(apkOutputDir, destName);
+const apkDir = path.join(androidDir, 'app/build/outputs/apk/release');
 
-if (!fs.existsSync(srcApk)) {
-  console.error('❌ APK not found at', srcApk);
-  process.exit(1);
-}
+// v2.6.4 起启用 ABI 分包：arm64-v8a / armeabi-v7a / x86_64 / universal(全量)
+const abiSplits = ['arm64-v8a', 'armeabi-v7a', 'x86_64'];
 
 // Ensure APK output dir exists
 if (!fs.existsSync(apkOutputDir)) {
   fs.mkdirSync(apkOutputDir, { recursive: true });
 }
 
-fs.copyFileSync(srcApk, destApk);
-console.log(`✅ APK copied to: ${destApk}`);
-console.log(`   Name: ${destName}`);
-console.log(`   Size: ${(fs.statSync(destApk).size / 1024 / 1024).toFixed(1)} MB`);
+const copied = [];
+const fileExists = f => fs.existsSync(f);
+
+for (const abi of abiSplits) {
+  const src = path.join(apkDir, `app-${abi}-release.apk`);
+  if (!fileExists(src)) {
+    console.warn(`⚠️  Missing split APK for ${abi}`);
+    continue;
+  }
+  const abiTag = abi === 'arm64-v8a' ? 'v8a' : abi === 'x86_64' ? 'x64' : 'v7a';
+  const destName = `yaya-msg-mobile-v${version}-${abiTag}.apk`;
+  const destApk = path.join(apkOutputDir, destName);
+  fs.copyFileSync(src, destApk);
+  copied.push({ abi, file: destApk });
+}
+
+const universalSrc = path.join(apkDir, 'app-universal-release.apk');
+if (fileExists(universalSrc)) {
+  const destName = `yaya-msg-mobile-v${version}.apk`;
+  const destApk = path.join(apkOutputDir, destName);
+  fs.copyFileSync(universalSrc, destApk);
+  copied.push({ abi: 'universal', file: destApk });
+}
+
+if (copied.length === 0) {
+  console.error('❌ No APK found at', apkDir);
+  process.exit(1);
+}
+
+for (const c of copied) {
+  const sizeMB = (fs.statSync(c.file).size / 1024 / 1024).toFixed(1);
+  console.log(`✅ [${c.abi}] APK copied to: ${c.file} (${sizeMB} MB)`);
+}

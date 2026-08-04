@@ -5,6 +5,7 @@ const SETTINGS_KEY = 'yaya_settings';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
+  language: 'system',
   p48Token: '',
   bilibiliCookie: '',
   bilibiliUserInfo: null,

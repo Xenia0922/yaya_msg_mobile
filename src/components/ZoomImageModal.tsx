@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useI18n } from '../i18n';
 
 function distance(touches: any[]) {
   if (touches.length < 2) return 0;
@@ -28,6 +29,7 @@ export default function ZoomImageModal({
   url: string;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const startScale = useRef(1);
@@ -76,7 +78,7 @@ export default function ZoomImageModal({
     <Modal visible={!!url} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.shade}>
         <TouchableOpacity style={styles.close} onPress={onClose}>
-          <Text style={styles.closeText}>关闭</Text>
+          <Text style={styles.closeText}>{t('关闭')}</Text>
         </TouchableOpacity>
         {url ? (
           <View style={styles.stage} {...responder.panHandlers}>

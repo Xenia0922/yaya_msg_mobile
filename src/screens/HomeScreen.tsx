@@ -5,7 +5,9 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore } from '../store';
+import { useAppTheme } from '../hooks/useAppTheme';
 import { FadeInView, ScalePressable } from '../components/Motion';
+import { useI18n } from '../i18n';
 
 type HomeNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Home'>,
@@ -97,7 +99,8 @@ const CARDS: CardSection[] = [
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavProp>();
   const settings = useSettingsStore((state) => state.settings);
-  const isDark = settings.theme === 'dark';
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const hasBackground = !!settings.customBackgroundFile?.trim();
   const token = settings.p48Token;
   const membersLoaded = useMemberStore((state) => state.membersLoaded);
@@ -115,21 +118,28 @@ export default function HomeScreen() {
     else (navigation as any).navigate(item.route);
   };
 
+  const cards = CARDS.map((g) => ({
+    ...g,
+    title: t(g.title),
+    subtitle: t(g.subtitle),
+    items: g.items.map((i) => ({ ...i, title: t(i.title), desc: t(i.desc) })),
+  }));
+
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <FadeInView style={styles.header} distance={8}>
-        <Text style={styles.headerTitle}>牙牙消息</Text>
+        <Text style={styles.headerTitle}>{t('牙牙消息')}</Text>
       </FadeInView>
 
       {showTip && !token ? (
         <FadeInView style={[styles.warnBanner, isDark && styles.warnBannerDark]} delay={80} distance={8}>
-          <Text style={styles.warnTitle}>未登录口袋账号</Text>
-          <Text style={[styles.warnText, isDark && styles.warnTextDark]}>成员库、资源和公开数据可直接查看；消息、私信、翻牌等需要登录或粘贴 token。</Text>
+          <Text style={styles.warnTitle}>{t('未登录口袋账号')}</Text>
+          <Text style={[styles.warnText, isDark && styles.warnTextDark]}>{t('成员库、资源和公开数据可直接查看；消息、私信、翻牌等需要登录或粘贴 token。')}</Text>
         </FadeInView>
       ) : null}
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {CARDS.map((card, index) => (
+        {cards.map((card, index) => (
           <FadeInView
             key={card.title}
             style={[styles.card, hasBackground && styles.cardOnImage, isDark && styles.cardDark]}

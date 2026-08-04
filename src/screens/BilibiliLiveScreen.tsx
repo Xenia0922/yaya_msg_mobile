@@ -26,14 +26,17 @@ import { errorMessage } from '../utils/data';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
 import { getPlayerHtml } from '../components/media/player';
 import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel } from '../components/media/PlayerChrome';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 export default function BilibiliLiveScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [rooms, setRooms] = useState<BilibiliLiveRoom[]>([]);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [candidateIndex, setCandidateIndex] = useState(0);
-  const [streamTitle, setStreamTitle] = useState('B站直播');
+  const [streamTitle, setStreamTitle] = useState('');
   const [activeRoom, setActiveRoom] = useState<BilibiliLiveRoom | null>(null);
   const [liveStatuses, setLiveStatuses] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
@@ -91,9 +94,9 @@ export default function BilibiliLiveScreen() {
       try {
         const data = await externalApi.fetchBilibiliConfig();
         setRooms(data || []);
-        setStatus(data?.length ? `已加载 ${data.length} 个直播间` : '没有加载到直播间配置');
+        setStatus(data?.length ? t('已加载 {count} 个直播间', { count: data.length }) : t('没有加载到直播间配置'));
       } catch (error) {
-        setStatus(`直播间列表加载失败：${errorMessage(error)}`);
+        setStatus(t('直播间列表加载失败：{msg}', { msg: errorMessage(error) }));
       }
     })();
   }, []);
@@ -134,7 +137,7 @@ export default function BilibiliLiveScreen() {
   const checkStatuses = async () => {
     if (!rooms.length) return;
     setLoading(true);
-    setStatus('正在刷新开播状态...');
+    setStatus(t('正在刷新开播状态...'));
     const next: Record<string, boolean> = {};
     for (const room of rooms) {
       try {
@@ -145,13 +148,13 @@ export default function BilibiliLiveScreen() {
       }
     }
     setLiveStatuses(next);
-    setStatus('状态刷新完成');
+    setStatus(t('状态刷新完成'));
     setLoading(false);
   };
 
   const startWatch = async (room: BilibiliLiveRoom) => {
     setLoading(true);
-    setStatus(`正在获取直播流：${room.name || room.roomId}`);
+    setStatus(t('正在获取直播流：{name}', { name: room.name || room.roomId }));
     setPlayerError('');
     setUseWebPlayer(false);
     setCandidates([]);
@@ -160,14 +163,14 @@ export default function BilibiliLiveScreen() {
     try {
       const info = await bilibiliApi.resolveLive(room.roomId);
       const list = info.streamCandidates?.length ? info.streamCandidates : [{ url: info.streamUrl }];
-      setStreamTitle(info.title || room.name || 'B站直播');
+      setStreamTitle(info.title || room.name || t('B站直播'));
       setCandidates(list);
       setStatus('');
       showControls();
       setIsLandscape(true);
       setIsFullscreen(true); // 进入直播间即自动横屏+全屏沉浸（用户偏好：B站直播只看横屏）
     } catch (error) {
-      setStatus(`获取直播流失败：${errorMessage(error)}`);
+      setStatus(t('获取直播流失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -176,10 +179,10 @@ export default function BilibiliLiveScreen() {
   const switchToNextCandidate = useCallback((reason: string) => {
     setCandidateIndex((prev) => {
       if (prev + 1 < candidates.length) {
-        setPlayerError(`${reason}，已切换下一条线路`);
+        setPlayerError(t('{reason}，已切换下一条线路', { reason }));
         return prev + 1;
       }
-      setPlayerError(`${reason}。所有线路都试过了，建议先确认该房间真的在播，或登录 B站账号后重试。`);
+      setPlayerError(t('{reason}。所有线路都试过了，建议先确认该房间真的在播，或登录 B站账号后重试。', { reason }));
       return prev;
     });
   }, [candidates.length]);
@@ -216,7 +219,7 @@ export default function BilibiliLiveScreen() {
                   onLoad={() => { setPlayerError(''); videoRef.current?.resume?.(); }}
                   onError={(event) => {
                     const detail = JSON.stringify(event?.error || event).slice(0, 180);
-                    switchToNextCandidate(`原生播放器失败：${detail}`);
+                    switchToNextCandidate(t('原生播放器失败：{detail}', { detail }));
                   }}
                 />
               </View>
@@ -227,11 +230,11 @@ export default function BilibiliLiveScreen() {
               <Text style={styles.playerErrorText}>{playerError}</Text>
               <View style={styles.playerActions}>
                 <TouchableOpacity style={styles.webFallbackBtn} onPress={() => setUseWebPlayer(true)}>
-                  <Text style={styles.webFallbackText}>网页播放器</Text>
+                  <Text style={styles.webFallbackText}>{t('网页播放器')}</Text>
                 </TouchableOpacity>
                 {candidateIndex + 1 < candidates.length ? (
                   <TouchableOpacity style={styles.webFallbackBtn} onPress={() => setCandidateIndex((prev) => prev + 1)}>
-                    <Text style={styles.webFallbackText}>下一线路</Text>
+                    <Text style={styles.webFallbackText}>{t('下一线路')}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -250,8 +253,8 @@ export default function BilibiliLiveScreen() {
         <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, opacity: controlsOpacity, pointerEvents: controlsVisible ? 'box-none' : 'none', zIndex: 30 }]}>
           <PlayerTopBar
             onBack={closePlayer}
-            title={streamTitle || 'B站直播'}
-            subtitle={`线路 ${candidateIndex + 1}/${candidates.length} · ${currentCandidate?.formatName || 'unknown'}`}
+            title={streamTitle || t('B站直播')}
+            subtitle={t('线路 {index}/{total} · {format}', { index: candidateIndex + 1, total: candidates.length, format: currentCandidate?.formatName || 'unknown' })}
             onMore={() => setMoreVisible(true)}
             onRefresh={() => activeRoom && startWatch(activeRoom)}
           />
@@ -274,10 +277,10 @@ export default function BilibiliLiveScreen() {
         <PlayerMorePanel
           visible={moreVisible}
           onClose={() => setMoreVisible(false)}
-          title="播放器功能"
+          title={t('播放器功能')}
           items={[
-            { key: 'web', icon: useWebPlayer ? 'cellphone' : 'web', label: useWebPlayer ? '原生' : '网页', onPress: () => setUseWebPlayer((p) => !p), active: useWebPlayer },
-            ...(candidateIndex + 1 < candidates.length ? [{ key: 'next', icon: 'playlist-check', label: '下一线路', onPress: () => setCandidateIndex((prev) => Math.min(prev + 1, candidates.length - 1)) }] : []),
+            { key: 'web', icon: useWebPlayer ? 'cellphone' : 'web', label: useWebPlayer ? t('原生') : t('网页'), onPress: () => setUseWebPlayer((p) => !p), active: useWebPlayer },
+            ...(candidateIndex + 1 < candidates.length ? [{ key: 'next', icon: 'playlist-check', label: t('下一线路'), onPress: () => setCandidateIndex((prev) => Math.min(prev + 1, candidates.length - 1)) }] : []),
           ]}
         />
       </View>
@@ -287,12 +290,12 @@ export default function BilibiliLiveScreen() {
   // 首屏（列表为空且加载中）显示居中转圈；刷新时列表保持不变，仅头部显示加载指示，避免闪屏
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="B站直播" right={
+      <ScreenHeader title={t('B站直播')} right={
         loading ? (
           <ActivityIndicator color="#ff6f91" />
         ) : (
           <TouchableOpacity onPress={checkStatuses}>
-            <Text style={styles.refresh}>刷新状态</Text>
+            <Text style={styles.refresh}>{t('刷新状态')}</Text>
           </TouchableOpacity>
         )
       } />
@@ -307,8 +310,8 @@ export default function BilibiliLiveScreen() {
               onPress={() => startWatch(item)}
             >
               <View style={styles.roomInfo}>
-                <Text style={[styles.roomName, isDark && styles.textLight]}>{item.name || `房间号：${item.roomId}`}</Text>
-                <Text style={[styles.roomId, isDark && styles.roomIdDark]}>房间号：{item.roomId}</Text>
+                <Text style={[styles.roomName, isDark && styles.textLight]}>{item.name || t('房间号：{id}', { id: item.roomId })}</Text>
+                <Text style={[styles.roomId, isDark && styles.roomIdDark]}>{t('房间号：{id}', { id: item.roomId })}</Text>
               </View>
               <View style={[styles.statusDot, liveStatuses[item.roomId] ? styles.liveDot : styles.offlineDot]} />
             </TouchableOpacity>
@@ -320,7 +323,7 @@ export default function BilibiliLiveScreen() {
               <ActivityIndicator size="large" color={isDark ? '#5a5a5a' : '#ff6f91'} />
             </View>
           ) : (
-            <Text style={[styles.empty, isDark && styles.emptyDark]}>暂无直播间</Text>
+            <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('暂无直播间')}</Text>
           )
         }
         initialNumToRender={12}

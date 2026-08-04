@@ -10,11 +10,13 @@ import {
 } from 'react-native';
 import Video from 'react-native-video';
 import officialMediaApi from '../api/officialMedia';
+import { useI18n } from '../i18n';
 import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
+import { useAppTheme } from '../hooks/useAppTheme';
 
 function normalizeTalks(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -52,7 +54,8 @@ function audioUrls(path: string): string[] {
 }
 
 export default function AudioProgramsScreen() {
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [programs, setPrograms] = useState<any[]>([]);
   const [playing, setPlaying] = useState<any | null>(null);
   const [playUrls, setPlayUrls] = useState<string[]>([]);
@@ -80,9 +83,9 @@ export default function AudioProgramsScreen() {
       setNextCtime(nct);
       setHasMore(list.length >= 20 && nct > 0);
       const loadedCount = refresh ? list.length : mergeUniqueTalks(programs, list).length;
-      setStatus(loadedCount ? `已加载 ${loadedCount} 个节目` : '官方接口暂无电台资源');
+      setStatus(loadedCount ? t('已加载 {count} 个节目', { count: loadedCount }) : t('官方接口暂无电台资源'));
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      setStatus(t('加载失败：{error}', { error: errorMessage(error) }));
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -103,31 +106,31 @@ export default function AudioProgramsScreen() {
     setPlaying(item);
     setPlayUrls([]);
     setUrlIndex(0);
-    setStatus('正在解析音频地址...');
+    setStatus(t('正在解析音频地址...'));
     try {
       const res = await officialMediaApi.getTalk(String(item.talkId || item.id));
       const data = res?.content?.data || res?.content || res?.data || {};
       const urls = audioUrls(String(data.filePath || data.talkPath || data.url || ''));
-      if (!urls.length) throw new Error('未返回音频文件地址');
+      if (!urls.length) throw new Error(t('未返回音频文件地址'));
       setPlayUrls(urls);
-      setStatus(`正在播放：${item.title || data.title || '电台节目'}`);
+      setStatus(t('正在播放：{title}', { title: item.title || data.title || t('电台节目') }));
     } catch (error) {
-      setStatus(`播放失败：${errorMessage(error)}`);
+      setStatus(t('播放失败：{error}', { error: errorMessage(error) }));
     }
   };
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="电台" right={
+      <ScreenHeader title={t('电台')} right={
         <TouchableOpacity onPress={() => load(true) } disabled={loading}>
-          <Text style={[styles.backBtn, loading && styles.disabledText]}>刷新</Text>
+          <Text style={[styles.backBtn, loading && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
 
       {playUrls[urlIndex] ? (
         <View style={[styles.playerBar, isDark && styles.cardDark]}>
           <Text style={[styles.playerTitle, isDark && styles.textDark]} numberOfLines={1}>
-            {playing?.title || '正在播放'}
+            {playing?.title || t('正在播放')}
           </Text>
           <Video
             key={playUrls[urlIndex]}
@@ -138,7 +141,7 @@ export default function AudioProgramsScreen() {
             ignoreSilentSwitch="ignore"
             onError={() => {
               if (urlIndex + 1 < playUrls.length) setUrlIndex((prev) => prev + 1);
-              else setStatus('音频播放失败：所有备用线路都不可用');
+              else setStatus(t('音频播放失败：所有备用线路都不可用'));
             }}
           />
         </View>
@@ -156,16 +159,16 @@ export default function AudioProgramsScreen() {
           removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
-          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
+          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>{t('加载更多...')}</Text> : null}
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300}>
               <TouchableOpacity
                 style={[styles.progItem, isDark && styles.cardDark, playing?.talkId === item.talkId && styles.progItemActive]}
                 onPress={() => play(item)}
               >
-                <Text style={[styles.progTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
+                <Text style={[styles.progTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || t('无标题')}</Text>
                 <Text style={[styles.progDesc, isDark && styles.textSubDark]} numberOfLines={2}>
-                  {[item.subTitle, item.guest].filter(Boolean).join(' · ') || '口袋电台'}
+                  {[item.subTitle, item.guest].filter(Boolean).join(' · ') || t('口袋电台')}
                 </Text>
                 <Text style={[styles.progDate, isDark && styles.textSubDark]}>{formatTimestamp(item.ctime).slice(0, 10)}</Text>
               </TouchableOpacity>

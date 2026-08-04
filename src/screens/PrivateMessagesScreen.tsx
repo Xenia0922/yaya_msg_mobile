@@ -19,14 +19,17 @@ import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { formatTimestamp } from '../utils/format';
+import { parseDurationSeconds } from '../utils/duration';
 import { errorMessage, messagePayload, messageText, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { translate, useI18n } from '../i18n';
 
 function convTargetId(conv: any): string {
   return String(conv?.targetUserId || conv?.user?.userId || conv?.userId || '');
 }
 function convName(conv: any): string {
-  return pickText(conv, ['user.nickname', 'user.nickName', 'user.starName', 'user.realNickName', 'nickname', 'starName'], convTargetId(conv) || '私信');
+  return pickText(conv, ['user.nickname', 'user.nickName', 'user.starName', 'user.realNickName', 'nickname', 'starName'], convTargetId(conv) || translate('私信'));
 }
 function msgId(msg: any, index: number): string {
   return String(msg.messageId || msg.msgId || msg.id || msg.clientMsgId || index);
@@ -71,16 +74,16 @@ function privateMessageText(msg: any): string {
         const q = parsed.question || parsed.answerQuestion || '';
         const a = (typeof parsed.answer === 'string') ? parseMaybeJson(parsed.answer) : parsed.answer;
         const answerText = (a && typeof a === 'object') ? (a.text || a.content || '') : (typeof parsed.answer === 'string' ? parsed.answer : '');
-        if (q && answerText) return `问：${q}\n答：${answerText}`;
-        if (q) return `问：${q}`;
-        if (answerText) return `答：${answerText}`;
+        if (q && answerText) return translate('问：{q}\n答：{answer}', { q, answer: answerText });
+        if (q) return translate('问：{q}', { q });
+        if (answerText) return translate('答：{answer}', { answer: answerText });
         if (a && typeof a === 'object') {
           const au = pickText(a, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'voiceUrl', 'mp4Url']);
           if (au) {
             const at = answerTypeFromContext(msg) || answerTypeFromContext(parsed);
-            if (at === 2 || looksLikeAudioUrl(au)) return q ? `问：${q}\n答：[语音消息]` : '[语音消息]';
-            if (at === 3 || looksLikeVideoUrl(au)) return q ? `问：${q}\n答：[视频消息]` : '[视频消息]';
-            if (looksLikeImageUrl(au)) return q ? `问：${q}\n答：[图片消息]` : '[图片消息]';
+            if (at === 2 || looksLikeAudioUrl(au)) return q ? translate('问：{q}\n答：[语音消息]', { q }) : translate('[语音消息]');
+            if (at === 3 || looksLikeVideoUrl(au)) return q ? translate('问：{q}\n答：[视频消息]', { q }) : translate('[视频消息]');
+            if (looksLikeImageUrl(au)) return q ? translate('问：{q}\n答：[图片消息]', { q }) : translate('[图片消息]');
           }
         }
       }
@@ -94,7 +97,7 @@ function privateMessageText(msg: any): string {
       const at = parsed.text || parsed.content || parsed.answer || '';
       if (at) {
         const qtext = payload?.question || msg?.question || '';
-        if (qtext) return `问：${qtext}\n答：${at}`;
+        if (qtext) return translate('问：{q}\n答：{answer}', { q: qtext, answer: at });
       }
     } else if (typeof parsed === 'string' && parsed.trim()) {
       return parsed;
@@ -107,21 +110,21 @@ function privateMessageText(msg: any): string {
     if (json && typeof json === 'object') {
       const url = pickText(json, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'voiceUrl', 'mp4Url']);
       if (url) {
-        if (looksLikeAudioUrl(url) || answerTypeFromContext(msg) === 2) return '[语音消息]';
-        if (looksLikeVideoUrl(url) || answerTypeFromContext(msg) === 3) return '[视频消息]';
-        if (looksLikeImageUrl(url)) return '[图片消息]';
+        if (looksLikeAudioUrl(url) || answerTypeFromContext(msg) === 2) return translate('[语音消息]');
+        if (looksLikeVideoUrl(url) || answerTypeFromContext(msg) === 3) return translate('[视频消息]');
+        if (looksLikeImageUrl(url)) return translate('[图片消息]');
     }
   }
     const p = payload && typeof payload === 'object' ? payload : {};
     const url = pickText(p, ['url', 'mediaUrl', 'audioUrl', 'videoUrl']);
     if (url) {
       const type = String(msg.msgType || p?.msgType || p?.type || '').toUpperCase();
-      if (type.includes('AUDIO') || looksLikeAudioUrl(url)) return '[语音消息]';
-      if (type.includes('VIDEO') || looksLikeVideoUrl(url)) return '[视频消息]';
-      if (type.includes('IMAGE') || looksLikeImageUrl(url)) return '[图片消息]';
+      if (type.includes('AUDIO') || looksLikeAudioUrl(url)) return translate('[语音消息]');
+      if (type.includes('VIDEO') || looksLikeVideoUrl(url)) return translate('[视频消息]');
+      if (type.includes('IMAGE') || looksLikeImageUrl(url)) return translate('[图片消息]');
     }
   }
-  return text || '[空消息]';
+  return text || translate('[空消息]');
 }
 
 type MediaInfo = { url: string; type: 'audio' | 'video' | 'image'; title: string; duration?: number } | null;
@@ -134,7 +137,7 @@ function answerTypeFromContext(source: any): number {
 }
 
 function extractDuration(source: any): number {
-  const v = Number(source?.duration || source?.time || source?.second || source?.audioTime || source?.length || source?.playTime || source?.videoTime || 0);
+  const v = parseDurationSeconds(source?.duration || source?.time || source?.second || source?.audioTime || source?.length || source?.playTime || source?.videoTime || 0);
   return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
 }
 
@@ -191,8 +194,8 @@ function collectPrivateMessageMediaCandidates(msg: any): any[] {
 
 function makeMedia(url: string, type: 'audio' | 'video' | 'image', durSources: any[] = []): MediaInfo {
   const d = durSources.reduce((best, src) => best || extractDuration(src), 0);
-  const titleMap: Record<string, string> = { audio: '语音消息', video: '视频消息', image: '图片消息' };
-  return { url, type, title: titleMap[type] || '媒体消息', ...(d > 0 ? { duration: d } : {}) };
+  const titleMap: Record<string, string> = { audio: translate('语音消息'), video: translate('视频消息'), image: translate('图片消息') };
+  return { url, type, title: titleMap[type] || translate('媒体消息'), ...(d > 0 ? { duration: d } : {}) };
 }
 
 function privateMessageMedia(msg: any): MediaInfo {
@@ -270,12 +273,13 @@ function privateMessageMedia(msg: any): MediaInfo {
 
 function oldestFirst<T>(list: T[], timeOf: (item: T) => number): T[] { return list.slice().sort((a, b) => timeOf(a) - timeOf(b)); }
 
-function flipTypeName(value: any) { const id = Number(value); if (id === 1) return '文字'; if (id === 2) return '语音'; if (id === 3) return '视频'; return `类型${value || ''}`; }
+function flipTypeName(value: any) { const id = Number(value); if (id === 1) return translate('文字'); if (id === 2) return translate('语音'); if (id === 3) return translate('视频'); return translate('类型{value}', { value: value || '' }); }
 function lowestPrice(item: any) { return Math.min(...[item.normalCost, item.privateCost, item.anonymityCost].map(Number).filter((v: number) => isFinite(v) && v >= 0)); }
 
 export default function PrivateMessagesScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const members = useMemberStore((s) => s.members);
   const showToast = useUiStore((s) => s.showToast);
   const [convs, setConvs] = useState<any[]>([]);
@@ -335,7 +339,7 @@ export default function PrivateMessagesScreen() {
         loops += 1;
       }
       setConvs(all.slice().sort((a: any, b: any) => Number(b.lastTime || b.msgTime || 0) - Number(a.lastTime || a.msgTime || 0)));
-    } catch (e) { showToast(`加载失败：${errorMessage(e)}`); }
+    } catch (e) { showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -355,7 +359,7 @@ export default function PrivateMessagesScreen() {
       setNextTime(Number(res?.content?.nextTime || res?.data?.nextTime || 0));
       setHasMore(sorted.length > 0);
       setTimeout(() => flatRef.current?.scrollToEnd?.({ animated: false }), 150);
-    } catch (e) { showToast(`加载失败：${errorMessage(e)}`); }
+    } catch (e) { showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -374,7 +378,7 @@ export default function PrivateMessagesScreen() {
       });
       setNextTime(Number(res?.content?.nextTime || res?.data?.nextTime || 0));
       setHasMore(list.length > 0);
-    } catch (e) { showToast(`历史加载失败：${errorMessage(e)}`); }
+    } catch (e) { showToast(t('历史加载失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -393,14 +397,14 @@ export default function PrivateMessagesScreen() {
           cost,
           answerType: flipType,
         });
-        showToast('翻牌已提交');
+        showToast(t('翻牌已提交'));
       } else {
         await pocketApi.sendPrivateMessageReply(convTargetId(sel), txt);
-        showToast('已发送');
+        showToast(t('已发送'));
         await openConv(sel);
       }
       setText('');
-    } catch (e) { showToast(`发送失败：${errorMessage(e)}`); }
+    } catch (e) { showToast(t('发送失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -425,7 +429,7 @@ export default function PrivateMessagesScreen() {
             const media = privateMessageMedia(item);
             const txt = privateMessageText(item);
             const hasText = txt && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(txt) && txt !== '[空消息]';
-            const mediaLabel = media ? (formatDur(media.duration || 0) || (media.type === 'audio' ? '语音' : '视频')) : '';
+            const mediaLabel = media ? (formatDur(media.duration || 0) || (media.type === 'audio' ? t('语音') : t('视频'))) : '';
             return (
               <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <View style={[styles.msgRow, mine && styles.msgRowMine]}>
@@ -436,10 +440,10 @@ export default function PrivateMessagesScreen() {
                         <Image source={{ uri: media.url }} style={styles.inlineImg} resizeMode="cover" />
                       ) : (
                         <TouchableOpacity style={styles.mediaBtn} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
-                          <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? '收起' : `▶ ${mediaLabel}`}</Text>
+                          <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? t('收起') : `▶ ${mediaLabel}`}</Text>
                         </TouchableOpacity>
                       )
-                    ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>[空消息]</Text> : null}
+                    ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>{t('[空消息]')}</Text> : null}
                     {playUrl === media?.url ? (
                       <Video source={{ uri: media!.url }} style={media!.type === 'audio' ? styles.audio : styles.video} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
                     ) : null}
@@ -449,11 +453,11 @@ export default function PrivateMessagesScreen() {
               </FadeInView>
             );
           }}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '' : '暂无消息'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '' : t('暂无消息')}</Text>}
         />
         {member ? (
           <View style={[styles.flipBar, isDark && styles.flipBarDark]}>
-            <Text style={[styles.flipName, isDark && styles.light]}>{member.ownerName} 翻牌</Text>
+            <Text style={[styles.flipName, isDark && styles.light]}>{t('{name} 翻牌', { name: member.ownerName || '' })}</Text>
             <View style={styles.flipRow}>
               {prices.slice(0, 3).map((p) => (
                 <TouchableOpacity key={p.answerType} style={[styles.flipChip, isDark && flipType !== p.answerType && styles.flipChipDark, flipType === p.answerType && styles.flipChipOn]} onPress={() => setFlipType((v) => v === p.answerType ? 0 : p.answerType)}>
@@ -461,19 +465,19 @@ export default function PrivateMessagesScreen() {
                 </TouchableOpacity>
               ))}
               <View style={styles.flipSpacer} />
-              {money ? <Text style={[styles.flipMoney, isDark && styles.light]}>余额 {money}</Text> : null}
+              {money ? <Text style={[styles.flipMoney, isDark && styles.light]}>{t('余额 {money}', { money })}</Text> : null}
               <TouchableOpacity style={styles.flipRechargeBtn} onPress={() => navigation.navigate('RechargeScreen')}>
-                <Text style={styles.flipRechargeT}>充值</Text>
+                <Text style={styles.flipRechargeT}>{t('充值')}</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : null}
         <View style={[styles.inputBar, isDark && styles.inputBarDark]}>
-          {flipType > 0 ? <Text style={styles.flipLabel}>私密翻牌·{flipTypeName(flipType)}</Text> : null}
+          {flipType > 0 ? <Text style={styles.flipLabel}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
-            <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="输入内容..." placeholderTextColor={isDark ? '#aaa' : '#999'} value={text} onChangeText={setText} multiline />
+            <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder={t('输入内容...')} placeholderTextColor={isDark ? '#aaa' : '#999'} value={text} onChangeText={setText} multiline />
             <TouchableOpacity style={styles.sendBtn} onPress={doSend} disabled={loading || !text.trim()}>
-              <Text style={styles.sendT}>{loading ? '..' : flipType ? '翻牌' : '发送'}</Text>
+              <Text style={styles.sendT}>{loading ? '..' : flipType ? t('翻牌') : t('发送')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -483,8 +487,8 @@ export default function PrivateMessagesScreen() {
 
   return (
     <View style={[styles.screen, isDark && styles.screenDark]}>
-      <ScreenHeader title="私信列表" right={
-        <TouchableOpacity onPress={loadConvs}><Text style={styles.refreshBtn}>刷新</Text></TouchableOpacity>
+      <ScreenHeader title={t('私信列表')} right={
+        <TouchableOpacity onPress={loadConvs}><Text style={styles.refreshBtn}>{t('刷新')}</Text></TouchableOpacity>
       } />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
@@ -499,13 +503,13 @@ export default function PrivateMessagesScreen() {
               <TouchableOpacity style={[styles.convItem, isDark && styles.convItemDark]} onPress={() => openConv(item)}>
                 <View style={styles.convInfo}>
                   <Text style={[styles.convName, isDark && styles.light]}>{convName(item)}</Text>
-                  <Text style={[styles.convPrev, isDark && styles.light]} numberOfLines={1}>{item.newestMessage || '点击查看'}</Text>
+                  <Text style={[styles.convPrev, isDark && styles.light]} numberOfLines={1}>{item.newestMessage || t('点击查看')}</Text>
                 </View>
                 {Number(item.noreadNum) > 0 ? <View style={styles.badge}><Text style={styles.badgeT}>{item.noreadNum}</Text></View> : null}
               </TouchableOpacity>
             </FadeInView>
           )}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '' : '暂无私信'}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '' : t('暂无私信')}</Text>}
         />
       </FadeInView>
     </View>

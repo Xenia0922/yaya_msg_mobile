@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
+import { useAppTheme } from '../hooks/useAppTheme';
 
 import {
+  ActivityIndicator,
+  Alert,
   BackHandler,
   Image,
   Linking,
@@ -14,7 +17,6 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -35,6 +37,7 @@ import {
   pickText,
   unwrapList,
 } from '../utils/data';
+import { t, useI18n } from '../i18n';
 import pocketApi from '../api/pocket48';
 import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
@@ -138,7 +141,7 @@ const PLAY_URL_FIELDS = [
 ];
 
 function shortName(member?: Member, fallback = '') {
-  const raw = member?.ownerName || fallback || '未知成员';
+  const raw = member?.ownerName || fallback || t('未知成员');
   return raw.replace(/^(SNH48|GNZ48|BEJ48|CKG48|CGT48)-/, '');
 }
 
@@ -261,18 +264,21 @@ function senderProfile(item: any, room: Member): SenderProfile {
 
   return {
     id,
-    name: name || (id ? `用户 ${id}` : '未知用户'),
+    name: name || (id ? t('用户 {id}', { id }) : t('未知用户')),
     avatar: avatar || '',
   };
 }
 
 function isIdolMessage(item: any, room: Member, includeFans: boolean) {
-  if (!includeFans) return true;
   const body = messageBody(item);
   const ext = extraInfo(item);
   const profile = senderProfile(item, room);
   const ownerIds = [room.id, (room as any).userId, (room as any).memberId].map(String).filter(Boolean);
   if (profile.id && ownerIds.includes(String(profile.id))) return true;
+  // 已识别出发送者 ID 且不是房主（其他成员/粉丝在别人房间发言）：显示自己的名字，不套用房主身份
+  if (profile.id) return false;
+  // 拿不到发送者 ID：退回原来的判断逻辑
+  if (!includeFans) return true;
   const role = firstTextFrom([item, ext, body], ['roleId', 'user.roleId', 'sender.roleId', 'message.roleId']);
   if (role && ['2', '3', '4', 'star', 'idol'].includes(String(role).toLowerCase())) return true;
   return false;
@@ -349,8 +355,8 @@ function roomChannelId(member: Member, mode: RoomMode) {
 
 function roomLabel(member: Member, mode: RoomMode) {
   return mode === 'small'
-    ? `小房间 ${member.yklzId || '未配置'}`
-    : `大房间 ${member.channelId || '未配置'}`;
+    ? t('小房间 {id}', { id: member.yklzId || t('未配置') })
+    : t('大房间 {id}', { id: member.channelId || t('未配置') });
 }
 
 function streamScore(url: string, preferLive = false): number {
@@ -450,7 +456,12 @@ function findLiveItem(listRes: any, liveId: string) {
 
 async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
   const liveId = String(media.liveId || extractLiveIdFromText(media) || '');
-  const title = media.title || '直播 / 录播';
+  const title = media.title || t('直播 / 录播');
+  // 消息里已带可播放地址：直接返回，不再请求任何接口（直播分享/录播卡片通常自带 URL）
+  const ownUrl = isPlayableMediaUrl(media.url) ? media.url : '';
+  if (ownUrl) {
+    return { ...media, liveId, title, url: ownUrl, isLive: isLiveStreamUrl(ownUrl), needsVlc: streamNeedsProxy(ownUrl) };
+  }
   const attempts: Array<() => Promise<any>> = [];
   if (liveId) {
     attempts.push(async () => pocketApi.getLiveOne(liveId));
@@ -466,32 +477,37 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
       return null;
     });
   }
-  for (const attempt of attempts) {
-    try {
-      const detail = await attempt();
-      const urls = pickPlayableUrls(detail, true).filter(isPlayableMediaUrl);
-      if (urls[0]) {
-        const d = detail?.content || detail?.data || detail || {};
-        const cover = normalizeUrl(
-          d.liveCover || d.coverPath || d.cover || d.coverUrl || d.picPath || d.liveRoomCover || ''
-        ) || media.cover;
-        return {
-          ...media,
-          type: 'live',
-          liveId,
-          title,
-          url: urls[0],
-          cover,
-          isLive: isLiveStreamUrl(urls[0]),
-          needsVlc: streamNeedsProxy(urls[0]),
-        };
-      }
-    } catch {
-      // Try the next endpoint; live shares turn into replays after the stream ends.
+  // 并行发起全部候选接口，按优先级取第一个出 URL 的结果；
+  // 原来 6 个接口串行（最坏每个 15s 超时），是「解析卡死、第一次点击无响应」的根因。
+  const ATTEMPT_TIMEOUT = 8000;
+  const settled = await Promise.allSettled(
+    attempts.map((attempt) => Promise.race([
+      attempt(),
+      new Promise<any>((resolve) => setTimeout(() => resolve(null), ATTEMPT_TIMEOUT)),
+    ])),
+  );
+  for (const result of settled) {
+    if (result.status !== 'fulfilled' || !result.value) continue;
+    const detail = result.value;
+    const urls = pickPlayableUrls(detail, true).filter(isPlayableMediaUrl);
+    if (urls[0]) {
+      const d = detail?.content || detail?.data || detail || {};
+      const cover = normalizeUrl(
+        d.liveCover || d.coverPath || d.cover || d.coverUrl || d.picPath || d.liveRoomCover || ''
+      ) || media.cover;
+      return {
+        ...media,
+        type: 'live',
+        liveId,
+        title,
+        url: urls[0],
+        cover,
+        isLive: isLiveStreamUrl(urls[0]),
+        needsVlc: streamNeedsProxy(urls[0]),
+      };
     }
   }
-  const url = isPlayableMediaUrl(media.url) ? media.url : '';
-  return { ...media, liveId, title, url, isLive: isLiveStreamUrl(url), needsVlc: streamNeedsProxy(url) };
+  return { ...media, liveId, title, url: ownUrl, isLive: isLiveStreamUrl(ownUrl), needsVlc: streamNeedsProxy(ownUrl) };
 }
 
 function classifyMedia(url: string, msgType: string, text: string): MediaType {
@@ -512,7 +528,7 @@ function roomMedia(item: any): RoomMedia | null {
 
   if (msgType === 'EXPRESSIMAGE' || msgType === 'EXPRESS') {
     const exprUrl = normalizeUrl(body?.expressImgInfo?.emotionRemote || body?.url || '');
-    if (exprUrl) return { type: 'image' as const, url: exprUrl, title: '表情' };
+    if (exprUrl) return { type: 'image' as const, url: exprUrl, title: t('表情') };
   }
 
   const liveId = firstTextFrom([item, ext, body], [
@@ -558,12 +574,12 @@ function roomMedia(item: any): RoomMedia | null {
   const durationSec = [item, ext, body].reduce((best, src) => best || deepFindDuration(src), 0);
   const duration = durationSec > 0 ? String(Math.round(durationSec)) : '';
   // Audio/video 在房间里只用两个字前缀，避免「语音 语音消息」这种重复；live 保留完整标签
-  const title = type === 'audio' ? '语音'
-    : type === 'video' ? '视频'
-    : type === 'live' ? '直播 / 录播'
-    : type === 'image' ? '图片'
+  const title = type === 'audio' ? t('语音')
+    : type === 'video' ? t('视频')
+    : type === 'live' ? t('直播 / 录播')
+    : type === 'image' ? t('图片')
     : text && !text.startsWith('[') && text !== url ? text
-    : '链接';
+    : t('链接');
   const cover = normalizeUrl(firstTextFrom([item, ext, body], [
     'coverUrl', 'coverPath', 'cover', 'liveCover', 'picPath', 'picturePath', 'imageUrl', 'poster', 'thumb',
     'videoCover', 'videoPoster', 'thumbnail', 'thumbUrl',
@@ -583,11 +599,11 @@ function roomGiftInfo(item: any): { name: string; num: number; image: string; to
   if (!giftInfo && !msgType.includes('GIFT') && String(item.msgType) !== '7') return null;
   if (msgType.includes('LIVE') && !giftInfo) return null;
   const source = giftInfo || giftReplyInfo || body;
-  const name = firstTextFrom([giftInfo, giftReplyInfo, body], ['giftName', 'replyName', 'name']) || '礼物';
+  const name = firstTextFrom([giftInfo, giftReplyInfo, body], ['giftName', 'replyName', 'name']) || t('礼物');
   const num = Number(firstTextFrom([giftInfo, giftReplyInfo, body], ['giftNum', 'replyNum', 'num', 'count']) || '1') || 1;
   const image = normalizeUrl(firstTextFrom([giftInfo, giftReplyInfo, body], ['picPath', 'giftPic', 'image', 'icon']));
   const money = Number(firstTextFrom([giftInfo, giftReplyInfo, body], ['money', 'replyMoney', 'cost', 'price']) || '0') || 0;
-  return { name, num, image, total: money ? `${money * num} 鸡腿` : '' };
+  return { name, num, image, total: money ? t('{count} 鸡腿', { count: money * num }) : '' };
 }
 
 function mediaLabel(type: MediaType) {
@@ -630,7 +646,7 @@ function VideoCoverCard({ media, onPress, onLongPress }: { media: RoomMedia; onP
           />
           {!loaded ? (
             <View style={styles.videoCoverPlaceholder}>
-              <Text style={styles.videoCoverPlaceholderText}>视频</Text>
+              <Text style={styles.videoCoverPlaceholderText}>{t('视频')}</Text>
             </View>
           ) : null}
         </View>
@@ -705,7 +721,7 @@ function normalizeLiveRank(res: any): any[] {
       'user.name',
       'memberInfo.nickName',
       'memberInfo.nickname',
-    ], `用户 ${index + 1}`),
+    ], t('用户 {id}', { id: index + 1 })),
     avatar: normalizeUrl(pickText(item, [
       'avatar',
       'headImg',
@@ -722,7 +738,7 @@ function normalizeLiveRank(res: any): any[] {
 }
 
 function avatarInitial(name: string) {
-  return (name || '用').trim().slice(0, 1).toUpperCase();
+  return (name || t('用')).trim().slice(0, 1).toUpperCase();
 }
 
 const DURATION_KEYS = new Set([
@@ -733,10 +749,12 @@ const DURATION_KEYS = new Set([
 
 function deepFindDuration(value: any, depth = 0): number {
   if (!value || depth > 5) return 0;
-  if (typeof value === 'number') return value > 0 ? value : 0;
+  // 秒数上限 24h：防止把毫秒/Unix 时间戳（如 time 字段）误当播放时长显示成时间戳
+  const plausible = (n: number) => n > 0 && n <= 86400;
+  if (typeof value === 'number') return plausible(value) ? value : 0;
   if (typeof value === 'string') {
     const n = parseFloat(value.trim());
-    return n > 0 ? n : 0;
+    return plausible(n) ? n : 0;
   }
   if (typeof value !== 'object') return 0;
   if (Array.isArray(value)) {
@@ -749,7 +767,7 @@ function deepFindDuration(value: any, depth = 0): number {
   for (const [key, v] of Object.entries(value)) {
     if (DURATION_KEYS.has(key)) {
       const n = typeof v === 'number' ? v : parseFloat(String(v || '').trim());
-      if (n > 0) return n;
+      if (plausible(n)) return n;
     }
   }
   for (const child of Object.values(value)) {
@@ -760,9 +778,9 @@ function deepFindDuration(value: any, depth = 0): number {
 }
 
 export default function FollowedRoomsScreen() {
-  const theme = useSettingsStore((state) => state.settings.theme);
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const token = useSettingsStore((state) => state.settings.p48Token);
-  const isDark = theme === 'dark';
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
   const showToast = useUiStore((state) => state.showToast);
   const navigation = useNavigation<any>();
@@ -882,9 +900,9 @@ export default function FollowedRoomsScreen() {
   };
 
   const toggleFollow = useCallback(async (member: Member) => {
-    if (!token) { showToast('请先登录后再关注成员'); return; }
+    if (!token) { showToast(t('请先登录后再关注成员')); return; }
     const id = String((member as any).id || (member as any).userId || '');
-    if (!id || id === '0') { showToast('该成员缺少可关注的 ID'); return; }
+    if (!id || id === '0') { showToast(t('该成员缺少可关注的 ID')); return; }
     if (followBusyRef.current.has(id)) return;
     // 关键：用 ref 读取最新关注状态，避免 useCallback 闭包捕获到过期的 followedIds，
     // 否则「已关注」状态下再次点击会误判为未关注而重复调用 followMember（表现为取消关注无效）
@@ -894,7 +912,7 @@ export default function FollowedRoomsScreen() {
     try {
       if (isFollowing) await pocketApi.unfollowMember(id);
       else await pocketApi.followMember(id);
-      showToast(isFollowing ? `已取消关注 ${member.ownerName}` : `已关注 ${member.ownerName}`);
+      showToast(isFollowing ? t('已取消关注 {name}', { name: member.ownerName }) : t('已关注 {name}', { name: member.ownerName }));
       // 让房间里的关注/取关结果立即反映到关注列表（无需回列表手动刷新）
       setFollowed((prev) => {
         const exists = prev.some((p) => String(p.memberId) === id);
@@ -906,11 +924,11 @@ export default function FollowedRoomsScreen() {
       setTimeout(() => { loadFollowedRef.current(true); }, 600);
     } catch (e) {
       setFollowedIds((prev) => { const r = new Set(prev); if (isFollowing) r.add(id); else r.delete(id); return r; });
-      showToast(`操作失败：${errorMessage(e)}`);
+      showToast(t('操作失败：{msg}', { msg: errorMessage(e) }));
     } finally {
       setFollowBusy((prev) => { const b = new Set(prev); b.delete(id); return b; });
     }
-  }, [token, showToast]);
+  }, [showToast, t, token]);
 
   useEffect(() => {
     AsyncStorage.getItem('yaya_pinned_rooms').then((v) => {
@@ -939,10 +957,10 @@ export default function FollowedRoomsScreen() {
         ...item,
         lastMessage: findLastMessage(lastMsgs, item.member),
       })));
-      if (!silent) showToast(`已加载 ${followedMembers.length} 个房间`);
-    } catch (e) { if (!silent) showToast(`加载失败：${errorMessage(e)}`); }
+      if (!silent) showToast(t('已加载 {count} 个房间', { count: followedMembers.length }));
+    } catch (e) { if (!silent) showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
-  }, [members, showToast, token]);
+  }, [members, showToast, t, token]);
   loadFollowedRef.current = loadFollowed;
 
   useEffect(() => { loadFollowed(true); }, [loadFollowed]);
@@ -950,7 +968,7 @@ export default function FollowedRoomsScreen() {
   const openRoom = useCallback(async (room: Member, nextMode = roomMode, includeFans = showFanMessages) => {
     const channelId = roomChannelId(room, nextMode);
     if (!channelId) {
-      showToast(nextMode === 'small' ? '这个成员缺少小房间 channelId，无法打开小房间。' : '这个成员缺少大房间 channelId，无法打开房间。');
+      showToast(nextMode === 'small' ? t('这个成员缺少小房间 channelId，无法打开小房间。') : t('这个成员缺少大房间 channelId，无法打开房间。'));
       return;
     }
     setSelectedRoom(room);
@@ -962,7 +980,6 @@ export default function FollowedRoomsScreen() {
     setHasMoreMessages(false);
     setRoomMode(nextMode);
     setShowFanMessages(includeFans);
-    showToast(`正在加载${nextMode === 'small' ? '小房间' : '大房间'}消息...`);
     try {
       const userInfo = includeFans && !currentUserId
         ? await pocketApi.getNimLoginInfo().catch(() => null)
@@ -981,14 +998,13 @@ export default function FollowedRoomsScreen() {
       const nextTime = getNextTime(res, list);
       setRoomNextTime(nextTime);
       setHasMoreMessages(nextTime > 0 && list.length > 0);
-      showToast(list.length ? `已加载 ${list.length} 条消息 · ${includeFans ? '含粉丝发言' : '仅房主发言'}` : '暂无消息');
     } catch (error) {
-      showToast(`加载失败：${errorMessage(error)}`);
+      showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
       setRoomMessages([]);
     } finally {
       setLoading(false);
     }
-  }, [currentUserId, roomMode, showFanMessages, showToast]);
+  }, [currentUserId, roomMode, showFanMessages, showToast, t]);
 
   const loadMoreRoomMessages = useCallback(async () => {
     if (!selectedRoom || loading || loadingMoreMessages || loadingMoreMessagesRef.current || !hasMoreMessages || !roomNextTime) return;
@@ -1008,23 +1024,22 @@ export default function FollowedRoomsScreen() {
       const nextTime = getNextTime(res, list);
       setRoomMessages((prev) => {
         const merged = mergeMessages(prev, list as RoomMessage[]);
-        showToast(`已加载 ${merged.length} 条消息 · ${showFanMessages ? '含粉丝发言' : '仅房主发言'}`);
         return merged;
       });
       setRoomNextTime(nextTime);
       setHasMoreMessages(nextTime > 0 && list.length > 0);
     } catch (error) {
-      showToast(`继续加载失败：${errorMessage(error)}`);
+      showToast(t('继续加载失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       loadingMoreMessagesRef.current = false;
       setLoadingMoreMessages(false);
     }
-  }, [hasMoreMessages, loading, loadingMoreMessages, roomMode, roomNextTime, selectedRoom, showFanMessages, showToast]);
+  }, [hasMoreMessages, loading, loadingMoreMessages, roomMode, roomNextTime, selectedRoom, showFanMessages, showToast, t]);
 
   const playMedia = useCallback(async (media: RoomMedia) => {
     if (media.type === 'link') {
       const url = media.url || media.title;
-      if (url) Linking.openURL(url).catch(() => showToast('这个链接无法直接打开。'));
+      if (url) Linking.openURL(url).catch(() => showToast(t('这个链接无法直接打开。')));
       return;
     }
     if (playingMedia?.url && playingMedia.url === media.url) {
@@ -1034,29 +1049,47 @@ export default function FollowedRoomsScreen() {
     let next = media;
     try {
       if (media.type === 'live' || media.liveId) {
-        showToast('正在解析直播/录播地址...');
-        next = await resolveRoomLiveMedia(media);
+        showToast(t('正在解析直播/录播地址...'));
+        // 接口串行重试最坏可卡 1 分钟以上，这里加 12s 总超时，失败立即给出明确反馈
+        next = await Promise.race([
+          resolveRoomLiveMedia(media),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error(t('解析播放地址超时，请稍后重试'))), 12000)),
+        ]);
       }
       if (!next.url) {
-        showToast('这个消息里没有解析到可播放地址。');
+        Alert.alert(t('播放失败'), t('没有解析到可播放地址。\n可稍后重试，或前往「直播」页的回放列表查找该录播。'));
         return;
       }
       if (next.type === 'live') {
-        // v2.6: use unified MediaScreen player; detect live vs vod
+        // v2.6: use unified MediaScreen player; pass the already-resolved URL directly
+        // so MediaScreen doesn't re-resolve (which failed and left the user on the list)
         const targetMode = next.isLive ? 'live' : 'vod';
-        navigation.navigate('Media', { mode: targetMode, playLiveId: next.liveId, playTitle: next.title, playCover: next.url });
+        navigation.navigate('Media', {
+          mode: targetMode,
+          playLiveId: next.liveId,
+          playTitle: next.title,
+          playCover: next.cover,
+          playUrl: next.url,
+          playNonce: Date.now(),
+        });
+        return;
+      }
+      if (next.type === 'video') {
+        // 视频点击直接进入全屏播放器，不再在消息下方展开内嵌播放器
+        setRoomPlayer({ ...next, needsVlc: streamNeedsProxy(next.url) });
+        setRoomPlayerFullscreen(true);
         return;
       }
       setPlayingMedia(next);
     } catch (error) {
-      showToast(`播放解析失败：${errorMessage(error)}`);
+      Alert.alert(t('播放失败'), errorMessage(error));
     }
-  }, [playingMedia, showToast, navigation]);
+  }, [playingMedia, showToast, navigation, t]);
 
   const openRoomRankPanel = useCallback(async () => {
     if (!roomPlayer?.liveId) {
       setRankRows([]);
-      setRankStatus('当前直播/回放缺少 liveId，不能获取贡献榜');
+      setRankStatus(t('当前直播/回放缺少 liveId，不能获取贡献榜'));
       setRankVisible(true);
       return;
     }
@@ -1066,12 +1099,12 @@ export default function FollowedRoomsScreen() {
       const res = await pocketApi.getLiveRank(String(roomPlayer.liveId));
       const rows = normalizeLiveRank(res);
       setRankRows(rows);
-      setRankStatus(rows.length ? `已加载 ${rows.length} 位贡献用户` : '贡献榜为空');
+      setRankStatus(rows.length ? t('已加载 {count} 位贡献用户', { count: rows.length }) : t('贡献榜为空'));
     } catch (error) {
       setRankRows([]);
-      setRankStatus(`贡献榜加载失败：${errorMessage(error)}`);
+      setRankStatus(t('贡献榜加载失败：{msg}', { msg: errorMessage(error) }));
     }
-  }, [roomPlayer]);
+  }, [roomPlayer, t]);
 
   const downloadMedia = useCallback(async (media: RoomMedia) => {
     try {
@@ -1081,7 +1114,7 @@ export default function FollowedRoomsScreen() {
       }
       const url = next.url || media.url;
       if (!url) {
-        showToast('没有可下载地址');
+        showToast(t('没有可下载地址'));
         return;
       }
       await enqueueDownload({
@@ -1089,11 +1122,11 @@ export default function FollowedRoomsScreen() {
         type: next.type === 'live' ? 'replay' : next.type === 'audio' ? 'voice' : next.type === 'image' ? 'image' : next.type === 'video' ? 'video' : 'file',
         name: next.title,
       });
-      showToast('已加入下载管理');
+      showToast(t('已加入下载管理'));
     } catch (error) {
-      showToast(`下载失败：${errorMessage(error)}`);
+      showToast(t('下载失败：{msg}', { msg: errorMessage(error) }));
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -1136,18 +1169,18 @@ export default function FollowedRoomsScreen() {
           <View style={[styles.roomPlayerPage, roomPlayerFullscreen && styles.roomPlayerPageFullscreen]}>
             {!roomPlayerFullscreen ? <View style={styles.roomPlayerHeader}>
               <TouchableOpacity onPress={closeRoomPlayer} style={styles.roomPlayerBack}>
-                <Text style={styles.roomPlayerBackText}>返回房间</Text>
+                <Text style={styles.roomPlayerBackText}>{t('返回房间')}</Text>
               </TouchableOpacity>
               <Text style={styles.roomPlayerTitle} numberOfLines={1}>{roomPlayer.title}</Text>
               <TouchableOpacity onPress={openRoomRankPanel} style={styles.roomPlayerTool}>
-                <Text style={styles.roomPlayerToolText}>贡献榜</Text>
+                <Text style={styles.roomPlayerToolText}>{t('贡献榜')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setRoomPlayerFullscreen(true)} style={styles.roomPlayerTool}>
-                <Text style={styles.roomPlayerToolText}>全屏</Text>
+                <Text style={styles.roomPlayerToolText}>{t('全屏')}</Text>
               </TouchableOpacity>
             </View> : (
               <TouchableOpacity onPress={() => setRoomPlayerFullscreen(false)} style={styles.exitRoomFullscreenBtn}>
-                <Text style={styles.exitRoomFullscreenText}>退出全屏</Text>
+                <Text style={styles.exitRoomFullscreenText}>{t('退出全屏')}</Text>
               </TouchableOpacity>
             )}
             {roomPlayer.needsVlc && Platform.OS === 'android' && LiveExoView ? (
@@ -1168,9 +1201,9 @@ export default function FollowedRoomsScreen() {
               <View style={styles.roomModalShade}>
                 <View style={styles.roomRankPanel}>
                   <View style={styles.roomRankHeader}>
-                    <Text style={styles.roomRankTitle}>贡献榜</Text>
+                    <Text style={styles.roomRankTitle}>{t('贡献榜')}</Text>
                     <TouchableOpacity onPress={() => setRankVisible(false)}>
-                      <Text style={styles.roomPlayerBackText}>关闭</Text>
+                      <Text style={styles.roomPlayerBackText}>{t('关闭')}</Text>
                     </TouchableOpacity>
                   </View>
                   <Text style={styles.roomRankStatus}>{rankStatus}</Text>
@@ -1181,7 +1214,7 @@ export default function FollowedRoomsScreen() {
                         {row.avatar ? <Image source={{ uri: row.avatar }} style={styles.roomRankAvatar} /> : <View style={styles.roomRankAvatar} />}
                         <View style={styles.roomRankInfo}>
                           <Text style={styles.roomRankName} numberOfLines={1}>{row.name}</Text>
-                          <Text style={styles.roomRankValue} numberOfLines={1}>{row.value ? `贡献 ${row.value}` : '贡献用户'}</Text>
+                          <Text style={styles.roomRankValue} numberOfLines={1}>{row.value ? t('贡献 {value}', { value: row.value }) : t('贡献用户')}</Text>
                         </View>
                       </View>
                     ))}
@@ -1202,11 +1235,11 @@ export default function FollowedRoomsScreen() {
               {followBusyRoom ? (
                 <ActivityIndicator color={isFollowingRoom ? '#ff6f91' : '#ffffff'} size="small" />
               ) : (
-                <Text style={[styles.followBtnText, isFollowingRoom && styles.followBtnTextOn]}>{isFollowingRoom ? '已关注' : '关注'}</Text>
+                <Text style={[styles.followBtnText, isFollowingRoom && styles.followBtnTextOn]}>{isFollowingRoom ? t('已关注') : t('关注')}</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(String(selectedRoom.id || ''))}>
-              <Text style={styles.pinBtnText}>{pinned.includes(String(selectedRoom.id || '')) ? '取消置顶' : '置顶'}</Text>
+              <Text style={styles.pinBtnText}>{pinned.includes(String(selectedRoom.id || '')) ? t('取消置顶') : t('置顶')}</Text>
             </TouchableOpacity>
           </View>
         } />
@@ -1216,26 +1249,26 @@ export default function FollowedRoomsScreen() {
             style={[styles.modePill, roomMode === 'big' && styles.modePillActive, isDark && roomMode !== 'big' && styles.modePillDark]}
             onPress={() => openRoom(selectedRoom, 'big', showFanMessages)}
           >
-            <Text style={[styles.modePillText, roomMode === 'big' && styles.modePillTextActive, isDark && roomMode !== 'big' && styles.modePillTextDark]}>大房间</Text>
+            <Text style={[styles.modePillText, roomMode === 'big' && styles.modePillTextActive, isDark && roomMode !== 'big' && styles.modePillTextDark]}>{t('大房间')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modePill, roomMode === 'small' && styles.modePillActive, isDark && roomMode !== 'small' && styles.modePillDark]}
             onPress={() => openRoom(selectedRoom, 'small', showFanMessages)}
           >
-            <Text style={[styles.modePillText, roomMode === 'small' && styles.modePillTextActive, isDark && roomMode !== 'small' && styles.modePillTextDark]}>小房间</Text>
+            <Text style={[styles.modePillText, roomMode === 'small' && styles.modePillTextActive, isDark && roomMode !== 'small' && styles.modePillTextDark]}>{t('小房间')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modePill, showFanMessages && styles.modePillActive, isDark && !showFanMessages && styles.modePillDark]}
             onPress={() => openRoom(selectedRoom, roomMode, !showFanMessages)}
           >
-            <Text style={[styles.modePillText, showFanMessages && styles.modePillTextActive, isDark && !showFanMessages && styles.modePillTextDark]}>{showFanMessages ? '成员发言' : '含粉丝发言'}</Text>
+            <Text style={[styles.modePillText, showFanMessages && styles.modePillTextActive, isDark && !showFanMessages && styles.modePillTextDark]}>{showFanMessages ? t('成员发言') : t('含粉丝发言')}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.roomSearchWrap}>
           <TextInput
             style={[styles.input, isDark && styles.inputDark]}
-            placeholder="搜索聊天记录、成员名、粉丝名..."
+            placeholder={t('搜索聊天记录、成员名、粉丝名...')}
             placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
             value={roomSearchQuery}
             onChangeText={setRoomSearchQuery}
@@ -1259,9 +1292,9 @@ export default function FollowedRoomsScreen() {
                 {loadingMoreMessages ? (
                   <CenterSpinner dark={isDark} />
                 ) : hasMoreMessages ? (
-                  <Text style={[styles.empty, isDark && styles.emptyDark]}>上滑加载更多</Text>
+                  <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('上滑加载更多')}</Text>
                 ) : (
-                  <Text style={[styles.empty, isDark && styles.emptyDark]}>没有更多消息</Text>
+                  <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('没有更多消息')}</Text>
                 )}
               </View>
             ) : null
@@ -1324,10 +1357,10 @@ export default function FollowedRoomsScreen() {
                     ) : null}
                     {gift && !giftReplyText ? (
                       <View style={[styles.giftCard, giftReplyText ? styles.giftCardCompact : null]}>
-                        {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><Text style={styles.giftEmoji}>礼</Text></View>) : null}
+                        {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><Text style={styles.giftEmoji}>{t('礼')}</Text></View>) : null}
                         <View style={styles.giftTextWrap}>
-                          <Text style={styles.giftName} numberOfLines={1}>{idol ? '感谢礼物' : '送出礼物'}：{gift.name}</Text>
-                          <Text style={[styles.giftMeta, isDark && styles.giftMetaDark]}>数量 x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
+                          <Text style={styles.giftName} numberOfLines={1}>{idol ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
+                          <Text style={[styles.giftMeta, isDark && styles.giftMetaDark]}>{t('数量')} x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
                         </View>
                       </View>
                     ) : null}
@@ -1335,7 +1368,7 @@ export default function FollowedRoomsScreen() {
                       media.type === 'image' && media.url ? (
                       <>
                         <TouchableOpacity onPress={() => setFullImageUrl(media.url)} onLongPress={() => downloadMedia(media)} activeOpacity={0.9}>
-                          <Image source={{ uri: media.url }} style={media.title === '表情' ? styles.inlineSticker : styles.inlineImage} resizeMode="cover" />
+                          <Image source={{ uri: media.url }} style={media.title === t('表情') ? styles.inlineSticker : styles.inlineImage} resizeMode="cover" />
                         </TouchableOpacity>
                       </>
                     ) : media.type === 'live' && media.cover ? (
@@ -1360,7 +1393,7 @@ export default function FollowedRoomsScreen() {
                           <Image source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" />
                         ) : null}
                         <View style={styles.mediaMeta}>
-                          <Text style={[styles.mediaIcon, (idol || mine) && styles.mediaTextHighlight]}>{mediaLabel(media.type)}</Text>
+                          <Text style={[styles.mediaIcon, (idol || mine) && styles.mediaTextHighlight]}>{t(mediaLabel(media.type))}</Text>
                           {media.type !== 'audio' && media.type !== 'video' && media.title ? (
                             <Text style={[styles.mediaTitle, (idol || mine) && styles.mediaTextHighlight, isDark && !(idol || mine) && styles.mediaTitleDark]} numberOfLines={2}>{media.title}</Text>
                           ) : null}
@@ -1371,12 +1404,12 @@ export default function FollowedRoomsScreen() {
                           onPress={() => playMedia(media)}
                         >
                           <Text style={[styles.mediaPlayText, (idol || mine) && styles.mediaPlayTextHighlight]}>
-                            {playingMedia?.url && media.url && playingMedia.url === media.url ? '⏸ 暂停' : `▶ ${media.duration ? `${media.duration}s` : '播放'}`}
+                            {playingMedia?.url && media.url && playingMedia.url === media.url ? t('⏸ 暂停') : `▶ ${media.duration ? `${media.duration}s` : t('播放')}`}
                           </Text>
                         </TouchableOpacity>
                       </TouchableOpacity>
                     )) : (!bubbleText && !gift) ? (
-                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>[空消息]</Text>
+                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>{t('[空消息]')}</Text>
                     ) : null}
                     {media?.url && playingMedia?.url === media.url ? (
                       media.type === 'link' ? (
@@ -1411,7 +1444,6 @@ export default function FollowedRoomsScreen() {
               </FadeInView>
             );
           }}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '' : '暂无消息'}</Text>}
         />
         </FadeInView>
       </View>
@@ -1420,16 +1452,16 @@ export default function FollowedRoomsScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="口袋房间" right={
+      <ScreenHeader title={t('口袋房间')} right={
         <TouchableOpacity onPress={() => loadFollowed()}>
-          <Text style={styles.headerAction}>刷新</Text>
+          <Text style={styles.headerAction}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
-      <Text style={[styles.subtitle, isDark && styles.textSubDark]}>关注房间、大房间和小房间消息</Text>
+      <Text style={[styles.subtitle, isDark && styles.textSubDark]}>{t('关注房间、大房间和小房间消息')}</Text>
       <MemberPicker
         selectedMember={selectedRoom}
         onSelect={(member) => openRoom(member)}
-        placeholder="搜索成员并打开房间..."
+        placeholder={t('搜索成员并打开房间...')}
         limit={50}
       />
 
@@ -1456,39 +1488,39 @@ export default function FollowedRoomsScreen() {
                       {busy ? (
                         <ActivityIndicator color={isFollowing ? '#ff6f91' : '#ffffff'} size="small" />
                       ) : (
-                        <Text style={[styles.followBtnText, isFollowing && styles.followBtnTextOn]}>{isFollowing ? '已关注' : '关注'}</Text>
+                        <Text style={[styles.followBtnText, isFollowing && styles.followBtnTextOn]}>{isFollowing ? t('已关注') : t('关注')}</Text>
                       )}
                     </TouchableOpacity>
                   ) : null}
-                  <Text style={styles.roomTeam}>{item.member?.team || item.member?.groupName || '未匹配成员库'}</Text>
+                  <Text style={styles.roomTeam}>{item.member?.team || item.member?.groupName || t('未匹配成员库')}</Text>
                   <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(item.memberId)}>
-                    <Text style={styles.pinBtnText}>{pinned.includes(item.memberId) ? '取消置顶' : '置顶'}</Text>
+                    <Text style={styles.pinBtnText}>{pinned.includes(item.memberId) ? t('取消置顶') : t('置顶')}</Text>
                   </TouchableOpacity>
                 </View>
                 {item.member ? (
                   <View style={styles.roomMetaRow}>
-                    <Text style={[styles.roomMeta, isDark && styles.textSubDark]}>大 {item.member.channelId || '-'}</Text>
-                    <Text style={[styles.roomMeta, isDark && styles.textSubDark]}>小 {item.member.yklzId || '-'}</Text>
+                    <Text style={[styles.roomMeta, isDark && styles.textSubDark]}>{t('大 {id}', { id: item.member.channelId || '-' })}</Text>
+                    <Text style={[styles.roomMeta, isDark && styles.textSubDark]}>{t('小 {id}', { id: item.member.yklzId || '-' })}</Text>
                   </View>
                 ) : null}
                 <Text style={[styles.lastMessage, isDark && styles.textSubDark]} numberOfLines={1}>
-                  {item.lastMessage ? messageText(item.lastMessage) : '点击查看房间消息'}
+                  {item.lastMessage ? messageText(item.lastMessage) : t('点击查看房间消息')}
                 </Text>
               </TouchableOpacity>
             </FadeInView>
             );
           }}
           ListEmptyComponent={loading ? (
-            <CenterSpinner dark={isDark} text="加载中…" />
+            <CenterSpinner dark={isDark} text={t('加载中…')} />
           ) : !token ? (
             <View style={styles.emptyWrap}>
-              <Text style={[styles.empty, isDark && styles.emptyDark]}>登录后可查看关注房间和最新消息</Text>
+              <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('登录后可查看关注房间和最新消息')}</Text>
               <TouchableOpacity onPress={() => navigation.navigate('LoginScreen')} style={styles.emptyLink}>
-                <Text style={[styles.loginLink, isDark && styles.loginLinkDark]}>去登录</Text>
+                <Text style={[styles.loginLink, isDark && styles.loginLinkDark]}>{t('去登录')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <Text style={[styles.empty, isDark && styles.emptyDark]}>暂无关注房间</Text>
+            <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('暂无关注房间')}</Text>
           )}
           initialNumToRender={12}
           maxToRenderPerBatch={12}

@@ -11,11 +11,13 @@ import {
 import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import officialMediaApi from '../api/officialMedia';
+import { useI18n } from '../i18n';
 import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
+import { useAppTheme } from '../hooks/useAppTheme';
 
 function normalizeVideos(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -46,7 +48,8 @@ function mediaUrl(path: string): string {
 
 export default function VideoLibraryScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [videos, setVideos] = useState<any[]>([]);
   const [playing, setPlaying] = useState<any | null>(null);
   const [playUrl, setPlayUrl] = useState('');
@@ -71,9 +74,9 @@ export default function VideoLibraryScreen() {
       setNextCtime(nextCtimeFrom(list));
       setHasMore(list.length >= 20 && nextCtimeFrom(list) > 0);
       const loadedCount = refresh ? list.length : mergeUniqueVideos(videos, list).length;
-      setStatus(loadedCount ? `已加载 ${loadedCount} 条视频` : '官方接口暂无视频资源');
+      setStatus(loadedCount ? t('已加载 {count} 条视频', { count: loadedCount }) : t('官方接口暂无视频资源'));
     } catch (error) {
-      setStatus(`加载失败：${errorMessage(error)}`);
+      setStatus(t('加载失败：{error}', { error: errorMessage(error) }));
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -93,23 +96,23 @@ export default function VideoLibraryScreen() {
   const play = async (item: any) => {
     setPlaying(item);
     setPlayUrl('');
-    setStatus('正在解析视频地址...');
+    setStatus(t('正在解析视频地址...'));
     try {
       const res = await officialMediaApi.getVideo(String(item.videoId || item.id));
       const data = res?.content?.data || res?.content || res?.data || {};
       const url = mediaUrl(String(data.filePath || data.videoPath || data.url || ''));
-      if (!url) throw new Error('未返回视频文件地址');
+      if (!url) throw new Error(t('未返回视频文件地址'));
       setPlayUrl(url);
-      setStatus(`正在播放：${item.title || data.title || '视频'}`);
+      setStatus(t('正在播放：{title}', { title: item.title || data.title || t('视频') }));
     } catch (error) {
-      setStatus(`播放失败：${errorMessage(error)}`);
+      setStatus(t('播放失败：{error}', { error: errorMessage(error) }));
     }
   };
 
   if (playUrl) {
     return (
       <View style={styles.playerPage}>
-        <ScreenHeader title={playing?.title || '视频'} onBack={() => setPlayUrl('')} />
+        <ScreenHeader title={playing?.title || t('视频')} onBack={() => setPlayUrl('')} />
         <Video source={{ uri: playUrl }} style={styles.videoPlayer} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" onError={() => setPlayUrl('')} />
       </View>
     );
@@ -117,9 +120,9 @@ export default function VideoLibraryScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="视频" right={
+      <ScreenHeader title={t('视频')} right={
         <TouchableOpacity onPress={() => load(true)} disabled={loading}>
-          <Text style={[styles.backBtn, loading && styles.disabledText]}>刷新</Text>
+          <Text style={[styles.backBtn, loading && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
       {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '' : status}</Text> : null}
@@ -134,15 +137,15 @@ export default function VideoLibraryScreen() {
           removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
-          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>加载更多...</Text> : null}
+          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>{t('加载更多...')}</Text> : null}
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300}>
               <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => play(item)}>
-                <Text style={[styles.cardTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || '无标题'}</Text>
+                <Text style={[styles.cardTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || t('无标题')}</Text>
                 <Text style={[styles.cardSub, isDark && styles.textSubDark]}>
                   {[item.typeName, item.subTitle, formatTimestamp(item.ctime).slice(0, 10)].filter(Boolean).join(' · ')}
                 </Text>
-                <Text style={[styles.desc, isDark && styles.textSubDark]}>{item.play ? `播放 ${item.play}` : '点击解析播放地址'}</Text>
+                <Text style={[styles.desc, isDark && styles.textSubDark]}>{item.play ? t('播放 {count}', { count: item.play }) : t('点击解析播放地址')}</Text>
               </TouchableOpacity>
             </FadeInView>
           )}

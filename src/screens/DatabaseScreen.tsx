@@ -12,10 +12,13 @@ import { useSettingsStore, useMemberStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { unwrapList } from '../utils/data';
 import { loadMembers } from '../utils/members';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 export default function DatabaseScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const setStoreMembers = useMemberStore((s) => s.setMembers);
   const storeMembers = useMemberStore((s) => s.members);
   const [webError, setWebError] = useState('');
@@ -58,9 +61,9 @@ export default function DatabaseScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="数据库" onBack={() => navigation.goBack()} right={
+      <ScreenHeader title={t('数据库')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity onPress={reloadWebView}>
-          <Text style={styles.headerAction}>刷新</Text>
+          <Text style={styles.headerAction}>{t('刷新')}</Text>
         </TouchableOpacity>
         } />
       {webError ? (
@@ -72,7 +75,7 @@ export default function DatabaseScreen() {
         ref={webViewRef}
         source={{ uri: 'https://gnz.hk/database' }}
         style={styles.webview}
-        onError={(e) => setWebError(e.nativeEvent.description || '加载失败')}
+        onError={(e) => setWebError(e.nativeEvent.description || t('加载失败'))}
         javaScriptEnabled
         domStorageEnabled
         cacheEnabled

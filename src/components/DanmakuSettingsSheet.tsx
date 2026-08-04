@@ -7,6 +7,8 @@ import { Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } f
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSettingsStore } from '../store';
 import { useDanmakuSettings, DanmakuArea } from '../store/danmakuSettings';
+import { useI18n } from '../i18n';
+import { useAppTheme } from '../hooks/useAppTheme';
 
 interface Props {
   visible: boolean;
@@ -59,7 +61,8 @@ function Chip({
 }
 
 export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const { enabled, area, speed, fontSize, opacity, set, reset } = useDanmakuSettings();
 
   return (
@@ -68,7 +71,7 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
         <View style={[styles.sheet, isDark && styles.sheetD]} onStartShouldSetResponder={() => true}>
           <View style={styles.handle} />
           <View style={styles.header}>
-            <Text style={[styles.title, isDark && styles.textLight]}>弹幕设置</Text>
+            <Text style={[styles.title, isDark && styles.textLight]}>{t('弹幕设置')}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <MaterialCommunityIcons name="close" size={20} color={isDark ? '#ccc' : '#666'} />
             </TouchableOpacity>
@@ -77,7 +80,7 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
             {/* 总开关 */}
             <View style={styles.row}>
-              <Text style={[styles.rowLabel, isDark && styles.textLight]}>显示弹幕</Text>
+              <Text style={[styles.rowLabel, isDark && styles.textLight]}>{t('显示弹幕')}</Text>
               <Switch
                 value={enabled}
                 onValueChange={(v) => set({ enabled: v })}
@@ -87,13 +90,13 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
             </View>
 
             {/* 显示区域 */}
-            <Text style={[styles.section, isDark && styles.sectionD]}>显示区域</Text>
+            <Text style={[styles.section, isDark && styles.sectionD]}>{t('显示区域')}</Text>
             <View style={styles.chipRow}>
               {AREAS.map((a) => (
                 <Chip
                   key={a.key}
                   active={area === a.key}
-                  label={a.label}
+                  label={t(a.label)}
                   onPress={() => set({ area: a.key })}
                   isDark={isDark}
                 />
@@ -101,13 +104,13 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
             </View>
 
             {/* 速度 */}
-            <Text style={[styles.section, isDark && styles.sectionD]}>滚动速度</Text>
+            <Text style={[styles.section, isDark && styles.sectionD]}>{t('滚动速度')}</Text>
             <View style={styles.chipRow}>
               {SPEEDS.map((s) => (
                 <Chip
                   key={s.label}
                   active={speed === s.v}
-                  label={s.label}
+                  label={t(s.label)}
                   onPress={() => set({ speed: s.v })}
                   isDark={isDark}
                 />
@@ -115,13 +118,13 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
             </View>
 
             {/* 字号 */}
-            <Text style={[styles.section, isDark && styles.sectionD]}>字号</Text>
+            <Text style={[styles.section, isDark && styles.sectionD]}>{t('字号')}</Text>
             <View style={styles.chipRow}>
               {SIZES.map((s) => (
                 <Chip
                   key={s.label}
                   active={fontSize === s.v}
-                  label={s.label}
+                  label={t(s.label)}
                   onPress={() => set({ fontSize: s.v })}
                   isDark={isDark}
                 />
@@ -129,13 +132,13 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
             </View>
 
             {/* 不透明度 */}
-            <Text style={[styles.section, isDark && styles.sectionD]}>不透明度</Text>
+            <Text style={[styles.section, isDark && styles.sectionD]}>{t('不透明度')}</Text>
             <View style={styles.chipRow}>
               {OPACITIES.map((o) => (
                 <Chip
                   key={o.label}
                   active={opacity === o.v}
-                  label={o.label}
+                  label={t(o.label)}
                   onPress={() => set({ opacity: o.v })}
                   isDark={isDark}
                 />
@@ -143,7 +146,7 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
             </View>
 
             <TouchableOpacity style={styles.reset} onPress={() => reset()}>
-              <Text style={styles.resetText}>恢复默认</Text>
+              <Text style={styles.resetText}>{t('恢复默认')}</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>

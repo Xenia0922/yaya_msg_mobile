@@ -29,7 +29,7 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Home: undefined;
-  Media: { mode?: 'live' | 'vod'; playLiveId?: string; playTitle?: string; playCover?: string } | undefined;
+  Media: { mode?: 'live' | 'vod'; playLiveId?: string; playTitle?: string; playCover?: string; playUrl?: string; playNonce?: number } | undefined;
   Rooms: undefined;
   Settings: undefined;
 };

@@ -12,6 +12,8 @@ import { formatTimestamp } from '../utils/format';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
 import { memberSearchText } from '../utils/members';
 import pocketApi from '../api/pocket48';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 function msgTime(item: any): number {
   const value = Number(item.msgTime || item.messageTime || item.ctime || item.time || item.createTime || 0);
@@ -19,7 +21,8 @@ function msgTime(item: any): number {
 }
 
 export default function MessagesScreen() {
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const members = useMemberStore((state) => state.members);
   const token = useSettingsStore((state) => state.settings.p48Token);
   const showToast = useUiStore((state) => state.showToast);
@@ -40,12 +43,11 @@ export default function MessagesScreen() {
 
   const fetchMessages = async (member: Member) => {
     if (!token) {
-      showToast('请先在账号设置里登录口袋48或粘贴 Token');
+      showToast(t('请先在账号设置里登录口袋48或粘贴 Token'));
       return;
     }
     setSelectedMember(member);
     setLoading(true);
-    showToast('正在加载房间消息...');
     try {
       const res = await pocketApi.getRoomMessages({
         channelId: member.channelId,
@@ -55,9 +57,8 @@ export default function MessagesScreen() {
       });
       const list = unwrapList(res, ['content.messageList', 'content.message', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'list']);
       setMessages(list.slice().sort((a, b) => msgTime(b) - msgTime(a)));
-      showToast(`已加载 ${list.length} 条消息`);
     } catch (error) {
-      showToast(`加载失败：${errorMessage(error)}`);
+      showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
       setMessages([]);
     } finally {
       setLoading(false);
@@ -76,25 +77,25 @@ export default function MessagesScreen() {
   const renderMsgItem = useCallback(({ item }: { item: any }) => (
     <View style={[styles.msg, isDark && styles.msgDark]}>
       <View style={styles.msgHeader}>
-        <Text style={[styles.msgSender, isDark && { color: '#eee' }]}>{item.senderName || item.senderNickName || '成员'}</Text>
+        <Text style={[styles.msgSender, isDark && { color: '#eee' }]}>{item.senderName || item.senderNickName || t('成员')}</Text>
         <Text style={[styles.msgTime, isDark && styles.msgTimeDark]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
       </View>
-      <Text style={[styles.msgBody, isDark && { color: '#eeeeee' }]}>{messageText(item) || '[空消息]'}</Text>
+      <Text style={[styles.msgBody, isDark && { color: '#eeeeee' }]}>{messageText(item) || t('[空消息]')}</Text>
     </View>
-  ), [isDark]);
+  ), [isDark, t]);
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="消息检索" />
+      <ScreenHeader title={t('消息检索')} />
       <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setPickerOpen(true)}>
         <Text style={[styles.pickerLabel, isDark && styles.textLight]}>
-          {selectedMember?.ownerName || `选择成员 (${members.length})`}
+          {selectedMember?.ownerName || t('选择成员 ({count})', { count: members.length })}
         </Text>
-        <Text style={[styles.pickerButtonText, isDark && styles.textLight]}>选择</Text>
+        <Text style={[styles.pickerButtonText, isDark && styles.textLight]}>{t('选择')}</Text>
       </TouchableOpacity>
       <TextInput
         style={[styles.input, isDark && styles.inputDark]}
-        placeholder="搜索消息内容..."
+        placeholder={t('搜索消息内容...')}
         placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
         value={search}
         onChangeText={setSearch}
@@ -104,14 +105,14 @@ export default function MessagesScreen() {
         <View style={[styles.modalContainer, isDark && styles.containerDark]}>
           <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
             <TouchableOpacity onPress={() => setPickerOpen(false)}>
-              <Text style={styles.modalBack}>关闭</Text>
+              <Text style={styles.modalBack}>{t('关闭')}</Text>
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, isDark && { color: '#eee' }]}>选择成员</Text>
-            <Text style={[styles.pickerCount, isDark && styles.textLight]}>{members.length} 位</Text>
+            <Text style={[styles.modalTitle, isDark && { color: '#eee' }]}>{t('选择成员')}</Text>
+            <Text style={[styles.pickerCount, isDark && styles.textLight]}>{t('{count} 位', { count: members.length })}</Text>
           </View>
           <TextInput
             style={[styles.input, isDark && styles.inputDark, { margin: 12 }]}
-            placeholder="搜索成员..."
+            placeholder={t('搜索成员...')}
             placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
             value={pickerQuery}
             onChangeText={setPickerQuery}
@@ -131,7 +132,7 @@ export default function MessagesScreen() {
                 <Text style={[styles.memberTeam, isDark && styles.memberTeamDark]}>{item.team || item.groupName || ''}</Text>
               </TouchableOpacity>
             )}
-            ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>成员列表为空</Text>}
+            ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{t('成员列表为空')}</Text>}
           />
         </View>
       </Modal>
@@ -141,7 +142,6 @@ export default function MessagesScreen() {
           data={filtered}
           keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || index)}
           renderItem={renderMsgItem}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{loading ? '' : '暂无消息'}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}

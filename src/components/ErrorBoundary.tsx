@@ -2,18 +2,21 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSettingsStore } from '../store';
 import { logCrash } from '../utils/runtimeLog';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 interface Props { children: ReactNode; }
 interface State { error: Error | null; }
 
 function ErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <Text style={styles.title}>出现错误</Text>
+      <Text style={styles.title}>{t('出现错误')}</Text>
       <Text style={[styles.message, isDark && styles.messageDark]}>{error.message}</Text>
       <TouchableOpacity style={styles.btn} onPress={onRetry}>
-        <Text style={styles.btnText}>重试</Text>
+        <Text style={styles.btnText}>{t('重试')}</Text>
       </TouchableOpacity>
     </View>
   );

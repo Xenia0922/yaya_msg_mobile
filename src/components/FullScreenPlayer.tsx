@@ -21,6 +21,8 @@ import { Colors } from '../theme/colors';
 import { isPlayableHost, MusicEngine } from '../services/musicPlayer';
 import { lyricIndexAt, lyricTimeForIndex } from '../utils/lyrics';
 import CoverArt from './CoverArt';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 const { width: SW } = Dimensions.get('window');
 const ANIM_DURATION = 300;
@@ -68,6 +70,7 @@ function FullScreenPlayerInner({
   currentIndex,
   queue,
 }: FullScreenPlayerInnerProps) {
+  const { t } = useI18n();
   const trackFavId = track ? String(track.musicId || track.id || '') : '';
   const isFav = trackFavId ? favorites.includes(trackFavId) : false;
   const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
@@ -180,9 +183,9 @@ function FullScreenPlayerInner({
             <Text style={[styles.topBtnT, isDark && styles.topBtnTD]}>▾</Text>
           </Pressable>
           <View style={styles.topCenter}>
-            <Text style={[styles.topTitle, isDark && styles.tL]} numberOfLines={1}>{track.title || '未知'}</Text>
+            <Text style={[styles.topTitle, isDark && styles.tL]} numberOfLines={1}>{track.title || t('未知')}</Text>
             <Text style={[styles.topSub, isDark && styles.tS]} numberOfLines={1}>
-              {[track.joinMemberNames, track.subTitle, track.albumName].filter(Boolean).join(' · ') || '官方音乐'}
+              {[track.joinMemberNames, track.subTitle, track.albumName].filter(Boolean).join(' · ') || t('官方音乐')}
             </Text>
           </View>
           <View style={styles.topBtn} />
@@ -211,7 +214,7 @@ function FullScreenPlayerInner({
                     {l.text}
                   </Text>
                 </Pressable>
-              )) : <Text style={[styles.lyricLine, isDark && styles.lyricLineD]}>暂无歌词</Text>}
+              )) : <Text style={[styles.lyricLine, isDark && styles.lyricLineD]}>{t('暂无歌词')}</Text>}
               <View style={{ height: spacerH }} />
             </ScrollView>
           </>
@@ -262,7 +265,7 @@ function FullScreenPlayerInner({
               <Icon name="skip-next" size={30} color={isDark ? '#eee' : '#333'} />
             </Pressable>
             <Pressable onPress={() => setShowLyrics(!showLyrics)} style={[styles.sideBtn, showLyrics && styles.lyricOn]}>
-              <Text style={[styles.btnLabel, isDark && styles.btnLabelD, showLyrics && styles.btnLabelOn]}>词</Text>
+              <Text style={[styles.btnLabel, isDark && styles.btnLabelD, showLyrics && styles.btnLabelOn]}>{t('词')}</Text>
             </Pressable>
             <Pressable onPress={() => setShowQueue(true)} style={styles.sideBtn}>
               <Icon name="playlist-music" size={22} color={isDark ? '#ccc' : '#666'} />
@@ -275,7 +278,7 @@ function FullScreenPlayerInner({
           <View style={[styles.queueSheet, isDark && styles.queueSheetD]} onStartShouldSetResponder={() => true}>
             <View style={styles.queueHandle} />
             <View style={styles.queueHeader}>
-              <Text style={[styles.queueTitle, isDark && styles.tL]}>播放列表（{queue.length}）</Text>
+              <Text style={[styles.queueTitle, isDark && styles.tL]}>{t('播放列表（{count}）', { count: queue.length })}</Text>
               <TouchableOpacity onPress={() => setShowQueue(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Icon name="close" size={20} color={isDark ? '#ccc' : '#666'} />
               </TouchableOpacity>
@@ -296,9 +299,9 @@ function FullScreenPlayerInner({
                   >
                     <CoverArt uri={uri} title={item.title || '♪'} size={42} round active={active} />
                     <View style={styles.queueInfo}>
-                      <Text style={[styles.queueTitle2, isDark && styles.tL]} numberOfLines={1}>{item.title || '未知'}</Text>
+                      <Text style={[styles.queueTitle2, isDark && styles.tL]} numberOfLines={1}>{item.title || t('未知')}</Text>
                       <Text style={[styles.queueSub, isDark && styles.tS]} numberOfLines={1}>
-                        {[item.albumName || item.album, item.joinMemberNames || item.artist].filter(Boolean).join(' · ') || '官方音乐'}
+                        {[item.albumName || item.album, item.joinMemberNames || item.artist].filter(Boolean).join(' · ') || t('官方音乐')}
                       </Text>
                     </View>
                     {active ? <Icon name="volume-high" size={18} color="#ff6f91" /> : null}
@@ -319,7 +322,7 @@ interface Props {
 }
 
 export default function FullScreenPlayer({ visible, onClose }: Props) {
-  const isDark = useSettingsStore((s) => s.settings.theme === 'dark');
+  const isDark = useAppTheme();
   const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
   const queue = useMusicPlayerStore((s) => s.queue);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);

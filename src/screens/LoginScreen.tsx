@@ -13,6 +13,8 @@ import { saveSettings } from '../services/settings';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, pickText } from '../utils/data';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { translate, useI18n } from '../i18n';
 
 function buildBilibiliCookieFromUrl(rawUrl = ''): string {
   try {
@@ -70,7 +72,7 @@ function accountId(user: any): string {
 }
 
 function accountName(user: any): string {
-  return String(user?.nickname || user?.nickName || user?.name || user?.userInfo?.nickname || user?.userInfo?.nickName || user?.userInfo?.name || '未命名账号');
+  return String(user?.nickname || user?.nickName || user?.name || user?.userInfo?.nickname || user?.userInfo?.nickName || user?.userInfo?.name || translate('未命名账号'));
 }
 
 function accountRole(user: any, fallback: string): string {
@@ -103,15 +105,18 @@ export default function LoginScreen() {
   const settings = useSettingsStore((state) => state.settings);
   const setSettings = useSettingsStore((state) => state.setSettings);
   const showToast = useUiStore((state) => state.showToast);
-  const isDark = settings.theme === 'dark';
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const pollingRef = useRef(true);
   useEffect(() => { return () => { pollingRef.current = false; }; }, []);
   const [phone, setPhone] = useState('');
+  const [area, setArea] = useState('86');
   const [code, setCode] = useState('');
   const [manualToken, setManualToken] = useState(settings.p48Token || '');
   const [qrKey, setQrKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [biliStatus, setBiliStatus] = useState('');
   const [qrHtml, setQrHtml] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
@@ -129,14 +134,15 @@ export default function LoginScreen() {
 
   const handleSendSms = async () => {
     if (!phone.trim()) {
-      setStatus('请输入手机号');
+      setStatus(t('请输入手机号'));
       return;
     }
     setLoading(true);
-    setStatus('正在获取验证码...');
+    setStatus(t('正在获取验证码'));
     try {
-      const res: any = await pocketApi.loginSendSms(phone.trim());
-      setStatus(res?.success ? '验证码已发送' : (res?.msg || res?.message || '验证码发送失败'));
+      const areaCode = area.replace(/[^0-9]/g, '') || '86';
+      const res: any = await pocketApi.loginSendSms(phone.trim(), areaCode);
+      setStatus(res?.success ? t('验证码已发送') : (res?.msg || res?.message || t('验证码发送失败')));
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -146,20 +152,21 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!phone.trim() || !code.trim()) {
-      setStatus('请输入手机号和短信验证码');
+      setStatus(t('请输入手机号和短信验证码'));
       return;
     }
     setLoading(true);
-    setStatus('正在登录...');
+    setStatus(t('正在登录'));
     try {
       const res = await pocketApi.loginByCode(phone.trim(), code.trim());
       const token = extractPocketToken(res);
       if (token) {
-        await savePocketToken(token, '登录成功');
+        await savePocketToken(token, t('登录成功'));
         setTimeout(() => navigation.goBack(), 700);
       } else {
         const msg = res?.message || res?.msg || res?.content?.message || JSON.stringify(res).slice(0, 180);
-        setStatus(`登录失败：接口未返回 token${msg ? `。返回：${msg}` : ''}`);
+        const base = t('登录失败接口未返回token');
+        setStatus(msg ? `${base}。${t('返回：{msg}', { msg })}` : base);
       }
     } catch (error) {
       setStatus(errorMessage(error));
@@ -171,10 +178,10 @@ export default function LoginScreen() {
   const handleSaveManualToken = async () => {
     const token = manualToken.trim();
     if (!token) {
-      setStatus('请先粘贴 token');
+      setStatus(t('请先粘贴token'));
       return;
     }
-    await savePocketToken(token, 'Token 已保存');
+    await savePocketToken(token, t('Token已保存'));
   };
 
   const refreshAccountInfo = async () => {
@@ -191,12 +198,12 @@ export default function LoginScreen() {
       await saveSettings({ p48Token: token });
     }
     setLoading(true);
-    setStatus('正在检查 Token...');
+    setStatus(t('正在检查Token'));
     try {
       const { res, ok } = await refreshAccountInfo();
-      setStatus(ok ? 'Token 有效' : `Token 无效：${res?.msg || res?.message || JSON.stringify(res).slice(0, 160)}`);
+      setStatus(ok ? t('Token有效') : t('Token无效：{msg}', { msg: res?.msg || res?.message || JSON.stringify(res).slice(0, 160) }));
     } catch (error) {
-      setStatus(`Token 检查失败：${errorMessage(error)}`);
+      setStatus(t('Token无效：{msg}', { msg: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -205,21 +212,22 @@ export default function LoginScreen() {
   const handleSwitchPocketAccount = async (user: any) => {
     const targetUserId = accountId(user);
     if (!targetUserId) {
-      setStatus('切换失败：没有拿到目标账号 ID');
+      setStatus(t('切换失败没有拿到目标账号ID'));
       return;
     }
     setLoading(true);
     setSwitchingUserId(targetUserId);
-    setStatus(`正在切换到 ${accountName(user)}...`);
+    setStatus(t('正在切换到{name}', { name: accountName(user) }));
     try {
       const res = await pocketApi.switchBigSmall(targetUserId);
       const token = pickText(res, ['content.token', 'data.token', 'token', 'content.accessToken', 'data.accessToken']) || extractPocketToken(res);
-      if (!token) throw new Error('切换接口没有返回 token');
-      await savePocketToken(token, `已切换到 ${accountName(user)}`);
+      if (!token) throw new Error(t('切换失败没有拿到目标账号ID'));
+      const done = t('已切换到{name}', { name: accountName(user) });
+      await savePocketToken(token, done);
       await refreshAccountInfo();
-      showToast(`已切换到 ${accountName(user)}`);
+      showToast(done);
     } catch (error) {
-      setStatus(`切换账号失败：${errorMessage(error)}`);
+      setStatus(t('切换账号失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       setSwitchingUserId('');
       setLoading(false);
@@ -236,7 +244,7 @@ export default function LoginScreen() {
         if (res.data.code === 0) {
           const cookie = buildBilibiliCookieFromUrl(res.data?.url || '');
           if (!cookie.includes('SESSDATA')) {
-            setStatus('B站已确认，但没有拿到 Cookie');
+            setBiliStatus(t('B站已确认但没有拿到Cookie'));
             return;
           }
           const nav = await bilibiliApi.checkLoginStatus(cookie);
@@ -245,21 +253,21 @@ export default function LoginScreen() {
             : null;
           setSettings({ bilibiliCookie: cookie, bilibiliUserInfo: userInfo });
           await saveSettings({ bilibiliCookie: cookie, bilibiliUserInfo: userInfo });
-          setStatus('B站登录成功');
+          setBiliStatus(t('B站登录成功'));
           return;
         }
         if (res.data.code === 86038) {
-          setStatus('二维码已过期，请刷新');
+          setBiliStatus(t('二维码已过期请刷新'));
           return;
         }
       } catch {}
     }
-    setStatus('B站登录超时');
+    setBiliStatus(t('B站登录超时'));
   };
 
   const handleBiliQr = async () => {
     setLoading(true);
-    setStatus('正在获取 B站二维码...');
+    setBiliStatus(t('正在获取B站二维码'));
     try {
       const res = await bilibiliApi.generateQrCode();
       if (res.code === 0 && res.data) {
@@ -267,13 +275,13 @@ export default function LoginScreen() {
         const svg = await QRCode.toString(res.data.url, { type: 'svg', margin: 2, width: 220 });
         setQrKey(key);
         setQrHtml(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body style="margin:0;background:#fff;display:flex;align-items:center;justify-content:center;">${svg}</body></html>`);
-        setStatus('请用 B站 App 扫码');
+        setBiliStatus(t('请用B站App扫码'));
         pollBiliLogin(key);
       } else {
-        setStatus(res?.message || 'B站二维码获取失败');
+        setBiliStatus(res?.message || t('B站二维码获取失败'));
       }
     } catch (error) {
-      setStatus(errorMessage(error));
+      setBiliStatus(errorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -281,7 +289,7 @@ export default function LoginScreen() {
 
   const handleLoadProfile = async () => {
     setLoading(true);
-    setStatus('\u6b63\u5728\u8bfb\u53d6\u53e3\u888b\u8d44\u6599...');
+    setStatus(t('正在读取口袋资料'));
     try {
       const res = await pocketApi.getNimLoginInfo();
       const info = res?.content?.userInfo || res?.content?.user || res?.content || res?.data?.userInfo || res?.data || {};
@@ -292,11 +300,14 @@ export default function LoginScreen() {
       if (renameContent && typeof renameContent === 'object') {
         const freeCount = renameContent.count ?? renameContent.renameCount ?? renameContent.renameNum ?? renameContent.num ?? renameContent.leftCount ?? renameContent.remainCount;
         const chickenCount = renameContent.jtcount ?? renameContent.jtCount ?? renameContent.chickenCount ?? renameContent.payCount;
-        setRenameCountText(`免费修改：${freeCount ?? '--'} · 鸡腿修改：${chickenCount ?? '--'}`);
+        setRenameCountText(t('免费修改：{free} · 鸡腿修改：{chicken}', {
+          free: freeCount ?? '--',
+          chicken: chickenCount ?? '--',
+        }));
       }
-      setStatus('\u8d44\u6599\u5df2\u8bfb\u53d6');
+      setStatus(t('资料已读取'));
     } catch (error) {
-      setStatus(`\u8d44\u6599\u8bfb\u53d6\u5931\u8d25\uff1a${errorMessage(error)}`);
+      setStatus(t('资料读取失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -305,17 +316,17 @@ export default function LoginScreen() {
   const handleEditProfile = async () => {
     const name = profileName.trim();
     if (!name) {
-      setStatus('请输入新昵称');
+      setStatus(t('请输入新昵称'));
       return;
     }
     setLoading(true);
-    setStatus('正在修改昵称...');
+    setStatus(t('正在修改昵称'));
     try {
       await pocketApi.editUserInfo({ key: 'nickname', value: name });
-      setStatus('昵称修改成功');
+      setStatus(t('昵称修改成功'));
       await handleLoadProfile();
     } catch (error) {
-      setStatus(`昵称修改失败：${errorMessage(error)}`);
+      setStatus(t('资料读取失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -323,11 +334,11 @@ export default function LoginScreen() {
 
   const handlePickAvatar = async () => {
     setLoading(true);
-    setStatus('正在选择并上传头像...');
+    setStatus(t('正在选择并上传头像'));
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        setStatus('没有相册权限，无法选择头像');
+        setStatus(t('没有相册权限无法选择头像'));
         setLoading(false);
         return;
       }
@@ -338,25 +349,25 @@ export default function LoginScreen() {
         quality: 0.9,
       });
       if (result.canceled) {
-        setStatus('已取消选择头像');
+        setStatus(t('已取消选择头像'));
         setLoading(false);
         return;
       }
       const asset = result.assets?.[0];
-      if (!asset?.uri) throw new Error('图片选择器没有返回文件');
-      setStatus('正在上传到口袋服务器...');
+      if (!asset?.uri) throw new Error(t('图片选择器没有返回文件'));
+      setStatus(t('正在上传到口袋服务器'));
       const upload = await pocketApi.uploadUserAvatar({
         uri: asset.uri,
         fileName: asset.fileName || `avatar-${Date.now()}.jpg`,
         mimeType: asset.mimeType || 'image/jpeg',
       });
-      if (!upload.path) throw new Error('上传成功但没有返回路径');
-      setStatus('正在更新头像...');
+      if (!upload.path) throw new Error(t('上传成功但没有返回路径'));
+      setStatus(t('正在更新头像'));
       await pocketApi.editUserInfo({ key: 'avatar', value: upload.path });
       setProfileAvatar(upload.path);
-      setStatus('头像已更新');
+      setStatus(t('头像已更新'));
     } catch (error) {
-      setStatus(`头像上传失败：${errorMessage(error)}`);
+      setStatus(t('头像上传失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       setLoading(false);
     }
@@ -364,28 +375,42 @@ export default function LoginScreen() {
 
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content}>
-      <ScreenHeader title="账号设置" />
+      <ScreenHeader title={t('账号设置')} />
 
       <FadeInView delay={80} duration={300}>
         <View style={[styles.section, isDark && styles.sectionDark]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>口袋48 验证码登录</Text>
-        <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="手机号" placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
-        <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder="短信验证码" placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('口袋48验证码登录')}</Text>
+        <View style={styles.phoneRow}>
+          <View style={[styles.areaWrap, isDark && styles.inputDark]}>
+            <Text style={[styles.areaPlus, isDark && styles.textDark]}>+</Text>
+            <TextInput
+              style={[styles.areaInput, isDark && styles.textDark]}
+              placeholder="86"
+              placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+              keyboardType="phone-pad"
+              maxLength={5}
+              value={area}
+              onChangeText={(v) => setArea(v.replace(/[^0-9]/g, '').slice(0, 5))}
+            />
+          </View>
+          <TextInput style={[styles.input, styles.phoneInput, isDark && styles.inputDark]} placeholder={t('手机号')} placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+        </View>
+        <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder={t('短信验证码')} placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
         <View style={styles.btnRow}>
           <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleSendSms} disabled={loading}>
-            <Text style={styles.btnText}>获取验证码</Text>
+            <Text style={styles.btnText}>{t('获取验证码')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleLogin} disabled={loading}>
-            <Text style={styles.btnText}>登录</Text>
+            <Text style={styles.btnText}>{t('登录')}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>口袋48 Token 登录</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('口袋48Token登录')}</Text>
         <TextInput
           style={[styles.input, styles.tokenInput, isDark && styles.inputDark]}
-          placeholder="粘贴口袋 token"
+          placeholder={t('粘贴口袋token')}
           placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
           value={manualToken}
           onChangeText={setManualToken}
@@ -393,22 +418,22 @@ export default function LoginScreen() {
         />
         <View style={styles.btnRow}>
           <TouchableOpacity style={styles.btnPrimary} onPress={handleSaveManualToken}>
-            <Text style={styles.btnText}>保存 Token</Text>
+            <Text style={styles.btnText}>{t('保存Token')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.btn} onPress={handleCheckToken}>
-            <Text style={styles.btnText}>检查 Token</Text>
+            <Text style={styles.btnText}>{t('检查Token')}</Text>
           </TouchableOpacity>
         </View>
-        {settings.p48Token ? <Text style={styles.tokenInfo}>已保存 Token：{settings.p48Token.slice(0, 24)}...</Text> : null}
+        {settings.p48Token ? <Text style={styles.tokenInfo}>{t('已保存Token：{token}', { token: settings.p48Token.slice(0, 24) })}...</Text> : null}
       </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>口袋账号切换</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('口袋账号切换')}</Text>
         <Text style={[styles.metaLine, isDark && styles.textSubDark]}>
-          当前：{accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : '先检查 Token 读取账号'}
+          {t('当前：{info}', { info: accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : t('先检查Token读取账号') })}
         </Text>
         <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginBottom: 10 }]} onPress={handleCheckToken} disabled={loading}>
-          <Text style={styles.btnText}>刷新账号列表</Text>
+          <Text style={styles.btnText}>{t('刷新账号列表')}</Text>
         </TouchableOpacity>
         {accountInfo.users.length ? accountInfo.users.map((user) => {
           const id = accountId(user);
@@ -422,46 +447,47 @@ export default function LoginScreen() {
             >
               <View style={styles.accountTextWrap}>
                 <Text style={[styles.accountName, isDark && styles.textDark]}>{accountName(user)}</Text>
-                <Text style={[styles.accountMeta, isDark && styles.textSubDark]}>{accountRole(user, '账号')} · {id || '无ID'}</Text>
+                <Text style={[styles.accountMeta, isDark && styles.textSubDark]}>{accountRole(user, t('账号'))} · {id || t('无ID')}</Text>
               </View>
               <Text style={isCurrent ? styles.accountCurrent : styles.accountAction}>
-                {isCurrent ? '当前' : switchingUserId === id ? '切换中' : '切换'}
+                {isCurrent ? t('当前') : switchingUserId === id ? t('切换中') : t('切换')}
               </Text>
             </TouchableOpacity>
           );
-        }) : <Text style={[styles.metaLine, isDark && styles.textSubDark]}>没有读取到大小号列表；保存 Token 后点“刷新账号列表”。</Text>}
+        }) : <Text style={[styles.metaLine, isDark && styles.textSubDark]}>{t('没有读取到大小号列表；保存 Token 后点"刷新账号列表"。')}</Text>}
       </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>B站登录</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('B站登录')}</Text>
         <TouchableOpacity style={styles.btnPrimary} onPress={handleBiliQr}>
-          <Text style={styles.btnText}>获取 B站登录二维码</Text>
+          <Text style={styles.btnText}>{t('获取B站登录二维码')}</Text>
         </TouchableOpacity>
         {qrHtml ? <WebView source={{ html: qrHtml }} style={styles.qr} originWhitelist={['*']} scrollEnabled={false} /> : null}
-        {settings.bilibiliCookie ? <Text style={styles.tokenInfo}>B站已登录</Text> : null}
+        {biliStatus ? <Text style={[styles.biliStatus, isDark && styles.textSubDark]}>{biliStatus}</Text> : null}
+        {settings.bilibiliCookie ? <Text style={styles.tokenInfo}>{t('B站已登录')}</Text> : null}
       </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>口袋资料</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('口袋资料')}</Text>
         {renameCountText ? <Text style={[styles.metaLine, isDark && styles.textSubDark]}>{renameCountText}</Text> : null}
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
-          placeholder="昵称"
+          placeholder={t('昵称')}
           placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
           value={profileName}
           onChangeText={setProfileName}
         />
         <View style={styles.btnRow}>
           <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleLoadProfile} disabled={loading}>
-            <Text style={styles.btnText}>读取资料</Text>
+            <Text style={styles.btnText}>{t('读取资料')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleEditProfile} disabled={loading}>
-            <Text style={styles.btnText}>修改昵称</Text>
+            <Text style={styles.btnText}>{t('修改昵称')}</Text>
           </TouchableOpacity>
         </View>
         <TextInput
           style={[styles.input, isDark && styles.inputDark]}
-          placeholder="头像 URL（上传后自动填入）"
+          placeholder={t('头像URL上传后自动填入')}
           placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
           value={profileAvatar}
           onChangeText={setProfileAvatar}
@@ -469,14 +495,14 @@ export default function LoginScreen() {
           editable={false}
         />
         <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginTop: 8 }]} onPress={handlePickAvatar} disabled={loading}>
-          <Text style={styles.btnText}>选择本地图片上传头像</Text>
+          <Text style={styles.btnText}>{t('选择本地图片上传头像')}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>鸡腿充值</Text>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('鸡腿充值')}</Text>
         <TouchableOpacity style={styles.btnPrimary} onPress={() => (navigation as any).navigate('RechargeScreen')}>
-            <Text style={styles.btnText}>打开官方充值页</Text>
+            <Text style={styles.btnText}>{t('打开官方充值页')}</Text>
           </TouchableOpacity>
         </View>
       </FadeInView>
@@ -495,6 +521,11 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 12 },
   input: { padding: 12, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: 'rgba(255,255,255,0.50)', color: '#333', marginBottom: 10, fontSize: 14 },
   inputDark: { backgroundColor: 'rgba(42,42,42,0.52)', borderColor: '#444', color: '#eee' },
+  phoneRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  areaWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: 'rgba(255,255,255,0.50)', marginBottom: 10 },
+  areaPlus: { color: '#555', fontWeight: '700', fontSize: 15, marginRight: 2 },
+  areaInput: { minWidth: 44, padding: 12, paddingHorizontal: 0, color: '#333', fontSize: 14 },
+  phoneInput: { flex: 1 },
   tokenInput: { minHeight: 86, textAlignVertical: 'top' },
   btnRow: { flexDirection: 'row', gap: 10 },
   btn: { flex: 1, padding: 12, borderRadius: 18, backgroundColor: '#4a4a4a', alignItems: 'center' },
@@ -502,6 +533,7 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.55 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   status: { margin: 16, fontSize: 13, color: '#444', textAlign: 'center', lineHeight: 20 },
+  biliStatus: { marginTop: 10, fontSize: 12, color: '#555', textAlign: 'center', lineHeight: 18 },
   tokenInfo: { marginTop: 10, fontSize: 12, color: '#4caf50' },
   metaLine: { marginTop: -4, marginBottom: 10, fontSize: 12, color: '#4a4a4a' },
   qr: { width: 220, height: 220, alignSelf: 'center', marginTop: 12 },

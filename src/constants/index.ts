@@ -4,11 +4,11 @@ export const API_BASE = 'https://pocketapi.48.cn';
 
 export const BILIBILI_API = 'https://api.bilibili.com';
 
-// 成员数据权威源：yk1z 数据库（yk1z/yaya_msg 电脑版所用的同一份数据，发布于 yaya-data.pages.dev）。
+// 成员数据权威源：数据发布于 data.gnz.hk（GNZ48 团站数据库镜像）。
 // 进入软件由 AppNavigator 调用 ensureMemberData() 无条件同步最新。
-export const MEMBERS_URL = 'https://yaya-data.pages.dev/members.json';
+export const MEMBERS_URL = 'https://data.gnz.hk/members.json';
 
-export const APP_VERSION = '2.6.3';
+export const APP_VERSION = '2.6.4';
 
 // 成员数据原始仓库（yk1z 的牙牙消息电脑版），数据由其维护并发布。
 export const MEMBER_DATA_SOURCE_URL = 'https://github.com/yk1z/yaya_msg';

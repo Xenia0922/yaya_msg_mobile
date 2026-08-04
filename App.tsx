@@ -3,6 +3,7 @@ import { View, Text, ActivityIndicator, ImageBackground, Modal, Image, Touchable
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation';
 import { loadSettings } from './src/services/settings';
+import { useResolvedTheme } from './src/hooks/useAppTheme';
 import { useSettingsStore, useMemberStore, useAnnouncementStore } from './src/store';
 import { loadMembers } from './src/utils/members';
 import { fetchJson } from './src/utils/network';
@@ -39,11 +40,11 @@ initRuntimeLog().catch(() => {});
 export default function App() {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState('正在初始化...');
-  const appTheme = useSettingsStore((state) => state.settings.theme);
+  const appTheme = useResolvedTheme();
   const customBackgroundFile = useSettingsStore((state) => state.settings.customBackgroundFile);
   const customBackgroundUpdatedAt = useSettingsStore((state) => state.settings.customBackgroundUpdatedAt);
   const [backgroundLoadError, setBackgroundLoadError] = useState('');
-  const splashBg = appTheme === 'dark' ? 'Colors.bgDark' : '#fff7fb';
+  const splashBg = appTheme === 'dark' ? Colors.bgDark : '#fff7fb';
 
   // v2.6: Announcement modal
   const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
@@ -130,7 +131,7 @@ export default function App() {
     : null;
 
   const content = (
-    <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : (appTheme === 'dark' ? 'Colors.bgDark' : '#fff7fb') }}>
+    <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : (appTheme === 'dark' ? Colors.bgDark : '#fff7fb') }}>
       <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
       {backgroundLoadError ? (
         <View pointerEvents="none" style={{ position: 'absolute', left: 10, right: 10, top: 36, zIndex: 9999, padding: 8, borderRadius: 8, backgroundColor: 'rgba(180,0,0,0.82)' }}>
@@ -175,7 +176,7 @@ export default function App() {
     <ImageBackground
       key={`${backgroundSource.uri}-${customBackgroundUpdatedAt || 0}`}
       source={backgroundSource}
-      style={{ flex: 1, backgroundColor: appTheme === 'dark' ? '#111111' : '#fff7fb' }}
+      style={{ flex: 1, backgroundColor: appTheme === 'dark' ? Colors.bgDark : '#fff7fb' }}
       resizeMode="cover"
       onLoad={() => setBackgroundLoadError('')}
       onError={(event) => setBackgroundLoadError(`背景图加载失败：${backgroundSource.uri} ${event.nativeEvent?.error || ''}`)}

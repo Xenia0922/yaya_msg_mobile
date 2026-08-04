@@ -22,6 +22,8 @@ import { errorMessage, parseMaybeJson } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { Member } from '../types';
 import { CenterSpinner } from '../components/Loaders';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 interface DynItem {
   key: string;
@@ -62,7 +64,8 @@ function normalizeItem(raw: any, index: number): DynItem | null {
 
 export default function MemberDynamicScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [member, setMember] = useState<Member | null>(null);
   const [error, setError] = useState('');
   const [zoomUrl, setZoomUrl] = useState('');
@@ -120,12 +123,12 @@ export default function MemberDynamicScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="成员动态" onBack={() => navigation.goBack()} right={
+      <ScreenHeader title={t('成员动态')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity disabled={!member || loading} onPress={() => refresh()}>
-          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>刷新</Text>
+          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
-      <MemberPicker selectedMember={member} onSelect={setMember} placeholder="搜索成员查看动态..." />
+      <MemberPicker selectedMember={member} onSelect={setMember} placeholder={t('搜索成员查看动态...')} />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={items}
@@ -140,14 +143,14 @@ export default function MemberDynamicScreen() {
           renderItem={renderItem}
           ListFooterComponent={
             items.length ? <Text style={[styles.footer, isDark && styles.textSubLight]}>
-              {loading ? '' : hasMore ? '上滑继续加载' : '没有更多了'}
+              {loading ? '' : hasMore ? t('上滑继续加载') : t('没有更多了')}
             </Text> : null
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               {loading ? <CenterSpinner dark={isDark} /> : null}
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                {loading ? '' : member ? (error ? error : '暂无动态') : '请搜索选择成员查看动态'}
+                {loading ? '' : member ? (error ? error : t('暂无动态')) : t('请搜索选择成员查看动态')}
               </Text>
             </View>
           }

@@ -22,6 +22,8 @@ import pocketApi from '../api/pocket48';
 import { errorMessage, parseMaybeJson } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { Member } from '../types';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { useI18n } from '../i18n';
 
 interface WbItem {
   key: string;
@@ -64,7 +66,8 @@ function normalizeItem(raw: any, index: number): WbItem | null {
 
 export default function MemberWeiboScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useSettingsStore((state) => state.settings.theme === 'dark');
+  const isDark = useAppTheme();
+  const { t } = useI18n();
   const [member, setMember] = useState<Member | null>(null);
   const [items, setItems] = useState<WbItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -116,7 +119,7 @@ export default function MemberWeiboScreen() {
         )}
         {item.jumpUrl ? (
           <TouchableOpacity style={styles.linkBtn} onPress={() => Linking.openURL(item.jumpUrl)}>
-            <Text style={styles.linkBtnText}>查看微博原文</Text>
+            <Text style={styles.linkBtnText}>{t('查看微博原文')}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -125,12 +128,12 @@ export default function MemberWeiboScreen() {
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
-      <ScreenHeader title="成员微博" onBack={() => navigation.goBack()} right={
+      <ScreenHeader title={t('成员微博')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity disabled={!member || loading} onPress={() => fetchData(true)}>
-          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>刷新</Text>
+          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
-      <MemberPicker selectedMember={member} onSelect={setMember} placeholder="搜索成员查看微博..." />
+      <MemberPicker selectedMember={member} onSelect={setMember} placeholder={t('搜索成员查看微博...')} />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={items}
@@ -145,14 +148,14 @@ export default function MemberWeiboScreen() {
           renderItem={renderItem}
           ListFooterComponent={
             items.length ? <Text style={[styles.footer, isDark && styles.textSubLight]}>
-              {loadingMore ? '' : hasMore ? '上滑加载更多' : '没有更多了'}
+              {loadingMore ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
             </Text> : null
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               {loading ? <CenterSpinner dark={isDark} /> : null}
               <Text style={[styles.empty, isDark && styles.textSubLight]}>
-                {loading ? '' : member ? (error ? error : '暂无微博') : '请搜索选择成员查看微博'}
+                {loading ? '' : member ? (error ? error : t('暂无微博')) : t('请搜索选择成员查看微博')}
               </Text>
             </View>
           }
