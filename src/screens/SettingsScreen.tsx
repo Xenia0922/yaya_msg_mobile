@@ -178,7 +178,7 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title={t('语言')} isDark={isDark}>
-        <ChipRow options={LANGUAGE_OPTIONS.map((o) => ({ ...o, label: t(o.label) }))} value={settings.language || 'system'} isDark={isDark} onChange={(v) => update('language', v)} />
+        <ChipRow options={LANGUAGE_OPTIONS.map((o) => ({ ...o, label: o.value === 'system' ? t(o.label) : o.label }))} value={settings.language || 'system'} isDark={isDark} onChange={(v) => update('language', v)} />
       </Section>
 
       <Section title={t('自动签到')} isDark={isDark}>
