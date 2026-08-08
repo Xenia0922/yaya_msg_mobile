@@ -97,8 +97,8 @@ android {
     namespace 'com.yk1z.yayamsg'
     defaultConfig {
         applicationId 'com.yk1z.yayamsg'
-        // minSdk 29（Android 10）：兼容 Huawei nova 5 Pro 等 HarmonyOS 4.x 设备（基座 Android 10）
-        minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 29)
+        // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
+        minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2060004
         versionName "2.6.4"
