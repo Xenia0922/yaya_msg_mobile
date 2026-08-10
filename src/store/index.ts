@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, Member } from '../types';
+import { APP_VERSION } from '../constants';
 
 interface SettingsState {
   settings: AppSettings;
@@ -104,3 +105,71 @@ AsyncStorage.getItem(ANNOUNCEMENT_SEEN_KEY)
   .finally(() => {
     useAnnouncementStore.setState({ hydrated: true });
   });
+
+// --- 版本更新检测 ---
+
+const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Xenia0922/yaya_msg_mobile/releases/latest';
+const UPDATE_TIMEOUT = 8000;
+
+function parseVersion(v: string): number[] {
+  return String(v || '')
+    .replace(/^v/i, '')
+    .split(/[.\-+]/)
+    .map((seg) => parseInt(seg, 10))
+    .filter((n) => !Number.isNaN(n));
+}
+
+/** candidate 是否比 current 新（纯数字段比较，如 2.6.6 > 2.6.5） */
+export function isNewerVersion(candidate: string, current: string): boolean {
+  const a = parseVersion(candidate);
+  const b = parseVersion(current);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i += 1) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x > y) return true;
+    if (x < y) return false;
+  }
+  return false;
+}
+
+interface UpdateState {
+  /** 是否有可用更新（本地版本低于 GitHub 最新 Release 版本） */
+  hasUpdate: boolean;
+  /** 最新版本号（如 v2.6.6），无更新时为空 */
+  latestVersion: string;
+  /** 最新版 APK 直链；Release 无 APK 附件时回退到 Release 页面 */
+  latestUrl: string;
+  /** 本次会话已检查的时间戳，0 表示未检查 */
+  lastCheckedAt: number;
+  checkUpdate: () => Promise<void>;
+}
+
+export const useUpdateStore = create<UpdateState>((set) => ({
+  hasUpdate: false,
+  latestVersion: '',
+  latestUrl: '',
+  lastCheckedAt: 0,
+  // 应用启动时自动检测一次；失败（网络/无 Release/超时）静默视为无更新，
+  // 绝不打扰用户 —— 没有红点就当作没有更新。
+  checkUpdate: async () => {
+    const { lastCheckedAt } = useUpdateStore.getState();
+    if (lastCheckedAt && Date.now() - lastCheckedAt < 10 * 60 * 1000) return;
+    set({ lastCheckedAt: Date.now() });
+    try {
+      const res = await Promise.race([
+        fetch(GITHUB_RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'yaya-msg-mobile' } }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT)),
+      ]);
+      if (!res.ok) { set({ hasUpdate: false, latestVersion: '', latestUrl: '' }); return; }
+      const data: any = await res.json();
+      const tag = String(data.tag_name || data.name || '');
+      const apk = (data.assets || []).find((a: any) => String(a.name || '').toLowerCase().endsWith('.apk'));
+      const url = String(apk?.browser_download_url || data.html_url || '');
+      const has = !!tag && !!url && isNewerVersion(tag, APP_VERSION);
+      set({ hasUpdate: has, latestVersion: has ? tag : '', latestUrl: has ? url : '' });
+    } catch {
+      set({ hasUpdate: false, latestVersion: '', latestUrl: '' });
+    }
+  },
+}));

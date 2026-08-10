@@ -14,7 +14,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { RootStackParamList, TabParamList } from '../navigation/types';
-import { useSettingsStore, useUiStore, useMemberStore } from '../store';
+import { useSettingsStore, useUiStore, useMemberStore, useUpdateStore } from '../store';
 import { saveSettings } from '../services/settings';
 import ScreenHeader from '../components/ScreenHeader';
 import RuntimeLogViewer from '../components/RuntimeLogViewer';
@@ -71,6 +71,7 @@ export default function SettingsScreen() {
   const memberCount = useMemberStore((state) => state.members.length);
   const isDark = useAppTheme();
   const { t } = useI18n();
+  const hasUpdate = useUpdateStore((s) => s.hasUpdate);
   const [meta, setMeta] = useState<MemberDataMeta | null>(null);
   const [logVisible, setLogVisible] = useState(false);
 
@@ -125,8 +126,19 @@ export default function SettingsScreen() {
             <Text style={[styles.aboutName, isDark && styles.textLight]}>{t('牙牙消息')}</Text>
             <Text style={[styles.aboutSub, isDark && styles.textSubLight]}>{t('Yaya Message · 口袋48 第三方客户端')}</Text>
           </View>
-          <View style={styles.verChip}>
-            <Text style={styles.verChipText}>v{APP_VERSION}</Text>
+          <View style={styles.verChipWrap}>
+            <TouchableOpacity
+              style={styles.verChip}
+              onPress={() => {
+                const { hasUpdate, latestUrl } = useUpdateStore.getState();
+                if (hasUpdate && latestUrl) {
+                  Linking.openURL(latestUrl).catch(() => {});
+                }
+              }}
+            >
+              <Text style={styles.verChipText}>v{APP_VERSION}</Text>
+            </TouchableOpacity>
+            {hasUpdate ? <View style={styles.verDot} /> : null}
           </View>
         </View>
 
@@ -262,6 +274,8 @@ const styles = StyleSheet.create({
   aboutHeroDark: { backgroundColor: 'rgba(255,111,145,0.10)' },
   aboutLogoImg: { width: 52, height: 52, borderRadius: 16, marginRight: 12, backgroundColor: '#f0f0f0' },
   verChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, backgroundColor: 'rgba(255,111,145,0.14)' },
+  verChipWrap: { alignItems: 'flex-end' },
+  verDot: { position: 'absolute', top: -2, right: -2, width: 9, height: 9, borderRadius: 5, backgroundColor: '#ff3b30', borderWidth: 1.5, borderColor: '#fff' },
   verChipText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
   linkCard: { flexDirection: 'row', alignItems: 'center', marginTop: 12, padding: 12, borderRadius: 16, backgroundColor: 'rgba(255,111,145,0.08)' },
   linkCardDark: { backgroundColor: 'rgba(255,111,145,0.12)' },

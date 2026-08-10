@@ -63,6 +63,8 @@ type RoomMedia = {
   isLive?: boolean;
   needsVlc?: boolean;
   cover?: string;
+  /** 消息/卡片已明示「回放/录播」：播放时应走可拖进度条的录播播放器，而非直播播放器 */
+  replayHint?: boolean;
 };
 
 type SenderProfile = {
@@ -436,6 +438,21 @@ function isLiveStreamUrl(url: string): boolean {
   return lower.startsWith('rtmp://') || lower.includes('.flv') || lower.includes('.m3u8');
 }
 
+/** 从已拉取的直播/录播详情判断当前状态。
+ *  口袋 48 接口的事实字段：录播详情带 content.msgFilePath / content.lrcUrl（LRC 弹幕文件，
+ *  见 pocket48.getLiveLrc 的既有用法），直播详情带 isLiving / living / isEnd 等状态位。
+ *  无法确定时返回 'unknown'，交由上层按 URL 形态兜底。 */
+function detailLiveState(detail: any): 'live' | 'replay' | 'unknown' {
+  const d = detail?.content || detail?.data || detail || {};
+  if (d.isLiving === true || d.living === true || d.isLive === true) return 'live';
+  if (d.isLiving === false || d.living === false || d.isLive === false
+    || d.isEnd === true || d.isEnded === true || d.isFinished === true
+    || d.isRecord === 1 || d.isRecord === true || d.record === 1 || d.record === true
+    || d.isReplay === 1 || d.isReplay === true || d.isPlayback === true
+    || Boolean(d.msgFilePath) || Boolean(d.lrcUrl)) return 'replay';
+  return 'unknown';
+}
+
 function isRawJsonText(value: string) {
   const text = String(value || '').trim();
   return (text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'));
@@ -460,51 +477,77 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
   // 消息里已带可播放地址：直接返回，不再请求任何接口（直播分享/录播卡片通常自带 URL）
   const ownUrl = isPlayableMediaUrl(media.url) ? media.url : '';
   if (ownUrl) {
-    return { ...media, liveId, title, url: ownUrl, isLive: isLiveStreamUrl(ownUrl), needsVlc: streamNeedsProxy(ownUrl) };
+    // rtmp 推流只可能是直播；消息明示回放时按录播处理（.m3u8/.flv 既可能是直播流也可能是回放流）
+    const isLive = !media.replayHint || ownUrl.toLowerCase().startsWith('rtmp://')
+      ? isLiveStreamUrl(ownUrl)
+      : false;
+    return { ...media, liveId, title, url: ownUrl, isLive, needsVlc: streamNeedsProxy(ownUrl) };
   }
-  const attempts: Array<() => Promise<any>> = [];
+  const attempts: Array<{ label: 'live' | 'replay' | 'detail'; run: () => Promise<any> }> = [];
   if (liveId) {
-    attempts.push(async () => pocketApi.getLiveOne(liveId));
-    attempts.push(async () => pocketApi.getOpenLiveOne(liveId));
-    attempts.push(async () => findLiveItem(await pocketApi.getLiveList({ record: false, debug: true, next: 0 }), liveId));
-    attempts.push(async () => findLiveItem(await pocketApi.getLiveList({ record: true, debug: true, next: 0 }), liveId));
-    attempts.push(async () => findLiveItem(await pocketApi.getOpenLivePublicList({ record: true, next: 0 }), liveId));
-    attempts.push(async () => {
+    attempts.push({ label: 'detail', run: () => pocketApi.getLiveOne(liveId) });
+    attempts.push({ label: 'detail', run: () => pocketApi.getOpenLiveOne(liveId) });
+    attempts.push({ label: 'live', run: async () => findLiveItem(await pocketApi.getLiveList({ record: false, debug: true, next: 0 }), liveId) });
+    attempts.push({ label: 'replay', run: async () => findLiveItem(await pocketApi.getLiveList({ record: true, debug: true, next: 0 }), liveId) });
+    attempts.push({ label: 'replay', run: async () => findLiveItem(await pocketApi.getOpenLivePublicList({ record: true, next: 0 }), liveId) });
+    attempts.push({ label: 'replay', run: async () => {
       for (let page = 1; page <= 3; page += 1) {
         const found = findLiveItem(await pocketApi.getLiveList({ record: true, debug: true, page, next: page - 1 }), liveId);
         if (found) return found;
       }
       return null;
-    });
+    } });
   }
   // 并行发起全部候选接口，按优先级取第一个出 URL 的结果；
   // 原来 6 个接口串行（最坏每个 15s 超时），是「解析卡死、第一次点击无响应」的根因。
   const ATTEMPT_TIMEOUT = 8000;
   const settled = await Promise.allSettled(
     attempts.map((attempt) => Promise.race([
-      attempt(),
+      attempt.run(),
       new Promise<any>((resolve) => setTimeout(() => resolve(null), ATTEMPT_TIMEOUT)),
     ])),
   );
-  for (const result of settled) {
-    if (result.status !== 'fulfilled' || !result.value) continue;
-    const detail = result.value;
-    const urls = pickPlayableUrls(detail, true).filter(isPlayableMediaUrl);
-    if (urls[0]) {
-      const d = detail?.content || detail?.data || detail || {};
-      const cover = normalizeUrl(
-        d.liveCover || d.coverPath || d.cover || d.coverUrl || d.picPath || d.liveRoomCover || ''
-      ) || media.cover;
-      return {
-        ...media,
-        type: 'live',
-        liveId,
-        title,
-        url: urls[0],
-        cover,
-        isLive: isLiveStreamUrl(urls[0]),
-        needsVlc: streamNeedsProxy(urls[0]),
-      };
+  // 先分辨直播还是录播，再决定播放器：
+  // 回放列表（record:true）命中的结果确定是录播，优先采用；
+  // 其余（正在直播列表 / 详情）按接口状态位或 URL 形态兜底判断，避免把回放流误当直播播放。
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (let i = 0; i < attempts.length; i += 1) {
+      if ((pass === 0) !== (attempts[i].label === 'replay')) continue;
+      const result = settled[i];
+      if (result.status !== 'fulfilled' || !result.value) continue;
+      const detail = result.value;
+      const urls = pickPlayableUrls(detail, true).filter(isPlayableMediaUrl);
+      if (urls[0]) {
+        const d = detail?.content || detail?.data || detail || {};
+        const cover = normalizeUrl(
+          d.liveCover || d.coverPath || d.cover || d.coverUrl || d.picPath || d.liveRoomCover || ''
+        ) || media.cover;
+        let isLive: boolean;
+        if (attempts[i].label === 'replay') {
+          isLive = false;
+        } else if (attempts[i].label === 'live') {
+          isLive = true;
+        } else {
+          const state = detailLiveState(detail);
+          if (state === 'replay') isLive = false;
+          else if (state === 'live') isLive = true;
+          else {
+            // 详情无明确状态位：URL 兜底；消息明示回放且非 rtmp 推流时按录播优先
+            isLive = isLiveStreamUrl(urls[0]);
+            if (isLive && media.replayHint && !urls[0].toLowerCase().startsWith('rtmp://')) isLive = false;
+          }
+        }
+        return {
+          ...media,
+          type: 'live',
+          liveId,
+          title,
+          url: urls[0],
+          cover,
+          isLive,
+          needsVlc: streamNeedsProxy(urls[0]),
+        };
+      }
     }
   }
   return { ...media, liveId, title, url: ownUrl, isLive: isLiveStreamUrl(ownUrl), needsVlc: streamNeedsProxy(ownUrl) };
@@ -587,7 +630,12 @@ function roomMedia(item: any): RoomMedia | null {
   ]) || '') || normalizeUrl(deepFindText([item, ext, body], [
     'coverUrl', 'cover', 'liveCover', 'picPath', 'coverPath', 'imageUrl', 'poster', 'thumb',
   ]));
-  return { type, url, title, duration, liveId, cover };
+  // 消息/卡片本身已明示「回放/录播」时，播放器应走「可拖进度条的录播模式」，
+  // 而不是仅凭 .flv/.m3u8 后缀误判成直播（回放地址常见 HLS/FLV 形态）。
+  const replayHint = !!(msgType.match(/RECORD|PLAYBACK|VOD|REPLAY|回放/)
+    || /(回放|录播|replay|playback)/i.test(`${String(text || '')} ${String(body?.title || '')} ${String(body?.content || '')} ${String(body?.desc || '')} ${String(item?.title || '')}`)
+    || /(replayUrl|playbackUrl|recordUrl|\/replay\/|\/record\/|\/playback\/)/i.test(`${url} ${String(body?.replayUrl || '')} ${String(body?.playbackUrl || '')} ${String(body?.recordUrl || '')}`));
+  return { type, url, title, duration, liveId, cover, replayHint };
 }
 
 function roomGiftInfo(item: any): { name: string; num: number; image: string; total: string } | null {

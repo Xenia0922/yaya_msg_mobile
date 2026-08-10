@@ -1484,7 +1484,7 @@ export default function MediaScreen() {
               </View>
             ) : null
           }
-          contentContainerStyle={list.length === 0 ? { flex: 1 } : undefined}
+          contentContainerStyle={list.length === 0 ? { flex: 1 } : styles.listContent}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
@@ -1515,6 +1515,7 @@ const styles = StyleSheet.create({
   refreshBtnDark: { backgroundColor: 'rgba(42,42,42,0.52)' },
   refreshTextDark: { color: '#aaa' },
   footer: { paddingVertical: 14, alignItems: 'center' },
+  listContent: { paddingBottom: 120 },
   footerSpinner: { opacity: 0.6 },
   error: { margin: 12, padding: 10, borderRadius: 18, backgroundColor: '#fff3cd', color: '#8a5a00', fontSize: 12, lineHeight: 18 },
   playerPage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999, elevation: 999, backgroundColor: '#000' },

@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation';
 import { loadSettings } from './src/services/settings';
 import { useResolvedTheme } from './src/hooks/useAppTheme';
-import { useSettingsStore, useMemberStore, useAnnouncementStore } from './src/store';
+import { useSettingsStore, useMemberStore, useAnnouncementStore, useUpdateStore } from './src/store';
 import { loadMembers } from './src/utils/members';
 import { fetchJson } from './src/utils/network';
 import { loadCachedMemberData } from './src/services/memberData';
@@ -117,6 +117,8 @@ export default function App() {
     const timer = setTimeout(() => {
       runAutoCheckinIfNeeded().catch(() => {});
     }, 1200);
+    // 启动静默检测最新版本：失败/无 Release 一律不打扰，设置页版本号红点由 store 驱动
+    useUpdateStore.getState().checkUpdate().catch(() => {});
     return () => clearTimeout(timer);
   }, [ready]);
 
