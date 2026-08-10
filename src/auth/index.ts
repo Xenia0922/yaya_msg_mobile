@@ -2,6 +2,9 @@
 import { verifyWasm, wasmBase64MatchesPin, base64ToBytes } from './wasmHash';
 import wasmBase64 from './wasmBase64';
 
+// 调试日志：dev 输出，release 编译期消除（__DEV__ 折叠），杜绝 Hermes 环境下 console.debug 的兼容风险
+const dbg = __DEV__ ? (console.debug || console.log).bind(console) : () => {};
+
 let WASM_READY = false;
 let _paGen: (() => string | null) | null = null;
 let _lastError = '';
@@ -25,26 +28,26 @@ export function initWasm(): Promise<void> {
   if (_initPromise) return _initPromise;
   _initPromise = (async () => {
     try {
-      console.debug('[initWasm] Starting native WASM initialization...');
+      dbg('[initWasm] Starting native WASM initialization...');
       if (typeof WebAssembly === 'undefined') {
         // RN Hermes 引擎默认不暴露 WebAssembly，此守卫在真机上是正常命中路径（非异常）；
       // 原生通道不可用即降级到 WebView 签名器，不当作致命错误。
         throw new Error('当前运行环境缺少 WebAssembly 支持');
       }
-      console.debug('[initWasm] Loading wasm module...');
+      dbg('[initWasm] Loading wasm module...');
       const m = require('./wasm');
       const initFn = m.default || m;
       const paFn = m.__x6c2adf8__;
       if (!initFn || !paFn) throw new Error('WASM 加载器异常');
 
-      console.debug('[initWasm] Fetching WASM bytes...');
+      dbg('[initWasm] Fetching WASM bytes...');
       const buf = await fetchWasm();
-      console.debug('[initWasm] WASM bytes fetched, length:', buf.byteLength);
+      dbg('[initWasm] WASM bytes fetched, length:', buf.byteLength);
       await initFn(buf);
       _paGen = paFn;
       WASM_READY = true;
       _nativeSucceeded = true;
-      console.debug('[initWasm] Native WASM initialization SUCCESS');
+      dbg('[initWasm] Native WASM initialization SUCCESS');
     } catch (e: any) {
       _lastError = e?.message || String(e);
       // Hermes 上原生 WASM 本就不可用，WebView 签名器才是实际通道；降级为 log 记录，
@@ -122,31 +125,31 @@ export function generatePa(): string | null {
 export async function generatePaAsync(): Promise<string | null> {
   // 先等原生通道初始化完成再判定（避免「initWasm 还在异步加载、_paGen 尚为 null」就误判为不可用，
   // 进而过早落到 WebView 兜底并被 6s 超时打断 —— 这正是 1305 后「设备不支持 WebAssembly」误报的根因）。
-  console.debug('[generatePaAsync] ERROR-LEVEL: Checking native WASM status, WASM_READY:', WASM_READY, '_paGen:', !!_paGen, '_initPromise:', !!_initPromise);
+  dbg('[generatePaAsync] ERROR-LEVEL: Checking native WASM status, WASM_READY:', WASM_READY, '_paGen:', !!_paGen, '_initPromise:', !!_initPromise);
   if ((!WASM_READY || !_paGen) && _initPromise) {
     try { 
-      console.debug('[generatePaAsync] Waiting for native initPromise...');
+      dbg('[generatePaAsync] Waiting for native initPromise...');
       await _initPromise; 
-      console.debug('[generatePaAsync] Native initPromise resolved');
+      dbg('[generatePaAsync] Native initPromise resolved');
     } catch { 
-      console.debug('[generatePaAsync] Native initPromise failed, will try WebView');
+      dbg('[generatePaAsync] Native initPromise failed, will try WebView');
       /* 原生失败则继续走 WebView 兜底 */ 
     }
   }
   const localPa = generatePa();
   if (localPa) {
-    console.debug('[generatePaAsync] Native PA generated successfully');
+    dbg('[generatePaAsync] Native PA generated successfully');
     return localPa;
   }
-  console.debug('[generatePaAsync] Native PA unavailable, trying WebView...');
-  console.debug('[generatePaAsync] ERROR-LEVEL: isWebViewSignerReady:', isWebViewSignerReady(), 'getWebViewSignerError:', getWebViewSignerError());
+  dbg('[generatePaAsync] Native PA unavailable, trying WebView...');
+  dbg('[generatePaAsync] ERROR-LEVEL: isWebViewSignerReady:', isWebViewSignerReady(), 'getWebViewSignerError:', getWebViewSignerError());
   try {
     // 冷启动 WebView 签名容器需要时间预热，给足 10s（同 1305 之前的默认），避免首调超时误报
     const webviewPa = await generatePaViaWebView(10000);
     if (webviewPa) {
-      console.debug('[generatePaAsync] WebView PA generated successfully');
+      dbg('[generatePaAsync] WebView PA generated successfully');
     } else {
-      console.debug('[generatePaAsync] WebView PA returned null');
+      dbg('[generatePaAsync] WebView PA returned null');
     }
     return webviewPa;
   } catch (e: any) {

@@ -5,6 +5,9 @@ import wasmBase64 from './wasmBase64';
 import wasmGlueSource from './wasmGlueSource';
 import { verifyWasm, wasmBase64MatchesPin } from './wasmHash';
 
+// 调试日志：dev 输出，release 编译期消除（__DEV__ 折叠），杜绝 Hermes 环境下 console.debug 的兼容风险
+const dbg = __DEV__ ? (console.debug || console.log).bind(console) : () => {};
+
 function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -39,7 +42,7 @@ function notifyMount(ready: boolean) {
   waiters.forEach((resolve) => resolve(ready));
 }
 function waitForMount(timeoutMs: number): Promise<boolean> {
-  console.debug('[waitForMount] Called, signerRequest:', !!signerRequest);
+  dbg('[waitForMount] Called, signerRequest:', !!signerRequest);
   if (signerRequest) return Promise.resolve(true);
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
@@ -49,7 +52,7 @@ function waitForMount(timeoutMs: number): Promise<boolean> {
     }, timeoutMs);
     const done = (ready: boolean) => {
       clearTimeout(timer);
-      console.debug('[waitForMount] Resolved:', ready);
+      dbg('[waitForMount] Resolved:', ready);
       resolve(ready);
     };
     mountWaiters.push(done);
@@ -65,17 +68,17 @@ export function getWebViewSignerError(): string {
 }
 
 export async function generatePaViaWebView(timeoutMs = 10000): Promise<string | null> {
-  console.debug('[generatePaViaWebView] Called, signerRequest:', !!signerRequest, 'signerReady:', signerReady);
+  dbg('[generatePaViaWebView] Called, signerRequest:', !!signerRequest, 'signerReady:', signerReady);
   if (!signerRequest) {
     const mounted = await waitForMount(timeoutMs);
-    console.debug('[generatePaViaWebView] waitForMount result:', mounted);
+    dbg('[generatePaViaWebView] waitForMount result:', mounted);
     if (!mounted || !signerRequest) {
       signerError = signerError || 'WebView 签名容器尚未挂载';
       console.error('[generatePaViaWebView] WebView not mounted, error:', signerError);
       return null;
     }
   }
-  console.debug('[generatePaViaWebView] Calling signerRequest...');
+  dbg('[generatePaViaWebView] Calling signerRequest...');
   return signerRequest(timeoutMs);
 }
 
@@ -96,7 +99,7 @@ function waitForReady(timeoutMs: number): Promise<boolean> {
     }, timeoutMs);
     const done = (ready: boolean) => {
       clearTimeout(timer);
-      console.debug('[waitForReady] Resolved:', ready);
+      dbg('[waitForReady] Resolved:', ready);
       resolve(ready);
     };
     readyWaiters.push(done);
@@ -158,23 +161,23 @@ export function WebViewSigner() {
     let mounted = true;
     signerError = '';
 
-    console.debug('[WebViewSigner] Effect mounted, starting wasm injection');
+    dbg('[WebViewSigner] Effect mounted, starting wasm injection');
 
     // 使用构建期内联的 wasm base64，避免运行时 Asset.loadAsync 在 release 包中失效
     // wasmBase64.ts 由 scripts/gen-wasm-base64.mjs 从同一份 assets/2.wasm 生成，确保字节一致
     (async () => {
       try {
-        console.debug('[WebViewSigner] Verifying wasmBase64 hash...');
+        dbg('[WebViewSigner] Verifying wasmBase64 hash...');
         // 完整性校验（与原生通道相同的哈希）
         if (!wasmBase64MatchesPin(wasmBase64)) {
           throw new Error('内联 wasmBase64 完整性校验失败');
         }
-        console.debug('[WebViewSigner] Hash verified, setting HTML...');
+        dbg('[WebViewSigner] Hash verified, setting HTML...');
         const built = makeHtml(wasmBase64);
         htmlRef.current = built;
         if (mounted) {
           setHtml(built);
-          console.debug('[WebViewSigner] HTML set, waiting for WebView ready...');
+          dbg('[WebViewSigner] HTML set, waiting for WebView ready...');
         }
       } catch (e: any) {
         if (mounted) {
@@ -185,7 +188,7 @@ export function WebViewSigner() {
     })();
 
     signerRequest = async (timeoutMs = 10000) => {
-      console.debug('[WebViewSigner] signerRequest called, html:', !!htmlRef.current, 'webRef:', !!webRef.current);
+      dbg('[WebViewSigner] signerRequest called, html:', !!htmlRef.current, 'webRef:', !!webRef.current);
       if (!htmlRef.current) {
         // 等待 wasm 注入完成
         let waited = 0;
@@ -199,14 +202,14 @@ export function WebViewSigner() {
           return null;
         }
       }
-      console.debug('[WebViewSigner] Waiting for WebView ready...');
+      dbg('[WebViewSigner] Waiting for WebView ready...');
       const ready = await waitForReady(timeoutMs);
       if (!ready) {
         signerError = signerError || 'WebView 签名初始化超时';
         console.error('[WebViewSigner] WebView初始化超时');
         return null;
       }
-      console.debug('[WebViewSigner] WebView ready, requesting PA...');
+      dbg('[WebViewSigner] WebView ready, requesting PA...');
       return new Promise((resolve, reject) => {
         if (!webRef.current) {
           console.error('[WebViewSigner] webRef.current is null!');
@@ -219,7 +222,7 @@ export function WebViewSigner() {
           reject(new Error('签名生成超时'));
         }, timeoutMs);
         pending.current[id] = { resolve, reject, timer };
-        console.debug('[WebViewSigner] Sending PA request to WebView, id:', id);
+        dbg('[WebViewSigner] Sending PA request to WebView, id:', id);
         webRef.current.postMessage(JSON.stringify({ type: 'pa', id }));
       });
     };
@@ -257,8 +260,8 @@ export function WebViewSigner() {
         source={html ? { html } : { html: loadingHtml }}
         javaScriptEnabled
         domStorageEnabled
-        onLoad={() => console.debug('[WebViewSigner] ERROR-LEVEL: WebView onLoad fired')}
-        onLoadEnd={(e) => console.debug('[WebViewSigner] ERROR-LEVEL: WebView onLoadEnd, canGoBack:', e.nativeEvent.canGoBack, 'loading:', e.nativeEvent.loading, 'url:', e.nativeEvent.url, 'title:', e.nativeEvent.title)}
+        onLoad={() => dbg('[WebViewSigner] ERROR-LEVEL: WebView onLoad fired')}
+        onLoadEnd={(e) => dbg('[WebViewSigner] ERROR-LEVEL: WebView onLoadEnd, canGoBack:', e.nativeEvent.canGoBack, 'loading:', e.nativeEvent.loading, 'url:', e.nativeEvent.url, 'title:', e.nativeEvent.title)}
         onError={(e) => console.error('[WebViewSigner] ERROR-LEVEL: WebView onError:', e.nativeEvent)}
         onMessage={(event) => {
           let payload: any;
@@ -267,7 +270,7 @@ export function WebViewSigner() {
             signerReady = true;
             signerError = '';
             notifyReady(true);
-            console.debug('[WebViewSigner] ERROR-LEVEL: Received ready message');
+            dbg('[WebViewSigner] ERROR-LEVEL: Received ready message');
             return;
           }
           if (payload.type === 'error') {
