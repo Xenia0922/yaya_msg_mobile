@@ -16,6 +16,7 @@ import { useSettingsStore, useUiStore } from '../store';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine, mediaUrl as buildMediaUrl, isPlayableHost } from '../services/musicPlayer';
 import { errorMessage } from '../utils/data';
+import { logError } from '../utils/runtimeLog';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
 import MiniPlayerBar from '../components/MiniPlayerBar';
@@ -271,7 +272,7 @@ export default function MusicLibraryScreen() {
           }
         }}
         onProgress={(e) => {
-          try { useMusicPlayerStore.getState().setPosition(e.currentTime || 0); } catch {}
+          try { useMusicPlayerStore.getState().setPosition(e.currentTime || 0); } catch (err) { logError(err, 'MusicLibrary.onProgress'); }
         }}
         onEnd={() => {
           try {

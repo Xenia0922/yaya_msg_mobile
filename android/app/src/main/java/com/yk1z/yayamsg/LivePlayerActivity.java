@@ -11,11 +11,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Gravity;
-import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -32,12 +30,10 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
+import org.json.JSONException;
+import org.json.JSONObject;
 
-import tv.danmaku.ijk.media.player.IjkMediaPlayer;
-import tv.danmaku.ijk.media.player.IMediaPlayer;
+import java.util.ArrayList;
 
 public class LivePlayerActivity extends Activity {
   public static final String EXTRA_URL = "url";
@@ -45,6 +41,7 @@ public class LivePlayerActivity extends Activity {
   public static final String EXTRA_TITLE = "title";
   public static final String EXTRA_LIVE_ID = "liveId";
   public static final String EXTRA_ACCEPT_USER_ID = "acceptUserId";
+  public static final String EXTRA_LABELS = "labels";
 
   private static final int MIN_BUFFER_MS = 6000;
   private static final int MAX_BUFFER_MS = 20000;
@@ -54,7 +51,6 @@ public class LivePlayerActivity extends Activity {
   private static final long RETRY_DELAY_MS = 2000L;
   private static final long STALL_TIMEOUT_MS = 8000L;
   private static final String TAG = "LivePlayerActivity";
-  private static final AtomicBoolean IJK_READY = new AtomicBoolean(false);
 
   private final Handler handler = new Handler(Looper.getMainLooper());
   private FrameLayout playerHost;
@@ -62,10 +58,7 @@ public class LivePlayerActivity extends Activity {
   private TextView titleView;
   private SurfaceView exoSurfaceView;
   private ExoPlayer exoPlayer;
-  private FrameLayout ijkSurfaceBox;
-  private SurfaceView ijkSurfaceView;
-  private SurfaceHolder.Callback ijkSurfaceCallback;
-  private IjkMediaPlayer ijkPlayer;
+  private JSONObject labels = new JSONObject();
   private String url = "";
   private ArrayList<String> urlCandidates = new ArrayList<>();
   private int urlIndex = 0;
@@ -77,11 +70,6 @@ public class LivePlayerActivity extends Activity {
   private boolean releasing = false;
   private boolean isLandscape = false;
   private boolean triedExoForCurrentUrl = false;
-  private boolean triedIjkForCurrentUrl = false;
-  private int videoWidth = 0;
-  private int videoHeight = 0;
-  private int videoSarNum = 1;
-  private int videoSarDen = 1;
 
   @Override
   protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -100,6 +88,13 @@ public class LivePlayerActivity extends Activity {
     title = clean(getIntent().getStringExtra(EXTRA_TITLE));
     liveId = clean(getIntent().getStringExtra(EXTRA_LIVE_ID));
     acceptUserId = clean(getIntent().getStringExtra(EXTRA_ACCEPT_USER_ID));
+    String labelsRaw = clean(getIntent().getStringExtra(EXTRA_LABELS));
+    if (!labelsRaw.isEmpty()) {
+      try {
+        labels = new JSONObject(labelsRaw);
+      } catch (JSONException ignored) {
+      }
+    }
     if (title.isEmpty()) title = "Pocket48 Live";
     buildView();
     startPlayer();
@@ -118,7 +113,7 @@ public class LivePlayerActivity extends Activity {
     top.setPadding(dp(12), dp(22), dp(12), dp(10));
     top.setBackgroundColor(0x88000000);
 
-    TextView back = actionButton("返回");
+    TextView back = actionButton(L("back"));
     back.setOnClickListener(v -> finish());
     top.addView(back, new LinearLayout.LayoutParams(dp(64), dp(40)));
 
@@ -133,18 +128,18 @@ public class LivePlayerActivity extends Activity {
     titleParams.rightMargin = dp(10);
     top.addView(titleView, titleParams);
 
-    TextView rotate = actionButton("横屏");
+    TextView rotate = actionButton(L("rotate"));
     rotate.setOnClickListener(v -> toggleOrientation());
     top.addView(rotate, new LinearLayout.LayoutParams(dp(64), dp(40)));
 
-    TextView retry = actionButton("刷 新");
+    TextView retry = actionButton(L("refresh"));
     retry.setOnClickListener(v -> manualRetry());
     retry.setBackground(glassBackground(0xccff6f91, dp(20)));
     LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(dp(72), dp(40));
     retryParams.leftMargin = dp(8);
     top.addView(retry, retryParams);
 
-    TextView gift = actionButton("礼物");
+    TextView gift = actionButton(L("gift"));
     gift.setOnClickListener(v -> showGiftHint());
     LinearLayout.LayoutParams giftParams = new LinearLayout.LayoutParams(dp(64), dp(40));
     giftParams.leftMargin = dp(8);
@@ -177,16 +172,8 @@ public class LivePlayerActivity extends Activity {
     handler.removeCallbacksAndMessages(null);
     setStatus("Connecting with ExoPlayer..." + candidateStatus());
     releasePlayers();
-    if (isRtmp(url)) {
-      triedExoForCurrentUrl = true;
-      triedIjkForCurrentUrl = false;
-      startExoPlayer(true);
-    } else if (isRtmpOrFlv(url)) {
-      triedExoForCurrentUrl = true;
-      triedIjkForCurrentUrl = false;
-      startExoPlayer(false);
-    }
-    else startExoPlayer(false);
+    triedExoForCurrentUrl = true;
+    startExoPlayer(isRtmp(url));
   }
 
   private void startExoPlayer(boolean forceRtmpFactory) {
@@ -250,122 +237,6 @@ public class LivePlayerActivity extends Activity {
     }
   }
 
-  private void startIjkPlayer() {
-    if (!ensureIjkReady()) {
-      showFatal("RTMP engine is not available");
-      return;
-    }
-
-    videoWidth = 0;
-    videoHeight = 0;
-    videoSarNum = 1;
-    videoSarDen = 1;
-
-    ijkSurfaceBox = new FrameLayout(this);
-    playerHost.addView(ijkSurfaceBox, new FrameLayout.LayoutParams(-1, -1));
-
-    ijkSurfaceView = new SurfaceView(this);
-    ijkSurfaceBox.addView(ijkSurfaceView, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-    ijkSurfaceBox.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> resizeIjkSurface());
-    ijkSurfaceCallback = new SurfaceHolder.Callback() {
-      @Override
-      public void surfaceCreated(SurfaceHolder holder) {
-        prepareIjk(holder);
-      }
-
-      @Override
-      public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        if (ijkPlayer != null) ijkPlayer.setDisplay(holder);
-      }
-
-      @Override
-      public void surfaceDestroyed(SurfaceHolder holder) {
-        if (ijkPlayer != null) ijkPlayer.setDisplay(null);
-      }
-    };
-    ijkSurfaceView.getHolder().addCallback(ijkSurfaceCallback);
-  }
-
-  private void prepareIjk(SurfaceHolder holder) {
-    if (released || releasing || holder == null || !holder.getSurface().isValid()) return;
-    try {
-      releaseIjkPlayerOnly();
-      if (released || releasing || holder == null || !holder.getSurface().isValid()) return;
-      ijkPlayer = new IjkMediaPlayer();
-      applyIjkOptions(ijkPlayer);
-      ijkPlayer.setDisplay(holder);
-      ijkPlayer.setDataSource(url);
-      ijkPlayer.setOnPreparedListener(IMediaPlayer::start);
-      ijkPlayer.setOnVideoSizeChangedListener((mp, width, height, sarNum, sarDen) -> {
-        videoWidth = width;
-        videoHeight = height;
-        videoSarNum = sarNum <= 0 ? 1 : sarNum;
-        videoSarDen = sarDen <= 0 ? 1 : sarDen;
-        resizeIjkSurface();
-      });
-      ijkPlayer.setOnInfoListener((mp, what, extra) -> {
-        if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_START) setStatus("Buffering...");
-        if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_END) setStatus("Playing");
-        if (what == IMediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
-          retryCount = 0;
-          setStatus("Playing");
-        }
-        return false;
-      });
-      ijkPlayer.setOnErrorListener((mp, what, extra) -> {
-        scheduleRetry("RTMP playback failed: " + what + "/" + extra);
-        return true;
-      });
-      ijkPlayer.setOnCompletionListener(mp -> scheduleRetry("Stream ended"));
-      ijkPlayer.prepareAsync();
-    } catch (IOException error) {
-      scheduleRetry("Open stream failed: " + safeMessage(error));
-    } catch (Throwable error) {
-      scheduleRetry("RTMP player init failed: " + safeMessage(error));
-    }
-  }
-
-  private void applyIjkOptions(IjkMediaPlayer player) {
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "start-on-prepared", 1);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 0);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "framedrop", 1);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 0);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec-auto-rotate", 0);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "opensles", 1);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "infbuf", 1);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "rtmp_live", 1);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect", 1);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "rw_timeout", 12000000);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "fflags", "nobuffer");
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "flush_packets", 1);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "probesize", 32768);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "analyzeduration", 100000);
-    player.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "max-buffer-size", 262144);
-  }
-
-  private void resizeIjkSurface() {
-    if (Looper.myLooper() != Looper.getMainLooper()) {
-      handler.post(this::resizeIjkSurface);
-      return;
-    }
-    if (ijkSurfaceView == null || ijkSurfaceBox == null || videoWidth <= 0 || videoHeight <= 0) return;
-    int boxWidth = ijkSurfaceBox.getWidth();
-    int boxHeight = ijkSurfaceBox.getHeight();
-    if (boxWidth <= 0 || boxHeight <= 0) return;
-
-    float displayAspect = (float) boxWidth / (float) boxHeight;
-    float videoAspect = ((float) videoWidth * (float) videoSarNum / (float) videoSarDen) / (float) videoHeight;
-    int targetWidth = boxWidth;
-    int targetHeight = boxHeight;
-    if (videoAspect > displayAspect) {
-      targetHeight = Math.max(1, Math.round(boxWidth / videoAspect));
-    } else {
-      targetWidth = Math.max(1, Math.round(boxHeight * videoAspect));
-    }
-    FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(targetWidth, targetHeight, Gravity.CENTER);
-    ijkSurfaceView.setLayoutParams(params);
-  }
-
   private void scheduleRetry(String reason) {
     if (released) return;
     if (tryNextCandidate(reason)) return;
@@ -384,7 +255,6 @@ public class LivePlayerActivity extends Activity {
     retryCount = 0;
     urlIndex = 0;
     triedExoForCurrentUrl = false;
-    triedIjkForCurrentUrl = false;
     if (!urlCandidates.isEmpty()) url = urlCandidates.get(0);
     startPlayer();
   }
@@ -395,7 +265,6 @@ public class LivePlayerActivity extends Activity {
     url = urlCandidates.get(urlIndex);
     retryCount = 0;
     triedExoForCurrentUrl = false;
-    triedIjkForCurrentUrl = false;
     setStatus(reason + "\nSwitching stream " + (urlIndex + 1) + "/" + urlCandidates.size());
     handler.postDelayed(() -> {
       if (!released) startPlayer();
@@ -420,7 +289,6 @@ public class LivePlayerActivity extends Activity {
     released = false;
     try {
       if (exoPlayer != null) exoPlayer.play();
-      if (ijkPlayer != null && !ijkPlayer.isPlaying()) ijkPlayer.start();
     } catch (Throwable ignored) {
     }
   }
@@ -430,12 +298,6 @@ public class LivePlayerActivity extends Activity {
     try {
       if (!isFinishing()) {
         if (exoPlayer != null) exoPlayer.pause();
-        if (ijkPlayer != null && ijkPlayer.isPlaying()) {
-          try {
-            ijkPlayer.pause();
-          } catch (IllegalStateException ignored) {
-          }
-        }
       }
     } catch (Throwable ignored) {
     }
@@ -454,7 +316,6 @@ public class LivePlayerActivity extends Activity {
   private void releasePlayers() {
     releasing = true;
     releaseExo();
-    releaseIjk();
     if (playerHost != null) playerHost.removeAllViews();
     releasing = false;
   }
@@ -472,50 +333,15 @@ public class LivePlayerActivity extends Activity {
     }
   }
 
-  private void releaseIjk() {
-    try {
-      if (ijkSurfaceView != null && ijkSurfaceCallback != null) {
-        ijkSurfaceView.getHolder().removeCallback(ijkSurfaceCallback);
-      }
-      releaseIjkPlayerOnly();
-    } catch (Throwable ignored) {
-    } finally {
-      ijkSurfaceView = null;
-      ijkSurfaceCallback = null;
-      ijkSurfaceBox = null;
-    }
-  }
-
-  private void releaseIjkPlayerOnly() {
-    try {
-      if (ijkPlayer != null) {
-        ijkPlayer.setDisplay(null);
-        ijkPlayer.setOnPreparedListener(null);
-        ijkPlayer.setOnInfoListener(null);
-        ijkPlayer.setOnErrorListener(null);
-        ijkPlayer.setOnCompletionListener(null);
-        ijkPlayer.setOnVideoSizeChangedListener(null);
-        try {
-          ijkPlayer.stop();
-        } catch (IllegalStateException ignored) {
-        }
-        ijkPlayer.release();
-      }
-    } catch (Throwable ignored) {
-    } finally {
-      ijkPlayer = null;
-    }
-  }
-
   private void showFatal(String message) {
     runOnUiThread(() -> {
       setStatusNow(message);
       if (isFinishing() || isDestroyed()) return;
       new AlertDialog.Builder(this)
-          .setTitle("直播播放失败")
+          .setTitle(L("failTitle"))
           .setMessage(message)
-          .setPositiveButton("重试", (d, w) -> manualRetry())
-          .setNegativeButton("关闭", (d, w) -> finish())
+          .setPositiveButton(L("retry"), (d, w) -> manualRetry())
+          .setNegativeButton(L("close"), (d, w) -> finish())
           .show();
     });
   }
@@ -525,32 +351,15 @@ public class LivePlayerActivity extends Activity {
       if (isFinishing() || isDestroyed()) return;
       if (liveId.isEmpty()) {
         new AlertDialog.Builder(this)
-            .setTitle("????")
-            .setMessage("?????? liveId??????????")
-            .setPositiveButton("????", null)
+            .setTitle(L("giftHintTitle"))
+            .setMessage(L("giftHintMsg"))
+            .setPositiveButton(L("giftOk"), null)
             .show();
         return;
       }
       LivePlayerModule.requestGiftPanel(liveId, acceptUserId);
       finish();
     });
-  }
-
-  private boolean ensureIjkReady() {
-    if (IJK_READY.get()) return true;
-    try {
-      IjkMediaPlayer.loadLibrariesOnce(null);
-      IJK_READY.set(true);
-      return true;
-    } catch (Throwable error) {
-      setStatus("RTMP engine init failed: " + safeMessage(error));
-      return false;
-    }
-  }
-
-  private boolean isRtmpOrFlv(String value) {
-    String lower = value.toLowerCase();
-    return lower.startsWith("rtmp://") || lower.contains(".flv");
   }
 
   private boolean isRtmp(String value) {
@@ -614,5 +423,23 @@ public class LivePlayerActivity extends Activity {
     drawable.setCornerRadius(radius);
     drawable.setStroke(1, 0x55ffffff);
     return drawable;
+  }
+
+  private String L(String key) {
+    String value = labels.optString(key, "");
+    if (!value.isEmpty()) return value;
+    switch (key) {
+      case "back": return "返回";
+      case "rotate": return "横屏";
+      case "refresh": return "刷新";
+      case "gift": return "礼物";
+      case "failTitle": return "直播播放失败";
+      case "retry": return "重试";
+      case "close": return "关闭";
+      case "giftHintTitle": return "提示";
+      case "giftHintMsg": return "缺少 liveId，无法打开礼物面板";
+      case "giftOk": return "确定";
+      default: return key;
+    }
   }
 }

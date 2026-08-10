@@ -13,6 +13,7 @@ import { saveSettings } from '../services/settings';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, pickText } from '../utils/data';
+import { logWarn } from '../utils/runtimeLog';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { translate, useI18n } from '../i18n';
 
@@ -235,6 +236,7 @@ export default function LoginScreen() {
   };
 
   const pollBiliLogin = async (key: string) => {
+    let pollWarned = false;
     for (let i = 0; i < 30; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       if (!pollingRef.current) return; // abort if unmounted
@@ -260,7 +262,12 @@ export default function LoginScreen() {
           setBiliStatus(t('二维码已过期请刷新'));
           return;
         }
-      } catch {}
+      } catch (e) {
+        if (!pollWarned) {
+          pollWarned = true;
+          logWarn('B站二维码轮询失败: ' + errorMessage(e), 'login.pollBili');
+        }
+      }
     }
     setBiliStatus(t('B站登录超时'));
   };

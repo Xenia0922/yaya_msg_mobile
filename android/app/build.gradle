@@ -150,7 +150,7 @@ android {
     }
 
     // v2.6.4: 按 ABI 分包，规避 99MB 大包下载截断导致的「解析包时出现问题」。
-    // 排除 x86(32位)：ijkplayer 无 x86 产物，x86 分包不完整；x86_64 保留给模拟器。
+    // 排除 x86(32位)：x86 分包不完整；x86_64 保留给模拟器。
     splits {
         abi {
             enable true
@@ -187,10 +187,6 @@ dependencies {
     implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
     implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
     implementation("com.google.android.exoplayer:extension-rtmp:2.19.1")
-    implementation("tv.danmaku.ijk.media:ijkplayer-java:0.8.8")
-    implementation("tv.danmaku.ijk.media:ijkplayer-armv7a:0.8.8")
-    implementation("tv.danmaku.ijk.media:ijkplayer-arm64:0.8.8")
-    implementation("tv.danmaku.ijk.media:ijkplayer-x86_64:0.8.8")
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
+import { logError } from '../utils/runtimeLog';
 import { Linking, Platform, Alert } from 'react-native';
 import { useSettingsStore } from '../store';
 
@@ -202,7 +203,9 @@ export async function enqueueDownload(params: {
           const asset = await MediaLibrary.createAssetAsync(done.localUri || localUri);
           if (asset) await MediaLibrary.createAlbumAsync('牙牙消息', asset, false).catch(() => {});
         }
-      } catch {}
+      } catch (e) {
+        logError(e, 'downloads.saveToGallery');
+      }
     }
 
     return { ...item, ...done };
@@ -295,7 +298,9 @@ export async function openDownloadItem(item: DownloadItem) {
               const contentUri = await getContentUriAsync(target);
               if (contentUri) { await Linking.openURL(contentUri); return; }
             }
-          } catch {}
+          } catch (e) {
+            logError(e, 'downloads.openFileViaContentUri');
+          }
         }
         await Linking.openURL(target);
         return;

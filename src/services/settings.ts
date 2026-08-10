@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings } from '../types';
+import { logError } from '../utils/runtimeLog';
 
 const SETTINGS_KEY = 'yaya_settings';
 
@@ -28,7 +29,9 @@ export async function loadSettings(): Promise<AppSettings> {
     if (raw) {
       return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     }
-  } catch {}
+  } catch (e) {
+    logError(e, 'settings.loadSettings');
+  }
   return { ...DEFAULT_SETTINGS };
 }
 

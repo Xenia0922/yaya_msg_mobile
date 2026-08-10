@@ -678,4 +678,7 @@ export const en: Record<string, string> = {
   '未返回视频文件地址': 'No video file URL returned',
   '没有解析到播放地址': 'Could not resolve a playback URL',
   '口袋电台': 'Pocket48 Radio',
+  '直播播放失败': 'Live playback failed',
+  '确定': 'OK',
+  '缺少 liveId，无法打开礼物面板': 'Missing liveId; cannot open the gift panel',
 };

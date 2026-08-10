@@ -33,6 +33,7 @@ import { VODItem, Member } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import { getResumePosition, saveResumePosition, clearResumePosition } from '../utils/resumePosition';
+import { logWarn } from '../utils/runtimeLog';
 import pocketApi from '../api/pocket48';
 import { getPlayerHtml } from '../components/media/player';
 import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
@@ -508,7 +509,7 @@ export default function MediaScreen() {
     let alive = true;
     getResumePosition(playing.url)
       .then((t) => { if (alive) setWebResumeTime(t); })
-      .catch(() => {});
+      .catch((e) => { logWarn('读取续播进度失败: ' + errorMessage(e), 'MediaScreen.resume'); });
     return () => { alive = false; };
   }, [playing?.url]);
 

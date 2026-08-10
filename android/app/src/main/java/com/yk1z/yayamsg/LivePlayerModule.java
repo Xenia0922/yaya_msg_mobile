@@ -79,6 +79,20 @@ public class LivePlayerModule extends ReactContextBaseJavaModule {
       if (options.hasKey("acceptUserId") && !options.isNull("acceptUserId")) {
         intent.putExtra(LivePlayerActivity.EXTRA_ACCEPT_USER_ID, options.getString("acceptUserId"));
       }
+      if (options.hasKey("labels") && !options.isNull("labels")) {
+        ReadableMap labels = options.getMap("labels");
+        if (labels != null) {
+          try {
+            org.json.JSONObject json = new org.json.JSONObject();
+            for (java.util.Map.Entry<String, Object> entry : labels.toHashMap().entrySet()) {
+              Object value = entry.getValue();
+              json.put(entry.getKey(), value == null ? "" : String.valueOf(value));
+            }
+            intent.putExtra(LivePlayerActivity.EXTRA_LABELS, json.toString());
+          } catch (org.json.JSONException ignored) {
+          }
+        }
+      }
     }
     Activity activity = getCurrentActivity();
     if (activity != null) {
