@@ -214,9 +214,11 @@ export default function MusicLibraryScreen() {
           extraData={`${currentIndex}:${favorites.length}`}
           keyExtractor={(item, index) => `${item.groupKey || ''}-${item.musicId || item.id || ''}-${index}`}
           numColumns={2}
+          // 不自定义 columnWrapperStyle（避免 width:'48%' + space-between + aspectRatio:1 的
+          // 组合在 Android 上切歌重渲染后左列塌陷的布局 bug——左列整列不可见，含兜底元素）。
+          // FlatList 默认等分两列，item 用 flex:1 + 自身内边距即可。
           removeClippedSubviews={false}
           contentContainerStyle={styles.listContent}
-          columnWrapperStyle={styles.gridRow}
           renderItem={({ item, index }) => {
             const id = String(item.musicId || item.id || '');
             const active = queue[currentIndex] && (String(queue[currentIndex].musicId || queue[currentIndex].id) === id);
@@ -393,8 +395,9 @@ const styles = StyleSheet.create({
   // 列表内容：顶部留出标签栏高度，底部留出迷你播放器空间
   listContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 120 },
   emptyWrap: { alignItems: 'center', marginTop: 80 },
-  gridRow: { justifyContent: 'space-between' as const },
-  songItem: { width: '48%', marginBottom: 12, borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.82)' },
+  // 去掉 gridRow（width:'48%'+space-between 在 Android FlatList 上切歌后左列塌陷）。
+  // 现由 FlatList numColumns=2 默认等分两列，songItem 用 flex:1 + 自身 padding 自适应。
+  songItem: { flex: 1, margin: 4, borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.82)' },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.72)' },
   songItemActiveDark: { borderColor: '#ff8fa8' },
   songItemActive: { borderWidth: 2, borderColor: '#ff6f91' },
