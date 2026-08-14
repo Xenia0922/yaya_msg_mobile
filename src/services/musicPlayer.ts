@@ -2,8 +2,23 @@ import { useMusicPlayerStore, Track, LyricLine } from '../store/musicPlayerStore
 import { normalizeUrl } from '../utils/data';
 import { parseLrc } from '../utils/lyrics';
 import { getLyricsMatcher } from '../utils/lyricsIndex';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LYRICS_BASE_URL = 'https://yaya-data.pages.dev/lyrics';
+// 单首歌词磁盘缓存：同一首歌反复播放不再重复拉取（7 天 TTL）
+const LYRICS_CACHE_KEY = 'yaya_lyric_cache_v1';
+const LYRICS_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+
+async function readLyricCache(): Promise<Record<string, { t: number; text: string }>> {
+  try {
+    const raw = await AsyncStorage.getItem(LYRICS_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 /** 48 官方域名白名单 —— 纯函数、无副作用、可安全静态导入 */
 export function isPlayableHost(url: string): boolean {
@@ -231,9 +246,28 @@ export const MusicEngine = {
       const result = matcher.match({ song: title, group });
       if (result) {
         const url = `${LYRICS_BASE_URL}/${encodeURI(result.entry.filePath)}`;
+        const cacheKey = `lyric:${result.entry.filePath}`;
+        const cache = await readLyricCache();
+        const hit = cache[cacheKey];
+        if (hit && Date.now() - hit.t < LYRICS_CACHE_TTL) {
+          useMusicPlayerStore.getState().setLyrics(parseLrc(hit.text));
+          return;
+        }
         const lrcResp = await fetch(url);
         const raw = await lrcResp.text();
         useMusicPlayerStore.getState().setLyrics(parseLrc(raw));
+        // 落盘（整表重写有界：最多保留 200 首，超出丢最旧）
+        cache[cacheKey] = { t: Date.now(), text: raw };
+        const keys = Object.keys(cache);
+        if (keys.length > 200) {
+          const oldest = keys
+            .map((k) => ({ k, t: cache[k].t }))
+            .sort((a, b) => a.t - b.t)
+            .slice(0, keys.length - 200)
+            .map((x) => x.k);
+          oldest.forEach((k) => delete cache[k]);
+        }
+        AsyncStorage.setItem(LYRICS_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
       } else {
         console.warn('[lyrics] no match for', title, 'group=', group);
       }
