@@ -46,19 +46,21 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
   const [c1, c2] = PALETTE[hashStr(title || '♪') % PALETTE.length];
   const [errored, setErrored] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
+  const retried = React.useRef(false);
   // 关键修复 1：uri 变化（FlatList 回收单元格复用本组件实例去显示另一首歌）时，
   // 必须重置 errored/loaded。否则上一首封面加载失败的 errored=true 会被带到本该有封面的
   // 新歌上，导致它错误地显示成「无封面」。现象即「每首歌都白过 + 播过的歌返回后变白」。
   // 关键修复 2（onLoad 门控）：RN Android 的 Image.onError 并不可靠——HTTP 200 但字节非图、
   // 解码/DNS 失败、FlatList removeClippedSubviews 回收后重载静默中断都可能不触发 onError，
   // 此时死块 Image 会盖在渐变兜底之上，看着就是空白。因此渐变常驻底层，
-  // Image 只在 onLoad 真正成功后淡入；8s 未加载成功视为失败，强制回退渐变+音符。
+  // Image 只在 onLoad 真正成功后淡入。
+  // 注意：不再用「8s 超时强制回退」——渐变兜底本来就始终在底层可见（Image 未 loaded 时
+  // 透明），超时卸载反而会在慢网络/慢 CDN 下永久丢弃仍在加载的封面（加载完成后也不再显示），
+  // 正是「封面偶发丢失」的来源之一。
   React.useEffect(() => {
     setErrored(false);
     setLoaded(false);
-    if (!uri) return;
-    const timer = setTimeout(() => setErrored(true), 8000);
-    return () => clearTimeout(timer);
+    retried.current = false;
   }, [uri]);
   const boxStyle: any = fill
     ? { width: '100%', height: '100%', borderRadius: round ? 999 : 0 }
@@ -66,8 +68,20 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
   const showImage = !!uri && !errored;
   const iconSize = fill ? 44 : Math.round((size || 0) * 0.34);
 
+  // onError：首次失败延迟 3s 自动重试一次（封面 URL 偶发 403/超时场景），
+  // 再次失败才永久回退渐变+音符。
+  const handleImageError = React.useCallback(() => {
+    if (!retried.current) {
+      retried.current = true;
+      setErrored(true);
+      setTimeout(() => setErrored(false), 3000);
+    } else {
+      setErrored(true);
+    }
+  }, []);
+
   // 有封面 URL（且未失败）→ 渲染 Image，但 onLoad 前保持透明，渐变兜底始终可见；
-  // 无封面 / 加载失败 / 超时 → 确定性渐变 + 居中音符图标兜底，干净、不空白、不叠字。
+  // 无封面 / 加载失败（重试后）→ 确定性渐变 + 居中音符图标兜底，干净、不空白、不叠字。
   return (
     <View style={[styles.box, boxStyle, { backgroundColor: c1 }]}>
       <View style={[styles.overlay, { backgroundColor: c2, opacity: 0.5, transform: [{ rotate: '35deg' }] }]} />
@@ -86,7 +100,7 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
           resizeMethod="scale"
           fadeDuration={200}
           onLoad={() => setLoaded(true)}
-          onError={() => setErrored(true)}
+          onError={handleImageError}
         />
       ) : (
         <MaterialCommunityIcons

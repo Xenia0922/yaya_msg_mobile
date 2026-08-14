@@ -209,6 +209,9 @@ export default function MusicLibraryScreen() {
       ) : (
       <PerfFlatList
           data={filteredSongs}
+          // extraData：FlatList 为 PureComponent，data 引用不变时不重渲染 renderItem——
+          // 切歌/收藏后 active 高亮与爱心状态需随 currentIndex/favorites 变化刷新
+          extraData={`${currentIndex}:${favorites.length}`}
           keyExtractor={(item, index) => `${item.groupKey || ''}-${item.musicId || item.id || ''}-${index}`}
           numColumns={2}
           removeClippedSubviews={false}
