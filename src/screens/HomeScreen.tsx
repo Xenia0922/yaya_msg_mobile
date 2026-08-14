@@ -1,11 +1,10 @@
 /**
- * HomeScreen · 内容仪表盘（2026-08-15 全套重构）
- * 从「静态入口网格」改为「内容驱动仪表盘」：
- *  - 问候区：时间感知问候 + 已收录成员数
- *  - 正在直播：横向轮播卡（pocketApi.getLiveList 真实数据，失败静默降级隐藏）
- *  - 快捷入口：横向胶囊 chips（高频操作）
- *  - 最近播放：音乐 store 续播卡（有播放态时显示）
- *  - 工具：手风琴分组（默认展开第一组，组内 2 列紧凑入口）
+ * HomeScreen · 内容仪表盘 v2（2026-08-15 视觉升级）
+ * - 统一 MaterialCommunityIcons 图标（弃用 emoji，安卓渲染一致性）
+ * - 正在直播横向轮播（真实数据，封面 + 直播中徽标）
+ * - 快捷入口：tint 圆底图标胶囊
+ * - 最近播放续播卡
+ * - 工具手风琴：tint 方底图标行 + 可折叠分组
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -47,84 +46,84 @@ interface ToolGroup {
   items: NavItem[];
 }
 
-/** 快捷入口（高频，放内容带之下） */
-const QUICK: NavItem[] = [
-  { title: '直播', desc: '', route: 'Media', icon: '🎥' },
-  { title: '回放', desc: '', route: 'Media', params: { mode: 'vod' }, icon: '📺' },
-  { title: 'B站', desc: '', route: 'BilibiliLiveScreen', icon: '📡' },
-  { title: '音乐', desc: '', route: 'MusicLibraryScreen', icon: '🎵' },
-  { title: '私信', desc: '', route: 'PrivateMessagesScreen', icon: '✉️' },
-  { title: '翻牌', desc: '', route: 'FlipScreen', icon: '🃏' },
-];
-
-const EMOJI: Record<string, string> = {
-  LiveRoom: '🎙️', Vod: '📺', RoomRadio: '🎧', Bilibili: '📡',
-  Rooms: '💌', PrivateMessages: '✉️', RoomAlbum: '🖼️', OpenLive: '🎭',
-  FlipSend: '🃏', FlipHistory: '🗂️', Analysis: '📊',
-  Profile: '👤', MemberDynamic: '✨', MemberWeibo: '🧣', Trip: '🧳',
-  VideoLibrary: '🎬', MusicLibrary: '🎵', AudioPrograms: '📻',
-  MeleeRank: '🍗', Database: '🗃️', Login: '🔑', Download: '⏬', Invoice: '🧾', Settings: '⚙️',
+/** MaterialCommunityIcons 图标（统一视觉语言，替代 emoji） */
+const ICONS: Record<string, string> = {
+  LiveRoom: 'video', Vod: 'play-box-multiple', RoomRadio: 'radio', Bilibili: 'broadcast',
+  Rooms: 'message-text', PrivateMessages: 'email-outline', RoomAlbum: 'image-multiple', OpenLive: 'theater',
+  FlipSend: 'comment-question-outline', FlipHistory: 'history', Analysis: 'chart-bar',
+  Profile: 'account', MemberDynamic: 'star-circle', MemberWeibo: 'web', Trip: 'briefcase',
+  VideoLibrary: 'play-box', MusicLibrary: 'music-note', AudioPrograms: 'podcast',
+  MeleeRank: 'trophy', Database: 'database', Login: 'key-variant', Download: 'download', Invoice: 'file-document-outline', Settings: 'cog',
 };
+
+const QUICK: NavItem[] = [
+  { title: '直播', desc: '', route: 'Media', icon: ICONS.LiveRoom },
+  { title: '回放', desc: '', route: 'Media', params: { mode: 'vod' }, icon: ICONS.Vod },
+  { title: 'B站', desc: '', route: 'BilibiliLiveScreen', icon: ICONS.Bilibili },
+  { title: '音乐', desc: '', route: 'MusicLibraryScreen', icon: ICONS.MusicLibrary },
+  { title: '私信', desc: '', route: 'PrivateMessagesScreen', icon: ICONS.PrivateMessages },
+  { title: '翻牌', desc: '', route: 'FlipScreen', icon: ICONS.FlipSend },
+];
 
 const TOOL_GROUPS: ToolGroup[] = [
   {
     title: '直播',
     subtitle: '口袋、B站、回放、电台',
     items: [
-      { title: '直播', desc: '查看当前直播列表', route: 'Media', icon: EMOJI.LiveRoom },
-      { title: '回放', desc: '录播与弹幕', route: 'Media', params: { mode: 'vod' }, icon: EMOJI.Vod },
-      { title: '上麦', desc: '房间电台', route: 'RoomRadioScreen', icon: EMOJI.RoomRadio },
-      { title: 'B站', desc: 'B站直播播放', route: 'BilibiliLiveScreen', icon: EMOJI.Bilibili },
+      { title: '直播', desc: '查看当前直播列表', route: 'Media', icon: ICONS.LiveRoom },
+      { title: '回放', desc: '录播与弹幕', route: 'Media', params: { mode: 'vod' }, icon: ICONS.Vod },
+      { title: '上麦', desc: '房间电台', route: 'RoomRadioScreen', icon: ICONS.RoomRadio },
+      { title: 'B站', desc: 'B站直播播放', route: 'BilibiliLiveScreen', icon: ICONS.Bilibili },
     ],
   },
   {
     title: '口袋',
     subtitle: '房间、私信、相册、公演',
     items: [
-      { title: '房间', desc: '关注房间消息', route: 'Rooms', icon: EMOJI.Rooms },
-      { title: '私信', desc: '口袋私信会话', route: 'PrivateMessagesScreen', icon: EMOJI.PrivateMessages },
-      { title: '相册', desc: '按房间查看图片', route: 'RoomAlbumScreen', icon: EMOJI.RoomAlbum },
-      { title: '公演', desc: '成员公演记录', route: 'OpenLiveScreen', icon: EMOJI.OpenLive },
+      { title: '房间', desc: '关注房间消息', route: 'Rooms', icon: ICONS.Rooms },
+      { title: '私信', desc: '口袋私信会话', route: 'PrivateMessagesScreen', icon: ICONS.PrivateMessages },
+      { title: '相册', desc: '按房间查看图片', route: 'RoomAlbumScreen', icon: ICONS.RoomAlbum },
+      { title: '公演', desc: '成员公演记录', route: 'OpenLiveScreen', icon: ICONS.OpenLive },
     ],
   },
   {
     title: '翻牌',
     subtitle: '提问、历史、统计',
     items: [
-      { title: '提问', desc: '发送翻牌', route: 'FlipScreen', params: { mode: 'send' }, icon: EMOJI.FlipSend },
-      { title: '历史', desc: '浏览翻牌内容', route: 'FlipScreen', icon: EMOJI.FlipHistory },
-      { title: '统计', desc: '翻牌数据分析', route: 'AnalysisScreen', icon: EMOJI.Analysis },
+      { title: '提问', desc: '发送翻牌', route: 'FlipScreen', params: { mode: 'send' }, icon: ICONS.FlipSend },
+      { title: '历史', desc: '浏览翻牌内容', route: 'FlipScreen', icon: ICONS.FlipHistory },
+      { title: '统计', desc: '翻牌数据分析', route: 'AnalysisScreen', icon: ICONS.Analysis },
     ],
   },
   {
     title: '成员',
     subtitle: '档案、动态、微博、行程',
     items: [
-      { title: '档案', desc: '成员资料与编年史', route: 'ProfileScreen', icon: EMOJI.Profile },
-      { title: '动态', desc: '成员口袋动态', route: 'MemberDynamicScreen', icon: EMOJI.MemberDynamic },
-      { title: '微博', desc: '成员微博动态', route: 'MemberWeiboScreen', icon: EMOJI.MemberWeibo },
-      { title: '行程', desc: '行程与票务', route: 'TripScreen', icon: EMOJI.Trip },
+      { title: '档案', desc: '成员资料与编年史', route: 'ProfileScreen', icon: ICONS.Profile },
+      { title: '动态', desc: '成员口袋动态', route: 'MemberDynamicScreen', icon: ICONS.MemberDynamic },
+      { title: '微博', desc: '成员微博动态', route: 'MemberWeiboScreen', icon: ICONS.MemberWeibo },
+      { title: '行程', desc: '行程与票务', route: 'TripScreen', icon: ICONS.Trip },
     ],
   },
   {
     title: '资源',
     subtitle: '视频、音乐、电台',
     items: [
-      { title: '视频', desc: '查看视频资源', route: 'VideoLibraryScreen', icon: EMOJI.VideoLibrary },
-      { title: '音乐', desc: '进入音乐列表', route: 'MusicLibraryScreen', icon: EMOJI.MusicLibrary },
-      { title: '电台', desc: '播放音频节目', route: 'AudioProgramsScreen', icon: EMOJI.AudioPrograms },
+      { title: '视频', desc: '查看视频资源', route: 'VideoLibraryScreen', icon: ICONS.VideoLibrary },
+      { title: '音乐', desc: '进入音乐列表', route: 'MusicLibraryScreen', icon: ICONS.MusicLibrary },
+      { title: '电台', desc: '播放音频节目', route: 'AudioProgramsScreen', icon: ICONS.AudioPrograms },
     ],
   },
   {
     title: '工具',
     subtitle: '统计、数据库、设置',
     items: [
-      { title: '鸡腿榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen', icon: EMOJI.MeleeRank },
-      { title: '数据库', desc: '成员附属数据', route: 'DatabaseScreen', icon: EMOJI.Database },
-      { title: '账号', desc: '登录与头像', route: 'LoginScreen', icon: EMOJI.Login },
-      { title: '下载', desc: '录播/图片/视频', route: 'DownloadScreen', icon: EMOJI.Download },
-      { title: '发票', desc: '鸡腿消费开票', route: 'InvoiceScreen', icon: EMOJI.Invoice },
-      { title: '设置', desc: '主题与签到', route: 'Settings', icon: EMOJI.Settings },
+      { title: '鸡腿榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen', icon: ICONS.MeleeRank },
+      { title: '数据库', desc: '成员附属数据', route: 'DatabaseScreen', icon: ICONS.Database },
+      { title: '账号', desc: '登录与头像', route: 'LoginScreen', icon: ICONS.Login },
+      { title: '下载', desc: '录播/图片/视频', route: 'DownloadScreen', icon: ICONS.Download },
+      { title: '发票', desc: '鸡腿消费开票', route: 'InvoiceScreen', icon: ICONS.Invoice },
+      { title: '设置', desc: '主题与签到', route: 'Settings', icon: ICONS.Settings },
     ],
   },
 ];
@@ -168,7 +167,7 @@ function LiveCard({ item, onPress }: { item: LiveCardItem; onPress: () => void }
             />
           ) : (
             <View style={styles.liveCoverFallback}>
-              <Text style={{ fontSize: 34 }}>🎥</Text>
+              <MaterialCommunityIcons name="video" color={palette.labelTertiary} size={36} />
             </View>
           )}
           <View style={styles.liveBadge}>
@@ -203,7 +202,6 @@ export default function HomeScreen() {
   const [expanded, setExpanded] = useState<string>(TOOL_GROUPS[0]?.title || '');
   const fetchedRef = useRef(false);
 
-  // 直播数据（仅一次，失败静默降级 → 整个板块隐藏）
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
@@ -219,7 +217,6 @@ export default function HomeScreen() {
       .catch(() => {});
   }, []);
 
-  // 最近播放（音乐 store 当前队列）
   const currentTrack = useMusicPlayerStore((s) =>
     s.queue[s.currentIndex] ? { ...s.queue[s.currentIndex] } : null,
   );
@@ -236,7 +233,6 @@ export default function HomeScreen() {
     handleNav({ title: '', desc: '', route: 'MusicLibraryScreen', icon: '' });
   }, [handleNav]);
 
-  // 时间感知问候
   const hour = new Date().getHours();
   const greeting =
     hour < 5 ? t('夜深了') : hour < 11 ? t('早上好') : hour < 14 ? t('中午好') : hour < 18 ? t('下午好') : t('晚上好');
@@ -276,7 +272,7 @@ export default function HomeScreen() {
             <GlassCard strong padding={14} radius={20} style={{ borderColor: palette.danger }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={[styles.loginBadge, { backgroundColor: palette.tintSoft }]}>
-                  <Text style={{ fontSize: 18 }}>🔑</Text>
+                  <MaterialCommunityIcons name="key-variant" color={palette.tint} size={20} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={[typography.headline, { color: palette.label }]}>{t('未登录口袋账号')}</Text>
@@ -292,9 +288,12 @@ export default function HomeScreen() {
 
         {/* 正在直播：真实数据横向轮播 */}
         {livesOk ? (
-          <View style={{ marginBottom: 20 }}>
+          <View style={{ marginBottom: 22 }}>
             <View style={styles.sectionHead}>
-              <Text style={[typography.headline, { color: palette.label }]}>{t('正在直播')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[styles.sectionDot, { backgroundColor: palette.tint }]} />
+                <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('正在直播')}</Text>
+              </View>
               <ScalePressable onPress={() => handleNav({ title: '', desc: '', route: 'Media', icon: '' })}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text style={[typography.footnote, { color: palette.tint, fontWeight: '700' }]}>{t('全部')}</Text>
@@ -307,11 +306,11 @@ export default function HomeScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingRight: 8, gap: 12 }}
               style={{ marginHorizontal: -spacing.md }}
-              snapToInterval={196}
+              snapToInterval={200}
               decelerationRate="fast"
             >
               {lives.map((item) => (
-                <View key={item.liveId} style={{ width: 184, marginLeft: spacing.md }}>
+                <View key={item.liveId} style={{ width: 188, marginLeft: spacing.md }}>
                   <LiveCard
                     item={item}
                     onPress={() => handleNav({ title: '', desc: '', route: 'Media', icon: '' })}
@@ -322,13 +321,18 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {/* 快捷入口：横向胶囊 */}
-        <View style={{ marginBottom: 20 }}>
-          <Text style={[typography.headline, { color: palette.label, marginBottom: 10 }]}>{t('快捷入口')}</Text>
+        {/* 快捷入口：图标胶囊 */}
+        <View style={{ marginBottom: 22 }}>
+          <View style={styles.sectionHead}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.sectionDot, { backgroundColor: palette.tint }]} />
+              <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('快捷入口')}</Text>
+            </View>
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingRight: 8 }}
+            contentContainerStyle={{ gap: 10, paddingRight: 8 }}
             style={{ marginHorizontal: -spacing.md }}
           >
             {quick.map((item) => (
@@ -342,7 +346,9 @@ export default function HomeScreen() {
                     },
                   ]}
                 >
-                  <Text style={{ fontSize: 15, marginRight: 5 }}>{item.icon}</Text>
+                  <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
+                    <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
+                  </View>
                   <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]}>{item.title}</Text>
                 </View>
               </ScalePressable>
@@ -350,10 +356,15 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
 
-        {/* 最近播放：音乐续播卡 */}
+        {/* 最近播放 */}
         {currentTrack && trackTitle ? (
-          <View style={{ marginBottom: 20 }}>
-            <Text style={[typography.headline, { color: palette.label, marginBottom: 10 }]}>{t('最近播放')}</Text>
+          <View style={{ marginBottom: 22 }}>
+            <View style={styles.sectionHead}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[styles.sectionDot, { backgroundColor: palette.tint }]} />
+                <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('最近播放')}</Text>
+              </View>
+            </View>
             <ScalePressable onPress={handleResumeMusic} pressedScale={0.97}>
               <GlassCard strong padding={12} radius={20}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -365,7 +376,7 @@ export default function HomeScreen() {
                         resizeMode="cover"
                       />
                     ) : (
-                      <Text style={{ fontSize: 22 }}>🎵</Text>
+                      <MaterialCommunityIcons name="music-note" color={palette.tint} size={24} />
                     )}
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
@@ -385,7 +396,12 @@ export default function HomeScreen() {
 
         {/* 工具：手风琴分组 */}
         <View style={{ marginBottom: 8 }}>
-          <Text style={[typography.headline, { color: palette.label, marginBottom: 10 }]}>{t('工具')}</Text>
+          <View style={styles.sectionHead}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.sectionDot, { backgroundColor: palette.tint }]} />
+              <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('工具')}</Text>
+            </View>
+          </View>
           {groups.map((group) => {
             const open = expanded === group.title;
             return (
@@ -401,12 +417,14 @@ export default function HomeScreen() {
                       {group.subtitle}
                     </Text>
                   </View>
-                  <MaterialCommunityIcons
-                    name="chevron-down"
-                    color={palette.labelTertiary}
-                    size={22}
-                    style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
-                  />
+                  <View style={[styles.accChevron, { backgroundColor: palette.fill2 }]}>
+                    <MaterialCommunityIcons
+                      name="chevron-down"
+                      color={palette.labelSecondary}
+                      size={18}
+                      style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
+                    />
+                  </View>
                 </ScalePressable>
                 {open ? (
                   <View style={styles.accGrid}>
@@ -417,10 +435,10 @@ export default function HomeScreen() {
                         onPress={() => handleNav(item)}
                         pressedScale={0.95}
                       >
-                        <View style={[styles.accCellIcon, { backgroundColor: palette.fill2 }]}>
-                          <Text style={{ fontSize: 20 }}>{item.icon}</Text>
+                        <View style={[styles.accCellIcon, { backgroundColor: palette.tintSoft }]}>
+                          <MaterialCommunityIcons name={item.icon} color={palette.tint} size={20} />
                         </View>
-                        <View style={{ flex: 1, marginLeft: 10 }}>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
                           <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>
                             {item.title}
                           </Text>
@@ -459,6 +477,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
+  sectionDot: { width: 4, height: 18, borderRadius: 2 },
   loginBadge: {
     width: 40,
     height: 40,
@@ -467,7 +486,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   liveCard: { width: '100%' },
-  liveCoverWrap: { height: 104, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
+  liveCoverWrap: { height: 106, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
   liveCover: { width: '100%', height: '100%' },
   liveCoverFallback: {
     flex: 1,
@@ -491,11 +510,19 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    marginLeft: 0,
+    paddingRight: 14,
+    paddingVertical: 6,
+  },
+  chipIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    marginLeft: 6,
   },
   musicCover: { width: 52, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   accHead: {
@@ -504,6 +531,14 @@ const styles = StyleSheet.create({
     padding: 14,
     paddingHorizontal: 16,
   },
+  accChevron: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
   accGrid: {
     paddingHorizontal: 12,
     paddingBottom: 8,
@@ -511,7 +546,7 @@ const styles = StyleSheet.create({
   accCell: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 9,
+    paddingVertical: 8,
     paddingHorizontal: 4,
   },
   accCellIcon: {

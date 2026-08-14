@@ -15,6 +15,7 @@ import bilibiliApi from '../api/bilibili';
 import { errorMessage, pickText } from '../utils/data';
 import { logWarn } from '../utils/runtimeLog';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { translate, useI18n } from '../i18n';
 
 function buildBilibiliCookieFromUrl(rawUrl = ''): string {
@@ -107,6 +108,7 @@ export default function LoginScreen() {
   const setSettings = useSettingsStore((state) => state.setSettings);
   const showToast = useUiStore((state) => state.showToast);
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const pollingRef = useRef(true);
   useEffect(() => { return () => { pollingRef.current = false; }; }, []);
@@ -402,75 +404,75 @@ export default function LoginScreen() {
       <ScreenHeader title={t('账号设置')} />
 
       <FadeInView delay={80} duration={300}>
-        <View style={[styles.section, isDark && styles.sectionDark]}>
-          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('口袋48验证码登录')}</Text>
+        <View style={[styles.section, isDark && styles.sectionDark, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
+          <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋48验证码登录')}</Text>
         <View style={styles.phoneRow}>
-          <View style={[styles.areaWrap, isDark && styles.inputDark]}>
-            <Text style={[styles.areaPlus, isDark && styles.textDark]}>+</Text>
+          <View style={[styles.areaWrap, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
+            <Text style={[styles.areaPlus, { color: palette.label }]}>+</Text>
             <TextInput
-              style={[styles.areaInput, isDark && styles.textDark]}
+              style={[styles.areaInput, { color: palette.label }]}
               placeholder="86"
-              placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+              placeholderTextColor={palette.labelTertiary}
               keyboardType="phone-pad"
               maxLength={5}
               value={area}
               onChangeText={(v) => setArea(v.replace(/[^0-9]/g, '').slice(0, 5))}
             />
           </View>
-          <TextInput style={[styles.input, styles.phoneInput, isDark && styles.inputDark]} placeholder={t('手机号')} placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+          <TextInput style={[styles.input, styles.phoneInput, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]} placeholder={t('手机号')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
         </View>
-        <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder={t('短信验证码')} placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
+        <TextInput style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]} placeholder={t('短信验证码')} placeholderTextColor={palette.labelTertiary} keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
         {verify ? (
-          <View style={[styles.verifyBox, isDark && styles.verifyBoxDark]}>
-            <Text style={[styles.verifyQuestion, isDark && styles.textDark]}>{verify.question}</Text>
+          <View style={[styles.verifyBox, { backgroundColor: palette.fill2, borderColor: palette.innerStroke }]}>
+            <Text style={[styles.verifyQuestion, { color: palette.label }]}>{verify.question}</Text>
             <View style={styles.verifyOptions}>
               {verify.options.map((option) => (
                 <TouchableOpacity
                   key={option}
-                  style={[styles.verifyOption, isDark && styles.verifyOptionDark]}
+                  style={[styles.verifyOption, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke }]}
                   onPress={() => handleVerifyAnswer(option)}
                   disabled={loading}
                 >
-                  <Text style={[styles.verifyOptionText, isDark && styles.textDark]}>{option}</Text>
+                  <Text style={[styles.verifyOptionText, { color: palette.label }]}>{option}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
         ) : null}
         <View style={styles.btnRow}>
-          <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={() => handleSendSms()} disabled={loading}>
-            <Text style={styles.btnText}>{t('获取验证码')}</Text>
+          <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }, loading && styles.btnDisabled]} onPress={() => handleSendSms()} disabled={loading}>
+            <Text style={[styles.btnText, { color: palette.label }]}>{t('获取验证码')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleLogin} disabled={loading}>
+          <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: palette.tint }, loading && styles.btnDisabled]} onPress={handleLogin} disabled={loading}>
             <Text style={styles.btnText}>{t('登录')}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('口袋48Token登录')}</Text>
+      <View style={[styles.section, isDark && styles.sectionDark, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
+        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋48Token登录')}</Text>
         <TextInput
-          style={[styles.input, styles.tokenInput, isDark && styles.inputDark]}
+          style={[styles.input, styles.tokenInput, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]}
           placeholder={t('粘贴口袋token')}
-          placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+          placeholderTextColor={palette.labelTertiary}
           value={manualToken}
           onChangeText={setManualToken}
           multiline
         />
         <View style={styles.btnRow}>
-          <TouchableOpacity style={styles.btnPrimary} onPress={handleSaveManualToken}>
+          <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: palette.tint }]} onPress={handleSaveManualToken}>
             <Text style={styles.btnText}>{t('保存Token')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.btn} onPress={handleCheckToken}>
-            <Text style={styles.btnText}>{t('检查Token')}</Text>
+          <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }]} onPress={handleCheckToken}>
+            <Text style={[styles.btnText, { color: palette.label }]}>{t('检查Token')}</Text>
           </TouchableOpacity>
         </View>
-        {settings.p48Token ? <Text style={styles.tokenInfo}>{t('已保存Token：{token}', { token: settings.p48Token.slice(0, 24) })}...</Text> : null}
+        {settings.p48Token ? <Text style={[styles.tokenInfo, { color: palette.labelSecondary }]}>{t('已保存Token：{token}', { token: settings.p48Token.slice(0, 24) })}...</Text> : null}
       </View>
 
-      <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('口袋账号切换')}</Text>
-        <Text style={[styles.metaLine, isDark && styles.textSubDark]}>
+      <View style={[styles.section, isDark && styles.sectionDark, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
+        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋账号切换')}</Text>
+        <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>
           {t('当前：{info}', { info: accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : t('先检查Token读取账号') })}
         </Text>
         <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginBottom: 10 }]} onPress={handleCheckToken} disabled={loading}>

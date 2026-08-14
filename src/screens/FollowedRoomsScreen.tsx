@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 
 import {
   ActivityIndicator,
@@ -827,6 +828,7 @@ function deepFindDuration(value: any, depth = 0): number {
 
 export default function FollowedRoomsScreen() {
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const token = useSettingsStore((state) => state.settings.p48Token);
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
@@ -1292,32 +1294,40 @@ export default function FollowedRoomsScreen() {
           </View>
         } />
 
-        <View style={styles.chatTools}>
+          <View style={styles.chatTools}>
           <TouchableOpacity
-            style={[styles.modePill, roomMode === 'big' && styles.modePillActive, isDark && roomMode !== 'big' && styles.modePillDark]}
+            style={[styles.modePill, roomMode === 'big' && styles.modePillActive, { backgroundColor: roomMode === 'big' ? palette.tint : palette.surfaceGlass }]}
             onPress={() => openRoom(selectedRoom, 'big', showFanMessages)}
           >
-            <Text style={[styles.modePillText, roomMode === 'big' && styles.modePillTextActive, isDark && roomMode !== 'big' && styles.modePillTextDark]}>{t('大房间')}</Text>
+            <Text style={[styles.modePillText, { color: roomMode === 'big' ? '#FFFFFF' : palette.labelSecondary }]}>{t('大房间')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modePill, roomMode === 'small' && styles.modePillActive, isDark && roomMode !== 'small' && styles.modePillDark]}
+            style={[styles.modePill, roomMode === 'small' && styles.modePillActive, { backgroundColor: roomMode === 'small' ? palette.tint : palette.surfaceGlass }]}
             onPress={() => openRoom(selectedRoom, 'small', showFanMessages)}
           >
-            <Text style={[styles.modePillText, roomMode === 'small' && styles.modePillTextActive, isDark && roomMode !== 'small' && styles.modePillTextDark]}>{t('小房间')}</Text>
+            <Text style={[styles.modePillText, { color: roomMode === 'small' ? '#FFFFFF' : palette.labelSecondary }]}>{t('小房间')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modePill, showFanMessages && styles.modePillActive, isDark && !showFanMessages && styles.modePillDark]}
+            style={[styles.modePill, showFanMessages && styles.modePillActive, { backgroundColor: showFanMessages ? palette.tint : palette.surfaceGlass }]}
             onPress={() => openRoom(selectedRoom, roomMode, !showFanMessages)}
           >
-            <Text style={[styles.modePillText, showFanMessages && styles.modePillTextActive, isDark && !showFanMessages && styles.modePillTextDark]}>{showFanMessages ? t('成员发言') : t('含粉丝发言')}</Text>
+            <Text style={[styles.modePillText, { color: showFanMessages ? '#FFFFFF' : palette.labelSecondary }]}>{showFanMessages ? t('成员发言') : t('含粉丝发言')}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.roomSearchWrap}>
           <TextInput
-            style={[styles.input, isDark && styles.inputDark]}
+            style={[
+              styles.input,
+              {
+                backgroundColor: palette.surfaceGlassStrong,
+                borderColor: palette.innerStroke,
+                borderWidth: StyleSheet.hairlineWidth,
+                color: palette.label,
+              },
+            ]}
             placeholder={t('搜索聊天记录、成员名、粉丝名...')}
-            placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+            placeholderTextColor={palette.labelTertiary}
             value={roomSearchQuery}
             onChangeText={setRoomSearchQuery}
           />
@@ -1381,25 +1391,25 @@ export default function FollowedRoomsScreen() {
                   profile.avatar ? (
                     <Image source={{ uri: profile.avatar }} style={styles.avatar} />
                   ) : (
-                    <View style={styles.avatarFallback}><Text style={styles.avatarText}>{avatarInitial(profile.name)}</Text></View>
+                    <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
                   )
                 ) : null}
                  <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
                   {replyName || replyQuoted ? (
-                    <View style={[styles.replyCard, isDark && styles.replyCardDark]}>
-                      {replyName ? <Text style={styles.replyName} numberOfLines={1}>{replyName}</Text> : null}
-                      {replyQuoted ? <Text style={[styles.replyText, isDark && styles.replyTextDark]} numberOfLines={3}>{replyQuoted}</Text> : null}
+                    <View style={[styles.replyCard, { backgroundColor: palette.fill3, borderLeftColor: palette.tint }]}>
+                      {replyName ? <Text style={[styles.replyName, { color: palette.tint }]} numberOfLines={1}>{replyName}</Text> : null}
+                      {replyQuoted ? <Text style={[styles.replyText, { color: palette.labelSecondary }]} numberOfLines={3}>{replyQuoted}</Text> : null}
                     </View>
                   ) : null}
                    <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
-                    <Text style={[styles.msgSender, idol && styles.msgSenderIdol, mine && styles.msgSenderMine, isDark && !mine && styles.textDark]} numberOfLines={1}>
+                    <Text style={[styles.msgSender, { color: idol ? '#e8436e' : mine ? '#3a6f99' : palette.label }, idol && styles.msgSenderIdol, mine && styles.msgSenderMine]} numberOfLines={1}>
                       {profile.name}
                     </Text>
-                    <Text style={[styles.msgTime, mine && styles.msgTimeMine, isDark && !mine && styles.msgTimeDark]}>{formatTimestamp(item.msgTime)}</Text>
+                    <Text style={[styles.msgTime, { color: mine ? '#3a6f99' : palette.labelTertiary }, mine && styles.msgTimeMine]}>{formatTimestamp(item.msgTime)}</Text>
                   </View>
-                  <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, isDark && !mine && !idol && styles.msgBubbleDark]}>
+                  <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, { backgroundColor: (!idol && !mine) ? palette.surfaceGlass : undefined, borderColor: (!idol && !mine) ? palette.innerStroke : undefined, borderWidth: (!idol && !mine) ? StyleSheet.hairlineWidth : 0 }]}>
                     {bubbleText ? (
-                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>
+                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, (!idol && !mine) && { color: palette.labelSecondary }]}>
                         {bubbleText}
                       </Text>
                     ) : null}
@@ -1408,7 +1418,7 @@ export default function FollowedRoomsScreen() {
                         {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><Text style={styles.giftEmoji}>{t('礼')}</Text></View>) : null}
                         <View style={styles.giftTextWrap}>
                           <Text style={styles.giftName} numberOfLines={1}>{idol ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
-                          <Text style={[styles.giftMeta, isDark && styles.giftMetaDark]}>{t('数量')} x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
+                          <Text style={[styles.giftMeta, { color: palette.labelSecondary }]}>{t('数量')} x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
                         </View>
                       </View>
                     ) : null}
@@ -1505,7 +1515,7 @@ export default function FollowedRoomsScreen() {
           <Text style={styles.headerAction}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
-      <Text style={[styles.subtitle, isDark && styles.textSubDark]}>{t('关注房间、大房间和小房间消息')}</Text>
+      <Text style={[styles.subtitle, { color: palette.labelSecondary }]}>{t('关注房间、大房间和小房间消息')}</Text>
       <MemberPicker
         selectedMember={selectedRoom}
         onSelect={(member) => openRoom(member)}
@@ -1524,34 +1534,45 @@ export default function FollowedRoomsScreen() {
             const busy = followBusy.has(fid);
             return (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-              <TouchableOpacity style={[styles.roomItem, isDark && styles.roomItemDark]} onPress={() => item.member && openRoom(item.member)}>
+              <TouchableOpacity
+                style={[
+                  styles.roomItem,
+                  {
+                    backgroundColor: palette.surfaceGlass,
+                    borderColor: palette.innerStroke,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderRadius: 20,
+                  },
+                ]}
+                onPress={() => item.member && openRoom(item.member)}
+              >
                 <View style={styles.roomTop}>
-                  <Text style={[styles.roomName, isDark && styles.textDark]} numberOfLines={1}>{shortName(item.member, item.memberId)}</Text>
+                  <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{shortName(item.member, item.memberId)}</Text>
                   {item.member ? (
                     <TouchableOpacity
-                      style={[styles.followBtn, isFollowing && styles.followBtnOn]}
+                      style={[styles.followBtn, { backgroundColor: isFollowing ? palette.tintSoft : palette.tint }]}
                       disabled={busy}
                       onPress={() => toggleFollow(item.member!)}
                     >
                       {busy ? (
-                        <ActivityIndicator color={isFollowing ? '#ff6f91' : '#ffffff'} size="small" />
+                        <ActivityIndicator color={isFollowing ? palette.tint : '#ffffff'} size="small" />
                       ) : (
-                        <Text style={[styles.followBtnText, isFollowing && styles.followBtnTextOn]}>{isFollowing ? t('已关注') : t('关注')}</Text>
+                        <Text style={[styles.followBtnText, isFollowing && { color: palette.tint }]}>{isFollowing ? t('已关注') : t('关注')}</Text>
                       )}
                     </TouchableOpacity>
                   ) : null}
-                  <Text style={styles.roomTeam}>{item.member?.team || item.member?.groupName || t('未匹配成员库')}</Text>
-                  <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(item.memberId)}>
-                    <Text style={styles.pinBtnText}>{pinned.includes(item.memberId) ? t('取消置顶') : t('置顶')}</Text>
+                  <Text style={[styles.roomTeam, { color: palette.tint }]}>{item.member?.team || item.member?.groupName || t('未匹配成员库')}</Text>
+                  <TouchableOpacity style={[styles.pinBtn, { backgroundColor: palette.tintSoft }]} onPress={() => togglePin(item.memberId)}>
+                    <Text style={[styles.pinBtnText, { color: palette.tint }]}>{pinned.includes(item.memberId) ? t('取消置顶') : t('置顶')}</Text>
                   </TouchableOpacity>
                 </View>
                 {item.member ? (
                   <View style={styles.roomMetaRow}>
-                    <Text style={[styles.roomMeta, isDark && styles.textSubDark]}>{t('大 {id}', { id: item.member.channelId || '-' })}</Text>
-                    <Text style={[styles.roomMeta, isDark && styles.textSubDark]}>{t('小 {id}', { id: item.member.yklzId || '-' })}</Text>
+                    <Text style={[styles.roomMeta, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('大 {id}', { id: item.member.channelId || '-' })}</Text>
+                    <Text style={[styles.roomMeta, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('小 {id}', { id: item.member.yklzId || '-' })}</Text>
                   </View>
                 ) : null}
-                <Text style={[styles.lastMessage, isDark && styles.textSubDark]} numberOfLines={1}>
+                <Text style={[styles.lastMessage, { color: palette.labelSecondary }]} numberOfLines={1}>
                   {item.lastMessage ? messageText(item.lastMessage) : t('点击查看房间消息')}
                 </Text>
               </TouchableOpacity>
