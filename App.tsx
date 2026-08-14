@@ -15,6 +15,22 @@ import { NOTICE_URL } from './src/constants';
 import { initRuntimeLog, logCrash } from './src/utils/runtimeLog';
 import { Colors } from './src/theme/colors';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import { useSafeAreaInsets } from './src/hooks/useSafeAreaInsets';
+// 仅用 JS 包的安全区上下文（不链接其 native 包）：react-navigation 的 BottomTabView 会无条件
+// 包 SafeAreaProviderCompat，若无 insets 上下文它将渲染 RNCSafeAreaProvider 原生视图；
+// 本工程已在 autolinking 排除 react-native-safe-area-context（无原生 Provider），
+// 因此在顶层提供纯 JS 经验值上下文，让 react-navigation 走「已有 insets → 普通 View」分支。
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+
+// v2.6.5: 给 react-navigation 提供安全区上下文（纯 JS 经验值，无原生依赖）
+function SafeAreaBridge({ children }: { children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <SafeAreaInsetsContext.Provider value={{ top: insets.top, right: 0, bottom: insets.bottom, left: 0 }}>
+      {children}
+    </SafeAreaInsetsContext.Provider>
+  );
+}
 
 // 全局 JS 闪退捕获：生产环境红盒不可见，写入本地日志便于排查。
 // 同时保留原有 handler（开发环境红盒 / 默认崩溃行为）。
@@ -141,8 +157,10 @@ export default function App() {
           <Text style={{ color: '#fff', fontSize: 11 }} numberOfLines={2}>{backgroundLoadError}</Text>
         </View>
       ) : null}
-      <AppNavigator />
-      <WebViewSigner />
+      <SafeAreaBridge>
+        <AppNavigator />
+        <WebViewSigner />
+      </SafeAreaBridge>
       {/* v2.6: Global announcement modal */}
       <Modal visible={!!announceModal} transparent animationType="fade" onRequestClose={() => setAnnounceModal(null)}>
         <View style={anStyles.overlay}>
