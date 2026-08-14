@@ -500,6 +500,13 @@ export default function MediaScreen() {
   const [rankVisible, setRankVisible] = useState(false);
   const [rankRows, setRankRows] = useState<any[]>([]);
 
+  // 续播 key 用稳定 id（liveId）而非播放 URL：URL 换线路/带签名/拼接参数会变，
+  // 用 URL 做 key 会导致同一视频换线路后续播进度丢失
+  const resumeKey = React.useMemo(
+    () => String(playing?.item?.liveId || playing?.item?.id || playing?.url || ''),
+    [playing],
+  );
+
   // 打开回放时读取上次观看进度，用于 WebView 续播
   useEffect(() => {
     if (!playing?.url) {
@@ -507,11 +514,11 @@ export default function MediaScreen() {
       return;
     }
     let alive = true;
-    getResumePosition(playing.url)
+    getResumePosition(resumeKey)
       .then((t) => { if (alive) setWebResumeTime(t); })
       .catch((e) => { logWarn('读取续播进度失败: ' + errorMessage(e), 'MediaScreen.resume'); });
     return () => { alive = false; };
-  }, [playing?.url]);
+  }, [resumeKey]);
 
   // 拉取/轮询弹幕并解析；失败静默，不拖垮播放
   useEffect(() => {
@@ -1185,9 +1192,9 @@ export default function MediaScreen() {
                 if (!playing?.url) return;
                 if (data.type === 'progress') {
                   const t = Number(data.time) || 0;
-                  saveResumePosition(playing.url, t);
+                  saveResumePosition(resumeKey, t);
                   setPlaybackTime(t); // 校正弹幕时间轴，消除插值漂移
-                } else if (data.type === 'ended') clearResumePosition(playing.url);
+                } else if (data.type === 'ended') clearResumePosition(resumeKey);
               } catch {}
             }}
           />
@@ -1207,7 +1214,7 @@ export default function MediaScreen() {
                 ignoreSilentSwitch="ignore"
                 onLoad={(e) => { setDuration(e.duration || 0); setPlaybackTime(webResumeTime || 0); setPlayerError(''); }}
                 onProgress={(e) => { if (Date.now() < seekLockRef.current) return; if (!paused) setPlaybackTime(e.currentTime || 0); }}
-                onEnd={() => clearResumePosition(playing.url)}
+                onEnd={() => clearResumePosition(resumeKey)}
                 onError={(event) => setPlayerError(t('原生播放器失败：{detail}', { detail: JSON.stringify(event?.error || event).slice(0, 220) }))}
               />
               {playerError ? (
