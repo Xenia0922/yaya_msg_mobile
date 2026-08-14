@@ -138,9 +138,10 @@ export const MusicEngine = {
       store.setPlaybackState('playing');
     } catch (e: any) {
       store.setError(e?.message || 'play failed');
-      // 无效的歌曲自动跳到下一首
+      // 无效的歌曲自动跳到下一首；但 single 模式/仅一首时 next() 会绕回同曲
+      // （nextIndex 返回 current），造成无限重试，必须停在 error 态由用户手动处理
       const st = useMusicPlayerStore.getState();
-      if (st.queue.length > 1) this.next();
+      if (st.queue.length > 1 && st.playMode !== 'single') this.next();
     }
   },
 

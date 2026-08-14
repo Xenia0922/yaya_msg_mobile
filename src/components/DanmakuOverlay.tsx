@@ -56,6 +56,10 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
   useEffect(() => {
     if (!visible || !enabled || !danmaku.length) {
       lastTime.current = currentTime;
+      // 失效时清空残留弹幕：停止对 Animated 值的持有（防泄漏/隐藏后残留渲染）；
+      // 空数组返回原引用避免无谓重渲染
+      setActive((prev) => (prev.length ? [] : prev));
+      laneFreeAt.current = laneFreeAt.current.map(() => 0);
       return;
     }
     const from = lastTime.current;

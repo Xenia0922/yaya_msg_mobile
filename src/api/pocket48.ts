@@ -429,11 +429,22 @@ export const pocketApi = {
       name: fileName,
       type: mimeType,
     } as any);
-    const response = await fetch('https://pfile.48.cn/filesystem/upload/image', {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
+    // FormData 上传无法走 requestJson（其会 JSON.stringify body），这里保留 fetch 但补超时取消，防无限挂起
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch('https://pfile.48.cn/filesystem/upload/image', {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      throw new Error(error?.name === 'AbortError' ? '上传头像超时' : '上传头像网络失败');
+    } finally {
+      clearTimeout(timer);
+    }
     const contentType = response.headers.get('content-type') || '';
     const data = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
     if (response.ok && data && (data.status === 200 || data.success)) {

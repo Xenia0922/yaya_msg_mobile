@@ -192,7 +192,10 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state && state.currentIndex >= 0 && state.queue.length > 0) {
-          useMusicPlayerStore.setState({ playbackState: 'paused' });
+          // 续播：把持久化的 position 转成 seekTarget，等 Video onLoad 就绪后 seek 回去。
+          // （此前 position 只写不读，重启后进度记忆形同虚设，音频永远从 0 开始）
+          const pos = state.position || 0;
+          useMusicPlayerStore.setState({ playbackState: 'paused', seekTarget: pos > 0 ? pos : 0 });
         }
       },
     },

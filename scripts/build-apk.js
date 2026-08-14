@@ -12,8 +12,10 @@ const pkg = require(path.join(projectRoot, 'package.json'));
 
 console.log('🔨 Building Android release APK...');
 const gradleCmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
+// 出包铁律：必须 parallel=false（沙箱/部分机器上并行会触发 node_modules 库中间文件锁竞争，随机 AccessDenied）
+const gradleArgs = ['assembleRelease', '-Dorg.gradle.daemon=true', '-Dorg.gradle.parallel=false'].join(' ');
 try {
-  execSync(`${gradleCmd} assembleRelease`, { cwd: androidDir, stdio: 'inherit' });
+  execSync(`${gradleCmd} ${gradleArgs}`, { cwd: androidDir, stdio: 'inherit' });
 } catch (e) {
   console.error('❌ Build failed');
   process.exit(1);

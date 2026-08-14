@@ -32,8 +32,20 @@ async function writeAll(map: PositionMap): Promise<void> {
 }
 
 /** 保存续播位置（秒）。值很小（<2 秒）或无效时不写，避免回放开头误跳。 */
+// 节流：WebView 每 2s 上报一次进度，若每次都全量读写 AsyncStorage（readAll+writeAll）
+// 会对存储造成不必要的 IO 压力。同一 id 在 30s 内且进度变化 <15s 时跳过写盘。
+const lastWrite = new Map<string, { ts: number; value: number }>();
+const WRITE_THROTTLE_MS = 30000;
+const WRITE_THROTTLE_DELTA = 15;
+
 export async function saveResumePosition(id: string, seconds: number): Promise<void> {
   if (!id || !Number.isFinite(seconds) || seconds < 2) return;
+  const now = Date.now();
+  const prev = lastWrite.get(id);
+  if (prev && now - prev.ts < WRITE_THROTTLE_MS && Math.abs(seconds - prev.value) < WRITE_THROTTLE_DELTA) {
+    return;
+  }
+  lastWrite.set(id, { ts: now, value: seconds });
   const map = await readAll();
   map[id] = seconds;
   await writeAll(map);

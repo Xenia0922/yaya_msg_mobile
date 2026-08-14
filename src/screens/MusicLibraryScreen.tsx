@@ -113,9 +113,12 @@ export default function MusicLibraryScreen() {
     });
   }, []);
 
-  // 处理 seekTarget：Video 挂载后检测到 seekTarget > 0 即执行 seek 并清零
+  // 处理 seekTarget：Video 挂载后检测到 seekTarget > 0 即执行 seek 并清零。
+  // mediaReady 门控：媒体未就绪时 seek 无效（ExoPlayer 未 prepare），
+  // 续播位置在 onLoad 时消费，拖动进度条在就绪后消费。
+  const [mediaReady, setMediaReady] = useState(false);
   useEffect(() => {
-    if (seekTarget > 0 && videoRef.current && typeof videoRef.current.seek === 'function') {
+    if (seekTarget > 0 && mediaReady && videoRef.current && typeof videoRef.current.seek === 'function') {
       try {
         videoRef.current.seek(seekTarget);
       } catch (err) {
@@ -123,7 +126,7 @@ export default function MusicLibraryScreen() {
       }
       useMusicPlayerStore.getState().setSeekTarget(0);
     }
-  }, [seekTarget]);
+  }, [seekTarget, mediaReady]);
 
   const playSong = (item: any) => {
     const st = useMusicPlayerStore.getState();
@@ -262,11 +265,31 @@ export default function MusicLibraryScreen() {
         style={styles.tinyPlayer}
         paused={playbackState !== 'playing'}
         ignoreSilentSwitch="ignore"
+        onAudioBecomingNoisy={() => {
+          // 拔耳机/蓝牙断开：暂停播放，避免外放打扰
+          try {
+            if (useMusicPlayerStore.getState().playbackState === 'playing') {
+              MusicEngine.togglePause();
+              showToast(t('耳机已断开，已暂停播放'));
+            }
+          } catch (err) { logError(err, 'MusicLibrary.onAudioBecomingNoisy'); }
+        }}
         onLoad={(e) => {
           try {
+            setMediaReady(true);
             const dur = e.duration || 0;
             useMusicPlayerStore.getState().setDuration(dur);
-            // seekTarget 已在单独的 effect 中处理
+            // 续播回写：rehydrate 恢复的 position 已在 store 转成 seekTarget，
+            // 媒体就绪后立即 seek（此后 onProgress 接管进度）
+            const st = useMusicPlayerStore.getState();
+            if (st.seekTarget > 0 && videoRef.current && typeof videoRef.current.seek === 'function') {
+              try {
+                videoRef.current.seek(st.seekTarget);
+              } catch (err) {
+                console.warn('[MusicLibraryScreen] resume seek error:', err);
+              }
+              useMusicPlayerStore.getState().setSeekTarget(0);
+            }
           } catch (err) {
             console.warn('[MusicLibraryScreen] onLoad error:', err);
           }
@@ -291,8 +314,19 @@ export default function MusicLibraryScreen() {
           try {
             console.warn('[MusicLibraryScreen] onError:', err);
             const track = queue[currentIndex];
-            showToast(t('《{title}》无法播放，已跳过', { title: track?.title || t('该歌曲') }));
-            MusicEngine.next();
+            const st = useMusicPlayerStore.getState();
+            // single 模式/仅一首：next() 会绕回同曲（nextIndex 返回 current），
+            // 无条件 next 会造成无限重试 + toast 刷屏；停在 error 态由用户手动处理
+            const canSkip = st.queue.length > 1 && st.playMode !== 'single';
+            if (canSkip) {
+              showToast(t('《{title}》无法播放，已跳过', { title: track?.title || t('该歌曲') }));
+              MusicEngine.next();
+            } else {
+              const title = track?.title || t('该歌曲');
+              st.setError(t('《{title}》无法播放', { title }));
+              st.setPlaybackState('error');
+              showToast(t('《{title}》无法播放，请尝试其他歌曲', { title }));
+            }
           } catch (e) {
             console.error('[MusicLibraryScreen] onError handler crashed:', e);
           }

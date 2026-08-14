@@ -18,7 +18,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "web": "expo start --web",
-    "build:android": "cd android && gradlew assembleRelease",
+    "build:android": "cd android && gradlew assembleRelease -Dorg.gradle.daemon=true -Dorg.gradle.parallel=false",
     "build:android:copy": "node scripts/build-apk.js",
     "gen:wasm": "node scripts/gen-wasm-base64.mjs",
     "typecheck": "tsc --noEmit"

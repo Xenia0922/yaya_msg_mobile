@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, Member } from '../types';
 import { APP_VERSION } from '../constants';
+import { DEFAULT_SETTINGS } from '../services/settings';
 
 interface SettingsState {
   settings: AppSettings;
@@ -9,25 +10,7 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-  settings: {
-    theme: 'light',
-    language: 'system',
-    p48Token: '',
-    bilibiliCookie: '',
-    bilibiliUserInfo: null,
-    msg_sort_order: 'desc',
-    yaya_followed_custom_order: [],
-    yaya_music_play_mode: 'sequential',
-    yaya_music_volume: 0.7,
-    yaya_audio_program_play_mode: 'sequential',
-    yaya_auto_checkin_enabled: false,
-    yaya_auto_checkin_last_date: '',
-    yaya_auto_checkin_last_user: '',
-    customBackgroundFile: '',
-    customBackgroundUpdatedAt: 0,
-    yaya_trip_show_all: false,
-    meet48Auth: null,
-  },
+  settings: { ...DEFAULT_SETTINGS },
   setSettings: (patch) =>
     set((state) => ({ settings: { ...state.settings, ...patch } })),
 }));
@@ -110,6 +93,9 @@ AsyncStorage.getItem(ANNOUNCEMENT_SEEN_KEY)
 
 const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Xenia0922/yaya_msg_mobile/releases/latest';
 const UPDATE_TIMEOUT = 8000;
+// 检查结果持久化，24h 内不重复打 GitHub API（未认证限流 60/h，冷启全打会快速耗尽）
+const UPDATE_LAST_CHECK_KEY = 'yaya_update_last_check';
+const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 
 function parseVersion(v: string): number[] {
   return String(v || '')
@@ -154,8 +140,14 @@ export const useUpdateStore = create<UpdateState>((set) => ({
   // 绝不打扰用户 —— 没有红点就当作没有更新。
   checkUpdate: async () => {
     const { lastCheckedAt } = useUpdateStore.getState();
-    if (lastCheckedAt && Date.now() - lastCheckedAt < 10 * 60 * 1000) return;
-    set({ lastCheckedAt: Date.now() });
+    // 合并内存与持久化的检查时间：24h 内已查过则直接跳过，避免每次冷启都请求 GitHub API
+    const persisted = await AsyncStorage.getItem(UPDATE_LAST_CHECK_KEY).catch(() => null);
+    const persistedTs = persisted ? Number(persisted) || 0 : 0;
+    const lastTs = Math.max(lastCheckedAt, persistedTs);
+    if (lastTs && Date.now() - lastTs < UPDATE_CHECK_INTERVAL) return;
+    const now = Date.now();
+    set({ lastCheckedAt: now });
+    AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, String(now)).catch(() => {});
     try {
       const res = await Promise.race([
         fetch(GITHUB_RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'yaya-msg-mobile' } }),

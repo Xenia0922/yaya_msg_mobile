@@ -240,16 +240,30 @@ export async function clearFinishedDownloads() {
  */
 export async function enforceCacheQuota(maxBytes: number = MAX_CACHE_BYTES): Promise<void> {
   let items = await loadDownloadItems();
-  const done = items.filter((i) => i.status === 'done' && i.localUri && (i.totalBytes || 0) > 0);
-  let total = done.reduce((sum, i) => sum + (i.totalBytes || 0), 0);
+  const done = items.filter((i) => i.status === 'done' && i.localUri);
+  // totalBytes 可能缺失（服务端无 Content-Length / fallback 路径下载），这类文件
+  // 之前永不参与淘汰。这里用实际文件大小兜底，确保 4GB 额度对全部完成项生效。
+  const entries = (
+    await Promise.all(
+      done.map(async (i) => {
+        let bytes = i.totalBytes || 0;
+        if (bytes <= 0) {
+          const info = await FileSystem.getInfoAsync(i.localUri!).catch(() => null);
+          bytes = info && info.exists ? info.size || 0 : 0;
+        }
+        return { item: i, bytes };
+      }),
+    )
+  ).filter((e) => e.bytes > 0);
+  let total = entries.reduce((sum, e) => sum + e.bytes, 0);
   if (total <= maxBytes) return;
 
-  const oldestFirst = [...done].sort((a, b) => a.createdAt - b.createdAt);
-  for (const target of oldestFirst) {
+  const oldestFirst = [...entries].sort((a, b) => a.item.createdAt - b.item.createdAt);
+  for (const { item: target, bytes } of oldestFirst) {
     if (total <= maxBytes) break;
     await FileSystem.deleteAsync(target.localUri!, { idempotent: true }).catch(() => undefined);
     items = items.filter((i) => i.id !== target.id);
-    total -= target.totalBytes || 0;
+    total -= bytes;
   }
   await saveDownloadItems(items);
 }

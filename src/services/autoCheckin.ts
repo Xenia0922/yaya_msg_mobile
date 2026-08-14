@@ -3,7 +3,13 @@ import { saveSettings } from './settings';
 import { useSettingsStore } from '../store';
 
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  // 必须用本地时区日期而非 UTC（toISOString 在北京 00:00-08:00 会落到前一日，
+  // 导致凌晨打卡记错日期、8 点后 UTC 日期推进再次触发重复签到）。
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function pickCurrentUserId(res: any, token: string) {

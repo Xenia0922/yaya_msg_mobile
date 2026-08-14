@@ -871,15 +871,21 @@ export default function MediaScreen() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
-  // 切到后台时复位横屏锁（防退到桌面/其它 App 仍锁横屏）；回到前台由上方 effect 按状态重新锁定
+  // 切到后台时复位横屏锁（防退到桌面/其它 App 仍锁横屏）；
+  // 回到前台时按当前播放状态重新锁定（后台复位后上方 effect 不会再触发，需在此补锁）
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      } else if (playing) {
+        const wantLandscape = isFullscreen || isLandscape;
+        ScreenOrientation.lockAsync(
+          wantLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP,
+        ).catch(() => {});
       }
     });
     return () => sub.remove();
-  }, []);
+  }, [playing, isFullscreen, isLandscape]);
 
   // 横屏/全屏解耦：全屏=沉浸+横屏；横屏切换=仅旋转。两者任一为真即锁定横屏。
   useEffect(() => {

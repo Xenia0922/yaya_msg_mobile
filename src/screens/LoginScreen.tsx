@@ -124,6 +124,8 @@ export default function LoginScreen() {
   const [renameCountText, setRenameCountText] = useState('');
   const [accountInfo, setAccountInfo] = useState<{ current: any; users: any[] }>({ current: null, users: [] });
   const [switchingUserId, setSwitchingUserId] = useState('');
+  // 短信发送触发风控安全验证（status=2001）：展示问题与选项，选对后带 answer 重发
+  const [verify, setVerify] = useState<{ question: string; options: string[]; phone: string; area: string } | null>(null);
 
   const savePocketToken = async (token: string, message: string) => {
     const clean = token.trim();
@@ -133,8 +135,8 @@ export default function LoginScreen() {
     setStatus(message);
   };
 
-  const handleSendSms = async () => {
-    if (!phone.trim()) {
+  const handleSendSms = async (answer?: string) => {
+    if (!phone.trim() && !verify) {
       setStatus(t('请输入手机号'));
       return;
     }
@@ -142,13 +144,28 @@ export default function LoginScreen() {
     setStatus(t('正在获取验证码'));
     try {
       const areaCode = area.replace(/[^0-9]/g, '') || '86';
-      const res: any = await pocketApi.loginSendSms(phone.trim(), areaCode);
-      setStatus(res?.success ? t('验证码已发送') : (res?.msg || res?.message || t('验证码发送失败')));
+      const res: any = await pocketApi.loginSendSms(phone.trim() || verify!.phone, verify?.area || areaCode, answer);
+      if (res?.needVerification) {
+        setVerify({
+          question: res.question || t('安全验证'),
+          options: Array.isArray(res.options) ? res.options.map(String) : [],
+          phone: phone.trim() || verify!.phone,
+          area: verify?.area || areaCode,
+        });
+        setStatus(t('请完成安全验证后重新获取验证码'));
+      } else {
+        setStatus(res?.success ? t('验证码已发送') : (res?.msg || res?.message || t('验证码发送失败')));
+        if (res?.success) setVerify(null);
+      }
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVerifyAnswer = (option: string) => {
+    handleSendSms(option);
   };
 
   const handleLogin = async () => {
@@ -403,8 +420,25 @@ export default function LoginScreen() {
           <TextInput style={[styles.input, styles.phoneInput, isDark && styles.inputDark]} placeholder={t('手机号')} placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
         </View>
         <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder={t('短信验证码')} placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'} keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
+        {verify ? (
+          <View style={[styles.verifyBox, isDark && styles.verifyBoxDark]}>
+            <Text style={[styles.verifyQuestion, isDark && styles.textDark]}>{verify.question}</Text>
+            <View style={styles.verifyOptions}>
+              {verify.options.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.verifyOption, isDark && styles.verifyOptionDark]}
+                  onPress={() => handleVerifyAnswer(option)}
+                  disabled={loading}
+                >
+                  <Text style={[styles.verifyOptionText, isDark && styles.textDark]}>{option}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : null}
         <View style={styles.btnRow}>
-          <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleSendSms} disabled={loading}>
+          <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={() => handleSendSms()} disabled={loading}>
             <Text style={styles.btnText}>{t('获取验证码')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleLogin} disabled={loading}>
@@ -552,6 +586,13 @@ const styles = StyleSheet.create({
   accountMeta: { marginTop: 3, fontSize: 11, color: '#555' },
   accountAction: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
   accountCurrent: { color: '#20a464', fontSize: 13, fontWeight: '800' },
+  verifyBox: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#ffb3c1', backgroundColor: 'rgba(255,111,145,0.08)', marginBottom: 10 },
+  verifyBoxDark: { borderColor: '#7a4a55', backgroundColor: 'rgba(255,111,145,0.10)' },
+  verifyQuestion: { fontSize: 13, fontWeight: '700', color: '#c2185b', marginBottom: 8 },
+  verifyOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  verifyOption: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ffb3c1' },
+  verifyOptionDark: { backgroundColor: '#3a3a3a', borderColor: '#7a4a55' },
+  verifyOptionText: { fontSize: 13, fontWeight: '600', color: '#c2185b' },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },
 });
