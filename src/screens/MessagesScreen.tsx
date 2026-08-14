@@ -13,6 +13,7 @@ import { errorMessage, messageText, unwrapList } from '../utils/data';
 import { memberSearchText } from '../utils/members';
 import pocketApi from '../api/pocket48';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 
 function msgTime(item: any): number {
@@ -22,6 +23,7 @@ function msgTime(item: any): number {
 
 export default function MessagesScreen() {
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const members = useMemberStore((state) => state.members);
   const token = useSettingsStore((state) => state.settings.p48Token);
@@ -75,45 +77,71 @@ export default function MessagesScreen() {
   }, [messages, search]);
 
   const renderMsgItem = useCallback(({ item }: { item: any }) => (
-    <View style={[styles.msg, isDark && styles.msgDark]}>
+    <View
+      style={[
+        styles.msg,
+        {
+          backgroundColor: palette.surfaceGlass,
+          borderColor: palette.innerStroke,
+          borderWidth: StyleSheet.hairlineWidth,
+        },
+      ]}
+    >
       <View style={styles.msgHeader}>
-        <Text style={[styles.msgSender, isDark && { color: '#eee' }]}>{item.senderName || item.senderNickName || t('成员')}</Text>
-        <Text style={[styles.msgTime, isDark && styles.msgTimeDark]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
+        <Text style={[styles.msgSender, { color: palette.label }]}>{item.senderName || item.senderNickName || t('成员')}</Text>
+        <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
       </View>
-      <Text style={[styles.msgBody, isDark && { color: '#eeeeee' }]}>{messageText(item) || t('[空消息]')}</Text>
+      <Text style={[styles.msgBody, { color: palette.labelSecondary }]}>{messageText(item) || t('[空消息]')}</Text>
     </View>
-  ), [isDark, t]);
+  ), [palette, t]);
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title={t('消息检索')} />
-      <TouchableOpacity style={[styles.picker, isDark && styles.pickerDark]} onPress={() => setPickerOpen(true)}>
-        <Text style={[styles.pickerLabel, isDark && styles.textLight]}>
+      <TouchableOpacity
+        style={[
+          styles.picker,
+          { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth },
+        ]}
+        onPress={() => setPickerOpen(true)}
+      >
+        <Text style={[styles.pickerLabel, { color: palette.label }]}>
           {selectedMember?.ownerName || t('选择成员 ({count})', { count: members.length })}
         </Text>
-        <Text style={[styles.pickerButtonText, isDark && styles.textLight]}>{t('选择')}</Text>
+        <Text style={[styles.pickerButtonText, { color: palette.tint, fontWeight: '700' }]}>{t('选择')}</Text>
       </TouchableOpacity>
       <TextInput
-        style={[styles.input, isDark && styles.inputDark]}
+        style={[
+          styles.input,
+          { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label },
+        ]}
         placeholder={t('搜索消息内容...')}
-        placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+        placeholderTextColor={palette.labelTertiary}
         value={search}
         onChangeText={setSearch}
       />
 
       <Modal visible={pickerOpen} animationType="slide">
-        <View style={[styles.modalContainer, isDark && styles.containerDark]}>
-          <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
+        <View style={[styles.modalContainer, { backgroundColor: palette.background }]}>
+          <View
+            style={[
+              styles.modalHeader,
+              { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth },
+            ]}
+          >
             <TouchableOpacity onPress={() => setPickerOpen(false)}>
-              <Text style={styles.modalBack}>{t('关闭')}</Text>
+              <Text style={[styles.modalBack, { color: palette.tint }]}>{t('关闭')}</Text>
             </TouchableOpacity>
-            <Text style={[styles.modalTitle, isDark && { color: '#eee' }]}>{t('选择成员')}</Text>
-            <Text style={[styles.pickerCount, isDark && styles.textLight]}>{t('{count} 位', { count: members.length })}</Text>
+            <Text style={[styles.modalTitle, { color: palette.label }]}>{t('选择成员')}</Text>
+            <Text style={[styles.pickerCount, { color: palette.labelSecondary }]}>{t('{count} 位', { count: members.length })}</Text>
           </View>
           <TextInput
-            style={[styles.input, isDark && styles.inputDark, { margin: 12 }]}
+            style={[
+              styles.input,
+              { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label, margin: 12 },
+            ]}
             placeholder={t('搜索成员...')}
-            placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+            placeholderTextColor={palette.labelTertiary}
             value={pickerQuery}
             onChangeText={setPickerQuery}
           />
@@ -122,17 +150,20 @@ export default function MessagesScreen() {
             keyExtractor={(item) => `${item.id}-${item.channelId}`}
             renderItem={({ item }) => (
               <TouchableOpacity
-                style={[styles.memberItem, isDark && styles.memberItemDark]}
+                style={[
+                  styles.memberItem,
+                  { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth },
+                ]}
                 onPress={() => {
                   setPickerOpen(false);
                   fetchMessages(item);
                 }}
               >
-                <Text style={[styles.memberName, isDark && { color: '#eee' }]}>{item.ownerName}</Text>
-                <Text style={[styles.memberTeam, isDark && styles.memberTeamDark]}>{item.team || item.groupName || ''}</Text>
+                <Text style={[styles.memberName, { color: palette.label }]}>{item.ownerName}</Text>
+                <Text style={[styles.memberTeam, { color: palette.labelSecondary }]}>{item.team || item.groupName || ''}</Text>
               </TouchableOpacity>
             )}
-            ListEmptyComponent={<Text style={[styles.empty, isDark && styles.emptyDark]}>{t('成员列表为空')}</Text>}
+            ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('成员列表为空')}</Text>}
           />
         </View>
       </Modal>

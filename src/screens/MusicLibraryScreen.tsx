@@ -25,6 +25,7 @@ import CoverArt from '../components/CoverArt';
 import { CenterSpinner } from '../components/Loaders';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 
 const GROUP_TABS = ['ALL', 'SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'FAV'];
@@ -36,6 +37,7 @@ const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
 
 export default function MusicLibraryScreen() {
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
@@ -146,19 +148,19 @@ export default function MusicLibraryScreen() {
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title={t('音乐')} right={
         <TouchableOpacity onPress={() => loadAll()} disabled={loading}>
-          <Text style={[styles.backBtn, loading && styles.disabledText]}>{t('刷新')}</Text>
+          <Text style={[styles.backBtn, { color: palette.tint }, loading && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
       <TextInput
         value={query}
         onChangeText={onQueryChange}
         placeholder={t('搜索歌曲、成员、专辑')}
-        placeholderTextColor={isDark ? '#aaa' : '#4a4a4a'}
-        style={[styles.searchInput, isDark && styles.searchInputDark]}
+        placeholderTextColor={palette.labelTertiary}
+        style={[styles.searchInput, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, color: palette.label }]}
       />
       {/* 横向标签栏：使用 flex:1 的 ScrollView + flexDirection: row，配合固定宽度 chip，
            彻底避免 Yoga 在屏幕外 item 重新测量导致的拉伸问题。 */}
-      <View style={[styles.tabsBarBase, isDark ? styles.tabsBarDark : styles.tabsBarLight]}>
+      <View style={[styles.tabsBarBase, { borderBottomColor: palette.separator }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -172,8 +174,7 @@ export default function MusicLibraryScreen() {
               onPress={() => onGroupChange(g)}
               style={[
                 styles.gChip,
-                isDark && styles.gChipDark,
-                group === g && styles.gChipOn,
+                { backgroundColor: group === g ? palette.tint : palette.fill2 },
                 g === 'FAV' ? styles.gChipFav : styles.gChipBase,
               ]}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -183,8 +184,7 @@ export default function MusicLibraryScreen() {
                 ellipsizeMode="tail"
                 style={[
                   styles.gText,
-                  isDark && styles.gTextDark,
-                  group === g && styles.gTextOn,
+                  { color: group === g ? '#FFFFFF' : palette.labelSecondary },
                 ]}
               >
                 {g === 'FAV' ? t('收藏{count}', { count: favorites.length ? `(${favorites.length})` : '' }) : g}
@@ -195,7 +195,7 @@ export default function MusicLibraryScreen() {
       </View>
       {status ? (
         <View pointerEvents="none" style={styles.statusOverlay}>
-          <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text>
+          <Text style={[styles.status, { color: palette.tint }]}>{status}</Text>
         </View>
       ) : null}
       {loading && songs.length === 0 ? (
@@ -204,7 +204,7 @@ export default function MusicLibraryScreen() {
         </View>
       ) : !loading && songs.length === 0 && !status ? (
         <View style={styles.emptyWrap}>
-          <Text style={[styles.status, isDark && styles.textSubDark]}>{t('暂无音乐')}</Text>
+          <Text style={[styles.status, { color: palette.labelTertiary }]}>{t('暂无音乐')}</Text>
         </View>
       ) : (
       <PerfFlatList
@@ -225,7 +225,10 @@ export default function MusicLibraryScreen() {
             const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
             return (
               <TouchableOpacity
-                style={[styles.songItem, isDark && styles.cardDark, active && styles.songItemActive, active && isDark && styles.songItemActiveDark]}
+                style={[
+                  styles.songItem,
+                  { backgroundColor: palette.surfaceGlass, borderColor: active ? palette.tint : palette.innerStroke, borderWidth: active ? 2 : StyleSheet.hairlineWidth },
+                ]}
                 onPress={() => playSong(item)}
                 activeOpacity={0.7}
               >
@@ -248,12 +251,12 @@ export default function MusicLibraryScreen() {
                   </TouchableOpacity>
                 </View>
                 <View style={styles.songInfo}>
-                  <Text style={[styles.songTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || t('无标题')}</Text>
-                  <Text style={[styles.songArtist, isDark && styles.textSubDark]} numberOfLines={1}>
+                  <Text style={[styles.songTitle, { color: palette.label }]} numberOfLines={2}>{item.title || t('无标题')}</Text>
+                  <Text style={[styles.songArtist, { color: palette.labelSecondary }]} numberOfLines={1}>
                     {[item.album, item.artist, item.groupLabel].filter(Boolean).join(' · ') || t('官方音乐')}
                   </Text>
                   {item.ctime ? (
-                    <Text style={[styles.dateText, isDark && styles.textSubDark]}>
+                    <Text style={[styles.dateText, { color: palette.labelTertiary }]}>
                       {formatTimestamp(item.ctime).slice(0, 10)}
                     </Text>
                   ) : null}

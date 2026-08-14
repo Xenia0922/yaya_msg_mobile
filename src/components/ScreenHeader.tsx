@@ -2,35 +2,62 @@ import React, { useCallback } from 'react';
 import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useI18n } from '../i18n';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface Props {
   title: string;
   onBack?: () => void;
   right?: React.ReactNode;
   style?: ViewStyle;
+  /** 图片背景页（如直播间）传 true：返回键用玻璃胶囊，标题加轻阴影保证可读 */
+  overlay?: boolean;
 }
 
-// 三栏内联布局：左栏(返回) | 中栏(标题, 占满剩余) | 右栏(右侧操作)。
-// 关键点：三栏均为正常 flex 流，互不重叠 —— 返回按钮在独立左栏，永远可点，
-// 不再用 absolute + pointerEvents 的脆弱 hack（absolute 满宽标题曾盖住返回/右侧，导致点击失效）。
-export default function ScreenHeader({ title, onBack, right, style }: Props) {
+/**
+ * 新式大标题页头（iOS 26 风格，主题化）
+ *  - 左对齐大标题 + 玻璃圆形返回键，去霓虹发光
+ *  - 三栏布局保留：左(返回) | 中(标题占满) | 右(操作位)
+ *  - 兼容旧 props（title/onBack/right/style），全站调用点无需改动
+ */
+export default function ScreenHeader({ title, onBack, right, style, overlay }: Props) {
   const navigation = useNavigation();
   const { t } = useI18n();
+  const palette = usePalette();
   const goBack = useCallback(onBack || (() => navigation.goBack()), [onBack, navigation]);
-  const topPad = Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 24) + 14;
+  const topPad = Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 24) + 10;
 
   return (
     <View style={[styles.header, { paddingTop: topPad }, style]}>
       <View style={styles.sideLeft}>
         <TouchableOpacity
           onPress={goBack}
-          style={styles.backBtn}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('返回')}
+          style={[
+            styles.backBtn,
+            {
+              backgroundColor: overlay ? palette.surfaceGlassStrong : palette.fill2,
+              borderColor: overlay ? palette.innerStroke : 'transparent',
+            },
+          ]}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Text style={styles.backText}>{t('返回')}</Text>
+          <MaterialCommunityIcons name="chevron-left" color={palette.label} size={26} />
         </TouchableOpacity>
       </View>
-      <Text style={styles.title} numberOfLines={1}>{title}</Text>
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.title,
+          {
+            color: palette.label,
+            textShadowColor: overlay ? 'rgba(0,0,0,0.30)' : 'transparent',
+          },
+        ]}
+      >
+        {title}
+      </Text>
       <View style={styles.sideRight}>{right}</View>
     </View>
   );
@@ -42,23 +69,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingBottom: 14,
-    marginBottom: 4,
+    paddingBottom: 12,
+    marginBottom: 2,
   },
-  // 左右等宽，把标题顶到屏幕正中；两栏各自独占空间，绝不与标题重叠
-  sideLeft: { width: 80, alignItems: 'flex-start', justifyContent: 'center' },
-  sideRight: { width: 80, alignItems: 'flex-end', justifyContent: 'center' },
-  backBtn: { paddingVertical: 2, paddingRight: 6 },
-  backText: { color: '#ff6f91', fontSize: 14, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  sideLeft: { width: 56, alignItems: 'flex-start', justifyContent: 'center' },
+  sideRight: { width: 56, alignItems: 'flex-end', justifyContent: 'center' },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   title: {
     flex: 1,
-    textAlign: 'center',
-    fontSize: 22,
+    textAlign: 'left',
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: '800',
-    color: '#ff6f91',
-    paddingHorizontal: 4,
-    textShadowColor: 'rgba(0,0,0,0.28)',
+    letterSpacing: -0.3,
+    paddingHorizontal: 6,
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 3,
   },
 });

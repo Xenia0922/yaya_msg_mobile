@@ -44,6 +44,7 @@ import { memberSearchText } from '../utils/members';
 import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel, MoreItem } from '../components/media/PlayerChrome';
 import { CenterSpinner } from '../components/Loaders';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { translate, useI18n } from '../i18n';
 
 /** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
@@ -470,6 +471,7 @@ export default function MediaScreen() {
   const route = useRoute<MediaRouteProp>();
   const navigation = useNavigation<any>();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
   const showToast = useUiStore((state) => state.showToast);
@@ -1372,10 +1374,13 @@ export default function MediaScreen() {
         {GROUPS.map((item) => (
           <TouchableOpacity
             key={String(item.id)}
-            style={[styles.groupChip, isDark && styles.groupChipDark, groupId === item.id && styles.groupChipActive]}
+            style={[
+              styles.groupChip,
+              { backgroundColor: groupId === item.id ? palette.tint : palette.fill2 },
+            ]}
             onPress={() => setGroupId(item.id)}
           >
-            <Text style={[styles.groupChipText, isDark && styles.groupChipTextDark, groupId === item.id && styles.groupChipTextActive]}>{t(item.label)}</Text>
+            <Text style={[styles.groupChipText, { color: groupId === item.id ? '#FFFFFF' : palette.labelSecondary }]}>{t(item.label)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -1391,9 +1396,16 @@ export default function MediaScreen() {
           <MaterialCommunityIcons name="calendar-month" size={20} color={dateFilter ? '#ff6f91' : (isDark ? '#ccc' : '#666')} />
         </TouchableOpacity>
         <TextInput
-          style={[styles.searchInput, isDark && styles.searchInputDark, selectedMember && styles.searchInputActive]}
+          style={[
+            styles.searchInput,
+            {
+              backgroundColor: palette.surfaceGlassStrong,
+              borderColor: selectedMember ? palette.tint : palette.innerStroke,
+              color: palette.label,
+            },
+          ]}
           placeholder={selectedMember ? t('搜索该成员的标题 / 日期...') : t('搜索成员名、标题、时间...')}
-          placeholderTextColor={isDark ? '#888' : '#999'}
+          placeholderTextColor={palette.labelTertiary}
           value={search}
           onChangeText={setSearch}
           returnKeyType="search"
@@ -1448,26 +1460,32 @@ export default function MediaScreen() {
             const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
             return (
               <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300}>
-                <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => startPlay(item)}>
+                <TouchableOpacity
+                  style={[
+                    styles.card,
+                    { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth },
+                  ]}
+                  onPress={() => startPlay(item)}
+                >
                   {coverUrl ? (
                     <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
                   ) : (
-                    <View style={[styles.cover, styles.coverPlaceholder]}>
-                      <Text style={[styles.coverPlaceholderText, isDark && styles.coverPlaceholderTextDark]}>{t('视频')}</Text>
+                    <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: palette.fill3 }]}>
+                      <Text style={[styles.coverPlaceholderText, { color: palette.labelTertiary }]}>{t('视频')}</Text>
                     </View>
                   )}
                   <View style={styles.cardInfo}>
-                    <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>
+                    <Text style={[styles.cardTitle, { color: palette.label }]} numberOfLines={2}>
                       {item.title || item.liveRoomTitle || t('无标题')}
                     </Text>
-                    {subtitle ? <Text style={[styles.cardSub, isDark && styles.cardSubDark]}>{subtitle}</Text> : null}
+                    {subtitle ? <Text style={[styles.cardSub, { color: palette.labelSecondary }]}>{subtitle}</Text> : null}
                     <View style={styles.typeRow}>
-                      <View style={styles.typeTag}>
-                        <Text style={styles.typeText}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
+                      <View style={[styles.typeTag, { backgroundColor: palette.tintSoft }]}>
+                        <Text style={[styles.typeText, { color: palette.tint }]}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
                       </View>
                       {tab === 'live' ? (
-                        <View style={[styles.typeTag, styles.giftTag]}>
-                          <Text style={styles.typeText}>{t('可送礼')}</Text>
+                        <View style={[styles.typeTag, { backgroundColor: 'rgba(19,194,194,0.14)' }]}>
+                          <Text style={[styles.typeText, { color: '#0e9c9c' }]}>{t('可送礼')}</Text>
                         </View>
                       ) : null}
                     </View>
@@ -1592,9 +1610,9 @@ const styles = StyleSheet.create({
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff4d4f' },
   liveBadgeText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   topChrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 44, paddingHorizontal: 12, paddingBottom: 8, pointerEvents: 'box-none' },
-  card: { flexDirection: 'row', padding: 12, backgroundColor: 'rgba(255,255,255,0.46)', marginHorizontal: 12, marginVertical: 6, borderRadius: 16 },
+  card: { flexDirection: 'row', padding: 12, marginHorizontal: 12, marginVertical: 6, borderRadius: 20 },
   cardDark: { backgroundColor: 'rgba(20,20,20,0.58)' },
-  cover: { width: 112, height: 78, borderRadius: 18, backgroundColor: '#e0e0e0' },
+  cover: { width: 112, height: 78, borderRadius: 16, backgroundColor: '#e0e0e0' },
   coverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   coverPlaceholderText: { fontSize: 13, color: '#3f3f3f', fontWeight: '700' },
   coverPlaceholderTextDark: { color: '#aaa' },

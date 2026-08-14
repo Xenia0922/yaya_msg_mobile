@@ -22,6 +22,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { APP_VERSION } from '../constants';
 import { getMemberDataMeta, MemberDataMeta } from '../services/memberData';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
 
 type SettingsNavProp = CompositeNavigationProp<
@@ -29,29 +30,46 @@ type SettingsNavProp = CompositeNavigationProp<
   StackNavigationProp<RootStackParamList>
 >;
 
-function Section({ title, children, isDark }: { title: string; children: React.ReactNode; isDark: boolean }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const palette = usePalette();
   return (
-    <View style={[styles.section, isDark && styles.sectionDark]}>
-      <Text style={[styles.sectionTitle, isDark && styles.textLight]}>{title}</Text>
+    <View
+      style={[
+        styles.section,
+        {
+          backgroundColor: palette.surfaceGlass,
+          borderColor: palette.innerStroke,
+          borderRadius: 20,
+        },
+      ]}
+    >
+      <Text style={[styles.sectionTitle, { color: palette.label }]}>{title}</Text>
       {children}
     </View>
   );
 }
 
-function ChipRow<T>({ options, value, isDark, onChange }: { options: { label: string; value: T }[]; value: T; isDark: boolean; onChange: (value: T) => void }) {
+function ChipRow<T>({ options, value, onChange }: { options: { label: string; value: T }[]; value: T; onChange: (value: T) => void }) {
+  const palette = usePalette();
   return (
     <View style={styles.chipRow}>
-      {options.map((opt) => (
-        <TouchableOpacity
-          key={String(opt.value)}
-          style={[styles.chip, isDark && styles.chipDark, value === opt.value && styles.chipActive]}
-          onPress={() => onChange(opt.value)}
-        >
-          <Text style={[styles.chipText, isDark && styles.textSubLight, value === opt.value && styles.chipTextActive]}>
-            {opt.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+      {options.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <TouchableOpacity
+            key={String(opt.value)}
+            style={[
+              styles.chip,
+              { backgroundColor: active ? palette.tint : palette.fill2 },
+            ]}
+            onPress={() => onChange(opt.value)}
+          >
+            <Text style={[styles.chipText, { color: active ? '#FFFFFF' : palette.labelSecondary }]}>
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -119,7 +137,7 @@ export default function SettingsScreen() {
       <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <ScreenHeader title={t('设置')} />
 
-      <Section title={t('关于牙牙消息')} isDark={isDark}>
+      <Section title={t('关于牙牙消息')}>
         <View style={[styles.aboutHero, isDark && styles.aboutHeroDark]}>
           <Image source={require('../../assets/logo.jpg')} style={styles.aboutLogoImg} />
           <View style={{ flex: 1 }}>
@@ -166,15 +184,15 @@ export default function SettingsScreen() {
         </Text>
       </Section>
 
-      <Section title={t('账号')} isDark={isDark}>
+      <Section title={t('账号')}>
         <Text style={[styles.sub, isDark && styles.textSubLight]}>{t('口袋登录、大小号切换、B站登录、修改昵称和头像')}</Text>
         <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('LoginScreen')}>
           <Text style={styles.linkText}>{t('进入账号管理')}</Text>
         </TouchableOpacity>
       </Section>
 
-      <Section title={t('外观')} isDark={isDark}>
-        <ChipRow options={THEME_OPTIONS} value={settings.theme} isDark={isDark} onChange={(v) => update('theme', v)} />
+      <Section title={t('外观')}>
+        <ChipRow options={THEME_OPTIONS} value={settings.theme} onChange={(v) => update('theme', v)} />
         <View style={styles.divider} />
         <Text style={[styles.sub, isDark && styles.textSubLight]}>{t('背景图：{info}', { info: backgroundInfo })}</Text>
         <View style={styles.chipRow}>
@@ -189,12 +207,12 @@ export default function SettingsScreen() {
         ) : null}
       </Section>
 
-      <Section title={t('语言')} isDark={isDark}>
-        <ChipRow options={LANGUAGE_OPTIONS.map((o) => ({ ...o, label: o.value === 'system' ? t(o.label) : o.label }))} value={settings.language || 'system'} isDark={isDark} onChange={(v) => update('language', v)} />
+      <Section title={t('语言')}>
+        <ChipRow options={LANGUAGE_OPTIONS.map((o) => ({ ...o, label: o.value === 'system' ? t(o.label) : o.label }))} value={settings.language || 'system'} onChange={(v) => update('language', v)} />
       </Section>
 
-      <Section title={t('自动签到')} isDark={isDark}>
-        <ChipRow options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]} value={settings.yaya_auto_checkin_enabled} isDark={isDark} onChange={(v) => update('yaya_auto_checkin_enabled', v)} />
+      <Section title={t('自动签到')}>
+        <ChipRow options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]} value={settings.yaya_auto_checkin_enabled} onChange={(v) => update('yaya_auto_checkin_enabled', v)} />
         {settings.yaya_auto_checkin_enabled ? (
           <Text style={[styles.sub, isDark && styles.textSubLight]}>
             {t('上次签到：{date}', { date: settings.yaya_auto_checkin_last_date || t('尚未执行') })}
@@ -202,7 +220,7 @@ export default function SettingsScreen() {
         ) : null}
       </Section>
 
-      <Section title={t('工具')} isDark={isDark}>
+      <Section title={t('工具')}>
         <View style={styles.toolRow}>
           <TouchableOpacity style={[styles.linkBtn, { marginRight: 8 }]} onPress={() => navigation.navigate('DownloadScreen')}>
             <Text style={styles.linkText}>{t('下载管理')}</Text>
@@ -213,7 +231,7 @@ export default function SettingsScreen() {
         </View>
       </Section>
 
-      <Section title={t('成员数据')} isDark={isDark}>
+      <Section title={t('成员数据')}>
         <View style={styles.memberStatRow}>
           <View style={styles.memberStat}>
             <Text style={[styles.memberStatNum, isDark && styles.textLight]}>{memberCount}</Text>
