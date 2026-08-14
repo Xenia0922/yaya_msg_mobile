@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, ImageBackground, Modal, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation';
 import { loadSettings } from './src/services/settings';
 import { useResolvedTheme } from './src/hooks/useAppTheme';
@@ -38,7 +39,15 @@ function installGlobalErrorHandler() {
 installGlobalErrorHandler();
 initRuntimeLog().catch(() => {});
 
-export default function App() {
+export default function AppRoot() {
+  return (
+    <SafeAreaProvider>
+      <App />
+    </SafeAreaProvider>
+  );
+}
+
+function App() {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState('正在初始化...');
   const appTheme = useResolvedTheme();
