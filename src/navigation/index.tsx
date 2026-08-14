@@ -3,11 +3,13 @@ import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@r
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Animated, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { useSettingsStore, useUiStore } from '../store';
-import { Colors } from '../theme/colors';
+import { Palettes } from '../theme/colors';
 import { ensureMemberData } from '../services/memberData';
 import { RootStackParamList, TabParamList } from './types';
+import { AppTabBar, MCI } from '../components/AppTabBar';
+import { usePalette } from '../theme';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import MediaScreen from '../screens/MediaScreen';
@@ -37,12 +39,9 @@ import MemberWeiboScreen from '../screens/MemberWeiboScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { mainTabBarStyle } from './tabBarStyle';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { FadeInView, ScalePressable } from '../components/Motion';
 import { WebViewSigner } from '../auth/webviewSigner';
 import { ui } from '../theme/ui';
-import { useAppTheme, useResolvedTheme } from '../hooks/useAppTheme';
+import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useI18n } from '../i18n';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -119,109 +118,59 @@ const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.s
 const MemberWeiboStackScreen = withPageMotion(MemberWeiboScreen, ui.motion.stackDuration, 10);
 const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10);
 
-function TabButton({
-  focused,
-  color,
-  icon,
-  label,
-  onPress,
-}: {
-  focused: boolean;
-  color: string;
-  icon: string;
-  label: string;
-  onPress: () => void;
-}) {
-  const active = useRef(new Animated.Value(focused ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.spring(active, {
-      toValue: focused ? 1 : 0,
-      speed: 22,
-      bounciness: 8,
-      useNativeDriver: true,
-    }).start();
-  }, [active, focused]);
-
-  const scale = active.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
-  const translateY = active.interpolate({ inputRange: [0, 1], outputRange: [0, -2] });
-
-  // 图标尺寸随屏幕宽度自适应（不写死），窄屏略小、宽屏略大，整体比旧 24 放大一点点
-  const TAB_ICON = Math.round(Math.min(30, Math.max(24, Dimensions.get('window').width / 15)));
-
-  return (
-    <ScalePressable
-      accessibilityRole="button"
-      accessibilityState={focused ? { selected: true } : {}}
-      accessibilityLabel={label}
-      style={styles.tabItem}
-      onPress={onPress}
-      pressedScale={0.92}
-    >
-      <Animated.View style={[styles.tabInner, { transform: [{ scale }, { translateY }] }]}>
-        <Icon name={icon} size={TAB_ICON} style={styles.tabIcon} color={color} />
-        <Text style={[styles.tabLabel, { color }]}>{label}</Text>
-      </Animated.View>
-    </ScalePressable>
-  );
-}
-
 function MainTabBar({
   state,
   descriptors,
   navigation,
-  hasBackground,
   hidden,
-}: BottomTabBarProps & { hasBackground: boolean; hidden: boolean }) {
-  const isDark = useAppTheme();
+}: BottomTabBarProps & { hidden: boolean }) {
   const { t } = useI18n();
+  const palette = usePalette();
   if (hidden) return null;
 
-  return (
-    <FadeInView style={styles.tabBarWrap} pointerEvents="box-none" delay={80} distance={16}>
-      <View style={[styles.tabBar, mainTabBarStyle(hasBackground, isDark)]}>
-        {state.routes.map((route, index) => {
-          const focused = state.index === index;
-          const optionLabel = descriptors[route.key]?.options.tabBarLabel;
-          const tabMeta = TAB_LABELS[route.name];
-          const fallback = tabMeta
-            ? { icon: tabMeta.icon, label: t(tabMeta.label) }
-            : {
-                icon: route.name.slice(0, 1),
-                label: typeof optionLabel === 'string' ? t(optionLabel) : route.name,
-              };
-          const color = focused ? '#ff6f91' : (isDark ? '#eeeeee' : '#555555');
+  const items = state.routes.map((route, index) => {
+    const tabMeta = TAB_LABELS[route.name];
+    const fallback = tabMeta
+      ? { icon: MCI(tabMeta.icon), label: t(tabMeta.label) }
+      : {
+          icon: MCI('circle'),
+          label: typeof descriptors[route.key]?.options?.tabBarLabel === 'string'
+            ? t(descriptors[route.key]?.options?.tabBarLabel as string)
+            : route.name,
+        };
+    return {
+      key: route.name,
+      icon: fallback.icon,
+      label: fallback.label,
+      onPress: () => {
+        const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+        if (state.index !== index && !event.defaultPrevented) navigation.navigate(route.name);
+      },
+    };
+  });
 
-          return (
-            <TabButton
-              key={route.key}
-              focused={focused}
-              color={color}
-              icon={fallback.icon}
-              label={fallback.label}
-              onPress={() => {
-                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
-              }}
-            />
-          );
-        })}
-      </View>
-    </FadeInView>
+  const activeKey = state.routes[state.index]?.name || 'Home';
+  return (
+    <AppTabBar
+      items={items}
+      activeKey={activeKey}
+      onSelect={(key) => {
+        const target = items.find((it) => it.key === key);
+        target?.onPress();
+      }}
+    />
   );
 }
 
 function MainTabs() {
-  const hasBackground = !!useSettingsStore((state) => state.settings.customBackgroundFile?.trim());
-  const isDark = useAppTheme();
   const tabBarHidden = useUiStore((state) => state.tabBarHidden);
 
   return (
     <Tab.Navigator
-      tabBar={(props) => <MainTabBar {...props} hasBackground={hasBackground} hidden={tabBarHidden} />}
+      tabBar={(props) => <MainTabBar {...props} hidden={tabBarHidden} />}
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: hasBackground ? 'transparent' : (isDark ? Colors.bgDark : ui.colors.pageBg) },
+        sceneStyle: { backgroundColor: 'transparent' },
         animation: 'none',
       }}
     >
@@ -235,41 +184,7 @@ function MainTabs() {
 
 const styles = StyleSheet.create({
   tabBarWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 116,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  tabItem: {
-    flex: 1,
-    height: ui.tabBar.itemHeight,
-    minWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabInner: {
-    minWidth: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabIcon: {
-    fontSize: ui.text.tabIconSize,
-    fontWeight: '800',
-    lineHeight: ui.text.tabIconLineHeight,
-    marginBottom: 1,
-    textAlign: 'center',
-  },
-  tabLabel: {
-    fontSize: ui.text.tabLabelSize,
-    lineHeight: ui.text.tabLabelLineHeight,
-    fontWeight: '700',
-    textAlign: 'center',
-    includeFontPadding: false,
+    position: 'absolute', left: 0, right: 0, bottom: 0, height: 116,
   },
 });
 
@@ -277,11 +192,11 @@ const AppTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    primary: ui.colors.primary,
-    background: ui.colors.pageBg,
-    card: '#ffffff',
-    text: '#333333',
-    border: '#eeeeee',
+    primary: Palettes.light.tint,
+    background: Palettes.light.background,
+    card: Palettes.light.surface,
+    text: Palettes.light.label,
+    border: Palettes.light.hairline,
   },
 };
 
@@ -289,11 +204,11 @@ const AppDarkTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    primary: '#ff6f91',
-    background: '#121212',
-    card: '#1e1e1e',
-    text: '#eeeeee',
-    border: '#333333',
+    primary: Palettes.dark.tint,
+    background: Palettes.dark.background,
+    card: Palettes.dark.surface,
+    text: Palettes.dark.label,
+    border: Palettes.dark.hairline,
   },
 };
 

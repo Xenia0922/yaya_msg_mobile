@@ -1,44 +1,40 @@
+/**
+ * AppToast · iOS 26 banner 风格
+ *  - 顶部悬浮，玻璃圆角胶囊
+ *  - Spring 入场 / 退场
+ *  - 最大 2 行，消失后保留最末一段
+ */
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUiStore } from '../store';
+import { usePalette } from '../theme';
+import { typography } from '../theme/typography';
+import { motion } from '../theme/motion';
 
 export default function AppToast() {
   const message = useUiStore((state) => state.toastMessage);
   const hideToast = useUiStore((state) => state.hideToast);
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-8)).current;
+  const palette = usePalette();
+  const insets = useSafeAreaInsets();
+  const ty = useRef(new Animated.Value(40)).current;
+  const op = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!message) {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 160,
-        useNativeDriver: true,
-      }).start();
+      Animated.parallel([
+        Animated.timing(ty, { toValue: 40, duration: motion.duration.fast, useNativeDriver: true }),
+        Animated.timing(op, { toValue: 0, duration: motion.duration.fast, useNativeDriver: true }),
+      ]).start();
       return;
     }
-
-    opacity.setValue(0);
-    translateY.setValue(-8);
     Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }),
+      Animated.spring(ty, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: true }),
+      Animated.timing(op, { toValue: 1, duration: motion.duration.base, useNativeDriver: true }),
     ]).start();
-
-    const timer = setTimeout(() => {
-      hideToast();
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [hideToast, message, opacity, translateY]);
+    const t = setTimeout(() => hideToast(), 2200);
+    return () => clearTimeout(t);
+  }, [hideToast, message, op, ty]);
 
   if (!message) return null;
 
@@ -46,37 +42,51 @@ export default function AppToast() {
     <Animated.View
       pointerEvents="none"
       style={[
-        styles.toast,
+        styles.outer,
         {
-          opacity,
-          transform: [{ translateY }],
+          top: Math.max(insets.top, 14) + 4,
+          opacity: op,
+          transform: [{ translateY: ty }],
         },
       ]}
     >
-      <Text style={styles.text} numberOfLines={2}>{message}</Text>
+      <Animated.View
+        style={[
+          styles.pill,
+          {
+            backgroundColor:
+              palette.name === 'dark' ? 'rgba(40,40,42,0.86)' : 'rgba(20,20,22,0.86)',
+            borderColor: 'rgba(255,255,255,0.08)',
+          },
+        ]}
+      >
+        <Text
+          numberOfLines={2}
+          style={[
+            typography.subhead,
+            { color: '#FFFFFF', fontWeight: '600', textAlign: 'center' },
+          ]}
+        >
+          {message}
+        </Text>
+      </Animated.View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  toast: {
+  outer: {
     position: 'absolute',
-    top: 54,
     left: 24,
     right: 24,
     zIndex: 9999,
     alignItems: 'center',
   },
-  text: {
-    maxWidth: '100%',
-    overflow: 'hidden',
+  pill: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 18,
-    backgroundColor: 'rgba(20,20,20,0.82)',
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'center',
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    maxWidth: '100%',
   },
 });

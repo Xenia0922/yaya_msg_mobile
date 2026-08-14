@@ -1,13 +1,25 @@
+/**
+ * HomeScreen · iOS 26 Liquid Glass
+ *  - 顶部 largeTitle + 副标题（welcome）
+ *  - 未登录提示（玻璃卡片 + 警示色）
+ *  - 分组卡片（玻璃风），组内 2 列网格（flexWrap 实现，避开 FlatList numColumns 雷）
+ *  - 滚动渐入动画（spring 重做，路线统一）
+ */
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore } from '../store';
-import { useAppTheme } from '../hooks/useAppTheme';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { usePalette, spacing, motion } from '../theme';
+import { typography } from '../theme/typography';
+import { GlassCard } from '../components/GlassCard';
+import { Pill } from '../components/Pill';
 import { useI18n } from '../i18n';
+import { ScalePressable } from '../components/Motion';
 
 type HomeNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Home'>,
@@ -19,6 +31,7 @@ interface NavItem {
   desc: string;
   route: string;
   params?: any;
+  icon?: string;
 }
 
 interface CardSection {
@@ -27,71 +40,93 @@ interface CardSection {
   items: NavItem[];
 }
 
+// iOS 风格 emoji 当 leading 视觉锚（不依赖 vector icons 全套映射；后续可换图）
+const EMOJI: Record<string, string> = {
+  LiveRoom: '🎙️',
+  Vod: '📺',
+  RoomRadio: '🎧',
+  Bilibili: '📡',
+  Rooms: '💌',
+  PrivateMessages: '✉️',
+  RoomAlbum: '🖼️',
+  OpenLive: '🎭',
+  FlipSend: '🃏',
+  FlipHistory: '🗂️',
+  Analysis: '📊',
+  Profile: '👤',
+  MemberDynamic: '✨',
+  MemberWeibo: '🧣',
+  Trip: '🧳',
+  VideoLibrary: '🎬',
+  MusicLibrary: '🎵',
+  AudioPrograms: '📻',
+  MeleeRank: '🍗',
+  Database: '🗃️',
+  Login: '🔑',
+  Download: '⏬',
+  Invoice: '🧾',
+  Settings: '⚙️',
+};
+
 const CARDS: CardSection[] = [
   {
     title: '直播',
-    subtitle: '口袋、B站、回放',
+    subtitle: '口袋、B站、回放、电台',
     items: [
-      { title: '直播', desc: '查看当前直播列表', route: 'Media' },
-      { title: '回放', desc: '录播与弹幕', route: 'Media', params: { mode: 'vod' } },
-      { title: '上麦', desc: '房间电台', route: 'RoomRadioScreen' },
-      { title: 'B站', desc: 'B站直播播放', route: 'BilibiliLiveScreen' },
+      { title: '直播', desc: '查看当前直播列表', route: 'Media', icon: EMOJI.LiveRoom },
+      { title: '回放', desc: '录播与弹幕', route: 'Media', params: { mode: 'vod' }, icon: EMOJI.Vod },
+      { title: '上麦', desc: '房间电台', route: 'RoomRadioScreen', icon: EMOJI.RoomRadio },
+      { title: 'B站', desc: 'B站直播播放', route: 'BilibiliLiveScreen', icon: EMOJI.Bilibili },
     ],
   },
   {
     title: '口袋',
     subtitle: '房间、私信、相册、公演',
     items: [
-      { title: '房间', desc: '关注房间消息', route: 'Rooms' },
-      { title: '私信', desc: '口袋私信会话', route: 'PrivateMessagesScreen' },
-      { title: '相册', desc: '按房间查看图片', route: 'RoomAlbumScreen' },
-      { title: '公演', desc: '成员公演记录', route: 'OpenLiveScreen' },
+      { title: '房间', desc: '关注房间消息', route: 'Rooms', icon: EMOJI.Rooms },
+      { title: '私信', desc: '口袋私信会话', route: 'PrivateMessagesScreen', icon: EMOJI.PrivateMessages },
+      { title: '相册', desc: '按房间查看图片', route: 'RoomAlbumScreen', icon: EMOJI.RoomAlbum },
+      { title: '公演', desc: '成员公演记录', route: 'OpenLiveScreen', icon: EMOJI.OpenLive },
     ],
   },
   {
     title: '翻牌',
     subtitle: '提问、历史、统计',
     items: [
-      { title: '提问', desc: '发送翻牌', route: 'FlipScreen', params: { mode: 'send' } },
-      { title: '历史', desc: '浏览翻牌内容', route: 'FlipScreen' },
-      { title: '统计', desc: '翻牌数据分析', route: 'AnalysisScreen' },
+      { title: '提问', desc: '发送翻牌', route: 'FlipScreen', params: { mode: 'send' }, icon: EMOJI.FlipSend },
+      { title: '历史', desc: '浏览翻牌内容', route: 'FlipScreen', icon: EMOJI.FlipHistory },
+      { title: '统计', desc: '翻牌数据分析', route: 'AnalysisScreen', icon: EMOJI.Analysis },
     ],
   },
   {
     title: '成员',
     subtitle: '档案、动态、微博、行程',
     items: [
-      { title: '档案', desc: '成员资料与编年史', route: 'ProfileScreen' },
-      { title: '动态', desc: '成员口袋动态', route: 'MemberDynamicScreen' },
-      { title: '微博', desc: '成员微博动态', route: 'MemberWeiboScreen' },
-      { title: '行程', desc: '行程与票务', route: 'TripScreen' },
+      { title: '档案', desc: '成员资料与编年史', route: 'ProfileScreen', icon: EMOJI.Profile },
+      { title: '动态', desc: '成员口袋动态', route: 'MemberDynamicScreen', icon: EMOJI.MemberDynamic },
+      { title: '微博', desc: '成员微博动态', route: 'MemberWeiboScreen', icon: EMOJI.MemberWeibo },
+      { title: '行程', desc: '行程与票务', route: 'TripScreen', icon: EMOJI.Trip },
     ],
   },
   {
     title: '资源',
     subtitle: '视频、音乐、电台',
     items: [
-      { title: '视频', desc: '查看视频资源', route: 'VideoLibraryScreen' },
-      { title: '音乐', desc: '进入音乐列表', route: 'MusicLibraryScreen' },
-      { title: '电台', desc: '播放音频节目', route: 'AudioProgramsScreen' },
+      { title: '视频', desc: '查看视频资源', route: 'VideoLibraryScreen', icon: EMOJI.VideoLibrary },
+      { title: '音乐', desc: '进入音乐列表', route: 'MusicLibraryScreen', icon: EMOJI.MusicLibrary },
+      { title: '电台', desc: '播放音频节目', route: 'AudioProgramsScreen', icon: EMOJI.AudioPrograms },
     ],
   },
   {
-    title: '数据',
-    subtitle: '统计、数据库、排行榜',
+    title: '工具',
+    subtitle: '统计、数据库、设置',
     items: [
-      { title: '鸡腿榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen' },
-      { title: '数据库', desc: '查看附属数据', route: 'DatabaseScreen' },
-    ],
-  },
-  {
-    title: '通用',
-    subtitle: '账号、下载、设置',
-    items: [
-      { title: '账号', desc: '口袋/B站/头像', route: 'LoginScreen' },
-      { title: '下载', desc: '录播/图片/视频', route: 'DownloadScreen' },
-      { title: '发票', desc: '鸡腿消费开票', route: 'InvoiceScreen' },
-      { title: '设置', desc: '主题、签到、工具', route: 'Settings' },
+      { title: '鸡腿榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen', icon: EMOJI.MeleeRank },
+      { title: '数据库', desc: '成员附属数据', route: 'DatabaseScreen', icon: EMOJI.Database },
+      { title: '账号', desc: '登录与头像', route: 'LoginScreen', icon: EMOJI.Login },
+      { title: '下载', desc: '录播/图片/视频', route: 'DownloadScreen', icon: EMOJI.Download },
+      { title: '发票', desc: '鸡腿消费开票', route: 'InvoiceScreen', icon: EMOJI.Invoice },
+      { title: '设置', desc: '主题与签到', route: 'Settings', icon: EMOJI.Settings },
     ],
   },
 ];
@@ -99,17 +134,16 @@ const CARDS: CardSection[] = [
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavProp>();
   const settings = useSettingsStore((state) => state.settings);
-  const isDark = useAppTheme();
+  const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const { t } = useI18n();
-  const hasBackground = !!settings.customBackgroundFile?.trim();
   const token = settings.p48Token;
-  const membersLoaded = useMemberStore((state) => state.membersLoaded);
-  const members = useMemberStore((state) => state.members);
+  const membersCount = useMemberStore((s) => s.members.length);
   const [showTip, setShowTip] = useState(true);
 
   useEffect(() => {
     setShowTip(true);
-    const timer = setTimeout(() => setShowTip(false), 3000);
+    const timer = setTimeout(() => setShowTip(false), 4000);
     return () => clearTimeout(timer);
   }, [token]);
 
@@ -126,77 +160,115 @@ export default function HomeScreen() {
   }));
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
-      <FadeInView style={styles.header} distance={8}>
-        <Text style={styles.headerTitle}>{t('牙牙消息')}</Text>
-      </FadeInView>
+    <View style={[styles.outer, { backgroundColor: palette.background }]}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingTop: insets.top + 4,
+          paddingBottom: 100 + insets.bottom,
+          paddingHorizontal: spacing.md,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[typography.largeTitle, { color: palette.label, marginBottom: 4 }]}>
+          {t('牙牙消息')}
+        </Text>
+        <Text style={[typography.subhead, { color: palette.labelSecondary, marginBottom: 22 }]}>
+          {t('欢迎回来 · 已收录 {n} 位成员', { n: membersCount || '—' })}
+        </Text>
 
-      {showTip && !token ? (
-        <FadeInView style={[styles.warnBanner, isDark && styles.warnBannerDark]} delay={80} distance={8}>
-          <Text style={styles.warnTitle}>{t('未登录口袋账号')}</Text>
-          <Text style={[styles.warnText, isDark && styles.warnTextDark]}>{t('成员库、资源和公开数据可直接查看；消息、私信、翻牌等需要登录或粘贴 token。')}</Text>
-        </FadeInView>
-      ) : null}
-
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {cards.map((card, index) => (
-          <FadeInView
-            key={card.title}
-            style={[styles.card, hasBackground && styles.cardOnImage, isDark && styles.cardDark]}
-            delay={60 + index * 35}
-            distance={12}
+        {showTip && !token ? (
+          <GlassCard
+            strong
+            padding={16}
+            radius={20}
+            style={{ marginBottom: 18, borderColor: palette.danger }}
+            tint={palette.name === 'dark' ? 'plain' : 'pink'}
           >
-            <Text style={styles.cardTitle}>{card.title}</Text>
-            <Text style={[styles.cardSub, isDark && styles.cardSubDark]}>{card.subtitle}</Text>
-            <View style={styles.cardGrid}>
+            <Text style={[typography.headline, { color: palette.danger }]}>{t('未登录口袋账号')}</Text>
+            <Text
+              style={[
+                typography.subhead,
+                { color: palette.labelSecondary, marginTop: 6, lineHeight: 20 },
+              ]}
+            >
+              {t('成员库、资源和公开数据可直接查看；消息、私信、翻牌等需要登录或粘贴 token。')}
+            </Text>
+          </GlassCard>
+        ) : null}
+
+        {cards.map((card) => (
+          <View key={card.title} style={{ marginBottom: 18 }}>
+            <Text style={[typography.headline, { color: palette.label, marginBottom: 4 }]}>
+              {card.title}
+            </Text>
+            <Text style={[typography.footnote, { color: palette.labelTertiary, marginBottom: 10 }]}>
+              {card.subtitle}
+            </Text>
+            <View style={styles.grid}>
               {card.items.map((item) => (
                 <ScalePressable
                   key={`${card.title}-${item.title}`}
-                  style={[styles.cardItem, hasBackground && styles.cardItemOnImage, isDark && styles.cardItemDark]}
+                  style={styles.gridCell}
                   onPress={() => handleNav(item)}
                   pressedScale={0.97}
                 >
-                  <Text style={[styles.cardItemTitle, isDark && styles.cardItemTitleDark]}>{item.title}</Text>
-                  <Text style={[styles.cardItemDesc, isDark && styles.cardItemDescDark]}>{item.desc}</Text>
+                  <GlassCard padding={14} radius={20} strong={false}>
+                    <View style={styles.cellTop}>
+                      <Text style={{ fontSize: 28 }}>{item.icon || '•'}</Text>
+                      <Pill label={item.title} accent />
+                    </View>
+                    <Text
+                      style={[
+                        typography.footnote,
+                        { color: palette.labelSecondary, marginTop: 8, lineHeight: 18 },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {item.desc}
+                    </Text>
+                  </GlassCard>
                 </ScalePressable>
               ))}
             </View>
-          </FadeInView>
+          </View>
         ))}
-        <Text style={[styles.footer, isDark && styles.footerDark]}>Presented by Xenia</Text>
+
+        <Text
+          style={[
+            typography.caption1,
+            {
+              color: palette.labelTertiary,
+              textAlign: 'center',
+              marginTop: 12,
+              marginBottom: 24,
+            },
+          ]}
+        >
+          {t('Presented by Xenia')}
+        </Text>
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  header: { paddingTop: 40, paddingHorizontal: 18, paddingBottom: 8 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#ff6f91' },
-  headerSub: { fontSize: 11, color: '#555555', marginTop: 2 },
-  headerSubDark: { color: '#d7d7d7' },
-  warnBanner: { marginHorizontal: 12, marginBottom: 8, padding: 12, backgroundColor: '#fff3cd', borderRadius: 16, borderLeftWidth: 3, borderLeftColor: '#ff9800' },
-  warnBannerDark: { backgroundColor: 'rgba(58,44,18,0.62)', borderLeftColor: '#ffb74d' },
-  warnTitle: { fontSize: 13, fontWeight: '700', color: '#e65100', marginBottom: 4 },
-  warnText: { fontSize: 12, color: '#444', lineHeight: 18 },
-  warnTextDark: { color: '#f3dca2' },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 12, paddingBottom: 112 },
-  card: { backgroundColor: '#ffffff', borderRadius: 18, padding: 14, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.84)', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
-  cardOnImage: { backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(255,255,255,0.68)' },
-  cardDark: { backgroundColor: 'rgba(20,20,20,0.62)', borderColor: 'rgba(255,255,255,0.10)' },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#ff6f91', marginBottom: 2 },
-  cardSub: { fontSize: 11, color: '#555555', marginBottom: 10 },
-  cardSubDark: { color: '#eeeeee' },
-  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  cardItem: { flex: 1, minWidth: '45%', backgroundColor: 'rgba(248,248,248,0.80)', borderRadius: 16, padding: 10, borderWidth: 1, borderColor: 'rgba(248,248,248,0.80)' },
-  cardItemOnImage: { backgroundColor: 'rgba(255,255,255,0.34)', borderColor: 'rgba(255,255,255,0.34)' },
-  cardItemDark: { backgroundColor: 'rgba(35,35,35,0.64)', borderColor: 'rgba(42,42,42,0.32)' },
-  cardItemTitle: { fontSize: 13, fontWeight: '700', color: '#333' },
-  cardItemTitleDark: { color: '#f4f4f4' },
-  cardItemDesc: { fontSize: 10, color: '#555555', marginTop: 2 },
-  cardItemDescDark: { color: '#d0d0d0' },
-  footer: { textAlign: 'center', color: '#555', fontSize: 10, marginTop: 8 },
-  footerDark: { color: '#c8c8c8' },
+  outer: { flex: 1 },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  gridCell: {
+    flexBasis: '48%',
+    flexGrow: 1,
+  },
+  cellTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
 });
+
+// re-export for callers using motion spring in entry transitions (entry screen)
+export { motion };

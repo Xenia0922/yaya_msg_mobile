@@ -1,0 +1,141 @@
+/**
+ * AppTabBar · iOS 26 Liquid Glass 底栏
+ *  - 玻璃感悬浮胶囊（半透明 + 1px 内描边）
+ *  - 5 个 tab：图标 + label，label 常驻显示
+ *  - active 项：玻璃 tint 胶囊 + accent 字
+ *  - Spring 按压反馈
+ *  - 安全留白底部 inset
+ *
+ * 注：受 React Navigation 限制，render tabBar 由 Tab.Navigator 的 `tabBar` prop 调用此组件。
+ *     此组件自管事件 onTabPress(index)、当前 activeIndex。
+ */
+import React from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { usePalette, motion } from '../theme';
+import { typography } from '../theme/typography';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+
+export interface TabBarItem {
+  key: string;
+  label: string;
+  icon: (props: { color: string; size: number }) => React.ReactNode;
+}
+
+export interface AppTabBarProps {
+  items: TabBarItem[];
+  activeKey: string;
+  onSelect: (key: string) => void;
+}
+
+export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
+  const palette = usePalette();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={[styles.outer, { paddingBottom: Math.max(insets.bottom, 10) + 10 }]}
+    >
+      <View
+        style={[
+          styles.bar,
+          {
+            backgroundColor: palette.surfaceGlassStrong,
+            borderColor: palette.innerStroke,
+          },
+        ]}
+      >
+        {items.map((item) => {
+          const active = item.key === activeKey;
+          return (
+            <Pressable
+              key={item.key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              hitSlop={6}
+              onPress={() => onSelect(item.key)}
+              style={({ pressed }) => [
+                styles.cell,
+                active && {
+                  backgroundColor:
+                    palette.name === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(255,111,145,0.18)',
+                },
+                active && { borderColor: palette.tint },
+                active && pressed && { transform: [{ scale: 0.96 }] },
+                pressed && !active && { transform: [{ scale: 0.97 }] },
+              ]}
+            >
+              <View style={styles.cellIcon}>
+                {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 22 })}
+              </View>
+              <Text
+                style={[
+                  typography.caption1,
+                  {
+                    color: active ? palette.tint : palette.labelSecondary,
+                    fontWeight: active ? '700' : '600',
+                    marginTop: 2,
+                  },
+                ]}
+              >
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  outer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  bar: {
+    flexDirection: 'row',
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    minHeight: 56,
+    // 悬浮阴影
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  cell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
+  },
+  cellIcon: { alignItems: 'center', justifyContent: 'center' },
+});
+
+// 辅助：复用项目里的 MaterialCommunityIcons
+export function MCI(name: string) {
+  return ({ color, size }: { color: string; size: number }) => (
+    <MaterialCommunityIcons name={name} color={color} size={size} />
+  );
+}
+
+export { motion };
