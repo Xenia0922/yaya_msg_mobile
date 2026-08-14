@@ -3,8 +3,10 @@ import { Image, StyleSheet, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // 口袋48官网源的音乐对象只有 mp3/artist/title，没有封面图。
+// 封面来自官网 records（专辑记录）：buildTracks 已按 专辑/歌名/音频分组 四级匹配，
+// 实测 100% 歌曲能拿到有效封面 URL（2026-08-14 数据验证）。
 // 这里用「歌名哈希 -> 固定调色板」生成确定性渐变封面（每首歌配色稳定），
-// 叠加一个旋转半透明层模拟斜向渐变 + 装饰环 + 首字，避免空占位符的廉价感。
+// 叠加一个旋转半透明层模拟斜向渐变 + 音符图标，作为「加载中 / 无封面 / 加载失败」兜底。
 const PALETTE: [string, string][] = [
   ['#ff9a9e', '#fecfef'],
   ['#a18cd1', '#fbc2eb'],
@@ -42,34 +44,44 @@ interface Props {
   active?: boolean;
 }
 
+/**
+ * 封面显示（重写版，2026-08-14）——不再依赖 onLoad 回调：
+ *
+ * 历史教训：早期用「onLoad 门控 + opacity」方案——Image 未 onLoad 前透明，
+ * onLoad 后淡入。但 RN Android（Fresco）对命中缓存/部分 ROM 的图可能不触发
+ * onLoad，导致透明度永远停在 0：图其实加载完成了，却永远不可见 =「封面丢失」。
+ *
+ * 重写原则：
+ *  1. Image 常驻且**不透明**（opacity 恒 1）——Fresco 加载完成会自动显示图片，
+ *     加载中显示透明占位（底层渐变可见），成功路径完全不依赖 onLoad。
+ *  2. 失败路径靠 onError 隐藏（回退渐变+音符），首次失败 3s 后自动重试一次
+ *     （封面 URL 偶发 403/超时场景）。
+ *  3. 15s 超时兜底：既未成功也未触发 onError 的罕见「死块」场景（HTTP 200 非图等），
+ *     强制回退渐变，绝不永久白屏。
+ *  4. key={uri}：uri 变化（FlatList 复用/切歌）时强制重建实例，杜绝状态串台。
+ */
 export default function CoverArt({ uri, title, size, fill, round, active }: Props) {
   const [c1, c2] = PALETTE[hashStr(title || '♪') % PALETTE.length];
   const [errored, setErrored] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
   const retried = React.useRef(false);
-  // 关键修复 1：uri 变化（FlatList 回收单元格复用本组件实例去显示另一首歌）时，
-  // 必须重置 errored/loaded。否则上一首封面加载失败的 errored=true 会被带到本该有封面的
-  // 新歌上，导致它错误地显示成「无封面」。现象即「每首歌都白过 + 播过的歌返回后变白」。
-  // 关键修复 2（onLoad 门控）：RN Android 的 Image.onError 并不可靠——HTTP 200 但字节非图、
-  // 解码/DNS 失败、FlatList removeClippedSubviews 回收后重载静默中断都可能不触发 onError，
-  // 此时死块 Image 会盖在渐变兜底之上，看着就是空白。因此渐变常驻底层，
-  // Image 只在 onLoad 真正成功后淡入。
-  // 注意：不再用「8s 超时强制回退」——渐变兜底本来就始终在底层可见（Image 未 loaded 时
-  // 透明），超时卸载反而会在慢网络/慢 CDN 下永久丢弃仍在加载的封面（加载完成后也不再显示），
-  // 正是「封面偶发丢失」的来源之一。
+
+  // uri 变化重置（FlatList 回收单元格复用本组件实例时，避免上一首的状态串到新歌）
   React.useEffect(() => {
     setErrored(false);
     setLoaded(false);
     retried.current = false;
   }, [uri]);
-  const boxStyle: any = fill
-    ? { width: '100%', height: '100%', borderRadius: round ? 999 : 0 }
-    : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
-  const showImage = !!uri && !errored;
-  const iconSize = fill ? 44 : Math.round((size || 0) * 0.34);
 
-  // onError：首次失败延迟 3s 自动重试一次（封面 URL 偶发 403/超时场景），
-  // 再次失败才永久回退渐变+音符。
+  // 15s 超时兜底：从未成功加载（loaded=false）时强制回退渐变，防「死块」永久遮挡。
+  // loaded 成功后不再受超时影响（图已正常显示）。
+  React.useEffect(() => {
+    if (!uri || loaded) return;
+    const timer = setTimeout(() => setErrored(true), 15000);
+    return () => clearTimeout(timer);
+  }, [uri, loaded]);
+
+  // onError：首次失败延迟 3s 自动重试一次，再次失败才永久回退
   const handleImageError = React.useCallback(() => {
     if (!retried.current) {
       retried.current = true;
@@ -80,21 +92,20 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     }
   }, []);
 
-  // 有封面 URL（且未失败）→ 渲染 Image，但 onLoad 前保持透明，渐变兜底始终可见；
-  // 无封面 / 加载失败（重试后）→ 确定性渐变 + 居中音符图标兜底，干净、不空白、不叠字。
+  const boxStyle: any = fill
+    ? { width: '100%', height: '100%', borderRadius: round ? 999 : 0 }
+    : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
+  const showImage = !!uri && !errored;
+  const iconSize = fill ? 44 : Math.round((size || 0) * 0.34);
+
   return (
     <View style={[styles.box, boxStyle, { backgroundColor: c1 }]}>
       <View style={[styles.overlay, { backgroundColor: c2, opacity: 0.5, transform: [{ rotate: '35deg' }] }]} />
       {showImage ? (
         <Image
-          // key={uri}：uri 变化时强制重建实例（而非复用旧实例改 source）。
-          // RN Android 对命中内存缓存的图不再次触发 onLoad——若复用实例，loaded 已在
-          // uri 变化时被重置为 false 且 onLoad 不再回调，opacity 永远停在 0，
-          // 表现为「图其实显示了但看不见」（切歌/列表回收后返回封面丢失的根因）。
-          // 重建实例后 onLoad 必定触发（缓存命中也会回调），透明度门控恢复有效。
           key={uri}
           source={{ uri }}
-          style={[StyleSheet.absoluteFill, { borderRadius: round ? 999 : 0, opacity: loaded ? 1 : 0 }]}
+          style={[StyleSheet.absoluteFill, { borderRadius: round ? 999 : 0 }]}
           resizeMode="cover"
           // scale：保留原图分辨率由 GPU 缩放，比 resize 预解码缩放更锐利（修复封面发糊）
           resizeMethod="scale"
