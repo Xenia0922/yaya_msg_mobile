@@ -1,3 +1,5 @@
+import { translate } from '../i18n';
+
 export function getPath(obj: any, path: string): any {
   return path.split('.').reduce((acc, key) => acc?.[key], obj);
 }
@@ -153,12 +155,12 @@ export function messageText(item: any): string {
 
   if (isGift) {
     const source = giftInfo || body || {};
-    const giftName = pickText(source, ['giftName', 'name', 'giftInfo.giftName'], '礼物');
+    const giftName = pickText(source, ['giftName', 'name', 'giftInfo.giftName'], translate('礼物'));
     const giftNum = pickText(source, ['giftNum', 'num', 'count', 'giftInfo.giftNum'], '1');
     const gr = body?.giftReplyInfo || {};
     const replyText = gr.replyName || body?.replyName || body?.text || body?.body || '';
     const prefix = replyText && typeof replyText === 'string' && replyText.trim() ? `${replyText.trim()} · ` : '';
-    return `${prefix}送出礼物：${giftName} x${giftNum}`;
+    return `${prefix}${translate('送出礼物')}：${giftName} x${giftNum}`;
   }
   const text = pickText(body, [
     'text',
@@ -193,10 +195,10 @@ export function messageText(item: any): string {
   if (text) return replaceEmojiText(String(text));
   const url = pickText(body, ['url', 'message.url', 'msg.url', 'audioUrl', 'videoUrl', 'imageUrl']);
   if (url) {
-    if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return '[语音消息]';
-    if (type.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return '[视频消息]';
-    if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return '[图片消息]';
-    return '[链接消息]';
+    if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return translate('[语音消息]');
+    if (type.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return translate('[视频消息]');
+    if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return translate('[图片消息]');
+    return translate('[链接消息]');
   }
   return item?.msgType && !/^LIVE|SHARE|TEXT$/i.test(String(item.msgType)) ? `[${item.msgType}]` : '';
 }
@@ -213,7 +215,10 @@ export function messageImageUrl(item: any): string {
 }
 
 export function errorMessage(error: any): string {
-  if (!error) return '未知错误';
+  if (!error) return translate('未知错误');
   if (typeof error === 'string') return error;
-  return error?.message || error?.msg || JSON.stringify(error).slice(0, 240);
+  // 统一出口：把工具/网络层抛出的中文错误过一次字典（有 key 则翻译，
+  // 无 key 或动态内容原样回退；en/ja/ko 用户不再看到中文报错）
+  const raw = error?.message || error?.msg || JSON.stringify(error).slice(0, 240);
+  return translate(String(raw));
 }

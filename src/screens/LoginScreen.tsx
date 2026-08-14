@@ -154,7 +154,7 @@ export default function LoginScreen() {
         });
         setStatus(t('请完成安全验证后重新获取验证码'));
       } else {
-        setStatus(res?.success ? t('验证码已发送') : (res?.msg || res?.message || t('验证码发送失败')));
+        setStatus(res?.success ? t('验证码已发送') : t(res?.msg || res?.message || '验证码发送失败'));
         if (res?.success) setVerify(null);
       }
     } catch (error) {
@@ -184,7 +184,7 @@ export default function LoginScreen() {
       } else {
         const msg = res?.message || res?.msg || res?.content?.message || JSON.stringify(res).slice(0, 180);
         const base = t('登录失败接口未返回token');
-        setStatus(msg ? `${base}。${t('返回：{msg}', { msg })}` : base);
+        setStatus(msg ? `${base}。${t('返回：{msg}', { msg: t(String(msg)) })}` : base);
       }
     } catch (error) {
       setStatus(errorMessage(error));
