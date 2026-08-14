@@ -355,8 +355,8 @@ const styles = StyleSheet.create({
   containerDark: { backgroundColor: 'transparent' },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
   disabledText: { opacity: 0.45 },
-  searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
-  searchInputDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
+  searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
+  searchInputDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
   
   // 标签栏容器：固定高度，底部分隔线（颜色在组件里动态切换）
   tabsBarBase: { 
@@ -400,8 +400,8 @@ const styles = StyleSheet.create({
   emptyWrap: { alignItems: 'center', marginTop: 80 },
   // 去掉 gridRow（width:'48%'+space-between 在 Android FlatList 上切歌后左列塌陷）。
   // 现由 FlatList numColumns=2 默认等分两列，songItem 用 flex:1 + 自身 padding 自适应。
-  songItem: { flex: 1, margin: 4, borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.82)' },
-  cardDark: { backgroundColor: 'rgba(20,20,20,0.72)' },
+  songItem: { flex: 1, margin: 4, borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFFFFF' },
+  cardDark: { backgroundColor: '#1C1C1F' },
   songItemActiveDark: { borderColor: '#ff8fa8' },
   songItemActive: { borderWidth: 2, borderColor: '#ff6f91' },
   coverWrap: { width: '100%', aspectRatio: 1, backgroundColor: '#111' },

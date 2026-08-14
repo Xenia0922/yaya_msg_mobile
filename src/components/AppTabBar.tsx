@@ -105,18 +105,18 @@ const styles = StyleSheet.create({
   },
   bar: {
     flexDirection: 'row',
-    borderRadius: 28,
+    borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     paddingVertical: 6,
     paddingHorizontal: 6,
     minHeight: 56,
-    // 悬浮阴影
+    // 悬浮阴影（克制）
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 6,
   },
   cell: {
     flex: 1,

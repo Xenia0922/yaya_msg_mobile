@@ -1,4 +1,4 @@
-// iOS 26 圆角：胶囊 + 大卡片圆角 + 内嵌小圆角
+// 官方口袋48风格圆角：卡片 16、按钮 18、chip 胶囊
 export const radii = {
   none: 0,
   xs: 6,
@@ -14,11 +14,11 @@ export type RadiusToken = keyof typeof radii;
 
 /** 推荐组合：卡片大圆角、按钮/输入框中等圆角、chip/avatar 胶囊 */
 export const radiiAlias = {
-  card: radii.xl,        // 28 —— iOS 26 卡片大圆角
-  cardCompact: radii.lg, // 20 —— 紧凑卡片
-  button: radii.pill,    // 999 —— 胶囊主按钮
-  buttonSquare: radii.md,// 14 —— 方按钮
-  input: radii.md,       // 14
-  chip: radii.pill,      // 999
-  avatar: radii.pill,    // 圆形
+  card: radii.md,         // 16 —— 实心卡片
+  cardCompact: radii.md,  // 14 —— 紧凑卡片
+  button: 18,             // 18 —— 主按钮（非全胶囊）
+  buttonSquare: radii.md, // 14 —— 方按钮
+  input: radii.md,        // 14
+  chip: radii.pill,       // 999
+  avatar: radii.pill,     // 圆形
 } as const;

@@ -168,11 +168,11 @@ const styles = StyleSheet.create({
   disabledText: { opacity: 0.45 },
   list: { padding: 12, paddingBottom: 40 },
   card: {
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16, padding: 14, marginBottom: 10,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)',
   },
-  cardDark: { backgroundColor: 'rgba(20,20,20,0.68)', borderColor: 'rgba(255,255,255,0.10)' },
+  cardDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.10)' },
   ownerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   ownerAvatar: { width: 26, height: 26, borderRadius: 13, marginRight: 8, backgroundColor: 'rgba(128,128,128,0.15)' },
   ownerName: { fontSize: 14, fontWeight: '700', color: '#333333', flex: 1 },

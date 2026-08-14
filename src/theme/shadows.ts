@@ -3,10 +3,10 @@ import { Platform, ViewStyle } from 'react-native';
 
 const shadowImpl = (level: 'xs' | 'sm' | 'md' | 'lg', isDark: boolean) => {
   const cfg = {
-    xs: { offsetY: 1, blur: 2, alpha: isDark ? 0.30 : 0.06, radius: 1 },
-    sm: { offsetY: 2, blur: 6, alpha: isDark ? 0.36 : 0.10, radius: 3 },
-    md: { offsetY: 6, blur: 18, alpha: isDark ? 0.42 : 0.14, radius: 8 },
-    lg: { offsetY: 12, blur: 36, alpha: isDark ? 0.50 : 0.18, radius: 16 },
+    xs: { offsetY: 1, blur: 2, alpha: isDark ? 0.24 : 0.05, radius: 1 },
+    sm: { offsetY: 2, blur: 5, alpha: isDark ? 0.28 : 0.06, radius: 2 },
+    md: { offsetY: 5, blur: 14, alpha: isDark ? 0.34 : 0.09, radius: 5 },
+    lg: { offsetY: 10, blur: 28, alpha: isDark ? 0.42 : 0.12, radius: 10 },
   }[level];
 
   if (Platform.OS === 'ios') {
