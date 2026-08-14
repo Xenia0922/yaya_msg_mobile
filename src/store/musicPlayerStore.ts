@@ -2,6 +2,40 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/**
+ * 写节流包装：音乐 store 的 position 在 onProgress 下每 ~250ms 更新一次，
+ * zustand persist 默认每次 set 都全量序列化（含整个 queue）写入 AsyncStorage——
+ * 高频大写入伤 IO 与存储寿命。这里按 key 节流（30s trailing 合并），
+ * 读取/删除不受影响；App 被杀时最多丢最近 30s 的进度（与 WebView 续播节流同级）。
+ */
+function createThrottleStorage(storage: { getItem: (name: string) => Promise<string | null>; setItem: (name: string, value: string) => Promise<void>; removeItem: (name: string) => Promise<void> }, ms = 30000) {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const pending = new Map<string, string>();
+  return {
+    getItem: (name: string) => storage.getItem(name),
+    setItem: (name: string, value: string) => {
+      pending.set(name, value);
+      if (!timers.has(name)) {
+        timers.set(name, setTimeout(() => {
+          timers.delete(name);
+          const v = pending.get(name);
+          pending.delete(name);
+          if (v !== undefined) storage.setItem(name, v).catch(() => {});
+        }, ms));
+      }
+    },
+    removeItem: (name: string) => {
+      pending.delete(name);
+      const timer = timers.get(name);
+      if (timer) {
+        clearTimeout(timer);
+        timers.delete(name);
+      }
+      return storage.removeItem(name);
+    },
+  };
+}
+
 export type PlayMode = 'sequential' | 'random' | 'single';
 export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
@@ -180,7 +214,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
     }),
     {
       name: 'yaya_music_player_v2',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => createThrottleStorage(AsyncStorage)),
       partialize: (s) => ({
         queue: s.queue,
         currentIndex: s.currentIndex,

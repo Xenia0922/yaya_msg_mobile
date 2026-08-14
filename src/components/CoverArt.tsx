@@ -73,6 +73,12 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
       <View style={[styles.overlay, { backgroundColor: c2, opacity: 0.5, transform: [{ rotate: '35deg' }] }]} />
       {showImage ? (
         <Image
+          // key={uri}：uri 变化时强制重建实例（而非复用旧实例改 source）。
+          // RN Android 对命中内存缓存的图不再次触发 onLoad——若复用实例，loaded 已在
+          // uri 变化时被重置为 false 且 onLoad 不再回调，opacity 永远停在 0，
+          // 表现为「图其实显示了但看不见」（切歌/列表回收后返回封面丢失的根因）。
+          // 重建实例后 onLoad 必定触发（缓存命中也会回调），透明度门控恢复有效。
+          key={uri}
           source={{ uri }}
           style={[StyleSheet.absoluteFill, { borderRadius: round ? 999 : 0, opacity: loaded ? 1 : 0 }]}
           resizeMode="cover"

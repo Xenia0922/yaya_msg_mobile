@@ -14,6 +14,7 @@ import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { NOTICE_URL } from './src/constants';
 import { initRuntimeLog, logCrash } from './src/utils/runtimeLog';
 import { Colors } from './src/theme/colors';
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 // 全局 JS 闪退捕获：生产环境红盒不可见，写入本地日志便于排查。
 // 同时保留原有 handler（开发环境红盒 / 默认崩溃行为）。
@@ -184,9 +185,12 @@ export default function App() {
       onError={(event) => setBackgroundLoadError(`背景图加载失败：${backgroundSource.uri} ${event.nativeEvent?.error || ''}`)}
     >
       <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: appTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)' }} />
-      {content}
+      {/* 错误边界外扩到 App 级：Modal/WebViewSigner/背景层渲染异常也有兜底（页面级由导航内的 ErrorBoundary 捕获） */}
+      <ErrorBoundary>{content}</ErrorBoundary>
     </ImageBackground>
-  ) : content;
+  ) : (
+    <ErrorBoundary>{content}</ErrorBoundary>
+  );
 }
 
 // v2.6: Announcement modal styles

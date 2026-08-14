@@ -301,8 +301,12 @@ export default function MusicLibraryScreen() {
           try {
             if (playMode === 'single') {
               useMusicPlayerStore.getState().setPosition(0);
-              useMusicPlayerStore.getState().setSeekTarget(0);
               useMusicPlayerStore.getState().setPlaybackState('playing');
+              // 单曲循环必须显式 seek(0)：ended 后仅翻转 paused 不会重播
+              // （seekTarget effect 要求 >0，seek(0) 走不到，这里直接调用）
+              if (videoRef.current && typeof videoRef.current.seek === 'function') {
+                try { videoRef.current.seek(0); } catch (err) { console.warn('[MusicLibraryScreen] loop seek error:', err); }
+              }
             } else {
               MusicEngine.next();
             }
