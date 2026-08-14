@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { useUiStore } from '../store';
 import { usePalette } from '../theme';
 import { typography } from '../theme/typography';

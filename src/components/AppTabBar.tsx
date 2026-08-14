@@ -16,7 +16,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { usePalette, motion } from '../theme';
 import { typography } from '../theme/typography';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';

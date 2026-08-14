@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { usePalette } from '../theme';
 import { typography } from '../theme/typography';
 

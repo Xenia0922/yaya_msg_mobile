@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore } from '../store';
 import { usePalette, spacing, motion } from '../theme';
