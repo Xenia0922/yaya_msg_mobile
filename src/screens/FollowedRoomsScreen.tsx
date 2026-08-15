@@ -1550,6 +1550,8 @@ export default function FollowedRoomsScreen() {
             const busy = followBusy.has(fid);
             const isPinned = pinned.includes(item.memberId);
             const name = shortName(item.member, item.memberId);
+            const team = item.member?.team || item.member?.groupName || '';
+            const lastTime = Number(item.lastMessage?.msgTime || item.lastMessage?.ctime || 0);
             return (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <TouchableOpacity
@@ -1566,8 +1568,8 @@ export default function FollowedRoomsScreen() {
                 activeOpacity={0.88}
               >
                 <View style={styles.roomItemRow}>
-                  {/* 头像 */}
-                  <View style={[styles.roomAvatar, { backgroundColor: palette.tintSoft }]}>
+                  {/* 大圆头像 */}
+                  <View style={[styles.roomAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
                     {item.member?.avatar ? (
                       <Image source={{ uri: item.member.avatar }} style={styles.roomAvatar} />
                     ) : (
@@ -1575,7 +1577,7 @@ export default function FollowedRoomsScreen() {
                     )}
                   </View>
                   {/* 信息 */}
-                  <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flex: 1, marginLeft: 13 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
                       {isPinned ? (
@@ -1584,17 +1586,19 @@ export default function FollowedRoomsScreen() {
                         </View>
                       ) : null}
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
-                      <Text style={[styles.roomTeam, { color: palette.tint }]}>{item.member?.team || item.member?.groupName || t('未匹配成员库')}</Text>
-                      {item.member ? (
-                        <Text style={[styles.roomMetaInline, { color: palette.labelTertiary }]} numberOfLines={1}>
-                          {t('大 {id}', { id: item.member.channelId || '-' })}
-                        </Text>
-                      ) : null}
-                    </View>
                     <Text style={[styles.lastMessage, { color: palette.labelSecondary }]} numberOfLines={1}>
                       {item.lastMessage ? messageText(item.lastMessage) : t('点击查看房间消息')}
                     </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                      {team ? (
+                        <Text style={[styles.roomTeam, { color: palette.tint }]} numberOfLines={1}>{team}</Text>
+                      ) : null}
+                      {lastTime ? (
+                        <Text style={[styles.roomMetaInline, { color: palette.labelTertiary }]} numberOfLines={1}>
+                          · {formatTimestamp(lastTime).slice(5, 16)}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                   {/* 关注按钮 */}
                   {item.member ? (
@@ -1667,15 +1671,15 @@ const styles = StyleSheet.create({
   roomItemDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.12)' },
   roomItemRow: { flexDirection: 'row', alignItems: 'center' },
   roomAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  roomAvatarText: { fontSize: 17, fontWeight: '800' },
-  roomMetaInline: { fontSize: 11, marginLeft: 8 },
+  roomAvatarText: { fontSize: 20, fontWeight: '800' },
+  roomMetaInline: { fontSize: 11, marginLeft: 6 },
   roomTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   roomName: { fontSize: 15, fontWeight: '900', color: '#333', flex: 1 },
   roomTeam: { fontSize: 11, color: '#ff6f91', fontWeight: '800' },

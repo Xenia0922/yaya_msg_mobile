@@ -1466,107 +1466,177 @@ export default function MediaScreen() {
       />
 
       <View style={{ flex: 1 }}>
-        <PerfFlatList
-          data={list}
-          keyExtractor={(item, index) => item.liveId || String(index)}
-          renderItem={({ item, index }) => {
-            const coverUrl = item.liveCover || item.coverPath;
-            const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
-            return (
-              <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300}>
-                <TouchableOpacity
-                  style={[
-                    styles.v2Card,
-                    {
-                      backgroundColor: palette.surface,
-                      borderColor: palette.hairline,
-                      borderWidth: StyleSheet.hairlineWidth,
-                    },
-                  ]}
-                  onPress={() => startPlay(item)}
-                  activeOpacity={0.88}
-                >
-                  {/* 大封面 */}
-                  <View style={[styles.v2Cover, { backgroundColor: palette.fill3 }]}>
-                    {coverUrl ? (
-                      <Image source={{ uri: coverUrl }} style={styles.v2CoverImg} resizeMode="cover" />
-                    ) : (
-                      <View style={styles.v2CoverFallback}>
-                        <MaterialCommunityIcons name="video" size={36} color={palette.labelTertiary} />
-                      </View>
-                    )}
-                    {/* 左上角类型徽标 */}
-                    <View style={styles.v2Badges}>
-                      <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+        {tab === 'vod' ? (
+          <PerfFlatList
+            data={list}
+            keyExtractor={(item, index) => item.liveId || String(index)}
+            numColumns={2}
+            columnWrapperStyle={styles.vodGridRow}
+            renderItem={({ item, index }) => {
+              const coverUrl = item.liveCover || item.coverPath;
+              return (
+                <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300} style={styles.vodGridItem}>
+                  <TouchableOpacity
+                    style={[styles.vodGridCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+                    onPress={() => startPlay(item)}
+                    activeOpacity={0.88}
+                  >
+                    <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
+                      {coverUrl ? (
+                        <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
+                      ) : (
+                        <View style={styles.vodGridFallback}>
+                          <MaterialCommunityIcons name="video" size={30} color={palette.labelTertiary} />
+                        </View>
+                      )}
+                      {/* 左上角类型徽标 */}
+                      <View style={[styles.v2Badge, styles.vodGridType, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
                         <MaterialCommunityIcons
                           name={item.liveType === 2 ? 'radio' : 'video'}
-                          size={11}
+                          size={10}
                           color="#FFFFFF"
                           style={{ marginRight: 3 }}
                         />
                         <Text style={styles.v2BadgeText}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
                       </View>
-                      {tab === 'live' ? (
+                      {/* 右上角时长 */}
+                      {item.endTime && item.startTime ? (
+                        <View style={[styles.v2Badge, styles.vodGridDuration, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                          <Text style={styles.v2BadgeText}>
+                            {formatDuration((item.endTime - item.startTime) / 1000)}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {/* 底部渐变 + 标题上浮 */}
+                      <View pointerEvents="none" style={styles.vodShade1} />
+                      <View pointerEvents="none" style={styles.vodShade2} />
+                      <View style={styles.vodInfoOverlay}>
+                        <Text style={styles.vodTitleOverlay} numberOfLines={2}>
+                          {item.title || item.liveRoomTitle || t('无标题')}
+                        </Text>
+                        {item.nickname ? (
+                          <Text style={styles.vodMetaOverlay} numberOfLines={1}>{item.nickname}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                </FadeInView>
+              );
+            }}
+            ListEmptyComponent={
+              loading ? (
+                <VodCardSkeleton dark={isDark} />
+              ) : (
+                <View style={styles.emptyWrap}>
+                  <Text style={[styles.empty, { color: palette.labelTertiary }]}>
+                    {search.trim() ? t('没有匹配的直播/录播') : t('暂无数据')}
+                  </Text>
+                </View>
+              )
+            }
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.35}
+            ListFooterComponent={
+              list.length > 0 && loading ? (
+                <View style={styles.footer}>
+                  <CenterSpinner dark={isDark} text={t('加载更多…')} />
+                </View>
+              ) : null
+            }
+            contentContainerStyle={list.length === 0 ? { flex: 1 } : styles.listContent}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+          />
+        ) : (
+          <PerfFlatList
+            data={list}
+            keyExtractor={(item, index) => item.liveId || String(index)}
+            renderItem={({ item, index }) => {
+              const coverUrl = item.liveCover || item.coverPath;
+              const subtitle = [item.nickname, formatTimestamp(item.startTime)].filter(Boolean).join(' · ');
+              return (
+                <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300}>
+                  <TouchableOpacity
+                    style={[
+                      styles.v2Card,
+                      {
+                        backgroundColor: palette.surface,
+                        borderColor: palette.hairline,
+                        borderWidth: StyleSheet.hairlineWidth,
+                      },
+                    ]}
+                    onPress={() => startPlay(item)}
+                    activeOpacity={0.88}
+                  >
+                    <View style={[styles.v2Cover, { backgroundColor: palette.fill3 }]}>
+                      {coverUrl ? (
+                        <Image source={{ uri: coverUrl }} style={styles.v2CoverImg} resizeMode="cover" />
+                      ) : (
+                        <View style={styles.v2CoverFallback}>
+                          <MaterialCommunityIcons name="video" size={36} color={palette.labelTertiary} />
+                        </View>
+                      )}
+                      <View style={styles.v2Badges}>
+                        <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                          <MaterialCommunityIcons
+                            name={item.liveType === 2 ? 'radio' : 'video'}
+                            size={11}
+                            color="#FFFFFF"
+                            style={{ marginRight: 3 }}
+                          />
+                          <Text style={styles.v2BadgeText}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
+                        </View>
                         <View style={[styles.v2Badge, { backgroundColor: '#FF3B30' }]}>
                           <View style={styles.v2LiveDot} />
                           <Text style={styles.v2BadgeText}>{t('直播中')}</Text>
                         </View>
-                      ) : null}
-                    </View>
-                    {/* 右下角时长（回放） */}
-                    {tab !== 'live' && item.endTime && item.startTime ? (
-                      <View style={[styles.v2Badge, styles.v2Duration, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
-                        <Text style={styles.v2BadgeText}>
-                          {formatDuration((item.endTime - item.startTime) / 1000)}
-                        </Text>
                       </View>
-                    ) : null}
-                    {/* 底部渐变遮罩 + 信息上浮 */}
-                    <View pointerEvents="none" style={styles.v2Shade1} />
-                    <View pointerEvents="none" style={styles.v2Shade2} />
-                    <View pointerEvents="none" style={styles.v2Shade3} />
-                    <View style={styles.v2InfoOverlay}>
-                      <Text style={styles.v2TitleOverlay} numberOfLines={2}>
-                        {item.title || item.liveRoomTitle || t('无标题')}
-                      </Text>
-                      {subtitle ? (
-                        <View style={styles.v2MetaRowOverlay}>
-                          <MaterialCommunityIcons name="account" size={12} color="rgba(255,255,255,0.9)" />
-                          <Text style={styles.v2MetaOverlay} numberOfLines={1}>{subtitle}</Text>
-                        </View>
-                      ) : null}
+                      <View pointerEvents="none" style={styles.v2Shade1} />
+                      <View pointerEvents="none" style={styles.v2Shade2} />
+                      <View pointerEvents="none" style={styles.v2Shade3} />
+                      <View style={styles.v2InfoOverlay}>
+                        <Text style={styles.v2TitleOverlay} numberOfLines={2}>
+                          {item.title || item.liveRoomTitle || t('无标题')}
+                        </Text>
+                        {subtitle ? (
+                          <View style={styles.v2MetaRowOverlay}>
+                            <MaterialCommunityIcons name="account" size={12} color="rgba(255,255,255,0.9)" />
+                            <Text style={styles.v2MetaOverlay} numberOfLines={1}>{subtitle}</Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              </FadeInView>
-            );
-          }}
-          ListEmptyComponent={
-            loading ? (
-              <VodCardSkeleton dark={isDark} />
-            ) : (
-              <View style={styles.emptyWrap}>
-                <Text style={[styles.empty, { color: palette.labelTertiary }]}>
-                  {search.trim() ? t('没有匹配的直播/录播') : t('暂无数据')}
-                </Text>
-              </View>
-            )
-          }
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.35}
-          ListFooterComponent={
-            // 仅在有内容且正在加载更多时显示一条低调的加载指示（不再用骨架微光条）
-            list.length > 0 && loading ? (
-              <View style={styles.footer}>
-                <CenterSpinner dark={isDark} text={t('加载更多…')} />
-              </View>
-            ) : null
-          }
-          contentContainerStyle={list.length === 0 ? { flex: 1 } : styles.listContent}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
-        />
+                  </TouchableOpacity>
+                </FadeInView>
+              );
+            }}
+            ListEmptyComponent={
+              loading ? (
+                <VodCardSkeleton dark={isDark} />
+              ) : (
+                <View style={styles.emptyWrap}>
+                  <Text style={[styles.empty, { color: palette.labelTertiary }]}>
+                    {search.trim() ? t('没有匹配的直播/录播') : t('暂无数据')}
+                  </Text>
+                </View>
+              )
+            }
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.35}
+            ListFooterComponent={
+              list.length > 0 && loading ? (
+                <View style={styles.footer}>
+                  <CenterSpinner dark={isDark} text={t('加载更多…')} />
+                </View>
+              ) : null
+            }
+            contentContainerStyle={list.length === 0 ? { flex: 1 } : styles.listContent}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+          />
+        )}
       </View>
     </View>
   );
@@ -1682,6 +1752,29 @@ const styles = StyleSheet.create({
   v2TitleOverlay: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', lineHeight: 21, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   v2MetaRowOverlay: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   v2MetaOverlay: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginLeft: 4, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  // 录播 2 列网格卡
+  vodGridRow: { paddingHorizontal: 8 },
+  vodGridItem: { flex: 1, margin: 4 },
+  vodGridCard: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  vodGridCover: { width: '100%', aspectRatio: 1, overflow: 'hidden' },
+  vodGridCoverImg: { width: '100%', height: '100%' },
+  vodGridFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  vodGridType: { position: 'absolute', top: 8, left: 8 },
+  vodGridDuration: { position: 'absolute', top: 8, right: 8 },
+  vodShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 88, backgroundColor: 'rgba(0,0,0,0.18)' },
+  vodShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, backgroundColor: 'rgba(0,0,0,0.45)' },
+  vodInfoOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 8, paddingBottom: 7 },
+  vodTitleOverlay: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', lineHeight: 17, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  vodMetaOverlay: { color: 'rgba(255,255,255,0.85)', fontSize: 10, marginTop: 2, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   v2Badges: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', gap: 6 },
   v2Badge: {
     flexDirection: 'row',
