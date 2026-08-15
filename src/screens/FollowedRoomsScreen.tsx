@@ -1255,7 +1255,8 @@ export default function FollowedRoomsScreen() {
       }
       // 同一发送者、间隔 < 3 分钟的消息合并为一组（组首带头像+名字，后续连排）
       const t0 = getMessageTime(item);
-      const sender = String((item as any)?.senderUserId || (item as any)?.senderId || (item as any)?.fromUserId || '');
+      // 用 senderProfile 的 id 做分组键（覆盖 senderUserId/senderId/fromUserId/user.userId 等全部来源）
+      const sender = senderProfile(item, selectedRoom!).id || String((item as any)?.fromAccount || '');
       const sameSender = sender && sender === lastGroupKey;
       const withinGap = t0 > 0 && lastMsgTime > 0 && (lastMsgTime - t0) < 3 * 60000;
       const groupStart = !sameSender || !withinGap;
@@ -1264,7 +1265,7 @@ export default function FollowedRoomsScreen() {
       rows.push({ type: 'msg', key: messageKey(item, index), item, index, groupStart });
     });
     return rows;
-  }, [filteredRoomMessages, t]);
+  }, [filteredRoomMessages, selectedRoom, t]);
 
   if (selectedRoom) {
     const fid = String(selectedRoom.id || '');
@@ -1492,23 +1493,32 @@ export default function FollowedRoomsScreen() {
             const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
 
             return (
-              <View style={[styles.chatRow, mine && styles.chatRowMine]}>
+              <View style={[styles.chatRow, mine && styles.chatRowMine, !row.groupStart && styles.chatRowTight]}>
                 {!mine ? (
-                  profile.avatar ? (
-                    <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+                  row.groupStart ? (
+                    profile.avatar ? (
+                      <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+                    ) : (
+                      <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
+                    )
                   ) : (
-                    <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
+                    /* 组内连排：占位保持气泡左对齐 */
+                    <View style={styles.avatarPlaceholder} />
                   )
                 ) : null}
                 <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
-                  {/* 名字 + 时间：紧凑单行，小字，弱化 */}
-                  <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
-                    <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? '#7BC6FF' : palette.labelSecondary }]} numberOfLines={1}>
-                      {profile.name}
-                    </Text>
-                    <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>{formatTimestamp(item.msgTime)}</Text>
-                  </View>
-                  <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, { backgroundColor: (!idol && !mine) ? palette.surfaceGlass : undefined, borderColor: (!idol && !mine) ? palette.innerStroke : undefined, borderWidth: (!idol && !mine) ? StyleSheet.hairlineWidth : 0 }]}>
+                  {/* 组首显示名字 + HH:mm；组内不重复 */}
+                  {row.groupStart ? (
+                    <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
+                      <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? '#7BC6FF' : palette.labelSecondary }]} numberOfLines={1}>
+                        {profile.name}
+                      </Text>
+                      <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>
+                        {formatTimestamp(item.msgTime).slice(11, 16)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, !row.groupStart && styles.msgBubbleMid, { backgroundColor: (!idol && !mine) ? palette.surfaceGlass : undefined, borderColor: (!idol && !mine) ? palette.innerStroke : undefined, borderWidth: (!idol && !mine) ? StyleSheet.hairlineWidth : 0 }]}>
                     {replyName || replyQuoted ? (
                       <View style={[styles.replyCard, { backgroundColor: 'rgba(0,0,0,0.04)', borderLeftColor: palette.tint }]}>
                         {replyName ? <Text style={[styles.replyName, { color: palette.tint }]} numberOfLines={1}>{replyName}</Text> : null}
@@ -2037,8 +2047,10 @@ const styles = StyleSheet.create({
   lastMessage: { fontSize: 12, color: '#3f3f3f', marginTop: 6 },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },
   chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginVertical: 6 },
+  chatRowTight: { marginTop: -3, marginBottom: 3 },
   chatRowMine: { justifyContent: 'flex-end' },
   avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 9, backgroundColor: '#FFFFFF' },
+  avatarPlaceholder: { width: 40, height: 40, marginRight: 9 },
   avatarFallback: { width: 40, height: 40, borderRadius: 20, marginRight: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   avatarText: { color: '#ff6f91', fontWeight: '900', fontSize: 15 },
   msgBlock: { maxWidth: '78%', minWidth: 120 },
@@ -2057,6 +2069,7 @@ const styles = StyleSheet.create({
   msgTimeMine: { color: '#3a6f99' },
   msgTimeDark: { color: '#aaa' },
   msgBubble: { padding: 10, paddingHorizontal: 14, backgroundColor: '#FFFFFF', borderRadius: 18, borderTopLeftRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
+  msgBubbleMid: { borderTopLeftRadius: 18, borderTopRightRadius: 18 },
   msgBubbleIdol: { backgroundColor: 'rgba(255,111,145,0.90)', borderColor: 'rgba(255,255,255,0.28)' },
   msgBubbleMine: { backgroundColor: 'rgba(123,198,255,0.92)', borderTopLeftRadius: 18, borderTopRightRadius: 6, borderColor: 'rgba(255,255,255,0.32)' },
   msgBubbleDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.10)' },
