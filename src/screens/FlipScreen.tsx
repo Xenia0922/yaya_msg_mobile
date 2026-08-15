@@ -401,6 +401,28 @@ export default function FlipScreen() {
     );
   }
 
+  // 翻牌记录按提问月份分组（倒序）
+  const flipRows = useMemo(() => {
+    const monthOf = (ts: number): string => {
+      if (!ts) return t('未知时间');
+      const d = new Date(ts);
+      return t('{y}年{m}月', { y: d.getFullYear(), m: d.getMonth() + 1 });
+    };
+    const order: string[] = [];
+    const map = new Map<string, any[]>();
+    for (const f of flips) {
+      const key = monthOf(Number(f.qtime || f.createTime || 0));
+      if (!map.has(key)) { map.set(key, []); order.push(key); }
+      map.get(key)!.push(f);
+    }
+    const flat: { type: 'header' | 'item'; key: string; title?: string; item?: any }[] = [];
+    for (const k of order) {
+      flat.push({ type: 'header', key: `h-${k}`, title: k });
+      map.get(k)!.forEach((it) => flat.push({ type: 'item', key: `i-${String(it.questionId || it.id || Math.random())}`, item: it }));
+    }
+    return flat;
+  }, [flips, t]);
+
   return (
       <View style={pageStyle}>
       <ScreenHeader title={t('翻牌记录')} right={
@@ -411,20 +433,26 @@ export default function FlipScreen() {
       {status ? <Text style={[styles.statusText, { color: palette.tint }]}>{status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
-          data={flips}
-          keyExtractor={(item, index) => String(item.questionId || item.id || index)}
+          data={flipRows}
+          keyExtractor={(row) => row.key}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
           renderItem={({ item, index }) => {
-            const parsed = parseAnswer(item, t('语音回复'), t('视频回复'));
+            if (item.type === 'header') {
+              return (
+                <Text style={[styles.monthGroup, { color: palette.labelTertiary }]}>{item.title}</Text>
+              );
+            }
+            const flip = item.item as any;
+            const parsed = parseAnswer(flip, t('语音回复'), t('视频回复'));
             const answer = parsed.text;
             const answerUrl = parsed.url;
-            const flipAnswerType = Number(item.answerType);
+            const flipAnswerType = Number(flip.answerType);
             const ansDur = parsed.duration;
-            const qTime = Number(item.qtime || item.createTime || 0);
-            const aTime = Number(item.answerTime || 0);
+            const qTime = Number(flip.qtime || flip.createTime || 0);
+            const aTime = Number(flip.answerTime || 0);
             const deadline = qTime ? qTime + 7 * 86400000 : 0;
             const remaining = deadline - Date.now();
             const remainingDays = Math.max(0, Math.floor(remaining / 86400000));
@@ -440,18 +468,18 @@ export default function FlipScreen() {
               <FadeInView delay={80 + index * 30} duration={300}>
                 <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
                   <View style={styles.cardTop}>
-                    <Text style={[styles.cardDate, { color: palette.tint }]}>{formatTimestamp(item.qtime || item.createTime)}</Text>
+                    <Text style={[styles.cardDate, { color: palette.tint }]}>{formatTimestamp(flip.qtime || flip.createTime)}</Text>
                     <View style={styles.tagRow}>
                       <View style={[styles.typeTag, { backgroundColor: palette.tintSoft }]}>
-                        <Text style={[styles.typeTagText, { color: palette.tint }]}>{t(answerTypeLabel(item.answerType))}</Text>
+                        <Text style={[styles.typeTagText, { color: palette.tint }]}>{t(answerTypeLabel(flip.answerType))}</Text>
                       </View>
                       <View style={[styles.privacyTag, { backgroundColor: palette.fill2 }]}>
-                        <Text style={[styles.privacyTagText, { color: palette.labelSecondary }]}>{t(privacyLabel(item.type))}</Text>
+                        <Text style={[styles.privacyTagText, { color: palette.labelSecondary }]}>{t(privacyLabel(flip.type))}</Text>
                       </View>
                     </View>
                   </View>
-                  <Text style={[styles.memberName, { color: palette.label }]}>{memberName(item, t('成员'))}</Text>
-                  <Text style={[styles.cardQ, { color: palette.label }]}>{t('问：{text}', { text: questionText(item) || t('未返回问题内容') })}</Text>
+                  <Text style={[styles.memberName, { color: palette.label }]}>{memberName(flip, t('成员'))}</Text>
+                  <Text style={[styles.cardQ, { color: palette.label }]}>{t('问：{text}', { text: questionText(flip) || t('未返回问题内容') })}</Text>
                   {answer ? (
                     <>
                       <Text style={[styles.cardA, { color: palette.labelSecondary }]}>{t('答：{text}', { text: answer })}</Text>
@@ -477,13 +505,13 @@ export default function FlipScreen() {
                       ) : null}
                     </>
                   ) : (
-                    <Text style={[styles.cardPending, { color: palette.tint }]}>{t(statusLabel(item.status))}</Text>
+                    <Text style={[styles.cardPending, { color: palette.tint }]}>{t(statusLabel(flip.status))}</Text>
                   )}
                   <Text style={[styles.cardMeta, { color: palette.labelTertiary }]}>
-                    {t('{cost} 鸡腿', { cost: item.cost || 0 })}
+                    {t('{cost} 鸡腿', { cost: flip.cost || 0 })}
                     {remainingStr ? ` · ${remainingStr}` : ''}
                     {elapsedStr ? ` · ${elapsedStr}` : ''}
-                    {item.answerTime ? ` · ${t('回复于 {time}', { time: formatTimestamp(item.answerTime) })}` : ''}
+                    {flip.answerTime ? ` · ${t('回复于 {time}', { time: formatTimestamp(flip.answerTime) })}` : ''}
                   </Text>
                 </View>
               </FadeInView>
@@ -551,5 +579,6 @@ const styles = StyleSheet.create({
   answerVideo: { height: 190, marginTop: 8, backgroundColor: '#000', borderRadius: 12 },
   cardPending: { fontSize: 13, fontWeight: '700' },
   cardMeta: { fontSize: 11, marginTop: 6 },
+  monthGroup: { fontSize: 13, fontWeight: '800', marginTop: 12, marginBottom: 2, paddingHorizontal: 16 },
   empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
 });

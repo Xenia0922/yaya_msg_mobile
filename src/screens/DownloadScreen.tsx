@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
@@ -121,6 +121,29 @@ export default function DownloadScreen() {
   };
 
   const doneCount = items.filter((item) => item.status === 'done').length;
+  const failedCount = items.filter((item) => item.status === 'failed').length;
+  const activeCount = items.length - doneCount - failedCount;
+
+  // 任务按状态分组：下载中 → 已完成 → 失败（组头 + 任务行）
+  const rows = useMemo(() => {
+    const groups: { key: string; title: string; items: DownloadItem[] }[] = [
+      { key: 'active', title: t('下载中'), items: [] },
+      { key: 'done', title: t('已完成'), items: [] },
+      { key: 'failed', title: t('失败'), items: [] },
+    ];
+    for (const it of items) {
+      if (it.status === 'done') groups[1].items.push(it);
+      else if (it.status === 'failed') groups[2].items.push(it);
+      else groups[0].items.push(it);
+    }
+    const flat: { type: 'header' | 'item'; key: string; title?: string; item?: DownloadItem }[] = [];
+    groups.forEach((g) => {
+      if (!g.items.length) return;
+      flat.push({ type: 'header', key: `h-${g.key}`, title: g.title });
+      g.items.forEach((it) => flat.push({ type: 'item', key: `i-${it.id}`, item: it }));
+    });
+    return flat;
+  }, [items, t]);
 
   return (
     <View style={styles.container}>
@@ -150,43 +173,71 @@ export default function DownloadScreen() {
         </View>
 
         <PerfFlatList
-          data={items}
-          keyExtractor={(item) => item.id}
+          data={rows}
+          keyExtractor={(row) => row.key}
           contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            items.length > 0 ? (
+              <View style={[styles.overviewCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+                <View style={styles.overviewItem}>
+                  <Text style={[styles.overviewNum, { color: palette.tint }]}>{activeCount}</Text>
+                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>{t('下载中')}</Text>
+                </View>
+                <View style={[styles.overviewDivider, { backgroundColor: palette.hairline }]} />
+                <View style={styles.overviewItem}>
+                  <Text style={[styles.overviewNum, { color: palette.success }]}>{doneCount}</Text>
+                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>{t('已完成')}</Text>
+                </View>
+                <View style={[styles.overviewDivider, { backgroundColor: palette.hairline }]} />
+                <View style={styles.overviewItem}>
+                  <Text style={[styles.overviewNum, { color: failedCount ? palette.danger : palette.label }]}>{failedCount}</Text>
+                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>{t('失败')}</Text>
+                </View>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无下载项目')}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
-          renderItem={({ item, index }) => (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-              <View style={[styles.task, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
-                <View style={[styles.taskIconWrap, { backgroundColor: palette.tintSoft }]}>
-                  <MaterialCommunityIcons name={typeIcon(item.type)} size={20} color={palette.tint} />
-                </View>
-                <View style={styles.taskBody}>
-                  <Text style={[styles.taskName, { color: palette.label }]} numberOfLines={1}>{item.name}</Text>
-                  <Text style={[styles.taskSub, { color: palette.labelTertiary }]} numberOfLines={1}>
-                    {t(typeLabel(item.type))}
-                  </Text>
-                  <View style={[styles.progressTrack, { backgroundColor: palette.fill2 }]}>
-                    <View style={[styles.progressFill, { backgroundColor: item.status === 'failed' ? palette.danger : palette.tint, width: `${Math.round((item.progress || 0) * 100)}%` }]} />
+          renderItem={({ item, index }) => {
+            if (item.type === 'header') {
+              return (
+                <Text style={[styles.groupTitle, { color: palette.labelTertiary }]}>{item.title}</Text>
+              );
+            }
+            const task = item.item as DownloadItem;
+            return (
+              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
+                <View style={[styles.task, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+                  <View style={[styles.taskIconWrap, { backgroundColor: palette.tintSoft }]}>
+                    <MaterialCommunityIcons name={typeIcon(task.type)} size={20} color={palette.tint} />
                   </View>
-                  <Text style={[styles.taskStatus, { color: palette.labelSecondary }]} numberOfLines={1}>
-                    {item.status === 'done' ? t('完成') : item.status === 'failed' ? t('失败：{msg}', { msg: item.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(item.downloadedBytes), total: formatBytes(item.totalBytes) })}
-                  </Text>
+                  <View style={styles.taskBody}>
+                    <Text style={[styles.taskName, { color: palette.label }]} numberOfLines={1}>{task.name}</Text>
+                    <Text style={[styles.taskSub, { color: palette.labelTertiary }]} numberOfLines={1}>
+                      {t(typeLabel(task.type))}
+                    </Text>
+                    <View style={[styles.progressTrack, { backgroundColor: palette.fill2 }]}>
+                      <View style={[styles.progressFill, { backgroundColor: task.status === 'failed' ? palette.danger : palette.tint, width: `${Math.round((task.progress || 0) * 100)}%` }]} />
+                    </View>
+                    <Text style={[styles.taskStatus, { color: palette.labelSecondary }]} numberOfLines={1}>
+                      {task.status === 'done' ? t('完成') : task.status === 'failed' ? t('失败：{msg}', { msg: task.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(task.downloadedBytes), total: formatBytes(task.totalBytes) })}
+                    </Text>
+                  </View>
+                  <View style={styles.taskActions}>
+                    <TouchableOpacity onPress={() => handleOpen(task).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))} style={styles.actionBtn}>
+                      <MaterialCommunityIcons name="open-in-app" size={16} color={palette.tint} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => remove(task.id)} style={styles.actionBtn}>
+                      <MaterialCommunityIcons name="delete-outline" size={16} color={palette.danger} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View style={styles.taskActions}>
-                  <TouchableOpacity onPress={() => handleOpen(item).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))} style={styles.actionBtn}>
-                    <MaterialCommunityIcons name="open-in-app" size={16} color={palette.tint} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => remove(item.id)} style={styles.actionBtn}>
-                    <MaterialCommunityIcons name="delete-outline" size={16} color={palette.danger} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </FadeInView>
-          )}
+              </FadeInView>
+            );
+          }}
         />
       </FadeInView>
       {imgPreview ? (
@@ -211,6 +262,22 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.55 },
   addBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
   list: { padding: 4, paddingBottom: 112 },
+  // 状态概览卡
+  overviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginTop: 4,
+    marginBottom: 6,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  overviewItem: { flex: 1, alignItems: 'center' },
+  overviewNum: { fontSize: 20, fontWeight: '800' },
+  overviewLabel: { fontSize: 11, marginTop: 2 },
+  overviewDivider: { width: StyleSheet.hairlineWidth, height: 28 },
+  groupTitle: { fontSize: 13, fontWeight: '800', marginTop: 10, marginBottom: 2, paddingLeft: 16 },
   task: {
     flexDirection: 'row',
     alignItems: 'center',
