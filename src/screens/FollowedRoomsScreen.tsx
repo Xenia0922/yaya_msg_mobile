@@ -45,6 +45,7 @@ import ZoomImageModal from '../components/ZoomImageModal';
 import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
 import { enqueueDownload } from '../services/downloads';
 import { memberSearchText, pinyinInitials } from '../utils/members';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 type FollowedRoom = {
   memberId: string;
@@ -1532,22 +1533,53 @@ export default function FollowedRoomsScreen() {
             const fid = String(item.member?.id || item.memberId);
             const isFollowing = followedIds.has(fid);
             const busy = followBusy.has(fid);
+            const isPinned = pinned.includes(item.memberId);
+            const name = shortName(item.member, item.memberId);
             return (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
               <TouchableOpacity
                 style={[
                   styles.roomItem,
                   {
-                    backgroundColor: palette.surfaceGlass,
-                    borderColor: palette.innerStroke,
+                    backgroundColor: palette.surface,
+                    borderColor: palette.hairline,
                     borderWidth: StyleSheet.hairlineWidth,
-                    borderRadius: 20,
+                    borderRadius: 16,
                   },
                 ]}
                 onPress={() => item.member && openRoom(item.member)}
+                activeOpacity={0.88}
               >
-                <View style={styles.roomTop}>
-                  <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{shortName(item.member, item.memberId)}</Text>
+                <View style={styles.roomItemRow}>
+                  {/* 头像 */}
+                  <View style={[styles.roomAvatar, { backgroundColor: palette.tintSoft }]}>
+                    {item.member?.avatar ? (
+                      <Image source={{ uri: item.member.avatar }} style={styles.roomAvatar} />
+                    ) : (
+                      <Text style={[styles.roomAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
+                    )}
+                  </View>
+                  {/* 信息 */}
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
+                      {isPinned ? (
+                        <MaterialCommunityIcons name="pin" size={13} color={palette.tint} style={{ marginLeft: 5 }} />
+                      ) : null}
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                      <Text style={[styles.roomTeam, { color: palette.tint }]}>{item.member?.team || item.member?.groupName || t('未匹配成员库')}</Text>
+                      {item.member ? (
+                        <Text style={[styles.roomMetaInline, { color: palette.labelTertiary }]} numberOfLines={1}>
+                          {t('大 {id}', { id: item.member.channelId || '-' })}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={[styles.lastMessage, { color: palette.labelSecondary }]} numberOfLines={1}>
+                      {item.lastMessage ? messageText(item.lastMessage) : t('点击查看房间消息')}
+                    </Text>
+                  </View>
+                  {/* 关注按钮 */}
                   {item.member ? (
                     <TouchableOpacity
                       style={[styles.followBtn, { backgroundColor: isFollowing ? palette.tintSoft : palette.tint }]}
@@ -1561,20 +1593,7 @@ export default function FollowedRoomsScreen() {
                       )}
                     </TouchableOpacity>
                   ) : null}
-                  <Text style={[styles.roomTeam, { color: palette.tint }]}>{item.member?.team || item.member?.groupName || t('未匹配成员库')}</Text>
-                  <TouchableOpacity style={[styles.pinBtn, { backgroundColor: palette.tintSoft }]} onPress={() => togglePin(item.memberId)}>
-                    <Text style={[styles.pinBtnText, { color: palette.tint }]}>{pinned.includes(item.memberId) ? t('取消置顶') : t('置顶')}</Text>
-                  </TouchableOpacity>
                 </View>
-                {item.member ? (
-                  <View style={styles.roomMetaRow}>
-                    <Text style={[styles.roomMeta, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('大 {id}', { id: item.member.channelId || '-' })}</Text>
-                    <Text style={[styles.roomMeta, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('小 {id}', { id: item.member.yklzId || '-' })}</Text>
-                  </View>
-                ) : null}
-                <Text style={[styles.lastMessage, { color: palette.labelSecondary }]} numberOfLines={1}>
-                  {item.lastMessage ? messageText(item.lastMessage) : t('点击查看房间消息')}
-                </Text>
               </TouchableOpacity>
             </FadeInView>
             );
@@ -1627,8 +1646,19 @@ const styles = StyleSheet.create({
   statusDark: { color: '#ffe2a0', backgroundColor: 'rgba(70,52,12,0.82)' },
   listContent: { paddingBottom: 112 },
   chatContent: { paddingBottom: 132, paddingTop: 4 },
-  roomItem: { padding: 14, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
+  roomItem: { padding: 12, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginVertical: 4, borderWidth: StyleSheet.hairlineWidth },
   roomItemDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.12)' },
+  roomItemRow: { flexDirection: 'row', alignItems: 'center' },
+  roomAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  roomAvatarText: { fontSize: 17, fontWeight: '800' },
+  roomMetaInline: { fontSize: 11, marginLeft: 8 },
   roomTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   roomName: { fontSize: 15, fontWeight: '900', color: '#333', flex: 1 },
   roomTeam: { fontSize: 11, color: '#ff6f91', fontWeight: '800' },

@@ -234,6 +234,12 @@ export default function MusicLibraryScreen() {
               >
                 <View style={styles.coverWrap}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
+                  {/* 正在播放指示 */}
+                  {active ? (
+                    <View style={[styles.playingBadge, { backgroundColor: palette.tint }]}>
+                      <MaterialCommunityIcons name="equalizer" size={13} color="#FFFFFF" />
+                    </View>
+                  ) : null}
                   <TouchableOpacity
                     style={styles.favBtn}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -252,14 +258,16 @@ export default function MusicLibraryScreen() {
                 </View>
                 <View style={styles.songInfo}>
                   <Text style={[styles.songTitle, { color: palette.label }]} numberOfLines={2}>{item.title || t('无标题')}</Text>
-                  <Text style={[styles.songArtist, { color: palette.labelSecondary }]} numberOfLines={1}>
-                    {[item.album, item.artist, item.groupLabel].filter(Boolean).join(' · ') || t('官方音乐')}
-                  </Text>
-                  {item.ctime ? (
-                    <Text style={[styles.dateText, { color: palette.labelTertiary }]}>
-                      {formatTimestamp(item.ctime).slice(0, 10)}
+                  <View style={styles.songMetaLine}>
+                    <Text style={[styles.songArtist, { color: palette.labelSecondary }]} numberOfLines={1}>
+                      {[item.album, item.artist, item.groupLabel].filter(Boolean).join(' · ') || t('官方音乐')}
                     </Text>
-                  ) : null}
+                    {item.ctime ? (
+                      <Text style={[styles.dateText, { color: palette.labelTertiary }]}>
+                        {formatTimestamp(item.ctime).slice(0, 10)}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
               </TouchableOpacity>
             );
@@ -400,11 +408,21 @@ const styles = StyleSheet.create({
   emptyWrap: { alignItems: 'center', marginTop: 80 },
   // 去掉 gridRow（width:'48%'+space-between 在 Android FlatList 上切歌后左列塌陷）。
   // 现由 FlatList numColumns=2 默认等分两列，songItem 用 flex:1 + 自身 padding 自适应。
-  songItem: { flex: 1, margin: 4, borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFFFFF' },
+  songItem: { flex: 1, margin: 4, borderRadius: 14, overflow: 'hidden', backgroundColor: '#FFFFFF' },
   cardDark: { backgroundColor: '#1C1C1F' },
   songItemActiveDark: { borderColor: '#ff8fa8' },
   songItemActive: { borderWidth: 2, borderColor: '#ff6f91' },
   coverWrap: { width: '100%', aspectRatio: 1, backgroundColor: '#111' },
+  playingBadge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   favBtn: { position: 'absolute', top: 6, right: 6, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.32)' },
   coverImg: { width: '100%', height: '100%' },
   coverPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e8e8e8' },
@@ -413,8 +431,9 @@ const styles = StyleSheet.create({
   unavailableText: { color: '#ffd479', fontSize: 10, fontWeight: '700' },
   songInfo: { padding: 8 },
   songTitle: { fontSize: 13, fontWeight: '700', color: '#222', lineHeight: 17 },
-  songArtist: { fontSize: 11, color: '#888', marginTop: 3 },
-  dateText: { fontSize: 10, color: '#aaa', marginTop: 3 },
+  songMetaLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, gap: 6 },
+  songArtist: { fontSize: 11, color: '#888', flex: 1 },
+  dateText: { fontSize: 10, color: '#aaa' },
   tinyPlayer: { width: 0, height: 0 },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },

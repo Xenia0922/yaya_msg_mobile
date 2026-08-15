@@ -30,7 +30,7 @@ import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { VODItem, Member } from '../types';
-import { formatTimestamp } from '../utils/format';
+import { formatTimestamp, formatDuration } from '../utils/format';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import { getResumePosition, saveResumePosition, clearResumePosition } from '../utils/resumePosition';
 import { logWarn } from '../utils/runtimeLog';
@@ -1462,33 +1462,65 @@ export default function MediaScreen() {
               <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300}>
                 <TouchableOpacity
                   style={[
-                    styles.card,
-                    { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth },
+                    styles.v2Card,
+                    {
+                      backgroundColor: palette.surface,
+                      borderColor: palette.hairline,
+                      borderWidth: StyleSheet.hairlineWidth,
+                    },
                   ]}
                   onPress={() => startPlay(item)}
+                  activeOpacity={0.88}
                 >
-                  {coverUrl ? (
-                    <Image source={{ uri: coverUrl }} style={styles.cover} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: palette.fill3 }]}>
-                      <Text style={[styles.coverPlaceholderText, { color: palette.labelTertiary }]}>{t('视频')}</Text>
-                    </View>
-                  )}
-                  <View style={styles.cardInfo}>
-                    <Text style={[styles.cardTitle, { color: palette.label }]} numberOfLines={2}>
-                      {item.title || item.liveRoomTitle || t('无标题')}
-                    </Text>
-                    {subtitle ? <Text style={[styles.cardSub, { color: palette.labelSecondary }]}>{subtitle}</Text> : null}
-                    <View style={styles.typeRow}>
-                      <View style={[styles.typeTag, { backgroundColor: palette.tintSoft }]}>
-                        <Text style={[styles.typeText, { color: palette.tint }]}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
+                  {/* 大封面 */}
+                  <View style={[styles.v2Cover, { backgroundColor: palette.fill3 }]}>
+                    {coverUrl ? (
+                      <Image source={{ uri: coverUrl }} style={styles.v2CoverImg} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.v2CoverFallback}>
+                        <MaterialCommunityIcons name="video" size={36} color={palette.labelTertiary} />
+                      </View>
+                    )}
+                    {/* 左上角类型徽标 */}
+                    <View style={styles.v2Badges}>
+                      <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                        <MaterialCommunityIcons
+                          name={item.liveType === 2 ? 'radio' : 'video'}
+                          size={11}
+                          color="#FFFFFF"
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text style={styles.v2BadgeText}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
                       </View>
                       {tab === 'live' ? (
-                        <View style={[styles.typeTag, { backgroundColor: 'rgba(19,194,194,0.14)' }]}>
-                          <Text style={[styles.typeText, { color: '#0e9c9c' }]}>{t('可送礼')}</Text>
+                        <View style={[styles.v2Badge, { backgroundColor: '#FF3B30' }]}>
+                          <View style={styles.v2LiveDot} />
+                          <Text style={styles.v2BadgeText}>{t('直播中')}</Text>
                         </View>
                       ) : null}
                     </View>
+                    {/* 右下角时长（回放） */}
+                    {tab !== 'live' && item.endTime && item.startTime ? (
+                      <View style={[styles.v2Badge, styles.v2Duration, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                        <Text style={styles.v2BadgeText}>
+                          {formatDuration((item.endTime - item.startTime) / 1000)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  {/* 信息区 */}
+                  <View style={styles.v2Info}>
+                    <Text style={[styles.v2Title, { color: palette.label }]} numberOfLines={2}>
+                      {item.title || item.liveRoomTitle || t('无标题')}
+                    </Text>
+                    {subtitle ? (
+                      <View style={styles.v2MetaRow}>
+                        <MaterialCommunityIcons name="account" size={13} color={palette.labelTertiary} />
+                        <Text style={[styles.v2Meta, { color: palette.labelSecondary }]} numberOfLines={1}>
+                          {subtitle}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 </TouchableOpacity>
               </FadeInView>
@@ -1613,6 +1645,36 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', padding: 12, marginHorizontal: 12, marginVertical: 6, borderRadius: 20 },
   cardDark: { backgroundColor: '#1C1C1F' },
   cover: { width: 112, height: 78, borderRadius: 16, backgroundColor: '#e0e0e0' },
+  // v2 内容卡：大封面 + 信息区（2026-08-15 布局重建）
+  v2Card: {
+    marginHorizontal: 12,
+    marginVertical: 6,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  v2Cover: { height: 176, overflow: 'hidden' },
+  v2CoverImg: { width: '100%', height: '100%' },
+  v2CoverFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  v2Badges: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', gap: 6 },
+  v2Badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  v2LiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF', marginRight: 4 },
+  v2BadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  v2Duration: { position: 'absolute', right: 10, bottom: 10 },
+  v2Info: { padding: 12 },
+  v2Title: { fontSize: 15, fontWeight: '700', lineHeight: 21, letterSpacing: -0.2 },
+  v2MetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  v2Meta: { fontSize: 12, marginLeft: 4 },
   coverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   coverPlaceholderText: { fontSize: 13, color: '#3f3f3f', fontWeight: '700' },
   coverPlaceholderTextDark: { color: '#aaa' },
