@@ -89,6 +89,100 @@ function createCheckinHeaders(token?: string, pa?: string | null): HeadersMap {
   return headers;
 }
 
+/** Android 客户端头（posts 相册/视频/动态、私信删除等） */
+function createPocketAndroidHeaders(token?: string, pa?: string | null): HeadersMap {
+  const headers: HeadersMap = {
+    'Content-Type': 'application/json; charset=UTF-8',
+    'User-Agent': 'PocketFans201807/7.1.43_26070701 (SM-G9730:Android 12;Samsung V417IR release-keys)',
+    'Accept-Language': 'zh-Hans-CN;q=1',
+    Accept: '*/*',
+    Host: 'pocketapi.48.cn',
+    appInfo: JSON.stringify({
+      IMEI: '7b93dfd0472f4736a628e85fae086486',
+      appBuild: '26070701',
+      appName: 'pocket48',
+      appVersion: '7.1.43',
+      deviceId: '7b93dfd0472f4736a628e85fae086486',
+      deviceName: 'SM-G9730',
+      osType: 'android',
+      osVersion: '12',
+      phoneName: 'SM-G9730',
+      phoneSystemVersion: '12',
+      vendor: 'Samsung',
+    }),
+  };
+  if (token) headers.token = token;
+  if (pa) headers.pa = pa;
+  return headers;
+}
+
+/** Seine（ckg48 新版客户端）Android 头 */
+function createSeineHeaders(token?: string, pa?: string | null): HeadersMap {
+  const headers = createPocketAndroidHeaders(token, pa);
+  headers.appInfo = JSON.stringify({
+    appVersion: '1.0.0',
+    appBuild: 26061101,
+    osType: 'android',
+    appName: 'seine48',
+    deviceId: '7b93dfd0472f4736a628e85fae086486',
+    deviceName: 'SM-G9730',
+    osVersion: '12',
+    vendor: 'Samsung',
+    IMEI: '7b93dfd0472f4736a628e85fae086486',
+    phoneName: 'SM-G9730',
+    phoneSystemVersion: '12',
+  });
+  headers['X-Custom-Device-Type'] = 'ANDROID';
+  headers['User-Agent'] = 'PocketFans201807/1.0.0_26061101 (SM-G9730:Android 12;Samsung V417IR release-keys)';
+  return headers;
+}
+
+/** Seine iOS 头（公演列表走 ckg48 域名） */
+function createSeineIosHeaders(): HeadersMap {
+  return {
+    'Content-Type': 'application/json; charset=UTF-8',
+    Accept: '*/*',
+    'Accept-Language': 'zh-Hans-CN;q=1',
+    'User-Agent': 'Seina/1.2.0 (com.seine48.app; build:26072902; iOS 27.0.0) Alamofire/5.8.0',
+    appInfo: JSON.stringify({
+      deviceId: '7B93DFD0-472F-4736-A628-E85FAE086486',
+      appVersion: '1.2.0',
+      deviceName: 'iPhone 16 Pro',
+      osType: 'ios',
+      appBuild: '26072902',
+      osVersion: '27.0',
+      appName: 'seine48',
+      vendor: 'apple',
+    }),
+  };
+}
+
+/** Area48 社区头（老版 Android 客户端 6.0.22） */
+function createArea48Headers(token?: string, pa?: string | null): HeadersMap {
+  const headers: HeadersMap = {
+    'Content-Type': 'application/json; charset=UTF-8',
+    Accept: '*/*',
+    'Accept-Language': 'zh-Hans-CN;q=1',
+    'User-Agent': 'PocketFans201807/6.0.22_201128 (SM-G9730:Android 12;Samsung V417IR release-keys)',
+    Host: 'pocketapi.48.cn',
+    appInfo: JSON.stringify({
+      IMEI: '6172656134383a303030303030',
+      appBuild: '201128',
+      appVersion: '6.0.22',
+      deviceId: '6172656134383a303030303030',
+      deviceName: 'SM-G9730',
+      osType: 'android',
+      osVersion: '12',
+      phoneName: 'SM-G9730',
+      phoneSystemVersion: '12',
+      vendor: 'Samsung',
+    }),
+  };
+  if (token) headers.token = token;
+  if (pa) headers.pa = pa;
+  return headers;
+}
+
 function createWeiboHeaders(token?: string, pa?: string | null): HeadersMap {
   const headers = createModernHeaders(token, pa);
   headers.appInfo = JSON.stringify({
@@ -1110,6 +1204,195 @@ export const pocketApi = {
       headers: createMeet48Headers(),
     });
     return assertPocketOk(res, 'Meet48 API 错误');
+  },
+
+  // --- v2.7 New APIs (同步自 yk1z/yaya_msg 电脑版, 2026-08-16) ---
+
+  /** 删除单条私信 */
+  async deletePrivateMessage(msgId: string) {
+    return pocketPost(`${BASE}/message/api/v1/user/message/delete/msg`, {
+      msgId: String(msgId),
+    }, { fallback: '删除私信失败', headers: createPocketAndroidHeaders() });
+  },
+
+  /** 私信发送图片消息 */
+  async sendPrivateImageMessage(targetUserId: string, image: { imgUrl: string; imgWidth?: number; imgHeight?: number; imgSize?: number; text?: string }) {
+    return pocketPost(`${BASE}/message/api/v1/user/message/reply`, {
+      messageType: 'IMAGE',
+      imgUrl: String(image.imgUrl),
+      imgWidth: Number(image.imgWidth || 0),
+      imgHeight: Number(image.imgHeight || 0),
+      imgSize: Number(image.imgSize || 0),
+      targetUserId: String(targetUserId),
+      text: String(image.text || ''),
+    }, { modern: true, fallback: '发送图片私信失败' });
+  },
+
+  /** 上传图片到口袋（私信图片等，fromType 为空） */
+  async uploadPocketImage(params: { uri: string; fileName?: string; mimeType?: string; fromType?: string }) {
+    const token = requireToken();
+    const headers = await signedHeaders(token, true);
+    delete headers['Content-Type'];
+    delete headers.Host;
+    const mimeType = params.mimeType || 'image/jpeg';
+    const fileName = params.fileName || `image-${Date.now()}.${mimeType.includes('png') ? 'png' : 'jpg'}`;
+    const formData = new FormData();
+    if (params.fromType) formData.append('fromType', params.fromType);
+    formData.append('file', {
+      uri: params.uri,
+      name: fileName,
+      type: mimeType,
+    } as any);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch('https://pfile.48.cn/filesystem/upload/image', {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      throw new Error(error?.name === 'AbortError' ? '上传图片超时' : '上传图片网络失败');
+    } finally {
+      clearTimeout(timer);
+    }
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+    if (response.ok && data && (data.status === 200 || data.success)) {
+      const item = Array.isArray(data.content) ? data.content[0] : data.content;
+      const path = item?.path || item?.url || item?.filePath || '';
+      if (!path) throw new Error('上传成功但没有返回图片路径');
+      return { success: true, content: item, path };
+    }
+    const source = data || response;
+    throw new Error((source as any)?.message || (source as any)?.msg || `上传失败 HTTP ${response.status}`);
+  },
+
+  /** 主页相册（图片动态，Android 头） */
+  async getPostImageList(userId: string, nextId = 0, limit = 20) {
+    return pocketPost(`${BASE}/posts/api/v1/posts/img/list`, {
+      nextId: Number(nextId || 0),
+      limit: Number(limit) || 20,
+      userId: Number(userId) || 0,
+    }, { fallback: '获取主页相册失败', headers: createPocketAndroidHeaders() });
+  },
+
+  /** 主页视频（v2） */
+  async getPostVideoList(userId: string, nextId = 0, limit = 20) {
+    return pocketPost(`${BASE}/posts/api/v2/posts/video/list`, {
+      nextId: Number(nextId) || 0,
+      limit: Number(limit) || 20,
+      userId: Number(userId) || 0,
+    }, { fallback: '获取主页视频失败', headers: createPocketAndroidHeaders() });
+  },
+
+  /** 主页动态时间线 */
+  async getPostTimelineHome(userId: string, nextId = 0, limit = 20) {
+    return pocketPost(`${BASE}/posts/api/v1/posts/timeline/home`, {
+      nextId: Number(nextId) || 0,
+      limit: Number(limit) || 20,
+      userId: Number(userId) || 0,
+    }, { fallback: '获取主页动态失败', headers: createPocketAndroidHeaders() });
+  },
+
+  /** Seine 公演列表（ckg48 域名，iOS Seine 头） */
+  async getSeinePerformanceList(groupId = 0, next = 0) {
+    return requestJson<any>('https://snhapi-v1.ckg48.cn/home/api/seine/home/interaction/list', {
+      method: 'POST',
+      body: {
+        type: 2,
+        groupId: String(groupId || 0),
+        next: String(next || 0),
+      },
+      headers: createSeineIosHeaders(),
+      timeout: 15000,
+    }).then((res: any) => assertPocketOk(res, '获取公演列表失败'));
+  },
+
+  /** Seine 频道详情（serverId → 房间名映射） */
+  async getSeineServerDetail(serverId: number) {
+    return pocketPost(`${BASE}/im/api/seine/server/detail`, {
+      serverId: Number(serverId),
+    }, { fallback: '获取频道详情失败', headers: createSeineHeaders() });
+  },
+
+  /** 单成员最新消息（team/last/message，push 服务同款） */
+  async getLastMessageByServerId(serverId: number) {
+    return pocketPost(`${BASE}/im/api/v1/team/last/message/get`, {
+      serverId: Number(serverId),
+    }, { fallback: '获取最新消息失败' });
+  },
+
+  /** 社区动态（Area48 最新） */
+  async getArea48Newest(nextId = 0) {
+    return pocketPost(`${BASE}/posts/api/v1/area48/data/newest/new`, {
+      nextId: Number(nextId) || 0,
+    }, { fallback: '获取社区动态失败', headers: createArea48Headers() });
+  },
+
+  /** 社区推荐 */
+  async getArea48Recommend(nextId = 0) {
+    return pocketPost(`${BASE}/posts/api/v1/area48/data/recommend/new`, {
+      nextId: Number(nextId) || 0,
+    }, { fallback: '获取社区推荐失败', headers: createArea48Headers() });
+  },
+
+  /** 帖子详情 */
+  async getArea48PostDetails(postId: string) {
+    return pocketPost(`${BASE}/posts/api/v1/posts/details`, {
+      needViewer: true,
+      needComment: true,
+      postId: String(postId),
+    }, { fallback: '获取帖子详情失败', headers: createArea48Headers() });
+  },
+
+  /** 帖子评论列表 */
+  async getArea48Comments(resourceId: string, next = 0) {
+    return pocketPost(`${BASE}/comment/api/v1/comment/level1/getCommentList`, {
+      next: next ? String(next) : 0,
+      resourceId: String(resourceId),
+      resourceMd: 'md',
+      resourceType: 1002,
+    }, { fallback: '获取评论失败', headers: createArea48Headers() });
+  },
+
+  /** 发表评论 */
+  async addArea48Comment(resourceId: string, commentMsg: string, commentUrl = '') {
+    return pocketPost(`${BASE}/comment/api/v1/comment/addComment`, {
+      resourceId: String(resourceId),
+      commentMsg: String(commentMsg).trim(),
+      commentUrl: String(commentUrl || ''),
+      resourceMd: 'md',
+      resourceType: 1002,
+    }, { fallback: '发送评论失败', headers: createArea48Headers() });
+  },
+
+  /** 社区发帖 */
+  async createArea48Post(params: { title?: string; content: string; topicArray?: string; extInfo?: string }) {
+    return pocketPost(`${BASE}/posts/api/v1/posts/create`, {
+      topicArray: String(params.topicArray || ''),
+      postSource: '1',
+      title: String(params.title || '').trim(),
+      content: String(params.content).trim(),
+      extInfo: String(params.extInfo || ''),
+    }, { fallback: '发布动态失败', headers: createArea48Headers() });
+  },
+
+  /** 屏蔽词列表（发言前过滤） */
+  async getPocketMaskWords(clientTime = 0) {
+    try {
+      const res = await requestJson<any>(`${BASE}/home/api/check/maskword?clientTime=${Number(clientTime) || 0}`, {
+        method: 'GET',
+        headers: createArea48Headers(),
+        timeout: 10000,
+      });
+      if (res?.status === 200 || res?.success) return { success: true, content: res.content || {} };
+      return { success: false, content: {} };
+    } catch {
+      return { success: false, content: {} };
+    }
   },
 
 

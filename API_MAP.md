@@ -140,6 +140,29 @@
 | `getMeet48LiveList/One` | meetapi-v2.meet48.xyz | Meet48 直播列表/详情 | next/record / liveId+RTMP |
 | `bilibiliApi.*` | api.bilibili.com | B站登录/扫码/直播流解析 | cookie, roomId |
 
+## 9.5 v2.7 新接口（同步自 yk1z/yaya_msg 电脑版，2026-08-16）
+
+| API 方法 | 官方路径 | 用途 | 关键参数 |
+|---|---|---|---|
+| `deletePrivateMessage` | `/message/api/v1/user/message/delete/msg` | 删除单条私信 | msgId（Android 头） |
+| `sendPrivateImageMessage` | `/message/api/v1/user/message/reply` | 私信发图 | messageType:IMAGE + imgUrl/宽高/尺寸 |
+| `uploadPocketImage` | pfile.48.cn | 通用图片上传（私信图等） | fromType 可空 |
+| `getPostImageList` | `/posts/api/v1/posts/img/list` | 主页相册 | userId, nextId, limit（Android 头） |
+| `getPostVideoList` | `/posts/api/v2/posts/video/list` | 主页视频（v2） | userId, nextId, limit |
+| `getPostTimelineHome` | `/posts/api/v1/posts/timeline/home` | 主页动态时间线 | userId, nextId, limit |
+| `getSeinePerformanceList` | snhapi-v1.ckg48.cn `/home/api/seine/home/interaction/list` | Seine 公演列表（新数据源） | type:2, groupId, next（Seine iOS 头） |
+| `getSeineServerDetail` | `/im/api/seine/server/detail` | 频道详情（serverId→房间名） | serverId（Seine 头） |
+| `getLastMessageByServerId` | `/im/api/v1/team/last/message/get` | 单成员最新消息（push 服务同款） | serverId（注意：非 classic 前缀） |
+| `getArea48Newest` | `/posts/api/v1/area48/data/newest/new` | 社区最新动态 | nextId（Area48 头） |
+| `getArea48Recommend` | `/posts/api/v1/area48/data/recommend/new` | 社区推荐 | nextId |
+| `getArea48PostDetails` | `/posts/api/v1/posts/details` | 帖子详情 | postId |
+| `getArea48Comments` | `/comment/api/v1/comment/level1/getCommentList` | 评论列表 | resourceId, next, resourceType:1002 |
+| `addArea48Comment` | `/comment/api/v1/comment/addComment` | 发表评论 | resourceId, commentMsg |
+| `createArea48Post` | `/posts/api/v1/posts/create` | 社区发帖 | title/content/topicArray |
+| `getPocketMaskWords` | `/home/api/check/maskword?clientTime=` | 发言屏蔽词 | clientTime（GET） |
+
+> 头类型：Android 头 = `createPocketAndroidHeaders`（7.1.43）；Seine 头 = `createSeineHeaders`/`createSeineIosHeaders`（seine48 客户端）；Area48 头 = `createArea48Headers`（老版 6.0.22）。来源：yk1z/yaya_msg `src/common/pocket-runtime.mjs`（全部 100+ 通道）与 yk1z/yaya_push `push.py`。
+
 ## 10. 分页机制速查
 
 | 接口族 | 翻页字段 | 说明 |
