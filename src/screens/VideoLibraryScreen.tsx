@@ -178,19 +178,23 @@ export default function VideoLibraryScreen() {
                       <MaterialCommunityIcons name="video" size={40} color={palette.labelTertiary} />
                     </View>
                   )}
+                  {/* 渐变遮罩 + 信息上浮 */}
+                  <View pointerEvents="none" style={styles.bannerShade1} />
+                  <View pointerEvents="none" style={styles.bannerShade2} />
+                  <View pointerEvents="none" style={styles.bannerShade3} />
+                  <View style={styles.bannerInfoOverlay}>
+                    <Text style={styles.bannerTitleOverlay} numberOfLines={2}>
+                      {videos[0].title || t('无标题')}
+                    </Text>
+                    <Text style={styles.bannerMetaOverlay} numberOfLines={1}>
+                      {videoMeta(videos[0])}
+                    </Text>
+                  </View>
                   {videoDuration(videos[0]) ? (
                     <View style={[styles.bannerDuration, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
                       <Text style={styles.bannerDurationText}>{videoDuration(videos[0])}</Text>
                     </View>
                   ) : null}
-                </View>
-                <View style={styles.bannerInfo}>
-                  <Text style={[styles.bannerTitle, { color: palette.label }]} numberOfLines={2}>
-                    {videos[0].title || t('无标题')}
-                  </Text>
-                  <Text style={[styles.bannerMeta, { color: palette.labelSecondary }]} numberOfLines={1}>
-                    {videoMeta(videos[0])}
-                  </Text>
                 </View>
               </TouchableOpacity>
             ) : null
@@ -249,9 +253,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
   },
-  bannerCover: { width: '100%', height: 180, overflow: 'hidden' },
+  bannerCover: { width: '100%', height: 196, overflow: 'hidden' },
   bannerCoverImg: { width: '100%', height: '100%' },
   bannerCoverFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  bannerShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 100, backgroundColor: 'rgba(0,0,0,0.16)' },
+  bannerShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 66, backgroundColor: 'rgba(0,0,0,0.28)' },
+  bannerShade3: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 40, backgroundColor: 'rgba(0,0,0,0.48)' },
+  bannerInfoOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingBottom: 10 },
+  bannerTitleOverlay: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', lineHeight: 22, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  bannerMetaOverlay: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 4, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   bannerDuration: {
     position: 'absolute',
     left: 10,

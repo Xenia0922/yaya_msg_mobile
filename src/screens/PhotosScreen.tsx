@@ -176,7 +176,12 @@ export default function PhotosScreen() {
             </TouchableOpacity>
           ) : <View style={[styles.photo, { backgroundColor: palette.fill3 }]} />}
           {title ? (
-            <Text style={[styles.photoTitle, { color: palette.labelSecondary }]} numberOfLines={1}>{title}</Text>
+            <>
+              <View pointerEvents="none" style={styles.photoShade} />
+              <View style={styles.photoTitleOverlay}>
+                <Text style={styles.photoTitleText} numberOfLines={1}>{title}</Text>
+              </View>
+            </>
           ) : null}
         </View>
       </FadeInView>
@@ -216,6 +221,8 @@ const styles = StyleSheet.create({
   list: { padding: 10, paddingBottom: 40 },
   photoCard: { flex: 1, margin: 4, borderRadius: 16, overflow: 'hidden' },
   photo: { width: '100%', aspectRatio: 1 },
-  photoTitle: { fontSize: 11, padding: 8, textAlign: 'center' },
+  photoShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 44, backgroundColor: 'rgba(0,0,0,0.42)' },
+  photoTitleOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 8, paddingBottom: 6 },
+  photoTitleText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
 });

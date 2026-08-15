@@ -321,9 +321,12 @@ const AlbumGridItem = React.memo(function AlbumGridItem({
         ) : (
           <NetworkImage source={{ uri: item.url }} style={[styles.photo, { backgroundColor: palette.fill3 }]} resizeMode="cover" />
         )}
-        <View style={styles.info}>
-          <Text style={[styles.mediaTitle, { color: palette.label }]} numberOfLines={1}>{item.title}</Text>
-          <Text style={[styles.mediaMeta, { color: palette.labelTertiary }]} numberOfLines={1}>{item.roomMode === 'small' ? t('小房间') : t('大房间')} · {formatTimestamp(item.time)}</Text>
+        {/* 渐变遮罩 + 信息上浮 */}
+        <View pointerEvents="none" style={styles.gridShade1} />
+        <View pointerEvents="none" style={styles.gridShade2} />
+        <View style={styles.infoOverlay}>
+          <Text style={styles.mediaTitleOverlay} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.mediaMetaOverlay} numberOfLines={1}>{item.roomMode === 'small' ? t('小房间') : t('大房间')} · {formatTimestamp(item.time)}</Text>
         </View>
       </TouchableOpacity>
     </FadeInView>
@@ -347,9 +350,12 @@ const styles = StyleSheet.create({
   videoBadge: { position: 'absolute', top: 8, right: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
   videoBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   playMark: { marginLeft: 2 },
-  info: { padding: 10 },
-  mediaTitle: { fontSize: 13, fontWeight: '700', lineHeight: 17 },
-  mediaMeta: { marginTop: 4, fontSize: 11 },
+  // 沉浸式：渐变遮罩 + 信息上浮
+  gridShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, backgroundColor: 'rgba(0,0,0,0.18)' },
+  gridShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 46, backgroundColor: 'rgba(0,0,0,0.45)' },
+  infoOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 8, paddingBottom: 7 },
+  mediaTitleOverlay: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', lineHeight: 16, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  mediaMetaOverlay: { color: 'rgba(255,255,255,0.85)', fontSize: 10, marginTop: 2, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   footerText: { marginTop: 12, marginBottom: 6, textAlign: 'center', fontSize: 12, fontWeight: '800' },
   empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
   playerPage: { flex: 1, backgroundColor: '#000000' },
