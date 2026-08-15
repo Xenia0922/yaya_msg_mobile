@@ -1564,7 +1564,9 @@ export default function FollowedRoomsScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
                       {isPinned ? (
-                        <MaterialCommunityIcons name="pin" size={13} color={palette.tint} style={{ marginLeft: 5 }} />
+                        <View style={[styles.pinBtn, { backgroundColor: palette.tintSoft, marginLeft: 6 }]}>
+                          <Text style={[styles.pinBtnText, { color: palette.tint }]}>{t('置顶')}</Text>
+                        </View>
                       ) : null}
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>

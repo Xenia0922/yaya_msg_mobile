@@ -1359,14 +1359,23 @@ export default function MediaScreen() {
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title={t('直播 · 回放')} />
       <View style={styles.toolbarRow}>
-        <TouchableOpacity style={[styles.tabBtn, tab === 'live' && styles.tabBtnActive, isDark && tab !== 'live' && styles.tabBtnDark]} onPress={() => switchTab('live')}>
-          <Text style={[styles.tabBtnText, tab === 'live' && styles.tabBtnTextActive, isDark && tab !== 'live' && styles.tabBtnTextDark]}>{t('直播')}</Text>
+        <TouchableOpacity
+          style={[styles.tabBtn, { backgroundColor: tab === 'live' ? palette.tint : palette.surface, borderColor: tab === 'live' ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+          onPress={() => switchTab('live')}
+        >
+          <Text style={[styles.tabBtnText, { color: tab === 'live' ? '#FFFFFF' : palette.labelSecondary, fontWeight: '700' }]}>{t('直播')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.tabBtn, tab === 'vod' && styles.tabBtnActive, isDark && tab !== 'vod' && styles.tabBtnDark]} onPress={() => switchTab('vod')}>
-          <Text style={[styles.tabBtnText, tab === 'vod' && styles.tabBtnTextActive, isDark && tab !== 'vod' && styles.tabBtnTextDark]}>{t('回放')}</Text>
+        <TouchableOpacity
+          style={[styles.tabBtn, { backgroundColor: tab === 'vod' ? palette.tint : palette.surface, borderColor: tab === 'vod' ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+          onPress={() => switchTab('vod')}
+        >
+          <Text style={[styles.tabBtnText, { color: tab === 'vod' ? '#FFFFFF' : palette.labelSecondary, fontWeight: '700' }]}>{t('回放')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.refreshBtn, isDark && styles.refreshBtnDark]} onPress={refreshList}>
-          <Text style={[styles.refreshText, isDark && styles.refreshTextDark]}>{t('刷新')}</Text>
+        <TouchableOpacity
+          style={[styles.refreshBtn, { backgroundColor: palette.fill2 }]}
+          onPress={refreshList}
+        >
+          <Text style={[styles.refreshText, { color: palette.labelSecondary, fontWeight: '700' }]}>{t('刷新')}</Text>
         </TouchableOpacity>
       </View>
       {/* v2.6: group selector — client-side text match filter */}

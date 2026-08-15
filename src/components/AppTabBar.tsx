@@ -16,7 +16,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { usePalette, motion } from '../theme';
 import { typography } from '../theme/typography';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -35,12 +34,11 @@ export interface AppTabBarProps {
 
 export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const palette = usePalette();
-  const insets = useSafeAreaInsets();
 
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.outer, { paddingBottom: Math.max(insets.bottom, 10) + 10 }]}
+      style={[styles.outer, { paddingBottom: 10 }]}
     >
       <View
         style={[
@@ -72,15 +70,15 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               ]}
             >
               <View style={styles.cellIcon}>
-                {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 22 })}
+                {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 20 })}
               </View>
               <Text
                 style={[
-                  typography.caption1,
+                  typography.caption2,
                   {
                     color: active ? palette.tint : palette.labelSecondary,
                     fontWeight: active ? '700' : '600',
-                    marginTop: 2,
+                    marginTop: 1,
                   },
                 ]}
               >
@@ -105,12 +103,12 @@ const styles = StyleSheet.create({
   },
   bar: {
     flexDirection: 'row',
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    paddingVertical: 6,
+    paddingVertical: 4,
     paddingHorizontal: 6,
-    minHeight: 56,
+    minHeight: 48,
     // 悬浮阴影（克制）
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
@@ -122,9 +120,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
+    paddingVertical: 4,
     paddingHorizontal: 4,
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'transparent',
   },

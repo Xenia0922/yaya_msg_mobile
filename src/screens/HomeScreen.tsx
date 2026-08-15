@@ -254,16 +254,16 @@ export default function HomeScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingTop: insets.top + 4,
-          paddingBottom: 100 + insets.bottom,
+          paddingBottom: 84 + insets.bottom,
           paddingHorizontal: spacing.md,
         }}
         showsVerticalScrollIndicator={false}
       >
         {/* 问候区 */}
-        <Text style={[typography.largeTitle, { color: palette.label, marginBottom: 4 }]}>
+        <Text style={[styles.homeTitle, { color: palette.label, marginBottom: 3 }]}>
           {t('牙牙消息')}
         </Text>
-        <Text style={[typography.subhead, { color: palette.labelSecondary, marginBottom: 18 }]}>
+        <Text style={[typography.subhead, { color: palette.labelSecondary, marginBottom: 16 }]}>
           {t('{g} · 已收录 {n} 位成员', { g: greeting, n: membersCount || '—' })}
         </Text>
 
@@ -471,6 +471,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   outer: { flex: 1 },
+  homeTitle: { fontSize: 24, lineHeight: 30, fontWeight: '800', letterSpacing: -0.3 },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
