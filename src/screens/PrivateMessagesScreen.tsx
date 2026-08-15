@@ -288,6 +288,9 @@ export default function PrivateMessagesScreen() {
   const members = useMemberStore((s) => s.members);
   const showToast = useUiStore((s) => s.showToast);
   const [convs, setConvs] = useState<any[]>([]);
+  const [hasMoreConvs, setHasMoreConvs] = useState(false);
+  const convCursorRef = useRef(0);
+  const convLoadingRef = useRef(false);
   // 会话按时间分组（今天/昨天/更早）：组头 + 组内会话行
   const todayStr = (() => {
     const d = new Date();
@@ -362,14 +365,18 @@ export default function PrivateMessagesScreen() {
     return () => { a = false; };
   }, [member]);
 
-  const loadConvs = async () => {
-    setLoading(true);
+  // 首屏只拉少量批次，剩余走「上滑加载更多」，避免一次性 60 轮全量拉取
+  const loadConvs = async (initial = true) => {
+    if (convLoadingRef.current) return;
+    convLoadingRef.current = true;
+    if (initial) setLoading(true);
     setConvError('');
     try {
-      let cursor = Date.now();
+      let cursor = initial ? Date.now() : (convCursorRef.current || Date.now());
       let all: any[] = [];
       let loops = 0;
-      while (loops < 60) {
+      const maxLoops = initial ? 5 : 10;
+      while (loops < maxLoops) {
         const res = await pocketApi.getPrivateMessageList(cursor);
         const list = unwrapList(res, ['content.userMessageList', 'content.list', 'content.data', 'data.userMessageList', 'userMessageList', 'list']);
         const incoming = Array.isArray(list) ? list : [];
@@ -379,9 +386,23 @@ export default function PrivateMessagesScreen() {
         cursor = nextCursor;
         loops += 1;
       }
-      setConvs(all.slice().sort((a: any, b: any) => Number(b.lastTime || b.msgTime || 0) - Number(a.lastTime || a.msgTime || 0)));
+      convCursorRef.current = cursor;
+      setConvs((prev) => {
+        const merged = initial ? all : [...prev, ...all];
+        const seen = new Set<string>();
+        return merged
+          .filter((it) => {
+            const key = convTargetId(it) || it.userMessageId;
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .sort((a: any, b: any) => Number(b.lastTime || b.msgTime || 0) - Number(a.lastTime || a.msgTime || 0));
+      });
+      // 是否还有更多（本批拉满 且 游标有前进）
+      setHasMoreConvs(loops >= maxLoops && cursor > 0);
     } catch (e) { setConvError(errorMessage(e)); showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
-    finally { setLoading(false); }
+    finally { convLoadingRef.current = false; setLoading(false); }
   };
 
   const openConv = async (c: any) => {
@@ -561,7 +582,7 @@ export default function PrivateMessagesScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: palette.background }]}>
       <ScreenHeader title={t('私信列表')} right={
-        <TouchableOpacity onPress={loadConvs}><Text style={[styles.refreshBtn, { color: palette.tint }]}>{t('刷新')}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => loadConvs(true)}><Text style={[styles.refreshBtn, { color: palette.tint }]}>{t('刷新')}</Text></TouchableOpacity>
       } />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
@@ -622,6 +643,11 @@ export default function PrivateMessagesScreen() {
             ) : (
               <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无私信')}</Text>
             )
+          }
+          onEndReached={() => { if (hasMoreConvs) loadConvs(false); }}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            hasMoreConvs ? <CenterSpinner dark={isDark} text={t('加载更多会话…')} /> : null
           }
         />
       </FadeInView>
