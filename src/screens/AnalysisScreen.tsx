@@ -174,6 +174,9 @@ export default function AnalysisScreen() {
   const dateMax = Math.max(1, ...dateStats.map((d) => d.total));
 
   const senders = useMemo(() => countBy(messages, senderName, t('未知')).slice(0, 30), [messages, t]);
+  // 成员排行前 8 名用于横向条形图；senders 已按 count 降序，maxCount 取首名
+  const memberRankTop8 = useMemo(() => senders.slice(0, 8), [senders]);
+  const sendersMax = memberRankTop8.length ? memberRankTop8[0].count : 1;
   const recent = useMemo(() => messages.slice().sort((a, b) => msgTime(b) - msgTime(a)).slice(0, 20), [messages]);
 
   const filteredFlips = useMemo(() => {
@@ -229,6 +232,9 @@ export default function AnalysisScreen() {
     const topCost = memberRank[0]?.cost || 1;
     return { totalCount: filteredFlips.length, totalCost, typeStats, avgDur, minDur: minDur === Infinity ? 0 : minDur, maxDur, answeredCount, memberRank, topCost };
   }, [filteredFlips]);
+
+  // 翻牌类型分布小条形图的最大值
+  const flipTypeMax = Math.max(1, flipStats.typeStats.text, flipStats.typeStats.audio, flipStats.typeStats.video);
 
   function formatDurationMs(ms: number): string {
     if (ms <= 0) return '-';
@@ -366,6 +372,25 @@ export default function AnalysisScreen() {
                 </View>
               ))}
             </View>
+
+            {/* 成员排行 · 横向条形图（纯 View 宽度百分比，无图表依赖） */}
+            <View style={[styles.rankCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+              <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('成员排行')}</Text>
+              <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('按发言次数 Top {count}', { count: memberRankTop8.length })}</Text>
+              {memberRankTop8.map((item, index) => {
+                const pct = (item.count / sendersMax) * 100;
+                return (
+                  <View key={item.key} style={styles.rankRow}>
+                    <Text style={[styles.rankRowName, { color: palette.label }]} numberOfLines={1}>{index + 1}. {item.key}</Text>
+                    <View style={[styles.rankTrack, { backgroundColor: palette.fill2 }]}>
+                      <View style={[styles.rankBar, { width: `${pct}%`, backgroundColor: palette.tint }]} />
+                    </View>
+                    <Text style={[styles.rankRowCount, { color: palette.labelTertiary }]}>{item.count}</Text>
+                  </View>
+                );
+              })}
+            </View>
+
             {recent.map((item, index) => (
               <View key={`${msgTime(item)}-${index}`} style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
                 <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
@@ -552,10 +577,24 @@ export default function AnalysisScreen() {
                   {flipStats.minDur > 0 ? <Text style={[styles.flipCardRange, { color: palette.labelTertiary }]}>{formatDurationMs(flipStats.minDur)} ~ {formatDurationMs(flipStats.maxDur)}</Text> : null}
                 </View>
               </View>
-              <View style={styles.flipTypeRow}>
-                <Text style={[styles.flipTypePill, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('文字 {count}', { count: flipStats.typeStats.text })}</Text>
-                <Text style={[styles.flipTypePill, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('语音 {count}', { count: flipStats.typeStats.audio })}</Text>
-                <Text style={[styles.flipTypePill, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('视频 {count}', { count: flipStats.typeStats.video })}</Text>
+              <View style={[styles.typeCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <Text style={[styles.sectionSub, { color: palette.labelSecondary }]}>{t('回复类型分布')}</Text>
+                {[
+                  { key: 'text', label: t('文字'), count: flipStats.typeStats.text },
+                  { key: 'audio', label: t('语音'), count: flipStats.typeStats.audio },
+                  { key: 'video', label: t('视频'), count: flipStats.typeStats.video },
+                ].map((row) => {
+                  const tpct = (row.count / flipTypeMax) * 100;
+                  return (
+                    <View key={row.key} style={styles.rankRow}>
+                      <Text style={[styles.rankRowName, { color: palette.label }]} numberOfLines={1}>{row.label}</Text>
+                      <View style={[styles.rankTrack, { backgroundColor: palette.fill2 }]}>
+                        <View style={[styles.rankBar, { width: `${tpct}%`, backgroundColor: palette.tint }]} />
+                      </View>
+                      <Text style={[styles.rankRowCount, { color: palette.labelTertiary }]}>{row.count}</Text>
+                    </View>
+                  );
+                })}
               </View>
               <Text style={[styles.sectionSub, { color: palette.labelSecondary }]}>{t('成员排名 · {count} 人 · 共 {total} 条', { count: flipStats.memberRank.length, total: flipStats.totalCount })}</Text>
               {flipStats.memberRank.map((m, idx) => {
@@ -727,6 +766,15 @@ const styles = StyleSheet.create({
   barWrap: { position: 'relative', height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 8 },
   barFg: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3 },
   barFg2: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3 },
+  rankCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 12 },
+  rankHeaderTitle: { fontSize: 15, fontWeight: '700' },
+  rankHeaderSub: { fontSize: 11, marginTop: 3, marginBottom: 6 },
+  rankRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 5 },
+  rankRowName: { fontSize: 13, fontWeight: '700', width: 72, marginRight: 8 },
+  rankTrack: { flex: 1, height: 10, borderRadius: 3, overflow: 'hidden', backgroundColor: 'transparent' },
+  rankBar: { height: 10, borderRadius: 3 },
+  rankRowCount: { fontSize: 11, width: 28, textAlign: 'right', marginLeft: 8 },
+  typeCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 12 },
   empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
   flipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   flipQ: { fontSize: 13, lineHeight: 20, marginBottom: 6 },
@@ -756,8 +804,6 @@ const styles = StyleSheet.create({
   flipCardValue: { fontSize: 18, fontWeight: '900' },
   flipCardLabel: { fontSize: 11, marginTop: 4 },
   flipCardRange: { fontSize: 10, marginTop: 2 },
-  flipTypeRow: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 14 },
-  flipTypePill: { fontSize: 11, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   sectionSub: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
   flipMemberCard: { padding: 12, borderRadius: 12, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth },
   flipMemberHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },

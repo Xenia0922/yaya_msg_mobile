@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -50,6 +51,15 @@ function audioUrls(path: string): string[] {
     normalizeUrl(path),
   ];
   return Array.from(new Set(urls));
+}
+
+/** 提取节目封面缩略图地址（只展示用） */
+function programCover(item: any): string {
+  return normalizeUrl(item.cover || item.coverUrl || item.picPath || item.imageUrl || item.thumb || '');
+}
+
+function programDate(item: any): string {
+  return formatTimestamp(item.ctime).slice(0, 10);
 }
 
 export default function AudioProgramsScreen() {
@@ -151,7 +161,7 @@ export default function AudioProgramsScreen() {
       {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading ? '' : status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
-          data={programs}
+          data={programs.length > 1 ? programs.slice(1) : []}
           keyExtractor={(item, index) => String(item.talkId || item.id || index)}
           contentContainerStyle={styles.listContent}
           initialNumToRender={12}
@@ -160,6 +170,37 @@ export default function AudioProgramsScreen() {
           removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
+          ListHeaderComponent={
+            programs.length > 0 ? (
+              <TouchableOpacity
+                style={[styles.heroCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}
+                onPress={() => play(programs[0])}
+                activeOpacity={0.9}
+              >
+                <View style={[styles.heroCover, { backgroundColor: palette.tintSoft }]}>
+                  <MaterialCommunityIcons name="radio" size={44} color={palette.tint} />
+                </View>
+                <View style={styles.heroInfo}>
+                  <Text style={[styles.heroTitle, { color: palette.label }]} numberOfLines={2}>
+                    {programs[0].title || t('无标题')}
+                  </Text>
+                  <Text style={[styles.heroMeta, { color: palette.labelSecondary }]} numberOfLines={1}>
+                    {[programs[0].subTitle, programs[0].guest].filter(Boolean).join(' · ') || t('口袋电台')}
+                  </Text>
+                  <Text style={[styles.heroDate, { color: palette.labelTertiary }]}>
+                    {formatTimestamp(programs[0].ctime).slice(0, 10)}
+                  </Text>
+                </View>
+                <View style={[styles.heroPlayBtn, { backgroundColor: palette.tint }]}>
+                  <MaterialCommunityIcons
+                    name={String(active || '') === String(programs[0].talkId || programs[0].id) ? 'pause' : 'play'}
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                </View>
+              </TouchableOpacity>
+            ) : null
+          }
           ListFooterComponent={loadingMore ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{t('加载更多...')}</Text> : null}
           renderItem={({ item, index }) => {
             const isActive = String(active || '') === String(item.talkId || item.id);
@@ -209,7 +250,36 @@ const styles = StyleSheet.create({
   playerTitle: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
   audioPlayer: { height: 48, width: '100%' },
   status: { marginHorizontal: 16, marginTop: 8, fontSize: 12, textAlign: 'center' },
-  listContent: { paddingTop: 8, paddingBottom: 120 },
+  listContent: { paddingTop: 8, paddingHorizontal: 12, paddingBottom: 120 },
+  // 第一个节目大卡
+  heroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 4,
+    marginBottom: 10,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  heroCover: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  heroInfo: { flex: 1, marginLeft: 14, marginRight: 10, minWidth: 0 },
+  heroTitle: { fontSize: 16, fontWeight: '700', lineHeight: 21 },
+  heroMeta: { fontSize: 12, marginTop: 4 },
+  heroDate: { fontSize: 11, marginTop: 3 },
+  heroPlayBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   progItem: {
     flexDirection: 'row',
     alignItems: 'center',

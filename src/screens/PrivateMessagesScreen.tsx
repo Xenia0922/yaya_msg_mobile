@@ -284,6 +284,40 @@ export default function PrivateMessagesScreen() {
   const members = useMemberStore((s) => s.members);
   const showToast = useUiStore((s) => s.showToast);
   const [convs, setConvs] = useState<any[]>([]);
+  // 会话按时间分组（今天/昨天/更早）：组头 + 组内会话行
+  const todayStr = (() => {
+    const d = new Date();
+    const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  })();
+  const convRows = useMemo(() => {
+    const groups: { key: string; title: string; items: any[] }[] = [
+      { key: 'today', title: t('今天'), items: [] },
+      { key: 'yesterday', title: t('昨天'), items: [] },
+      { key: 'more', title: t('更早'), items: [] },
+    ];
+    const idxOf: Record<string, number> = { today: 0, yesterday: 1, more: 2 };
+    const groupOf = (ts: number): string => {
+      if (!ts) return 'more';
+      const d = new Date(ts);
+      const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+      const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      if (key === todayStr) return 'today';
+      const y = new Date(ts - 86400000);
+      const yKey = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
+      return key === yKey ? 'yesterday' : 'more';
+    };
+    for (const c of convs) {
+      groups[idxOf[groupOf(Number(c.lastTime || c.msgTime || 0))]].items.push(c);
+    }
+    const flat: { type: 'header' | 'item'; key: string; title?: string; item?: any }[] = [];
+    groups.forEach((g) => {
+      if (!g.items.length) return;
+      flat.push({ type: 'header', key: `h-${g.key}`, title: g.title });
+      g.items.forEach((it, i) => flat.push({ type: 'item', key: `i-${g.key}-${String(convTargetId(it) || i)}`, item: it }));
+    });
+    return flat;
+  }, [convs, todayStr, t]);
   const [sel, setSel] = useState<any>(null);
   const [msgs, setMsgs] = useState<any[]>([]);
   const [text, setText] = useState('');
@@ -523,17 +557,23 @@ export default function PrivateMessagesScreen() {
       } />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
-          data={convs}
-          keyExtractor={(item, i) => String(convTargetId(item) || i)}
+          data={convRows}
+          keyExtractor={(item) => item.key}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
           contentContainerStyle={styles.convList}
           renderItem={({ item, index }) => {
-            const name = convName(item);
-            const unread = Number(item.noreadNum);
-            const latestTime = Number(item.lastTime || item.msgTime || 0);
+            if (item.type === 'header') {
+              return (
+                <Text style={[styles.groupTitle, { color: palette.labelTertiary }]}>{item.title}</Text>
+              );
+            }
+            const conv = item.item as any;
+            const name = convName(conv);
+            const unread = Number(conv.noreadNum);
+            const latestTime = Number(conv.lastTime || conv.msgTime || 0);
             return (
               <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <TouchableOpacity
@@ -541,7 +581,7 @@ export default function PrivateMessagesScreen() {
                     styles.convCard,
                     { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16 },
                   ]}
-                  onPress={() => openConv(item)}
+                  onPress={() => openConv(conv)}
                   activeOpacity={0.88}
                 >
                   <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
@@ -553,7 +593,7 @@ export default function PrivateMessagesScreen() {
                       {latestTime ? <Text style={[styles.convTime, { color: palette.labelTertiary }]} numberOfLines={1}>{formatTimestamp(latestTime).slice(5, 16)}</Text> : null}
                     </View>
                     <View style={styles.convMetaRow}>
-                      <Text style={[styles.convPrev, { color: palette.labelSecondary }]} numberOfLines={1}>{item.newestMessage || t('点击查看')}</Text>
+                      <Text style={[styles.convPrev, { color: palette.labelSecondary }]} numberOfLines={1}>{conv.newestMessage || t('点击查看')}</Text>
                       {unread > 0 ? (
                         <View style={[styles.badge, { backgroundColor: palette.tint }]}>
                           <Text style={styles.badgeT}>{unread > 99 ? '99+' : unread}</Text>
@@ -578,6 +618,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   refreshBtn: { fontSize: 13, fontWeight: '700' },
   convList: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 },
+  groupTitle: { fontSize: 13, fontWeight: '800', marginTop: 12, marginBottom: 2, paddingLeft: 4 },
   convCard: { padding: 12, flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
   convAvatar: {
     width: 40,
