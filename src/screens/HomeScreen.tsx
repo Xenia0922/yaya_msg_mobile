@@ -40,12 +40,6 @@ interface NavItem {
   icon: string;
 }
 
-interface ToolGroup {
-  title: string;
-  subtitle: string;
-  items: NavItem[];
-}
-
 /** MaterialCommunityIcons 图标（统一视觉语言，替代 emoji） */
 const ICONS: Record<string, string> = {
   LiveRoom: 'video', Vod: 'play-box-multiple', RoomRadio: 'radio', Bilibili: 'broadcast',
@@ -59,73 +53,25 @@ const ICONS: Record<string, string> = {
 const QUICK: NavItem[] = [
   { title: '直播', desc: '', route: 'Media', icon: ICONS.LiveRoom },
   { title: '回放', desc: '', route: 'Media', params: { mode: 'vod' }, icon: ICONS.Vod },
-  { title: 'B站', desc: '', route: 'BilibiliLiveScreen', icon: ICONS.Bilibili },
   { title: '音乐', desc: '', route: 'MusicLibraryScreen', icon: ICONS.MusicLibrary },
   { title: '私信', desc: '', route: 'PrivateMessagesScreen', icon: ICONS.PrivateMessages },
-  { title: '翻牌', desc: '', route: 'FlipScreen', icon: ICONS.FlipSend },
 ];
 
-const TOOL_GROUPS: ToolGroup[] = [
-  {
-    title: '直播',
-    subtitle: '口袋、B站、回放、电台',
-    items: [
-      { title: '直播', desc: '查看当前直播列表', route: 'Media', icon: ICONS.LiveRoom },
-      { title: '回放', desc: '录播与弹幕', route: 'Media', params: { mode: 'vod' }, icon: ICONS.Vod },
-      { title: '上麦', desc: '房间电台', route: 'RoomRadioScreen', icon: ICONS.RoomRadio },
-      { title: 'B站', desc: 'B站直播播放', route: 'BilibiliLiveScreen', icon: ICONS.Bilibili },
-    ],
-  },
-  {
-    title: '口袋',
-    subtitle: '房间、私信、相册、公演',
-    items: [
-      { title: '房间', desc: '关注房间消息', route: 'Rooms', icon: ICONS.Rooms },
-      { title: '私信', desc: '口袋私信会话', route: 'PrivateMessagesScreen', icon: ICONS.PrivateMessages },
-      { title: '相册', desc: '按房间查看图片', route: 'RoomAlbumScreen', icon: ICONS.RoomAlbum },
-      { title: '公演', desc: '成员公演记录', route: 'OpenLiveScreen', icon: ICONS.OpenLive },
-    ],
-  },
-  {
-    title: '翻牌',
-    subtitle: '提问、历史、统计',
-    items: [
-      { title: '提问', desc: '发送翻牌', route: 'FlipScreen', params: { mode: 'send' }, icon: ICONS.FlipSend },
-      { title: '历史', desc: '浏览翻牌内容', route: 'FlipScreen', icon: ICONS.FlipHistory },
-      { title: '统计', desc: '翻牌数据分析', route: 'AnalysisScreen', icon: ICONS.Analysis },
-    ],
-  },
-  {
-    title: '成员',
-    subtitle: '档案、动态、微博、行程',
-    items: [
-      { title: '档案', desc: '成员资料与编年史', route: 'ProfileScreen', icon: ICONS.Profile },
-      { title: '动态', desc: '成员口袋动态', route: 'MemberDynamicScreen', icon: ICONS.MemberDynamic },
-      { title: '微博', desc: '成员微博动态', route: 'MemberWeiboScreen', icon: ICONS.MemberWeibo },
-      { title: '行程', desc: '行程与票务', route: 'TripScreen', icon: ICONS.Trip },
-    ],
-  },
-  {
-    title: '资源',
-    subtitle: '视频、音乐、电台',
-    items: [
-      { title: '视频', desc: '查看视频资源', route: 'VideoLibraryScreen', icon: ICONS.VideoLibrary },
-      { title: '音乐', desc: '进入音乐列表', route: 'MusicLibraryScreen', icon: ICONS.MusicLibrary },
-      { title: '电台', desc: '播放音频节目', route: 'AudioProgramsScreen', icon: ICONS.AudioPrograms },
-    ],
-  },
-  {
-    title: '工具',
-    subtitle: '统计、数据库、设置',
-    items: [
-      { title: '鸡腿榜', desc: '鸡腿乱斗排名', route: 'MeleeRankScreen', icon: ICONS.MeleeRank },
-      { title: '数据库', desc: '成员附属数据', route: 'DatabaseScreen', icon: ICONS.Database },
-      { title: '账号', desc: '登录与头像', route: 'LoginScreen', icon: ICONS.Login },
-      { title: '下载', desc: '录播/图片/视频', route: 'DownloadScreen', icon: ICONS.Download },
-      { title: '发票', desc: '鸡腿消费开票', route: 'InvoiceScreen', icon: ICONS.Invoice },
-      { title: '设置', desc: '主题与签到', route: 'Settings', icon: ICONS.Settings },
-    ],
-  },
+/** 工具：单行横向 chips（翻牌/统计/下载/账号/设置…） */
+const TOOL_CHIPS: NavItem[] = [
+  { title: '翻牌', desc: '', route: 'FlipScreen', icon: ICONS.FlipSend },
+  { title: '统计', desc: '', route: 'AnalysisScreen', icon: ICONS.Analysis },
+  { title: '下载', desc: '', route: 'DownloadScreen', icon: ICONS.Download },
+  { title: '账号', desc: '', route: 'LoginScreen', icon: ICONS.Login },
+  { title: '设置', desc: '', route: 'Settings', icon: ICONS.Settings },
+  { title: '相册', desc: '', route: 'RoomAlbumScreen', icon: ICONS.RoomAlbum },
+  { title: '公演', desc: '', route: 'OpenLiveScreen', icon: ICONS.OpenLive },
+  { title: 'B站', desc: '', route: 'BilibiliLiveScreen', icon: ICONS.Bilibili },
+  { title: '微博', desc: '', route: 'MemberWeiboScreen', icon: ICONS.MemberWeibo },
+  { title: '行程', desc: '', route: 'TripScreen', icon: ICONS.Trip },
+  { title: '鸡腿榜', desc: '', route: 'MeleeRankScreen', icon: ICONS.MeleeRank },
+  { title: '数据库', desc: '', route: 'DatabaseScreen', icon: ICONS.Database },
+  { title: '发票', desc: '', route: 'InvoiceScreen', icon: ICONS.Invoice },
 ];
 
 interface LiveCardItem {
@@ -189,6 +135,41 @@ function LiveCard({ item, onPress }: { item: LiveCardItem; onPress: () => void }
   );
 }
 
+/** 首页全宽沉浸直播 banner（16:9）：渐变 + 白字上浮 + 直播中红标 */
+function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void }) {
+  const palette = usePalette();
+  const [broken, setBroken] = useState(false);
+  return (
+    <ScalePressable style={styles.liveBanner} onPress={onPress} pressedScale={0.98}>
+      <View style={[styles.liveBannerWrap, { backgroundColor: palette.fill3, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+        {!broken && item.cover ? (
+          <NetworkImage
+            source={{ uri: item.cover }}
+            style={styles.liveBannerCover}
+            resizeMode="cover"
+            onError={() => setBroken(true)}
+          />
+        ) : (
+          <View style={styles.liveBannerFallback}>
+            <MaterialCommunityIcons name="video" color={palette.labelTertiary} size={44} />
+          </View>
+        )}
+        <View pointerEvents="none" style={styles.liveBannerShade1} />
+        <View pointerEvents="none" style={styles.liveBannerShade2} />
+        <View pointerEvents="none" style={styles.liveBannerShade3} />
+        <View style={[styles.liveBadge, styles.liveBannerBadge]}>
+          <View style={[styles.liveDot, { backgroundColor: '#FF3B30' }]} />
+          <Text style={styles.liveBadgeText}>直播中</Text>
+        </View>
+        <View style={styles.liveBannerInfo}>
+          <Text style={styles.liveBannerTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={styles.liveBannerNick} numberOfLines={1}>{item.nickname}</Text>
+        </View>
+      </View>
+    </ScalePressable>
+  );
+}
+
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavProp>();
   const settings = useSettingsStore((state) => state.settings);
@@ -200,7 +181,7 @@ export default function HomeScreen() {
 
   const [lives, setLives] = useState<LiveCardItem[]>([]);
   const [livesOk, setLivesOk] = useState(false);
-  const [expanded, setExpanded] = useState<string>(TOOL_GROUPS[0]?.title || '');
+  const [bannerIndex, setBannerIndex] = useState(0);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
@@ -217,6 +198,16 @@ export default function HomeScreen() {
       })
       .catch(() => {});
   }, []);
+
+  // banner 轮播：2.5s 自动切换下一条（最多轮前 4 条）
+  const bannerCount = Math.min(4, lives.length);
+  useEffect(() => {
+    if (bannerCount <= 1) return;
+    const timer = setInterval(() => {
+      setBannerIndex((i) => (i + 1) % bannerCount);
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [bannerCount]);
 
   // 原子化订阅：queue 引用仅在队列变化时更新，position 高频写入不触发首页重渲染
   const musicQueue = useMusicPlayerStore((s) => s.queue);
@@ -238,22 +229,25 @@ export default function HomeScreen() {
   const hour = new Date().getHours();
   const greeting =
     hour < 5 ? t('夜深了') : hour < 11 ? t('早上好') : hour < 14 ? t('中午好') : hour < 18 ? t('下午好') : t('晚上好');
-  const dateText = (() => {
-    const d = new Date();
-    const week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
-    return t('{m}月{d}日 星期{w}', { m: d.getMonth() + 1, d: d.getDate(), w: week });
-  })();
 
-  const groups = TOOL_GROUPS.map((g) => ({
-    ...g,
-    title: t(g.title),
-    subtitle: t(g.subtitle),
-    items: g.items.map((i) => ({ ...i, title: t(i.title), desc: t(i.desc) })),
-  }));
   const quick = QUICK.map((i) => ({ ...i, title: t(i.title) }));
+  const toolChips = TOOL_CHIPS.map((i) => ({ ...i, title: t(i.title) }));
+
+  const banner = lives[bannerIndex];
+  const gridLives = bannerCount > 0 ? lives.slice(bannerCount) : [];
 
   const trackTitle = currentTrack?.title || '';
   const trackArtist = currentTrack?.joinMemberNames || currentTrack?.artist || '';
+
+  const openLive = useCallback((item: LiveCardItem) => {
+    (navigation as any).navigate('Media', {
+      mode: 'live',
+      playLiveId: item.liveId,
+      playTitle: item.title,
+      playCover: item.cover,
+      playNonce: Date.now(),
+    });
+  }, [navigation]);
 
   return (
     <View style={[styles.outer, { backgroundColor: palette.background }]}>
@@ -266,15 +260,12 @@ export default function HomeScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* 问候区 */}
+        {/* 问候区：大标题 + 一行问候，去掉日期行 */}
         <Text style={[styles.homeTitle, { color: palette.label, marginBottom: 3 }]}>
           {t('牙牙消息')}
         </Text>
         <Text style={[typography.subhead, { color: palette.labelSecondary, marginBottom: 16 }]}>
           {t('{g} · 已收录 {n} 位成员', { g: greeting, n: membersCount || '—' })}
-        </Text>
-        <Text style={[styles.homeDate, { color: palette.labelTertiary }]}>
-          {dateText}
         </Text>
 
         {!token ? (
@@ -296,7 +287,7 @@ export default function HomeScreen() {
           </ScalePressable>
         ) : null}
 
-        {/* 正在直播：真实数据横向轮播 */}
+        {/* 正在直播：首条全宽 banner 轮播 + 其余 2 列网格 */}
         {livesOk ? (
           <View style={{ marginBottom: 22 }}>
             <View style={styles.sectionHead}>
@@ -311,35 +302,49 @@ export default function HomeScreen() {
                 </View>
               </ScalePressable>
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingRight: 8, gap: 12 }}
-              style={{ marginHorizontal: -spacing.md }}
-              snapToInterval={200}
-              decelerationRate="fast"
-            >
-              {lives.map((item) => (
-                <View key={item.liveId} style={{ width: 188, marginLeft: spacing.md }}>
-                  <LiveCard
-                    item={item}
-                    onPress={() =>
-                      (navigation as any).navigate('Media', {
-                        mode: 'live',
-                        playLiveId: item.liveId,
-                        playTitle: item.title,
-                        playCover: item.cover,
-                        playNonce: Date.now(),
-                      })
-                    }
-                  />
-                </View>
-              ))}
-            </ScrollView>
+
+            {banner ? (
+              <View style={{ marginBottom: 12 }}>
+                <LiveBanner
+                  key={banner.liveId}
+                  item={banner}
+                  onPress={() => openLive(banner)}
+                />
+                {bannerCount > 1 ? (
+                  <View style={styles.bannerDots}>
+                    {lives.slice(0, bannerCount).map((live, i) => (
+                      <View
+                        key={live.liveId}
+                        style={[
+                          styles.bannerDot,
+                          {
+                            backgroundColor: i === bannerIndex ? palette.tint : palette.fill3,
+                            width: i === bannerIndex ? 16 : 6,
+                          },
+                        ]}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {gridLives.length > 0 ? (
+              <View style={styles.liveGrid}>
+                {gridLives.map((item) => (
+                  <View key={item.liveId} style={styles.liveGridCell}>
+                    <LiveCard
+                      item={item}
+                      onPress={() => openLive(item)}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
         ) : null}
 
-        {/* 快捷入口：3 列等宽网格（无横向滚动，布局确定） */}
+        {/* 快捷入口：单行 4 个 */}
         <View style={{ marginBottom: 22 }}>
           <View style={styles.sectionHead}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -347,7 +352,7 @@ export default function HomeScreen() {
               <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('快捷入口')}</Text>
             </View>
           </View>
-          <View style={styles.quickGrid}>
+          <View style={styles.quickRow}>
             {quick.map((item) => (
               <ScalePressable
                 key={item.title}
@@ -412,7 +417,7 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {/* 工具：手风琴分组 */}
+        {/* 工具：单行横向 chips */}
         <View style={{ marginBottom: 8 }}>
           <View style={styles.sectionHead}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -420,58 +425,24 @@ export default function HomeScreen() {
               <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('工具')}</Text>
             </View>
           </View>
-          {groups.map((group) => {
-            const open = expanded === group.title;
-            return (
-              <GlassCard key={group.title} padding={0} radius={20} style={{ marginBottom: 10 }}>
-                <ScalePressable
-                  onPress={() => setExpanded(open ? '' : group.title)}
-                  pressedScale={0.99}
-                  style={styles.accHead}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.headline, { color: palette.label }]}>{group.title}</Text>
-                    <Text style={[typography.caption2, { color: palette.labelTertiary, marginTop: 2 }]} numberOfLines={1}>
-                      {group.subtitle}
-                    </Text>
-                  </View>
-                  <View style={[styles.accChevron, { backgroundColor: palette.fill2 }]}>
-                    <MaterialCommunityIcons
-                      name="chevron-down"
-                      color={palette.labelSecondary}
-                      size={18}
-                      style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
-                    />
-                  </View>
-                </ScalePressable>
-                {open ? (
-                  <View style={styles.accGrid}>
-                    {group.items.map((item) => (
-                      <ScalePressable
-                        key={item.title}
-                        style={styles.accCell}
-                        onPress={() => handleNav(item)}
-                        pressedScale={0.95}
-                      >
-                        <View style={[styles.accCellIcon, { backgroundColor: palette.tintSoft }]}>
-                          <MaterialCommunityIcons name={item.icon} color={palette.tint} size={20} />
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>
-                            {item.title}
-                          </Text>
-                          <Text style={[typography.caption2, { color: palette.labelSecondary, marginTop: 2 }]} numberOfLines={1}>
-                            {item.desc}
-                          </Text>
-                        </View>
-                        <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={18} />
-                      </ScalePressable>
-                    ))}
-                  </View>
-                ) : null}
-              </GlassCard>
-            );
-          })}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.toolChipsContent}
+            style={{ marginHorizontal: -spacing.md }}
+          >
+            {toolChips.map((item) => (
+              <ScalePressable
+                key={item.title}
+                onPress={() => handleNav(item)}
+                pressedScale={0.94}
+                style={[styles.toolChip, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke }]}
+              >
+                <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
+                <Text style={[typography.footnote, { color: palette.label, fontWeight: '600', marginLeft: 6 }]} numberOfLines={1}>{item.title}</Text>
+              </ScalePressable>
+            ))}
+          </ScrollView>
         </View>
 
         <Text
@@ -490,7 +461,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   outer: { flex: 1 },
   homeTitle: { fontSize: 24, lineHeight: 30, fontWeight: '800', letterSpacing: -0.3 },
-  homeDate: { fontSize: 13, fontWeight: '600', marginTop: -10, marginBottom: 16 },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -544,6 +514,37 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   liveBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  // 首页全宽直播 banner（16:9 沉浸）
+  liveBanner: { width: '100%' },
+  liveBannerWrap: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  liveBannerCover: { width: '100%', height: '100%' },
+  liveBannerFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  liveBannerShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%', backgroundColor: 'rgba(0,0,0,0.10)' },
+  liveBannerShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '38%', backgroundColor: 'rgba(0,0,0,0.22)' },
+  liveBannerShade3: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '22%', backgroundColor: 'rgba(0,0,0,0.42)' },
+  liveBannerBadge: { top: 12, left: 12 },
+  liveBannerInfo: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingBottom: 12 },
+  liveBannerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', lineHeight: 24, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  liveBannerNick: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 3, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  bannerDots: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 8 },
+  bannerDot: { height: 6, borderRadius: 3 },
+  liveGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  liveGridCell: { width: '47%', flexGrow: 1 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -553,13 +554,12 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     paddingVertical: 7,
   },
-  quickGrid: {
+  quickRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
   },
   quickCell: {
-    flexBasis: '31%',
+    flexBasis: '24%',
     flexGrow: 1,
   },
   chipIcon: {
@@ -572,35 +572,13 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   musicCover: { width: 52, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  accHead: {
+  toolChipsContent: { paddingRight: 8, gap: 8, paddingHorizontal: spacing.md },
+  toolChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    paddingHorizontal: 16,
-  },
-  accChevron: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 10,
-  },
-  accGrid: {
     paddingHorizontal: 12,
-    paddingBottom: 8,
-  },
-  accCell: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  accCellIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
 });
