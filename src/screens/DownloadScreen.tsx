@@ -111,6 +111,24 @@ export default function DownloadScreen() {
     }
   };
 
+  const retryTask = async (task: DownloadItem) => {
+    try {
+      await enqueueDownload({
+        url: task.url,
+        type: task.type,
+        name: task.name,
+        onProgress: refresh,
+      });
+      // 删除原失败记录，避免同 URL 双任务
+      try { await deleteDownloadItem(task.id); } catch { /* ignore */ }
+      showToast(t('已重新加入下载'));
+    } catch (error: any) {
+      showToast(t('重试失败：{msg}', { msg: error?.message || error }));
+    } finally {
+      refresh();
+    }
+  };
+
   const remove = async (id: string) => {
     // 删除下载记录 + 本地文件不可恢复，二次确认
     Alert.alert(t('删除下载'), t('将删除该下载项及本地文件，确定？'), [
@@ -169,8 +187,8 @@ export default function DownloadScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('下载管理')} right={
-        <TouchableOpacity onPress={clearDone} disabled={doneCount === 0}>
-          <Text style={[styles.clearBtn, { color: doneCount === 0 ? palette.labelTertiary : palette.tint }]}>{t('清理完成')}</Text>
+        <TouchableOpacity onPress={clearDone} disabled={doneCount + failedCount === 0}>
+          <Text style={[styles.clearBtn, { color: doneCount + failedCount === 0 ? palette.labelTertiary : palette.tint }]}>{t('清理完成')}</Text>
         </TouchableOpacity>
       } />
 
@@ -248,9 +266,15 @@ export default function DownloadScreen() {
                     </Text>
                   </View>
                   <View style={styles.taskActions}>
-                    <TouchableOpacity onPress={() => handleOpen(task).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))} style={styles.actionBtn}>
-                      <MaterialCommunityIcons name="open-in-app" size={16} color={palette.tint} />
-                    </TouchableOpacity>
+                    {task.status === 'failed' ? (
+                      <TouchableOpacity onPress={() => retryTask(task)} style={styles.actionBtn}>
+                        <MaterialCommunityIcons name="refresh" size={16} color={palette.tint} />
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity onPress={() => handleOpen(task).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))} style={styles.actionBtn}>
+                        <MaterialCommunityIcons name="open-in-app" size={16} color={palette.tint} />
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity onPress={() => remove(task.id)} style={styles.actionBtn}>
                       <MaterialCommunityIcons name="delete-outline" size={16} color={palette.danger} />
                     </TouchableOpacity>

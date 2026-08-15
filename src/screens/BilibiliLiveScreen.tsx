@@ -45,6 +45,7 @@ export default function BilibiliLiveScreen() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [playerError, setPlayerError] = useState('');
+  const [fetchError, setFetchError] = useState('');
   const [useWebPlayer, setUseWebPlayer] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
@@ -163,8 +164,12 @@ export default function BilibiliLiveScreen() {
     setCandidates([]);
     setCandidateIndex(0);
     setActiveRoom(room);
+    setFetchError('');
     try {
       const info = await bilibiliApi.resolveLive(room.roomId);
+      if (!info.streamUrl && !info.streamCandidates?.length) {
+        throw new Error(t('没有解析到可播放的直播流'));
+      }
       const list = info.streamCandidates?.length ? info.streamCandidates : [{ url: info.streamUrl }];
       setStreamTitle(info.title || room.name || t('B站直播'));
       setCandidates(list);
@@ -173,6 +178,7 @@ export default function BilibiliLiveScreen() {
       setIsLandscape(true);
       setIsFullscreen(true); // 进入直播间即自动横屏+全屏沉浸（用户偏好：B站直播只看横屏）
     } catch (error) {
+      setFetchError(errorMessage(error));
       setStatus(t('获取直播流失败：{msg}', { msg: errorMessage(error) }));
     } finally {
       setLoading(false);
@@ -303,6 +309,14 @@ export default function BilibiliLiveScreen() {
         )
       } />
       {status ? <Text style={[styles.status, { color: palette.labelSecondary, backgroundColor: palette.surface, borderColor: palette.hairline }]}>{status}</Text> : null}
+      {fetchError ? (
+        <TouchableOpacity
+          style={[styles.retryBtn, { backgroundColor: palette.tint }]}
+          onPress={() => activeRoom && startWatch(activeRoom)}
+        >
+          <Text style={styles.retryBtnText}>{t('重试获取直播流')}</Text>
+        </TouchableOpacity>
+      ) : null}
       <PerfFlatList
         data={rooms}
         keyExtractor={(item, index) => item.roomId || String(index)}
@@ -348,6 +362,15 @@ const styles = StyleSheet.create({
   containerDark: { backgroundColor: 'transparent' },
   refresh: { fontSize: 12, color: '#ff6f91' },
   status: { margin: 12, padding: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, fontSize: 12, textAlign: 'center' },
+  retryBtn: {
+    alignSelf: 'center',
+    marginTop: -4,
+    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  retryBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   playerPage: { flex: 1, backgroundColor: '#000' },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },

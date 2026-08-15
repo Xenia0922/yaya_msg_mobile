@@ -521,11 +521,16 @@ export default function LoginScreen() {
 
       <View style={[styles.section, false]}>
         <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('B站登录')}</Text>
-        <TouchableOpacity style={styles.btnPrimary} onPress={handleBiliQr}>
-          <Text style={styles.btnText}>{t('获取B站登录二维码')}</Text>
+        <TouchableOpacity style={styles.btnPrimary} onPress={handleBiliQr} disabled={loading}>
+          <Text style={styles.btnText}>{loading ? t('获取中...') : qrHtml ? t('刷新B站二维码') : t('获取B站登录二维码')}</Text>
         </TouchableOpacity>
         {qrHtml ? <WebView source={{ html: qrHtml }} style={styles.qr} originWhitelist={['*']} scrollEnabled={false} /> : null}
         {biliStatus ? <Text style={[styles.biliStatus, { color: palette.labelSecondary }]}>{biliStatus}</Text> : null}
+        {/过期|超时|失败/.test(biliStatus) ? (
+          <TouchableOpacity style={[styles.btnPrimary, styles.qrRetryBtn]} onPress={handleBiliQr} disabled={loading}>
+            <Text style={styles.btnText}>{t('重新获取二维码')}</Text>
+          </TouchableOpacity>
+        ) : null}
         {settings.bilibiliCookie ? <Text style={styles.tokenInfo}>{t('B站已登录')}</Text> : null}
       </View>
 
@@ -596,6 +601,7 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   status: { margin: 16, fontSize: 13, color: '#444', textAlign: 'center', lineHeight: 20 },
   biliStatus: { marginTop: 10, fontSize: 12, color: '#555', textAlign: 'center', lineHeight: 18 },
+  qrRetryBtn: { marginTop: 12 },
   tokenInfo: { marginTop: 10, fontSize: 12, color: '#4caf50' },
   metaLine: { marginTop: -4, marginBottom: 10, fontSize: 12, color: '#4a4a4a' },
   qr: { width: 220, height: 220, alignSelf: 'center', marginTop: 12 },
