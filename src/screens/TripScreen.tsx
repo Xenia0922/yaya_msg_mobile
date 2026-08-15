@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { CenterSpinner } from '../components/Loaders';
+import { ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import MemberPicker from '../components/MemberPicker';
@@ -245,12 +246,16 @@ export default function TripScreen() {
             </Text> : null
           }
           ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              {loading ? <CenterSpinner dark={isDark} /> : null}
-              <Text style={[styles.empty, { color: palette.labelTertiary }]}>
-                {loading ? '' : member ? (error ? error : t('暂无行程')) : t('请搜索选择成员查看行程')}
-              </Text>
-            </View>
+            loading ? <CenterSpinner dark={isDark} text={t('加载中…')} />
+            : error ? (
+              <ErrorState title={t('加载失败')} hint={error} onAction={() => fetchTrips(true)} />
+            ) : (
+              <View style={styles.emptyWrap}>
+                <Text style={[styles.empty, { color: palette.labelTertiary }]}>
+                  {member ? t('暂无行程') : t('请搜索选择成员查看行程')}
+                </Text>
+              </View>
+            )
           }
         />
       </FadeInView>

@@ -148,9 +148,16 @@ export default function InvoiceScreen() {
         <Text style={[styles.sectionTitle, { color: palette.label }]}>
           {t('可开票订单 ({count})', { count: canInvoice })}{selectedCount > 0 ? t(' · 已选 {count} 单', { count: selectedCount }) : ''}
         </Text>
-        {error ? <Text style={[styles.errorText, { color: palette.tint }]}>{error}</Text> : null}
+        {error ? (
+          <View style={styles.errorRow}>
+            <Text style={[styles.errorText, { color: palette.tint }]} numberOfLines={2}>{error}</Text>
+            <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.tint }]} onPress={fetchOrders}>
+              <Text style={styles.retryBtnText}>{t('重试')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {orders.map((item, index) => renderOrder({ item, index }))}
-        {orders.length === 0 && !loading ? (
+        {orders.length === 0 && !loading && !error ? (
           <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无订单')}</Text>
         ) : null}
         {loading && <ActivityIndicator color={palette.tint} style={{ padding: 16 }} />}
@@ -236,7 +243,10 @@ const styles = StyleSheet.create({
   headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
   scroll: { padding: 16, paddingBottom: 60 },
   sectionTitle: { fontSize: 15, fontWeight: '800', marginBottom: 8 },
-  errorText: { color: '#ff6f91', fontSize: 13, marginBottom: 8, paddingHorizontal: 4 },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, paddingHorizontal: 4 },
+  errorText: { color: '#ff6f91', fontSize: 13, flex: 1, lineHeight: 18 },
+  retryBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 14 },
+  retryBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   empty: { color: '#555555', fontSize: 14, textAlign: 'center', paddingVertical: 20 },
   orderCard: {
     flexDirection: 'row', alignItems: 'center',

@@ -17,6 +17,7 @@ import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import { CenterSpinner } from '../components/Loaders';
 import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
@@ -141,6 +142,8 @@ export default function RoomAlbumScreen() {
   const [playing, setPlaying] = useState<AlbumItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(t('暂无数据'));
+  const [loadError, setLoadError] = useState('');
+  const [videoError, setVideoError] = useState('');
   const loadingRef = useRef(false);
 
   const currentChannelId = useMemo(() => selectedMember ? channelFor(selectedMember, roomMode) : '', [roomMode, selectedMember]);
@@ -159,6 +162,7 @@ export default function RoomAlbumScreen() {
     setSelectedMember(member);
     setRoomMode(mode);
     setLoading(true);
+    setLoadError('');
     setStatus('');
     try {
       const res = await pocketApi.getRoomAlbum({ channelId, nextTime: append ? nextTime : 0 });
@@ -175,6 +179,7 @@ export default function RoomAlbumScreen() {
       setStatus(text);
       showToast(text);
     } catch (error) {
+      setLoadError(errorMessage(error));
       setStatus(t('加载失败：{msg}', { msg: errorMessage(error) }));
       if (!append) setItems([]);
     } finally {
@@ -228,7 +233,16 @@ export default function RoomAlbumScreen() {
     return (
       <View style={styles.playerPage}>
         <ScreenHeader title={playing.title} onBack={() => setPlaying(null)} />
-        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" onError={() => setPlaying(null)} />
+        {videoError ? (
+          <View style={styles.playerErrorWrap}>
+            <Text style={[styles.playerErrorText, { color: palette.danger }]}>{videoError}</Text>
+            <TouchableOpacity style={[styles.playerRetryBtn, { backgroundColor: palette.tint }]} onPress={() => setVideoError('')}>
+              <Text style={styles.playerRetryText}>{t('返回')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" onError={(e: any) => setVideoError(t('视频播放失败：{msg}', { msg: String(e?.error || e?.nativeError || '').slice(0, 120) || t('无法解码或网络错误') }))} />
+        )}
       </View>
     );
   }
@@ -262,9 +276,22 @@ export default function RoomAlbumScreen() {
             {t('当前 channelId：{id}', { id: currentChannelId || '--' })}
           </Text>
           <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading ? '' : status}</Text>
+          {loadError && !loading ? (
+            <View style={styles.retryRow}>
+              <Text style={[styles.retryText, { color: palette.danger }]} numberOfLines={2}>{loadError}</Text>
+              <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.tint }]} onPress={() => selectedMember && loadAlbum(selectedMember, roomMode, false)}>
+                <Text style={styles.retryBtnText}>{t('重试')}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
+        {loading && items.length === 0 ? (
+          <View style={{ flex: 1 }}>
+            <CenterSpinner dark={isDark} text={t('加载中…')} />
+          </View>
+        ) : (
         <PerfFlatList
           data={items}
           numColumns={2}
@@ -275,13 +302,14 @@ export default function RoomAlbumScreen() {
             windowSize={7}
             removeClippedSubviews
             renderItem={renderAlbumItem}
-          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{loading ? '' : t('暂无相册内容')}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无相册内容')}</Text>}
           onEndReached={loadMoreAlbum}
           onEndReachedThreshold={0.35}
           ListFooterComponent={hasMore ? (
             <Text style={[styles.footerText, { color: palette.labelSecondary }]}>{loading ? '' : t('上滑加载更多')}</Text>
           ) : null}
         />
+        )}
       </FadeInView>
     </View>
   );
@@ -358,6 +386,14 @@ const styles = StyleSheet.create({
   mediaMetaOverlay: { color: 'rgba(255,255,255,0.85)', fontSize: 10, marginTop: 2, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   footerText: { marginTop: 12, marginBottom: 6, textAlign: 'center', fontSize: 12, fontWeight: '800' },
   empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
+  retryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
+  retryText: { flex: 1, fontSize: 12, lineHeight: 17 },
+  retryBtn: { paddingHorizontal: 18, paddingVertical: 7, borderRadius: 16 },
+  retryBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   playerPage: { flex: 1, backgroundColor: '#000000' },
   player: { flex: 1, backgroundColor: '#000000' },
+  playerErrorWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  playerErrorText: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  playerRetryBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 9, borderRadius: 18 },
+  playerRetryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 });
