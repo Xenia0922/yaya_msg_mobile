@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
-  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -11,12 +10,12 @@ import {
 import Video from 'react-native-video';
 import officialMediaApi from '../api/officialMedia';
 import { useI18n } from '../i18n';
-import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 function normalizeTalks(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -54,7 +53,7 @@ function audioUrls(path: string): string[] {
 }
 
 export default function AudioProgramsScreen() {
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const [programs, setPrograms] = useState<any[]>([]);
   const [playing, setPlaying] = useState<any | null>(null);
@@ -119,17 +118,19 @@ export default function AudioProgramsScreen() {
     }
   };
 
+  const active = playing?.talkId;
+
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('电台')} right={
         <TouchableOpacity onPress={() => load(true) } disabled={loading}>
-          <Text style={[styles.backBtn, loading && styles.disabledText]}>{t('刷新')}</Text>
+          <Text style={[styles.backBtn, { color: palette.tint }, loading && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
 
       {playUrls[urlIndex] ? (
-        <View style={[styles.playerBar, isDark && styles.cardDark]}>
-          <Text style={[styles.playerTitle, isDark && styles.textDark]} numberOfLines={1}>
+        <View style={[styles.playerBar, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+          <Text style={[styles.playerTitle, { color: palette.label }]} numberOfLines={1}>
             {playing?.title || t('正在播放')}
           </Text>
           <Video
@@ -147,7 +148,7 @@ export default function AudioProgramsScreen() {
         </View>
       ) : null}
 
-      {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '' : status}</Text> : null}
+      {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading ? '' : status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={programs}
@@ -159,21 +160,41 @@ export default function AudioProgramsScreen() {
           removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
-          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>{t('加载更多...')}</Text> : null}
-          renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300}>
-              <TouchableOpacity
-                style={[styles.progItem, isDark && styles.cardDark, playing?.talkId === item.talkId && styles.progItemActive]}
-                onPress={() => play(item)}
-              >
-                <Text style={[styles.progTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || t('无标题')}</Text>
-                <Text style={[styles.progDesc, isDark && styles.textSubDark]} numberOfLines={2}>
-                  {[item.subTitle, item.guest].filter(Boolean).join(' · ') || t('口袋电台')}
-                </Text>
-                <Text style={[styles.progDate, isDark && styles.textSubDark]}>{formatTimestamp(item.ctime).slice(0, 10)}</Text>
-              </TouchableOpacity>
-            </FadeInView>
-          )}
+          ListFooterComponent={loadingMore ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{t('加载更多...')}</Text> : null}
+          renderItem={({ item, index }) => {
+            const isActive = String(active || '') === String(item.talkId || item.id);
+            return (
+              <FadeInView delay={80 + index * 30} duration={300}>
+                <TouchableOpacity
+                  style={[
+                    styles.progItem,
+                    {
+                      backgroundColor: palette.surface,
+                      borderColor: isActive ? palette.tint : palette.hairline,
+                    },
+                  ]}
+                  onPress={() => play(item)}
+                  activeOpacity={0.88}
+                >
+                  <View style={[styles.iconWrap, { backgroundColor: palette.tintSoft }]}>
+                    <MaterialCommunityIcons name="audio" size={20} color={palette.tint} />
+                  </View>
+                  <View style={styles.infoWrap}>
+                    <Text style={[styles.progTitle, { color: palette.label }]} numberOfLines={1}>{item.title || t('无标题')}</Text>
+                    <Text style={[styles.progDesc, { color: palette.labelSecondary }]} numberOfLines={1}>
+                      {[item.subTitle, item.guest].filter(Boolean).join(' · ') || t('口袋电台')}
+                    </Text>
+                    <Text style={[styles.progDate, { color: palette.labelTertiary }]}>{formatTimestamp(item.ctime).slice(0, 10)}</Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={isActive ? 'equalizer' : 'play-circle-outline'}
+                    size={20}
+                    color={isActive ? palette.tint : palette.labelTertiary}
+                  />
+                </TouchableOpacity>
+              </FadeInView>
+            );
+          }}
         />
       </FadeInView>
     </View>
@@ -182,20 +203,31 @@ export default function AudioProgramsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
   disabledText: { opacity: 0.45 },
-  playerBar: { margin: 12, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF' },
-  playerTitle: { fontSize: 14, fontWeight: '800', color: '#333', marginBottom: 8 },
+  playerBar: { marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  playerTitle: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
   audioPlayer: { height: 48, width: '100%' },
-  status: { margin: 12, color: '#444', fontSize: 13, textAlign: 'center' },
-  listContent: { paddingBottom: 120 },
-  progItem: { padding: 14, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginVertical: 4, borderRadius: 16 },
-  cardDark: { backgroundColor: '#1C1C1F' },
-  progItemActive: { borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
-  progTitle: { fontSize: 15, fontWeight: '700', color: '#333' },
-  progDesc: { fontSize: 13, color: '#444', marginTop: 4, lineHeight: 18 },
-  progDate: { fontSize: 11, color: '#333333', marginTop: 4 },
-  textDark: { color: '#eee' },
-  textSubDark: { color: '#eeeeee' },
+  status: { marginHorizontal: 16, marginTop: 8, fontSize: 12, textAlign: 'center' },
+  listContent: { paddingTop: 8, paddingBottom: 120 },
+  progItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginVertical: 4,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoWrap: { flex: 1, marginLeft: 12, marginRight: 8, minWidth: 0 },
+  progTitle: { fontSize: 15, fontWeight: '700', lineHeight: 20 },
+  progDesc: { fontSize: 12, marginTop: 3 },
+  progDate: { fontSize: 11, marginTop: 3 },
 });

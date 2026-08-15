@@ -23,6 +23,8 @@ import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 
 type RoomMode = 'big' | 'small';
@@ -128,6 +130,7 @@ function channelFor(member: Member, mode: RoomMode) {
 export default function RoomAlbumScreen() {
   const navigation = useNavigation();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -218,8 +221,8 @@ export default function RoomAlbumScreen() {
   }, [downloadItem]);
 
   const renderAlbumItem = useCallback(({ item }: { item: AlbumItem }) => (
-    <AlbumGridItem item={item} isDark={isDark} onOpen={handleOpen} onLongPress={handleLong} />
-  ), [isDark, handleOpen, handleLong]);
+    <AlbumGridItem item={item} isDark={isDark} palette={palette} onOpen={handleOpen} onLongPress={handleLong} />
+  ), [isDark, palette, handleOpen, handleLong]);
 
   if (playing) {
     return (
@@ -231,10 +234,10 @@ export default function RoomAlbumScreen() {
   }
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('房间相册')} right={
         <TouchableOpacity onPress={() => selectedMember && loadAlbum(selectedMember, roomMode, false)}>
-          <Text style={styles.backBtn}>{t('刷新')}</Text>
+          <Text style={[styles.backBtn, { color: palette.tint }]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
 
@@ -242,17 +245,23 @@ export default function RoomAlbumScreen() {
         <View style={styles.pickerWrap}>
           <MemberPicker selectedMember={selectedMember} onSelect={(member) => loadAlbum(member, 'big', false)} />
           <View style={styles.modeRow}>
-            <TouchableOpacity style={[styles.modeBtn, isDark && roomMode !== 'big' && styles.modeBtnDark, roomMode === 'big' && styles.modeBtnActive]} onPress={() => switchMode('big')}>
-              <Text style={[styles.modeText, roomMode === 'big' && styles.modeTextActive, isDark && roomMode !== 'big' && styles.textLight]}>{t('大房间')}</Text>
+            <TouchableOpacity
+              style={[styles.modeBtn, { backgroundColor: roomMode === 'big' ? palette.tint : palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+              onPress={() => switchMode('big')}
+            >
+              <Text style={[styles.modeText, { color: roomMode === 'big' ? '#FFFFFF' : palette.labelSecondary }]}>{t('大房间')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modeBtn, isDark && roomMode !== 'small' && styles.modeBtnDark, roomMode === 'small' && styles.modeBtnActive, !selectedMember?.yklzId && styles.modeBtnDisabled]} onPress={() => switchMode('small')}>
-              <Text style={[styles.modeText, roomMode === 'small' && styles.modeTextActive, isDark && roomMode !== 'small' && styles.textLight]}>{t('小房间')}</Text>
+            <TouchableOpacity
+              style={[styles.modeBtn, { backgroundColor: roomMode === 'small' ? palette.tint : palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }, !selectedMember?.yklzId && styles.modeBtnDisabled]}
+              onPress={() => switchMode('small')}
+            >
+              <Text style={[styles.modeText, { color: roomMode === 'small' ? '#FFFFFF' : palette.labelSecondary }]}>{t('小房间')}</Text>
             </TouchableOpacity>
           </View>
-          <Text style={[styles.channelText, isDark && styles.textSubLight]}>
+          <Text style={[styles.channelText, { color: palette.labelSecondary }]}>
             {t('当前 channelId：{id}', { id: currentChannelId || '--' })}
           </Text>
-          <Text style={[styles.status, isDark && styles.textSubLight]}>{loading ? '' : status}</Text>
+          <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading ? '' : status}</Text>
         </View>
 
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
@@ -266,11 +275,11 @@ export default function RoomAlbumScreen() {
             windowSize={7}
             removeClippedSubviews
             renderItem={renderAlbumItem}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{loading ? '' : t('暂无相册内容')}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{loading ? '' : t('暂无相册内容')}</Text>}
           onEndReached={loadMoreAlbum}
           onEndReachedThreshold={0.35}
           ListFooterComponent={hasMore ? (
-            <Text style={[styles.footerText, isDark && styles.textSubLight]}>{loading ? '' : t('上滑加载更多')}</Text>
+            <Text style={[styles.footerText, { color: palette.labelSecondary }]}>{loading ? '' : t('上滑加载更多')}</Text>
           ) : null}
         />
       </FadeInView>
@@ -282,11 +291,13 @@ export default function RoomAlbumScreen() {
 const AlbumGridItem = React.memo(function AlbumGridItem({
   item,
   isDark,
+  palette,
   onOpen,
   onLongPress,
 }: {
   item: AlbumItem;
   isDark: boolean;
+  palette: any;
   onOpen: (item: AlbumItem) => void;
   onLongPress: (item: AlbumItem) => void;
 }) {
@@ -294,22 +305,25 @@ const AlbumGridItem = React.memo(function AlbumGridItem({
   return (
     <FadeInView duration={300} style={{ flex: 1 }}>
       <TouchableOpacity
-        style={[styles.mediaCard, isDark && styles.mediaCardDark]}
+        style={[styles.mediaCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
         activeOpacity={0.9}
         onPress={() => onOpen(item)}
         onLongPress={() => onLongPress(item)}
       >
         {item.type === 'video' ? (
-          <View style={styles.videoThumb}>
-            <Text style={styles.videoBadge}>{t('视频')}</Text>
-            <Text style={styles.playMark}>{t('播放')}</Text>
+          <View style={[styles.videoThumb, { backgroundColor: palette.fill3 }]}>
+            <View style={[styles.videoBadge, { backgroundColor: palette.tint }]}>
+              <MaterialCommunityIcons name="video" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
+              <Text style={styles.videoBadgeText}>{t('视频')}</Text>
+            </View>
+            <MaterialCommunityIcons name="play" size={26} color="#FFFFFF" style={styles.playMark} />
           </View>
         ) : (
-          <NetworkImage source={{ uri: item.url }} style={styles.photo} resizeMode="cover" />
+          <NetworkImage source={{ uri: item.url }} style={[styles.photo, { backgroundColor: palette.fill3 }]} resizeMode="cover" />
         )}
         <View style={styles.info}>
-          <Text style={[styles.mediaTitle, isDark && styles.textLight]} numberOfLines={1}>{item.title}</Text>
-          <Text style={[styles.mediaMeta, isDark && styles.textSubLight]}>{item.roomMode === 'small' ? t('小房间') : t('大房间')} · {formatTimestamp(item.time)}</Text>
+          <Text style={[styles.mediaTitle, { color: palette.label }]} numberOfLines={1}>{item.title}</Text>
+          <Text style={[styles.mediaMeta, { color: palette.labelTertiary }]} numberOfLines={1}>{item.roomMode === 'small' ? t('小房间') : t('大房间')} · {formatTimestamp(item.time)}</Text>
         </View>
       </TouchableOpacity>
     </FadeInView>
@@ -318,32 +332,26 @@ const AlbumGridItem = React.memo(function AlbumGridItem({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '800', minWidth: 56 },
-  pickerWrap: { paddingHorizontal: 14, gap: 8 },
+  backBtn: { fontSize: 14, fontWeight: '800', minWidth: 56 },
+  pickerWrap: { paddingHorizontal: 16, gap: 8 },
   modeRow: { flexDirection: 'row', gap: 10 },
-  modeBtn: { flex: 1, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  modeBtnDark: { backgroundColor: '#1C1C1F' },
-  modeBtnActive: { backgroundColor: '#ff6f91' },
+  modeBtn: { flex: 1, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   modeBtnDisabled: { opacity: 0.48 },
-  modeText: { color: '#444444', fontWeight: '900' },
-  modeTextActive: { color: '#ffffff' },
-  channelText: { color: '#555555', fontSize: 12 },
-  status: { color: '#555555', fontSize: 12 },
+  modeText: { fontWeight: '800', fontSize: 13 },
+  channelText: { fontSize: 12 },
+  status: { fontSize: 12 },
   grid: { padding: 10, paddingBottom: 112 },
-  mediaCard: { flex: 1, margin: 5, borderRadius: 18, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
-  mediaCardDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.14)' },
-  photo: { width: '100%', aspectRatio: 1, backgroundColor: 'rgba(221,221,221,0.82)' },
-  videoThumb: { width: '100%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111111' },
-  videoBadge: { position: 'absolute', top: 8, right: 8, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden', backgroundColor: 'rgba(255,111,145,0.90)', color: '#ffffff', fontSize: 11, fontWeight: '900' },
-  playMark: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
-  info: { padding: 9 },
-  mediaTitle: { color: '#222222', fontSize: 13, fontWeight: '900' },
-  mediaMeta: { marginTop: 4, color: '#555555', fontSize: 11 },
-  footerText: { marginTop: 12, marginBottom: 6, textAlign: 'center', color: '#555555', fontSize: 12, fontWeight: '800' },
-  empty: { textAlign: 'center', color: '#555555', marginTop: 60, fontSize: 14 },
+  mediaCard: { flex: 1, margin: 4, borderRadius: 16, overflow: 'hidden' },
+  photo: { width: '100%', aspectRatio: 1 },
+  videoThumb: { width: '100%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  videoBadge: { position: 'absolute', top: 8, right: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
+  videoBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  playMark: { marginLeft: 2 },
+  info: { padding: 10 },
+  mediaTitle: { fontSize: 13, fontWeight: '700', lineHeight: 17 },
+  mediaMeta: { marginTop: 4, fontSize: 11 },
+  footerText: { marginTop: 12, marginBottom: 6, textAlign: 'center', fontSize: 12, fontWeight: '800' },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
   playerPage: { flex: 1, backgroundColor: '#000000' },
   player: { flex: 1, backgroundColor: '#000000' },
-  textLight: { color: '#ffffff' },
-  textSubLight: { color: '#dddddd' },
 });

@@ -10,13 +10,14 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSettingsStore, useUiStore } from '../store';
+import { useUiStore } from '../store';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface OrderItem {
   dataId: string;
@@ -30,7 +31,7 @@ interface OrderItem {
 
 export default function InvoiceScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const statusLabels = [t('可开票'), t('申请中'), t('已开票')];
@@ -97,24 +98,38 @@ export default function InvoiceScreen() {
 
   const renderOrder = ({ item, index }: { item: OrderItem; index: number }) => {
     const disabled = item.invoiceStatus !== 0;
+    const selected = item.selected;
     return (
       <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
         <TouchableOpacity
-          style={[styles.orderCard, isDark && styles.cardDark, disabled && { opacity: 0.5 }]}
+          style={[
+            styles.orderCard,
+            {
+              backgroundColor: palette.surface,
+              borderColor: selected ? palette.tint : palette.hairline,
+            },
+            disabled && styles.cardDisabled,
+          ]}
           onPress={() => !disabled && toggleOrder(item.dataId)}
           disabled={disabled}
           activeOpacity={disabled ? 1 : 0.85}
         >
-          {!disabled && (
-            <View style={[styles.checkbox, item.selected && styles.checkboxActive]}>
-              {item.selected ? <Text style={styles.checkmark}>✓</Text> : null}
-            </View>
-          )}
-          <View style={styles.orderInfo}>
-            <Text style={[styles.orderName, isDark && styles.textLight]} numberOfLines={2}>{item.goodsName}</Text>
-            <Text style={[styles.orderMeta, isDark && styles.textSubLight]}>¥{item.totalFee} · {item.tradeTime}</Text>
+          <View
+            style={[
+              styles.checkbox,
+              {
+                borderColor: selected ? palette.tint : palette.labelTertiary,
+                backgroundColor: selected ? palette.tint : 'transparent',
+              },
+            ]}
+          >
+            {selected ? <MaterialCommunityIcons name="check" size={14} color="#FFFFFF" /> : null}
           </View>
-          <Text style={[styles.statusText, { color: disabled ? (isDark ? '#aaaaaa' : '#888888') : '#20a464' }]}>
+          <View style={styles.orderInfo}>
+            <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>{item.goodsName}</Text>
+            <Text style={[styles.orderMeta, { color: palette.labelSecondary }]}>¥{item.totalFee} · {item.tradeTime}</Text>
+          </View>
+          <Text style={[styles.statusText, { color: disabled ? palette.labelTertiary : '#20a464' }]}>
             {statusLabels[item.invoiceStatus] || t('未知')}
           </Text>
         </TouchableOpacity>
@@ -123,66 +138,86 @@ export default function InvoiceScreen() {
   };
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('电子发票')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity onPress={fetchOrders}>
-          <Text style={styles.headerAction}>{t('刷新')}</Text>
+          <Text style={[styles.headerAction, { color: palette.tint }]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={[styles.sectionTitle, isDark && styles.textLight]}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.sectionTitle, { color: palette.label }]}>
           {t('可开票订单 ({count})', { count: canInvoice })}{selectedCount > 0 ? t(' · 已选 {count} 单', { count: selectedCount }) : ''}
         </Text>
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error ? <Text style={[styles.errorText, { color: palette.tint }]}>{error}</Text> : null}
         {orders.map((item, index) => renderOrder({ item, index }))}
         {orders.length === 0 && !loading ? (
-          <Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无订单')}</Text>
+          <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无订单')}</Text>
         ) : null}
-        {loading && <ActivityIndicator color="#ff6f91" style={{ padding: 16 }} />}
+        {loading && <ActivityIndicator color={palette.tint} style={{ padding: 16 }} />}
 
-        <View style={styles.formWrap}>
-          <Text style={[styles.sectionTitle, isDark && styles.textLight, { marginTop: 12 }]}>{t('开票信息')}</Text>
+        <View
+          style={[
+            styles.formCard,
+            {
+              backgroundColor: palette.surface,
+              borderColor: palette.hairline,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('开票信息')}</Text>
 
           <View style={styles.typeRow}>
             <TouchableOpacity
-              style={[styles.typeBtn, buyerType === 0 && styles.typeBtnActive]}
+              style={[
+                styles.typeBtn,
+                { backgroundColor: buyerType === 0 ? palette.tint : palette.fill2 },
+              ]}
               onPress={() => setBuyerType(0)}
             >
-              <Text style={[styles.typeText, isDark && styles.textSubLight, buyerType === 0 && styles.typeTextActive]}>{t('个人')}</Text>
+              <Text style={[styles.typeText, { color: buyerType === 0 ? '#FFFFFF' : palette.labelSecondary }]}>{t('个人')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.typeBtn, buyerType === 1 && styles.typeBtnActive]}
+              style={[
+                styles.typeBtn,
+                { backgroundColor: buyerType === 1 ? palette.tint : palette.fill2 },
+              ]}
               onPress={() => setBuyerType(1)}
             >
-              <Text style={[styles.typeText, isDark && styles.textSubLight, buyerType === 1 && styles.typeTextActive]}>{t('企业')}</Text>
+              <Text style={[styles.typeText, { color: buyerType === 1 ? '#FFFFFF' : palette.labelSecondary }]}>{t('企业')}</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.label, isDark && styles.textSubLight]}>{t('发票抬头')}</Text>
-          <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerName} onChangeText={setBuyerName} placeholder={t('输入发票抬头')} placeholderTextColor={isDark ? '#888' : '#999'} />
+          <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('发票抬头')}</Text>
+          <TextInput
+            style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]}
+            value={buyerName}
+            onChangeText={setBuyerName}
+            placeholder={t('输入发票抬头')}
+            placeholderTextColor={palette.labelTertiary}
+          />
 
           {buyerType === 1 && (
             <>
-              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('纳税人识别号')}</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerTaxNo} onChangeText={setBuyerTaxNo} placeholder={t('输入纳税人识别号')} placeholderTextColor={isDark ? '#888' : '#999'} autoCapitalize="characters" />
-              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('企业地址')}</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerAddress} onChangeText={setBuyerAddress} placeholder={t('输入企业地址')} placeholderTextColor={isDark ? '#888' : '#999'} />
-              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('企业电话')}</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerPhone} onChangeText={setBuyerPhone} placeholder={t('输入企业电话')} placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="phone-pad" />
-              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('开户银行')}</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerBankName} onChangeText={setBuyerBankName} placeholder={t('输入开户银行')} placeholderTextColor={isDark ? '#888' : '#999'} />
-              <Text style={[styles.label, isDark && styles.textSubLight]}>{t('银行账号')}</Text>
-              <TextInput style={[styles.input, isDark && styles.inputDark]} value={buyerBankAccount} onChangeText={setBuyerBankAccount} placeholder={t('输入银行账号')} placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="numeric" />
+              <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('纳税人识别号')}</Text>
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerTaxNo} onChangeText={setBuyerTaxNo} placeholder={t('输入纳税人识别号')} placeholderTextColor={palette.labelTertiary} autoCapitalize="characters" />
+              <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('企业地址')}</Text>
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerAddress} onChangeText={setBuyerAddress} placeholder={t('输入企业地址')} placeholderTextColor={palette.labelTertiary} />
+              <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('企业电话')}</Text>
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerPhone} onChangeText={setBuyerPhone} placeholder={t('输入企业电话')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" />
+              <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('开户银行')}</Text>
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerBankName} onChangeText={setBuyerBankName} placeholder={t('输入开户银行')} placeholderTextColor={palette.labelTertiary} />
+              <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('银行账号')}</Text>
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerBankAccount} onChangeText={setBuyerBankAccount} placeholder={t('输入银行账号')} placeholderTextColor={palette.labelTertiary} keyboardType="numeric" />
             </>
           )}
 
-          <Text style={[styles.label, isDark && styles.textSubLight]}>{t('接收邮箱')}</Text>
-          <TextInput style={[styles.input, isDark && styles.inputDark]} value={notifyEmail} onChangeText={setNotifyEmail} placeholder={t('输入邮箱地址')} placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="email-address" />
-          <Text style={[styles.label, isDark && styles.textSubLight]}>{t('手机号')}</Text>
-          <TextInput style={[styles.input, isDark && styles.inputDark]} value={notifyMobile} onChangeText={setNotifyMobile} placeholder={t('输入手机号')} placeholderTextColor={isDark ? '#888' : '#999'} keyboardType="phone-pad" />
+          <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('接收邮箱')}</Text>
+          <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={notifyEmail} onChangeText={setNotifyEmail} placeholder={t('输入邮箱地址')} placeholderTextColor={palette.labelTertiary} keyboardType="email-address" />
+          <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('手机号')}</Text>
+          <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={notifyMobile} onChangeText={setNotifyMobile} placeholder={t('输入手机号')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" />
 
           <TouchableOpacity
-            style={[styles.submitBtn, (submitting || !selectedCount) && { opacity: 0.45 }]}
+            style={[styles.submitBtn, { backgroundColor: palette.tint }, (submitting || !selectedCount) && styles.disabledBtn]}
             onPress={handleSubmit}
             disabled={submitting || !selectedCount}
           >
@@ -198,41 +233,41 @@ export default function InvoiceScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
   headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
-  scroll: { padding: 12, paddingBottom: 60 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#333333', marginBottom: 8 },
+  scroll: { padding: 16, paddingBottom: 60 },
+  sectionTitle: { fontSize: 15, fontWeight: '800', marginBottom: 8 },
   errorText: { color: '#ff6f91', fontSize: 13, marginBottom: 8, paddingHorizontal: 4 },
   empty: { color: '#555555', fontSize: 14, textAlign: 'center', paddingVertical: 20 },
   orderCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14, padding: 12, marginBottom: 6,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)',
+    borderRadius: 16, padding: 12, marginBottom: 5,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  cardDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.10)' },
-  checkbox: { width: 22, height: 22, borderRadius: 5, borderWidth: 2, borderColor: '#ccc', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  checkboxActive: { borderColor: '#ff6f91', backgroundColor: '#ff6f91' },
-  checkmark: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  cardDisabled: { opacity: 0.5 },
+  checkbox: {
+    width: 22, height: 22, borderRadius: 7,
+    borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 10,
+  },
   orderInfo: { flex: 1 },
-  orderName: { fontSize: 14, fontWeight: '700', color: '#333333' },
-  orderMeta: { fontSize: 12, color: '#555555', marginTop: 3 },
+  orderName: { fontSize: 14, fontWeight: '700' },
+  orderMeta: { fontSize: 12, marginTop: 3 },
   statusText: { fontSize: 12, fontWeight: '800', marginLeft: 8 },
-  formWrap: {},
-  typeRow: { flexDirection: 'row', marginBottom: 12, gap: 6 },
-  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 16, backgroundColor: 'rgba(238,238,238,0.72)' },
-  typeBtnActive: { backgroundColor: '#ff6f91' },
-  typeText: { fontSize: 14, fontWeight: '800', color: '#555555' },
-  typeTextActive: { color: '#fff' },
-  label: { fontSize: 13, fontWeight: '600', color: '#555555', marginBottom: 4, marginTop: 8 },
-  input: {
-    padding: 10, borderRadius: 16, fontSize: 14, color: '#333333',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)',
+  formCard: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  inputDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.14)', color: '#eeeeee' },
-  submitBtn: { backgroundColor: '#ff6f91', borderRadius: 20, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
+  typeRow: { flexDirection: 'row', marginBottom: 12, gap: 6 },
+  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 16 },
+  typeText: { fontSize: 14, fontWeight: '800' },
+  label: { fontSize: 13, fontWeight: '600', marginBottom: 4, marginTop: 8 },
+  input: {
+    padding: 10, borderRadius: 14, fontSize: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  fillInput: { backgroundColor: '#FFFFFF' },
+  submitBtn: { backgroundColor: '#ff6f91', borderRadius: 18, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
+  disabledBtn: { opacity: 0.45 },
   submitText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  textLight: { color: '#ffffff' },
-  textSubLight: { color: '#dddddd' },
 });

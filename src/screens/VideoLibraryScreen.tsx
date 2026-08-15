@@ -17,7 +17,8 @@ import { FadeInView } from '../components/Motion';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 function normalizeVideos(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -48,7 +49,7 @@ function mediaUrl(path: string): string {
 
 export default function VideoLibraryScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const [videos, setVideos] = useState<any[]>([]);
   const [playing, setPlaying] = useState<any | null>(null);
@@ -119,13 +120,13 @@ export default function VideoLibraryScreen() {
   }
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('视频')} right={
         <TouchableOpacity onPress={() => load(true)} disabled={loading}>
-          <Text style={[styles.backBtn, loading && styles.disabledText]}>{t('刷新')}</Text>
+          <Text style={[styles.backBtn, { color: palette.tint }, loading && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
-      {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{loading ? '' : status}</Text> : null}
+      {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading ? '' : status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={videos}
@@ -137,15 +138,33 @@ export default function VideoLibraryScreen() {
           removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
-          ListFooterComponent={loadingMore ? <Text style={[styles.status, isDark && styles.textSubDark]}>{t('加载更多...')}</Text> : null}
+          ListFooterComponent={loadingMore ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{t('加载更多...')}</Text> : null}
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300}>
-              <TouchableOpacity style={[styles.card, isDark && styles.cardDark]} onPress={() => play(item)}>
-                <Text style={[styles.cardTitle, isDark && styles.textDark]} numberOfLines={2}>{item.title || t('无标题')}</Text>
-                <Text style={[styles.cardSub, isDark && styles.textSubDark]}>
-                  {[item.typeName, item.subTitle, formatTimestamp(item.ctime).slice(0, 10)].filter(Boolean).join(' · ')}
-                </Text>
-                <Text style={[styles.desc, isDark && styles.textSubDark]}>{item.play ? t('播放 {count}', { count: item.play }) : t('点击解析播放地址')}</Text>
+              <TouchableOpacity
+                style={[
+                  styles.card,
+                  {
+                    backgroundColor: palette.surface,
+                    borderColor: palette.hairline,
+                  },
+                ]}
+                onPress={() => play(item)}
+                activeOpacity={0.88}
+              >
+                <View style={[styles.iconWrap, { backgroundColor: palette.tintSoft }]}>
+                  <MaterialCommunityIcons name="play-circle-outline" size={20} color={palette.tint} />
+                </View>
+                <View style={styles.infoWrap}>
+                  <Text style={[styles.cardTitle, { color: palette.label }]} numberOfLines={2}>{item.title || t('无标题')}</Text>
+                  <Text style={[styles.cardSub, { color: palette.labelSecondary }]} numberOfLines={1}>
+                    {[item.typeName, item.subTitle, formatTimestamp(item.ctime).slice(0, 10)].filter(Boolean).join(' · ')}
+                  </Text>
+                  <Text style={[styles.desc, { color: palette.labelTertiary }]} numberOfLines={1}>
+                    {item.play ? t('播放 {count}', { count: item.play }) : t('点击解析播放地址')}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
               </TouchableOpacity>
             </FadeInView>
           )}
@@ -157,18 +176,30 @@ export default function VideoLibraryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
   disabledText: { opacity: 0.45 },
-  status: { margin: 16, color: '#444', fontSize: 13, textAlign: 'center' },
-  listContent: { paddingBottom: 120 },
-  card: { padding: 14, backgroundColor: '#FFFFFF', margin: 12, marginBottom: 0, borderRadius: 16 },
-  cardDark: { backgroundColor: '#1C1C1F' },
-  cardTitle: { fontSize: 14, fontWeight: '700', color: '#333' },
-  cardSub: { fontSize: 11, color: '#333333', marginTop: 4 },
-  desc: { fontSize: 12, color: '#555', marginTop: 6, lineHeight: 18 },
+  status: { marginHorizontal: 16, marginTop: 8, fontSize: 12, textAlign: 'center' },
+  listContent: { paddingTop: 8, paddingBottom: 120 },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginVertical: 4,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoWrap: { flex: 1, marginLeft: 12, marginRight: 8, minWidth: 0 },
+  cardTitle: { fontSize: 15, fontWeight: '700', lineHeight: 20 },
+  cardSub: { fontSize: 12, marginTop: 3 },
+  desc: { fontSize: 11, marginTop: 3 },
   playerPage: { flex: 1, backgroundColor: '#000' },
   videoPlayer: { flex: 1, backgroundColor: '#000' },
-  textDark: { color: '#eee' },
-  textSubDark: { color: '#eeeeee' },
 });

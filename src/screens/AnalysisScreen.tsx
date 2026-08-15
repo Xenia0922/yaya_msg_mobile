@@ -11,13 +11,16 @@ import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
+import { Pill } from '../components/Pill';
 import { useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { errorMessage, messagePayload, messageText, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 type Nav = StackNavigationProp<RootStackParamList, 'AnalysisScreen'>;
 type TabKey = 'room' | 'dates' | 'senders' | 'media' | 'flip';
@@ -112,9 +115,16 @@ function countBy<T>(items: T[], keyOf: (item: T) => string, unknownLabel = '未�
   return [...map.values()].sort((a, b) => b.count - a.count);
 }
 
+function chunk<T>(list: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
 export default function AnalysisScreen() {
   const navigation = useNavigation<Nav>();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
   const [member, setMember] = useState<Member | null>(null);
@@ -308,11 +318,13 @@ export default function AnalysisScreen() {
     { label: '礼物', value: summary.gifts },
   ];
 
+  const roomOverview = cards;
+
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title={t('数据统计')} right={
         <TouchableOpacity onPress={() => { setLoading(true); loadRoomStats(member!).finally(() => loadFlipStats().finally(() => setLoading(false))); }} disabled={!member || loading}>
-          <Text style={[styles.refreshText, (!member || loading) && { opacity: 0.45 }]}>{t('刷新')}</Text>
+          <Text style={[styles.refreshText, { color: palette.tint }, (!member || loading) && { opacity: 0.45 }]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
 
@@ -321,34 +333,49 @@ export default function AnalysisScreen() {
         {loading ? (
           <CenterSpinner dark={isDark} text={t('加载中…')} />
         ) : (
-          <Text style={[styles.statusText, isDark && styles.textSubLight]}>{status}</Text>
+          <Text style={[styles.statusText, { color: palette.labelSecondary }]}>{status}</Text>
         )}
       </View>
 
-      <View style={styles.tabs}>
+      <View style={styles.tabsRow}>
         {TABS.map((item) => (
-            <TouchableOpacity key={item.key} style={[styles.tab, isDark && tab !== item.key && styles.tabDark, tab === item.key && styles.tabActive]} onPress={() => { setTab(item.key); if (item.key === 'flip' && !flips.length) loadFlipStats(); }}>
-            <Text style={[styles.tabText, tab === item.key && styles.tabTextActive, isDark && tab !== item.key && styles.textSubLight]} numberOfLines={1}>{t(item.label)}</Text>
-          </TouchableOpacity>
+          <View key={item.key} style={styles.tabWrap}>
+            <Pill
+              label={t(item.label)}
+              selected={tab === item.key}
+              onPress={() => { setTab(item.key); if (item.key === 'flip' && !flips.length) loadFlipStats(); }}
+              style={styles.tabPill}
+            />
+          </View>
         ))}
       </View>
 
       {tab === 'room' ? (
         <FadeInView delay={80} duration={300}>
           <ScrollView contentContainerStyle={styles.content}>
-            <View style={styles.summaryGrid}>
-              {cards.map((item) => (
-                <View key={item.label} style={[styles.summaryCard, isDark && styles.cardDark]}>
-                  <Text style={styles.summaryValue}>{item.value}</Text>
-                  <Text style={[styles.summaryLabel, isDark && styles.textSubLight]}>{t(item.label)}</Text>
+            <View style={[styles.summaryCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+              {chunk(roomOverview, 4).map((row, ri) => (
+                <View key={ri} style={[styles.summaryRow, ri > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.hairline }]}>
+                  {row.map((item) => (
+                    <View key={item.label} style={styles.summaryCell}>
+                      <Text style={[styles.summaryValue, { color: palette.tint }]}>{item.value}</Text>
+                      <Text style={[styles.summaryLabel, { color: palette.labelSecondary }]}>{t(item.label)}</Text>
+                    </View>
+                  ))}
+                  {row.length < 4 ? <View style={styles.summaryCell} /> : null}
                 </View>
               ))}
             </View>
             {recent.map((item, index) => (
-              <View key={`${msgTime(item)}-${index}`} style={[styles.rowCard, isDark && styles.cardDark]}>
-                <Text style={[styles.rowTitle, isDark && styles.textLight]}>{senderName(item, t('未知用户'))}</Text>
-                <Text style={[styles.rowText, isDark && styles.textSubLight]} numberOfLines={3}>{messageText(item)}</Text>
-                <Text style={styles.rowMeta}>{formatTimestamp(msgTime(item))}</Text>
+              <View key={`${msgTime(item)}-${index}`} style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
+                  <MaterialCommunityIcons name="message-text-outline" size={20} color={palette.tint} />
+                </View>
+                <View style={styles.rowBody}>
+                  <Text style={[styles.rowTitle, { color: palette.label }]} numberOfLines={1}>{senderName(item, t('未知用户'))}</Text>
+                  <Text style={[styles.rowSub, { color: palette.labelSecondary }]} numberOfLines={2}>{messageText(item)}</Text>
+                </View>
+                <Text style={[styles.rowMeta, { color: palette.labelTertiary }]}>{formatTimestamp(msgTime(item))}</Text>
               </View>
             ))}
           </ScrollView>
@@ -365,22 +392,25 @@ export default function AnalysisScreen() {
             maxToRenderPerBatch={12}
             windowSize={7}
             removeClippedSubviews
-            ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无日期数据')}</Text>}
+            ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无日期数据')}</Text>}
             renderItem={({ item, index }) => {
               const totalPct = (item.total / dateMax) * 100;
               const memberPct = (item.member / dateMax) * 100;
               return (
                 <FadeInView delay={80 + index * 30} duration={300}>
-                  <View style={[styles.dateRow, isDark && styles.cardDark]}>
+                  <View style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                    <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
+                      <MaterialCommunityIcons name="calendar-month-outline" size={20} color={palette.tint} />
+                    </View>
                     <View style={styles.dateHeader}>
-                      <Text style={[styles.dateTitle, isDark && styles.textLight]}>{item.date}</Text>
-                      <Text style={styles.dateMeta}>
-                        <Text style={styles.dateMember}>{t('成员: {count}', { count: item.member })}</Text> | {t('总: {count}', { count: item.total })}
+                      <Text style={[styles.rowTitle, { color: palette.label }]}>{item.date}</Text>
+                      <Text style={[styles.rowMeta, { color: palette.labelTertiary }]}>
+                        <Text style={[styles.dateMember, { color: palette.tint }]}>{t('成员: {count}', { count: item.member })}</Text>{` | `}{t('总: {count}', { count: item.total })}
                       </Text>
                     </View>
-                    <View style={styles.barWrap}>
-                      <View style={[styles.barBg, { width: `${totalPct}%`, opacity: 0.25 }]} />
-                      <View style={[styles.barFg, { width: `${memberPct}%` }]} />
+                    <View style={[styles.barWrap, { backgroundColor: palette.fill2 }]}>
+                      <View style={[styles.barFg, { width: `${totalPct}%`, backgroundColor: palette.tint, opacity: 0.25 }]} />
+                      <View style={[styles.barFg2, { width: `${memberPct}%`, backgroundColor: palette.tint }]} />
                     </View>
                   </View>
                 </FadeInView>
@@ -402,10 +432,15 @@ export default function AnalysisScreen() {
             removeClippedSubviews
             renderItem={({ item, index }) => (
               <FadeInView delay={80 + index * 30} duration={300}>
-                <View style={[styles.rankRow, isDark && styles.cardDark]}>
-                  <Text style={styles.rankNo}>{index + 1}</Text>
-                  <Text style={[styles.rankName, isDark && styles.textLight]}>{item.key}</Text>
-                  <Text style={styles.rankValue}>{t('{count} 条', { count: item.count })}</Text>
+                <View style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                  <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
+                    <Text style={[styles.rankNo, { color: palette.tint }]}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.rowBody}>
+                    <Text style={[styles.rowTitle, { color: palette.label }]} numberOfLines={1}>{item.key}</Text>
+                    <Text style={[styles.rowSub, { color: palette.labelSecondary }]} numberOfLines={1}>{t('发言 {count} 条', { count: item.count })}</Text>
+                  </View>
+                  <Text style={[styles.rankValue, { color: palette.tint }]}>{t('{count} 条', { count: item.count })}</Text>
                 </View>
               </FadeInView>
             )}
@@ -424,11 +459,16 @@ export default function AnalysisScreen() {
             windowSize={7}
             removeClippedSubviews
             ListHeaderComponent={
-              <View style={styles.summaryGrid}>
-                {cards.slice(3).map((item) => (
-                  <View key={item.label} style={[styles.summaryCard, isDark && styles.cardDark]}>
-                    <Text style={styles.summaryValue}>{item.value}</Text>
-                    <Text style={[styles.summaryLabel, isDark && styles.textSubLight]}>{t(item.label)}</Text>
+              <View style={[styles.summaryCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                {chunk(cards.slice(3), 4).map((row, ri) => (
+                  <View key={ri} style={[styles.summaryRow, ri > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.hairline }]}>
+                    {row.map((item) => (
+                      <View key={item.label} style={styles.summaryCell}>
+                        <Text style={[styles.summaryValue, { color: palette.tint }]}>{item.value}</Text>
+                        <Text style={[styles.summaryLabel, { color: palette.labelSecondary }]}>{t(item.label)}</Text>
+                      </View>
+                    ))}
+                    {row.length < 4 ? <View style={styles.summaryCell} /> : null}
                   </View>
                 ))}
               </View>
@@ -442,10 +482,11 @@ export default function AnalysisScreen() {
               const dur = parseDurationSeconds(payload?.duration || payload?.time || payload?.second || payload?.audioTime || payload?.length || 0);
               const durStr = dur > 0 ? (dur < 60 ? `${Math.round(dur)}s` : `${Math.floor(dur/60)}:${String(Math.round(dur)%60).padStart(2,'0')}`) : '';
               const label = isImg ? t('图片') : isAud ? `${t('语音')}${durStr ? ` ${durStr}` : ''}` : `${t('视频')}${durStr ? ` ${durStr}` : ''}`;
+              const mediaIcon = isVid ? 'video-outline' : isAud ? 'microphone-outline' : 'image-outline';
               return (
                 <FadeInView delay={80 + index * 30} duration={300}>
                   <TouchableOpacity
-                    style={[styles.rowCard, isDark && styles.cardDark]}
+                    style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}
                     activeOpacity={0.8}
                     onPress={() => {
                       if (url) {
@@ -454,11 +495,16 @@ export default function AnalysisScreen() {
                       }
                     }}
                   >
-                    <Text style={[styles.rowTitle, isDark && styles.textLight]}>▶ {label} · {senderName(item, t('未知用户'))}</Text>
-                    <Text style={[styles.rowText, isDark && styles.textSubLight]} numberOfLines={2}>
-                      {messageText(item) || t('(无文字)')}
-                    </Text>
-                    <Text style={styles.rowMeta}>{formatTimestamp(msgTime(item))}</Text>
+                    <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
+                      <MaterialCommunityIcons name={mediaIcon as any} size={20} color={palette.tint} />
+                    </View>
+                    <View style={styles.rowBody}>
+                      <Text style={[styles.rowTitle, { color: palette.label }]} numberOfLines={1}>{label} · {senderName(item, t('未知用户'))}</Text>
+                      <Text style={[styles.rowSub, { color: palette.labelSecondary }]} numberOfLines={2}>
+                        {messageText(item) || t('(无文字)')}
+                      </Text>
+                    </View>
+                    <Text style={[styles.rowMeta, { color: palette.labelTertiary }]}>{formatTimestamp(msgTime(item))}</Text>
                   </TouchableOpacity>
                 </FadeInView>
               );
@@ -483,61 +529,59 @@ export default function AnalysisScreen() {
                   {flipMemberNames.map((name: string) => (
                     <TouchableOpacity
                       key={name}
-                      style={[styles.flipChip, flipMemberFilter === name && styles.flipChipActive, isDark && styles.flipChipDark]}
+                      style={[styles.flipChip, { backgroundColor: flipMemberFilter === name ? palette.tint : palette.fill2 }]}
                       onPress={() => setFlipMemberFilter(name === '全部成员' ? '' : name)}
                     >
-                      <Text style={[styles.flipChipText, flipMemberFilter === name && styles.flipChipTextActive, isDark && flipMemberFilter !== name && styles.textSubLight]}>{name === '全部成员' || name === '成员' ? t(name) : name}</Text>
+                      <Text style={[styles.flipChipText, { color: flipMemberFilter === name ? '#FFFFFF' : palette.labelSecondary }]}>{name === '全部成员' || name === '成员' ? t(name) : name}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </ScrollView>
-              <View style={[styles.flipCardsRow, isDark && styles.cardDark]}>
-                <View style={styles.flipCard}>
-                  <Text style={styles.flipCardValue}>{flipStats.totalCount}</Text>
-                  <Text style={[styles.flipCardLabel, isDark && styles.textSubLight]}>{t('总翻牌数')}</Text>
+              <View style={[styles.flipCardsCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <View style={[styles.flipCell, { borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: palette.hairline }]}>
+                  <Text style={[styles.flipCardValue, { color: palette.tint }]}>{flipStats.totalCount}</Text>
+                  <Text style={[styles.flipCardLabel, { color: palette.labelSecondary }]}>{t('总翻牌数')}</Text>
                 </View>
-                <View style={[styles.flipCardBorder, isDark && styles.flipCardBorderDark]} />
-                <View style={styles.flipCard}>
-                  <Text style={[styles.flipCardValue, { color: '#fa8c16' }]}>{flipStats.totalCost}</Text>
-                  <Text style={[styles.flipCardLabel, isDark && styles.textSubLight]}>{t('总消耗(鸡腿)')}</Text>
+                <View style={[styles.flipCell, { borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: palette.hairline }]}>
+                  <Text style={[styles.flipCardValue, { color: palette.label }]}>{flipStats.totalCost}</Text>
+                  <Text style={[styles.flipCardLabel, { color: palette.labelSecondary }]}>{t('总消耗(鸡腿)')}</Text>
                 </View>
-                <View style={[styles.flipCardBorder, isDark && styles.flipCardBorderDark]} />
-                <View style={styles.flipCardBig}>
-                  <Text style={[styles.flipCardValue, { color: '#722ed1' }]}>{formatDurationMs(flipStats.avgDur)}</Text>
-                  <Text style={[styles.flipCardLabel, isDark && styles.textSubLight]}>{t('平均耗时')}</Text>
-                  {flipStats.minDur > 0 ? <Text style={[styles.flipCardRange, isDark && styles.textSubLight]}>{formatDurationMs(flipStats.minDur)} ~ {formatDurationMs(flipStats.maxDur)}</Text> : null}
+                <View style={[styles.flipCell, styles.flipCellBig]}>
+                  <Text style={[styles.flipCardValue, { color: palette.label }]}>{formatDurationMs(flipStats.avgDur)}</Text>
+                  <Text style={[styles.flipCardLabel, { color: palette.labelSecondary }]}>{t('平均耗时')}</Text>
+                  {flipStats.minDur > 0 ? <Text style={[styles.flipCardRange, { color: palette.labelTertiary }]}>{formatDurationMs(flipStats.minDur)} ~ {formatDurationMs(flipStats.maxDur)}</Text> : null}
                 </View>
               </View>
               <View style={styles.flipTypeRow}>
-                <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(24,144,255,0.12)', color: '#1890ff' }]}>{t('文字 {count}', { count: flipStats.typeStats.text })}</Text>
-                <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(114,46,209,0.12)', color: '#722ed1' }]}>{t('语音 {count}', { count: flipStats.typeStats.audio })}</Text>
-                <Text style={[styles.flipTypePill, { backgroundColor: 'rgba(255,111,145,0.12)', color: '#ff6f91' }]}>{t('视频 {count}', { count: flipStats.typeStats.video })}</Text>
+                <Text style={[styles.flipTypePill, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('文字 {count}', { count: flipStats.typeStats.text })}</Text>
+                <Text style={[styles.flipTypePill, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('语音 {count}', { count: flipStats.typeStats.audio })}</Text>
+                <Text style={[styles.flipTypePill, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{t('视频 {count}', { count: flipStats.typeStats.video })}</Text>
               </View>
-              <Text style={[styles.sectionSub, isDark && styles.textSubLight]}>{t('成员排名 · {count} 人 · 共 {total} 条', { count: flipStats.memberRank.length, total: flipStats.totalCount })}</Text>
+              <Text style={[styles.sectionSub, { color: palette.labelSecondary }]}>{t('成员排名 · {count} 人 · 共 {total} 条', { count: flipStats.memberRank.length, total: flipStats.totalCount })}</Text>
               {flipStats.memberRank.map((m, idx) => {
                 const pct = (m.cost / flipStats.topCost) * 100;
                 const avgPrice = m.count > 0 ? Math.round(m.cost / m.count) : 0;
                 const avgTime = m.answeredCount > 0 ? formatDurationMs(m.durSum / m.answeredCount) : '';
                 return (
-                  <View key={m.name} style={[styles.flipMemberCard, isDark && styles.cardDark]}>
+                  <View key={m.name} style={[styles.flipMemberCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
                     <View style={styles.flipMemberHeader}>
-                      <Text style={[styles.flipMemberName, isDark && styles.textLight]} numberOfLines={1}>{idx + 1}. {m.name}</Text>
-                      <Text style={styles.flipMemberCost}>{t('{cost} 鸡腿', { cost: m.cost })}</Text>
+                      <Text style={[styles.flipMemberName, { color: palette.label }]} numberOfLines={1}>{idx + 1}. {m.name}</Text>
+                      <Text style={[styles.flipMemberCost, { color: palette.tint }]}>{t('{cost} 鸡腿', { cost: m.cost })}</Text>
                     </View>
-                    <View style={styles.flipBarBg}>
-                      <View style={[styles.flipBarFg, { width: `${pct}%` }]} />
+                    <View style={[styles.flipBarBg, { backgroundColor: palette.fill2 }]}>
+                      <View style={[styles.flipBarFg, { width: `${pct}%`, backgroundColor: palette.tint }]} />
                     </View>
-                    <Text style={[styles.flipMemberMeta, isDark && styles.textSubLight]}>
+                    <Text style={[styles.flipMemberMeta, { color: palette.labelSecondary }]}>
                       {t('共 {count} 条 · 文字{text} 语音{audio} 视频{video}', { count: m.count, text: m.typeCounts.text, audio: m.typeCounts.audio, video: m.typeCounts.video })}
                     </Text>
-                    <Text style={[styles.flipMemberMeta, isDark && styles.textSubLight, { marginTop: 2 }]}>
+                    <Text style={[styles.flipMemberMeta, { color: palette.labelSecondary, marginTop: 2 }]}>
                       {t('均{avg}鸡腿 · 最高{max} · 最低{min}', { avg: avgPrice, max: m.maxCost, min: m.minCost === Infinity ? '-' : m.minCost })}
                     </Text>
-                    {avgTime ? <Text style={[styles.flipMemberMeta, isDark && styles.textSubLight, { marginTop: 2 }]}>{t('均耗时{time} · 最快{min} · 最慢{max}', { time: avgTime, min: formatDurationMs(m.minDur), max: formatDurationMs(m.maxDur) })}</Text> : null}
+                    {avgTime ? <Text style={[styles.flipMemberMeta, { color: palette.labelSecondary, marginTop: 2 }]}>{t('均耗时{time} · 最快{min} · 最慢{max}', { time: avgTime, min: formatDurationMs(m.minDur), max: formatDurationMs(m.maxDur) })}</Text> : null}
                   </View>
                 );
               })}
-              <Text style={[styles.statusText, isDark && styles.textSubLight, { marginBottom: 8, marginTop: 6 }]}>{t('翻牌明细 · 共 {count} 条', { count: filteredFlips.length })}</Text>
+              <Text style={[styles.statusText, { color: palette.labelSecondary, marginBottom: 8, marginTop: 6 }]}>{t('翻牌明细 · 共 {count} 条', { count: filteredFlips.length })}</Text>
             </View>
           }
           renderItem={({ item, index }) => {
@@ -572,41 +616,51 @@ export default function AnalysisScreen() {
               : (!isAnswered && remaining <= 0 ? t('已过期') : '');
             return (
               <FadeInView delay={80 + index * 30} duration={300}>
-                <View style={[styles.rowCard, isDark && styles.cardDark]}>
-                  <View style={styles.flipHeader}>
-                    <Text style={[styles.flipMember, isDark && styles.textLight]} numberOfLines={1}>
-                      {pickText(item, ['memberName', 'starName', 'baseUserInfo.nickname'], t('成员'))}
-                    </Text>
-                    <Text style={[styles.flipTime, isDark && styles.textSubLight]}>{formatTimestamp(qTime)}</Text>
+                <View style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                  <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
+                    <MaterialCommunityIcons
+                      name={isVideo ? 'video-outline' : isVoice ? 'microphone-outline' : 'text-box-outline'}
+                      size={20}
+                      color={palette.tint}
+                    />
                   </View>
-                  <Text style={[styles.flipQ, isDark && styles.textSubLight]} numberOfLines={10}>{t('问：{text}', { text: pickText(item, ['content', 'questionContent', 'question', 'text'], '') || t('无提问内容') })}</Text>
-                  {isAnswered && isText ? (
-                    <Text style={[styles.flipAText, isDark && styles.textSubLight]} numberOfLines={20}>
-                      {t('答：{text}', { text: answerText || t('已翻牌') })}
-                    </Text>
-                  ) : isAnswered && (isVoice || isVideo) ? (
-                    <View style={styles.flipABlock}>
-                      <Text style={[styles.flipA, isDark && styles.textSubLight]} numberOfLines={20}>
-                        {t('答：{text}', { text: answerText || (isVoice ? t('[语音回复]') : t('[视频回复]')) })}
+                  <View style={styles.rowBody}>
+                    <View style={styles.flipHeader}>
+                      <Text style={[styles.rowTitle, { color: palette.label }]} numberOfLines={1}>
+                        {pickText(item, ['memberName', 'starName', 'baseUserInfo.nickname'], t('成员'))}
                       </Text>
-                      {answerUrl ? (
-                        <TouchableOpacity style={styles.flipPlayBtn} onPress={() => setFlipPlayUrl((prev) => prev === answerUrl ? '' : answerUrl)}>
-                          <Text style={styles.flipPlayText}>{flipPlayUrl === answerUrl ? t('收起') : `▶ ${answerDuration > 0 ? (answerDuration < 60 ? `${answerDuration}s` : `${Math.floor(answerDuration / 60)}:${String(answerDuration % 60).padStart(2, '0')}`) : (isVoice ? t('语音') : t('视频'))}`}</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                      {flipPlayUrl === answerUrl && answerUrl ? (
-                        <Video source={{ uri: answerUrl }} style={isVoice ? styles.flipAudio : styles.flipVideo} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
-                      ) : null}
+                      <Text style={[styles.rowMeta, { color: palette.labelTertiary }]}>{formatTimestamp(qTime)}</Text>
                     </View>
-                  ) : !isAnswered ? (
-                    <Text style={styles.flipPending}>{item.status === 1 ? t('等待回复中') : item.status === 3 ? t('已退款') : t('等待回复中')}</Text>
-                  ) : null}
-                  <View style={styles.flipMeta}>
-                    <Text style={styles.flipTag}>{isText ? t('文字') : isVoice ? t('语音') : isVideo ? t('视频') : t('未知')}</Text>
-                    <Text style={styles.flipPrivacy}>{item.type === 1 ? t('公开') : item.type === 2 ? t('私密') : item.type === 3 ? t('匿名') : t('未知')}</Text>
-                    <Text style={styles.flipCost}>{t('{cost} 鸡腿', { cost: item.cost || 0 })}</Text>
-                    {elapsedStr ? <Text style={styles.flipElapsed}>{t('耗时 {time}', { time: elapsedStr })}</Text> : null}
-                    {remainStr ? <Text style={styles.flipRemain}>{t('剩 {time}', { time: remainStr })}</Text> : null}
+                    <Text style={[styles.flipQ, { color: palette.labelSecondary }]} numberOfLines={10}>{t('问：{text}', { text: pickText(item, ['content', 'questionContent', 'question', 'text'], '') || t('无提问内容') })}</Text>
+                    {isAnswered && isText ? (
+                      <Text style={[styles.flipAText, { color: palette.labelSecondary }]} numberOfLines={20}>
+                        {t('答：{text}', { text: answerText || t('已翻牌') })}
+                      </Text>
+                    ) : isAnswered && (isVoice || isVideo) ? (
+                      <View style={[styles.flipABlock, { backgroundColor: palette.fill2 }]}>
+                        <Text style={[styles.flipA, { color: palette.labelSecondary }]} numberOfLines={20}>
+                          {t('答：{text}', { text: answerText || (isVoice ? t('[语音回复]') : t('[视频回复]')) })}
+                        </Text>
+                        {answerUrl ? (
+                          <TouchableOpacity style={[styles.flipPlayBtn, { backgroundColor: palette.tint }]} onPress={() => setFlipPlayUrl((prev) => prev === answerUrl ? '' : answerUrl)}>
+                            <MaterialCommunityIcons name={flipPlayUrl === answerUrl ? 'chevron-up' : 'play'} size={14} color="#FFFFFF" />
+                            <Text style={[styles.flipPlayText, { color: '#FFFFFF' }]}>{flipPlayUrl === answerUrl ? t('收起') : `${answerDuration > 0 ? (answerDuration < 60 ? `${answerDuration}s` : `${Math.floor(answerDuration / 60)}:${String(answerDuration % 60).padStart(2, '0')}`) : (isVoice ? t('语音') : t('视频'))}`}</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {flipPlayUrl === answerUrl && answerUrl ? (
+                          <Video source={{ uri: answerUrl }} style={isVoice ? styles.flipAudio : styles.flipVideo} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
+                        ) : null}
+                      </View>
+                    ) : !isAnswered ? (
+                      <Text style={[styles.flipPending, { color: palette.tint }]}>{item.status === 1 ? t('等待回复中') : item.status === 3 ? t('已退款') : t('等待回复中')}</Text>
+                    ) : null}
+                    <View style={styles.flipMeta}>
+                      <Text style={[styles.flipTag, { backgroundColor: palette.tintSoft, color: palette.tint }]}>{isText ? t('文字') : isVoice ? t('语音') : isVideo ? t('视频') : t('未知')}</Text>
+                      <Text style={[styles.flipPrivacy, { color: palette.labelTertiary }]}>{item.type === 1 ? t('公开') : item.type === 2 ? t('私密') : item.type === 3 ? t('匿名') : t('未知')}</Text>
+                      <Text style={[styles.flipCost, { color: palette.labelSecondary }]}>{t('{cost} 鸡腿', { cost: item.cost || 0 })}</Text>
+                      {elapsedStr ? <Text style={[styles.flipElapsed, { color: palette.tint }]}>{t('耗时 {time}', { time: elapsedStr })}</Text> : null}
+                      {remainStr ? <Text style={[styles.flipRemain, { color: palette.tint }]}>{t('剩 {time}', { time: remainStr })}</Text> : null}
+                    </View>
                   </View>
                 </View>
               </FadeInView>
@@ -645,53 +699,49 @@ export default function AnalysisScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  pickerWrap: { paddingHorizontal: 14 },
-  refreshText: { color: '#ff6f91', fontSize: 14, minWidth: 54, textAlign: 'right' },
-  statusText: { marginTop: 8, color: '#555555', fontSize: 12 },
-  tabs: { flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingVertical: 10 },
-  tab: { flex: 1, minHeight: 36, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 6 },
-  tabDark: { backgroundColor: '#1C1C1F' },
-  tabActive: { backgroundColor: '#ff6f91' },
-  tabText: { color: '#444444', fontSize: 11, fontWeight: '800' },
-  tabTextActive: { color: '#ffffff' },
+  pickerWrap: { paddingHorizontal: 16 },
+  refreshText: { fontSize: 14, minWidth: 54, textAlign: 'right', fontWeight: '700' },
+  statusText: { marginTop: 8, fontSize: 12 },
+  tabsRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingVertical: 10 },
+  tabWrap: { flex: 1 },
+  tabPill: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 14, paddingBottom: 112 },
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-  summaryCard: { width: '23%', minHeight: 68, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  summaryValue: { color: '#ff6f91', fontSize: 20, fontWeight: '900' },
-  summaryLabel: { color: '#555555', fontSize: 10, marginTop: 4 },
-  rowCard: { padding: 12, marginBottom: 8, borderRadius: 16, backgroundColor: '#FFFFFF' },
-  rowTitle: { color: '#222222', fontSize: 14, fontWeight: '800' },
-  rowText: { color: '#555555', fontSize: 13, lineHeight: 20, marginTop: 4 },
-  rowMeta: { color: '#ff6f91', fontSize: 11, marginTop: 6 },
-  rankRow: { flexDirection: 'row', alignItems: 'center', padding: 13, borderRadius: 16, marginBottom: 8, backgroundColor: '#FFFFFF' },
-  rankNo: { width: 32, color: '#ff6f91', fontSize: 18, fontWeight: '900' },
-  rankName: { flex: 1, color: '#222222', fontSize: 14, fontWeight: '800' },
-  rankValue: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
-  dateRow: { padding: 12, marginBottom: 6, borderRadius: 16, backgroundColor: '#FFFFFF' },
-  dateHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  dateTitle: { color: '#222222', fontSize: 14, fontWeight: '800' },
-  dateMeta: { color: '#555', fontSize: 11 },
-  dateMember: { color: '#ff6f91', fontWeight: '700' },
-  barWrap: { position: 'relative', height: 6, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.06)', overflow: 'hidden' },
-  barBg: { position: 'absolute', top: 0, left: 0, height: '100%', backgroundColor: '#555', borderRadius: 3 },
-  barFg: { position: 'absolute', top: 0, left: 0, height: '100%', backgroundColor: '#ff6f91', borderRadius: 3 },
-  empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
-  flipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  flipMember: { fontSize: 14, fontWeight: '800', color: '#ff6f91', flex: 1 },
-  flipTime: { fontSize: 11, color: '#555' },
-  flipQ: { fontSize: 13, color: '#444', lineHeight: 20, marginBottom: 6 },
-  flipABlock: { backgroundColor: 'rgba(255,111,145,0.06)', padding: 8, borderRadius: 10, marginBottom: 6 },
-  flipA: { fontSize: 13, color: '#444', lineHeight: 20 },
-  flipAText: { fontSize: 13, color: '#444', lineHeight: 20, marginBottom: 6 },
-  flipPending: { fontSize: 12, color: '#c58a00', fontWeight: '700' },
-  flipMeta: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  flipTag: { fontSize: 10, color: '#ff6f91', fontWeight: '800', backgroundColor: 'rgba(255,111,145,0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  flipPrivacy: { fontSize: 10, color: '#13a8a8', fontWeight: '800', backgroundColor: 'rgba(19,168,168,0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  flipCost: { fontSize: 10, color: '#555' },
-  flipElapsed: { fontSize: 10, color: '#ff6f91', fontWeight: '700' },
-  flipRemain: { fontSize: 10, color: '#e67e22', fontWeight: '700' },
-  flipPlayBtn: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: '#ff6f91' },
-  flipPlayText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  summaryCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', marginBottom: 12 },
+  summaryRow: { flexDirection: 'row', paddingVertical: 14, paddingHorizontal: 6 },
+  summaryCell: { flex: 1, alignItems: 'center' },
+  summaryValue: { fontSize: 18, fontWeight: '900' },
+  summaryLabel: { fontSize: 11, marginTop: 4 },
+  rowCard: {
+    flexDirection: 'row', alignItems: 'center', padding: 12, marginBottom: 5,
+    borderRadius: 16, borderWidth: StyleSheet.hairlineWidth,
+  },
+  rowIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  rowBody: { flex: 1, minWidth: 0, paddingRight: 8 },
+  rowTitle: { fontSize: 14, fontWeight: '700' },
+  rowSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
+  rowMeta: { fontSize: 11 },
+  rankNo: { fontSize: 18, fontWeight: '900' },
+  rankValue: { fontSize: 13, fontWeight: '800' },
+  dateHeader: { flex: 1, minWidth: 0 },
+  dateMember: { fontWeight: '700' },
+  barWrap: { position: 'relative', height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 8 },
+  barFg: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3 },
+  barFg2: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3 },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
+  flipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  flipQ: { fontSize: 13, lineHeight: 20, marginBottom: 6 },
+  flipABlock: { padding: 8, borderRadius: 12, marginBottom: 6 },
+  flipA: { fontSize: 13, lineHeight: 20 },
+  flipAText: { fontSize: 13, lineHeight: 20, marginBottom: 4 },
+  flipPending: { fontSize: 12, fontWeight: '700' },
+  flipMeta: { flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' },
+  flipTag: { fontSize: 10, fontWeight: '800', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  flipPrivacy: { fontSize: 10, fontWeight: '700' },
+  flipCost: { fontSize: 10 },
+  flipElapsed: { fontSize: 10, fontWeight: '700' },
+  flipRemain: { fontSize: 10, fontWeight: '700' },
+  flipPlayBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
+  flipPlayText: { fontSize: 12, fontWeight: '800' },
   flipAudio: { height: 52, marginTop: 8, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 10 },
   flipVideo: { height: 150, marginTop: 8, backgroundColor: '#000', borderRadius: 10 },
   imgModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center' },
@@ -700,32 +750,24 @@ const styles = StyleSheet.create({
   videoClose: { paddingTop: 50, paddingHorizontal: 16, paddingBottom: 8, alignSelf: 'flex-start' },
   videoCloseText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   videoPlayer: { flex: 1, backgroundColor: '#000' },
-  cardDark: { backgroundColor: '#1C1C1F' },
-  textLight: { color: '#ffffff' },
-  textSubLight: { color: '#dddddd' },
-  flipCardsRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 12 },
-  flipCard: { flex: 1, alignItems: 'center', paddingVertical: 4 },
-  flipCardBig: { flex: 1.4, alignItems: 'center', paddingVertical: 4 },
-  flipCardValue: { fontSize: 20, fontWeight: '800', color: '#ff6f91' },
-  flipCardLabel: { fontSize: 11, color: '#777', marginTop: 4 },
-  flipCardRange: { fontSize: 10, color: '#999', marginTop: 2 },
-  flipCardBorder: { width: 1, backgroundColor: 'rgba(0,0,0,0.08)' },
-  flipCardBorderDark: { backgroundColor: 'rgba(255,255,255,0.10)' },
+  flipCardsCard: { flexDirection: 'row', paddingVertical: 16, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, marginBottom: 12 },
+  flipCell: { flex: 1, alignItems: 'center', paddingVertical: 4, paddingHorizontal: 4 },
+  flipCellBig: { flex: 1.4 },
+  flipCardValue: { fontSize: 18, fontWeight: '900' },
+  flipCardLabel: { fontSize: 11, marginTop: 4 },
+  flipCardRange: { fontSize: 10, marginTop: 2 },
   flipTypeRow: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 14 },
-  flipTypePill: { fontSize: 11, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 },
-  sectionSub: { fontSize: 12, fontWeight: '700', color: '#555', marginBottom: 8 },
-  flipMemberCard: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: 12, marginBottom: 6 },
+  flipTypePill: { fontSize: 11, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  sectionSub: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
+  flipMemberCard: { padding: 12, borderRadius: 12, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth },
   flipMemberHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  flipMemberName: { fontSize: 13, fontWeight: '700', color: '#333', flex: 1 },
-  flipMemberCost: { fontSize: 12, fontWeight: '800', color: '#fa8c16' },
-  flipBarBg: { height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)', marginBottom: 4 },
-  flipBarFg: { height: 4, borderRadius: 2, backgroundColor: '#ff6f91' },
-  flipMemberMeta: { fontSize: 10, color: '#777', lineHeight: 16 },
+  flipMemberName: { fontSize: 13, fontWeight: '700', flex: 1 },
+  flipMemberCost: { fontSize: 12, fontWeight: '800' },
+  flipBarBg: { height: 4, borderRadius: 2, marginBottom: 4 },
+  flipBarFg: { height: 4, borderRadius: 2 },
+  flipMemberMeta: { fontSize: 10, lineHeight: 16 },
   flipChipScroll: { marginBottom: 10, marginTop: 4 },
   flipChipRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14 },
-  flipChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
-  flipChipActive: { backgroundColor: '#ff6f91' },
-  flipChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
-  flipChipText: { fontSize: 11, color: '#555', fontWeight: '600' },
-  flipChipTextActive: { color: '#fff' },
+  flipChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  flipChipText: { fontSize: 11, fontWeight: '600' },
 });

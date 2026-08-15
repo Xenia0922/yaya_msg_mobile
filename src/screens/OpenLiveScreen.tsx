@@ -29,6 +29,7 @@ import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from
 import { formatTimestamp } from '../utils/format';
 import { openNativeLivePlayer } from '../native/LivePlayer';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 
 interface OpenLiveItem {
   key: string;
@@ -162,6 +163,7 @@ function shortMemberName(member?: Member | null) {
 export default function OpenLiveScreen() {
   const navigation = useNavigation<any>();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const [member, setMember] = useState<Member | null>(null);
@@ -300,13 +302,13 @@ export default function OpenLiveScreen() {
         <View style={styles.controls}>
           <MemberPicker selectedMember={member} onSelect={(next) => loadMemberShows(next, false)} placeholder={t('搜索成员并打开公演记录...')} />
           <TextInput
-            style={[styles.search, isDark && styles.searchDark]}
+            style={[styles.search, { backgroundColor: palette.surface, borderColor: palette.hairline, color: palette.label }]}
             placeholder={t('筛选标题、成员、liveId...')}
-            placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
+            placeholderTextColor={palette.labelTertiary}
             value={query}
             onChangeText={setQuery}
           />
-          <Text style={[styles.status, isDark && styles.textSubLight]}>{loading && !items.length ? '' : status}</Text>
+          <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading && !items.length ? '' : status}</Text>
         </View>
 
         <PerfFlatList
@@ -322,32 +324,32 @@ export default function OpenLiveScreen() {
           ListEmptyComponent={
             loading ? (
               <View style={styles.emptyWrap}>
-                <ActivityIndicator size="large" color={isDark ? '#5a5a5a' : '#ff6f91'} />
+                <ActivityIndicator size="large" color={palette.tint} />
               </View>
             ) : (
               <View style={styles.emptyWrap}>
-                <Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无公演记录')}</Text>
+                <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无公演记录')}</Text>
               </View>
             )
           }
           ListFooterComponent={items.length ? (
-            <Text style={[styles.footerText, isDark && styles.textSubLight]}>
+            <Text style={[styles.footerText, { color: palette.labelTertiary }]}>
               {loading ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
             </Text>
           ) : null}
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300}>
               <TouchableOpacity
-                style={[styles.card, isDark && styles.cardDark]}
+                style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline }]}
                 activeOpacity={0.9}
                 onPress={() => playItem(item)}
                 onLongPress={() => downloadItem(item)}
               >
-                {item.cover ? <Image source={{ uri: item.cover }} style={styles.cover} resizeMode="cover" /> : <View style={styles.coverPlaceholder}><MaterialCommunityIcons name="play" size={28} color="#ff6f91" /></View>}
+                {item.cover ? <Image source={{ uri: item.cover }} style={[styles.cover, { backgroundColor: palette.fill2 }]} resizeMode="cover" /> : <View style={[styles.coverPlaceholder, { backgroundColor: palette.tintSoft }]}><MaterialCommunityIcons name="play" size={28} color={palette.tint} /></View>}
                 <View style={styles.cardBody}>
-                  <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>{item.title}</Text>
-                  <Text style={[styles.meta, isDark && styles.textSubLight]} numberOfLines={1}>{item.nickname || shortMemberName(member) || t('成员')}</Text>
-                  <Text style={[styles.time, isDark && styles.textSubLight]}>{formatTimestamp(item.msgTime)}</Text>
+                  <Text style={[styles.cardTitle, { color: palette.label }]} numberOfLines={2}>{item.title}</Text>
+                  <Text style={[styles.meta, { color: palette.labelSecondary }]} numberOfLines={1}>{item.nickname || shortMemberName(member) || t('成员')}</Text>
+                  <Text style={[styles.time, { color: palette.labelTertiary }]}>{formatTimestamp(item.msgTime)}</Text>
                 </View>
               </TouchableOpacity>
             </FadeInView>
@@ -363,24 +365,20 @@ const styles = StyleSheet.create({
   containerDark: { backgroundColor: 'transparent' },
   headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800', minWidth: 54 },
   disabledText: { opacity: 0.45 },
-  controls: { paddingHorizontal: 14, gap: 8 },
-  search: { minHeight: 42, borderRadius: 16, paddingHorizontal: 12, backgroundColor: '#FFFFFF', color: '#222222' },
-  searchDark: { backgroundColor: 'rgba(255,255,255,0.10)', color: '#ffffff' },
-  status: { color: '#555555', fontSize: 12, lineHeight: 18 },
+  controls: { paddingHorizontal: 14, gap: 8, marginBottom: 8 },
+  search: { minHeight: 42, borderRadius: 14, paddingHorizontal: 12, borderWidth: StyleSheet.hairlineWidth },
+  status: { fontSize: 12, lineHeight: 18 },
   list: { padding: 14, paddingBottom: 112 },
-  card: { flexDirection: 'row', padding: 10, marginBottom: 10, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
-  cardDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.14)' },
-  cover: { width: 82, height: 82, borderRadius: 10, backgroundColor: '#111111' },
-  coverPlaceholder: { width: 82, height: 82, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111111' },
+  card: { flexDirection: 'row', padding: 10, marginVertical: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  cover: { width: 82, height: 82, borderRadius: 14 },
+  coverPlaceholder: { width: 82, height: 82, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1, minWidth: 0, paddingLeft: 12, justifyContent: 'space-between' },
-  cardTitle: { color: '#222222', fontSize: 15, fontWeight: '900', lineHeight: 21 },
-  meta: { color: '#555555', fontSize: 12 },
-  time: { color: '#555555', fontSize: 11 },
-  footerText: { marginVertical: 14, textAlign: 'center', color: '#555555', fontSize: 12, fontWeight: '700' },
+  cardTitle: { fontSize: 15, fontWeight: '700', lineHeight: 21 },
+  meta: { fontSize: 12 },
+  time: { fontSize: 11 },
+  footerText: { marginVertical: 14, textAlign: 'center', fontSize: 12, fontWeight: '700' },
   emptyWrap: { minHeight: 220, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  empty: { textAlign: 'center', color: '#555555', fontSize: 14 },
-  textLight: { color: '#ffffff' },
-  textSubLight: { color: '#dddddd' },
+  empty: { textAlign: 'center', fontSize: 14 },
   playerPage: { flex: 1, backgroundColor: '#000000' },
   player: { flex: 1, backgroundColor: '#000000' },
   externalBtn: { margin: 16, minHeight: 44, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },

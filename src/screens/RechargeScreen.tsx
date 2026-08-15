@@ -9,17 +9,16 @@ import {
 import { WebView } from 'react-native-webview';
 import { useNavigation } from '@react-navigation/native';
 import pocketApi from '../api/pocket48';
-import { useSettingsStore } from '../store';
 import { errorMessage } from '../utils/data';
 import ScreenHeader from '../components/ScreenHeader';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const RECHARGE_URL = 'https://live.48.cn/Recharge/';
 
 export default function RechargeScreen() {
-  const navigation = useNavigation();
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const [balance, setBalance] = useState('');
   const [status, setStatus] = useState(t('暂无数据'));
@@ -44,23 +43,49 @@ export default function RechargeScreen() {
   };
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('鸡腿充值')} right={
         <TouchableOpacity onPress={refreshBalance}>
-          <Text style={styles.actionText}>{t('刷新余额')}</Text>
+          <Text style={[styles.actionText, { color: palette.tint }]}>{t('刷新余额')}</Text>
         </TouchableOpacity>
       } />
 
-      <View style={[styles.statusBar, isDark && styles.statusBarDark]}>
-        <Text style={[styles.statusText, isDark && styles.statusTextDark]}>
-          {balance !== '' ? `${t('当前余额：{balance} 鸡腿', { balance })} · ` : ''}{status}
-        </Text>
-        {loading ? <ActivityIndicator color="#ff6f91" style={styles.loading} /> : null}
+      <View
+        style={[
+          styles.balanceCard,
+          {
+            backgroundColor: palette.surface,
+            borderColor: palette.hairline,
+          },
+        ]}
+      >
+        <View style={[styles.balanceIcon, { backgroundColor: palette.tintSoft }]}>
+          <MaterialCommunityIcons name="credit-card-outline" size={20} color={palette.tint} />
+        </View>
+        <View style={styles.balanceInfo}>
+          <Text style={[styles.balanceLabel, { color: palette.labelTertiary }]}>{t('当前余额')}</Text>
+          <Text style={[styles.balanceValue, { color: palette.label }]}>
+            {balance !== '' ? t('{balance} 鸡腿', { balance }) : t('暂无数据')}
+          </Text>
+          <View style={styles.statusLine}>
+            <Text style={[styles.statusText, { color: palette.labelSecondary }]} numberOfLines={1}>{status}</Text>
+            {loading ? <ActivityIndicator color={palette.tint} size="small" style={styles.loading} /> : null}
+          </View>
+        </View>
       </View>
+
+      <TouchableOpacity
+        style={[styles.refreshBtn, { backgroundColor: palette.tint }]}
+        onPress={refreshBalance}
+        disabled={loading}
+      >
+        <MaterialCommunityIcons name="refresh" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+        <Text style={styles.refreshBtnText}>{t('刷新余额')}</Text>
+      </TouchableOpacity>
 
       <WebView
       source={{ uri: RECHARGE_URL }}
-      style={[styles.web, isDark && styles.webDark]}
+      style={styles.web}
       javaScriptEnabled
       domStorageEnabled
       originWhitelist={['*']}
@@ -68,9 +93,9 @@ export default function RechargeScreen() {
       startInLoadingState
       userAgent="Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 PocketFans201807"
       renderLoading={() => (
-        <View style={[styles.webLoading, isDark && styles.webLoadingDark]}>
-          <ActivityIndicator color="#ff6f91" />
-          <Text style={[styles.webLoadingText, isDark && styles.textLight]}>{t('正在打开官方充值页...')}</Text>
+        <View style={[styles.webLoading, { backgroundColor: palette.background }]}>
+          <ActivityIndicator color={palette.tint} />
+          <Text style={[styles.webLoadingText, { color: palette.labelSecondary }]}>{t('正在打开官方充值页...')}</Text>
         </View>
       )}
       onError={(event) => setStatus(t('充值页加载失败：{msg}', { msg: event.nativeEvent.description }))}
@@ -81,29 +106,41 @@ export default function RechargeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  header: {
-    paddingTop: 54,
-    paddingHorizontal: 20,
-    paddingBottom: 14,
+  actionText: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
+  balanceCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
     marginBottom: 4,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  headerDark: {},
-  backBtn: { color: '#ff6f91', fontSize: 14 },
-  title: { color: '#ff6f91', fontSize: 20, fontWeight: '800' },
-  actionText: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
-  statusBar: { padding: 10, backgroundColor: '#fff3cd', borderBottomWidth: 1, borderBottomColor: '#f3df9a' },
-  statusBarDark: { backgroundColor: '#2b2616', borderBottomColor: '#473b18' },
-  statusText: { color: '#8a5a00', fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  statusTextDark: { color: '#ccbb80' },
-  loading: { marginTop: 6 },
+  balanceIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  balanceInfo: { flex: 1, marginLeft: 12, minWidth: 0 },
+  balanceLabel: { fontSize: 11, fontWeight: '600' },
+  balanceValue: { fontSize: 20, fontWeight: '800', marginTop: 2 },
+  statusLine: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  statusText: { fontSize: 12, flex: 1 },
+  loading: { marginLeft: 8 },
+  refreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingVertical: 12,
+    borderRadius: 18,
+  },
+  refreshBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   web: { flex: 1, backgroundColor: '#FFFFFF' },
-  webDark: { backgroundColor: '#1C1C1F' },
-  webLoading: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  webLoadingDark: { backgroundColor: '#1C1C1F' },
+  webLoading: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   webLoadingText: { marginTop: 8, color: '#333333', fontSize: 12 },
-  textLight: { color: '#ff6f91' },
 });

@@ -25,6 +25,8 @@ import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data'
 import { formatTimestamp } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
 
 type FlipNavProp = StackNavigationProp<RootStackParamList, 'FlipScreen'>;
@@ -167,6 +169,7 @@ export default function FlipScreen() {
   const navigation = useNavigation<FlipNavProp>();
   const route = useRoute<FlipRouteProp>();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const mode = route.params?.mode || 'view';
 
@@ -308,34 +311,34 @@ export default function FlipScreen() {
         <ScreenHeader title={t('发送翻牌')} />
 
         <FadeInView delay={80} duration={300}>
-          <View style={styles.section}>
-            <Text style={[styles.label, isDark && styles.textLight]}>{t('选择成员')}</Text>
+          <View style={[styles.section, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+            <Text style={[styles.label, { color: palette.label }]}>{t('选择成员')}</Text>
             <MemberPicker selectedMember={selectedMember} onSelect={selectMemberForPrice} />
           </View>
 
-          <View style={styles.section}>
-            <Text style={[styles.label, isDark && styles.textLight]}>{t('回复形式')}</Text>
+          <View style={[styles.section, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+            <Text style={[styles.label, { color: palette.label }]}>{t('回复形式')}</Text>
           <View style={styles.optionRow}>
             {prices.map((item) => {
               const active = answerType === item.answerType;
               return (
                   <TouchableOpacity
                     key={String(item.answerType)}
-                    style={[styles.optionChip, isDark && !active && styles.optionChipDark, active && styles.optionChipActive]}
+                    style={[styles.optionChip, { backgroundColor: active ? palette.tint : palette.fill2 }]}
                     onPress={() => setAnswerType(item.answerType)}
                   >
-                    <Text style={[styles.optionText, active && styles.optionTextActive]}>
+                    <Text style={[styles.optionText, { color: active ? '#FFFFFF' : palette.labelSecondary }]}>
                       {t('{type}翻牌', { type: t(answerTypeLabel(item.answerType)) })}
                     </Text>
                   </TouchableOpacity>
               );
             })}
           </View>
-          {!prices.length ? <Text style={styles.hint}>{t('选择成员后显示可用的文字、语音、视频翻牌')}</Text> : null}
+          {!prices.length ? <Text style={[styles.hint, { color: palette.labelTertiary }]}>{t('选择成员后显示可用的文字、语音、视频翻牌')}</Text> : null}
         </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.label, isDark && styles.textLight]}>{t('公开设置')}</Text>
+        <View style={[styles.section, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+          <Text style={[styles.label, { color: palette.label }]}>{t('公开设置')}</Text>
           <View style={styles.optionRow}>
             {PRIVACY_OPTIONS.map((item) => {
               const itemCost = priceFor(selectedPrice, item.value);
@@ -344,11 +347,11 @@ export default function FlipScreen() {
               return (
                 <TouchableOpacity
                   key={item.value}
-                  style={[styles.optionChip, isDark && !active && styles.optionChipDark, active && styles.optionChipActive, disabled && styles.optionDisabled]}
+                  style={[styles.optionChip, { backgroundColor: active ? palette.tint : palette.fill2 }, disabled && styles.optionDisabled]}
                   disabled={disabled}
                   onPress={() => setPrivacyType(item.value)}
                 >
-                  <Text style={[styles.optionText, active && styles.optionTextActive, disabled && styles.disabledText]}>
+                  <Text style={[styles.optionText, { color: active ? '#FFFFFF' : palette.labelSecondary }]}>
                     {t(item.label)}{selectedPrice ? ` ${itemCost || t('未开放')}` : ''}
                   </Text>
                 </TouchableOpacity>
@@ -357,40 +360,41 @@ export default function FlipScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.label, isDark && styles.textLight]}>{t('鸡腿数')}</Text>
-          {balance ? <Text style={[styles.balanceText, isDark && styles.textSub]}>{t('当前余额：{balance} 鸡腿', { balance })}</Text> : null}
+        <View style={[styles.section, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+          <Text style={[styles.label, { color: palette.label }]}>{t('鸡腿数')}</Text>
+          {balance ? <Text style={[styles.balanceText, { color: palette.labelSecondary }]}>{t('当前余额：{balance} 鸡腿', { balance })}</Text> : null}
           <TextInput
-            style={[styles.input, isDark && styles.inputDark]}
+            style={[styles.input, { backgroundColor: palette.surfaceGlass, borderColor: palette.hairline, color: palette.label }]}
             keyboardType="numeric"
             value={cost}
             onChangeText={setCost}
             placeholder={minCost ? t('最低 {min}', { min: minCost }) : t('先选择翻牌配置')}
-            placeholderTextColor="#5a5a5a"
+            placeholderTextColor={palette.labelTertiary}
           />
-          {minCost ? <Text style={styles.hint}>{t('当前最低：{min} 鸡腿', { min: minCost })}</Text> : null}
-          <TouchableOpacity style={styles.rechargeBtn} onPress={() => navigation.navigate('RechargeScreen')}>
-            <Text style={styles.rechargeText}>{t('鸡腿不足？去充值')}</Text>
+          {minCost ? <Text style={[styles.hint, { color: palette.labelTertiary }]}>{t('当前最低：{min} 鸡腿', { min: minCost })}</Text> : null}
+          <TouchableOpacity style={[styles.rechargeBtn, { backgroundColor: palette.tintSoft }]} onPress={() => navigation.navigate('RechargeScreen')}>
+            <MaterialCommunityIcons name="credit-card-outline" size={16} color={palette.tint} />
+            <Text style={[styles.rechargeText, { color: palette.tint }]}>{t('鸡腿不足？去充值')}</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.label, isDark && styles.textLight]}>{t('翻牌内容')}</Text>
+        <View style={[styles.section, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+          <Text style={[styles.label, { color: palette.label }]}>{t('翻牌内容')}</Text>
           <TextInput
-            style={[styles.textArea, isDark && styles.inputDark]}
+            style={[styles.textArea, { backgroundColor: palette.surfaceGlass, borderColor: palette.hairline, color: palette.label }]}
             placeholder={t('输入你想提问的内容...')}
-            placeholderTextColor="#5a5a5a"
+            placeholderTextColor={palette.labelTertiary}
             multiline
             value={content}
             onChangeText={setContent}
             maxLength={200}
             textAlignVertical="top"
           />
-          <Text style={styles.hint}>{t('{len}/200', { len: content.length })}</Text>
-          <TouchableOpacity style={[styles.sendBtn, loading && styles.disabledBtn]} onPress={sendFlip} disabled={loading}>
+          <Text style={[styles.hint, { color: palette.labelTertiary }]}>{t('{len}/200', { len: content.length })}</Text>
+          <TouchableOpacity style={[styles.sendBtn, { backgroundColor: palette.tint }, loading && styles.disabledBtn]} onPress={sendFlip} disabled={loading}>
             <Text style={styles.sendBtnText}>{loading ? t('发送中...') : t('发送翻牌')}</Text>
           </TouchableOpacity>
-          {status ? <Text style={styles.statusText}>{status}</Text> : null}
+          {status ? <Text style={[styles.statusText, { color: palette.tint }]}>{status}</Text> : null}
         </View>
         </FadeInView>
       </ScrollView>
@@ -404,7 +408,7 @@ export default function FlipScreen() {
           <Text style={styles.actionBtn}>{t('发送翻牌')}</Text>
         </TouchableOpacity>
       } />
-      {status ? <Text style={styles.statusText}>{status}</Text> : null}
+      {status ? <Text style={[styles.statusText, { color: palette.tint }]}>{status}</Text> : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={flips}
@@ -434,26 +438,30 @@ export default function FlipScreen() {
             const elapsedStr = elapsed > 0 ? t('耗时 {time}', { time: `${elapsedDays > 0 ? t('{m}天', { m: elapsedDays }) : ''}${elapsedHours > 0 ? t('{m}小时', { m: elapsedHours }) : ''}${t('{m}分', { m: elapsedMinutes })}` }) : '';
             return (
               <FadeInView delay={80 + index * 30} duration={300}>
-                <View style={[styles.card, isDark && styles.cardDark]}>
+                <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
                   <View style={styles.cardTop}>
-                    <Text style={styles.cardDate}>{formatTimestamp(item.qtime || item.createTime)}</Text>
+                    <Text style={[styles.cardDate, { color: palette.tint }]}>{formatTimestamp(item.qtime || item.createTime)}</Text>
                     <View style={styles.tagRow}>
-                      <Text style={styles.typeTag}>{t(answerTypeLabel(item.answerType))}</Text>
-                      <Text style={styles.privacyTag}>{t(privacyLabel(item.type))}</Text>
+                      <View style={[styles.typeTag, { backgroundColor: palette.tintSoft }]}>
+                        <Text style={[styles.typeTagText, { color: palette.tint }]}>{t(answerTypeLabel(item.answerType))}</Text>
+                      </View>
+                      <View style={[styles.privacyTag, { backgroundColor: palette.fill2 }]}>
+                        <Text style={[styles.privacyTagText, { color: palette.labelSecondary }]}>{t(privacyLabel(item.type))}</Text>
+                      </View>
                     </View>
                   </View>
-                  <Text style={[styles.memberName, isDark && styles.textLight]}>{memberName(item, t('成员'))}</Text>
-                  <Text style={[styles.cardQ, isDark && styles.textLight]}>{t('问：{text}', { text: questionText(item) || t('未返回问题内容') })}</Text>
+                  <Text style={[styles.memberName, { color: palette.label }]}>{memberName(item, t('成员'))}</Text>
+                  <Text style={[styles.cardQ, { color: palette.label }]}>{t('问：{text}', { text: questionText(item) || t('未返回问题内容') })}</Text>
                   {answer ? (
                     <>
-                      <Text style={[styles.cardA, isDark && styles.textSub]}>{t('答：{text}', { text: answer })}</Text>
+                      <Text style={[styles.cardA, { color: palette.labelSecondary }]}>{t('答：{text}', { text: answer })}</Text>
                       {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
-                        <View style={[styles.answerMediaCard, isDark && styles.answerMediaCardDark]}>
+                        <View style={styles.answerMediaCard}>
                           <TouchableOpacity
-                            style={styles.answerMediaBtn}
+                            style={[styles.answerMediaBtn, { backgroundColor: palette.tint }]}
                             onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
                           >
-                            <Text style={styles.answerMediaBtnText}>{playingAnswerUrl === answerUrl ? t('收起') : `▶ ${ansDur > 0 ? (ansDur < 60 ? `${ansDur}s` : `${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`) : (flipAnswerType === 2 ? t('语音') : t('视频'))}`}</Text>
+                            <Text style={styles.answerMediaBtnText}>{playingAnswerUrl === answerUrl ? t('收起') : `${ansDur > 0 ? (ansDur < 60 ? `${ansDur}s` : `${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`) : (flipAnswerType === 2 ? t('语音') : t('视频'))}`}</Text>
                           </TouchableOpacity>
                           {playingAnswerUrl === answerUrl ? (
                             <Video
@@ -469,9 +477,9 @@ export default function FlipScreen() {
                       ) : null}
                     </>
                   ) : (
-                    <Text style={styles.cardPending}>{t(statusLabel(item.status))}</Text>
+                    <Text style={[styles.cardPending, { color: palette.tint }]}>{t(statusLabel(item.status))}</Text>
                   )}
-                  <Text style={styles.cardMeta}>
+                  <Text style={[styles.cardMeta, { color: palette.labelTertiary }]}>
                     {t('{cost} 鸡腿', { cost: item.cost || 0 })}
                     {remainingStr ? ` · ${remainingStr}` : ''}
                     {elapsedStr ? ` · ${elapsedStr}` : ''}
@@ -488,7 +496,7 @@ export default function FlipScreen() {
             loadFlips(nextPage);
           }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={loading ? <CenterSpinner dark={isDark} text={t('加载中…')} /> : !status ? <Text style={styles.empty}>{t('暂无翻牌记录')}</Text> : null}
+          ListEmptyComponent={loading ? <CenterSpinner dark={isDark} text={t('加载中…')} /> : !status ? <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无翻牌记录')}</Text> : null}
         />
       </FadeInView>
     </View>
@@ -499,57 +507,49 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   actionBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
-  section: { padding: 16 },
-  label: { fontSize: 16, fontWeight: '800', color: '#333', marginBottom: 10 },
+  section: { padding: 14, marginHorizontal: 16, marginVertical: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  label: { fontSize: 15, fontWeight: '800', marginBottom: 10 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  optionChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, backgroundColor: '#FFFFFF' },
-  optionChipDark: { backgroundColor: '#1C1C1F' },
-  optionChipActive: { backgroundColor: '#ff6f91' },
+  optionChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 16 },
   optionDisabled: { opacity: 0.45 },
-  optionText: { fontSize: 13, color: '#444', fontWeight: '700' },
-  optionTextActive: { color: '#fff' },
-  disabledText: { color: '#333333' },
+  optionText: { fontSize: 13, fontWeight: '700' },
   input: {
     padding: 12,
-    borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: '#FFFFFF',
-    color: '#333',
+    borderRadius: 14, borderWidth: StyleSheet.hairlineWidth,
     fontSize: 14,
+    marginBottom: 4,
   },
-  inputDark: { backgroundColor: '#1C1C1F', borderColor: '#444', color: '#ddd' },
   textArea: {
     minHeight: 120,
     padding: 12,
-    borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: '#FFFFFF',
-    color: '#333',
+    borderRadius: 14, borderWidth: StyleSheet.hairlineWidth,
     fontSize: 14,
   },
-  sendBtn: { marginTop: 12, padding: 14, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center' },
-  rechargeBtn: { marginTop: 10, padding: 12, borderRadius: 18, backgroundColor: '#fff0f4', alignItems: 'center' },
-  rechargeText: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
+  sendBtn: { marginTop: 12, padding: 14, borderRadius: 18, alignItems: 'center' },
+  rechargeBtn: { marginTop: 10, padding: 12, borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  rechargeText: { fontSize: 13, fontWeight: '800' },
   disabledBtn: { opacity: 0.65 },
   sendBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  hint: { marginTop: 8, color: '#333333', fontSize: 12 },
-  balanceText: { marginBottom: 8, color: '#333333', fontSize: 13, fontWeight: '700' },
-  statusText: { margin: 12, color: '#ff6f91', textAlign: 'center', fontSize: 13 },
-  card: { padding: 14, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginVertical: 6, borderRadius: 16 },
-  cardDark: { backgroundColor: '#1C1C1F' },
+  hint: { marginTop: 8, fontSize: 12 },
+  balanceText: { marginBottom: 8, fontSize: 13, fontWeight: '700' },
+  statusText: { margin: 12, textAlign: 'center', fontSize: 13 },
+  card: { padding: 14, marginHorizontal: 16, marginVertical: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  cardDate: { fontSize: 11, color: '#333333' },
+  cardDate: { fontSize: 11, fontWeight: '700' },
   tagRow: { flexDirection: 'row', gap: 6 },
-  typeTag: { fontSize: 11, color: '#ff6f91', fontWeight: '800', backgroundColor: '#ff6f9115', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  privacyTag: { fontSize: 11, color: '#13a8a8', fontWeight: '800', backgroundColor: '#13c2c215', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  memberName: { fontSize: 13, color: '#333', fontWeight: '800', marginBottom: 8 },
-  cardQ: { fontSize: 14, color: '#333', marginBottom: 8, lineHeight: 20 },
-  cardA: { fontSize: 13, color: '#444', lineHeight: 20, marginBottom: 6 },
+  typeTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  typeTagText: { fontSize: 11, fontWeight: '800' },
+  privacyTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  privacyTagText: { fontSize: 11, fontWeight: '800' },
+  memberName: { fontSize: 13, fontWeight: '800', marginBottom: 8 },
+  cardQ: { fontSize: 14, marginBottom: 8, lineHeight: 20 },
+  cardA: { fontSize: 13, lineHeight: 20, marginBottom: 6 },
   answerMediaCard: { marginTop: 4, marginBottom: 8 },
-  answerMediaCardDark: { backgroundColor: '#1C1C1F' },
-  answerMediaBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: '#ff6f91' },
+  answerMediaBtn: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
   answerMediaBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   answerAudio: { height: 52, marginTop: 8, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 12 },
   answerVideo: { height: 190, marginTop: 8, backgroundColor: '#000', borderRadius: 12 },
-  cardPending: { fontSize: 13, color: '#c58a00' },
-  cardMeta: { fontSize: 11, color: '#ff6f91', marginTop: 6 },
-  empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
-  textLight: { color: '#eee' },
-  textSub: { color: '#eeeeee' },
+  cardPending: { fontSize: 13, fontWeight: '700' },
+  cardMeta: { fontSize: 11, marginTop: 6 },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
 });

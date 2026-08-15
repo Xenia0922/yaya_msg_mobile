@@ -12,12 +12,13 @@ import { useSettingsStore, useMemberStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { unwrapList } from '../utils/data';
 import { loadMembers } from '../utils/members';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function DatabaseScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const setStoreMembers = useMemberStore((s) => s.setMembers);
   const storeMembers = useMemberStore((s) => s.members);
@@ -59,16 +60,40 @@ export default function DatabaseScreen() {
     return () => { alive = false; };
   }, []);
 
+  const memberCount = storeMembers.length;
+
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('数据库')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity onPress={reloadWebView}>
-          <Text style={styles.headerAction}>{t('刷新')}</Text>
+          <Text style={[styles.headerAction, { color: palette.tint }]}>{t('刷新')}</Text>
         </TouchableOpacity>
         } />
+
+      <View
+        style={[
+          styles.summaryRow,
+          {
+            backgroundColor: palette.surface,
+            borderColor: palette.hairline,
+          },
+        ]}
+      >
+        <View style={[styles.summaryIcon, { backgroundColor: palette.tintSoft }]}>
+          <MaterialCommunityIcons name="database-outline" size={20} color={palette.tint} />
+        </View>
+        <View style={styles.summaryInfo}>
+          <Text style={[styles.summaryTitle, { color: palette.label }]}>{t('成员数据库')}</Text>
+          <Text style={[styles.summarySub, { color: palette.labelSecondary }]}>
+            {t('当前 {count} 位成员', { count: memberCount })}
+          </Text>
+        </View>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
+      </View>
+
       {webError ? (
         <View style={styles.errorWrap}>
-          <Text style={styles.errorText}>{webError}</Text>
+          <Text style={[styles.errorText, { color: palette.tint }]}>{webError}</Text>
         </View>
       ) : null}
       <WebView
@@ -100,8 +125,26 @@ export default function DatabaseScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
   headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginVertical: 8,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  summaryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryInfo: { flex: 1, marginLeft: 12, minWidth: 0 },
+  summaryTitle: { fontSize: 15, fontWeight: '700' },
+  summarySub: { fontSize: 12, marginTop: 3 },
   webview: { flex: 1 },
   errorWrap: { padding: 40, alignItems: 'center' },
   errorText: { color: '#ff6f91', fontSize: 14 },

@@ -19,6 +19,7 @@ import { Member } from '../types';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 
 type MessageMode = 'all' | 'owner';
 type RoomMode = 'big' | 'small';
@@ -50,6 +51,7 @@ function getChannelId(member: Member, roomMode: RoomMode): string {
 export default function FetchScreen() {
   const navigation = useNavigation();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [messageMode, setMessageMode] = useState<MessageMode>('all');
@@ -105,33 +107,33 @@ export default function FetchScreen() {
       <ScreenHeader title={t('抓取消息')} />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <View style={[styles.section, isDark && styles.sectionDark]}>
+        <View style={[styles.section, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
           <MemberPicker selectedMember={selectedMember} onSelect={setSelectedMember} />
         </View>
 
-        <View style={[styles.section, isDark && styles.sectionDark]}>
+        <View style={[styles.section, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
           <View style={styles.row}>
-            <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, messageMode === 'all' && styles.modeBtnActive]} onPress={() => setMessageMode('all')}>
-              <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'all' && styles.modeTextActive]}>{t('全部消息')}</Text>
+            <TouchableOpacity style={[styles.modeBtn, { backgroundColor: messageMode === 'all' ? palette.tint : palette.fill2 }]} onPress={() => setMessageMode('all')}>
+              <Text style={[styles.modeText, { color: messageMode === 'all' ? '#FFFFFF' : palette.labelSecondary }]}>{t('全部消息')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, messageMode === 'owner' && styles.modeBtnActive]} onPress={() => setMessageMode('owner')}>
-              <Text style={[styles.modeText, isDark && styles.textDark, messageMode === 'owner' && styles.modeTextActive]}>{t('成员消息')}</Text>
+            <TouchableOpacity style={[styles.modeBtn, { backgroundColor: messageMode === 'owner' ? palette.tint : palette.fill2 }]} onPress={() => setMessageMode('owner')}>
+              <Text style={[styles.modeText, { color: messageMode === 'owner' ? '#FFFFFF' : palette.labelSecondary }]}>{t('成员消息')}</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.row}>
-            <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, roomMode === 'big' && styles.modeBtnActive]} onPress={() => setRoomMode('big')}>
-              <Text style={[styles.modeText, isDark && styles.textDark, roomMode === 'big' && styles.modeTextActive]}>{t('大房间')}</Text>
+            <TouchableOpacity style={[styles.modeBtn, { backgroundColor: roomMode === 'big' ? palette.tint : palette.fill2 }]} onPress={() => setRoomMode('big')}>
+              <Text style={[styles.modeText, { color: roomMode === 'big' ? '#FFFFFF' : palette.labelSecondary }]}>{t('大房间')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modeBtn, isDark && styles.modeBtnDark, roomMode === 'small' && styles.modeBtnActive]} onPress={() => setRoomMode('small')}>
-              <Text style={[styles.modeText, isDark && styles.textDark, roomMode === 'small' && styles.modeTextActive]}>{t('小房间')}</Text>
+            <TouchableOpacity style={[styles.modeBtn, { backgroundColor: roomMode === 'small' ? palette.tint : palette.fill2 }]} onPress={() => setRoomMode('small')}>
+              <Text style={[styles.modeText, { color: roomMode === 'small' ? '#FFFFFF' : palette.labelSecondary }]}>{t('小房间')}</Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={[styles.fetchBtn, loading && styles.fetchBtnDisabled]} onPress={startFetch} disabled={loading}>
+          <TouchableOpacity style={[styles.fetchBtn, { backgroundColor: palette.tint }, loading && styles.fetchBtnDisabled]} onPress={startFetch} disabled={loading}>
             <Text style={styles.fetchBtnText}>{loading ? t('抓取中...') : t('开始抓取')}</Text>
           </TouchableOpacity>
-          {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text> : null}
+          {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
         </View>
 
         <PerfFlatList
@@ -143,17 +145,17 @@ export default function FetchScreen() {
           removeClippedSubviews
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300}>
-              <View style={[styles.msgItem, isDark && styles.msgItemDark]}>
-                <Text style={[styles.msgTime, isDark && styles.textSubDark]}>
+              <View style={[styles.msgItem, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>
                   {formatTimestamp(item.msgTime || item.time || item.ctime)}
                 </Text>
-                <Text style={[styles.msgText, isDark && styles.textDark]}>
+                <Text style={[styles.msgText, { color: palette.label }]}>
                   {(item.senderName || item.senderNickName || item.extInfo?.user?.nickName || t('成员'))}: {messageText(item) || t('[空消息]')}
                 </Text>
               </View>
             </FadeInView>
           )}
-          ListEmptyComponent={!loading ? <Text style={[styles.empty, isDark && styles.textDark]}>{t('暂无数据')}</Text> : null}
+          ListEmptyComponent={!loading ? <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无数据')}</Text> : null}
         />
       </FadeInView>
     </View>
@@ -163,23 +165,16 @@ export default function FetchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  section: { padding: 16 },
-  sectionDark: { backgroundColor: '#1C1C1F' },
+  section: { padding: 14, marginHorizontal: 16, marginVertical: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
   row: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 18, backgroundColor: 'rgba(238,238,238,0.82)', alignItems: 'center' },
-  modeBtnDark: { backgroundColor: '#1C1C1F' },
-  modeBtnActive: { backgroundColor: '#ff6f91' },
-  modeText: { fontSize: 13, color: '#444', fontWeight: '700' },
-  modeTextActive: { color: '#fff' },
-  fetchBtn: { padding: 14, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center' },
+  modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, alignItems: 'center' },
+  modeText: { fontSize: 13, fontWeight: '700' },
+  fetchBtn: { padding: 14, borderRadius: 18, alignItems: 'center' },
   fetchBtnDisabled: { opacity: 0.5 },
   fetchBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  status: { marginTop: 10, textAlign: 'center', color: '#444', fontSize: 13, lineHeight: 18 },
-  msgItem: { padding: 10, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginVertical: 3, borderRadius: 18 },
-  msgItemDark: { backgroundColor: '#1C1C1F' },
-  msgTime: { fontSize: 11, color: '#333333', marginBottom: 4 },
-  msgText: { fontSize: 13, color: '#333', lineHeight: 18 },
-  textDark: { color: '#eee' },
-  textSubDark: { color: '#eeeeee' },
-  empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
+  status: { marginTop: 10, textAlign: 'center', fontSize: 13, lineHeight: 18 },
+  msgItem: { padding: 12, marginHorizontal: 16, marginVertical: 4, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  msgTime: { fontSize: 11, marginBottom: 4 },
+  msgText: { fontSize: 13, lineHeight: 18 },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
 });

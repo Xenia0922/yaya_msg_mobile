@@ -13,10 +13,12 @@ import { FadeInView } from '../components/Motion';
 import { errorMessage, pickText } from '../utils/data';
 import pocketApi from '../api/pocket48';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 
 export default function RoomRadioScreen() {
   const navigation = useNavigation();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [radioUrl, setRadioUrl] = useState('');
@@ -63,29 +65,29 @@ export default function RoomRadioScreen() {
         <View style={styles.pickerWrap}>
           <MemberPicker selectedMember={selectedMember} onSelect={startRadio} placeholder={t('选择成员获取上麦音频...')} />
           <View style={styles.modeRow}>
-            <TouchableOpacity style={[styles.modePill, roomMode === 'big' && styles.modePillActive]} onPress={() => { setRoomMode('big'); if (selectedMember) startRadio(selectedMember); }}>
-              <Text style={[styles.modePillText, roomMode === 'big' && styles.modePillTextActive]}>{t('大房间')}</Text>
+            <TouchableOpacity style={[styles.modePill, { backgroundColor: roomMode === 'big' ? palette.tint : palette.fill2 }]} onPress={() => { setRoomMode('big'); if (selectedMember) startRadio(selectedMember); }}>
+              <Text style={[styles.modePillText, { color: roomMode === 'big' ? '#FFFFFF' : palette.labelSecondary }]}>{t('大房间')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modePill, roomMode === 'small' && styles.modePillActive]} onPress={() => { setRoomMode('small'); if (selectedMember) startRadio(selectedMember); }}>
-              <Text style={[styles.modePillText, roomMode === 'small' && styles.modePillTextActive]}>{t('小房间')}</Text>
+            <TouchableOpacity style={[styles.modePill, { backgroundColor: roomMode === 'small' ? palette.tint : palette.fill2 }]} onPress={() => { setRoomMode('small'); if (selectedMember) startRadio(selectedMember); }}>
+              <Text style={[styles.modePillText, { color: roomMode === 'small' ? '#FFFFFF' : palette.labelSecondary }]}>{t('小房间')}</Text>
             </TouchableOpacity>
           </View>
         </View>
-        <View style={[styles.playerCard, isDark && styles.playerCardDark]}>
-          <Text style={[styles.playerTitle, isDark && styles.textDark]}>{selectedMember?.ownerName || t('暂无数据')}</Text>
-          <Text style={[styles.playerStatus, isDark && styles.textSubDark]}>{loading ? '' : status || t('暂无电台地址')}</Text>
+        <View style={[styles.playerCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+          <Text style={[styles.playerTitle, { color: palette.label }]}>{selectedMember?.ownerName || t('暂无数据')}</Text>
+          <Text style={[styles.playerStatus, { color: palette.labelSecondary }]}>{loading ? '' : status || t('暂无电台地址')}</Text>
 
           {radioUrl ? (
             <>
               <View style={styles.controlsRow}>
-                <TouchableOpacity style={styles.ctrlBtn} onPress={playing ? stopRadio : () => setPlaying(true)}>
+                <TouchableOpacity style={[styles.ctrlBtn, { backgroundColor: palette.tint }]} onPress={playing ? stopRadio : () => setPlaying(true)}>
                   <Text style={styles.ctrlBtnText}>{playing ? t('停止') : t('播放')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.ctrlBtn, styles.ctrlBtnGhost]} onPress={() => setMuted(v => !v)}>
-                  <Text style={[styles.ctrlBtnGhostText, isDark && { color: '#ddd' }]}>{muted ? t('已静音') : t('静音')}</Text>
+                <TouchableOpacity style={[styles.ctrlBtn, styles.ctrlBtnGhost, { backgroundColor: palette.fill2 }]} onPress={() => setMuted(v => !v)}>
+                  <Text style={[styles.ctrlBtnGhostText, { color: palette.label }]}>{muted ? t('已静音') : t('静音')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.ctrlBtn, styles.ctrlBtnGhost]} onPress={() => startRadio(selectedMember!)}>
-                  <Text style={[styles.ctrlBtnGhostText, isDark && { color: '#ddd' }]}>{t('刷新')}</Text>
+                <TouchableOpacity style={[styles.ctrlBtn, styles.ctrlBtnGhost, { backgroundColor: palette.fill2 }]} onPress={() => startRadio(selectedMember!)}>
+                  <Text style={[styles.ctrlBtnGhostText, { color: palette.label }]}>{t('刷新')}</Text>
                 </TouchableOpacity>
               </View>
               {playing ? (
@@ -104,7 +106,7 @@ export default function RoomRadioScreen() {
               ) : null}
             </>
           ) : selectedMember ? (
-            <TouchableOpacity style={styles.playBtn} onPress={() => startRadio(selectedMember)}>
+            <TouchableOpacity style={[styles.playBtn, { backgroundColor: palette.tint }]} onPress={() => startRadio(selectedMember)}>
               <Text style={styles.playBtnText}>{t('刷新')}</Text>
             </TouchableOpacity>
           ) : null}
@@ -118,24 +120,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   pickerWrap: { padding: 16 },
-  playerCard: { margin: 16, padding: 20, backgroundColor: '#FFFFFF', borderRadius: 18, alignItems: 'center' },
-  playerCardDark: { backgroundColor: '#1C1C1F' },
-  playerTitle: { fontSize: 18, fontWeight: '600', color: '#333', marginBottom: 8 },
-  playerStatus: { fontSize: 13, color: '#333333', marginBottom: 16, textAlign: 'center' },
+  playerCard: { margin: 16, padding: 20, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center' },
+  playerTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  playerStatus: { fontSize: 13, marginBottom: 16, textAlign: 'center' },
   controlsRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  ctrlBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91' },
-  ctrlBtnGhost: { backgroundColor: 'rgba(0,0,0,0.06)' },
+  ctrlBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18 },
+  ctrlBtnGhost: {},
   ctrlBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  ctrlBtnGhostText: { color: '#555', fontWeight: '700', fontSize: 13 },
-  playBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 18, backgroundColor: '#ff6f91' },
-  playBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-  fontStyle: { fontStyle: 'italic' },
+  ctrlBtnGhostText: { fontWeight: '700', fontSize: 13 },
+  playBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 18 },
+  playBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   modeRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 12 },
-  modePill: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.06)' },
-  modePillActive: { backgroundColor: '#ff6f91' },
-  modePillText: { fontSize: 12, color: '#555', fontWeight: '700' },
-  modePillTextActive: { color: '#fff' },
+  modePill: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 14 },
+  modePillText: { fontSize: 12, fontWeight: '700' },
   hiddenPlayer: { position: 'absolute', width: 1, height: 1, opacity: 0 },
-  textDark: { color: '#eee' },
-  textSubDark: { color: '#eeeeee' },
 });

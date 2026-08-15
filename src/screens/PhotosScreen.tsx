@@ -16,6 +16,7 @@ import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data'
 import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 
 function normalizeImageUrl(value: any): string {
@@ -91,6 +92,7 @@ function deepFindImageUrl(value: any, depth = 0): string {
 export default function PhotosScreen() {
   const navigation = useNavigation();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -164,36 +166,39 @@ export default function PhotosScreen() {
   const renderPhotoItem = useCallback(({ item, index }: { item: any; index: number }) => {
     const url = photoUrls[index] || deepFindImageUrl(item);
     const delay = index < 12 ? 80 + index * 30 : 0;
+    const title = item?.name || item?.title || '';
     return (
       <FadeInView delay={delay} duration={300} style={{ flex: 1 }}>
-        <View style={[styles.photoCard, isDark && styles.photoCardDark]}>
+        <View style={[styles.photoCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
           {url ? (
             <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadPhoto(url)}>
-              <NetworkImage source={{ uri: url }} style={styles.photo} resizeMode="cover" />
+              <NetworkImage source={{ uri: url }} style={[styles.photo, { backgroundColor: palette.fill3 }]} resizeMode="cover" />
             </TouchableOpacity>
-          ) : <View style={styles.photo} />}
-          <Text style={[styles.photoTitle, isDark && styles.textDark]} numberOfLines={1}>{item.name || item.title || ''}</Text>
+          ) : <View style={[styles.photo, { backgroundColor: palette.fill3 }]} />}
+          {title ? (
+            <Text style={[styles.photoTitle, { color: palette.labelSecondary }]} numberOfLines={1}>{title}</Text>
+          ) : null}
         </View>
       </FadeInView>
     );
-  }, [downloadPhoto, isDark, photoUrls]);
+  }, [downloadPhoto, palette, photoUrls]);
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('个人相册')} />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.pickerWrap}>
           <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
-          {status ? <Text style={[styles.status, isDark && styles.textDark]}>{status}</Text> : null}
+          {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
         </View>
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
         <PerfFlatList
           data={photos}
           numColumns={2}
           keyExtractor={(item, index) => String(item.id || item.nftId || index)}
-          contentContainerStyle={{ padding: 8 }}
+          contentContainerStyle={styles.list}
           renderItem={renderPhotoItem}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textDark]}>{loading ? '' : t('暂无图片')}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{loading ? '' : t('暂无图片')}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
@@ -206,13 +211,11 @@ export default function PhotosScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
   pickerWrap: { padding: 16 },
-  status: { marginTop: 8, color: '#444', fontSize: 12 },
-  photoCard: { flex: 1, margin: 4, backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden' },
-  photoCardDark: { backgroundColor: '#1C1C1F' },
-  photo: { width: '100%', aspectRatio: 1, backgroundColor: 'rgba(221,221,221,0.82)' },
-  photoTitle: { fontSize: 11, padding: 4, color: '#444', textAlign: 'center' },
-  textDark: { color: '#eee' },
-  empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
+  status: { marginTop: 8, fontSize: 12 },
+  list: { padding: 10, paddingBottom: 40 },
+  photoCard: { flex: 1, margin: 4, borderRadius: 16, overflow: 'hidden' },
+  photo: { width: '100%', aspectRatio: 1 },
+  photoTitle: { fontSize: 11, padding: 8, textAlign: 'center' },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
 });

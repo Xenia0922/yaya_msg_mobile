@@ -18,6 +18,8 @@ import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
 import {
   clearFinishedDownloads,
@@ -49,9 +51,19 @@ function typeLabel(type: DownloadItem['type']) {
   return '文件';
 }
 
+function typeIcon(type: DownloadItem['type']): string {
+  if (type === 'image') return 'image';
+  if (type === 'video') return 'video';
+  if (type === 'audio') return 'music';
+  if (type === 'voice') return 'microphone';
+  if (type === 'replay') return 'replay';
+  return 'file';
+}
+
 export default function DownloadScreen() {
   const navigation = useNavigation<Nav>();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
   const [items, setItems] = useState<DownloadItem[]>([]);
@@ -108,25 +120,31 @@ export default function DownloadScreen() {
     refresh();
   };
 
+  const doneCount = items.filter((item) => item.status === 'done').length;
+
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('下载管理')} right={
-        <TouchableOpacity onPress={clearDone}>
-          <Text style={styles.clearBtn}>{t('清理完成')}</Text>
+        <TouchableOpacity onPress={clearDone} disabled={doneCount === 0}>
+          <Text style={[styles.clearBtn, { color: doneCount === 0 ? palette.labelTertiary : palette.tint }]}>{t('清理完成')}</Text>
         </TouchableOpacity>
       } />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <View style={[styles.manualCard, isDark && styles.cardDark]}>
+        <View style={[styles.manualCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <View style={styles.manualHead}>
+            <MaterialCommunityIcons name="link-variant" size={18} color={palette.tint} />
+            <Text style={[styles.manualTitle, { color: palette.label }]}>{t('手动添加下载')}</Text>
+          </View>
           <TextInput
-            style={[styles.urlInput, isDark && styles.urlInputDark]}
+            style={[styles.urlInput, { backgroundColor: palette.fill2, color: palette.label, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
             placeholder={t('粘贴图片、语音、视频或录播地址')}
-            placeholderTextColor={isDark ? '#aaaaaa' : '#666666'}
+            placeholderTextColor={palette.labelTertiary}
             value={url}
             onChangeText={setUrl}
             autoCapitalize="none"
           />
-          <TouchableOpacity style={[styles.addBtn, busy && styles.btnDisabled]} onPress={startManualDownload} disabled={busy}>
+          <TouchableOpacity style={[styles.addBtn, { backgroundColor: palette.tint }, busy && styles.btnDisabled]} onPress={startManualDownload} disabled={busy}>
             <Text style={styles.addBtnText}>{busy ? t('下载中') : t('添加下载')}</Text>
           </TouchableOpacity>
         </View>
@@ -135,37 +153,36 @@ export default function DownloadScreen() {
           data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无下载项目')}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无下载项目')}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
           renderItem={({ item, index }) => (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-              <View style={[styles.task, isDark && styles.cardDark]}>
-                <View style={styles.taskHead}>
-                  <Text style={[styles.typeTag, isDark && styles.typeTagDark]}>{t(typeLabel(item.type))}</Text>
-                  <Text style={[styles.taskName, isDark && styles.textLight]} numberOfLines={1}>{item.name}</Text>
+              <View style={[styles.task, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+                <View style={[styles.taskIconWrap, { backgroundColor: palette.tintSoft }]}>
+                  <MaterialCommunityIcons name={typeIcon(item.type)} size={20} color={palette.tint} />
                 </View>
-                <View style={styles.progressBar}>
-                  <View style={[
-                    styles.progressFill,
-                    item.status === 'failed' && styles.progressFailed,
-                    { width: `${Math.round((item.progress || 0) * 100)}%` },
-                  ]} />
-                </View>
-                <View style={styles.taskMeta}>
-                  <Text style={[styles.taskStatus, isDark && styles.textSubLight]}>
+                <View style={styles.taskBody}>
+                  <Text style={[styles.taskName, { color: palette.label }]} numberOfLines={1}>{item.name}</Text>
+                  <Text style={[styles.taskSub, { color: palette.labelTertiary }]} numberOfLines={1}>
+                    {t(typeLabel(item.type))}
+                  </Text>
+                  <View style={[styles.progressTrack, { backgroundColor: palette.fill2 }]}>
+                    <View style={[styles.progressFill, { backgroundColor: item.status === 'failed' ? palette.danger : palette.tint, width: `${Math.round((item.progress || 0) * 100)}%` }]} />
+                  </View>
+                  <Text style={[styles.taskStatus, { color: palette.labelSecondary }]} numberOfLines={1}>
                     {item.status === 'done' ? t('完成') : item.status === 'failed' ? t('失败：{msg}', { msg: item.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(item.downloadedBytes), total: formatBytes(item.totalBytes) })}
                   </Text>
-                  <View style={styles.taskActions}>
-                    <TouchableOpacity onPress={() => handleOpen(item).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))}>
-                      <Text style={styles.actionText}>{t('打开')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => remove(item.id)}>
-                      <Text style={[styles.actionText, styles.deleteText]}>{t('删除')}</Text>
-                    </TouchableOpacity>
-                  </View>
+                </View>
+                <View style={styles.taskActions}>
+                  <TouchableOpacity onPress={() => handleOpen(item).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))} style={styles.actionBtn}>
+                    <MaterialCommunityIcons name="open-in-app" size={16} color={palette.tint} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => remove(item.id)} style={styles.actionBtn}>
+                    <MaterialCommunityIcons name="delete-outline" size={16} color={palette.danger} />
+                  </TouchableOpacity>
                 </View>
               </View>
             </FadeInView>
@@ -185,32 +202,33 @@ export default function DownloadScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  clearBtn: { color: '#ff6f91', fontSize: 13, minWidth: 54, textAlign: 'right' },
-  manualCard: { marginHorizontal: 14, marginBottom: 8, padding: 12, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
-  cardDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.14)' },
-  urlInput: { minHeight: 44, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#FFFFFF', color: '#222222', fontSize: 13 },
-  urlInputDark: { backgroundColor: 'rgba(255,255,255,0.10)', color: '#ffffff' },
-  addBtn: { marginTop: 10, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
+  clearBtn: { fontSize: 13, minWidth: 54, textAlign: 'right', fontWeight: '700' },
+  manualCard: { marginHorizontal: 16, marginBottom: 8, padding: 14, borderRadius: 16 },
+  manualHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  manualTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
+  urlInput: { minHeight: 44, paddingHorizontal: 14, borderRadius: 14, fontSize: 13 },
+  addBtn: { marginTop: 10, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   btnDisabled: { opacity: 0.55 },
-  addBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 14 },
-  list: { paddingHorizontal: 14, paddingBottom: 112 },
-  task: { marginVertical: 5, padding: 12, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.66)' },
-  taskHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  typeTag: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, backgroundColor: '#ff6f91', color: '#ffffff', fontSize: 11, fontWeight: '800', overflow: 'hidden' },
-  typeTagDark: { backgroundColor: '#ff6f91' },
-  taskName: { flex: 1, color: '#222222', fontWeight: '800', fontSize: 14 },
-  progressBar: { height: 5, marginVertical: 10, backgroundColor: 'rgba(0,0,0,0.10)', borderRadius: 4, overflow: 'hidden' },
-  progressFill: { height: 5, backgroundColor: '#ff6f91', borderRadius: 4 },
-  progressFailed: { backgroundColor: '#ff4444' },
-  taskMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  taskStatus: { flex: 1, color: '#555555', fontSize: 12 },
-  taskActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  actionText: { color: '#ff6f91', fontSize: 12, fontWeight: '800' },
-  deleteText: { color: '#ff4444' },
-  empty: { textAlign: 'center', marginTop: 60, color: '#555555' },
-  textLight: { color: '#ffffff' },
-  textSubLight: { color: '#dddddd' },
+  addBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
+  list: { padding: 4, paddingBottom: 112 },
+  task: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginVertical: 4,
+    padding: 12,
+    borderRadius: 16,
+  },
+  taskIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  taskBody: { flex: 1, marginLeft: 12, minWidth: 0 },
+  taskName: { fontSize: 15, fontWeight: '700' },
+  taskSub: { fontSize: 11, marginTop: 2 },
+  progressTrack: { height: 5, marginTop: 8, borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: 5, borderRadius: 4 },
+  taskStatus: { fontSize: 11, marginTop: 6 },
+  taskActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 10 },
+  actionBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
   imgModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
   imgFull: { width: '96%', height: '80%' },
 });

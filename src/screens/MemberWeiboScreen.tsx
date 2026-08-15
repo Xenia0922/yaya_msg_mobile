@@ -23,6 +23,8 @@ import { errorMessage, parseMaybeJson } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { Member } from '../types';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
 
 interface WbItem {
@@ -67,6 +69,7 @@ function normalizeItem(raw: any, index: number): WbItem | null {
 export default function MemberWeiboScreen() {
   const navigation = useNavigation<any>();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const [member, setMember] = useState<Member | null>(null);
   const [items, setItems] = useState<WbItem[]>([]);
@@ -98,28 +101,31 @@ export default function MemberWeiboScreen() {
 
   const renderItem = ({ item, index }: { item: WbItem; index: number }) => (
     <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-      <View style={[styles.card, isDark && styles.cardDark]}>
+      <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
         {item.ownerName ? (
           <View style={styles.ownerRow}>
-            {item.ownerAvatar ? <Image source={{ uri: item.ownerAvatar }} style={styles.ownerAvatar} /> : null}
-            <Text style={[styles.ownerName, isDark && styles.textLight]} numberOfLines={1}>{item.ownerName}</Text>
-            {item.time > 0 ? <Text style={[styles.ownerTime, isDark && styles.textSubLight]}>{formatTimestamp(item.time)}</Text> : null}
+            {item.ownerAvatar ? (
+              <Image source={{ uri: item.ownerAvatar }} style={[styles.ownerAvatar, { backgroundColor: palette.fill3 }]} />
+            ) : null}
+            <Text style={[styles.ownerName, { color: palette.labelSecondary }]} numberOfLines={1}>{item.ownerName}</Text>
+            {item.time > 0 ? <Text style={[styles.ownerTime, { color: palette.labelTertiary }]}>{formatTimestamp(item.time)}</Text> : null}
           </View>
         ) : null}
-        {item.title ? <Text style={[styles.wbTitle, isDark && styles.textLight]} numberOfLines={3}>{item.title}</Text> : null}
-        {item.content ? <Text style={[styles.wbContent, isDark && styles.textSubLight]} numberOfLines={12}>{item.content}</Text> : null}
+        {item.title ? <Text style={[styles.wbTitle, { color: palette.label }]} numberOfLines={3}>{item.title}</Text> : null}
+        {item.content ? <Text style={[styles.wbContent, { color: palette.labelSecondary }]} numberOfLines={12}>{item.content}</Text> : null}
         {item.imageUrls.length > 0 && (
           <View style={styles.imageGrid}>
             {item.imageUrls.slice(0, 9).map((url, idx) => (
               <TouchableOpacity key={idx} onPress={() => setZoomUrl(url)} activeOpacity={0.85}>
-                <Image source={{ uri: url }} style={styles.gridImage} resizeMode="cover" />
+                <Image source={{ uri: url }} style={[styles.gridImage, { backgroundColor: palette.fill3 }]} resizeMode="cover" />
               </TouchableOpacity>
             ))}
           </View>
         )}
         {item.jumpUrl ? (
-          <TouchableOpacity style={styles.linkBtn} onPress={() => Linking.openURL(item.jumpUrl)}>
-            <Text style={styles.linkBtnText}>{t('查看微博原文')}</Text>
+          <TouchableOpacity style={[styles.linkBtn, { backgroundColor: palette.fill2 }]} onPress={() => Linking.openURL(item.jumpUrl)}>
+            <MaterialCommunityIcons name="open-in-new" size={14} color={palette.tint} style={styles.linkIcon} />
+            <Text style={[styles.linkBtnText, { color: palette.tint }]}>{t('查看微博原文')}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -127,10 +133,10 @@ export default function MemberWeiboScreen() {
   );
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('成员微博')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity disabled={!member || loading} onPress={() => fetchData(true)}>
-          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
+          <Text style={[styles.headerAction, { color: palette.tint }, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
       <MemberPicker selectedMember={member} onSelect={setMember} placeholder={t('搜索成员查看微博...')} />
@@ -147,14 +153,14 @@ export default function MemberWeiboScreen() {
           onEndReachedThreshold={0.35}
           renderItem={renderItem}
           ListFooterComponent={
-            items.length ? <Text style={[styles.footer, isDark && styles.textSubLight]}>
+            items.length ? <Text style={[styles.footer, { color: palette.labelSecondary }]}>
               {loadingMore ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
             </Text> : null
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               {loading ? <CenterSpinner dark={isDark} /> : null}
-              <Text style={[styles.empty, isDark && styles.textSubLight]}>
+              <Text style={[styles.empty, { color: palette.labelSecondary }]}>
                 {loading ? '' : member ? (error ? error : t('暂无微博')) : t('请搜索选择成员查看微博')}
               </Text>
             </View>
@@ -168,29 +174,22 @@ export default function MemberWeiboScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
+  headerAction: { fontSize: 14, fontWeight: '800' },
   disabledText: { opacity: 0.45 },
-  list: { padding: 12, paddingBottom: 40 },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16, padding: 14, marginBottom: 10,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)',
-  },
-  cardDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.10)' },
+  list: { padding: 8, paddingBottom: 40 },
+  card: { borderRadius: 16, padding: 14, marginVertical: 4 },
   ownerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  ownerAvatar: { width: 26, height: 26, borderRadius: 13, marginRight: 8, backgroundColor: 'rgba(128,128,128,0.15)' },
-  ownerName: { fontSize: 14, fontWeight: '700', color: '#333333', flex: 1 },
-  ownerTime: { fontSize: 11, color: '#555555' },
-  wbTitle: { fontSize: 15, fontWeight: '800', color: '#333333', marginBottom: 6 },
-  wbContent: { fontSize: 13, color: '#555555', lineHeight: 20, marginBottom: 8 },
-  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 },
-  gridImage: { width: 100, height: 100, borderRadius: 10, backgroundColor: 'rgba(128,128,128,0.10)' },
-  linkBtn: { alignSelf: 'flex-start', backgroundColor: '#ff6f91', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 18 },
-  linkBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  footer: { textAlign: 'center', color: '#555555', fontSize: 12, paddingVertical: 10 },
+  ownerAvatar: { width: 28, height: 28, borderRadius: 14, marginRight: 8 },
+  ownerName: { fontSize: 12, fontWeight: '700', flex: 1 },
+  ownerTime: { fontSize: 11 },
+  wbTitle: { fontSize: 15, fontWeight: '700', marginBottom: 6, lineHeight: 21 },
+  wbContent: { fontSize: 13, lineHeight: 20, marginBottom: 8 },
+  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 10 },
+  gridImage: { width: 100, height: 100, borderRadius: 10 },
+  linkBtn: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 18 },
+  linkIcon: { marginRight: 2 },
+  linkBtnText: { fontSize: 12, fontWeight: '800' },
+  footer: { textAlign: 'center', fontSize: 12, paddingVertical: 10 },
   emptyWrap: { alignItems: 'center', paddingVertical: 60 },
-  empty: { color: '#555555', fontSize: 14, marginTop: 8 },
-  textLight: { color: '#ffffff' },
-  textSubLight: { color: '#dddddd' },
+  empty: { fontSize: 14, marginTop: 8 },
 });

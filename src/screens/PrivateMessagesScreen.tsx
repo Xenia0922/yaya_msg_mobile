@@ -22,7 +22,8 @@ import { formatTimestamp } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
 import { errorMessage, messagePayload, messageText, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 
 function convTargetId(conv: any): string {
@@ -278,7 +279,7 @@ function lowestPrice(item: any) { return Math.min(...[item.normalCost, item.priv
 
 export default function PrivateMessagesScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const members = useMemberStore((s) => s.members);
   const showToast = useUiStore((s) => s.showToast);
@@ -411,7 +412,7 @@ export default function PrivateMessagesScreen() {
   if (sel) {
     const targetId = convTargetId(sel);
     return (
-      <View style={[styles.screen, isDark && styles.screenDark]}>
+      <View style={[styles.screen, { backgroundColor: palette.background }]}>
         <ScreenHeader title={convName(sel)} onBack={() => setSel(null)} />
         <PerfFlatList
           ref={flatRef}
@@ -433,50 +434,80 @@ export default function PrivateMessagesScreen() {
             return (
               <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <View style={[styles.msgRow, mine && styles.msgRowMine]}>
-                  <View style={[styles.bubble, mine && styles.bubbleMine, isDark && !mine && styles.bubbleDark]}>
-                    {hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>{txt}</Text> : null}
+                  <View
+                    style={[
+                      styles.bubble,
+                      mine ? styles.bubbleMine : styles.bubbleOther,
+                      { borderColor: mine ? 'transparent' : palette.hairline },
+                    ]}
+                  >
+                    {hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, !mine && { color: palette.label }]}>{txt}</Text> : null}
                     {media ? (
                       media.type === 'image' ? (
                         <Image source={{ uri: media.url }} style={styles.inlineImg} resizeMode="cover" />
                       ) : (
-                        <TouchableOpacity style={styles.mediaBtn} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
-                          <Text style={[styles.mediaBtnText, mine && styles.msgTextMine]}>{playUrl === media.url ? t('收起') : `▶ ${mediaLabel}`}</Text>
+                        <TouchableOpacity style={[styles.mediaBtn, { backgroundColor: palette.fill2 }]} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
+                          <Text style={[styles.mediaBtnText, mine && styles.msgTextMine, !mine && { color: palette.tint }]}>{playUrl === media.url ? t('收起') : `${mediaLabel}`}</Text>
+                          {playUrl !== media.url ? <MaterialCommunityIcons name="play" size={14} color={mine ? '#FFFFFF' : palette.tint} style={{ marginLeft: 4 }} /> : null}
                         </TouchableOpacity>
                       )
-                    ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, isDark && !mine && styles.light]}>{t('[空消息]')}</Text> : null}
+                    ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, !mine && { color: palette.label }]}>{t('[空消息]')}</Text> : null}
                     {playUrl === media?.url ? (
                       <Video source={{ uri: media!.url }} style={media!.type === 'audio' ? styles.audio : styles.video} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
                     ) : null}
-                    <Text style={[styles.msgTime, mine && styles.msgTimeMine, isDark && !mine && styles.light]}>{formatTimestamp(msgTimeNumber(item))}</Text>
+                    <Text style={[styles.msgTime, mine && styles.msgTimeMine, !mine && { color: palette.labelTertiary }]}>{formatTimestamp(msgTimeNumber(item))}</Text>
                   </View>
                 </View>
               </FadeInView>
             );
           }}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '' : t('暂无消息')}</Text>}
+          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{loading ? '' : t('暂无消息')}</Text>}
         />
         {member ? (
-          <View style={[styles.flipBar, isDark && styles.flipBarDark]}>
-            <Text style={[styles.flipName, isDark && styles.light]}>{t('{name} 翻牌', { name: member.ownerName || '' })}</Text>
+          <View style={[styles.flipBar, { backgroundColor: palette.surface, borderTopColor: palette.hairline }]}>
+            <Text style={[styles.flipName, { color: palette.labelSecondary }]}>{t('{name} 翻牌', { name: member.ownerName || '' })}</Text>
             <View style={styles.flipRow}>
               {prices.slice(0, 3).map((p) => (
-                <TouchableOpacity key={p.answerType} style={[styles.flipChip, isDark && flipType !== p.answerType && styles.flipChipDark, flipType === p.answerType && styles.flipChipOn]} onPress={() => setFlipType((v) => v === p.answerType ? 0 : p.answerType)}>
-                  <Text style={[styles.flipChipT, flipType === p.answerType && styles.flipChipTOn, isDark && flipType !== p.answerType && styles.light]}>{flipTypeName(p.answerType)}·{lowestPrice(p)}</Text>
+                <TouchableOpacity
+                  key={p.answerType}
+                  style={[
+                    styles.flipChip,
+                    flipType === p.answerType
+                      ? { backgroundColor: palette.tint }
+                      : { backgroundColor: palette.fill2 },
+                  ]}
+                  onPress={() => setFlipType((v) => v === p.answerType ? 0 : p.answerType)}
+                >
+                  <Text
+                    style={[
+                      styles.flipChipT,
+                      flipType === p.answerType ? styles.flipChipTOn : { color: palette.labelSecondary },
+                    ]}
+                  >
+                    {flipTypeName(p.answerType)}·{lowestPrice(p)}
+                  </Text>
                 </TouchableOpacity>
               ))}
               <View style={styles.flipSpacer} />
-              {money ? <Text style={[styles.flipMoney, isDark && styles.light]}>{t('余额 {money}', { money })}</Text> : null}
-              <TouchableOpacity style={styles.flipRechargeBtn} onPress={() => navigation.navigate('RechargeScreen')}>
+              {money ? <Text style={[styles.flipMoney, { color: palette.tint }]}>{t('余额 {money}', { money })}</Text> : null}
+              <TouchableOpacity style={[styles.flipRechargeBtn, { backgroundColor: palette.tint }]} onPress={() => navigation.navigate('RechargeScreen')}>
                 <Text style={styles.flipRechargeT}>{t('充值')}</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : null}
-        <View style={[styles.inputBar, isDark && styles.inputBarDark]}>
-          {flipType > 0 ? <Text style={styles.flipLabel}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
+        <View style={[styles.inputBar, { backgroundColor: palette.surface, borderTopColor: palette.hairline }]}>
+          {flipType > 0 ? <Text style={[styles.flipLabel, { color: palette.tint }]}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
-            <TextInput style={[styles.input, isDark && styles.inputDark]} placeholder={t('输入内容...')} placeholderTextColor={isDark ? '#aaa' : '#999'} value={text} onChangeText={setText} multiline />
-            <TouchableOpacity style={styles.sendBtn} onPress={doSend} disabled={loading || !text.trim()}>
+            <TextInput
+              style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, color: palette.label }]}
+              placeholder={t('输入内容...')}
+              placeholderTextColor={palette.labelTertiary}
+              value={text}
+              onChangeText={setText}
+              multiline
+            />
+            <TouchableOpacity style={[styles.sendBtn, { backgroundColor: palette.tint }]} onPress={doSend} disabled={loading || !text.trim()}>
               <Text style={styles.sendT}>{loading ? '..' : flipType ? t('翻牌') : t('发送')}</Text>
             </TouchableOpacity>
           </View>
@@ -486,9 +517,9 @@ export default function PrivateMessagesScreen() {
   }
 
   return (
-    <View style={[styles.screen, isDark && styles.screenDark]}>
+    <View style={[styles.screen, { backgroundColor: palette.background }]}>
       <ScreenHeader title={t('私信列表')} right={
-        <TouchableOpacity onPress={loadConvs}><Text style={styles.refreshBtn}>{t('刷新')}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={loadConvs}><Text style={[styles.refreshBtn, { color: palette.tint }]}>{t('刷新')}</Text></TouchableOpacity>
       } />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
@@ -498,18 +529,45 @@ export default function PrivateMessagesScreen() {
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
-          renderItem={({ item, index }) => (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-              <TouchableOpacity style={[styles.convItem, isDark && styles.convItemDark]} onPress={() => openConv(item)}>
-                <View style={styles.convInfo}>
-                  <Text style={[styles.convName, isDark && styles.light]}>{convName(item)}</Text>
-                  <Text style={[styles.convPrev, isDark && styles.light]} numberOfLines={1}>{item.newestMessage || t('点击查看')}</Text>
-                </View>
-                {Number(item.noreadNum) > 0 ? <View style={styles.badge}><Text style={styles.badgeT}>{item.noreadNum}</Text></View> : null}
-              </TouchableOpacity>
-            </FadeInView>
-          )}
-          ListEmptyComponent={<Text style={[styles.empty, isDark && styles.light]}>{loading ? '' : t('暂无私信')}</Text>}
+          contentContainerStyle={styles.convList}
+          renderItem={({ item, index }) => {
+            const name = convName(item);
+            const unread = Number(item.noreadNum);
+            const latestTime = Number(item.lastTime || item.msgTime || 0);
+            return (
+              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
+                <TouchableOpacity
+                  style={[
+                    styles.convCard,
+                    { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16 },
+                  ]}
+                  onPress={() => openConv(item)}
+                  activeOpacity={0.88}
+                >
+                  <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
+                    <Text style={[styles.convAvatarText, { color: palette.tint }]}>{name.trim().slice(0, 1).toUpperCase()}</Text>
+                  </View>
+                  <View style={styles.convInfo}>
+                    <View style={styles.convTitleRow}>
+                      <Text style={[styles.convName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
+                      {latestTime ? <Text style={[styles.convTime, { color: palette.labelTertiary }]} numberOfLines={1}>{formatTimestamp(latestTime).slice(5, 16)}</Text> : null}
+                    </View>
+                    <View style={styles.convMetaRow}>
+                      <Text style={[styles.convPrev, { color: palette.labelSecondary }]} numberOfLines={1}>{item.newestMessage || t('点击查看')}</Text>
+                      {unread > 0 ? (
+                        <View style={[styles.badge, { backgroundColor: palette.tint }]}>
+                          <Text style={styles.badgeT}>{unread > 99 ? '99+' : unread}</Text>
+                        </View>
+                      ) : (
+                        <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </FadeInView>
+            );
+          }}
+          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{loading ? '' : t('暂无私信')}</Text>}
         />
       </FadeInView>
     </View>
@@ -517,52 +575,57 @@ export default function PrivateMessagesScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: 'transparent' },
-  screenDark: { backgroundColor: 'transparent' },
-  refreshBtn: { color: '#ff6f91', fontSize: 13 },
-  light: { color: '#eee' },
-  convItem: { padding: 14, backgroundColor: '#FFFFFF', marginHorizontal: 14, marginVertical: 3, borderRadius: 16, flexDirection: 'row', alignItems: 'center' },
-  convItemDark: { backgroundColor: '#1C1C1F' },
-  convInfo: { flex: 1 },
-  convName: { fontSize: 15, fontWeight: '700', color: '#333' },
-  convPrev: { fontSize: 12, color: '#555', marginTop: 4 },
-  badge: { backgroundColor: '#ff4444', borderRadius: 16, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  screen: { flex: 1 },
+  refreshBtn: { fontSize: 13, fontWeight: '700' },
+  convList: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 },
+  convCard: { padding: 12, flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
+  convAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  convAvatarText: { fontSize: 17, fontWeight: '800' },
+  convInfo: { flex: 1, marginLeft: 12 },
+  convTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  convName: { fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },
+  convTime: { fontSize: 11 },
+  convMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
+  convPrev: { fontSize: 12, flex: 1, marginRight: 8 },
+  badge: { borderRadius: 999, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   badgeT: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  msgList: { paddingHorizontal: 8, paddingBottom: 8 },
+  msgList: { paddingHorizontal: 12, paddingVertical: 8 },
   msgRow: { marginVertical: 2, alignItems: 'flex-start' },
   msgRowMine: { alignItems: 'flex-end' },
-  bubble: { maxWidth: '82%', padding: 10, backgroundColor: '#FFFFFF', borderRadius: 18 },
-  bubbleMine: { backgroundColor: '#ff6f91' },
-  bubbleDark: { backgroundColor: '#1C1C1F' },
-  msgText: { fontSize: 14, color: '#333', lineHeight: 20 },
+  bubble: { maxWidth: '82%', padding: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, borderTopLeftRadius: 6 },
+  bubbleMine: { backgroundColor: '#7BC6FF', borderTopLeftRadius: 16, borderTopRightRadius: 6 },
+  bubbleOther: { backgroundColor: '#FFFFFF' },
+  msgText: { fontSize: 14, lineHeight: 20 },
   msgTextMine: { color: '#fff' },
-  msgTime: { fontSize: 10, color: '#777', marginTop: 4 },
-  msgTimeMine: { color: '#7a4a7e' },
-  mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.08)', alignSelf: 'flex-start' },
-  mediaBtnText: { fontSize: 12, fontWeight: '800', color: '#ff6f91' },
-  inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)' },
-  audio: { height: 48, minWidth: 200, marginTop: 4, backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: 10 },
+  msgTime: { fontSize: 10, marginTop: 4 },
+  msgTimeMine: { color: 'rgba(255,255,255,0.75)' },
+  mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' },
+  mediaBtnText: { fontSize: 12, fontWeight: '800' },
+  inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 12, backgroundColor: '#EEEEEF' },
+  audio: { height: 48, minWidth: 200, marginTop: 4, borderRadius: 10 },
   video: { height: 150, minWidth: 200, marginTop: 4, backgroundColor: '#000', borderRadius: 10 },
-  flipBar: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
-  flipBarDark: { backgroundColor: '#1C1C1F', borderTopColor: 'rgba(255,255,255,0.08)' },
-  flipName: { fontSize: 11, color: '#555', fontWeight: '700', marginBottom: 4 },
+  flipBar: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  flipName: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
   flipRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  flipChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.06)' },
-  flipChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
-  flipChipOn: { backgroundColor: '#ff6f91' },
-  flipChipT: { fontSize: 11, color: '#555', fontWeight: '700' },
+  flipChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  flipChipT: { fontSize: 11, fontWeight: '700' },
   flipChipTOn: { color: '#fff' },
   flipSpacer: { flex: 1 },
-  flipMoney: { fontSize: 11, color: '#ff6f91', fontWeight: '700' },
-  flipRechargeBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: '#ff6f91' },
+  flipMoney: { fontSize: 11, fontWeight: '700' },
+  flipRechargeBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   flipRechargeT: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  flipLabel: { fontSize: 10, color: '#ff6f91', fontWeight: '800', marginBottom: 2 },
-  inputBar: { paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
-  inputBarDark: { backgroundColor: '#1C1C1F', borderTopColor: 'rgba(255,255,255,0.08)' },
+  flipLabel: { fontSize: 10, fontWeight: '800', marginBottom: 2 },
+  inputBar: { paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  input: { flex: 1, padding: 10, borderRadius: 18, borderWidth: 1, borderColor: '#ddd', color: '#333', fontSize: 14, maxHeight: 80 },
-  inputDark: { backgroundColor: '#1C1C1F', borderColor: '#444', color: '#eee' },
-  sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91' },
+  input: { flex: 1, padding: 10, borderRadius: 18, borderWidth: 1, fontSize: 14, maxHeight: 80 },
+  sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18 },
   sendT: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  empty: { textAlign: 'center', color: '#777', marginTop: 60, fontSize: 14 },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
 });

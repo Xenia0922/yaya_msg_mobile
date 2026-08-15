@@ -27,11 +27,14 @@ import { setLiveImmersiveMode } from '../native/LivePlayer';
 import { getPlayerHtml } from '../components/media/player';
 import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel } from '../components/media/PlayerChrome';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function BilibiliLiveScreen() {
   const navigation = useNavigation<any>();
   const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const [rooms, setRooms] = useState<BilibiliLiveRoom[]>([]);
   const [candidates, setCandidates] = useState<any[]>([]);
@@ -299,19 +302,24 @@ export default function BilibiliLiveScreen() {
           </TouchableOpacity>
         )
       } />
-      {status ? <Text style={[styles.status, isDark && styles.statusDark]}>{status}</Text> : null}
+      {status ? <Text style={[styles.status, { color: palette.labelSecondary, backgroundColor: palette.surface, borderColor: palette.hairline }]}>{status}</Text> : null}
       <PerfFlatList
         data={rooms}
         keyExtractor={(item, index) => item.roomId || String(index)}
         renderItem={({ item, index }) => (
           <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
             <TouchableOpacity
-              style={[styles.roomItem, isDark && styles.roomItemDark]}
+              style={[styles.roomItem, { backgroundColor: palette.surface, borderColor: palette.hairline }]}
               onPress={() => startWatch(item)}
             >
+              <View style={[styles.roomIcon, { backgroundColor: palette.tintSoft }]}>
+                <MaterialCommunityIcons name="television-play" size={20} color={palette.tint} />
+              </View>
               <View style={styles.roomInfo}>
-                <Text style={[styles.roomName, isDark && styles.textLight]}>{item.name || t('房间号：{id}', { id: item.roomId })}</Text>
-                <Text style={[styles.roomId, isDark && styles.roomIdDark]}>{t('房间号：{id}', { id: item.roomId })}</Text>
+                <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{item.name || t('房间号：{id}', { id: item.roomId })}</Text>
+                <Text style={[styles.roomId, { color: palette.labelSecondary }]}>
+                  {t('房间号：{id}', { id: item.roomId })}{liveStatuses[item.roomId] ? t(' · 直播中') : ''}
+                </Text>
               </View>
               <View style={[styles.statusDot, liveStatuses[item.roomId] ? styles.liveDot : styles.offlineDot]} />
             </TouchableOpacity>
@@ -320,10 +328,10 @@ export default function BilibiliLiveScreen() {
         ListEmptyComponent={
           loading ? (
             <View style={styles.emptyWrap}>
-              <ActivityIndicator size="large" color={isDark ? '#5a5a5a' : '#ff6f91'} />
+              <ActivityIndicator size="large" color={palette.tint} />
             </View>
           ) : (
-            <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('暂无直播间')}</Text>
+            <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无直播间')}</Text>
           )
         }
         initialNumToRender={12}
@@ -339,8 +347,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   refresh: { fontSize: 12, color: '#ff6f91' },
-  status: { margin: 12, padding: 10, borderRadius: 16, backgroundColor: '#FFFFFF', color: '#555', fontSize: 12, textAlign: 'center' },
-  statusDark: { backgroundColor: '#1C1C1F', color: '#aaa' },
+  status: { margin: 12, padding: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, fontSize: 12, textAlign: 'center' },
   playerPage: { flex: 1, backgroundColor: '#000' },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },
@@ -349,17 +356,14 @@ const styles = StyleSheet.create({
   playerActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   webFallbackBtn: { backgroundColor: '#ff6f91', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, alignSelf: 'flex-start' },
   webFallbackText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  roomItem: { flexDirection: 'row', alignItems: 'center', padding: 14, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginVertical: 4, borderRadius: 16 },
-  roomItemDark: { backgroundColor: '#1C1C1F' },
+  roomItem: { flexDirection: 'row', alignItems: 'center', padding: 12, marginHorizontal: 16, marginVertical: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  roomIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   roomInfo: { flex: 1 },
-  roomName: { fontSize: 15, fontWeight: '700', color: '#333' },
-  roomId: { fontSize: 11, color: '#333333', marginTop: 2 },
-  roomIdDark: { color: '#aaa' },
+  roomName: { fontSize: 15, fontWeight: '700' },
+  roomId: { fontSize: 11, marginTop: 2 },
   statusDot: { width: 12, height: 12, borderRadius: 6 },
   liveDot: { backgroundColor: '#4caf50' },
-  offlineDot: { backgroundColor: '#5a5a5a' },
-  textLight: { color: '#eee' },
-  empty: { textAlign: 'center', color: '#333333', marginTop: 60, fontSize: 14 },
-  emptyDark: { color: '#aaa' },
+  offlineDot: { backgroundColor: 'rgba(0,0,0,0.25)' },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
 });

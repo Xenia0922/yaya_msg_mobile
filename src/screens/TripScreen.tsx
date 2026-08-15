@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
-  ActivityIndicator,
-  FlatList,
   Linking,
   StyleSheet,
   Text,
@@ -11,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSettingsStore } from '../store';
 import { CenterSpinner } from '../components/Loaders';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
@@ -20,7 +17,9 @@ import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
 import { Member, TripItem } from '../types';
 import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 function parseTripDate(raw: string): { date: string; time: string } {
   const str = String(raw || '');
@@ -63,6 +62,7 @@ function normalizeTripList(res: any): TripItem[] {
 
 export default function TripScreen() {
   const navigation = useNavigation<any>();
+  const palette = usePalette();
   const isDark = useAppTheme();
   const { t } = useI18n();
   const [member, setMember] = useState<Member | null>(null);
@@ -100,21 +100,57 @@ export default function TripScreen() {
 
   const renderItem = ({ item, index }: { item: TripItem; index: number }) => (
     <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-      <View style={[styles.card, isDark && styles.cardDark]}>
-        <View style={styles.cardHead}>
-          <Text style={[styles.cardTitle, isDark && styles.textLight]} numberOfLines={2}>{item.title}</Text>
-          {item.date ? <Text style={styles.cardDate}>{item.date}{item.time ? ` ${item.time}` : ''}</Text> : null}
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: palette.surface,
+            borderColor: palette.hairline,
+          },
+        ]}
+      >
+        <View style={styles.cardTop}>
+          <View style={[styles.iconWrap, { backgroundColor: palette.tintSoft }]}>
+            <MaterialCommunityIcons name="calendar-clock" size={20} color={palette.tint} />
+          </View>
+          <View style={styles.infoWrap}>
+            <Text style={[styles.cardTitle, { color: palette.label }]} numberOfLines={2}>{item.title}</Text>
+            {item.date ? (
+              <Text style={[styles.cardDate, { color: palette.labelSecondary }]}>
+                {item.date}{item.time ? ` ${item.time}` : ''}
+              </Text>
+            ) : null}
+          </View>
         </View>
-        {item.subtitle ? <Text style={[styles.cardSub, isDark && styles.textSubLight]} numberOfLines={2}>{item.subtitle}</Text> : null}
-        {item.description ? <Text style={[styles.cardDesc, isDark && styles.textSubLight]} numberOfLines={5}>{item.description}</Text> : null}
+        {item.subtitle ? <Text style={[styles.cardSub, { color: palette.labelSecondary }]} numberOfLines={2}>{item.subtitle}</Text> : null}
+        {item.description ? <Text style={[styles.cardDesc, { color: palette.labelSecondary }]} numberOfLines={5}>{item.description}</Text> : null}
         <View style={styles.metaRow}>
-          {item.location ? <Text style={[styles.metaText, isDark && styles.textSubLight]}>📍 {item.location}</Text> : null}
-          {item.liveText ? <Text style={[styles.metaText, isDark && styles.textSubLight]}>📺 {item.liveText}</Text> : null}
-          {item.members.length > 0 ? <Text style={[styles.metaText, isDark && styles.textSubLight]}>👥 {item.members.join(' · ')}</Text> : null}
+          {item.location ? (
+            <View style={styles.metaLine}>
+              <MaterialCommunityIcons name="map-marker-outline" size={14} color={palette.tint} />
+              <Text style={[styles.metaText, { color: palette.labelSecondary }]} numberOfLines={1}>{item.location}</Text>
+            </View>
+          ) : null}
+          {item.liveText ? (
+            <View style={styles.metaLine}>
+              <MaterialCommunityIcons name="television-play" size={14} color={palette.tint} />
+              <Text style={[styles.metaText, { color: palette.labelSecondary }]} numberOfLines={1}>{item.liveText}</Text>
+            </View>
+          ) : null}
+          {item.members.length > 0 ? (
+            <View style={styles.metaLine}>
+              <MaterialCommunityIcons name="account-group-outline" size={14} color={palette.tint} />
+              <Text style={[styles.metaText, { color: palette.labelSecondary }]} numberOfLines={1}>{item.members.join(' · ')}</Text>
+            </View>
+          ) : null}
         </View>
         {item.ticketUrl ? (
-          <TouchableOpacity style={styles.linkBtn} onPress={() => Linking.openURL(item.ticketUrl)}>
+          <TouchableOpacity
+            style={[styles.linkBtn, { backgroundColor: palette.tint }]}
+            onPress={() => Linking.openURL(item.ticketUrl)}
+          >
             <Text style={styles.linkBtnText}>{t('票务链接')}</Text>
+            <MaterialCommunityIcons name="chevron-right" size={14} color="#FFFFFF" style={{ marginLeft: 2 }} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -122,10 +158,10 @@ export default function TripScreen() {
   );
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('行程')} onBack={() => navigation.goBack()} right={
         <TouchableOpacity disabled={!member || loading} onPress={() => fetchTrips(true)}>
-          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
+          <Text style={[styles.headerAction, { color: palette.tint }, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
       <MemberPicker selectedMember={member} onSelect={setMember} placeholder={t('搜索成员查看行程...')} />
@@ -142,14 +178,14 @@ export default function TripScreen() {
           onEndReachedThreshold={0.35}
           renderItem={renderItem}
           ListFooterComponent={
-            items.length ? <Text style={[styles.footer, isDark && styles.textSubLight]}>
+            items.length ? <Text style={[styles.footer, { color: palette.labelTertiary }]}>
               {loadingMore ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
             </Text> : null
           }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               {loading ? <CenterSpinner dark={isDark} /> : null}
-              <Text style={[styles.empty, isDark && styles.textSubLight]}>
+              <Text style={[styles.empty, { color: palette.labelTertiary }]}>
                 {loading ? '' : member ? (error ? error : t('暂无行程')) : t('请搜索选择成员查看行程')}
               </Text>
             </View>
@@ -162,31 +198,42 @@ export default function TripScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
   headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
   disabledText: { opacity: 0.45 },
-  list: { padding: 12, paddingBottom: 40 },
+  list: { padding: 16, paddingBottom: 40 },
   card: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.68)',
+    marginBottom: 5,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  cardDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.10)' },
-  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
-  cardTitle: { fontSize: 16, fontWeight: '800', color: '#333333', flex: 1, marginRight: 8 },
-  cardDate: { fontSize: 11, fontWeight: '700', color: '#ff6f91', minWidth: 80, textAlign: 'right' },
-  cardSub: { fontSize: 13, color: '#555555', marginBottom: 4 },
-  cardDesc: { fontSize: 13, color: '#555555', marginBottom: 8, lineHeight: 19 },
-  metaRow: { gap: 2, marginBottom: 4 },
-  metaText: { fontSize: 12, color: '#555555' },
-  linkBtn: { alignSelf: 'flex-start', marginTop: 4, backgroundColor: '#ff6f91', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 18 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoWrap: { flex: 1, minWidth: 0, marginLeft: 12 },
+  cardTitle: { fontSize: 15, fontWeight: '700', lineHeight: 20 },
+  cardDate: { fontSize: 12, marginTop: 3 },
+  cardSub: { fontSize: 13, marginBottom: 4, lineHeight: 19 },
+  cardDesc: { fontSize: 13, marginBottom: 8, lineHeight: 19 },
+  metaRow: { gap: 4, marginBottom: 4 },
+  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText: { fontSize: 12, flex: 1 },
+  linkBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   linkBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  footer: { textAlign: 'center', color: '#555555', fontSize: 12, paddingVertical: 10 },
+  footer: { textAlign: 'center', fontSize: 12, paddingVertical: 10 },
   emptyWrap: { alignItems: 'center', paddingVertical: 60 },
-  empty: { color: '#555555', fontSize: 14, marginTop: 8 },
-  textLight: { color: '#ffffff' },
-  textSubLight: { color: '#dddddd' },
+  empty: { fontSize: 13, marginTop: 8 },
 });
