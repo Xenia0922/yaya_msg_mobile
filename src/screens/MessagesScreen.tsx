@@ -6,6 +6,8 @@ import {
 } from 'react-native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import { CenterSpinner } from '../components/Loaders';
+import { EmptyState, ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member } from '../types';
 import { formatTimestamp } from '../utils/format';
@@ -31,6 +33,7 @@ export default function MessagesScreen() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
@@ -43,13 +46,14 @@ export default function MessagesScreen() {
     ).slice(0, 80);
   }, [members, pickerQuery]);
 
-  const fetchMessages = async (member: Member) => {
+  const fetchMessages = useCallback(async (member: Member) => {
     if (!token) {
       showToast(t('请先在账号设置里登录口袋48或粘贴 Token'));
       return;
     }
     setSelectedMember(member);
     setLoading(true);
+    setLoadError('');
     try {
       const res = await pocketApi.getRoomMessages({
         channelId: member.channelId,
@@ -60,12 +64,12 @@ export default function MessagesScreen() {
       const list = unwrapList(res, ['content.messageList', 'content.message', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'list']);
       setMessages(list.slice().sort((a, b) => msgTime(b) - msgTime(a)));
     } catch (error) {
-      showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
+      setLoadError(errorMessage(error));
       setMessages([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast, t, token]);
 
   const filtered = useMemo(() => {
     const q = search.trim();
@@ -169,15 +173,40 @@ export default function MessagesScreen() {
       </Modal>
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <PerfFlatList
-          data={filtered}
-          keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || index)}
-          renderItem={renderMsgItem}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
-          removeClippedSubviews
-        />
+        {loading ? (
+          <CenterSpinner dark={isDark} text={t('正在加载消息…')} />
+        ) : loadError ? (
+          <ErrorState
+            title={t('加载失败')}
+            hint={loadError}
+            onAction={() => selectedMember && fetchMessages(selectedMember)}
+          />
+        ) : !selectedMember ? (
+          <EmptyState
+            icon="message-text-outline"
+            title={t('选择成员查看消息')}
+            hint={t('点击上方「选择成员」，检索某位成员房间的全部消息')}
+            actionLabel={t('选择成员')}
+            onAction={() => setPickerOpen(true)}
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon="file-search-outline"
+            title={search.trim() ? t('没有匹配的消息') : t('暂无消息')}
+            hint={search.trim() ? t('换个关键词试试') : t('这个房间暂时没有可显示的消息')}
+          />
+        ) : (
+          <PerfFlatList
+            data={filtered}
+            keyExtractor={(item, index) => String(item.id || item.msgId || item.messageId || index)}
+            renderItem={renderMsgItem}
+            contentContainerStyle={styles.msgListContent}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            removeClippedSubviews
+          />
+        )}
       </FadeInView>
     </View>
   );
@@ -205,6 +234,7 @@ const styles = StyleSheet.create({
   memberTeam: { fontSize: 11, color: '#333333' },
   memberTeamDark: { color: '#aaa' },
   msg: { padding: 12, backgroundColor: '#FFFFFF', marginHorizontal: 12, marginVertical: 3, borderRadius: 18 },
+  msgListContent: { paddingBottom: 32 },
   msgDark: { backgroundColor: '#1C1C1F' },
   msgHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   msgSender: { fontSize: 13, fontWeight: '700', color: '#333' },

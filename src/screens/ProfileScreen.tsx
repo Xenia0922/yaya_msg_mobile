@@ -115,6 +115,13 @@ export default function ProfileScreen() {
             <View style={[styles.notice, { backgroundColor: palette.fill2 }]}>
               <Text style={[styles.noticeTitle, { color: palette.tint }]}>{t('在线档案暂不可用')}</Text>
               <Text style={[styles.noticeText, { color: palette.labelSecondary }]}>{t('已显示本地成员库资料；需要口袋签名的排行和经历可能无法加载。')}</Text>
+              <TouchableOpacity
+                style={[styles.retryBtn, { backgroundColor: palette.tint }]}
+                onPress={() => selectedMember && loadProfile(selectedMember)}
+                disabled={loading}
+              >
+                <Text style={styles.retryBtnText}>{loading ? t('加载中…') : t('重试')}</Text>
+              </TouchableOpacity>
             </View>
           ) : null}
 
@@ -239,6 +246,14 @@ const styles = StyleSheet.create({
   notice: { padding: 12, borderRadius: 14, marginBottom: 14, borderLeftWidth: 3, borderLeftColor: '#ff9800' },
   noticeTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
   noticeText: { fontSize: 12, lineHeight: 18 },
+  retryBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  retryBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   sectionTitle: { fontSize: 15, fontWeight: '800', marginBottom: 10, marginTop: 14 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   infoItem: { width: '48%', padding: 10, borderRadius: 14 },

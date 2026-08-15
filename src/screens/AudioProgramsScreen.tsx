@@ -11,10 +11,13 @@ import Video from 'react-native-video';
 import officialMediaApi from '../api/officialMedia';
 import { useI18n } from '../i18n';
 import { FadeInView } from '../components/Motion';
+import { CenterSpinner } from '../components/Loaders';
+import { EmptyState, ErrorState } from '../components/StateViews';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
 import { usePalette } from '../theme';
+import { useAppTheme } from '../hooks/useAppTheme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 function normalizeTalks(res: any): any[] {
@@ -62,6 +65,7 @@ function programDate(item: any): string {
 }
 
 export default function AudioProgramsScreen() {
+  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const [programs, setPrograms] = useState<any[]>([]);
@@ -73,6 +77,7 @@ export default function AudioProgramsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [nextCtime, setNextCtime] = useState(0);
+  const [loadError, setLoadError] = useState('');
   const loadingRef = useRef(false);
   const nextCtimeRef = useRef(0);
 
@@ -82,6 +87,7 @@ export default function AudioProgramsScreen() {
     const cursor = refresh ? 0 : nextCtimeRef.current;
     if (refresh) setLoading(true); else setLoadingMore(true);
     setStatus(refresh ? '' : '');
+    if (refresh) setLoadError('');
     try {
       const res = await officialMediaApi.getTalkList({ ctime: cursor, groupId: 0, limit: 20 });
       const list = normalizeTalks(res);
@@ -93,6 +99,7 @@ export default function AudioProgramsScreen() {
       const loadedCount = refresh ? list.length : mergeUniqueTalks(programs, list).length;
       setStatus(loadedCount ? t('已加载 {count} 个节目', { count: loadedCount }) : t('官方接口暂无电台资源'));
     } catch (error) {
+      if (refresh) setLoadError(errorMessage(error));
       setStatus(t('加载失败：{error}', { error: errorMessage(error) }));
     } finally {
       loadingRef.current = false;
@@ -157,7 +164,20 @@ export default function AudioProgramsScreen() {
         </View>
       ) : null}
 
-      {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading ? '' : status}</Text> : null}
+      {status && !loading ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
+      {loading && programs.length === 0 ? (
+        <View style={{ flex: 1 }}>
+          <CenterSpinner dark={isDark} text={t('加载中…')} />
+        </View>
+      ) : loadError && programs.length === 0 ? (
+        <View style={{ flex: 1 }}>
+          <ErrorState title={t('加载失败')} hint={loadError} onAction={() => load(true)} />
+        </View>
+      ) : programs.length === 0 ? (
+        <View style={{ flex: 1 }}>
+          <EmptyState icon="radio" title={t('暂无电台节目')} hint={t('官方电台资源暂不可用，可点击右上角刷新重试')} />
+        </View>
+      ) : (
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={programs.length > 1 ? programs.slice(1) : []}
@@ -200,7 +220,7 @@ export default function AudioProgramsScreen() {
               </TouchableOpacity>
             ) : null
           }
-          ListFooterComponent={loadingMore ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{t('加载更多...')}</Text> : null}
+          ListFooterComponent={loadingMore ? <CenterSpinner dark={isDark} text={t('加载更多...')} /> : null}
           renderItem={({ item, index }) => {
             const isActive = String(active || '') === String(item.talkId || item.id);
             return (
@@ -237,6 +257,7 @@ export default function AudioProgramsScreen() {
           }}
         />
       </FadeInView>
+      )}
     </View>
   );
 }

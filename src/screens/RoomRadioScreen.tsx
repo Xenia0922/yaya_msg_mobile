@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   View, Text, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import Video from 'react-native-video';
@@ -24,6 +25,7 @@ export default function RoomRadioScreen() {
   const [radioUrl, setRadioUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [roomMode, setRoomMode] = useState<'big' | 'small'>('big');
@@ -32,6 +34,7 @@ export default function RoomRadioScreen() {
     setSelectedMember(member);
     setLoading(true);
     setStatus(t('获取电台地址...'));
+    setLoadError('');
     setRadioUrl('');
     setPlaying(false);
     try {
@@ -46,6 +49,7 @@ export default function RoomRadioScreen() {
         setStatus(t('该房间当前没有开启语音电台'));
       }
     } catch (error) {
+      setLoadError(errorMessage(error));
       setStatus(t('获取失败：{error}', { error: errorMessage(error) }));
     } finally {
       setLoading(false);
@@ -74,8 +78,27 @@ export default function RoomRadioScreen() {
           </View>
         </View>
         <View style={[styles.playerCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-          <Text style={[styles.playerTitle, { color: palette.label }]}>{selectedMember?.ownerName || t('暂无数据')}</Text>
-          <Text style={[styles.playerStatus, { color: palette.labelSecondary }]}>{loading ? '' : status || t('暂无电台地址')}</Text>
+          <Text style={[styles.playerTitle, { color: palette.label }]}>{selectedMember?.ownerName || t('选择成员')}</Text>
+
+          {loading ? (
+            <>
+              <ActivityIndicator color={palette.tint} style={{ marginBottom: 12 }} />
+              <Text style={[styles.playerStatus, { color: palette.labelSecondary }]}>{t('正在获取电台地址…')}</Text>
+            </>
+          ) : loadError ? (
+            <>
+              <Text style={[styles.playerStatus, { color: palette.danger }]}>{t('获取失败：{error}', { error: loadError })}</Text>
+              <TouchableOpacity style={[styles.playBtn, { backgroundColor: palette.tint }]} onPress={() => selectedMember && startRadio(selectedMember)}>
+                <Text style={styles.playBtnText}>{t('重试')}</Text>
+              </TouchableOpacity>
+            </>
+          ) : !selectedMember ? (
+            <>
+              <Text style={[styles.playerStatus, { color: palette.labelSecondary }]}>{t('搜索并选择成员，获取房间上麦音频')}</Text>
+            </>
+          ) : (
+            <Text style={[styles.playerStatus, { color: palette.labelSecondary }]}>{status || t('暂无电台地址')}</Text>
+          )}
 
           {radioUrl ? (
             <>

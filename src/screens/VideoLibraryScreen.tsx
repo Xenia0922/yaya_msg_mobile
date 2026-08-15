@@ -14,10 +14,13 @@ import officialMediaApi from '../api/officialMedia';
 import { useI18n } from '../i18n';
 import { useSettingsStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import { CenterSpinner } from '../components/Loaders';
+import { EmptyState, ErrorState } from '../components/StateViews';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp, formatDuration } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
 import { usePalette } from '../theme';
+import { useAppTheme } from '../hooks/useAppTheme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 function normalizeVideos(res: any): any[] {
@@ -66,6 +69,7 @@ function videoCoverUrl(item: any): string {
 
 export default function VideoLibraryScreen() {
   const navigation = useNavigation<any>();
+  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const [videos, setVideos] = useState<any[]>([]);
@@ -76,6 +80,7 @@ export default function VideoLibraryScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [nextCtime, setNextCtime] = useState(0);
+  const [loadError, setLoadError] = useState('');
   const loadingRef = useRef(false);
 
   const load = async (refresh = true) => {
@@ -85,6 +90,7 @@ export default function VideoLibraryScreen() {
     if (refresh) setLoading(true);
     else setLoadingMore(true);
     setStatus(refresh ? '' : '');
+    if (refresh) setLoadError('');
     try {
       const res = await officialMediaApi.getVideoList({ ctime: cursor, typeId: 0, groupId: 0, limit: 20 });
       const list = normalizeVideos(res);
@@ -94,6 +100,7 @@ export default function VideoLibraryScreen() {
       const loadedCount = refresh ? list.length : mergeUniqueVideos(videos, list).length;
       setStatus(loadedCount ? t('已加载 {count} 条视频', { count: loadedCount }) : t('官方接口暂无视频资源'));
     } catch (error) {
+      if (refresh) setLoadError(errorMessage(error));
       setStatus(t('加载失败：{error}', { error: errorMessage(error) }));
     } finally {
       loadingRef.current = false;
@@ -143,7 +150,20 @@ export default function VideoLibraryScreen() {
           <Text style={[styles.backBtn, { color: palette.tint }, loading && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
-      {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading ? '' : status}</Text> : null}
+      {status && !loading ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
+      {loading && videos.length === 0 ? (
+        <View style={{ flex: 1 }}>
+          <CenterSpinner dark={isDark} text={t('加载中…')} />
+        </View>
+      ) : loadError && videos.length === 0 ? (
+        <View style={{ flex: 1 }}>
+          <ErrorState title={t('加载失败')} hint={loadError} onAction={() => load(true)} />
+        </View>
+      ) : videos.length === 0 ? (
+        <View style={{ flex: 1 }}>
+          <EmptyState icon="play-box-outline" title={t('暂无视频')} hint={t('官方视频资源暂不可用，可点击右上角刷新重试')} />
+        </View>
+      ) : (
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={videos.length > 1 ? videos.slice(1) : []}
@@ -199,7 +219,7 @@ export default function VideoLibraryScreen() {
               </TouchableOpacity>
             ) : null
           }
-          ListFooterComponent={loadingMore ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{t('加载更多...')}</Text> : null}
+          ListFooterComponent={loadingMore ? <CenterSpinner dark={isDark} text={t('加载更多...')} /> : null}
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300} style={styles.gridItem}>
               <TouchableOpacity
@@ -235,6 +255,7 @@ export default function VideoLibraryScreen() {
           )}
         />
       </FadeInView>
+      )}
     </View>
   );
 }

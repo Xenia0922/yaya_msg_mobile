@@ -7,7 +7,7 @@
  * - 工具手风琴：tint 方底图标行 + 可折叠分组
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -142,23 +142,30 @@ export default function HomeScreen() {
 
   const [lives, setLives] = useState<LiveCardItem[]>([]);
   const [livesOk, setLivesOk] = useState(false);
+  const [livesError, setLivesError] = useState('');
   const [bannerIndex, setBannerIndex] = useState(0);
   const fetchedRef = useRef(false);
 
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
+  const fetchLives = useCallback(() => {
     pocketApi
       .getLiveList({ groupId: 0, liveType: 0, next: 0, record: false })
       .then((res: any) => {
         const list = normalizeLiveList(res);
-        if (list.length > 0) {
-          setLives(list);
-          setLivesOk(true);
-        }
+        setLives(list);
+        setLivesOk(true);
+        setLivesError('');
       })
-      .catch(() => {});
+      .catch((e: any) => {
+        setLivesError(e?.message || String(e));
+        setLivesOk(false);
+      });
   }, []);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetchLives();
+  }, [fetchLives]);
 
   // banner 轮播：2.5s 自动切换下一条（最多轮前 4 条）
   const bannerCount = Math.min(4, lives.length);
@@ -248,22 +255,38 @@ export default function HomeScreen() {
           </ScalePressable>
         ) : null}
 
-        {/* 正在直播：首条全宽 banner 轮播 + 其余 2 列网格 */}
-        {livesOk ? (
-          <View style={{ marginBottom: 22 }}>
-            <View style={styles.sectionHead}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={[styles.sectionDot, { backgroundColor: palette.tint }]} />
-                <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('正在直播')}</Text>
-              </View>
-              <ScalePressable onPress={() => handleNav({ title: '', desc: '', route: 'Media', icon: '' })}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={[typography.footnote, { color: palette.tint, fontWeight: '700' }]}>{t('全部')}</Text>
-                  <MaterialCommunityIcons name="chevron-right" color={palette.tint} size={16} />
-                </View>
-              </ScalePressable>
+        {/* 正在直播：首条全宽 banner 轮播 + 其余直播行 */}
+        <View style={{ marginBottom: 22 }}>
+          <View style={styles.sectionHead}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.sectionDot, { backgroundColor: palette.tint }]} />
+              <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('正在直播')}</Text>
             </View>
+            <ScalePressable onPress={() => handleNav({ title: '', desc: '', route: 'Media', icon: '' })}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[typography.footnote, { color: palette.tint, fontWeight: '700' }]}>{t('全部')}</Text>
+                <MaterialCommunityIcons name="chevron-right" color={palette.tint} size={16} />
+              </View>
+            </ScalePressable>
+          </View>
 
+          {livesError && !livesOk ? (
+            <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+              <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
+              <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
+                {t('直播列表加载失败')}
+              </Text>
+              <TouchableOpacity style={[styles.liveStateBtn, { backgroundColor: palette.tint }]} onPress={fetchLives}>
+                <Text style={styles.liveStateBtnText}>{t('重试')}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : livesOk && lives.length === 0 ? (
+            <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+              <MaterialCommunityIcons name="video-off" size={20} color={palette.labelTertiary} />
+              <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('当前没有正在直播')}</Text>
+            </View>
+          ) : livesOk ? (
+            <>
             {banner ? (
               <View style={{ marginBottom: 12 }}>
                 <LiveBanner
@@ -317,8 +340,9 @@ export default function HomeScreen() {
                 ))}
               </View>
             ) : null}
-          </View>
-        ) : null}
+            </>
+          ) : null}
+        </View>
 
         {/* 快捷入口：单行 4 个 */}
         <View style={{ marginBottom: 22 }}>
@@ -507,6 +531,21 @@ const styles = StyleSheet.create({
   liveRowThumbFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   liveRowTitle: { fontSize: 13, fontWeight: '700' },
   liveRowNick: { fontSize: 11, marginTop: 3 },
+  liveStateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  liveStateText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  liveStateBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
+  liveStateBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

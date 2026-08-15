@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { NetworkImage } from '../components/NetworkImage';
 
@@ -8,6 +8,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import { CenterSpinner } from '../components/Loaders';
+import { EmptyState, ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
@@ -100,16 +102,22 @@ export default function PhotosScreen() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const runIdRef = useRef(0);
 
-  const loadPhotos = async (member: Member) => {
+  const loadPhotos = useCallback(async (member: Member) => {
+    const runId = ++runIdRef.current;
     setSelectedMember(member);
     setLoading(true);
+    setLoadError('');
     setStatus(t('加载个人相册...'));
     try {
       const [photoRes, archiveRes] = await Promise.all([
         pocketApi.getMemberPhotos(member.id).catch(() => null),
         pocketApi.getStarArchives(Number(member.id)).catch(() => null),
       ]);
+      // 竞态防护：快速切换成员时丢弃过期响应
+      if (runId !== runIdRef.current) return;
       const list = unwrapList(photoRes, [
         'content.nftList',
         'content.photoList',
@@ -145,12 +153,14 @@ export default function PhotosScreen() {
       setPhotos(merged);
       setStatus(t('加载完成：{count} 张图片', { count: merged.length }));
     } catch (error) {
+      if (runId !== runIdRef.current) return;
+      setLoadError(errorMessage(error));
       setStatus(t('加载失败：{msg}', { msg: errorMessage(error) }));
       setPhotos([]);
     } finally {
-      setLoading(false);
+      if (runId === runIdRef.current) setLoading(false);
     }
-  };
+  }, [t]);
 
   const downloadPhoto = useCallback(async (url: string) => {
     try {
@@ -194,21 +204,38 @@ export default function PhotosScreen() {
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.pickerWrap}>
           <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
-          {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
+          {status && !loading ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
         </View>
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
+        {loading ? (
+          <View style={{ flex: 1 }}>
+            <CenterSpinner dark={isDark} text={t('加载中…')} />
+          </View>
+        ) : loadError ? (
+          <View style={{ flex: 1 }}>
+            <ErrorState title={t('加载失败')} hint={loadError} onAction={() => selectedMember && loadPhotos(selectedMember)} />
+          </View>
+        ) : photos.length === 0 ? (
+          <View style={{ flex: 1 }}>
+            <EmptyState
+              icon="image-multiple-outline"
+              title={selectedMember ? t('暂无图片') : t('选择成员查看相册')}
+              hint={selectedMember ? t('该成员暂时没有公开照片') : t('搜索并选择成员，查看个人照片')}
+            />
+          </View>
+        ) : (
         <PerfFlatList
           data={photos}
           numColumns={2}
           keyExtractor={(item, index) => String(item.id || item.nftId || index)}
           contentContainerStyle={styles.list}
           renderItem={renderPhotoItem}
-          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{loading ? '' : t('暂无图片')}</Text>}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
         />
+        )}
       </FadeInView>
     </View>
   );
