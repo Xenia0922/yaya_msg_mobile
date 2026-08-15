@@ -1481,29 +1481,29 @@ export default function FollowedRoomsScreen() {
             const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
 
             return (
-              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-                <View style={[styles.chatRow, mine && styles.chatRowMine]}>
-                  {!mine ? (
+              <View style={[styles.chatRow, mine && styles.chatRowMine]}>
+                {!mine ? (
                   profile.avatar ? (
                     <Image source={{ uri: profile.avatar }} style={styles.avatar} />
                   ) : (
                     <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
                   )
                 ) : null}
-                 <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
-                  {replyName || replyQuoted ? (
-                    <View style={[styles.replyCard, { backgroundColor: palette.fill3, borderLeftColor: palette.tint }]}>
-                      {replyName ? <Text style={[styles.replyName, { color: palette.tint }]} numberOfLines={1}>{replyName}</Text> : null}
-                      {replyQuoted ? <Text style={[styles.replyText, { color: palette.labelSecondary }]} numberOfLines={3}>{replyQuoted}</Text> : null}
-                    </View>
-                  ) : null}
-                   <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
-                    <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? '#7BC6FF' : palette.label }, idol && styles.msgSenderIdol, mine && styles.msgSenderMine]} numberOfLines={1}>
+                <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
+                  {/* 名字 + 时间：紧凑单行，小字，弱化 */}
+                  <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
+                    <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? '#7BC6FF' : palette.labelSecondary }]} numberOfLines={1}>
                       {profile.name}
                     </Text>
-                    <Text style={[styles.msgTime, { color: mine ? '#7BC6FF' : palette.labelTertiary }, mine && styles.msgTimeMine]}>{formatTimestamp(item.msgTime)}</Text>
+                    <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>{formatTimestamp(item.msgTime)}</Text>
                   </View>
                   <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, { backgroundColor: (!idol && !mine) ? palette.surfaceGlass : undefined, borderColor: (!idol && !mine) ? palette.innerStroke : undefined, borderWidth: (!idol && !mine) ? StyleSheet.hairlineWidth : 0 }]}>
+                    {replyName || replyQuoted ? (
+                      <View style={[styles.replyCard, { backgroundColor: 'rgba(0,0,0,0.04)', borderLeftColor: palette.tint }]}>
+                        {replyName ? <Text style={[styles.replyName, { color: palette.tint }]} numberOfLines={1}>{replyName}</Text> : null}
+                        {replyQuoted ? <Text style={[styles.replyText, { color: palette.labelSecondary }]} numberOfLines={3}>{replyQuoted}</Text> : null}
+                      </View>
+                    ) : null}
                     {bubbleText ? (
                       <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, (!idol && !mine) && { color: palette.labelSecondary }]}>
                         {bubbleText}
@@ -1605,7 +1605,6 @@ export default function FollowedRoomsScreen() {
                   </View>
                 </View>
               </View>
-              </FadeInView>
             );
           }}
         />
@@ -2026,7 +2025,7 @@ const styles = StyleSheet.create({
   roomMeta: { fontSize: 10, color: '#3f3f3f', backgroundColor: 'rgba(255,111,145,0.14)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
   lastMessage: { fontSize: 12, color: '#3f3f3f', marginTop: 6 },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },
-  chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginVertical: 5 },
+  chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginVertical: 6 },
   chatRowMine: { justifyContent: 'flex-end' },
   avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 9, backgroundColor: '#FFFFFF' },
   avatarFallback: { width: 40, height: 40, borderRadius: 20, marginRight: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
@@ -2035,22 +2034,22 @@ const styles = StyleSheet.create({
   msgBlockMine: { alignItems: 'flex-end' },
   replyCard: { marginBottom: 6, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
   replyCardDark: { backgroundColor: 'rgba(255,255,255,0.08)' },
-  replyName: { fontSize: 11, color: '#ff6f91', fontWeight: '800', marginBottom: 2 },
-  replyText: { fontSize: 12, color: '#555', lineHeight: 17 },
+  replyName: { fontSize: 12, color: '#ff6f91', fontWeight: '700', marginBottom: 2 },
+  replyText: { fontSize: 13, color: '#555', lineHeight: 18 },
   replyTextDark: { color: '#aaa' },
-  msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, paddingHorizontal: 6 },
+  msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, paddingHorizontal: 6 },
   msgMetaLineMine: { justifyContent: 'flex-end' },
-  msgSender: { fontSize: 11, fontWeight: '800', color: '#333', maxWidth: 150 },
+  msgSender: { fontSize: 12, fontWeight: '700', color: '#333', maxWidth: 150 },
   msgSenderIdol: { color: '#ff4f7f' },
   msgSenderMine: { color: '#3a6f99' },
   msgTime: { fontSize: 10, color: '#4a4a4a' },
   msgTimeMine: { color: '#3a6f99' },
   msgTimeDark: { color: '#aaa' },
-  msgBubble: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: 20, borderTopLeftRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
+  msgBubble: { padding: 10, paddingHorizontal: 14, backgroundColor: '#FFFFFF', borderRadius: 18, borderTopLeftRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
   msgBubbleIdol: { backgroundColor: 'rgba(255,111,145,0.90)', borderColor: 'rgba(255,255,255,0.28)' },
-  msgBubbleMine: { backgroundColor: 'rgba(123,198,255,0.92)', borderTopLeftRadius: 20, borderTopRightRadius: 8, borderColor: 'rgba(255,255,255,0.32)' },
+  msgBubbleMine: { backgroundColor: 'rgba(123,198,255,0.92)', borderTopLeftRadius: 18, borderTopRightRadius: 6, borderColor: 'rgba(255,255,255,0.32)' },
   msgBubbleDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.10)' },
-  msgBody: { fontSize: 14, color: '#444', lineHeight: 21 },
+  msgBody: { fontSize: 15, color: '#444', lineHeight: 22 },
   msgBodyHighlight: { color: '#fff' },
   giftCard: { marginTop: 8, minWidth: 210, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,240,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,111,145,0.24)', flexDirection: 'row', alignItems: 'center', gap: 10 },
   giftCardCompact: { minWidth: 0, padding: 8, gap: 0 } as any,
