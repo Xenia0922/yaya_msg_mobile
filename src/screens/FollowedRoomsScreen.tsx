@@ -1241,16 +1241,27 @@ export default function FollowedRoomsScreen() {
     const now = new Date();
     const todayStr = fmt(now.getTime());
     const yestStr = fmt(now.getTime() - 86400000);
-    const rows: { type: 'date' | 'msg'; key: string; label?: string; item?: any; index?: number }[] = [];
+    const rows: { type: 'date' | 'msg'; key: string; label?: string; item?: any; index?: number; groupStart?: boolean }[] = [];
     let lastDay = '';
+    let lastGroupKey = '';
+    let lastMsgTime = 0;
     filteredRoomMessages.forEach((item, index) => {
       const day = fmt(Number((item as any)?.msgTime || (item as any)?.ctime || 0) * (Number((item as any)?.msgTime) > 1e12 ? 1 : 1000));
       if (day !== lastDay) {
         lastDay = day;
+        lastGroupKey = '';
         const label = day === todayStr ? t('今天') : day === yestStr ? t('昨天') : `${Number(day.slice(5, 7))}月${Number(day.slice(8, 10))}日`;
         rows.push({ type: 'date', key: `d-${day}`, label });
       }
-      rows.push({ type: 'msg', key: messageKey(item, index), item, index });
+      // 同一发送者、间隔 < 3 分钟的消息合并为一组（组首带头像+名字，后续连排）
+      const t0 = getMessageTime(item);
+      const sender = String((item as any)?.senderUserId || (item as any)?.senderId || (item as any)?.fromUserId || '');
+      const sameSender = sender && sender === lastGroupKey;
+      const withinGap = t0 > 0 && lastMsgTime > 0 && (lastMsgTime - t0) < 3 * 60000;
+      const groupStart = !sameSender || !withinGap;
+      if (groupStart) lastGroupKey = sender;
+      if (t0 > 0) lastMsgTime = t0;
+      rows.push({ type: 'msg', key: messageKey(item, index), item, index, groupStart });
     });
     return rows;
   }, [filteredRoomMessages, t]);
@@ -1910,7 +1921,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   memberHitCard: {
-    width: '50%',
+    flex: 1,
     padding: 14,
     borderRadius: 18,
     alignItems: 'center',
