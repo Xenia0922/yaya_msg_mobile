@@ -174,6 +174,7 @@ export default function OpenLiveScreen() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(t('暂无公演记录'));
   const [playing, setPlaying] = useState<{ url: string; title: string } | null>(null);
+  const [playerError, setPlayerError] = useState('');
   const [isLandscape, setIsLandscape] = useState(false);
   const loadingRef = useRef(false);
 
@@ -245,6 +246,7 @@ export default function OpenLiveScreen() {
 
   const playItem = async (item: OpenLiveItem) => {
     setStatus(t('正在解析播放地址...'));
+    setPlayerError('');
     try {
       const url = await resolveStream(item);
       if (needsNative(url)) {
@@ -282,7 +284,16 @@ export default function OpenLiveScreen() {
         <ScreenHeader title={playing.title} onBack={() => setPlaying(null)} right={
           <TouchableOpacity onPress={toggleOrientation}><Text style={styles.headerAction}>{isLandscape ? t('竖屏') : t('横屏')}</Text></TouchableOpacity>
         } />
-        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} onError={() => setPlaying(null)} />
+        {playerError ? (
+          <View style={styles.playerErrorWrap}>
+            <Text style={[styles.playerErrorText, { color: '#FF6B6B' }]}>{playerError}</Text>
+            <TouchableOpacity style={[styles.playerRetryBtn, { backgroundColor: palette.tint }]} onPress={() => setPlayerError('')}>
+              <Text style={styles.playerRetryText}>{t('返回')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} onError={(e: any) => setPlayerError(t('播放失败：{msg}', { msg: String(e?.error || e?.nativeError || '').slice(0, 120) || t('无法解码或网络错误') }))} />
+        )}
         <TouchableOpacity style={styles.externalBtn} onPress={() => Linking.openURL(playing.url)}>
           <Text style={styles.externalText}>{t('外部打开')}</Text>
         </TouchableOpacity>
@@ -328,7 +339,9 @@ export default function OpenLiveScreen() {
               </View>
             ) : (
               <View style={styles.emptyWrap}>
-                <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无公演记录')}</Text>
+                <Text style={[styles.empty, { color: palette.labelTertiary }]}>
+                  {member ? t('暂无公演记录') : t('请搜索选择成员查看公演记录')}
+                </Text>
               </View>
             )
           }
@@ -381,6 +394,10 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', fontSize: 14 },
   playerPage: { flex: 1, backgroundColor: '#000000' },
   player: { flex: 1, backgroundColor: '#000000' },
+  playerErrorWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  playerErrorText: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  playerRetryBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 9, borderRadius: 18 },
+  playerRetryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   externalBtn: { margin: 16, minHeight: 44, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   externalText: { color: '#ffffff', fontWeight: '900' },
 });

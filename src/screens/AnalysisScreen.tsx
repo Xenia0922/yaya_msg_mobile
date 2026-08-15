@@ -133,6 +133,7 @@ export default function AnalysisScreen() {
   const [flips, setFlips] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(t('暂无数据'));
+  const [loadError, setLoadError] = useState('');
   const [mediaFullUrl, setMediaFullUrl] = useState('');
   const [playMedia, setPlayMedia] = useState<{ url: string; type: string } | null>(null);
   const [flipPlayUrl, setFlipPlayUrl] = useState('');
@@ -256,6 +257,7 @@ export default function AnalysisScreen() {
     setMember(nextMember);
     setLoading(true);
     setStatus('');
+    setLoadError('');
     setMessages([]);
     try {
       let nextTime = 0;
@@ -287,6 +289,7 @@ export default function AnalysisScreen() {
       showToast(unique.length ? t('已加载 {count} 条消息', { count: unique.length }) : t('无房间消息可统计'));
     } catch (error) {
       setMessages([]);
+      setLoadError(errorMessage(error));
       setStatus(t('加载失败：{err}', { err: errorMessage(error) }));
       showToast(t('加载失败：{err}', { err: errorMessage(error) }));
     } finally {
@@ -300,8 +303,15 @@ export default function AnalysisScreen() {
       // 循环拉取直到拉完，移除原先 [0,50,100,150] 的 200 条上限
       const collected: any[] = [];
       let begin = 0;
+      let failed = false;
       for (let i = 0; i < 24; i++) {
-        const res = await pocketApi.getFlipList(begin, 100).catch(() => null);
+        let res: any = null;
+        try {
+          res = await pocketApi.getFlipList(begin, 100);
+        } catch {
+          failed = true;
+          break;
+        }
         const list = res ? unwrapList(res, ['content.questions', 'content.list', 'content.data', 'data.questions', 'questions', 'list']) : [];
         if (!list.length) break;
         collected.push(...list);
@@ -310,8 +320,13 @@ export default function AnalysisScreen() {
         begin = next;
       }
       setFlips(collected);
-      setStatus(collected.length ? t('已加载 {count} 条翻牌记录', { count: collected.length }) : t('暂无翻牌记录'));
-      showToast(collected.length ? t('已加载 {count} 条翻牌', { count: collected.length }) : t('无翻牌记录'));
+      if (failed) {
+        setStatus(t('翻牌记录加载不完整：{err}', { err: t('中途请求失败，已显示已获取的部分') }));
+        showToast(t('翻牌记录加载不完整'));
+      } else {
+        setStatus(collected.length ? t('已加载 {count} 条翻牌记录', { count: collected.length }) : t('暂无翻牌记录'));
+        showToast(collected.length ? t('已加载 {count} 条翻牌', { count: collected.length }) : t('无翻牌记录'));
+      }
     } catch (error) {
       setStatus(t('翻牌统计失败：{err}', { err: errorMessage(error) }));
     } finally {
@@ -334,7 +349,7 @@ export default function AnalysisScreen() {
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title={t('数据统计')} right={
-        <TouchableOpacity onPress={() => { setLoading(true); loadRoomStats(member!).finally(() => loadFlipStats().finally(() => setLoading(false))); }} disabled={!member || loading}>
+        <TouchableOpacity onPress={() => { setLoadError(''); setLoading(true); loadRoomStats(member!).finally(() => loadFlipStats().finally(() => setLoading(false))); }} disabled={!member || loading}>
           <Text style={[styles.refreshText, { color: palette.tint }, (!member || loading) && { opacity: 0.45 }]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
@@ -344,10 +359,19 @@ export default function AnalysisScreen() {
         {loading ? (
           <CenterSpinner dark={isDark} text={t('加载中…')} />
         ) : (
-          <Text style={[styles.statusText, { color: palette.labelSecondary }]}>{status}</Text>
+          <>
+            <Text style={[styles.statusText, { color: palette.labelSecondary }]}>{status}</Text>
+            {loadError ? (
+              <TouchableOpacity
+                style={[styles.retryBtn, { backgroundColor: palette.tint }]}
+                onPress={() => { setLoadError(''); loadRoomStats(member!).finally(() => loadFlipStats()); }}
+              >
+                <Text style={styles.retryBtnText}>{t('重试')}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
         )}
       </View>
-
       <View style={styles.tabsRow}>
         {TABS.map((item) => (
           <View key={item.key} style={styles.tabWrap}>
@@ -746,6 +770,14 @@ const styles = StyleSheet.create({
   pickerWrap: { paddingHorizontal: 16 },
   refreshText: { fontSize: 14, minWidth: 54, textAlign: 'right', fontWeight: '700' },
   statusText: { marginTop: 8, fontSize: 12 },
+  retryBtn: {
+    alignSelf: 'center',
+    marginTop: 10,
+    paddingHorizontal: 22,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  retryBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   tabsRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingVertical: 10 },
   tabWrap: { flex: 1 },
   tabPill: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
