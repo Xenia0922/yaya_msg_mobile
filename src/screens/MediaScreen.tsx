@@ -684,11 +684,11 @@ export default function MediaScreen() {
 
   const GROUPS: { label: string; id: number; match: string }[] = [
     { label: '全部', id: 0, match: '' },
-    { label: 'SNH', id: 1, match: 'SNH48' },
-    { label: 'BEJ', id: 2, match: 'BEJ48' },
-    { label: 'GNZ', id: 3, match: 'GNZ48' },
-    { label: 'CKG', id: 4, match: 'CKG48' },
-    { label: 'CGT', id: 6, match: 'CGT48' },
+    { label: 'SNH48', id: 1, match: 'SNH48' },
+    { label: 'BEJ48', id: 2, match: 'BEJ48' },
+    { label: 'GNZ48', id: 3, match: 'GNZ48' },
+    { label: 'CKG48', id: 4, match: 'CKG48' },
+    { label: 'CGT48', id: 6, match: 'CGT48' },
   ];
   const list = useMemo(() => {
     let raw = tab === 'live' ? liveList : vodList;
@@ -1521,8 +1521,7 @@ export default function MediaScreen() {
                       <MaterialCommunityIcons name="video" size={40} color={palette.labelTertiary} />
                     </View>
                   )}
-                  <View style={[styles.v2Badge, { position: 'absolute', top: 12, left: 12, backgroundColor: '#FF3B30' }]}>
-                    <View style={styles.v2LiveDot} />
+                  <View style={[styles.v2Badge, { position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(0,0,0,0.55)' }]}>
                     <Text style={styles.v2BadgeText}>{t('直播中')}</Text>
                   </View>
                   <View pointerEvents="none" style={styles.v2Shade1} />
@@ -1635,8 +1634,7 @@ export default function MediaScreen() {
                       />
                       <Text style={styles.v2BadgeText}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
                     </View>
-                    <View style={[styles.v2Badge, styles.vodGridDuration, { backgroundColor: '#FF3B30' }]}>
-                      <View style={styles.v2LiveDot} />
+                    <View style={[styles.v2Badge, styles.vodGridDuration, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
                       <Text style={styles.v2BadgeText}>{t('直播中')}</Text>
                     </View>
                     <View pointerEvents="none" style={styles.vodShade1} />
@@ -1854,7 +1852,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  v2LiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF', marginRight: 4 },
   v2BadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   v2Duration: { position: 'absolute', right: 10, bottom: 10 },
   v2Info: { padding: 12 },
@@ -1878,7 +1875,7 @@ const styles = StyleSheet.create({
   groupChip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 16, backgroundColor: 'rgba(238,238,238,0.72)' },
   groupChipDark: { backgroundColor: '#1C1C1F' },
   groupChipActive: { backgroundColor: '#ff6f91' },
-  groupChipText: { fontSize: 12, color: '#555', fontWeight: '700' },
+  groupChipText: { fontSize: 13, color: '#555', fontWeight: '700' },
   groupChipTextDark: { color: '#aaa' },
   groupChipTextActive: { color: '#fff' },
   searchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, marginBottom: 4 },

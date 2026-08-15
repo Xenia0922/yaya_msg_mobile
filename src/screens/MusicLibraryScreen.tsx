@@ -29,6 +29,15 @@ import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 
 const GROUP_TABS = ['ALL', 'SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'FAV'];
+const GROUP_LABELS: Record<string, string> = {
+  ALL: '全部',
+  SNH48: 'SNH48',
+  GNZ48: 'GNZ48',
+  BEJ48: 'BEJ48',
+  CKG48: 'CKG48',
+  CGT48: 'CGT48',
+  FAV: '收藏',
+};
 const CHIP_BASE_WIDTH = 72;
 const CHIP_GAP = 8;
 const CHIP_FAV_WIDTH = 104;
@@ -147,17 +156,25 @@ export default function MusicLibraryScreen() {
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
       <ScreenHeader title={t('音乐')} right={
-        <TouchableOpacity onPress={() => loadAll()} disabled={loading}>
-          <Text style={[styles.backBtn, { color: palette.tint }, loading && styles.disabledText]}>{t('刷新')}</Text>
+        <TouchableOpacity onPress={() => loadAll()} disabled={loading} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <MaterialCommunityIcons name="refresh" size={22} color={palette.label} style={loading ? styles.disabledText : undefined} />
         </TouchableOpacity>
       } />
-      <TextInput
-        value={query}
-        onChangeText={onQueryChange}
-        placeholder={t('搜索歌曲、成员、专辑')}
-        placeholderTextColor={palette.labelTertiary}
-        style={[styles.searchInput, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, color: palette.label }]}
-      />
+      <View style={[styles.searchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
+        <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
+        <TextInput
+          value={query}
+          onChangeText={onQueryChange}
+          placeholder={t('搜索歌曲、成员、专辑')}
+          placeholderTextColor={palette.labelTertiary}
+          style={[styles.searchInput, { color: palette.label }]}
+        />
+        {query ? (
+          <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
       {/* 横向标签栏：使用 flex:1 的 ScrollView + flexDirection: row，配合固定宽度 chip，
            彻底避免 Yoga 在屏幕外 item 重新测量导致的拉伸问题。 */}
       <View style={[styles.tabsBarBase, { borderBottomColor: palette.separator }]}>
@@ -187,7 +204,7 @@ export default function MusicLibraryScreen() {
                   { color: group === g ? '#FFFFFF' : palette.labelSecondary },
                 ]}
               >
-                {g === 'FAV' ? t('收藏{count}', { count: favorites.length ? `(${favorites.length})` : '' }) : g}
+                {g === 'FAV' ? t('收藏{count}', { count: favorites.length ? `(${favorites.length})` : '' }) : t(GROUP_LABELS[g] || g)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -363,8 +380,18 @@ const styles = StyleSheet.create({
   containerDark: { backgroundColor: 'transparent' },
   backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
   disabledText: { opacity: 0.45 },
-  searchInput: { height: 44, marginHorizontal: 16, marginBottom: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', color: '#333', fontSize: 14 },
-  searchInputDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.12)', color: '#eee' },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    height: 42,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  searchInput: { flex: 1, fontSize: 15, padding: 0 },
   
   // 标签栏容器：固定高度，底部分隔线（颜色在组件里动态切换）
   tabsBarBase: { 
@@ -383,8 +410,8 @@ const styles = StyleSheet.create({
   },
   gChip: { 
     height: CHIP_HEIGHT, 
-    paddingHorizontal: 14, 
-    borderRadius: 14, 
+    paddingHorizontal: 16, 
+    borderRadius: 16, 
     backgroundColor: 'rgba(0,0,0,0.06)', 
     alignItems: 'center', 
     justifyContent: 'center', 
@@ -397,7 +424,7 @@ const styles = StyleSheet.create({
   gChipOn: { backgroundColor: '#ff6f91' },
   gChipFav: { width: CHIP_FAV_WIDTH },
   gChipBase: { width: CHIP_BASE_WIDTH },
-  gText: { fontSize: 13, color: '#555', fontWeight: '600' },
+  gText: { fontSize: 14, color: '#555', fontWeight: '700' },
   gTextDark: { color: '#d6d6d6' },
   gTextOn: { color: '#fff' },
   status: { color: '#ff6f91', fontSize: 12, fontWeight: '700' },
@@ -441,11 +468,11 @@ const styles = StyleSheet.create({
   coverPlaceholderText: { color: '#fff', fontSize: 28, fontWeight: '800', opacity: 0.5 },
   unavailableBadge: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   unavailableText: { color: '#ffd479', fontSize: 10, fontWeight: '700' },
-  songInfo: { padding: 8 },
-  songTitle: { fontSize: 13, fontWeight: '700', color: '#222', lineHeight: 17 },
+  songInfo: { padding: 10 },
+  songTitle: { fontSize: 15, fontWeight: '800', color: '#222', lineHeight: 20 },
   songMetaLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, gap: 6 },
-  songArtist: { fontSize: 11, color: '#888', flex: 1 },
-  dateText: { fontSize: 10, color: '#aaa' },
+  songArtist: { fontSize: 12, color: '#888', flex: 1 },
+  dateText: { fontSize: 11, color: '#aaa' },
   tinyPlayer: { width: 0, height: 0 },
   textDark: { color: '#eee' },
   textSubDark: { color: '#eeeeee' },

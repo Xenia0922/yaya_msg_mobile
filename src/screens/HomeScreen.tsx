@@ -97,44 +97,6 @@ function normalizeLiveList(res: any): LiveCardItem[] {
     .slice(0, 8);
 }
 
-function LiveCard({ item, onPress }: { item: LiveCardItem; onPress: () => void }) {
-  const palette = usePalette();
-  const [broken, setBroken] = useState(false);
-  return (
-    <ScalePressable style={styles.liveCard} onPress={onPress} pressedScale={0.96}>
-      <View style={[styles.liveCardWrap, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
-        <View style={[styles.liveCoverWrap, { backgroundColor: palette.fill3 }]}>
-          {!broken && item.cover ? (
-            <NetworkImage
-              source={{ uri: item.cover }}
-              style={styles.liveCover}
-              resizeMode="cover"
-              onError={() => setBroken(true)}
-            />
-          ) : (
-            <View style={styles.liveCoverFallback}>
-              <MaterialCommunityIcons name="video" color={palette.labelTertiary} size={36} />
-            </View>
-          )}
-          {/* 底部渐变遮罩（三层叠加模拟） */}
-          <View pointerEvents="none" style={styles.liveShade1} />
-          <View pointerEvents="none" style={styles.liveShade2} />
-          <View pointerEvents="none" style={styles.liveShade3} />
-          <View style={styles.liveBadge}>
-            <View style={[styles.liveDot, { backgroundColor: '#FF3B30' }]} />
-            <Text style={styles.liveBadgeText}>直播中</Text>
-          </View>
-          {/* 信息上浮叠加在封面上 */}
-          <View style={styles.liveInfoOverlay}>
-            <Text style={styles.liveTitleOverlay} numberOfLines={1}>{item.title}</Text>
-            <Text style={styles.liveNickOverlay} numberOfLines={1}>{item.nickname}</Text>
-          </View>
-        </View>
-      </View>
-    </ScalePressable>
-  );
-}
-
 /** 首页全宽沉浸直播 banner（16:9）：渐变 + 白字上浮 + 直播中红标 */
 function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void }) {
   const palette = usePalette();
@@ -158,7 +120,6 @@ function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void
         <View pointerEvents="none" style={styles.liveBannerShade2} />
         <View pointerEvents="none" style={styles.liveBannerShade3} />
         <View style={[styles.liveBadge, styles.liveBannerBadge]}>
-          <View style={[styles.liveDot, { backgroundColor: '#FF3B30' }]} />
           <Text style={styles.liveBadgeText}>直播中</Text>
         </View>
         <View style={styles.liveBannerInfo}>
@@ -330,14 +291,29 @@ export default function HomeScreen() {
             ) : null}
 
             {gridLives.length > 0 ? (
-              <View style={styles.liveGrid}>
+              <View style={styles.liveList}>
                 {gridLives.map((item) => (
-                  <View key={item.liveId} style={styles.liveGridCell}>
-                    <LiveCard
-                      item={item}
-                      onPress={() => openLive(item)}
-                    />
-                  </View>
+                  <ScalePressable
+                    key={item.liveId}
+                    onPress={() => openLive(item)}
+                    pressedScale={0.97}
+                    style={[styles.liveRow, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+                  >
+                    <View style={[styles.liveRowThumb, { backgroundColor: palette.fill3 }]}>
+                      {item.cover ? (
+                        <NetworkImage source={{ uri: item.cover }} style={styles.liveRowThumb} resizeMode="cover" />
+                      ) : (
+                        <View style={styles.liveRowThumbFallback}>
+                          <MaterialCommunityIcons name="video" color={palette.labelTertiary} size={18} />
+                        </View>
+                      )}
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                      <Text style={[styles.liveRowTitle, { color: palette.label }]} numberOfLines={1}>{item.title}</Text>
+                      <Text style={[styles.liveRowNick, { color: palette.labelSecondary }]} numberOfLines={1}>{item.nickname}</Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={18} />
+                  </ScalePressable>
                 ))}
               </View>
             ) : null}
@@ -475,31 +451,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  liveCard: { width: '100%' },
-  liveCardWrap: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  liveCoverWrap: { height: 132, borderRadius: 0, overflow: 'hidden' },
-  liveCover: { width: '100%', height: '100%' },
-  liveCoverFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // 底部渐变遮罩三层（由浅到深模拟 linear gradient）
-  liveShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 76, backgroundColor: 'rgba(0,0,0,0.18)' },
-  liveShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, backgroundColor: 'rgba(0,0,0,0.28)' },
-  liveShade3: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 34, backgroundColor: 'rgba(0,0,0,0.45)' },
-  liveInfoOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10, paddingBottom: 8 },
-  liveTitleOverlay: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', lineHeight: 17, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
-  liveNickOverlay: { color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 2, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   liveBadge: {
     position: 'absolute',
     top: 8,
@@ -512,7 +463,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     gap: 4,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3 },
   liveBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   // 首页全宽直播 banner（16:9 沉浸）
   liveBanner: { width: '100%' },
@@ -539,12 +489,24 @@ const styles = StyleSheet.create({
   liveBannerNick: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 3, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   bannerDots: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 8 },
   bannerDot: { height: 6, borderRadius: 3 },
-  liveGrid: {
+  liveList: { gap: 8 },
+  liveRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 16,
   },
-  liveGridCell: { width: '47%', flexGrow: 1 },
+  liveRowThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveRowThumbFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  liveRowTitle: { fontSize: 13, fontWeight: '700' },
+  liveRowNick: { fontSize: 11, marginTop: 3 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
