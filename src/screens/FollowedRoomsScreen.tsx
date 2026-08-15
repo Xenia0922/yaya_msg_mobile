@@ -40,7 +40,6 @@ import {
 } from '../utils/data';
 import { t, useI18n } from '../i18n';
 import pocketApi from '../api/pocket48';
-import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
 import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
 import { enqueueDownload } from '../services/downloads';
@@ -842,6 +841,7 @@ export default function FollowedRoomsScreen() {
   const [roomMessages, setRoomMessages] = useState<RoomMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [roomSearchQuery, setRoomSearchQuery] = useState('');
   const [roomMode, setRoomMode] = useState<RoomMode>('big');
   const [showFanMessages, setShowFanMessages] = useState(false);
@@ -1198,6 +1198,12 @@ export default function FollowedRoomsScreen() {
     return [...list].sort((a, b) => (pinnedIds.has(b.memberId) ? 1 : 0) - (pinnedIds.has(a.memberId) ? 1 : 0));
   }, [followed, searchQuery, pinned]);
 
+  // 置顶成员横向条数据（保持关注列表顺序）
+  const pinnedRooms = useMemo(() => {
+    const pinnedIds = new Set(pinned);
+    return followed.filter((item) => pinnedIds.has(item.memberId));
+  }, [followed, pinned]);
+
   const filteredRoomMessages = useMemo(() => {
     const q = roomSearchQuery.trim().toLowerCase();
     if (!q || !selectedRoom) return roomMessages;
@@ -1526,24 +1532,81 @@ export default function FollowedRoomsScreen() {
 
   return (
     <View style={[styles.container]}>
-      <ScreenHeader title={t('口袋房间')} right={
-        <TouchableOpacity onPress={() => loadFollowed()}>
-          <Text style={styles.headerAction}>{t('刷新')}</Text>
-        </TouchableOpacity>
+      <ScreenHeader title={t('房间')} right={
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => setSearchOpen((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <MaterialCommunityIcons
+              name={searchOpen ? 'close' : 'magnify'}
+              size={22}
+              color={palette.label}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => loadFollowed()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <MaterialCommunityIcons name="refresh" size={22} color={palette.label} />
+          </TouchableOpacity>
+        </View>
       } />
-      <Text style={[styles.subtitle, { color: palette.labelSecondary }]}>{t('关注房间、大房间和小房间消息')}</Text>
-      <MemberPicker
-        selectedMember={selectedRoom}
-        onSelect={(member) => openRoom(member)}
-        placeholder={t('搜索成员并打开房间...')}
-        limit={50}
-      />
+
+      {searchOpen ? (
+        <View style={[styles.searchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
+          <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
+          <TextInput
+            style={[styles.searchInput, { color: palette.label }]}
+            placeholder={t('搜索成员...')}
+            placeholderTextColor={palette.labelTertiary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* 置顶成员横向条：有置顶时显示 */}
+      {pinnedRooms.length > 0 && !searchQuery ? (
+        <View style={styles.pinnedWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.pinnedContent}
+          >
+            {pinnedRooms.map((item) => {
+              const name = shortName(item.member, item.memberId);
+              return (
+                <TouchableOpacity
+                  key={item.memberId}
+                  style={styles.pinnedItem}
+                  onPress={() => item.member && openRoom(item.member)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.pinnedAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
+                    {item.member?.avatar ? (
+                      <Image source={{ uri: item.member.avatar }} style={styles.pinnedAvatarImg} />
+                    ) : (
+                      <Text style={[styles.pinnedAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
+                    )}
+                    <View style={[styles.pinnedDot, { backgroundColor: palette.tint }]} />
+                  </View>
+                  <Text style={[styles.pinnedName, { color: palette.labelSecondary }]} numberOfLines={1}>{name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
+          key={searchQuery ? 'rooms-filtered' : 'rooms-grid'}
           data={filtered}
           keyExtractor={(item) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
+          numColumns={2}
+          columnWrapperStyle={styles.memberGridRow}
           renderItem={({ item, index }) => {
             const fid = String(item.member?.id || item.memberId);
             const isFollowing = followedIds.has(fid);
@@ -1552,68 +1615,67 @@ export default function FollowedRoomsScreen() {
             const name = shortName(item.member, item.memberId);
             const team = item.member?.team || item.member?.groupName || '';
             const lastTime = Number(item.lastMessage?.msgTime || item.lastMessage?.ctime || 0);
+            const lastText = item.lastMessage ? messageText(item.lastMessage) : '';
             return (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.memberGridItem}>
               <TouchableOpacity
                 style={[
-                  styles.roomItem,
+                  styles.memberCard,
                   {
                     backgroundColor: palette.surface,
                     borderColor: palette.hairline,
                     borderWidth: StyleSheet.hairlineWidth,
-                    borderRadius: 16,
                   },
                 ]}
                 onPress={() => item.member && openRoom(item.member)}
                 activeOpacity={0.88}
               >
-                <View style={styles.roomItemRow}>
-                  {/* 大圆头像 */}
-                  <View style={[styles.roomAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
-                    {item.member?.avatar ? (
-                      <Image source={{ uri: item.member.avatar }} style={styles.roomAvatar} />
-                    ) : (
-                      <Text style={[styles.roomAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
-                    )}
+                <View style={[styles.memberAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
+                  {item.member?.avatar ? (
+                    <Image source={{ uri: item.member.avatar }} style={styles.memberAvatarImg} />
+                  ) : (
+                    <Text style={[styles.memberAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
+                  )}
+                </View>
+                <View style={styles.memberInfo}>
+                  <View style={styles.memberNameRow}>
+                    <Text style={[styles.memberName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
+                    {isPinned ? (
+                      <MaterialCommunityIcons name="pin" size={12} color={palette.tint} style={{ marginLeft: 4 }} />
+                    ) : null}
                   </View>
-                  {/* 信息 */}
-                  <View style={{ flex: 1, marginLeft: 13 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
-                      {isPinned ? (
-                        <View style={[styles.pinBtn, { backgroundColor: palette.tintSoft, marginLeft: 6 }]}>
-                          <Text style={[styles.pinBtnText, { color: palette.tint }]}>{t('置顶')}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text style={[styles.lastMessage, { color: palette.labelSecondary }]} numberOfLines={1}>
-                      {item.lastMessage ? messageText(item.lastMessage) : t('点击查看房间消息')}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                      {team ? (
-                        <Text style={[styles.roomTeam, { color: palette.tint }]} numberOfLines={1}>{team}</Text>
-                      ) : null}
-                      {lastTime ? (
-                        <Text style={[styles.roomMetaInline, { color: palette.labelTertiary }]} numberOfLines={1}>
-                          · {formatTimestamp(lastTime).slice(5, 16)}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                  {/* 关注按钮 */}
-                  {item.member ? (
-                    <TouchableOpacity
-                      style={[styles.followBtn, { backgroundColor: isFollowing ? palette.tintSoft : palette.tint }]}
-                      disabled={busy}
-                      onPress={() => toggleFollow(item.member!)}
-                    >
-                      {busy ? (
-                        <ActivityIndicator color={isFollowing ? palette.tint : '#ffffff'} size="small" />
-                      ) : (
-                        <Text style={[styles.followBtnText, isFollowing && { color: palette.tint }]}>{isFollowing ? t('已关注') : t('关注')}</Text>
-                      )}
-                    </TouchableOpacity>
+                  {team ? (
+                    <Text style={[styles.memberTeam, { color: palette.tint }]} numberOfLines={1}>{team}</Text>
                   ) : null}
+                  <Text style={[styles.memberLast, { color: palette.labelSecondary }]} numberOfLines={2}>
+                    {lastText || t('点击查看房间消息')}
+                  </Text>
+                  <View style={styles.memberFoot}>
+                    {lastTime ? (
+                      <Text style={[styles.memberTime, { color: palette.labelTertiary }]} numberOfLines={1}>
+                        {formatTimestamp(lastTime).slice(5, 16)}
+                      </Text>
+                    ) : (
+                      <Text style={[styles.memberTime, { color: palette.labelTertiary }]} numberOfLines={1}>{t('暂无消息')}</Text>
+                    )}
+                    {item.member ? (
+                      <TouchableOpacity
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        disabled={busy}
+                        onPress={() => toggleFollow(item.member!)}
+                      >
+                        {busy ? (
+                          <ActivityIndicator color={palette.tint} size="small" />
+                        ) : (
+                          <MaterialCommunityIcons
+                            name={isFollowing ? 'heart' : 'heart-outline'}
+                            size={20}
+                            color={isFollowing ? palette.tint : palette.labelTertiary}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                 </View>
               </TouchableOpacity>
             </FadeInView>
@@ -1660,6 +1722,80 @@ const styles = StyleSheet.create({
   refreshBtnDisabled: { opacity: 0.5 },
   refreshText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   headerAction: { color: '#ff6f91', fontWeight: '800', fontSize: 13 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  searchInput: { flex: 1, fontSize: 14, padding: 0 },
+  pinnedWrap: { paddingBottom: 6 },
+  pinnedContent: { paddingHorizontal: 14, gap: 18 },
+  pinnedItem: { alignItems: 'center', width: 64 },
+  pinnedAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'visible',
+  },
+  pinnedAvatarImg: { width: 56, height: 56, borderRadius: 28 },
+  pinnedAvatarText: { fontSize: 18, fontWeight: '800' },
+  pinnedDot: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#000000',
+  },
+  pinnedName: { fontSize: 11, marginTop: 5, textAlign: 'center', maxWidth: 64 },
+  memberGridRow: { paddingHorizontal: 8 },
+  memberGridItem: { width: '50%', padding: 4 },
+  memberCard: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  memberAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  memberAvatarImg: { width: 72, height: 72, borderRadius: 36 },
+  memberAvatarText: { fontSize: 24, fontWeight: '800' },
+  memberInfo: { alignSelf: 'stretch', marginTop: 10 },
+  memberNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  memberName: { fontSize: 14, fontWeight: '800', flexShrink: 1 },
+  memberTeam: { fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 3 },
+  memberLast: { fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 5 },
+  memberFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  memberTime: { fontSize: 10 },
   loginLink: { color: '#333', fontWeight: '800', fontSize: 13 },
   loginLinkDark: { color: '#eee', fontWeight: '800', fontSize: 13 },
   status: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
