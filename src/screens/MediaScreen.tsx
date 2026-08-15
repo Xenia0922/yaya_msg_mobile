@@ -917,8 +917,10 @@ export default function MediaScreen() {
     setAnnounceExpanded(false);
   };
 
-  // v2.6: came from room with playLiveId → hide list, back goes to room
-  const fromRoom = !!route.params?.playLiveId;
+  // v2.6: came from room (explicit fromRoom flag) → hide list, back goes to room
+  // 注意：不能仅凭 playLiveId 判断——首页直播卡跳转也带 playLiveId，
+  // 无 fromRoom 标记时保持列表页（不误切 Rooms tab）
+  const fromRoom = !!route.params?.fromRoom;
   useEffect(() => {
     if (fromRoom && !playing) {
       navigation.navigate('Rooms' as any);

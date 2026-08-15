@@ -1122,6 +1122,7 @@ export default function FollowedRoomsScreen() {
           playCover: next.cover,
           playUrl: next.url,
           playNonce: Date.now(),
+          fromRoom: true,
         });
         return;
       }

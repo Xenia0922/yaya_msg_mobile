@@ -313,7 +313,15 @@ export default function HomeScreen() {
                 <View key={item.liveId} style={{ width: 188, marginLeft: spacing.md }}>
                   <LiveCard
                     item={item}
-                    onPress={() => handleNav({ title: '', desc: '', route: 'Media', icon: '' })}
+                    onPress={() =>
+                      (navigation as any).navigate('Media', {
+                        mode: 'live',
+                        playLiveId: item.liveId,
+                        playTitle: item.title,
+                        playCover: item.cover,
+                        playNonce: Date.now(),
+                      })
+                    }
                   />
                 </View>
               ))}
