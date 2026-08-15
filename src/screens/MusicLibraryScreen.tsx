@@ -227,7 +227,7 @@ export default function MusicLibraryScreen() {
               <TouchableOpacity
                 style={[
                   styles.songItem,
-                  { backgroundColor: palette.surfaceGlass, borderColor: active ? palette.tint : palette.innerStroke, borderWidth: active ? 2 : StyleSheet.hairlineWidth },
+                  { backgroundColor: palette.surface, borderColor: active ? palette.tint : palette.hairline, borderWidth: active ? 2 : StyleSheet.hairlineWidth },
                 ]}
                 onPress={() => playSong(item)}
                 activeOpacity={0.7}
@@ -408,7 +408,19 @@ const styles = StyleSheet.create({
   emptyWrap: { alignItems: 'center', marginTop: 80 },
   // 去掉 gridRow（width:'48%'+space-between 在 Android FlatList 上切歌后左列塌陷）。
   // 现由 FlatList numColumns=2 默认等分两列，songItem 用 flex:1 + 自身 padding 自适应。
-  songItem: { flex: 1, margin: 4, borderRadius: 14, overflow: 'hidden', backgroundColor: '#FFFFFF' },
+  songItem: {
+    flex: 1,
+    margin: 5,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    // 克制阴影增强浮起感
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
   cardDark: { backgroundColor: '#1C1C1F' },
   songItemActiveDark: { borderColor: '#ff8fa8' },
   songItemActive: { borderWidth: 2, borderColor: '#ff6f91' },

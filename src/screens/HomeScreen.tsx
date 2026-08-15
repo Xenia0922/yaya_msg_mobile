@@ -238,6 +238,11 @@ export default function HomeScreen() {
   const hour = new Date().getHours();
   const greeting =
     hour < 5 ? t('夜深了') : hour < 11 ? t('早上好') : hour < 14 ? t('中午好') : hour < 18 ? t('下午好') : t('晚上好');
+  const dateText = (() => {
+    const d = new Date();
+    const week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+    return t('{m}月{d}日 星期{w}', { m: d.getMonth() + 1, d: d.getDate(), w: week });
+  })();
 
   const groups = TOOL_GROUPS.map((g) => ({
     ...g,
@@ -267,6 +272,9 @@ export default function HomeScreen() {
         </Text>
         <Text style={[typography.subhead, { color: palette.labelSecondary, marginBottom: 16 }]}>
           {t('{g} · 已收录 {n} 位成员', { g: greeting, n: membersCount || '—' })}
+        </Text>
+        <Text style={[styles.homeDate, { color: palette.labelTertiary }]}>
+          {dateText}
         </Text>
 
         {!token ? (
@@ -482,6 +490,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   outer: { flex: 1 },
   homeTitle: { fontSize: 24, lineHeight: 30, fontWeight: '800', letterSpacing: -0.3 },
+  homeDate: { fontSize: 13, fontWeight: '600', marginTop: -10, marginBottom: 16 },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
