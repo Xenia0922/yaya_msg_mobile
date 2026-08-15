@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   errorText: { color: '#ff6f91', fontSize: 13, flex: 1, lineHeight: 18 },
   retryBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 14 },
   retryBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  empty: { color: '#555555', fontSize: 14, textAlign: 'center', paddingVertical: 20 },
+  empty: { fontSize: 14, textAlign: 'center', paddingVertical: 20 },
   orderCard: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: 16, padding: 12, marginBottom: 5,
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
     padding: 10, borderRadius: 14, fontSize: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  fillInput: { backgroundColor: '#FFFFFF' },
+  fillInput: {},
   submitBtn: { backgroundColor: '#ff6f91', borderRadius: 18, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
   disabledBtn: { opacity: 0.45 },
   submitText: { color: '#fff', fontSize: 15, fontWeight: '800' },

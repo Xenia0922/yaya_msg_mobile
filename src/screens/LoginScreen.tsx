@@ -538,7 +538,7 @@ export default function LoginScreen() {
         <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋资料')}</Text>
         {renameCountText ? <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>{renameCountText}</Text> : null}
         <TextInput
-          style={[styles.input, false]}
+          style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]}
           placeholder={t('昵称')}
           placeholderTextColor={palette.labelTertiary}
           value={profileName}
@@ -553,7 +553,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
         <TextInput
-          style={[styles.input, false]}
+          style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label, opacity: 0.7 }]}
           placeholder={t('头像URL上传后自动填入')}
           placeholderTextColor={palette.labelTertiary}
           value={profileAvatar}

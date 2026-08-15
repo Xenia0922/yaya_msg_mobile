@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
   refreshBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   web: { flex: 1, backgroundColor: '#FFFFFF' },
   webLoading: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  webLoadingText: { marginTop: 8, color: '#333333', fontSize: 12 },
+  webLoadingText: { marginTop: 8, fontSize: 12 },
   webErrorWrap: {
     position: 'absolute',
     left: 0, right: 0, top: 0, bottom: 0,

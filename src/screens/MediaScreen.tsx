@@ -170,13 +170,13 @@ function CalendarSheet({
   initial,
   onSelect,
   onClose,
-}: {
-  visible: boolean;
+}: {  visible: boolean;
   initial: Date | null;
   onSelect: (d: Date) => void;
   onClose: () => void;
 }) {
   const isDarkC = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const base = initial || new Date();
   const [view, setView] = useState(() => new Date(base.getFullYear(), base.getMonth(), 1));
@@ -191,26 +191,26 @@ function CalendarSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.calMask} activeOpacity={1} onPress={onClose}>
-        <View style={styles.calSheet} onStartShouldSetResponder={() => true}>
+        <View style={[styles.calSheet, { backgroundColor: palette.surface, borderColor: palette.innerStroke }]} onStartShouldSetResponder={() => true}>
           <View style={styles.calHeader}>
             <TouchableOpacity onPress={() => setView(new Date(year, month - 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
-              <MaterialCommunityIcons name="chevron-left" size={24} color={isDarkC ? '#eee' : '#333'} />
+              <MaterialCommunityIcons name="chevron-left" size={24} color={palette.label} />
             </TouchableOpacity>
-            <Text style={[styles.calTitle]}>{t('{year} 年 {month} 月', { year, month: month + 1 })}</Text>
+            <Text style={[styles.calTitle, { color: palette.label }]}>{t('{year} 年 {month} 月', { year, month: month + 1 })}</Text>
             <TouchableOpacity onPress={() => setView(new Date(year, month + 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={isDarkC ? '#eee' : '#333'} />
+              <MaterialCommunityIcons name="chevron-right" size={24} color={palette.label} />
             </TouchableOpacity>
           </View>
           <View style={styles.calWeekRow}>
             {weekdays.map((w) => (
-              <Text key={w} style={[styles.calWeek]}>{w}</Text>
+              <Text key={w} style={[styles.calWeek, { color: palette.labelTertiary }]}>{w}</Text>
             ))}
           </View>
           <View style={styles.calGrid}>
             {cells.map((d, i) =>
               d ? (
                 <TouchableOpacity key={i} style={styles.calDay} onPress={() => onSelect(new Date(year, month, d))}>
-                  <Text style={[styles.calDayText]}>{d}</Text>
+                  <Text style={[styles.calDayText, { color: palette.label }]}>{d}</Text>
                 </TouchableOpacity>
               ) : (
                 <View key={i} style={styles.calDay} />
@@ -219,7 +219,7 @@ function CalendarSheet({
           </View>
           <View style={styles.calFooter}>
             <TouchableOpacity onPress={onClose} style={styles.calCancel}>
-              <Text style={[styles.calCancelText]}>{t('取消')}</Text>
+              <Text style={[styles.calCancelText, { color: palette.tint }]}>{t('取消')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => { onSelect(new Date()); onClose(); }}
@@ -1722,16 +1722,6 @@ const styles = StyleSheet.create({
   glassBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
   glassBtnActive: { backgroundColor: '#ff6f91', borderColor: '#ff6f91' },
   glassBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  tabBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18, backgroundColor: '#FFFFFF' },
-  tabBtnActive: { backgroundColor: '#ff6f91' },
-  tabBtnText: { fontSize: 13, color: '#444', fontWeight: '700' },
-  tabBtnTextActive: { color: '#fff' },
-  refreshBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18, backgroundColor: '#ddd' },
-  refreshText: { fontSize: 13, color: '#444', fontWeight: '700' },
-  tabBtnDark: { backgroundColor: '#1C1C1F' },
-  tabBtnTextDark: { color: '#aaa' },
-  refreshBtnDark: { backgroundColor: '#1C1C1F' },
-  refreshTextDark: { color: '#aaa' },
   footer: { paddingVertical: 14, alignItems: 'center' },
   listContent: { paddingBottom: 120 },
   footerSpinner: { opacity: 0.6 },

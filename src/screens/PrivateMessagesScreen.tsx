@@ -501,7 +501,7 @@ export default function PrivateMessagesScreen() {
                     style={[
                       styles.bubble,
                       mine ? styles.bubbleMine : styles.bubbleOther,
-                      { borderColor: mine ? 'transparent' : palette.hairline },
+                      { borderColor: mine ? 'transparent' : palette.hairline, backgroundColor: mine ? undefined : palette.surface },
                     ]}
                   >
                     {hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, !mine && { color: palette.label }]}>{txt}</Text> : null}
