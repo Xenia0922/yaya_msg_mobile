@@ -331,7 +331,7 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {/* 快捷入口：图标胶囊 */}
+        {/* 快捷入口：3 列等宽网格（无横向滚动，布局确定） */}
         <View style={{ marginBottom: 22 }}>
           <View style={styles.sectionHead}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -339,14 +339,14 @@ export default function HomeScreen() {
               <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{t('快捷入口')}</Text>
             </View>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 10, paddingRight: 8 }}
-            style={{ marginHorizontal: -spacing.md }}
-          >
+          <View style={styles.quickGrid}>
             {quick.map((item) => (
-              <ScalePressable key={item.title} onPress={() => handleNav(item)} pressedScale={0.94}>
+              <ScalePressable
+                key={item.title}
+                onPress={() => handleNav(item)}
+                pressedScale={0.94}
+                style={styles.quickCell}
+              >
                 <View
                   style={[
                     styles.chip,
@@ -359,11 +359,11 @@ export default function HomeScreen() {
                   <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
                     <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                   </View>
-                  <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]}>{item.title}</Text>
+                  <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>{item.title}</Text>
                 </View>
               </ScalePressable>
             ))}
-          </ScrollView>
+          </View>
         </View>
 
         {/* 最近播放 */}
@@ -538,10 +538,20 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingRight: 14,
-    paddingVertical: 6,
+    paddingRight: 12,
+    paddingVertical: 7,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  quickCell: {
+    flexBasis: '31%',
+    flexGrow: 1,
   },
   chipIcon: {
     width: 30,
