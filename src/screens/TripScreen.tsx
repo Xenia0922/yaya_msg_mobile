@@ -60,6 +60,27 @@ function normalizeTripList(res: any): TripItem[] {
     .filter(Boolean) as TripItem[];
 }
 
+/** 行程节点状态：today = 今天（粉实心），past = 已过期（灰），future = 未来（粉描边） */
+type TripNodeState = 'today' | 'past' | 'future';
+
+function tripDateKey(showDate: string): string {
+  return String(showDate || '').trim().replace(/-/g, '/');
+}
+
+function tripNodeState(showDate: string, todayKey: string): TripNodeState {
+  const key = tripDateKey(showDate);
+  if (!key) return 'future';
+  const t = todayKey.replace(/-/g, '/');
+  if (key === t) return 'today';
+  // 字符串比较 YYYY/MM/DD 可直接判断先后
+  return key < t ? 'past' : 'future';
+}
+
+function todayKey(d = new Date()): string {
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export default function TripScreen() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
@@ -72,6 +93,7 @@ export default function TripScreen() {
   const [error, setError] = useState('');
   const [lastTime, setLastTime] = useState('0');
   const [hasMore, setHasMore] = useState(true);
+  const today = todayKey();
 
   const fetchTrips = useCallback(async (reset = false) => {
     if (reset) { setLoading(true); setLastTime('0'); } else { setLoadingMore(true); }
@@ -98,64 +120,100 @@ export default function TripScreen() {
 
   useEffect(() => { if (member) fetchTrips(true); }, [member]);
 
-  const renderItem = ({ item, index }: { item: TripItem; index: number }) => (
-    <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: palette.surface,
-            borderColor: palette.hairline,
-          },
-        ]}
-      >
-        <View style={styles.cardTop}>
-          <View style={[styles.iconWrap, { backgroundColor: palette.tintSoft }]}>
-            <MaterialCommunityIcons name="calendar-clock" size={20} color={palette.tint} />
+  const renderItem = ({ item, index }: { item: TripItem; index: number }) => {
+    const state = tripNodeState(item.showDate, today);
+    const expired = state === 'past';
+    const isToday = state === 'today';
+    return (
+      <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
+        <View style={styles.timelineRow}>
+          {/* 左侧时间轴：竖线 + 圆形节点 */}
+          <View style={styles.railWrap}>
+            <View
+              style={[
+                styles.rail,
+                {
+                  backgroundColor: isToday ? palette.tint : palette.fill2,
+                },
+              ]}
+            />
+            <View
+              style={[
+                styles.nodeOuter,
+                isToday
+                  ? { borderColor: palette.tint }
+                  : { borderColor: state === 'past' ? palette.fill3 : palette.tint },
+              ]}
+            >
+              <View
+                style={[
+                  styles.nodeInner,
+                  isToday ? { backgroundColor: palette.tint } : { backgroundColor: 'transparent' },
+                ]}
+              >
+                {isToday ? <View style={[styles.nodeDot, { backgroundColor: '#FFFFFF' }]} /> : null}
+              </View>
+            </View>
           </View>
-          <View style={styles.infoWrap}>
+
+          {/* 右侧内容卡（实心白卡圆角16） */}
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: palette.surface,
+                borderColor: isToday ? palette.tint : palette.hairline,
+                opacity: expired ? 0.55 : 1,
+              },
+            ]}
+          >
+            <View style={styles.cardHead}>
+              {item.date ? (
+                <View style={[styles.datePill, { backgroundColor: isToday ? palette.tintSoft : palette.fill2 }]}>
+                  <MaterialCommunityIcons
+                    name={isToday ? 'calendar-today' : 'calendar-blank-outline'}
+                    size={13}
+                    color={isToday ? palette.tint : palette.labelTertiary}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={[styles.datePillText, { color: isToday ? palette.tint : palette.labelSecondary }]}>
+                    {item.date}{item.time ? ` ${item.time}` : ''}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={[styles.cardTitle, { color: palette.label }]} numberOfLines={2}>{item.title}</Text>
-            {item.date ? (
-              <Text style={[styles.cardDate, { color: palette.labelSecondary }]}>
-                {item.date}{item.time ? ` ${item.time}` : ''}
-              </Text>
+            {item.subtitle ? (
+              <Text style={[styles.cardSub, { color: palette.labelSecondary }]} numberOfLines={2}>{item.subtitle}</Text>
+            ) : null}
+            {item.location ? (
+              <View style={styles.locationRow}>
+                <MaterialCommunityIcons name="map-marker" size={14} color={palette.tint} />
+                <Text style={[styles.locationText, { color: palette.labelSecondary }]} numberOfLines={1}>{item.location}</Text>
+              </View>
+            ) : null}
+            {item.description ? (
+              <Text style={[styles.cardDesc, { color: palette.labelSecondary }]} numberOfLines={4}>{item.description}</Text>
+            ) : null}
+            {item.ticketUrl ? (
+              <TouchableOpacity
+                style={[styles.linkBtn, { backgroundColor: palette.tint }]}
+                onPress={() => Linking.openURL(item.ticketUrl)}
+              >
+                <MaterialCommunityIcons name="ticket-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.linkBtnText}>{t('票务链接')}</Text>
+                <MaterialCommunityIcons name="chevron-right" size={14} color="#FFFFFF" style={{ marginLeft: 2 }} />
+              </TouchableOpacity>
             ) : null}
           </View>
         </View>
-        {item.subtitle ? <Text style={[styles.cardSub, { color: palette.labelSecondary }]} numberOfLines={2}>{item.subtitle}</Text> : null}
-        {item.description ? <Text style={[styles.cardDesc, { color: palette.labelSecondary }]} numberOfLines={5}>{item.description}</Text> : null}
-        <View style={styles.metaRow}>
-          {item.location ? (
-            <View style={styles.metaLine}>
-              <MaterialCommunityIcons name="map-marker-outline" size={14} color={palette.tint} />
-              <Text style={[styles.metaText, { color: palette.labelSecondary }]} numberOfLines={1}>{item.location}</Text>
-            </View>
-          ) : null}
-          {item.liveText ? (
-            <View style={styles.metaLine}>
-              <MaterialCommunityIcons name="television-play" size={14} color={palette.tint} />
-              <Text style={[styles.metaText, { color: palette.labelSecondary }]} numberOfLines={1}>{item.liveText}</Text>
-            </View>
-          ) : null}
-          {item.members.length > 0 ? (
-            <View style={styles.metaLine}>
-              <MaterialCommunityIcons name="account-group-outline" size={14} color={palette.tint} />
-              <Text style={[styles.metaText, { color: palette.labelSecondary }]} numberOfLines={1}>{item.members.join(' · ')}</Text>
-            </View>
-          ) : null}
-        </View>
-        {item.ticketUrl ? (
-          <TouchableOpacity
-            style={[styles.linkBtn, { backgroundColor: palette.tint }]}
-            onPress={() => Linking.openURL(item.ticketUrl)}
-          >
-            <Text style={styles.linkBtnText}>{t('票务链接')}</Text>
-            <MaterialCommunityIcons name="chevron-right" size={14} color="#FFFFFF" style={{ marginLeft: 2 }} />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    </FadeInView>
-  );
+      </FadeInView>
+    );
+  };
+
+  const subtitle = member
+    ? `${t('当前成员')}${items.length ? ` · ${t('{count} 行程', { count: items.length })}` : ''}`
+    : '';
 
   return (
     <View style={styles.container}>
@@ -164,6 +222,9 @@ export default function TripScreen() {
           <Text style={[styles.headerAction, { color: palette.tint }, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
         </TouchableOpacity>
       } />
+      {subtitle ? (
+        <Text style={[styles.subtitle, { color: palette.labelSecondary }]}>{subtitle}</Text>
+      ) : null}
       <MemberPicker selectedMember={member} onSelect={setMember} placeholder={t('搜索成员查看行程...')} />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
@@ -200,29 +261,58 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
   disabledText: { opacity: 0.45 },
+  subtitle: { paddingHorizontal: 16, fontSize: 13, fontWeight: '700', marginBottom: 4 },
   list: { padding: 16, paddingBottom: 40 },
-  card: {
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 5,
-    borderWidth: StyleSheet.hairlineWidth,
+  timelineRow: { flexDirection: 'row', alignItems: 'stretch', marginBottom: 5 },
+  railWrap: { width: 20, alignItems: 'center' },
+  rail: {
+    position: 'absolute',
+    left: 9,
+    top: 0,
+    bottom: 0,
+    width: 2,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+  nodeOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    marginTop: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  nodeInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoWrap: { flex: 1, minWidth: 0, marginLeft: 12 },
+  nodeDot: { width: 4, height: 4, borderRadius: 2 },
+  card: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 10,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  cardHead: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 },
+  datePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  datePillText: { fontSize: 12, fontWeight: '700' },
   cardTitle: { fontSize: 15, fontWeight: '700', lineHeight: 20 },
-  cardDate: { fontSize: 12, marginTop: 3 },
-  cardSub: { fontSize: 13, marginBottom: 4, lineHeight: 19 },
-  cardDesc: { fontSize: 13, marginBottom: 8, lineHeight: 19 },
-  metaRow: { gap: 4, marginBottom: 4 },
-  metaLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  metaText: { fontSize: 12, flex: 1 },
+  cardSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  locationText: { fontSize: 12, flex: 1 },
+  cardDesc: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   linkBtn: {
     alignSelf: 'flex-start',
     marginTop: 8,

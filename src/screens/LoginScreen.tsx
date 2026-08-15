@@ -14,7 +14,6 @@ import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, pickText } from '../utils/data';
 import { logWarn } from '../utils/runtimeLog';
-import { useAppTheme } from '../hooks/useAppTheme';
 import { usePalette } from '../theme';
 import { translate, useI18n } from '../i18n';
 
@@ -107,7 +106,6 @@ export default function LoginScreen() {
   const settings = useSettingsStore((state) => state.settings);
   const setSettings = useSettingsStore((state) => state.setSettings);
   const showToast = useUiStore((state) => state.showToast);
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const pollingRef = useRef(true);
@@ -400,11 +398,11 @@ export default function LoginScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, false]} contentContainerStyle={styles.content}>
       <ScreenHeader title={t('账号设置')} />
 
       <FadeInView delay={80} duration={300}>
-        <View style={[styles.section, isDark && styles.sectionDark, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
+        <View style={[styles.section, false, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
           <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋48验证码登录')}</Text>
         <View style={styles.phoneRow}>
           <View style={[styles.areaWrap, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
@@ -449,7 +447,7 @@ export default function LoginScreen() {
         </View>
       </View>
 
-      <View style={[styles.section, isDark && styles.sectionDark, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
+      <View style={[styles.section, false, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
         <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋48Token登录')}</Text>
         <TextInput
           style={[styles.input, styles.tokenInput, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]}
@@ -470,7 +468,7 @@ export default function LoginScreen() {
         {settings.p48Token ? <Text style={[styles.tokenInfo, { color: palette.labelSecondary }]}>{t('已保存Token：{token}', { token: settings.p48Token.slice(0, 24) })}...</Text> : null}
       </View>
 
-      <View style={[styles.section, isDark && styles.sectionDark, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
+      <View style={[styles.section, false, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
         <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋账号切换')}</Text>
         <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>
           {t('当前：{info}', { info: accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : t('先检查Token读取账号') })}
@@ -484,39 +482,39 @@ export default function LoginScreen() {
           return (
             <TouchableOpacity
               key={id}
-              style={[styles.accountRow, isCurrent && styles.accountRowActive, isDark && styles.accountRowDark]}
+              style={[styles.accountRow, isCurrent && styles.accountRowActive, { backgroundColor: palette.surface }]}
               onPress={() => handleSwitchPocketAccount(user)}
               disabled={loading || isCurrent}
             >
               <View style={styles.accountTextWrap}>
-                <Text style={[styles.accountName, isDark && styles.textDark]}>{accountName(user)}</Text>
-                <Text style={[styles.accountMeta, isDark && styles.textSubDark]}>{accountRole(user, t('账号'))} · {id || t('无ID')}</Text>
+                <Text style={[styles.accountName, { color: palette.label }]}>{accountName(user)}</Text>
+                <Text style={[styles.accountMeta, { color: palette.labelSecondary }]}>{accountRole(user, t('账号'))} · {id || t('无ID')}</Text>
               </View>
               <Text style={isCurrent ? styles.accountCurrent : styles.accountAction}>
                 {isCurrent ? t('当前') : switchingUserId === id ? t('切换中') : t('切换')}
               </Text>
             </TouchableOpacity>
           );
-        }) : <Text style={[styles.metaLine, isDark && styles.textSubDark]}>{t('没有读取到大小号列表；保存 Token 后点"刷新账号列表"。')}</Text>}
+        }) : <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>{t('没有读取到大小号列表；保存 Token 后点"刷新账号列表"。')}</Text>}
       </View>
 
-      <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('B站登录')}</Text>
+      <View style={[styles.section, false]}>
+        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('B站登录')}</Text>
         <TouchableOpacity style={styles.btnPrimary} onPress={handleBiliQr}>
           <Text style={styles.btnText}>{t('获取B站登录二维码')}</Text>
         </TouchableOpacity>
         {qrHtml ? <WebView source={{ html: qrHtml }} style={styles.qr} originWhitelist={['*']} scrollEnabled={false} /> : null}
-        {biliStatus ? <Text style={[styles.biliStatus, isDark && styles.textSubDark]}>{biliStatus}</Text> : null}
+        {biliStatus ? <Text style={[styles.biliStatus, { color: palette.labelSecondary }]}>{biliStatus}</Text> : null}
         {settings.bilibiliCookie ? <Text style={styles.tokenInfo}>{t('B站已登录')}</Text> : null}
       </View>
 
-      <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('口袋资料')}</Text>
-        {renameCountText ? <Text style={[styles.metaLine, isDark && styles.textSubDark]}>{renameCountText}</Text> : null}
+      <View style={[styles.section, false]}>
+        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋资料')}</Text>
+        {renameCountText ? <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>{renameCountText}</Text> : null}
         <TextInput
-          style={[styles.input, isDark && styles.inputDark]}
+          style={[styles.input, false]}
           placeholder={t('昵称')}
-          placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+          placeholderTextColor={palette.labelTertiary}
           value={profileName}
           onChangeText={setProfileName}
         />
@@ -529,9 +527,9 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
         <TextInput
-          style={[styles.input, isDark && styles.inputDark]}
+          style={[styles.input, false]}
           placeholder={t('头像URL上传后自动填入')}
-          placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+          placeholderTextColor={palette.labelTertiary}
           value={profileAvatar}
           onChangeText={setProfileAvatar}
           autoCapitalize="none"
@@ -542,15 +540,15 @@ export default function LoginScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.section, isDark && styles.sectionDark]}>
-        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>{t('鸡腿充值')}</Text>
+      <View style={[styles.section, false]}>
+        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('鸡腿充值')}</Text>
         <TouchableOpacity style={styles.btnPrimary} onPress={() => (navigation as any).navigate('RechargeScreen')}>
             <Text style={styles.btnText}>{t('打开官方充值页')}</Text>
           </TouchableOpacity>
         </View>
       </FadeInView>
 
-      {status ? <Text style={[styles.status, isDark && styles.textSubDark]}>{status}</Text> : null}
+      {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
     </ScrollView>
   );
 }

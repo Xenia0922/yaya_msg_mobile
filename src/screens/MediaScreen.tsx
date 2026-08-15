@@ -1356,7 +1356,7 @@ export default function MediaScreen() {
   }
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={[styles.container]}>
       <ScreenHeader title={t('直播 · 回放')} />
       <View style={styles.toolbarRow}>
         <TouchableOpacity
@@ -1397,12 +1397,12 @@ export default function MediaScreen() {
       <View style={styles.searchWrap}>
         {selectedMember ? (
           <TouchableOpacity onPress={() => setSelectedMember(null)} style={styles.memberChip}>
-            <Text style={[styles.memberChipText, isDark && styles.memberChipTextDark]}>{selectedMember.ownerName}</Text>
+            <Text style={[styles.memberChipText]}>{selectedMember.ownerName}</Text>
             <MaterialCommunityIcons name="close" size={16} color="#fff" style={{ marginLeft: 6 }} />
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity onPress={() => setShowCalendar(true)} style={[styles.calBtn, dateFilter && styles.calBtnActive]} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-          <MaterialCommunityIcons name="calendar-month" size={20} color={dateFilter ? '#ff6f91' : (isDark ? '#ccc' : '#666')} />
+          <MaterialCommunityIcons name="calendar-month" size={20} color={dateFilter ? palette.tint : palette.labelSecondary} />
         </TouchableOpacity>
         <TextInput
           style={[
@@ -1421,7 +1421,7 @@ export default function MediaScreen() {
         />
         {search.trim() ? (
           <TouchableOpacity onPress={() => setSearch('')} style={styles.searchClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <MaterialCommunityIcons name="close-circle" size={18} color={isDark ? '#aaa' : '#999'} />
+            <MaterialCommunityIcons name="close-circle" size={18} color={palette.labelTertiary} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -1432,7 +1432,7 @@ export default function MediaScreen() {
             <Text style={styles.dateChipText}>{dateKeyOf(dateFilter)}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setDateFilter(null)} style={styles.dateChipClear}>
-            <MaterialCommunityIcons name="close-circle" size={16} color={isDark ? '#aaa' : '#999'} />
+            <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
           </TouchableOpacity>
         </View>
       ) : null}
@@ -1441,11 +1441,11 @@ export default function MediaScreen() {
           {memberHits.map((m) => (
             <TouchableOpacity
               key={m.id}
-              style={[styles.memberHitChip, isDark && styles.memberHitChipDark]}
+              style={[styles.memberHitChip, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}
               onPress={() => { setSelectedMember(m); setSearch(''); }}
             >
-              <Text style={[styles.memberHitText, isDark && styles.memberHitTextDark]}>{m.ownerName.split('-').pop()}</Text>
-              {m.team ? <Text style={[styles.memberHitTeam, isDark && styles.memberHitTeamDark]}>{m.team}</Text> : null}
+              <Text style={[styles.memberHitText, { color: palette.labelSecondary }]}>{m.ownerName.split('-').pop()}</Text>
+              {m.team ? <Text style={[styles.memberHitTeam, { color: palette.labelTertiary }]}>{m.team}</Text> : null}
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -1540,7 +1540,7 @@ export default function MediaScreen() {
               <VodCardSkeleton dark={isDark} />
             ) : (
               <View style={styles.emptyWrap}>
-                <Text style={[styles.empty, isDark && styles.emptyDark]}>
+                <Text style={[styles.empty, { color: palette.labelTertiary }]}>
                   {search.trim() ? t('没有匹配的直播/录播') : t('暂无数据')}
                 </Text>
               </View>

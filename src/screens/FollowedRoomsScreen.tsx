@@ -703,7 +703,7 @@ function VideoCoverCard({ media, onPress, onLongPress }: { media: RoomMedia; onP
       )}
       <View style={styles.videoCoverOverlay}>
         <View style={styles.livePlayCircle}>
-          <Text style={styles.livePlayIcon}>▶</Text>
+          <MaterialCommunityIcons name="play" size={22} color="#FFFFFF" style={{ marginLeft: 3 }} />
         </View>
       </View>
       {media.duration ? (
@@ -1215,7 +1215,7 @@ export default function FollowedRoomsScreen() {
     const isFollowingRoom = followedIds.has(fid);
     const followBusyRoom = followBusy.has(fid);
     return (
-      <View style={[styles.container, isDark && styles.containerDark]}>
+      <View style={[styles.container]}>
         {roomPlayer ? (
           <View style={[styles.roomPlayerPage, roomPlayerFullscreen && styles.roomPlayerPageFullscreen]}>
             {!roomPlayerFullscreen ? <View style={styles.roomPlayerHeader}>
@@ -1351,9 +1351,9 @@ export default function FollowedRoomsScreen() {
                 {loadingMoreMessages ? (
                   <CenterSpinner dark={isDark} />
                 ) : hasMoreMessages ? (
-                  <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('上滑加载更多')}</Text>
+                  <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('上滑加载更多')}</Text>
                 ) : (
-                  <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('没有更多消息')}</Text>
+                  <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有更多消息')}</Text>
                 )}
               </View>
             ) : null
@@ -1436,7 +1436,7 @@ export default function FollowedRoomsScreen() {
                         <Image source={{ uri: media.cover }} style={styles.liveCardImg} resizeMode="cover" />
                         <View style={styles.liveCardOverlay}>
                           <View style={styles.livePlayCircle}>
-                            <Text style={styles.livePlayIcon}>▶</Text>
+                            <MaterialCommunityIcons name="play" size={22} color="#FFFFFF" style={{ marginLeft: 3 }} />
                           </View>
                         </View>
                         <View style={styles.liveCardTitleBar}>
@@ -1462,9 +1462,19 @@ export default function FollowedRoomsScreen() {
                           style={[styles.mediaPlayBtn, (idol || mine) && styles.mediaPlayBtnHighlight]}
                           onPress={() => playMedia(media)}
                         >
-                          <Text style={[styles.mediaPlayText, (idol || mine) && styles.mediaPlayTextHighlight]}>
-                            {playingMedia?.url && media.url && playingMedia.url === media.url ? t('⏸ 暂停') : `▶ ${media.duration ? `${media.duration}s` : t('播放')}`}
-                          </Text>
+                          <TouchableOpacity
+                            style={[styles.mediaPlayBtn, (idol || mine) && styles.mediaPlayBtnHighlight, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }]}
+                            onPress={() => playMedia(media)}
+                          >
+                            <MaterialCommunityIcons
+                              name={playingMedia?.url && media.url && playingMedia.url === media.url ? 'pause' : 'play'}
+                              size={14}
+                              color={(idol || mine) ? '#ff6f91' : '#FFFFFF'}
+                            />
+                            <Text style={[styles.mediaPlayText, (idol || mine) && styles.mediaPlayTextHighlight]}>
+                              {playingMedia?.url && media.url && playingMedia.url === media.url ? t('暂停') : media.duration ? `${media.duration}s` : t('播放')}
+                            </Text>
+                          </TouchableOpacity>
                         </TouchableOpacity>
                       </TouchableOpacity>
                     )) : (!bubbleText && !gift) ? (
@@ -1510,7 +1520,7 @@ export default function FollowedRoomsScreen() {
   }
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={[styles.container]}>
       <ScreenHeader title={t('口袋房间')} right={
         <TouchableOpacity onPress={() => loadFollowed()}>
           <Text style={styles.headerAction}>{t('刷新')}</Text>
@@ -1604,13 +1614,13 @@ export default function FollowedRoomsScreen() {
             <CenterSpinner dark={isDark} text={t('加载中…')} />
           ) : !token ? (
             <View style={styles.emptyWrap}>
-              <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('登录后可查看关注房间和最新消息')}</Text>
+              <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('登录后可查看关注房间和最新消息')}</Text>
               <TouchableOpacity onPress={() => navigation.navigate('LoginScreen')} style={styles.emptyLink}>
-                <Text style={[styles.loginLink, isDark && styles.loginLinkDark]}>{t('去登录')}</Text>
+                <Text style={[styles.loginLink, { color: palette.tint }]}>{t('去登录')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <Text style={[styles.empty, isDark && styles.emptyDark]}>{t('暂无关注房间')}</Text>
+            <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无关注房间')}</Text>
           )}
           initialNumToRender={12}
           maxToRenderPerBatch={12}

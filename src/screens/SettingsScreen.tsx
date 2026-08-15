@@ -21,7 +21,6 @@ import RuntimeLogViewer from '../components/RuntimeLogViewer';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { APP_VERSION } from '../constants';
 import { getMemberDataMeta, MemberDataMeta } from '../services/memberData';
-import { useAppTheme } from '../hooks/useAppTheme';
 import { usePalette } from '../theme';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
 
@@ -83,11 +82,11 @@ function formatTime(ts: number): string {
 
 export default function SettingsScreen() {
   const navigation = useNavigation<SettingsNavProp>();
+  const palette = usePalette();
   const settings = useSettingsStore((state) => state.settings);
   const setSettings = useSettingsStore((state) => state.setSettings);
   const showToast = useUiStore((state) => state.showToast);
   const memberCount = useMemberStore((state) => state.members.length);
-  const isDark = useAppTheme();
   const { t } = useI18n();
   const hasUpdate = useUpdateStore((s) => s.hasUpdate);
   const [meta, setMeta] = useState<MemberDataMeta | null>(null);
@@ -134,15 +133,15 @@ export default function SettingsScreen() {
 
   return (
     <>
-      <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={[styles.container, false]} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <ScreenHeader title={t('设置')} />
 
       <Section title={t('关于牙牙消息')}>
-        <View style={[styles.aboutHero, isDark && styles.aboutHeroDark]}>
+        <View style={[styles.aboutHero, { backgroundColor: palette.tintSoft }]}>
           <Image source={require('../../assets/logo.jpg')} style={styles.aboutLogoImg} />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.aboutName, isDark && styles.textLight]}>{t('牙牙消息')}</Text>
-            <Text style={[styles.aboutSub, isDark && styles.textSubLight]}>{t('Yaya Message · 口袋48 第三方客户端')}</Text>
+            <Text style={[styles.aboutName, { color: palette.label }]}>{t('牙牙消息')}</Text>
+            <Text style={[styles.aboutSub, { color: palette.labelSecondary }]}>{t('Yaya Message · 口袋48 第三方客户端')}</Text>
           </View>
           <View style={styles.verChipWrap}>
             <TouchableOpacity
@@ -160,32 +159,32 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <Text style={[styles.blockTitle, isDark && styles.textLight]}>{t('致谢')}</Text>
-        <Text style={[styles.ackText, isDark && styles.textSubLight]}>
+        <Text style={[styles.blockTitle, { color: palette.label }]}>{t('致谢')}</Text>
+        <Text style={[styles.ackText, { color: palette.labelSecondary }]}>
           {t('基于')}{' '}
           <Text style={styles.ackLink} onPress={() => Linking.openURL('https://github.com/yk1z/yaya_msg')}>yk1z/yaya_msg</Text>
           {' '}{t('二次开发的移动端版本，感谢原作者的开源贡献。')}
         </Text>
 
-        <TouchableOpacity style={[styles.linkCard, isDark && styles.linkCardDark]} onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile')}>
+        <TouchableOpacity style={[styles.linkCard, { backgroundColor: palette.tintSoft }]} onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile')}>
           <MaterialCommunityIcons name="github" size={20} color="#ff6f91" />
           <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={[styles.linkCardLabel, isDark && styles.textLight]}>{t('本项目仓库')}</Text>
-            <Text style={[styles.linkCardValue, isDark && styles.textSubLight]}>Xenia0922/yaya_msg_mobile</Text>
+            <Text style={[styles.linkCardLabel, { color: palette.label }]}>{t('本项目仓库')}</Text>
+            <Text style={[styles.linkCardValue, { color: palette.labelSecondary }]}>Xenia0922/yaya_msg_mobile</Text>
           </View>
-          <MaterialCommunityIcons name="chevron-right" size={20} color={isDark ? '#888' : '#ccc'} />
+          <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
         </TouchableOpacity>
 
         <View style={styles.divider} />
 
-        <Text style={[styles.blockTitle, isDark && styles.textLight]}>{t('开源协议')}</Text>
-        <Text style={[styles.ackText, isDark && styles.textSubLight]}>
+        <Text style={[styles.blockTitle, { color: palette.label }]}>{t('开源协议')}</Text>
+        <Text style={[styles.ackText, { color: palette.labelSecondary }]}>
           {t('基于 GPL-3.0 协议开源，仅供学习交流。软件不上传任何数据到云端，仅在本地缓存以维持功能可用。完整许可证见仓库 LICENSE 文件。')}
         </Text>
       </Section>
 
       <Section title={t('账号')}>
-        <Text style={[styles.sub, isDark && styles.textSubLight]}>{t('口袋登录、大小号切换、B站登录、修改昵称和头像')}</Text>
+        <Text style={[styles.sub, { color: palette.labelSecondary }]}>{t('口袋登录、大小号切换、B站登录、修改昵称和头像')}</Text>
         <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('LoginScreen')}>
           <Text style={styles.linkText}>{t('进入账号管理')}</Text>
         </TouchableOpacity>
@@ -194,7 +193,7 @@ export default function SettingsScreen() {
       <Section title={t('外观')}>
         <ChipRow options={THEME_OPTIONS} value={settings.theme} onChange={(v) => update('theme', v)} />
         <View style={styles.divider} />
-        <Text style={[styles.sub, isDark && styles.textSubLight]}>{t('背景图：{info}', { info: backgroundInfo })}</Text>
+        <Text style={[styles.sub, { color: palette.labelSecondary }]}>{t('背景图：{info}', { info: backgroundInfo })}</Text>
         <View style={styles.chipRow}>
           <TouchableOpacity style={styles.linkBtn} onPress={pickBg}>
             <Text style={styles.linkText}>{t('选择本地图片')}</Text>
@@ -214,7 +213,7 @@ export default function SettingsScreen() {
       <Section title={t('自动签到')}>
         <ChipRow options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]} value={settings.yaya_auto_checkin_enabled} onChange={(v) => update('yaya_auto_checkin_enabled', v)} />
         {settings.yaya_auto_checkin_enabled ? (
-          <Text style={[styles.sub, isDark && styles.textSubLight]}>
+          <Text style={[styles.sub, { color: palette.labelSecondary }]}>
             {t('上次签到：{date}', { date: settings.yaya_auto_checkin_last_date || t('尚未执行') })}
           </Text>
         ) : null}
@@ -234,25 +233,25 @@ export default function SettingsScreen() {
       <Section title={t('成员数据')}>
         <View style={styles.memberStatRow}>
           <View style={styles.memberStat}>
-            <Text style={[styles.memberStatNum, isDark && styles.textLight]}>{memberCount}</Text>
-            <Text style={[styles.memberStatLabel, isDark && styles.textSubLight]}>{t('位成员')}</Text>
+            <Text style={[styles.memberStatNum, { color: palette.label }]}>{memberCount}</Text>
+            <Text style={[styles.memberStatLabel, { color: palette.labelSecondary }]}>{t('位成员')}</Text>
           </View>
           <View style={styles.memberStatDivider} />
           <View style={styles.memberStat}>
-            <Text style={[styles.memberStatNum, isDark && styles.textLight]}>{meta ? formatTime(meta.savedAt) : t('尚未同步')}</Text>
-            <Text style={[styles.memberStatLabel, isDark && styles.textSubLight]}>{t('最近更新')}</Text>
+            <Text style={[styles.memberStatNum, { color: palette.label }]}>{meta ? formatTime(meta.savedAt) : t('尚未同步')}</Text>
+            <Text style={[styles.memberStatLabel, { color: palette.labelSecondary }]}>{t('最近更新')}</Text>
           </View>
         </View>
-        <View style={[styles.autoSyncRow, isDark && styles.autoSyncRowDark]}>
+        <View style={[styles.autoSyncRow, { backgroundColor: palette.tintSoft }]}>
           <MaterialCommunityIcons name="sync" size={16} color="#ff6f91" />
-          <Text style={[styles.autoSyncText, isDark && styles.textSubLight]}>{t('进入软件时自动同步成员数据')}</Text>
+          <Text style={[styles.autoSyncText, { color: palette.labelSecondary }]}>{t('进入软件时自动同步成员数据')}</Text>
         </View>
-        <Text style={[styles.note, isDark && styles.textSubLight]}>
+        <Text style={[styles.note, { color: palette.labelSecondary }]}>
           {t('成员数据共 {count} 位，数据来源于 yk1z 数据库（yk1z/yaya_msg），进入软件时自动同步最新。', { count: memberCount })}
         </Text>
       </Section>
 
-      <Text style={[styles.footer, isDark && styles.textSubLight]}>{t('Version {v}', { v: APP_VERSION })}</Text>
+      <Text style={[styles.footer, { color: palette.labelSecondary }]}>{t('Version {v}', { v: APP_VERSION })}</Text>
     </ScrollView>
       <RuntimeLogViewer visible={logVisible} onClose={() => setLogVisible(false)} />
     </>
