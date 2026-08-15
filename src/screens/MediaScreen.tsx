@@ -1495,7 +1495,14 @@ export default function MediaScreen() {
         </ScrollView>
       ) : null}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <View style={styles.errorRow}>
+          <Text style={styles.error} numberOfLines={2}>{error}</Text>
+          <TouchableOpacity style={[styles.errorRetryBtn, { backgroundColor: palette.tint }]} onPress={reloadList}>
+            <Text style={styles.errorRetryText}>{t('重试')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <CalendarSheet
         visible={showCalendar}
@@ -1729,6 +1736,9 @@ const styles = StyleSheet.create({
   listContent: { paddingBottom: 120 },
   footerSpinner: { opacity: 0.6 },
   error: { margin: 12, padding: 10, borderRadius: 18, backgroundColor: '#fff3cd', color: '#8a5a00', fontSize: 12, lineHeight: 18 },
+  errorRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12 },
+  errorRetryBtn: { marginLeft: 10, paddingHorizontal: 16, paddingVertical: 7, borderRadius: 14 },
+  errorRetryText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   playerPage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 999, elevation: 999, backgroundColor: '#000' },
   playerPageFullscreen: { backgroundColor: '#000' },
   backBtnTextPink: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },

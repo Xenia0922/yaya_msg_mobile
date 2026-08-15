@@ -1780,7 +1780,21 @@ export default function FollowedRoomsScreen() {
                       <TouchableOpacity
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         disabled={busy}
-                        onPress={() => toggleFollow(item.member!)}
+                        onPress={() => {
+                          if (isFollowing) {
+                            // 取关不可恢复，二次确认防误触
+                            Alert.alert(
+                              t('取消关注'),
+                              t('确定不再关注 {name} 吗？', { name: shortName(item.member, item.memberId) }),
+                              [
+                                { text: t('保留'), style: 'cancel' },
+                                { text: t('取消关注'), style: 'destructive', onPress: () => toggleFollow(item.member!) },
+                              ],
+                            );
+                          } else {
+                            toggleFollow(item.member!);
+                          }
+                        }}
                       >
                         {busy ? (
                           <ActivityIndicator color={palette.tint} size="small" />
