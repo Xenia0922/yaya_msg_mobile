@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -22,7 +22,9 @@ export default function RechargeScreen() {
   const { t } = useI18n();
   const [balance, setBalance] = useState('');
   const [status, setStatus] = useState(t('暂无数据'));
+  const [webError, setWebError] = useState('');
   const [loading, setLoading] = useState(false);
+  const webViewRef = useRef<WebView>(null);
 
   useEffect(() => { refreshBalance(); }, []);
 
@@ -40,6 +42,11 @@ export default function RechargeScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const reloadWeb = () => {
+    setWebError('');
+    webViewRef.current?.reload();
   };
 
   return (
@@ -84,6 +91,7 @@ export default function RechargeScreen() {
       </TouchableOpacity>
 
       <WebView
+      ref={webViewRef}
       source={{ uri: RECHARGE_URL }}
       style={styles.web}
       javaScriptEnabled
@@ -98,8 +106,17 @@ export default function RechargeScreen() {
           <Text style={[styles.webLoadingText, { color: palette.labelSecondary }]}>{t('正在打开官方充值页...')}</Text>
         </View>
       )}
-      onError={(event) => setStatus(t('充值页加载失败：{msg}', { msg: event.nativeEvent.description }))}
+      onError={(event) => setWebError(t('充值页加载失败：{msg}', { msg: String(event.nativeEvent.description).slice(0, 160) }))}
     />
+    {webError ? (
+      <View style={[styles.webErrorWrap, { backgroundColor: palette.background }]}>
+        <MaterialCommunityIcons name="web-off" size={32} color={palette.labelTertiary} />
+        <Text style={[styles.webErrorText, { color: palette.labelSecondary }]}>{webError}</Text>
+        <TouchableOpacity style={[styles.webRetryBtn, { backgroundColor: palette.tint }]} onPress={reloadWeb}>
+          <Text style={styles.webRetryText}>{t('重新加载')}</Text>
+        </TouchableOpacity>
+      </View>
+    ) : null}
     </View>
   );
 }
@@ -143,4 +160,14 @@ const styles = StyleSheet.create({
   web: { flex: 1, backgroundColor: '#FFFFFF' },
   webLoading: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   webLoadingText: { marginTop: 8, color: '#333333', fontSize: 12 },
+  webErrorWrap: {
+    position: 'absolute',
+    left: 0, right: 0, top: 0, bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  webErrorText: { marginTop: 12, fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  webRetryBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 9, borderRadius: 18 },
+  webRetryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 });

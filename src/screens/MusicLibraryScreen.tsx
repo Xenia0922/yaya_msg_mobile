@@ -211,9 +211,18 @@ export default function MusicLibraryScreen() {
         </ScrollView>
       </View>
       {status ? (
-        <View pointerEvents="none" style={styles.statusOverlay}>
-          <Text style={[styles.status, { color: palette.tint }]}>{status}</Text>
-        </View>
+        /失败|错误/.test(status) ? (
+          <View style={styles.statusOverlay}>
+            <Text style={[styles.status, { color: palette.danger }]}>{status}</Text>
+            <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.tint }]} onPress={() => loadAll()} disabled={loading}>
+              <Text style={styles.retryBtnText}>{t('重试')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View pointerEvents="none" style={styles.statusOverlay}>
+            <Text style={[styles.status, { color: palette.tint }]}>{status}</Text>
+          </View>
+        )
       ) : null}
       {loading && songs.length === 0 ? (
         <View style={{ flex: 1 }}>
@@ -429,6 +438,13 @@ const styles = StyleSheet.create({
   gTextOn: { color: '#fff' },
   status: { color: '#ff6f91', fontSize: 12, fontWeight: '700' },
   statusOverlay: { position: 'absolute', top: 140, left: 0, right: 0, zIndex: 10, alignItems: 'center' },
+  retryBtn: {
+    marginTop: 10,
+    paddingHorizontal: 22,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  retryBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   
   // 列表内容：顶部留出标签栏高度，底部留出迷你播放器空间
   listContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 120 },
