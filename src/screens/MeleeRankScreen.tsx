@@ -50,12 +50,17 @@ export default function MeleeRankScreen() {
   const [ranks, setRanks] = useState<any[]>([]);
   const [personRanks, setPersonRanks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const nextIdRef = useRef('');
+  const hasMoreRef = useRef(false);
 
   const switchMode = (m: ViewMode) => {
     setRanks([]);
     setPersonRanks([]);
     setError('');
+    nextIdRef.current = '';
+    hasMoreRef.current = false;
     setMode(m);
   };
 
@@ -82,6 +87,10 @@ export default function MeleeRankScreen() {
       }
       const list = extractRankList(data);
       setRanks(list);
+      // 分页游标：getMeleeRankPage / getMeleeYearRankPage 支持 nextId
+      const nextId = String(data?.nextId || data?.next || '');
+      nextIdRef.current = nextId;
+      hasMoreRef.current = !!nextId && list.length > 0;
       if (!list.length) setError(mode === 'year' ? t('暂无年榜数据') : t('暂无排名数据'));
     } catch (e: any) {
       setError(errorMessage(e));
@@ -90,6 +99,37 @@ export default function MeleeRankScreen() {
       setLoading(false);
     }
   }, [mode, t]);
+
+  const loadMoreRank = useCallback(async () => {
+    if (loading || loadingMore || !hasMoreRef.current || !nextIdRef.current) return;
+    setLoadingMore(true);
+    try {
+      let res: any;
+      if (mode === 'year') res = await pocketApi.getMeleeYearRankPage(0, nextIdRef.current);
+      else if (mode === 'total') res = await pocketApi.getMeleeRankPage(0, nextIdRef.current);
+      else if (mode === 'week') {
+        res = selectedWeekRef.current
+          ? await pocketApi.getMeleeWeekRank(selectedWeekRef.current.weekRankId, nextIdRef.current)
+          : await pocketApi.getMeleeRankPage(0, nextIdRef.current);
+      } else {
+        return;
+      }
+      const data = res?.content ?? res?.data ?? res ?? {};
+      const list = extractRankList(data);
+      const nextId = String(data?.nextId || data?.next || '');
+      setRanks((prev) => {
+        const seen = new Set(prev.map((it) => String(it.userId || it.rankNum || it.resId || it.id)));
+        const fresh = list.filter((it) => !seen.has(String(it.userId || it.rankNum || it.resId || it.id)));
+        return [...prev, ...fresh];
+      });
+      nextIdRef.current = nextId;
+      hasMoreRef.current = !!nextId && list.length > 0;
+    } catch {
+      hasMoreRef.current = false;
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loading, loadingMore, mode, t]);
 
   const loadPerson = useCallback(async (m: Member) => {
     if (!m?.id) {
@@ -229,12 +269,17 @@ export default function MeleeRankScreen() {
               maxToRenderPerBatch={12}
               windowSize={7}
               renderItem={renderRank}
+              onEndReached={loadMoreRank}
+              onEndReachedThreshold={0.35}
               ListEmptyComponent={
                 <Text style={[styles.empty, { color: palette.labelTertiary }]}>
                   {loading ? '' : t('暂无排名数据')}
                 </Text>
               }
-              ListFooterComponent={loading ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} /> : null}
+              ListFooterComponent={
+                loadingMore ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} />
+                : loading ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} /> : null
+              }
             />
           )}
         </FadeInView>
