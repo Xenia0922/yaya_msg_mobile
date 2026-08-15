@@ -169,11 +169,16 @@ export default function FetchScreen() {
           renderItem={({ item, index }) => (
             <FadeInView delay={80 + index * 30} duration={300}>
               <View style={[styles.msgItem, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-                <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>
-                  {formatTimestamp(item.msgTime || item.time || item.ctime)}
-                </Text>
+                <View style={styles.msgHead}>
+                  <Text style={[styles.msgSender, { color: palette.tint }]} numberOfLines={1}>
+                    {item.senderName || item.senderNickName || item.extInfo?.user?.nickName || t('成员')}
+                  </Text>
+                  <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>
+                    {formatTimestamp(item.msgTime || item.time || item.ctime).slice(5, 16)}
+                  </Text>
+                </View>
                 <Text style={[styles.msgText, { color: palette.label }]}>
-                  {(item.senderName || item.senderNickName || item.extInfo?.user?.nickName || t('成员'))}: {messageText(item) || t('[空消息]')}
+                  {messageText(item) || t('[空消息]')}
                 </Text>
               </View>
             </FadeInView>
@@ -197,7 +202,9 @@ const styles = StyleSheet.create({
   fetchBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   status: { marginTop: 10, textAlign: 'center', fontSize: 13, lineHeight: 18 },
   msgItem: { padding: 12, marginHorizontal: 16, marginVertical: 4, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
-  msgTime: { fontSize: 11, marginBottom: 4 },
-  msgText: { fontSize: 13, lineHeight: 18 },
+  msgHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 },
+  msgSender: { fontSize: 12, fontWeight: '800', flex: 1, marginRight: 8 },
+  msgTime: { fontSize: 11, marginBottom: 0 },
+  msgText: { fontSize: 14, lineHeight: 20 },
   empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
 });

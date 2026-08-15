@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
   gridCoverImg: { width: '100%', height: '100%' },
   gridCoverFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   gridInfo: { padding: 10 },
-  gridTitle: { fontSize: 13, fontWeight: '700', lineHeight: 18 },
+  gridTitle: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
   gridDate: { fontSize: 11, marginTop: 4 },
   playerPage: { flex: 1, backgroundColor: '#000' },
   videoPlayer: { flex: 1, backgroundColor: '#000' },

@@ -22,6 +22,7 @@ import { errorMessage, parseMaybeJson } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { Member } from '../types';
 import { CenterSpinner } from '../components/Loaders';
+import { ErrorState } from '../components/StateViews';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { usePalette } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -152,12 +153,17 @@ export default function MemberDynamicScreen() {
             </Text> : null
           }
           ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              {loading ? <CenterSpinner dark={isDark} /> : null}
-              <Text style={[styles.empty, { color: palette.labelSecondary }]}>
-                {loading ? '' : member ? (error ? error : t('暂无动态')) : t('请搜索选择成员查看动态')}
-              </Text>
-            </View>
+            loading ? <CenterSpinner dark={isDark} text={t('加载中…')} />
+            : error ? (
+              <ErrorState title={t('加载失败')} hint={error} onAction={() => refresh()} />
+            ) : (
+              <View style={styles.emptyWrap}>
+                <MaterialCommunityIcons name="star-circle-outline" size={40} color={palette.labelTertiary} />
+                <Text style={[styles.empty, { color: palette.labelSecondary }]}>
+                  {member ? t('暂无动态') : t('请搜索选择成员查看动态')}
+                </Text>
+              </View>
+            )
           }
         />
       </FadeInView>
