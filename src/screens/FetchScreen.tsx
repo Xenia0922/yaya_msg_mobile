@@ -13,6 +13,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { useI18n } from '../i18n';
 import pocketApi from '../api/pocket48';
 import { useSettingsStore } from '../store';
+import { CenterSpinner } from '../components/Loaders';
 import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
@@ -42,6 +43,11 @@ function normalizeMessages(res: any): any[] {
   ]);
 }
 
+function nextTimeFrom(res: any): number {
+  const v = Number(res?.content?.nextTime || res?.data?.nextTime || res?.nextTime || 0);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 function getChannelId(member: Member, roomMode: RoomMode): string {
   if (roomMode === 'small') return String(member.yklzId || member.channelId || '');
   return String(member.channelId || '');
@@ -59,16 +65,16 @@ export default function FetchScreen() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
 
-  const fetchOnce = async (member: Member, targetRoomMode: RoomMode) => {
+  const fetchOnce = async (member: Member, targetRoomMode: RoomMode, nextTime = 0) => {
     const channelId = getChannelId(member, targetRoomMode);
     if (!channelId) throw new Error(targetRoomMode === 'small' ? t('该成员没有小房间 channelId') : t('该成员没有房间 channelId'));
     const res = await pocketApi.getRoomMessages({
       channelId,
       serverId: member.serverId,
-      nextTime: 0,
+      nextTime,
       fetchAll: messageMode === 'all',
     });
-    return normalizeMessages(res);
+    return { list: normalizeMessages(res), next: nextTimeFrom(res) };
   };
 
   const startFetch = async () => {
@@ -79,18 +85,36 @@ export default function FetchScreen() {
     setLoading(true);
     setStatus(t('抓取中...'));
     try {
-      let list = await fetchOnce(selectedMember, roomMode);
+      // 循环抓取全部历史（成员消息模式同样分页，避免只取一页漏数据）
+      let all: any[] = [];
       let usedRoomMode = roomMode;
-
-      if (!list.length && roomMode === 'big' && selectedMember.yklzId) {
-        setStatus(t('大房间没有返回消息，正在尝试小房间...'));
-        list = await fetchOnce(selectedMember, 'small');
-        usedRoomMode = 'small';
+      const seen = new Set<string>();
+      let cursor = 0;
+      let guard = 0;
+      while (guard < 50) {
+        guard += 1;
+        const { list, next } = await fetchOnce(selectedMember, usedRoomMode, cursor);
+        if (!list.length && usedRoomMode === 'big' && selectedMember.yklzId && all.length === 0) {
+          setStatus(t('大房间没有返回消息，正在尝试小房间...'));
+          usedRoomMode = 'small';
+          cursor = 0;
+          continue;
+        }
+        const fresh = list.filter((item: any) => {
+          const key = String(item.id || item.msgId || item.messageId || item.clientMsgId || '');
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        all = all.concat(fresh);
+        if (!next || next <= cursor || fresh.length === 0) break;
+        cursor = next;
+        if (guard % 5 === 0) setStatus(t('已抓取 {count} 条，继续...', { count: all.length }));
       }
 
-      setResults(list);
+      setResults(all);
       setStatus(t('抓取完成：{count} 条消息 · {room} · {mode}', {
-        count: list.length,
+        count: all.length,
         room: usedRoomMode === 'small' ? t('小房间') : t('大房间'),
         mode: messageMode === 'all' ? t('全部消息') : t('成员消息'),
       }));
@@ -154,7 +178,7 @@ export default function FetchScreen() {
               </View>
             </FadeInView>
           )}
-          ListEmptyComponent={!loading ? <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无数据')}</Text> : null}
+          ListEmptyComponent={loading ? <CenterSpinner dark={isDark} text={t('抓取中…')} /> : <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无数据')}</Text>}
         />
       </FadeInView>
     </View>

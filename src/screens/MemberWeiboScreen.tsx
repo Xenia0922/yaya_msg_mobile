@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
@@ -14,6 +14,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
 import { CenterSpinner } from '../components/Loaders';
+import { ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import MemberPicker from '../components/MemberPicker';
@@ -79,13 +80,19 @@ export default function MemberWeiboScreen() {
   const [nextTime, setNextTime] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [zoomUrl, setZoomUrl] = useState('');
+  // 同步锁 + runId：防止快速切换成员/连发分页时旧响应覆盖新数据
+  const fetchingRef = useRef(false);
+  const runIdRef = useRef(0);
 
   const fetchData = useCallback(async (reset = false) => {
-    if (!member) return;
+    if (!member || fetchingRef.current) return;
+    fetchingRef.current = true;
+    const runId = reset ? ++runIdRef.current : runIdRef.current;
     if (reset) { setLoading(true); setNextTime(0); } else { setLoadingMore(true); }
     setError('');
     try {
       const res = await pocketApi.getMemberWeibo({ ownerId: member.id, nextTime: reset ? 0 : nextTime });
+      if (runId !== runIdRef.current) return;
       const data = res?.content || res?.data || {};
       const list = Array.isArray(data?.messageList || data?.message || data?.list || data)
         ? (data?.messageList || data?.message || data?.list || data) : [];
@@ -95,8 +102,14 @@ export default function MemberWeiboScreen() {
       setNextTime(cursor);
       // 游标不前进（恒同本次请求值）即终止，防死循环
       setHasMore(cursor > 0 && normalized.length > 0 && cursor !== nextTime);
-    } catch (e: any) { setError(errorMessage(e)); }
-    finally { setLoading(false); setLoadingMore(false); }
+    } catch (e: any) {
+      if (runId !== runIdRef.current) return;
+      setError(errorMessage(e));
+    } finally {
+      fetchingRef.current = false;
+      setLoading(false);
+      setLoadingMore(false);
+    }
   }, [member, nextTime]);
 
   useEffect(() => { if (member) fetchData(true); }, [member]);
@@ -160,12 +173,16 @@ export default function MemberWeiboScreen() {
             </Text> : null
           }
           ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              {loading ? <CenterSpinner dark={isDark} /> : null}
-              <Text style={[styles.empty, { color: palette.labelSecondary }]}>
-                {loading ? '' : member ? (error ? error : t('暂无微博')) : t('请搜索选择成员查看微博')}
-              </Text>
-            </View>
+            loading ? <CenterSpinner dark={isDark} text={t('加载中…')} />
+            : error ? (
+              <ErrorState title={t('加载失败')} hint={error} onAction={() => fetchData(true)} />
+            ) : (
+              <View style={styles.emptyWrap}>
+                <Text style={[styles.empty, { color: palette.labelSecondary }]}>
+                  {member ? t('暂无微博') : t('请搜索选择成员查看微博')}
+                </Text>
+              </View>
+            )
           }
         />
       </FadeInView>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -8,7 +9,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useNavigation } from '@react-navigation/native';
 import ScreenHeader from '../components/ScreenHeader';
-import { useSettingsStore, useMemberStore } from '../store';
+import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { unwrapList } from '../utils/data';
 import { loadMembers } from '../utils/members';
@@ -23,6 +24,8 @@ export default function DatabaseScreen() {
   const setStoreMembers = useMemberStore((s) => s.setMembers);
   const storeMembers = useMemberStore((s) => s.members);
   const [webError, setWebError] = useState('');
+  const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
+  const [syncError, setSyncError] = useState('');
   const webViewRef = useRef<WebView>(null);
 
   const reloadWebView = useCallback(() => {
@@ -31,41 +34,48 @@ export default function DatabaseScreen() {
   }, []);
 
   // Keep original functionality: load local + sync from API
+  const syncMembers = useCallback(async () => {
+    setSyncState('syncing');
+    setSyncError('');
+    try {
+      const backup = require('../../assets/members.json');
+      const localMembers = await loadMembers(backup);
+      if (localMembers.length > useMemberStore.getState().members.length) {
+        setStoreMembers(localMembers);
+      }
+
+      const res = await pocketApi.getGroupTeamStar();
+      if (res) {
+        const list = unwrapList(res, ['content.groupData', 'content.data', 'content.list', 'data', 'groupData', 'list']);
+        if (list.length > 0) {
+          const normalized = await loadMembers(list);
+          if (normalized.length >= useMemberStore.getState().members.length) {
+            setStoreMembers(normalized);
+          }
+        }
+      }
+      setSyncState('done');
+    } catch (e: any) {
+      setSyncState('error');
+      setSyncError(e?.message || String(e));
+    }
+  }, [setStoreMembers]);
+
   useEffect(() => {
     let alive = true;
     (async () => {
-      try {
-        const backup = require('../../assets/members.json');
-        const localMembers = await loadMembers(backup);
-        if (!alive) return;
-        if (localMembers.length > storeMembers.length) {
-          setStoreMembers(localMembers);
-        }
-
-        const res = await pocketApi.getGroupTeamStar();
-        if (!alive) return;
-        if (res) {
-          const list = unwrapList(res, ['content.groupData', 'content.data', 'content.list', 'data', 'groupData', 'list']);
-          if (list.length > 0) {
-            const normalized = await loadMembers(list);
-            if (normalized.length >= localMembers.length) {
-              setStoreMembers(normalized);
-            }
-          }
-        }
-      } catch (e: any) {
-        if (!alive) return;
-      }
+      await syncMembers();
+      if (!alive) return;
     })();
     return () => { alive = false; };
-  }, []);
+  }, [syncMembers]);
 
   const memberCount = storeMembers.length;
 
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('数据库')} onBack={() => navigation.goBack()} right={
-        <TouchableOpacity onPress={reloadWebView}>
+        <TouchableOpacity onPress={() => { reloadWebView(); syncMembers(); }}>
           <Text style={[styles.headerAction, { color: palette.tint }]}>{t('刷新')}</Text>
         </TouchableOpacity>
         } />
@@ -87,6 +97,22 @@ export default function DatabaseScreen() {
           <Text style={[styles.summarySub, { color: palette.labelSecondary }]}>
             {t('当前 {count} 位成员', { count: memberCount })}
           </Text>
+          <View style={styles.syncRow}>
+            {syncState === 'syncing' ? (
+              <>
+                <ActivityIndicator size="small" color={palette.tint} style={{ marginRight: 6 }} />
+                <Text style={[styles.syncText, { color: palette.labelSecondary }]}>{t('正在同步成员库…')}</Text>
+              </>
+            ) : syncState === 'done' ? (
+              <Text style={[styles.syncText, { color: palette.labelTertiary }]}>{t('成员库已同步')}</Text>
+            ) : syncState === 'error' ? (
+              <TouchableOpacity onPress={() => syncMembers()} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Text style={[styles.syncError, { color: palette.tint }]} numberOfLines={1}>
+                  {t('同步失败：{msg} · 点此重试', { msg: syncError || t('网络错误') })}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
       </View>
@@ -94,6 +120,9 @@ export default function DatabaseScreen() {
       {webError ? (
         <View style={styles.errorWrap}>
           <Text style={[styles.errorText, { color: palette.tint }]}>{webError}</Text>
+          <TouchableOpacity style={[styles.webRetryBtn, { backgroundColor: palette.tint }]} onPress={reloadWebView}>
+            <Text style={styles.webRetryText}>{t('重试')}</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
       <WebView
@@ -145,7 +174,17 @@ const styles = StyleSheet.create({
   summaryInfo: { flex: 1, marginLeft: 12, minWidth: 0 },
   summaryTitle: { fontSize: 15, fontWeight: '700' },
   summarySub: { fontSize: 12, marginTop: 3 },
+  syncRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5, minHeight: 16 },
+  syncText: { fontSize: 11 },
+  syncError: { fontSize: 11, fontWeight: '700' },
   webview: { flex: 1 },
-  errorWrap: { padding: 40, alignItems: 'center' },
-  errorText: { color: '#ff6f91', fontSize: 14 },
+  errorWrap: { padding: 30, alignItems: 'center' },
+  errorText: { color: '#ff6f91', fontSize: 14, textAlign: 'center' },
+  webRetryBtn: {
+    marginTop: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  webRetryText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 });
