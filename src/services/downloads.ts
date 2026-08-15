@@ -116,6 +116,12 @@ export async function enqueueDownload(params: {
   const url = String(params.url || '').trim();
   if (!/^https?:\/\//i.test(url)) throw new Error('下载地址无效');
 
+  // HLS（m3u8）是分段索引，直接下载只会得到几 KB 的 playlist，
+  // 无法得到完整录播。明确报错，避免用户误以为下载成功。
+  if (/\.m3u8(\?|$)/i.test(url)) {
+    throw new Error('HLS 录播流（m3u8）暂不支持直接下载，请使用桌面工具或浏览器插件下载');
+  }
+
   await FileSystem.makeDirectoryAsync(DOWNLOAD_DIR, { intermediates: true }).catch(() => undefined);
 
   const type = params.type || 'file';
