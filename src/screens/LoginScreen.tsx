@@ -39,6 +39,13 @@ function buildBilibiliCookieFromUrl(rawUrl = ''): string {
   }
 }
 
+/** Token 掩码：只显示首 6 + 尾 4 字符，避免完整 Token 常驻屏幕 */
+function maskToken(token: string): string {
+  const t = String(token || '');
+  if (t.length <= 12) return t.slice(0, 4) + '***';
+  return `${t.slice(0, 6)}...${t.slice(-4)}`;
+}
+
 function extractPocketToken(value: any): string {
   const seen = new Set<any>();
   const walk = (node: any): string => {
@@ -203,7 +210,13 @@ export default function LoginScreen() {
       setStatus(t('请先粘贴token'));
       return;
     }
-    await savePocketToken(token, t('Token已保存'));
+    setLoading(true);
+    setStatus(t('正在保存...'));
+    try {
+      await savePocketToken(token, t('Token已保存'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const refreshAccountInfo = async () => {
@@ -462,14 +475,18 @@ export default function LoginScreen() {
           multiline
         />
         <View style={styles.btnRow}>
-          <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: palette.tint }]} onPress={handleSaveManualToken}>
-            <Text style={styles.btnText}>{t('保存Token')}</Text>
+          <TouchableOpacity
+            style={[styles.btnPrimary, { backgroundColor: palette.tint }, loading && styles.btnDisabled]}
+            onPress={handleSaveManualToken}
+            disabled={loading}
+          >
+            <Text style={styles.btnText}>{loading ? t('保存中...') : t('保存Token')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }]} onPress={handleCheckToken}>
             <Text style={[styles.btnText, { color: palette.label }]}>{t('检查Token')}</Text>
           </TouchableOpacity>
         </View>
-        {settings.p48Token ? <Text style={[styles.tokenInfo, { color: palette.labelSecondary }]}>{t('已保存Token：{token}', { token: settings.p48Token.slice(0, 24) })}...</Text> : null}
+        {settings.p48Token ? <Text style={[styles.tokenInfo, { color: palette.labelSecondary }]}>{t('已保存Token：{token}', { token: maskToken(settings.p48Token) })}</Text> : null}
       </View>
 
       <View style={[styles.section, false, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
