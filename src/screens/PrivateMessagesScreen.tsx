@@ -17,12 +17,15 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import { CenterSpinner } from '../components/Loaders';
+import { ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
 import { formatTimestamp } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
 import { errorMessage, messagePayload, messageText, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 import { usePalette } from '../theme';
+import { useAppTheme } from '../hooks/useAppTheme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 
@@ -279,6 +282,7 @@ function lowestPrice(item: any) { return Math.min(...[item.normalCost, item.priv
 
 export default function PrivateMessagesScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const members = useMemberStore((s) => s.members);
@@ -329,6 +333,7 @@ export default function PrivateMessagesScreen() {
   const [money, setMoney] = useState('');
   const [flipType, setFlipType] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [convError, setConvError] = useState('');
   const [nextTime, setNextTime] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const flatRef = useRef<FlatList>(null);
@@ -359,6 +364,7 @@ export default function PrivateMessagesScreen() {
 
   const loadConvs = async () => {
     setLoading(true);
+    setConvError('');
     try {
       let cursor = Date.now();
       let all: any[] = [];
@@ -374,7 +380,7 @@ export default function PrivateMessagesScreen() {
         loops += 1;
       }
       setConvs(all.slice().sort((a: any, b: any) => Number(b.lastTime || b.msgTime || 0) - Number(a.lastTime || a.msgTime || 0)));
-    } catch (e) { showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
+    } catch (e) { setConvError(errorMessage(e)); showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -609,7 +615,14 @@ export default function PrivateMessagesScreen() {
               </FadeInView>
             );
           }}
-          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{loading ? '' : t('暂无私信')}</Text>}
+          ListEmptyComponent={
+            loading ? <CenterSpinner dark={isDark} text={t('正在加载会话…')} />
+            : convError ? (
+              <ErrorState title={t('加载失败')} hint={convError} onAction={() => loadConvs()} />
+            ) : (
+              <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无私信')}</Text>
+            )
+          }
         />
       </FadeInView>
     </View>

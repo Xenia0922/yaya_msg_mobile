@@ -1429,6 +1429,18 @@ export default function FollowedRoomsScreen() {
               </View>
             ) : null
           }
+          ListEmptyComponent={
+            loading ? (
+              <CenterSpinner dark={isDark} text={t('正在加载消息…')} />
+            ) : roomSearchQuery.trim() ? (
+              <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有匹配的消息')}</Text>
+            ) : (
+              <View style={styles.emptyWrap}>
+                <MaterialCommunityIcons name="message-text-outline" size={40} color={palette.labelTertiary} />
+                <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无消息，切换大/小房间试试')}</Text>
+              </View>
+            )
+          }
           renderItem={({ item: row }: any) => {
             // 日期分隔条
             if (row.type === 'date') {
@@ -1638,63 +1650,69 @@ export default function FollowedRoomsScreen() {
         </View>
       ) : null}
 
-      {/* 成员库搜索结果：搜索展开时直接显示 2 列成员卡（可打开房间 / 直接关注） */}
-      {searchOpen && searchQuery.trim() ? (
-        memberHits.length > 0 ? (
-          <View style={styles.memberHitsGrid}>
-            {memberHits.map((member) => {
+      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        {searchOpen && searchQuery.trim() ? (
+          /* 搜索态：成员库结果直接走 FlatList（可滚动、虚拟化） */
+          memberHits.length === 0 ? (
+            <Text style={[styles.memberHitsEmpty, { color: palette.labelTertiary }]}>{t('没有匹配的成员')}</Text>
+          ) : (
+          <PerfFlatList
+            data={memberHits}
+            keyExtractor={(member: any) => String((member as any).id || (member as any).userId || member.ownerName)}
+            contentContainerStyle={styles.memberHitsListContent}
+            numColumns={2}
+            columnWrapperStyle={styles.memberGridRow}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item: member, index }) => {
               const mid = String((member as any).id || (member as any).userId || '');
               const isFollowing = followedIds.has(mid);
               const busy = followBusy.has(mid);
               const name = shortName(member, mid);
               return (
-                <TouchableOpacity
-                  key={mid}
-                  style={[
-                    styles.memberHitCard,
-                    { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
-                  ]}
-                  onPress={() => openRoom(member)}
-                  activeOpacity={0.88}
-                >
-                  <View style={[styles.memberHitAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
-                    {member.avatar ? (
-                      <Image source={{ uri: member.avatar }} style={styles.memberHitAvatarImg} />
-                    ) : (
-                      <Text style={[styles.memberHitAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
-                    )}
-                  </View>
-                  <Text style={[styles.memberHitName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
-                  <Text style={[styles.memberHitTeam, { color: palette.labelTertiary }]} numberOfLines={1}>
-                    {member.team || member.groupName || t('成员')}
-                  </Text>
+                <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.memberGridItem}>
                   <TouchableOpacity
-                    style={[styles.memberHitBtn, { backgroundColor: isFollowing ? palette.tintSoft : palette.tint }]}
-                    disabled={busy}
-                    onPress={() => toggleFollow(member)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={[
+                      styles.memberHitCard,
+                      { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
+                    ]}
+                    onPress={() => openRoom(member)}
+                    activeOpacity={0.88}
                   >
-                    {busy ? (
-                      <ActivityIndicator color={isFollowing ? palette.tint : '#ffffff'} size="small" />
-                    ) : (
-                      <Text style={[styles.memberHitBtnText, isFollowing && { color: palette.tint }]}>
-                        {isFollowing ? t('已关注') : t('关注')}
-                      </Text>
-                    )}
+                    <View style={[styles.memberHitAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
+                      {member.avatar ? (
+                        <Image source={{ uri: member.avatar }} style={styles.memberHitAvatarImg} />
+                      ) : (
+                        <Text style={[styles.memberHitAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
+                      )}
+                    </View>
+                    <Text style={[styles.memberHitName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
+                    <Text style={[styles.memberHitTeam, { color: palette.labelTertiary }]} numberOfLines={1}>
+                      {member.team || member.groupName || t('成员')}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.memberHitBtn, { backgroundColor: isFollowing ? palette.tintSoft : palette.tint }]}
+                      disabled={busy}
+                      onPress={() => toggleFollow(member)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      {busy ? (
+                        <ActivityIndicator color={isFollowing ? palette.tint : '#ffffff'} size="small" />
+                      ) : (
+                        <Text style={[styles.memberHitBtnText, isFollowing && { color: palette.tint }]}>
+                          {isFollowing ? t('已关注') : t('关注')}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
                   </TouchableOpacity>
-                </TouchableOpacity>
+                </FadeInView>
               );
-            })}
-          </View>
+            }}
+          />
+          )
         ) : (
-          <Text style={[styles.memberHitsEmpty, { color: palette.labelTertiary }]}>{t('没有匹配的成员')}</Text>
-        )
-      ) : null}
-
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
-          key={searchOpen && searchQuery.trim() ? 'rooms-none' : 'rooms-grid'}
-          data={searchOpen && searchQuery.trim() ? [] : filtered}
+          key="rooms-grid"
+          data={filtered}
           keyExtractor={(item) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
           numColumns={2}
@@ -1799,6 +1817,7 @@ export default function FollowedRoomsScreen() {
           windowSize={7}
           removeClippedSubviews
         />
+        )}
       </FadeInView>
     </View>
   );
@@ -1870,6 +1889,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   searchInput: { flex: 1, fontSize: 15, padding: 0 },
+  memberHitsListContent: { paddingHorizontal: 8, paddingBottom: 112 },
   memberHitsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

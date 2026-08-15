@@ -70,7 +70,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               ]}
             >
               <View style={styles.cellIcon}>
-                {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 20 })}
+                {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 23 })}
               </View>
               <Text
                 style={[
@@ -78,7 +78,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
                   {
                     color: active ? palette.tint : palette.labelSecondary,
                     fontWeight: active ? '700' : '600',
-                    marginTop: 1,
+                    marginTop: 3,
                   },
                 ]}
               >
@@ -103,12 +103,12 @@ const styles = StyleSheet.create({
   },
   bar: {
     flexDirection: 'row',
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    minHeight: 48,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    minHeight: 62,
     // 悬浮阴影（克制）
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
@@ -120,9 +120,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
+    paddingVertical: 6,
     paddingHorizontal: 4,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'transparent',
   },

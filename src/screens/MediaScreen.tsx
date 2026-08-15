@@ -12,6 +12,7 @@ import {
   Image,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -1235,6 +1236,10 @@ export default function MediaScreen() {
                 } else if (data.type === 'ended') clearResumePosition(resumeKey);
               } catch {}
             }}
+            onError={(syntheticEvent) => {
+              const detail = String(syntheticEvent?.nativeEvent?.description || '');
+              setPlayerError(t('网页播放器加载失败：{detail}', { detail: detail.slice(0, 180) || t('无法加载页面') }));
+            }}
           />
         ) : (
           <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
@@ -1665,6 +1670,14 @@ export default function MediaScreen() {
           }
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading && list.length > 0}
+              onRefresh={refreshList}
+              colors={[palette.tint]}
+              tintColor={palette.tint}
+            />
+          }
           ListFooterComponent={
             list.length > 0 && loading ? (
               <View style={styles.footer}>
