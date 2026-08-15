@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
+  Alert,
   FlatList,
   Image,
   Modal,
@@ -111,13 +112,33 @@ export default function DownloadScreen() {
   };
 
   const remove = async (id: string) => {
-    await deleteDownloadItem(id);
-    refresh();
+    // 删除下载记录 + 本地文件不可恢复，二次确认
+    Alert.alert(t('删除下载'), t('将删除该下载项及本地文件，确定？'), [
+      { text: t('取消'), style: 'cancel' },
+      {
+        text: t('删除'),
+        style: 'destructive',
+        onPress: async () => {
+          try { await deleteDownloadItem(id); } catch { /* ignore */ }
+          refresh();
+        },
+      },
+    ]);
   };
 
   const clearDone = async () => {
-    await clearFinishedDownloads();
-    refresh();
+    // 清理全部已完成/失败项 + 本地文件，不可恢复，二次确认
+    Alert.alert(t('清理完成'), t('将删除所有已完成和失败的下载项及本地文件，确定？'), [
+      { text: t('取消'), style: 'cancel' },
+      {
+        text: t('清理'),
+        style: 'destructive',
+        onPress: async () => {
+          try { await clearFinishedDownloads(); } catch { /* ignore */ }
+          refresh();
+        },
+      },
+    ]);
   };
 
   const doneCount = items.filter((item) => item.status === 'done').length;

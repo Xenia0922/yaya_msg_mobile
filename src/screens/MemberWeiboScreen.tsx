@@ -92,7 +92,9 @@ export default function MemberWeiboScreen() {
       const normalized = list.map((item: any, idx: number) => normalizeItem(item, idx)).filter(Boolean) as WbItem[];
       if (reset) setItems(normalized); else setItems((prev) => [...prev, ...normalized]);
       const cursor = Number(data?.nextTime || data?.next || 0);
-      setNextTime(cursor); setHasMore(cursor > 0 && normalized.length > 0);
+      setNextTime(cursor);
+      // 游标不前进（恒同本次请求值）即终止，防死循环
+      setHasMore(cursor > 0 && normalized.length > 0 && cursor !== nextTime);
     } catch (e: any) { setError(errorMessage(e)); }
     finally { setLoading(false); setLoadingMore(false); }
   }, [member, nextTime]);

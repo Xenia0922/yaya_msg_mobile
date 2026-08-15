@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
-import { FlatList, Image, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -178,6 +178,11 @@ export default function AnalysisScreen() {
   const memberRankTop8 = useMemo(() => senders.slice(0, 8), [senders]);
   const sendersMax = memberRankTop8.length ? memberRankTop8[0].count : 1;
   const recent = useMemo(() => messages.slice().sort((a, b) => msgTime(b) - msgTime(a)).slice(0, 20), [messages]);
+  // 媒体消息列表（避免每次渲染内联 filter 生成新引用导致全列表重渲染）
+  const mediaMessages = useMemo(
+    () => messages.filter((item) => isMedia(item, 'image') || isMedia(item, 'audio') || isMedia(item, 'video')),
+    [messages],
+  );
 
   const filteredFlips = useMemo(() => {
     if (!flipMemberFilter || flipMemberFilter === '全部成员') return flips;
@@ -476,7 +481,7 @@ export default function AnalysisScreen() {
       {tab === 'media' ? (
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
           <PerfFlatList
-            data={messages.filter((item) => isMedia(item, 'image') || isMedia(item, 'audio') || isMedia(item, 'video'))}
+            data={mediaMessages}
             keyExtractor={(item, index) => `media-${index}`}
             contentContainerStyle={styles.content}
             initialNumToRender={12}
@@ -788,7 +793,7 @@ const styles = StyleSheet.create({
   flipCost: { fontSize: 10 },
   flipElapsed: { fontSize: 10, fontWeight: '700' },
   flipRemain: { fontSize: 10, fontWeight: '700' },
-  flipPlayBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
+  flipPlayBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18 },
   flipPlayText: { fontSize: 12, fontWeight: '800' },
   flipAudio: { height: 52, marginTop: 8, backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: 10 },
   flipVideo: { height: 150, marginTop: 8, backgroundColor: '#000', borderRadius: 10 },

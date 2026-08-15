@@ -38,7 +38,7 @@ let cachedMatcher: { entries: LyricEntry[]; matcher: any } | null = null;
 
 export async function getLyricsMatcher() {
   if (cachedMatcher) return cachedMatcher;
-  const resp = await fetch('https://yaya-data.pages.dev/lyrics-index.json');
+  const resp = await fetch('https://yaya-data.pages.dev/lyrics-index.json', { signal: AbortSignal.timeout(10000) });
   const raw: RawIndexEntry[] = await resp.json();
   const entries = buildLyricEntries(raw);
   const matcher = new LyricsMatcher(entries);

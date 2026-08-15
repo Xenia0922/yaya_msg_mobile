@@ -112,8 +112,12 @@ export default function SettingsScreen() {
   const update = async (key: string, value: any, extra: any = {}) => {
     const patch = { [key]: value, ...extra };
     setSettings(patch);
-    await saveSettings(patch);
-    showToast(t('设置已保存'));
+    try {
+      await saveSettings(patch);
+      showToast(t('设置已保存'));
+    } catch (error: any) {
+      showToast(t('保存失败：{msg}', { msg: error?.message || String(error) }));
+    }
   };
 
   const pickBg = async () => {
@@ -200,7 +204,15 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
         {backgroundValue ? (
-          <TouchableOpacity style={styles.clearBtn} onPress={() => { update('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() }); }}>
+          <TouchableOpacity
+            style={styles.clearBtn}
+            onPress={() => {
+              Alert.alert(t('恢复默认背景'), t('将移除当前背景图，确定？'), [
+                { text: t('取消'), style: 'cancel' },
+                { text: t('恢复默认'), style: 'destructive', onPress: () => update('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() }) },
+              ]);
+            }}
+          >
             <Text style={styles.clearText}>{t('恢复默认背景')}</Text>
           </TouchableOpacity>
         ) : null}

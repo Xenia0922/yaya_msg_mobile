@@ -129,10 +129,14 @@ export default function LoginScreen() {
 
   const savePocketToken = async (token: string, message: string) => {
     const clean = token.trim();
-    setSettings({ p48Token: clean });
-    await saveSettings({ p48Token: clean });
-    setManualToken(clean);
-    setStatus(message);
+    try {
+      setSettings({ p48Token: clean });
+      await saveSettings({ p48Token: clean });
+      setManualToken(clean);
+      setStatus(message);
+    } catch (error: any) {
+      setStatus(t('保存失败：{msg}', { msg: error?.message || String(error) }));
+    }
   };
 
   const handleSendSms = async (answer?: string) => {
@@ -473,8 +477,8 @@ export default function LoginScreen() {
         <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>
           {t('当前：{info}', { info: accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : t('先检查Token读取账号') })}
         </Text>
-        <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginBottom: 10 }]} onPress={handleCheckToken} disabled={loading}>
-          <Text style={styles.btnText}>{t('刷新账号列表')}</Text>
+        <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }, loading && styles.btnDisabled, { marginBottom: 10 }]} onPress={handleCheckToken} disabled={loading}>
+          <Text style={[styles.btnText, { color: palette.label }]}>{t('刷新账号列表')}</Text>
         </TouchableOpacity>
         {accountInfo.users.length ? accountInfo.users.map((user) => {
           const id = accountId(user);
@@ -519,8 +523,8 @@ export default function LoginScreen() {
           onChangeText={setProfileName}
         />
         <View style={styles.btnRow}>
-          <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled]} onPress={handleLoadProfile} disabled={loading}>
-            <Text style={styles.btnText}>{t('读取资料')}</Text>
+          <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }, loading && styles.btnDisabled]} onPress={handleLoadProfile} disabled={loading}>
+            <Text style={[styles.btnText, { color: palette.label }]}>{t('读取资料')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleEditProfile} disabled={loading}>
             <Text style={styles.btnText}>{t('修改昵称')}</Text>
@@ -535,7 +539,7 @@ export default function LoginScreen() {
           autoCapitalize="none"
           editable={false}
         />
-        <TouchableOpacity style={[styles.btn, loading && styles.btnDisabled, { marginTop: 8 }]} onPress={handlePickAvatar} disabled={loading}>
+        <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }, loading && styles.btnDisabled, { marginTop: 8 }]} onPress={handlePickAvatar} disabled={loading}>
           <Text style={styles.btnText}>{t('选择本地图片上传头像')}</Text>
         </TouchableOpacity>
       </View>

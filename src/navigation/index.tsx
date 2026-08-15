@@ -39,7 +39,6 @@ import MemberWeiboScreen from '../screens/MemberWeiboScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { WebViewSigner } from '../auth/webviewSigner';
 import { ui } from '../theme/ui';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useI18n } from '../i18n';
@@ -229,7 +228,6 @@ export default function AppNavigator() {
     <ErrorBoundary>
     <NavigationContainer theme={themed}>
       <>
-        <WebViewSigner />
         <Stack.Navigator
           screenOptions={{
             headerShown: false,

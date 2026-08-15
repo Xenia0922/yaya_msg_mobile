@@ -44,7 +44,7 @@ import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
 import { LiveExoView, setLiveImmersiveMode } from '../native/LivePlayer';
 import { enqueueDownload } from '../services/downloads';
-import { memberSearchText, pinyinInitials } from '../utils/members';
+import { memberSearchText } from '../utils/members';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 type FollowedRoom = {
@@ -947,7 +947,11 @@ export default function FollowedRoomsScreen() {
   const togglePin = async (memberId: string) => {
     const next = pinned.includes(memberId) ? pinned.filter((id) => id !== memberId) : [...pinned, memberId];
     setPinned(next);
-    await AsyncStorage.setItem('yaya_pinned_rooms', JSON.stringify(next));
+    try {
+      await AsyncStorage.setItem('yaya_pinned_rooms', JSON.stringify(next));
+    } catch (error: any) {
+      showToast(t('置顶保存失败：{msg}', { msg: error?.message || String(error) }));
+    }
   };
 
   const toggleFollow = useCallback(async (member: Member) => {
@@ -1404,10 +1408,10 @@ export default function FollowedRoomsScreen() {
                     </View>
                   ) : null}
                    <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
-                    <Text style={[styles.msgSender, { color: idol ? '#e8436e' : mine ? '#3a6f99' : palette.label }, idol && styles.msgSenderIdol, mine && styles.msgSenderMine]} numberOfLines={1}>
+                    <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? '#7BC6FF' : palette.label }, idol && styles.msgSenderIdol, mine && styles.msgSenderMine]} numberOfLines={1}>
                       {profile.name}
                     </Text>
-                    <Text style={[styles.msgTime, { color: mine ? '#3a6f99' : palette.labelTertiary }, mine && styles.msgTimeMine]}>{formatTimestamp(item.msgTime)}</Text>
+                    <Text style={[styles.msgTime, { color: mine ? '#7BC6FF' : palette.labelTertiary }, mine && styles.msgTimeMine]}>{formatTimestamp(item.msgTime)}</Text>
                   </View>
                   <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, { backgroundColor: (!idol && !mine) ? palette.surfaceGlass : undefined, borderColor: (!idol && !mine) ? palette.innerStroke : undefined, borderWidth: (!idol && !mine) ? StyleSheet.hairlineWidth : 0 }]}>
                     {bubbleText ? (
@@ -1417,7 +1421,7 @@ export default function FollowedRoomsScreen() {
                     ) : null}
                     {gift && !giftReplyText ? (
                       <View style={[styles.giftCard, giftReplyText ? styles.giftCardCompact : null]}>
-                        {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><Text style={styles.giftEmoji}>{t('礼')}</Text></View>) : null}
+                        {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><MaterialCommunityIcons name="gift" size={16} color="#FFFFFF" /></View>) : null}
                         <View style={styles.giftTextWrap}>
                           <Text style={styles.giftName} numberOfLines={1}>{idol ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
                           <Text style={[styles.giftMeta, { color: palette.labelSecondary }]}>{t('数量')} x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
@@ -1677,7 +1681,7 @@ const styles = StyleSheet.create({
   roomTeam: { fontSize: 11, color: '#ff6f91', fontWeight: '800' },
   pinBtn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(255,111,145,0.12)' },
   pinBtnText: { fontSize: 9, color: '#ff6f91', fontWeight: '800' },
-  followBtn: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center', minWidth: 46, height: 24 },
+  followBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center', minWidth: 52, height: 26 },
   followBtnOn: { backgroundColor: 'rgba(255,111,145,0.16)' },
   followBtnText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   followBtnTextOn: { color: '#ff6f91' },

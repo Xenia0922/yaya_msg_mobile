@@ -253,7 +253,7 @@ export const MusicEngine = {
           useMusicPlayerStore.getState().setLyrics(parseLrc(hit.text));
           return;
         }
-        const lrcResp = await fetch(url);
+        const lrcResp = await fetch(url, { signal: AbortSignal.timeout(10000) });
         const raw = await lrcResp.text();
         useMusicPlayerStore.getState().setLyrics(parseLrc(raw));
         // 落盘（整表重写有界：最多保留 200 首，超出丢最旧）

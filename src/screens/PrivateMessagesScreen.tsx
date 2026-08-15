@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
@@ -411,8 +411,10 @@ export default function PrivateMessagesScreen() {
         const dedupedOlder = older.filter((m, i) => !seen.has(msgId(m, i)));
         return oldestFirst([...dedupedOlder, ...prev], msgTimeNumber);
       });
-      setNextTime(Number(res?.content?.nextTime || res?.data?.nextTime || 0));
-      setHasMore(list.length > 0);
+      const nextCursor = Number(res?.content?.nextTime || res?.data?.nextTime || 0);
+      setNextTime(nextCursor);
+      // 游标无前进时终止（防恒定游标死循环）
+      setHasMore(list.length > 0 && nextCursor > 0 && nextCursor !== nextTime);
     } catch (e) { showToast(t('历史加载失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
   };
@@ -660,7 +662,7 @@ const styles = StyleSheet.create({
   flipChipTOn: { color: '#fff' },
   flipSpacer: { flex: 1 },
   flipMoney: { fontSize: 11, fontWeight: '700' },
-  flipRechargeBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  flipRechargeBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 18 },
   flipRechargeT: { color: '#fff', fontSize: 10, fontWeight: '800' },
   flipLabel: { fontSize: 10, fontWeight: '800', marginBottom: 2 },
   inputBar: { paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },

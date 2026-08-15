@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
-  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,

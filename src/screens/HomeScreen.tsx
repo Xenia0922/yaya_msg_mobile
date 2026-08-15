@@ -217,9 +217,10 @@ export default function HomeScreen() {
       .catch(() => {});
   }, []);
 
-  const currentTrack = useMusicPlayerStore((s) =>
-    s.queue[s.currentIndex] ? { ...s.queue[s.currentIndex] } : null,
-  );
+  // 原子化订阅：queue 引用仅在队列变化时更新，position 高频写入不触发首页重渲染
+  const musicQueue = useMusicPlayerStore((s) => s.queue);
+  const musicIndex = useMusicPlayerStore((s) => s.currentIndex);
+  const currentTrack = musicQueue[musicIndex] || null;
 
   const handleNav = useCallback((item: NavItem) => {
     if (item.params) (navigation as any).navigate(item.route, item.params);

@@ -200,7 +200,7 @@ export function messageText(item: any): string {
     if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return translate('[图片消息]');
     return translate('[链接消息]');
   }
-  return item?.msgType && !/^LIVE|SHARE|TEXT$/i.test(String(item.msgType)) ? `[${item.msgType}]` : '';
+  return item?.msgType && !/^(LIVE|SHARE|TEXT)$/i.test(String(item.msgType)) ? `[${item.msgType}]` : '';
 }
 
 export function messageImageUrl(item: any): string {

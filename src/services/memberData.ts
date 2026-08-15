@@ -74,6 +74,7 @@ export interface MemberUpdateResult {
 export async function updateMemberData(opts: { force?: boolean } = {}): Promise<MemberUpdateResult> {  const res = await fetch(`${MEMBERS_URL}?t=${Date.now()}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();

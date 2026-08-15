@@ -99,7 +99,7 @@ function extractAssignedValue(scriptText: string, variableName: string): any {
 
 async function fetchScriptText(url: string): Promise<string> {
   const fresh = `${url}${url.includes('?') ? '&' : '?'}adv=${Date.now()}`;
-  const res = await fetch(fresh, { cache: 'no-store' } as any);
+  const res = await fetch(fresh, { cache: 'no-store', signal: AbortSignal.timeout(15000) } as any);
   if (!res.ok) throw new Error(`拉取 ${url} 失败：${res.status}`);
   return res.text();
 }

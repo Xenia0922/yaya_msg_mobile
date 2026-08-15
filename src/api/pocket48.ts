@@ -832,7 +832,7 @@ export const pocketApi = {
       const url = /^https?:\/\//i.test(lrcUrl)
         ? lrcUrl
         : `${BASE}${lrcUrl.startsWith('/') ? '' : '/'}${lrcUrl}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) return null;
       const text = await res.text();
       return text && text.trim() ? text : null;

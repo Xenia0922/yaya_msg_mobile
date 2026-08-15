@@ -107,8 +107,9 @@ export default function TripScreen() {
       const list = normalizeTripList(res);
       if (reset) setItems(list);
       else setItems((prev) => [...prev, ...list]);
-      setHasMore(list.length >= 20);
       const cursor = res?.content?.nextTime || res?.content?.next || res?.content?.lastTime;
+      // 翻页终止：本页有数据 且 游标确有前进（防止接口返回恒定游标导致死循环）
+      setHasMore(list.length >= 20 && !!cursor && String(cursor) !== lastTime);
       if (cursor) setLastTime(String(cursor));
     } catch (e: any) {
       setError(errorMessage(e));

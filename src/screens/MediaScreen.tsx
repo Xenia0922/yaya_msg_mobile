@@ -1159,7 +1159,10 @@ export default function MediaScreen() {
         {announceExpanded && announceVisible && announcement ? (
           <Animated.View style={[styles.announcePanel, { top: announceTopAnim }]}>
             <View style={styles.announcePanelTop}>
-              <Text style={styles.announcePanelTitle} numberOfLines={1}>📢 {t('公告')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <MaterialCommunityIcons name="bullhorn" size={15} color="#FFFFFF" style={{ marginRight: 5 }} />
+                <Text style={styles.announcePanelTitle} numberOfLines={1}>{t('公告')}</Text>
+              </View>
               <View style={styles.announcePanelBtns}>
                 <TouchableOpacity onPress={refreshAnnouncement} style={styles.announceSmallBtn}>
                   <Text style={styles.announceSmallBtnText}>{t('刷新')}</Text>
@@ -1779,6 +1782,6 @@ const styles = StyleSheet.create({
   calFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#eee' },
   calCancel: { paddingHorizontal: 14, paddingVertical: 6 },
   calCancelText: { fontSize: 14, color: '#888' },
-  calToday: { backgroundColor: '#ff6f91', borderRadius: 14, paddingHorizontal: 18, paddingVertical: 6 },
+  calToday: { backgroundColor: '#ff6f91', borderRadius: 18, paddingHorizontal: 18, paddingVertical: 6 },
   calTodayText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });

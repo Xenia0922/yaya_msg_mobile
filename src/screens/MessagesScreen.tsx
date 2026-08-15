@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
-  View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Modal,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Modal,
 } from 'react-native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';

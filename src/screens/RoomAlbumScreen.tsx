@@ -128,8 +128,7 @@ function channelFor(member: Member, mode: RoomMode) {
 }
 
 export default function RoomAlbumScreen() {
-  const navigation = useNavigation();
-  const isDark = useAppTheme();
+    const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
@@ -168,7 +167,8 @@ export default function RoomAlbumScreen() {
       const next = nextTimeFrom(res, nextItems);
       setItems(merged);
       setNextTime(next);
-      setHasMore(nextItems.length > 0 && next > 0);
+      // 游标无前进（恒同本次请求值）即终止，防死循环
+      setHasMore(nextItems.length > 0 && next > 0 && (append ? next !== nextTime : true));
       const imageCount = merged.filter((item) => item.type === 'image').length;
       const videoCount = merged.filter((item) => item.type === 'video').length;
       const text = t('已加载 {count} 条 · 图片 {image} · 视频 {video}', { count: merged.length, image: imageCount, video: videoCount });
