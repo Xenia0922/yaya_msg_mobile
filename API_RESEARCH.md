@@ -1,5 +1,55 @@
 # 口袋48（SNH48 官方 Fans App）接口研究报告
 
+> **更新（2026-08-16 第二版，源码级确认）**：以下精确参数/字段由子代理直接读取 GitHub 源码得出，比 web_search 推断更权威，位于本文顶部补充节。其后保留第一版全文。
+
+## ⭐ 源码级确认补充
+
+### getLiveList（直播/录播列表）
+- 参数：`userId`(按成员)、`groupId`(大组)、`teamId`、`next`(**翻页游标，录播分页，初始"0"**)、`record`(false=直播 / true=录播)、`debug`
+- **`groupId` 取值**：明星殿堂19、THE9 17、硬糖少女303 18、丝芭影视20、**SNH48=10、BEJ48=11、GNZ48=12、CKG48=14、CGT48=21**、IDFT 15、海外练习生16
+- 返回 `content`：`liveList[]`、`next`(下一页游标)；每项 `coverPath / ctime(13位毫秒) / liveId / roomId / title / userInfo / status`
+- **`liveType`**：1=直播、2=电台、5=游戏、6=AI；**`liveMode`**：0=正常、1=录屏
+
+### getLiveOne（直播详情）
+- 请求 `{liveId}` → `content` 含 `type`(1直播/2电台)、`playStreams[]`(streamName/streamType 1-3/vipShow)、`praiseNum`、`danMuInfo`
+
+### 房间消息 im/api/v1
+- 旧路径：`chatroom/msg/list/homeowner`（房主=成员本人消息）/ `chatroom/msg/list/all`（房间全部消息）
+- 旧参数：`ownerId`、`needTop1Msg:"false"`、`nextTime`(**翻页游标，初始"0"**)、`roomId`；返回 `content.message[]` + `content.nextTime`
+- 新版(48tools)：`team/message/list/homeowner`，参数 `channelId, serverId, nextTime, limit:700`
+- **msgType 枚举**：TEXT/IMAGE/REPLY/GIFTREPLY/AUDIO/VIDEO/LIVEPUSH/FLIPCARD/EXPRESS/DELETE/SESSION_DIANTAI/FLIPCARD_AUDIO/FLIPCARD_VIDEO/OPEN_LIVE/TRIP_INFO/PRESENT_NORMAL/PRESENT_TEXT/VOTE…
+- **extInfo.messageType**：TEXT、REPLY(replyName/replyText)、LIVEPUSH(liveId/liveTitle/liveCover)、VOTE、PRESENT_TEXT(giftInfo{isVote,giftNum})、FLIPCARD(answer/question/user.nickName)
+- 房间信息：`im/room/info/type/source`，请求 `{type:'0', sourceId:<明星id>}` → `content.roomInfo.roomId`
+
+### 签到 checkin
+- POST body `{}`；status=200 成功，`content` 含 `days/addExp/addSupport`；**status=1001006 = 今日已打卡**
+
+### 翻牌消息形态
+- 房间流：`msgType=='FLIPCARD'`，extInfo 含 `answer/question`；老接口 `extInfo.messageObject=='faipaiText'`，字段 `faipaiName/faipaiContent/messageText`
+- 官方定价规则：https://h5.48.cn/2018apppage/idolrule/ ；粉丝整理鸡腿价目：https://www.douban.com/group/topic/221479496/
+
+### 分页精确结论
+- 直播列表：`next`（回传 content.next）；record=false 按 userId 且 next=0 时取首条 liveId 作 next
+- 房间消息：`nextTime`（13位毫秒游标，初始"0"，回传 content.nextTime）
+- posts/动态：`nextId`+`limit`；成员档案：`lastTime`+`limit`
+
+### 仍未找到公开资料（需自行抓包）
+1. 直播贡献榜 `getLiveRank`（路径/参数/字段均无）
+2. 私信 `message/api` 与 `conversation/page`（wdwind 源码标注 "empty?" 未验证）
+3. 行程 TRIP_INFO 字段（仅 48tools interface.d.ts 有枚举名）
+4. 48tools 官方飞书文档（需登录）：https://yzb1g5r02h.feishu.cn/docx/MxfydWlNaovZ5sxsbJ5crnAlnVb
+5. `toType`、media `typeId`、idolanswer operateType、invoice 字段
+
+### 权威源码仓库（可直接 clone）
+- wdwind/pocket48_api（直播/房间/登录/posts）
+- duan602728596/48tools（groupId 表、返回类型、直播/公演：`services/48/index.ts`、`interface.d.ts`、`enum.ts`）
+- dbFlower/grab48（checkin 签到、直播、房间、用户）
+- chinshin/CQBot_hzx（msgType/翻牌 FLIPCARD）
+- SuxueCode/Pocket48RoomListen（老接口 faipaiText）
+- MikuZZZ/pocket48-graphql、gitcode.com/gh_mirrors/48/48tools（镜像）
+
+---
+
 > **域名**：`pocketapi.48.cn`
 > **研究方式**：综合 `web_search` 全文检索 + 直接克隆并读取公开 GitHub 源码仓库（`wdwind/pocket48_api`、`duan602728596/48tools`、`dbFlower/grab48`、`chinshin/CQBot_hzx`、`SuxueCode/Pocket48RoomListen` 等）。
 > **可信度标注**：凡标注来源 URL 的内容为"源码级确认/找到公开资料"；标注 **「未找到确切公开资料」** 的内容为确实查不到，多数"仅凭代码/路径命名推断"。
