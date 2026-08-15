@@ -430,7 +430,12 @@ export default function FlipScreen() {
           <Text style={styles.actionBtn}>{t('发送翻牌')}</Text>
         </TouchableOpacity>
       } />
-      {status ? <Text style={[styles.statusText, { color: palette.tint }]}>{status}</Text> : null}
+      {status ? <Text style={[styles.statusText, { color: /失败|错误/.test(status) ? palette.danger : palette.tint }]}>{status}</Text> : null}
+      {/失败|错误/.test(status) ? (
+        <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.tint }]} onPress={() => loadFlips(1, true)}>
+          <Text style={styles.retryBtnText}>{t('重试')}</Text>
+        </TouchableOpacity>
+      ) : null}
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={flipRows}
@@ -535,6 +540,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
   actionBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
+  retryBtn: {
+    alignSelf: 'center',
+    marginTop: 6,
+    paddingHorizontal: 22,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  retryBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   section: { padding: 14, marginHorizontal: 16, marginVertical: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
   label: { fontSize: 15, fontWeight: '800', marginBottom: 10 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

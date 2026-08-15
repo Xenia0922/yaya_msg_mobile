@@ -154,6 +154,13 @@ export default function SettingsScreen() {
                 const { hasUpdate, latestUrl } = useUpdateStore.getState();
                 if (hasUpdate && latestUrl) {
                   Linking.openURL(latestUrl).catch(() => {});
+                } else {
+                  // 无更新时点击触发一次检查，避免"点了没反应"
+                  useUpdateStore.getState().checkUpdate().then(() => {
+                    const next = useUpdateStore.getState();
+                    if (next.hasUpdate && next.latestUrl) Linking.openURL(next.latestUrl).catch(() => {});
+                    else showToast(t('已是最新版本'));
+                  }).catch(() => showToast(t('检查更新失败，请稍后再试')));
                 }
               }}
             >
