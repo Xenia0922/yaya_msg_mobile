@@ -1521,20 +1521,21 @@ export default function MediaScreen() {
                         </Text>
                       </View>
                     ) : null}
-                  </View>
-                  {/* 信息区 */}
-                  <View style={styles.v2Info}>
-                    <Text style={[styles.v2Title, { color: palette.label }]} numberOfLines={2}>
-                      {item.title || item.liveRoomTitle || t('无标题')}
-                    </Text>
-                    {subtitle ? (
-                      <View style={styles.v2MetaRow}>
-                        <MaterialCommunityIcons name="account" size={13} color={palette.labelTertiary} />
-                        <Text style={[styles.v2Meta, { color: palette.labelSecondary }]} numberOfLines={1}>
-                          {subtitle}
-                        </Text>
-                      </View>
-                    ) : null}
+                    {/* 底部渐变遮罩 + 信息上浮 */}
+                    <View pointerEvents="none" style={styles.v2Shade1} />
+                    <View pointerEvents="none" style={styles.v2Shade2} />
+                    <View pointerEvents="none" style={styles.v2Shade3} />
+                    <View style={styles.v2InfoOverlay}>
+                      <Text style={styles.v2TitleOverlay} numberOfLines={2}>
+                        {item.title || item.liveRoomTitle || t('无标题')}
+                      </Text>
+                      {subtitle ? (
+                        <View style={styles.v2MetaRowOverlay}>
+                          <MaterialCommunityIcons name="account" size={12} color="rgba(255,255,255,0.9)" />
+                          <Text style={styles.v2MetaOverlay} numberOfLines={1}>{subtitle}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                 </TouchableOpacity>
               </FadeInView>
@@ -1666,14 +1667,21 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  v2Cover: { height: 176, overflow: 'hidden' },
+  v2Cover: { height: 208, overflow: 'hidden' },
   v2CoverImg: { width: '100%', height: '100%' },
   v2CoverFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  v2Shade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 108, backgroundColor: 'rgba(0,0,0,0.16)' },
+  v2Shade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 72, backgroundColor: 'rgba(0,0,0,0.28)' },
+  v2Shade3: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 44, backgroundColor: 'rgba(0,0,0,0.48)' },
+  v2InfoOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingBottom: 10 },
+  v2TitleOverlay: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', lineHeight: 21, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  v2MetaRowOverlay: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  v2MetaOverlay: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginLeft: 4, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   v2Badges: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', gap: 6 },
   v2Badge: {
     flexDirection: 'row',

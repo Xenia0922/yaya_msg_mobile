@@ -156,7 +156,7 @@ function LiveCard({ item, onPress }: { item: LiveCardItem; onPress: () => void }
   const [broken, setBroken] = useState(false);
   return (
     <ScalePressable style={styles.liveCard} onPress={onPress} pressedScale={0.96}>
-      <GlassCard padding={0} radius={20}>
+      <View style={[styles.liveCardWrap, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
         <View style={[styles.liveCoverWrap, { backgroundColor: palette.fill3 }]}>
           {!broken && item.cover ? (
             <NetworkImage
@@ -170,20 +170,21 @@ function LiveCard({ item, onPress }: { item: LiveCardItem; onPress: () => void }
               <MaterialCommunityIcons name="video" color={palette.labelTertiary} size={36} />
             </View>
           )}
+          {/* 底部渐变遮罩（三层叠加模拟） */}
+          <View pointerEvents="none" style={styles.liveShade1} />
+          <View pointerEvents="none" style={styles.liveShade2} />
+          <View pointerEvents="none" style={styles.liveShade3} />
           <View style={styles.liveBadge}>
             <View style={[styles.liveDot, { backgroundColor: '#FF3B30' }]} />
             <Text style={styles.liveBadgeText}>直播中</Text>
           </View>
+          {/* 信息上浮叠加在封面上 */}
+          <View style={styles.liveInfoOverlay}>
+            <Text style={styles.liveTitleOverlay} numberOfLines={1}>{item.title}</Text>
+            <Text style={styles.liveNickOverlay} numberOfLines={1}>{item.nickname}</Text>
+          </View>
         </View>
-        <View style={{ padding: 10 }}>
-          <Text style={[typography.footnote, { color: palette.label, fontWeight: '700' }]} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={[typography.caption2, { color: palette.labelSecondary, marginTop: 3 }]} numberOfLines={1}>
-            {item.nickname}
-          </Text>
-        </View>
-      </GlassCard>
+      </View>
     </ScalePressable>
   );
 }
@@ -496,13 +497,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   liveCard: { width: '100%' },
-  liveCoverWrap: { height: 106, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
+  liveCardWrap: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  liveCoverWrap: { height: 132, borderRadius: 0, overflow: 'hidden' },
   liveCover: { width: '100%', height: '100%' },
   liveCoverFallback: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // 底部渐变遮罩三层（由浅到深模拟 linear gradient）
+  liveShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 76, backgroundColor: 'rgba(0,0,0,0.18)' },
+  liveShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, backgroundColor: 'rgba(0,0,0,0.28)' },
+  liveShade3: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 34, backgroundColor: 'rgba(0,0,0,0.45)' },
+  liveInfoOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 10, paddingBottom: 8 },
+  liveTitleOverlay: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', lineHeight: 17, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  liveNickOverlay: { color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 2, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   liveBadge: {
     position: 'absolute',
     top: 8,
