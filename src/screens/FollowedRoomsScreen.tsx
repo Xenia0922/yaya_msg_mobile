@@ -843,6 +843,7 @@ export default function FollowedRoomsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [roomSearchQuery, setRoomSearchQuery] = useState('');
+  const [roomSearchOpen, setRoomSearchOpen] = useState(false);
   const [roomMode, setRoomMode] = useState<RoomMode>('big');
   const [showFanMessages, setShowFanMessages] = useState(false);
   const [playingMedia, setPlayingMedia] = useState<RoomMedia | null>(null);
@@ -1221,6 +1222,30 @@ export default function FollowedRoomsScreen() {
     });
   }, [roomMessages, roomSearchQuery, selectedRoom]);
 
+  // 消息流按日期分组：今天/昨天/月日 分隔条（消息是新→旧排序，分隔条插在换日处）
+  const chatRows = useMemo(() => {
+    const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+    const fmt = (ms: number) => {
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    const now = new Date();
+    const todayStr = fmt(now.getTime());
+    const yestStr = fmt(now.getTime() - 86400000);
+    const rows: { type: 'date' | 'msg'; key: string; label?: string; item?: any; index?: number }[] = [];
+    let lastDay = '';
+    filteredRoomMessages.forEach((item, index) => {
+      const day = fmt(Number((item as any)?.msgTime || (item as any)?.ctime || 0) * (Number((item as any)?.msgTime) > 1e12 ? 1 : 1000));
+      if (day !== lastDay) {
+        lastDay = day;
+        const label = day === todayStr ? t('今天') : day === yestStr ? t('昨天') : `${Number(day.slice(5, 7))}月${Number(day.slice(8, 10))}日`;
+        rows.push({ type: 'date', key: `d-${day}`, label });
+      }
+      rows.push({ type: 'msg', key: messageKey(item, index), item, index });
+    });
+    return rows;
+  }, [filteredRoomMessages, t]);
+
   if (selectedRoom) {
     const fid = String(selectedRoom.id || '');
     const isFollowingRoom = followedIds.has(fid);
@@ -1307,48 +1332,74 @@ export default function FollowedRoomsScreen() {
         } />
 
           <View style={styles.chatTools}>
+          {/* 分段切换：大房间 / 小房间 */}
+          <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
+            <TouchableOpacity
+              style={[styles.segmentItem, roomMode === 'big' && { backgroundColor: palette.tint }]}
+              onPress={() => openRoom(selectedRoom, 'big', showFanMessages)}
+            >
+              <Text style={[styles.segmentText, { color: roomMode === 'big' ? '#FFFFFF' : palette.labelSecondary }]}>{t('大房间')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.segmentItem, roomMode === 'small' && { backgroundColor: palette.tint }]}
+              onPress={() => openRoom(selectedRoom, 'small', showFanMessages)}
+            >
+              <Text style={[styles.segmentText, { color: roomMode === 'small' ? '#FFFFFF' : palette.labelSecondary }]}>{t('小房间')}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ flex: 1 }} />
           <TouchableOpacity
-            style={[styles.modePill, roomMode === 'big' && styles.modePillActive, { backgroundColor: roomMode === 'big' ? palette.tint : palette.surfaceGlass }]}
-            onPress={() => openRoom(selectedRoom, 'big', showFanMessages)}
+            style={[styles.chatToolIcon, { backgroundColor: palette.fill2 }]}
+            onPress={() => setRoomSearchOpen((v) => !v)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={[styles.modePillText, { color: roomMode === 'big' ? '#FFFFFF' : palette.labelSecondary }]}>{t('大房间')}</Text>
+            <MaterialCommunityIcons
+              name={roomSearchOpen ? 'close' : 'magnify'}
+              size={18}
+              color={roomSearchOpen ? palette.tint : palette.labelSecondary}
+            />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modePill, roomMode === 'small' && styles.modePillActive, { backgroundColor: roomMode === 'small' ? palette.tint : palette.surfaceGlass }]}
-            onPress={() => openRoom(selectedRoom, 'small', showFanMessages)}
-          >
-            <Text style={[styles.modePillText, { color: roomMode === 'small' ? '#FFFFFF' : palette.labelSecondary }]}>{t('小房间')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modePill, showFanMessages && styles.modePillActive, { backgroundColor: showFanMessages ? palette.tint : palette.surfaceGlass }]}
+            style={[styles.chatToolIcon, { backgroundColor: showFanMessages ? palette.tintSoft : palette.fill2 }]}
             onPress={() => openRoom(selectedRoom, roomMode, !showFanMessages)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={[styles.modePillText, { color: showFanMessages ? '#FFFFFF' : palette.labelSecondary }]}>{showFanMessages ? t('成员发言') : t('含粉丝发言')}</Text>
+            <MaterialCommunityIcons
+              name="account-group"
+              size={18}
+              color={showFanMessages ? palette.tint : palette.labelSecondary}
+            />
+            <Text style={[styles.chatToolIconText, { color: showFanMessages ? palette.tint : palette.labelSecondary }]}>
+              {showFanMessages ? t('粉丝') : t('成员')}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.roomSearchWrap}>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: palette.surfaceGlassStrong,
-                borderColor: palette.innerStroke,
-                borderWidth: StyleSheet.hairlineWidth,
-                color: palette.label,
-              },
-            ]}
-            placeholder={t('搜索聊天记录、成员名、粉丝名...')}
-            placeholderTextColor={palette.labelTertiary}
-            value={roomSearchQuery}
-            onChangeText={setRoomSearchQuery}
-          />
-        </View>
+        {roomSearchOpen ? (
+          <View style={styles.roomSearchWrap}>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: palette.surfaceGlassStrong,
+                  borderColor: palette.innerStroke,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  color: palette.label,
+                },
+              ]}
+              placeholder={t('搜索聊天记录、成员名、粉丝名...')}
+              placeholderTextColor={palette.labelTertiary}
+              value={roomSearchQuery}
+              onChangeText={setRoomSearchQuery}
+              autoFocus
+            />
+          </View>
+        ) : null}
 
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
           <PerfFlatList
-            data={filteredRoomMessages}
-            keyExtractor={(item, index) => messageKey(item, index)}
+            data={chatRows}
+            keyExtractor={(row: any) => String(row.key)}
             contentContainerStyle={styles.chatContent}
             initialNumToRender={12}
             maxToRenderPerBatch={12}
@@ -1369,7 +1420,19 @@ export default function FollowedRoomsScreen() {
               </View>
             ) : null
           }
-          renderItem={({ item, index }) => {
+          renderItem={({ item: row }: any) => {
+            // 日期分隔条
+            if (row.type === 'date') {
+              return (
+                <View style={styles.chatDateRow}>
+                  <View style={[styles.chatDateLine, { backgroundColor: palette.fill3 }]} />
+                  <Text style={[styles.chatDateText, { color: palette.labelTertiary }]}>{row.label}</Text>
+                  <View style={[styles.chatDateLine, { backgroundColor: palette.fill3 }]} />
+                </View>
+              );
+            }
+            const item = row.item;
+            const index = row.index;
             const role = messageRole(item, selectedRoom, showFanMessages, currentUserId);
             const mine = role === 'mine';
             const idol = role === 'idol';
@@ -1706,7 +1769,41 @@ export default function FollowedRoomsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   containerDark: { backgroundColor: 'transparent' },
-  chatTools: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  segment: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    padding: 3,
+    gap: 2,
+  },
+  segmentItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 64,
+  },
+  segmentText: { fontSize: 12, fontWeight: '800' },
+  chatToolIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    width: 38,
+    height: 34,
+    borderRadius: 12,
+    justifyContent: 'center',
+  },
+  chatToolIconText: { fontSize: 10, fontWeight: '800' },
+  chatDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    marginVertical: 12,
+  },
+  chatDateLine: { flex: 1, height: StyleSheet.hairlineWidth },
+  chatDateText: { fontSize: 11, fontWeight: '600' },
   roomSearchWrap: { paddingHorizontal: 16, paddingBottom: 8 },
   modePill: { flex: 1, minHeight: 46, paddingVertical: 10, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   modePillActive: { backgroundColor: '#ff6f91' },
@@ -1829,10 +1926,10 @@ const styles = StyleSheet.create({
   roomMeta: { fontSize: 10, color: '#3f3f3f', backgroundColor: 'rgba(255,111,145,0.14)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
   lastMessage: { fontSize: 12, color: '#3f3f3f', marginTop: 6 },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },
-  chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginVertical: 6 },
+  chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginVertical: 5 },
   chatRowMine: { justifyContent: 'flex-end' },
-  avatar: { width: 36, height: 36, borderRadius: 18, marginRight: 8, backgroundColor: '#FFFFFF' },
-  avatarFallback: { width: 36, height: 36, borderRadius: 18, marginRight: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 9, backgroundColor: '#FFFFFF' },
+  avatarFallback: { width: 40, height: 40, borderRadius: 20, marginRight: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   avatarText: { color: '#ff6f91', fontWeight: '900', fontSize: 15 },
   msgBlock: { maxWidth: '78%', minWidth: 120 },
   msgBlockMine: { alignItems: 'flex-end' },
@@ -1841,17 +1938,17 @@ const styles = StyleSheet.create({
   replyName: { fontSize: 11, color: '#ff6f91', fontWeight: '800', marginBottom: 2 },
   replyText: { fontSize: 12, color: '#555', lineHeight: 17 },
   replyTextDark: { color: '#aaa' },
-  msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, paddingHorizontal: 4 },
+  msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, paddingHorizontal: 6 },
   msgMetaLineMine: { justifyContent: 'flex-end' },
-  msgSender: { fontSize: 12, fontWeight: '800', color: '#333', maxWidth: 150 },
+  msgSender: { fontSize: 11, fontWeight: '800', color: '#333', maxWidth: 150 },
   msgSenderIdol: { color: '#ff4f7f' },
   msgSenderMine: { color: '#3a6f99' },
   msgTime: { fontSize: 10, color: '#4a4a4a' },
   msgTimeMine: { color: '#3a6f99' },
   msgTimeDark: { color: '#aaa' },
-  msgBubble: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: 18, borderTopLeftRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
+  msgBubble: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: 20, borderTopLeftRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
   msgBubbleIdol: { backgroundColor: 'rgba(255,111,145,0.90)', borderColor: 'rgba(255,255,255,0.28)' },
-  msgBubbleMine: { backgroundColor: 'rgba(123,198,255,0.92)', borderTopLeftRadius: 18, borderTopRightRadius: 6, borderColor: 'rgba(255,255,255,0.32)' },
+  msgBubbleMine: { backgroundColor: 'rgba(123,198,255,0.92)', borderTopLeftRadius: 20, borderTopRightRadius: 8, borderColor: 'rgba(255,255,255,0.32)' },
   msgBubbleDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.10)' },
   msgBody: { fontSize: 14, color: '#444', lineHeight: 21 },
   msgBodyHighlight: { color: '#fff' },
