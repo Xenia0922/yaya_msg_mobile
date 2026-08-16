@@ -1,18 +1,16 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   ActivityIndicator,
-  FlatList,
   Image,
+  RefreshControl,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { useSettingsStore } from '../store';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
 import { Pill } from '../components/Pill';
@@ -21,10 +19,10 @@ import pocketApi from '../api/pocket48';
 import { useI18n } from '../i18n';
 import { errorMessage, normalizeUrl } from '../utils/data';
 import { Member } from '../types';
-import { CenterSpinner } from '../components/Loaders';
 import { extractRankList, extractWeeks, WeekItem } from '../utils/meleeParse';
-import { useAppTheme } from '../hooks/useAppTheme';
-import { usePalette } from '../theme';
+import { usePalette, radiiAlias } from '../theme';
+import { EmptyState, ErrorState } from '../components/StateViews';
+import { Skeleton } from '../components/Skeleton';
 
 // 参考电脑版鸡腿榜：周榜 / 总榜 / 年榜 + 成员贡献榜
 type ViewMode = 'week' | 'total' | 'year' | 'person';
@@ -38,7 +36,6 @@ const MODES: { key: ViewMode; label: string }[] = [
 
 export default function MeleeRankScreen() {
   const navigation = useNavigation<any>();
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const [mode, setMode] = useState<ViewMode>('week');
@@ -177,11 +174,20 @@ export default function MeleeRankScreen() {
     );
   };
 
+  const rankMax = useMemo(() => {
+    let m = 1;
+    for (const it of ranks) {
+      const v = Number(it.melee || it.meleeValue || it.score || it.total || it.charm || 0);
+      if (v > m) m = v;
+    }
+    return m;
+  }, [ranks]);
+
   const renderRank = useCallback(
     ({ item, index }: { item: any; index: number }) => (
-      <RankCard item={item} index={index} />
+      <RankCard item={item} index={index} max={rankMax} />
     ),
-    [],
+    [rankMax],
   );
   const renderPerson = useCallback(
     ({ item, index }: { item: any; index: number }) => (
@@ -194,7 +200,7 @@ export default function MeleeRankScreen() {
   const showPersonSkeleton = loading && personRanks.length === 0 && mode === 'person';
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('鸡腿榜')} onBack={() => navigation.goBack()} />
 
       <View style={styles.modeRow}>
@@ -227,68 +233,92 @@ export default function MeleeRankScreen() {
       )}
 
       {error ? (
-        <View style={styles.errorWrap}>
-          <Text style={[styles.errorText, { color: palette.tint }]}>{error}</Text>
-          <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.tint }]} onPress={() => (mode === 'person' && member ? loadPerson(member) : loadRank())}>
-            <Text style={styles.retryText}>{t('重试')}</Text>
-          </TouchableOpacity>
-        </View>
+        <ErrorState title={error} onAction={() => (mode === 'person' && member ? loadPerson(member) : loadRank())} />
       ) : null}
 
       {mode === 'person' ? (
-        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          {showPersonSkeleton ? (
-            <CenterSpinner dark={isDark} text={t('加载中…')} />
-          ) : (
-            <PerfFlatList
-              data={personRanks}
-              keyExtractor={(item: any, index: number) => String(item.userId || item.id || item.uid || item.resId || `p${index}`)}
-              contentContainerStyle={styles.list}
-              initialNumToRender={12}
-              maxToRenderPerBatch={12}
-              windowSize={7}
-              renderItem={renderPerson}
-              ListEmptyComponent={
-                <Text style={[styles.empty, { color: palette.labelTertiary }]}>
-                  {loading ? '' : member ? t('暂无鸡腿贡献数据') : t('请选择成员查看贡献榜')}
-                </Text>
-              }
-            />
-          )}
-        </FadeInView>
+        showPersonSkeleton ? (
+          <SkeletonRankList />
+        ) : (
+          <PerfFlatList
+            data={personRanks}
+            keyExtractor={(item: any, index: number) => String(item.userId || item.id || item.uid || item.resId || `p${index}`)}
+            contentContainerStyle={styles.list}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            renderItem={renderPerson}
+            refreshControl={
+              <RefreshControl
+                refreshing={loading}
+                onRefresh={() => (member ? loadPerson(member) : setLoading(false))}
+                tintColor={palette.tint}
+                colors={[palette.tint]}
+              />
+            }
+            ListEmptyComponent={
+              <EmptyState
+                icon="account-heart"
+                title={member ? t('暂无鸡腿贡献数据') : t('请选择成员查看贡献榜')}
+              />
+            }
+          />
+        )
+      ) : showSkeleton ? (
+        <SkeletonRankList />
       ) : (
-        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          {showSkeleton ? (
-            <CenterSpinner dark={isDark} text={t('加载中…')} />
-          ) : (
-            <PerfFlatList
-              data={ranks}
-              keyExtractor={(item: any, index: number) => String(item.userId || item.rankNum || item.resId || item.id || `r${index}`)}
-              contentContainerStyle={styles.list}
-              initialNumToRender={12}
-              maxToRenderPerBatch={12}
-              windowSize={7}
-              renderItem={renderRank}
-              onEndReached={loadMoreRank}
-              onEndReachedThreshold={0.35}
-              ListEmptyComponent={
-                <Text style={[styles.empty, { color: palette.labelTertiary }]}>
-                  {loading ? '' : t('暂无排名数据')}
-                </Text>
-              }
-              ListFooterComponent={
-                loadingMore ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} />
-                : loading ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} /> : null
-              }
+        <PerfFlatList
+          data={ranks}
+          keyExtractor={(item: any, index: number) => String(item.userId || item.rankNum || item.resId || item.id || `r${index}`)}
+          contentContainerStyle={styles.list}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          renderItem={renderRank}
+          onEndReached={loadMoreRank}
+          onEndReachedThreshold={0.35}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={() => loadRank()}
+              tintColor={palette.tint}
+              colors={[palette.tint]}
             />
-          )}
-        </FadeInView>
+          }
+          ListEmptyComponent={
+            <EmptyState icon="trophy-outline" title={t('暂无排名数据')} />
+          }
+          ListFooterComponent={
+            loadingMore ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} />
+            : loading ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} /> : null
+          }
+        />
       )}
     </View>
   );
 }
 
-const RankCard = React.memo(function RankCard({ item, index }: { item: any; index: number }) {
+/** 首屏榜单骨架：与真实榜单行同构的 Skeleton（spec §8） */
+function SkeletonRankList() {
+  const palette = usePalette();
+  return (
+    <View style={styles.list}>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <View key={i} style={[styles.rankCard, { backgroundColor: palette.surface }]}>
+          <Skeleton width={30} height={30} radius={10} style={{ marginRight: 10 }} />
+          <Skeleton width={44} height={44} radius={22} style={{ marginRight: 10 }} />
+          <View style={[styles.rankInfo, { gap: 6 }]}>
+            <Skeleton width="55%" height={14} radius={6} />
+            <Skeleton width="80%" height={4} radius={2} />
+          </View>
+          <Skeleton width={52} height={14} radius={6} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const RankCard = React.memo(function RankCard({ item, index, max }: { item: any; index: number; max: number }) {
   const palette = usePalette();
   const { t } = useI18n();
   const rankNum = Number(item.rankNum || item.rank || item.no || index + 1);
@@ -297,27 +327,44 @@ const RankCard = React.memo(function RankCard({ item, index }: { item: any; inde
   const name = String(u.userName || u.nickname || u.nickName || u.name || '');
   const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
   const topUser = String(topU.userName || topU.nickname || '');
-  const melee = String(item.melee || item.meleeValue || item.score || item.total || item.charm || '0');
+  const melee = Number(item.melee || item.meleeValue || item.score || item.total || item.charm || '0');
+  const isTop = rankNum <= 3;
+  const pct = Math.max(2, (melee / max) * 100);
 
   return (
-    <FadeInView delay={80 + index * 24} duration={300}>
+    <FadeInView delay={60 + (index < 12 ? index * 25 : 0)} duration={300}>
       <View style={[styles.rankCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-        <View style={[styles.leadIcon, { backgroundColor: palette.tintSoft }]}>
-          {rankNum <= 3 ? (
-            <MaterialCommunityIcons name="medal" size={20} color={palette.tint} />
-          ) : (
-            <Text style={[styles.rankNum, { color: palette.tint }]}>{rankNum}</Text>
-          )}
+        {/* 名次徽标：前三名 tint 实底白字 16/900，其余 fill2 底 14/800 */}
+        <View
+          style={[
+            styles.rankBadge,
+            isTop
+              ? { backgroundColor: palette.tint }
+              : { backgroundColor: palette.fill2 },
+          ]}
+        >
+          <Text style={[styles.rankBadgeText, { color: isTop ? palette.onTint : palette.labelSecondary, fontSize: isTop ? 16 : 14, fontWeight: isTop ? '900' : '800' }]}>
+            {rankNum}
+          </Text>
         </View>
-        {avatar ? <Image source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} /> : <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: palette.fill2 }]} />}
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: palette.fill3 }]}>
+            <MaterialCommunityIcons name="account" size={20} color={palette.labelTertiary} />
+          </View>
+        )}
         <View style={styles.rankInfo}>
           <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>{name || t('用户 {rank}', { rank: rankNum })}</Text>
           {topUser ? (
             <View style={styles.rankMetaRow}>
-              <MaterialCommunityIcons name="crown" size={13} color={palette.tint} />
+              <MaterialCommunityIcons name="crown" size={12} color={palette.warning} />
               <Text style={[styles.rankMeta, { color: palette.labelSecondary }]} numberOfLines={1}>{t('榜首: {topUser}', { topUser })}</Text>
             </View>
           ) : null}
+          <View style={[styles.miniTrack, { backgroundColor: palette.fill3 }]}>
+            <View style={[styles.miniFill, { backgroundColor: palette.tint, width: `${pct}%` }]} />
+          </View>
         </View>
         <View style={styles.meleeWrap}>
           <MaterialCommunityIcons name="food-drumstick-outline" size={16} color={palette.tint} />
@@ -335,15 +382,21 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
   const u = item.baseUserInfo || item.userInfo || item.user || item;
   const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || item.userAvatar || item.avatar || item.headImg || ''));
   const userId = String(item.userId || item.id || item.uid || '');
-  const charm = String(item.charm || item.charmValue || item.total || item.score || item.melee || '0');
+  const charm = Number(item.charm || item.charmValue || item.total || item.score || item.melee || '0');
 
   return (
-    <FadeInView delay={80 + index * 24} duration={300}>
+    <FadeInView delay={60 + (index < 12 ? index * 25 : 0)} duration={300}>
       <View style={[styles.rankCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-        <View style={[styles.leadIcon, { backgroundColor: palette.tintSoft }]}>
-          <MaterialCommunityIcons name="account-heart" size={20} color={palette.tint} />
+        <View style={[styles.rankBadge, { backgroundColor: palette.fill2 }]}>
+          <Text style={[styles.rankBadgeText, { color: palette.labelSecondary, fontSize: 14, fontWeight: '800' }]}>{index + 1}</Text>
         </View>
-        {avatar ? <Image source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} /> : <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: palette.fill2 }]} />}
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: palette.fill3 }]}>
+            <MaterialCommunityIcons name="account" size={20} color={palette.labelTertiary} />
+          </View>
+        )}
         <View style={styles.rankInfo}>
           <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>{name || t('未知用户')}</Text>
           <Text style={[styles.rankMeta, { color: palette.labelSecondary }]} numberOfLines={1}>{t('ID: {id}', { id: userId })}</Text>
@@ -359,7 +412,6 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
   modeRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 8, gap: 6 },
   modeWrap: { flex: 1 },
   modePill: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
@@ -369,22 +421,22 @@ const styles = StyleSheet.create({
   list: { padding: 14, paddingBottom: 40 },
   rankCard: {
     flexDirection: 'row', alignItems: 'center',
-    borderRadius: 16, padding: 12, marginBottom: 5,
+    borderRadius: radiiAlias.card, padding: 12, marginBottom: 5,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  leadIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  rankNum: { fontSize: 18, fontWeight: '900' },
-  avatar: { width: 34, height: 34, borderRadius: 17, marginRight: 10 },
-  avatarPlaceholder: {},
+  rankBadge: {
+    width: 30, height: 30, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', marginRight: 10,
+  },
+  rankBadgeText: { fontWeight: '900' },
+  avatar: { width: 44, height: 44, borderRadius: radiiAlias.avatar, marginRight: 10 },
+  avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   rankInfo: { flex: 1, minWidth: 0 },
-  rankName: { fontSize: 15, fontWeight: '700' },
+  rankName: { fontSize: 14, fontWeight: '600' },
   rankMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   rankMeta: { fontSize: 12, marginTop: 2, flex: 1 },
-  meleeWrap: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  meleeValue: { fontSize: 15, fontWeight: '800' },
-  errorWrap: { padding: 16, alignItems: 'center' },
-  errorText: { fontSize: 13, marginBottom: 8 },
-  retryBtn: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18 },
-  retryText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  empty: { textAlign: 'center', fontSize: 14, paddingVertical: 60 },
+  miniTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginTop: 6 },
+  miniFill: { height: 4, borderRadius: 2 },
+  meleeWrap: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 8 },
+  meleeValue: { fontSize: 13, fontWeight: '800' },
 });

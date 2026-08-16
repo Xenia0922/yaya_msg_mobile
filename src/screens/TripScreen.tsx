@@ -5,19 +5,18 @@ import {
   Linking,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { CenterSpinner } from '../components/Loaders';
-import { ErrorState } from '../components/StateViews';
+import { ErrorState, EmptyState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
-import { FadeInView } from '../components/Motion';
+import { HeaderAction } from '../components/HeaderAction';
+import { FadeInView, ScalePressable } from '../components/Motion';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
 import { Member, TripItem } from '../types';
-import { useAppTheme } from '../hooks/useAppTheme';
 import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -85,7 +84,6 @@ function todayKey(d = new Date()): string {
 export default function TripScreen() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
-  const isDark = useAppTheme();
   const { t } = useI18n();
   const [member, setMember] = useState<Member | null>(null);
   const [items, setItems] = useState<TripItem[]>([]);
@@ -171,7 +169,7 @@ export default function TripScreen() {
           >
             <View style={styles.cardHead}>
               {item.date ? (
-                <View style={[styles.datePill, { backgroundColor: isToday ? palette.tintSoft : palette.fill2 }]}>
+                <View style={[styles.datePill, { backgroundColor: palette.fill2 }]}>
                   <MaterialCommunityIcons
                     name={isToday ? 'calendar-today' : 'calendar-blank-outline'}
                     size={13}
@@ -190,7 +188,7 @@ export default function TripScreen() {
             ) : null}
             {item.location ? (
               <View style={styles.locationRow}>
-                <MaterialCommunityIcons name="map-marker" size={14} color={palette.tint} />
+                <MaterialCommunityIcons name="map-marker-outline" size={13} color={palette.labelTertiary} />
                 <Text style={[styles.locationText, { color: palette.labelSecondary }]} numberOfLines={1}>{item.location}</Text>
               </View>
             ) : null}
@@ -198,14 +196,15 @@ export default function TripScreen() {
               <Text style={[styles.cardDesc, { color: palette.labelSecondary }]} numberOfLines={4}>{item.description}</Text>
             ) : null}
             {item.ticketUrl ? (
-              <TouchableOpacity
-                style={[styles.linkBtn, { backgroundColor: palette.tint }]}
+              <ScalePressable
+                style={styles.linkRow}
                 onPress={() => Linking.openURL(item.ticketUrl)}
+                activeOpacity={0.7}
+                pressedScale={0.98}
               >
-                <MaterialCommunityIcons name="ticket-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.linkBtnText}>{t('票务链接')}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={14} color="#FFFFFF" style={{ marginLeft: 2 }} />
-              </TouchableOpacity>
+                <Text style={[styles.linkRowText, { color: palette.tint }]}>{t('查看行程')}</Text>
+                <MaterialCommunityIcons name="chevron-right" size={16} color={palette.tint} />
+              </ScalePressable>
             ) : null}
           </View>
         </View>
@@ -220,9 +219,7 @@ export default function TripScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('行程')} onBack={() => navigation.goBack()} right={
-        <TouchableOpacity disabled={!member || loading} onPress={() => fetchTrips(true)}>
-          <Text style={[styles.headerAction, { color: palette.tint }, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
-        </TouchableOpacity>
+        <HeaderAction label={t('刷新')} disabled={!member || loading} onPress={() => fetchTrips(true)} />
       } />
       {subtitle ? (
         <Text style={[styles.subtitle, { color: palette.labelSecondary }]}>{subtitle}</Text>
@@ -246,15 +243,11 @@ export default function TripScreen() {
             </Text> : null
           }
           ListEmptyComponent={
-            loading ? <CenterSpinner dark={isDark} text={t('加载中…')} />
+            loading ? <CenterSpinner text={t('加载中…')} />
             : error ? (
               <ErrorState title={t('加载失败')} hint={error} onAction={() => fetchTrips(true)} />
             ) : (
-              <View style={styles.emptyWrap}>
-                <Text style={[styles.empty, { color: palette.labelTertiary }]}>
-                  {member ? t('暂无行程') : t('请搜索选择成员查看行程')}
-                </Text>
-              </View>
+              <EmptyState icon="calendar-heart" title={member ? t('暂无行程') : t('请搜索选择成员查看行程')} hint={member ? t('可点击右上角刷新重试') : undefined} />
             )
           }
         />
@@ -265,23 +258,21 @@ export default function TripScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
-  disabledText: { opacity: 0.45 },
   subtitle: { paddingHorizontal: 16, fontSize: 13, fontWeight: '700', marginBottom: 4 },
   list: { padding: 16, paddingBottom: 40 },
   timelineRow: { flexDirection: 'row', alignItems: 'stretch', marginBottom: 5 },
-  railWrap: { width: 20, alignItems: 'center' },
+  railWrap: { width: 22, alignItems: 'center' },
   rail: {
     position: 'absolute',
-    left: 9,
+    left: 10,
     top: 0,
     bottom: 0,
     width: 2,
   },
   nodeOuter: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     borderWidth: 2,
     marginTop: 20,
     alignItems: 'center',
@@ -289,9 +280,9 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   nodeInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -304,7 +295,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  cardHead: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 },
+  cardHead: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
   datePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -313,23 +304,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  datePillText: { fontSize: 12, fontWeight: '700' },
+  datePillText: { fontSize: 11, fontWeight: '700' },
   cardTitle: { fontSize: 15, fontWeight: '700', lineHeight: 20 },
   cardSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  locationText: { fontSize: 12, flex: 1 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
+  locationText: { fontSize: 12, flex: 1, fontWeight: '600' },
   cardDesc: { fontSize: 12, marginTop: 6, lineHeight: 17 },
-  linkBtn: {
+  linkRow: {
     alignSelf: 'flex-start',
-    marginTop: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 18,
+    marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 2,
+    paddingVertical: 4,
   },
-  linkBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  linkRowText: { fontSize: 13, fontWeight: '700' },
   footer: { textAlign: 'center', fontSize: 12, paddingVertical: 10 },
-  emptyWrap: { alignItems: 'center', paddingVertical: 60 },
-  empty: { fontSize: 13, marginTop: 8 },
 });

@@ -11,6 +11,7 @@
 //     record.team 是演唱者（SNH48 / 袁一琦 / 7SENSES / 鞠婧祎 …）。
 //   - 现在不再要求 record.image 非空才保留元数据 —— 无封面时 coverUrl=''，交给 CoverArt 渐变兜底。
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchWithTimeout } from '../utils/network';
 
 const OFFICIAL_SITE_ORIGIN = 'https://www.snh48.com';
 const SCRIPT_BASE = `${OFFICIAL_SITE_ORIGIN}/js`;
@@ -99,7 +100,7 @@ function extractAssignedValue(scriptText: string, variableName: string): any {
 
 async function fetchScriptText(url: string): Promise<string> {
   const fresh = `${url}${url.includes('?') ? '&' : '?'}adv=${Date.now()}`;
-  const res = await fetch(fresh, { cache: 'no-store', signal: AbortSignal.timeout(15000) } as any);
+  const res = await fetchWithTimeout(fresh, { cache: 'no-store' }, 15000);
   if (!res.ok) throw new Error(`拉取 ${url} 失败：${res.status}`);
   return res.text();
 }

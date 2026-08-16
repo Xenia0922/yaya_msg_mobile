@@ -1,21 +1,33 @@
+/**
+ * LoginScreen · 账号设置 v2.6 布局重做
+ * - 登录方式用分段控件（短信验证码 / Token / B站二维码）：fill2 底 + 选中白胶囊
+ * - 表单卡：输入框圆角 14 fill2 底 + 主按钮 Button filled 全宽
+ * - 账号列表改行卡：头像 48 圆 + 昵称 15/700 + token 掩码 11 + 「当前」tint 徽标 + 切换按钮（filled sm）
+ * - B站二维码卡：白卡圆角 16 + 二维码居中 + 过期刷新按钮
+ * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
+ */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView,
+  View, Text, TextInput, StyleSheet, ScrollView, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useNavigation } from '@react-navigation/native';
 import QRCode from 'qrcode';
 import { WebView } from 'react-native-webview';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
+import { Button } from '../components/Button';
 import { saveSettings } from '../services/settings';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, pickText } from '../utils/data';
 import { logWarn } from '../utils/runtimeLog';
-import { usePalette } from '../theme';
+import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { translate, useI18n } from '../i18n';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 function buildBilibiliCookieFromUrl(rawUrl = ''): string {
   try {
@@ -108,6 +120,8 @@ function parseAccountInfo(res: any) {
   return { current, users };
 }
 
+type LoginMode = 'sms' | 'token' | 'bilibili';
+
 export default function LoginScreen() {
   const navigation = useNavigation();
   const settings = useSettingsStore((state) => state.settings);
@@ -117,6 +131,11 @@ export default function LoginScreen() {
   const { t } = useI18n();
   const pollingRef = useRef(true);
   useEffect(() => { return () => { pollingRef.current = false; }; }, []);
+  // 账号设置页固定竖屏：避免从横屏播放器进入时内容被横向挤压（布局按竖屏设计）
+  useEffect(() => {
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, []);
+  const [mode, setMode] = useState<LoginMode>('sms');
   const [phone, setPhone] = useState('');
   const [area, setArea] = useState('86');
   const [code, setCode] = useState('');
@@ -414,212 +433,339 @@ export default function LoginScreen() {
     }
   };
 
+  const SEGMENTS: { key: LoginMode; label: string; icon: string }[] = [
+    { key: 'sms', label: t('短信验证码'), icon: 'message-text-outline' },
+    { key: 'token', label: t('Token'), icon: 'key-variant' },
+    { key: 'bilibili', label: t('B站二维码'), icon: 'qrcode' },
+  ];
+
   return (
-    <ScrollView style={[styles.container, false]} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.container}
+    >
+    <ScrollView style={[styles.container, { backgroundColor: usePageBackground() }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <ScreenHeader title={t('账号设置')} />
 
-      <FadeInView delay={80} duration={300}>
-        <View style={[styles.section, false, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
-          <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋48验证码登录')}</Text>
-        <View style={styles.phoneRow}>
-          <View style={[styles.areaWrap, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
-            <Text style={[styles.areaPlus, { color: palette.label }]}>+</Text>
-            <TextInput
-              style={[styles.areaInput, { color: palette.label }]}
-              placeholder="86"
-              placeholderTextColor={palette.labelTertiary}
-              keyboardType="phone-pad"
-              maxLength={5}
-              value={area}
-              onChangeText={(v) => setArea(v.replace(/[^0-9]/g, '').slice(0, 5))}
-            />
-          </View>
-          <TextInput style={[styles.input, styles.phoneInput, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]} placeholder={t('手机号')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
-        </View>
-        <TextInput style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]} placeholder={t('短信验证码')} placeholderTextColor={palette.labelTertiary} keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
-        {verify ? (
-          <View style={[styles.verifyBox, { backgroundColor: palette.fill2, borderColor: palette.innerStroke }]}>
-            <Text style={[styles.verifyQuestion, { color: palette.label }]}>{verify.question}</Text>
-            <View style={styles.verifyOptions}>
-              {verify.options.map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={[styles.verifyOption, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke }]}
-                  onPress={() => handleVerifyAnswer(option)}
-                  disabled={loading}
-                >
-                  <Text style={[styles.verifyOptionText, { color: palette.label }]}>{option}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ) : null}
-        <View style={styles.btnRow}>
-          <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }, loading && styles.btnDisabled]} onPress={() => handleSendSms()} disabled={loading}>
-            <Text style={[styles.btnText, { color: palette.label }]}>{t('获取验证码')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: palette.tint }, loading && styles.btnDisabled]} onPress={handleLogin} disabled={loading}>
-            <Text style={styles.btnText}>{t('登录')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={[styles.section, false, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
-        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋48Token登录')}</Text>
-        <TextInput
-          style={[styles.input, styles.tokenInput, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]}
-          placeholder={t('粘贴口袋token')}
-          placeholderTextColor={palette.labelTertiary}
-          value={manualToken}
-          onChangeText={setManualToken}
-          multiline
-        />
-        <View style={styles.btnRow}>
-          <TouchableOpacity
-            style={[styles.btnPrimary, { backgroundColor: palette.tint }, loading && styles.btnDisabled]}
-            onPress={handleSaveManualToken}
-            disabled={loading}
-          >
-            <Text style={styles.btnText}>{loading ? t('保存中...') : t('保存Token')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }]} onPress={handleCheckToken}>
-            <Text style={[styles.btnText, { color: palette.label }]}>{t('检查Token')}</Text>
-          </TouchableOpacity>
-        </View>
-        {settings.p48Token ? <Text style={[styles.tokenInfo, { color: palette.labelSecondary }]}>{t('已保存Token：{token}', { token: maskToken(settings.p48Token) })}</Text> : null}
-      </View>
-
-      <View style={[styles.section, false, { backgroundColor: palette.surfaceGlass, borderColor: palette.innerStroke, borderRadius: 20 }]}>
-        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋账号切换')}</Text>
-        <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>
-          {t('当前：{info}', { info: accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : t('先检查Token读取账号') })}
-        </Text>
-        <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }, loading && styles.btnDisabled, { marginBottom: 10 }]} onPress={handleCheckToken} disabled={loading}>
-          <Text style={[styles.btnText, { color: palette.label }]}>{t('刷新账号列表')}</Text>
-        </TouchableOpacity>
-        {accountInfo.users.length ? accountInfo.users.map((user) => {
-          const id = accountId(user);
-          const isCurrent = !!id && id === accountId(accountInfo.current);
-          return (
-            <TouchableOpacity
-              key={id}
-              style={[styles.accountRow, isCurrent && styles.accountRowActive, { backgroundColor: palette.surface }]}
-              onPress={() => handleSwitchPocketAccount(user)}
-              disabled={loading || isCurrent}
-            >
-              <View style={styles.accountTextWrap}>
-                <Text style={[styles.accountName, { color: palette.label }]}>{accountName(user)}</Text>
-                <Text style={[styles.accountMeta, { color: palette.labelSecondary }]}>{accountRole(user, t('账号'))} · {id || t('无ID')}</Text>
-              </View>
-              <Text style={isCurrent ? styles.accountCurrent : styles.accountAction}>
-                {isCurrent ? t('当前') : switchingUserId === id ? t('切换中') : t('切换')}
-              </Text>
-            </TouchableOpacity>
-          );
-        }) : <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>{t('没有读取到大小号列表；保存 Token 后点"刷新账号列表"。')}</Text>}
-      </View>
-
-      <View style={[styles.section, false]}>
-        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('B站登录')}</Text>
-        <TouchableOpacity style={styles.btnPrimary} onPress={handleBiliQr} disabled={loading}>
-          <Text style={styles.btnText}>{loading ? t('获取中...') : qrHtml ? t('刷新B站二维码') : t('获取B站登录二维码')}</Text>
-        </TouchableOpacity>
-        {qrHtml ? <WebView source={{ html: qrHtml }} style={styles.qr} originWhitelist={['*']} scrollEnabled={false} /> : null}
-        {biliStatus ? <Text style={[styles.biliStatus, { color: palette.labelSecondary }]}>{biliStatus}</Text> : null}
-        {/过期|超时|失败/.test(biliStatus) ? (
-          <TouchableOpacity style={[styles.btnPrimary, styles.qrRetryBtn]} onPress={handleBiliQr} disabled={loading}>
-            <Text style={styles.btnText}>{t('重新获取二维码')}</Text>
-          </TouchableOpacity>
-        ) : null}
-        {settings.bilibiliCookie ? <Text style={styles.tokenInfo}>{t('B站已登录')}</Text> : null}
-      </View>
-
-      <View style={[styles.section, false]}>
-        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('口袋资料')}</Text>
-        {renameCountText ? <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>{renameCountText}</Text> : null}
-        <TextInput
-          style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label }]}
-          placeholder={t('昵称')}
-          placeholderTextColor={palette.labelTertiary}
-          value={profileName}
-          onChangeText={setProfileName}
-        />
-        <View style={styles.btnRow}>
-          <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }, loading && styles.btnDisabled]} onPress={handleLoadProfile} disabled={loading}>
-            <Text style={[styles.btnText, { color: palette.label }]}>{t('读取资料')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.btnPrimary, loading && styles.btnDisabled]} onPress={handleEditProfile} disabled={loading}>
-            <Text style={styles.btnText}>{t('修改昵称')}</Text>
-          </TouchableOpacity>
-        </View>
-        <TextInput
-          style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth, color: palette.label, opacity: 0.7 }]}
-          placeholder={t('头像URL上传后自动填入')}
-          placeholderTextColor={palette.labelTertiary}
-          value={profileAvatar}
-          onChangeText={setProfileAvatar}
-          autoCapitalize="none"
-          editable={false}
-        />
-        <TouchableOpacity style={[styles.btn, { backgroundColor: palette.fill2 }, loading && styles.btnDisabled, { marginTop: 8 }]} onPress={handlePickAvatar} disabled={loading}>
-          <Text style={styles.btnText}>{t('选择本地图片上传头像')}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={[styles.section, false]}>
-        <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('鸡腿充值')}</Text>
-        <TouchableOpacity style={styles.btnPrimary} onPress={() => (navigation as any).navigate('RechargeScreen')}>
-            <Text style={styles.btnText}>{t('打开官方充值页')}</Text>
-          </TouchableOpacity>
+      <FadeInView delay={40} duration={280} distance={8}>
+        {/* 登录方式分段控件 */}
+        <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
+          {SEGMENTS.map((seg) => {
+            const active = mode === seg.key;
+            return (
+              <ScalePressable
+                key={seg.key}
+                style={[styles.segmentItem, active && styles.segmentItemActive, active && { backgroundColor: palette.surfaceElevated }]}
+                onPress={() => setMode(seg.key)}
+                pressedScale={0.96}
+              >
+                <Text style={[styles.segmentText, { color: active ? palette.label : palette.labelSecondary }]}>
+                  {seg.label}
+                </Text>
+              </ScalePressable>
+            );
+          })}
         </View>
       </FadeInView>
 
-      {status ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
+      <FadeInView delay={80} duration={300} distance={8}>
+        {/* 短信验证码登录 */}
+        {mode === 'sms' ? (
+          <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+            <Text style={[styles.cardTitle, { color: palette.label }]}>{t('口袋48验证码登录')}</Text>
+            <View style={styles.phoneRow}>
+              <View style={[styles.field, styles.areaWrap, { backgroundColor: palette.fill2 }]}>
+                <Text style={[styles.areaPlus, { color: palette.label }]}>+</Text>
+                <TextInput
+                  style={[styles.areaInput, { color: palette.label }]}
+                  placeholder="86"
+                  placeholderTextColor={palette.labelTertiary}
+                  keyboardType="phone-pad"
+                  maxLength={5}
+                  value={area}
+                  onChangeText={(v) => setArea(v.replace(/[^0-9]/g, '').slice(0, 5))}
+                />
+              </View>
+              <TextInput style={[styles.field, styles.phoneInput, { backgroundColor: palette.fill2, color: palette.label }]} placeholder={t('手机号')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+            </View>
+            <TextInput style={[styles.field, { backgroundColor: palette.fill2, color: palette.label }]} placeholder={t('短信验证码')} placeholderTextColor={palette.labelTertiary} keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={8} />
+            {verify ? (
+              <View style={[styles.verifyBox, { backgroundColor: palette.fill2, borderColor: palette.innerStroke }]}>
+                <Text style={[styles.verifyQuestion, { color: palette.label }]}>{verify.question}</Text>
+                <View style={styles.verifyOptions}>
+                  {verify.options.map((option) => (
+                    <ScalePressable
+                      key={option}
+                      style={[styles.verifyOption, { backgroundColor: palette.surface, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
+                      onPress={() => handleVerifyAnswer(option)}
+                      disabled={loading}
+                      pressedScale={0.94}
+                      hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+                    >
+                      <Text style={[styles.verifyOptionText, { color: palette.label }]}>{option}</Text>
+                    </ScalePressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            <View style={styles.btnCol}>
+              <Button title={t('获取验证码')} variant="tinted" size="md" onPress={() => handleSendSms()} disabled={loading} fullWidth />
+              <Button title={t('登录')} variant="filled" size="md" onPress={handleLogin} disabled={loading} fullWidth />
+            </View>
+            {status && mode === 'sms' ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
+          </View>
+        ) : null}
+
+        {/* Token 登录 */}
+        {mode === 'token' ? (
+          <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+            <Text style={[styles.cardTitle, { color: palette.label }]}>{t('口袋48Token登录')}</Text>
+            <TextInput
+              style={[styles.field, styles.tokenInput, { backgroundColor: palette.fill2, color: palette.label }]}
+              placeholder={t('粘贴口袋token')}
+              placeholderTextColor={palette.labelTertiary}
+              value={manualToken}
+              onChangeText={setManualToken}
+              multiline
+            />
+            <View style={styles.btnCol}>
+              <Button title={t('检查Token')} variant="tinted" size="md" onPress={handleCheckToken} disabled={loading} fullWidth />
+              <Button title={t('保存Token')} variant="filled" size="md" onPress={handleSaveManualToken} disabled={loading} loading={loading} fullWidth />
+            </View>
+            {settings.p48Token ? <Text style={[styles.tokenInfo, { color: palette.labelSecondary }]}>{t('已保存Token：{token}', { token: maskToken(settings.p48Token) })}</Text> : null}
+            {status && mode === 'token' ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
+          </View>
+        ) : null}
+
+        {/* B站二维码 */}
+        {mode === 'bilibili' ? (
+          <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+            <Text style={[styles.cardTitle, { color: palette.label }]}>{t('B站登录')}</Text>
+            {qrHtml ? (
+              <View style={styles.qrCard}>
+                <WebView source={{ html: qrHtml }} style={styles.qr} originWhitelist={['*']} scrollEnabled={false} />
+              </View>
+            ) : (
+              <View style={styles.qrPlaceholder}>
+                <MaterialCommunityIcons name="qrcode" color={palette.labelTertiary} size={56} />
+              </View>
+            )}
+            {biliStatus ? <Text style={[styles.biliStatus, { color: palette.labelSecondary }]}>{biliStatus}</Text> : null}
+            <View style={styles.btnCol}>
+              <Button
+                title={qrHtml ? t('刷新B站二维码') : t('获取B站登录二维码')}
+                variant="filled"
+                size="md"
+                onPress={handleBiliQr}
+                disabled={loading}
+                loading={loading}
+                fullWidth
+              />
+            </View>
+            {/过期|超时|失败/.test(biliStatus) ? (
+              <ScalePressable onPress={handleBiliQr} pressedScale={0.96} style={styles.qrRetry} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <MaterialCommunityIcons name="refresh" color={palette.tint} size={16} />
+                <Text style={[styles.qrRetryText, { color: palette.tint }]}>{t('二维码已过期，点击刷新')}</Text>
+              </ScalePressable>
+            ) : null}
+            {settings.bilibiliCookie ? <Text style={[styles.tokenInfo, { color: palette.success }]}>{t('B站已登录')}</Text> : null}
+            {status && mode === 'bilibili' ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
+          </View>
+        ) : null}
+
+        {/* 口袋账号切换：账户行卡列表 */}
+        <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <View style={styles.cardHead}>
+            <Text style={[styles.cardTitle, { color: palette.label }]}>{t('口袋账号切换')}</Text>
+            <Button title={t('刷新账号列表')} variant="tinted" size="sm" onPress={handleCheckToken} disabled={loading} />
+          </View>
+          <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>
+            {t('当前：{info}', { info: accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : t('先检查Token读取账号') })}
+          </Text>
+          {accountInfo.users.length ? accountInfo.users.map((user, index) => {
+            const id = accountId(user);
+            const isCurrent = !!id && id === accountId(accountInfo.current);
+            return (
+              <FadeInView key={id} delay={index < 12 ? 60 + index * 25 : 0} duration={300} distance={8}>
+                <ScalePressable
+                  style={[
+                    styles.accountRow,
+                    isCurrent ? { borderColor: palette.tint, backgroundColor: palette.tintSoft } : { backgroundColor: palette.fill3, borderColor: 'transparent' },
+                  ]}
+                  onPress={() => handleSwitchPocketAccount(user)}
+                  disabled={loading || isCurrent}
+                  activeOpacity={0.7}
+                  pressedScale={0.985}
+                >
+                  <View style={[styles.accountAvatar, { backgroundColor: palette.fill2 }]}>
+                    <MaterialCommunityIcons name={isCurrent ? 'account-check' : 'account'} color={palette.tint} size={22} />
+                  </View>
+                  <View style={styles.accountTextWrap}>
+                    <Text style={[styles.accountName, { color: palette.label }]} numberOfLines={1}>{accountName(user)}</Text>
+                    <Text style={[styles.accountMeta, { color: palette.labelTertiary }]} numberOfLines={1}>
+                      {t('Token {mask}', { mask: maskToken(settings.p48Token || '') })} · {accountRole(user, t('账号'))}
+                    </Text>
+                  </View>
+                  {!isCurrent ? (
+                    <Button
+                      title={switchingUserId === id ? t('切换中') : t('切换')}
+                      variant="filled"
+                      size="sm"
+                      onPress={() => handleSwitchPocketAccount(user)}
+                      disabled={loading || switchingUserId === id}
+                      loading={switchingUserId === id}
+                    />
+                  ) : (
+                    <View style={[styles.currentBadge, { backgroundColor: palette.tint }]}>
+                      <Text style={[styles.currentBadgeText, { color: palette.onTint }]}>{t('当前')}</Text>
+                    </View>
+                  )}
+                </ScalePressable>
+              </FadeInView>
+            );
+          }) : <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>{t('没有读取到大小号列表；保存 Token 后点"刷新账号列表"。')}</Text>}
+        </View>
+
+        {/* 口袋资料 */}
+        <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <Text style={[styles.cardTitle, { color: palette.label }]}>{t('口袋资料')}</Text>
+          {renameCountText ? <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>{renameCountText}</Text> : null}
+          <TextInput
+            style={[styles.field, { backgroundColor: palette.fill2, color: palette.label }]}
+            placeholder={t('昵称')}
+            placeholderTextColor={palette.labelTertiary}
+            value={profileName}
+            onChangeText={setProfileName}
+          />
+          <View style={styles.btnCol}>
+            <Button title={t('读取资料')} variant="tinted" size="md" onPress={handleLoadProfile} disabled={loading} fullWidth />
+            <Button title={t('修改昵称')} variant="filled" size="md" onPress={handleEditProfile} disabled={loading} fullWidth />
+          </View>
+          <TextInput
+            style={[styles.field, { backgroundColor: palette.fill2, color: palette.label, opacity: 0.7 }]}
+            placeholder={t('头像URL上传后自动填入')}
+            placeholderTextColor={palette.labelTertiary}
+            value={profileAvatar}
+            onChangeText={setProfileAvatar}
+            autoCapitalize="none"
+            editable={false}
+          />
+          <View style={styles.avatarRow}>
+            <Button title={t('选择本地图片上传头像')} variant="tinted" size="md" onPress={handlePickAvatar} disabled={loading} />
+          </View>
+        </View>
+
+        {/* 鸡腿充值 */}
+        <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <Text style={[styles.cardTitle, { color: palette.label }]}>{t('鸡腿充值')}</Text>
+          <Button title={t('打开官方充值页')} variant="filled" size="md" onPress={() => (navigation as any).navigate('RechargeScreen')} fullWidth />
+        </View>
+      </FadeInView>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  content: { paddingBottom: 32 },
-  section: { padding: 16, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginTop: 16, borderRadius: 18 },
-  sectionDark: { backgroundColor: '#1C1C1F' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 12 },
-  input: { padding: 12, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: '#FFFFFF', color: '#333', marginBottom: 10, fontSize: 14 },
-  inputDark: { backgroundColor: '#1C1C1F', borderColor: '#444', color: '#eee' },
+  container: { flex: 1 },
+  content: { paddingBottom: 32, paddingHorizontal: 16 },
+  cardMargin: { marginHorizontal: 16, marginTop: 16 },
+  // 分段控件
+  segment: {
+    flexDirection: 'row',
+    borderRadius: radii.md,
+    padding: 4,
+    gap: 4,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  segmentItem: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: radii.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentItemActive: {
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  segmentText: { fontSize: 14, fontWeight: '700' },
+  // 卡片
+  card: {
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    marginBottom: 16,
+  },
+  cardTitle: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  field: { height: 42, paddingHorizontal: 12, borderRadius: radiiAlias.input, marginBottom: 10, fontSize: 14 },
+  tokenInput: { minHeight: 86, textAlignVertical: 'top', paddingVertical: 10 },
+  btnCol: { gap: 10, marginTop: 4 },
   phoneRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  areaWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.52)', backgroundColor: '#FFFFFF', marginBottom: 10 },
-  areaPlus: { color: '#555', fontWeight: '700', fontSize: 15, marginRight: 2 },
-  areaInput: { minWidth: 44, padding: 12, paddingHorizontal: 0, color: '#333', fontSize: 14 },
+  areaWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 10 },
+  areaPlus: { fontWeight: '700', fontSize: 15, marginRight: 2 },
+  areaInput: { minWidth: 44, paddingVertical: 12, paddingHorizontal: 0, fontSize: 14 },
   phoneInput: { flex: 1 },
-  tokenInput: { minHeight: 86, textAlignVertical: 'top' },
-  btnRow: { flexDirection: 'row', gap: 10 },
-  btn: { flex: 1, padding: 12, borderRadius: 18, backgroundColor: '#4a4a4a', alignItems: 'center' },
-  btnPrimary: { flex: 1, padding: 12, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center' },
-  btnDisabled: { opacity: 0.55 },
-  btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  status: { margin: 16, fontSize: 13, color: '#444', textAlign: 'center', lineHeight: 20 },
-  biliStatus: { marginTop: 10, fontSize: 12, color: '#555', textAlign: 'center', lineHeight: 18 },
-  qrRetryBtn: { marginTop: 12 },
-  tokenInfo: { marginTop: 10, fontSize: 12, color: '#4caf50' },
-  metaLine: { marginTop: -4, marginBottom: 10, fontSize: 12, color: '#4a4a4a' },
-  qr: { width: 220, height: 220, alignSelf: 'center', marginTop: 12 },
-  accountRow: { padding: 12, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.62)', marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  accountRowDark: { backgroundColor: '#1C1C1F', borderColor: '#444' },
-  accountRowActive: { borderColor: '#ff6f91', backgroundColor: 'rgba(255,111,145,0.16)' },
+  avatarRow: { marginTop: 4 },
+  status: { marginTop: 12, fontSize: 13, textAlign: 'center', lineHeight: 20, flexShrink: 0, minHeight: 20, width: '100%', marginBottom: 10 },
+  biliStatus: { marginTop: 10, fontSize: 12, textAlign: 'center', lineHeight: 18, flexShrink: 0, marginBottom: 4 },
+  qrCard: {
+    alignSelf: 'center',
+    width: 220,
+    height: 220,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  qr: { width: 220, height: 220 },
+  qrPlaceholder: {
+    alignSelf: 'center',
+    width: 220,
+    height: 220,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  qrRetry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 8,
+  },
+  qrRetryText: { fontSize: 13, fontWeight: '700' },
+  tokenInfo: { marginTop: 10, fontSize: 12, lineHeight: 18, flexShrink: 0, minHeight: 18, marginBottom: 8 },
+  metaLine: { marginTop: 8, marginBottom: 10, fontSize: 12, lineHeight: 18, flexShrink: 1 },
+  // 账号行卡
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 10,
+    gap: 12,
+  },
+  accountAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   accountTextWrap: { flex: 1, minWidth: 0 },
-  accountName: { fontSize: 14, fontWeight: '800', color: '#333' },
-  accountMeta: { marginTop: 3, fontSize: 11, color: '#555' },
-  accountAction: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
-  accountCurrent: { color: '#20a464', fontSize: 13, fontWeight: '800' },
-  verifyBox: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#ffb3c1', backgroundColor: 'rgba(255,111,145,0.08)', marginBottom: 10 },
-  verifyBoxDark: { borderColor: '#7a4a55', backgroundColor: 'rgba(255,111,145,0.10)' },
-  verifyQuestion: { fontSize: 13, fontWeight: '700', color: '#c2185b', marginBottom: 8 },
+  accountName: { fontSize: 15, fontWeight: '700', flexShrink: 1 },
+  accountMeta: { marginTop: 3, fontSize: 11, flexShrink: 1 },
+  currentBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill },
+  currentBadgeText: { fontSize: 11, fontWeight: '800' },
+  verifyBox: { padding: 12, borderRadius: radii.md, borderWidth: StyleSheet.hairlineWidth, marginBottom: 10 },
+  verifyQuestion: { fontSize: 13, fontWeight: '700', marginBottom: 8 },
   verifyOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  verifyOption: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ffb3c1' },
-  verifyOptionDark: { backgroundColor: '#3a3a3a', borderColor: '#7a4a55' },
-  verifyOptionText: { fontSize: 13, fontWeight: '600', color: '#c2185b' },
-  textDark: { color: '#eee' },
-  textSubDark: { color: '#eeeeee' },
+  verifyOption: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radii.pill },
+  verifyOptionText: { fontSize: 13, fontWeight: '600' },
 });

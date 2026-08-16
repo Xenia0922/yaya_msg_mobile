@@ -3,6 +3,7 @@ import { MEMBERS_URL } from '../constants';
 import { loadMembers } from '../utils/members';
 import { Member } from '../types';
 import { useMemberStore } from '../store';
+import { fetchWithTimeout } from '../utils/network';
 
 const CACHE_KEY = 'yaya_member_data_cache_v1';
 
@@ -71,11 +72,10 @@ export interface MemberUpdateResult {
  * `force: true` bypasses the signature check (used by the manual "检查更新" button
  * so the user can always re-pull even when the signature heuristic is inconclusive).
  */
-export async function updateMemberData(opts: { force?: boolean } = {}): Promise<MemberUpdateResult> {  const res = await fetch(`${MEMBERS_URL}?t=${Date.now()}`, {
+export async function updateMemberData(opts: { force?: boolean } = {}): Promise<MemberUpdateResult> {  const res = await fetchWithTimeout(`${MEMBERS_URL}?t=${Date.now()}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(15000),
-  });
+  }, 15000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   const members = await loadMembers(json);

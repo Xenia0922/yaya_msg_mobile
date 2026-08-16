@@ -36,14 +36,13 @@ function candidateScore(item: any): number {
   const protocol = String(item.protocolName || '').toLowerCase();
   const codec = String(item.codecName || '').toLowerCase();
 
-  if (format === 'fmp4') score += 1200;
-  if (format === 'ts') score += 900;
-  if (format === 'flv') score += 300;
-  if (protocol.includes('hls')) score += 300;
-  if (protocol.includes('http')) score += 120;
-  if (codec === 'avc') score += 200;
-  if (codec === 'hevc') score -= 200;
-  score += Number(item.currentQn || 0);
+  // 优先级：① 可播放性（HLS fmp4/ts 远优先于 http-flv，ExoPlayer 播不了 flv）
+  //          ② 画质（qn 越高越好，默认即最高可用画质）
+  //          ③ 同画质下编码 tie-break：AVC 略优于 HEVC
+  // 这样默认拿到「能播的最高画质」；若某线路播放失败，上层静默换到下一条。
+  if (format === 'fmp4' || format === 'ts' || protocol.includes('hls')) score += 100000;
+  score += Number(item.currentQn || 0) * 2;
+  if (codec === 'avc') score += 1;
   return score;
 }
 
@@ -76,6 +75,30 @@ function liveCandidates(playInfo: any): any[] {
   return candidates
     .filter((item) => item.url && !seen.has(item.url) && seen.add(item.url))
     .sort((a, b) => candidateScore(b) - candidateScore(a));
+}
+
+export interface BiliQuality {
+  qn: number;
+  label: string;
+}
+
+/** 画质选项：优先用接口的 g_qn_desc 文案，缺失时按候选 currentQn 兜底；按 qn 降序 */
+function buildQualities(playInfo: any, candidates: any[]): BiliQuality[] {
+  const descList = playInfo?.data?.playurl_info?.playurl?.g_qn_desc || [];
+  const labelByQn = new Map<number, string>();
+  for (const q of descList) {
+    if (q && Number(q.qn) > 0) labelByQn.set(Number(q.qn), String(q.desc || `qn${q.qn}`));
+  }
+  const qns = new Set<number>();
+  for (const c of candidates) {
+    if (Number(c.currentQn) > 0) {
+      qns.add(Number(c.currentQn));
+      if (!labelByQn.has(Number(c.currentQn))) labelByQn.set(Number(c.currentQn), `qn${c.currentQn}`);
+    }
+  }
+  return [...qns]
+    .sort((a, b) => b - a)
+    .map((qn) => ({ qn, label: labelByQn.get(qn) || '原画' }));
 }
 
 export const bilibiliApi = {
@@ -113,13 +136,25 @@ export const bilibiliApi = {
     return assertBiliOk(res, 'B站房间信息获取失败');
   },
 
+  /** 房间详情：标题 + 封面（公演直播行展示用） */
+  async getRoomInfo(roomId: string) {
+    const res = await requestJson<any>(
+      `${BILIBILI_LIVE_API}/room/v1/Room/get_info?room_id=${encodeURIComponent(roomId)}`,
+      { headers: biliHeaders(getCookie(), `https://live.bilibili.com/${roomId}`) },
+    );
+    return assertBiliOk(res, 'B站房间详情获取失败').data || {};
+  },
+
   async getRoomPlayInfo(roomId: string) {
     const query = new URLSearchParams({
       room_id: String(roomId),
       protocol: '0,1',
       format: '0,1,2',
       codec: '0,1',
+      // 最高画质：qn=10000(原画) + fourk=1 允许 4K/杜比流 + fnval 覆盖 HLS/TS/FMP4/杜比/4K
       qn: '10000',
+      fourk: '1',
+      fnval: '4048',
       platform: 'web',
       ptype: '8',
     });
@@ -128,6 +163,30 @@ export const bilibiliApi = {
       { headers: biliHeaders(getCookie(), `https://live.bilibili.com/${roomId}`) },
     );
     return assertBiliOk(res, 'B站直播流获取失败');
+  },
+
+  async getDanmuInfo(roomId: string) {
+    // 新版接口风控严（未登录/部分网络返回 -352），失败时回退旧版 getConf（两者都返回 token + host 列表）
+    try {
+      const res = await requestJson<any>(
+        `${BILIBILI_LIVE_API}/xlive/web-room/v1/index/getDanmuInfo?id=${encodeURIComponent(roomId)}&type=0`,
+        { headers: biliHeaders(getCookie(), `https://live.bilibili.com/${roomId}`) },
+      );
+      return assertBiliOk(res, 'B站弹幕信息获取失败').data || {};
+    } catch {
+      const conf = await requestJson<any>(
+        `${BILIBILI_LIVE_API}/room/v1/Danmu/getConf?room_id=${encodeURIComponent(roomId)}&platform=pc&player=web`,
+        { headers: biliHeaders(getCookie(), `https://live.bilibili.com/${roomId}`) },
+      );
+      const data = assertBiliOk(conf, 'B站弹幕配置获取失败').data || {};
+      const hosts = (data.host_server_list || data.server_list || [])
+        .map((h: any) => ({ host: h.host, wss_port: Number(h.wss_port) || 443 }))
+        .filter((h: any) => h.host);
+      return {
+        token: data.token || '',
+        host_list: hosts.length ? hosts : [{ host: data.host || 'broadcastlv.chat.bilibili.com', wss_port: 443 }],
+      };
+    }
   },
 
   async resolveLive(roomId: string) {
@@ -143,6 +202,7 @@ export const bilibiliApi = {
       realRoomId,
       streamUrl: candidates[0].url,
       streamCandidates: candidates,
+      qualities: buildQualities(playInfo, candidates),
       title: playInfo.data?.room_info?.title || `B站直播 ${realRoomId}`,
     };
   },

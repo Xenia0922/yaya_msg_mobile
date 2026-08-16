@@ -46,7 +46,11 @@ export function SectionHeader({
         ) : null}
       </View>
       {actionLabel && onAction ? (
-        <Pressable onPress={onAction} hitSlop={10}>
+        <Pressable
+          onPress={onAction}
+          hitSlop={10}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
+        >
           <Text
             style={[
               typography.subhead,

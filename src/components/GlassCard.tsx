@@ -8,7 +8,7 @@
  *     Android 上用纯色 + innerStroke 渲染出"近似"玻璃感，效果优于毛玻璃模糊，且 0 性能开销。
  */
 import React from 'react';
-import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { usePalette, radiiAlias, makeShadows } from '../theme';
 import { spacing } from '../theme/spacing';
 
@@ -18,7 +18,7 @@ export interface GlassCardProps {
   strong?: boolean;
   /** 自定义 padding */
   padding?: number;
-  /** 自定义圆角，默认 card (28) */
+  /** 自定义圆角，默认 card (16) */
   radius?: number;
   style?: StyleProp<ViewStyle>;
   /** 内部强制染色（慎用） */
@@ -41,11 +41,7 @@ export function GlassCard({
     <View
       style={[
         styles.card,
-        Platform.select({
-          ios: shadows.sm,
-          android: shadows.sm,
-          default: undefined,
-        }),
+        shadows.sm,
         {
           backgroundColor: bg,
           borderRadius: radius,

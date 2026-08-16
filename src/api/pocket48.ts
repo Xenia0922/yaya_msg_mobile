@@ -1,6 +1,6 @@
 import { useMemberStore, useSettingsStore } from '../store';
 import { generatePa, generatePaAsync, getWasmError, initWasm } from '../auth';
-import { requestJson, xhrPost } from '../utils/network';
+import { requestJson, xhrPost, fetchWithTimeout } from '../utils/network';
 import { unwrapList } from '../utils/data';
 
 const BASE = 'https://pocketapi.48.cn';
@@ -926,7 +926,7 @@ export const pocketApi = {
       const url = /^https?:\/\//i.test(lrcUrl)
         ? lrcUrl
         : `${BASE}${lrcUrl.startsWith('/') ? '' : '/'}${lrcUrl}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const res = await fetchWithTimeout(url, {}, 10000);
       if (!res.ok) return null;
       const text = await res.text();
       return text && text.trim() ? text : null;

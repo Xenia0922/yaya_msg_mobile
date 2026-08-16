@@ -1,23 +1,27 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useUiStore } from '../store';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
+import { HeaderAction } from '../components/HeaderAction';
+import { Button } from '../components/Button';
+import { Pill } from '../components/Pill';
+import { CenterSpinner } from '../components/Loaders';
+import { EmptyState, ErrorState } from '../components/StateViews';
 import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
-import { usePalette } from '../theme';
+import { usePalette, radiiAlias } from '../theme';
 import { useI18n } from '../i18n';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface OrderItem {
   dataId: string;
@@ -99,68 +103,73 @@ export default function InvoiceScreen() {
   const renderOrder = ({ item, index }: { item: OrderItem; index: number }) => {
     const disabled = item.invoiceStatus !== 0;
     const selected = item.selected;
+    const statusLabel = statusLabels[item.invoiceStatus] || t('未知');
+    const statusColor =
+      item.invoiceStatus === 0
+        ? palette.success
+        : item.invoiceStatus === 2
+        ? palette.fill2
+        : palette.labelTertiary;
     return (
-      <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-        <TouchableOpacity
-          style={[
-            styles.orderCard,
-            {
-              backgroundColor: palette.surface,
-              borderColor: selected ? palette.tint : palette.hairline,
-            },
-            disabled && styles.cardDisabled,
-          ]}
-          onPress={() => !disabled && toggleOrder(item.dataId)}
-          disabled={disabled}
-          activeOpacity={disabled ? 1 : 0.85}
-        >
-          <View
-            style={[
-              styles.checkbox,
-              {
-                borderColor: selected ? palette.tint : palette.labelTertiary,
-                backgroundColor: selected ? palette.tint : 'transparent',
-              },
-            ]}
-          >
-            {selected ? <MaterialCommunityIcons name="check" size={14} color="#FFFFFF" /> : null}
-          </View>
+      <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300}>
+        <View style={[styles.orderCard, { backgroundColor: palette.surface, borderColor: selected ? palette.tint : palette.hairline }, disabled && styles.cardDisabled]}>
+          {/* 订单信息 */}
           <View style={styles.orderInfo}>
             <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>{item.goodsName}</Text>
-            <Text style={[styles.orderMeta, { color: palette.labelSecondary }]}>¥{item.totalFee} · {item.tradeTime}</Text>
+            <Text style={[styles.orderMeta, { color: palette.labelSecondary }]}>{item.tradeTime}</Text>
           </View>
-          <Text style={[styles.statusText, { color: disabled ? palette.labelTertiary : '#20a464' }]}>
-            {statusLabels[item.invoiceStatus] || t('未知')}
-          </Text>
-        </TouchableOpacity>
+          {/* 金额 15/800 */}
+          <Text style={[styles.orderAmount, { color: palette.label }]}>¥{item.totalFee}</Text>
+          {/* 状态徽标 */}
+          <View style={[styles.statusPill, { backgroundColor: item.invoiceStatus === 0 ? 'rgba(52,199,89,0.14)' : palette.fill2 }]}>
+            <Text style={[styles.statusPillText, { color: statusColor, opacity: item.invoiceStatus === 2 ? 0.65 : 1 }]}>{statusLabel}</Text>
+          </View>
+          {/* 操作：可开票 → 去开票 Pill；否则占位勾选 */}
+          {!disabled ? (
+            <Pill
+              label={selected ? t('已选') : t('去开票')}
+              selected={selected}
+              onPress={() => toggleOrder(item.dataId)}
+              style={styles.actionPill}
+            />
+          ) : (
+            <View
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: palette.labelTertiary,
+                  backgroundColor: 'transparent',
+                  width: 24, height: 24,
+                },
+              ]}
+            />
+          )}
+        </View>
       </FadeInView>
     );
   };
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.container}
+    >
     <View style={styles.container}>
       <ScreenHeader title={t('电子发票')} onBack={() => navigation.goBack()} right={
-        <TouchableOpacity onPress={fetchOrders}>
-          <Text style={[styles.headerAction, { color: palette.tint }]}>{t('刷新')}</Text>
-        </TouchableOpacity>
+        <HeaderAction label={t('刷新')} onPress={fetchOrders} />
       } />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={[styles.sectionTitle, { color: palette.label }]}>
           {t('可开票订单 ({count})', { count: canInvoice })}{selectedCount > 0 ? t(' · 已选 {count} 单', { count: selectedCount }) : ''}
         </Text>
         {error ? (
-          <View style={styles.errorRow}>
-            <Text style={[styles.errorText, { color: palette.tint }]} numberOfLines={2}>{error}</Text>
-            <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.tint }]} onPress={fetchOrders}>
-              <Text style={styles.retryBtnText}>{t('重试')}</Text>
-            </TouchableOpacity>
-          </View>
+          <ErrorState title={t('加载失败')} hint={error} onAction={() => fetchOrders()} />
         ) : null}
         {orders.map((item, index) => renderOrder({ item, index }))}
         {orders.length === 0 && !loading && !error ? (
-          <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无订单')}</Text>
+          <EmptyState icon="receipt-outline" title={t('暂无订单')} />
         ) : null}
-        {loading && <ActivityIndicator color={palette.tint} style={{ padding: 16 }} />}
+        {loading && <CenterSpinner />}
 
         <View
           style={[
@@ -174,29 +183,23 @@ export default function InvoiceScreen() {
           <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('开票信息')}</Text>
 
           <View style={styles.typeRow}>
-            <TouchableOpacity
-              style={[
-                styles.typeBtn,
-                { backgroundColor: buyerType === 0 ? palette.tint : palette.fill2 },
-              ]}
+            <Pill
+              label={t('个人')}
+              selected={buyerType === 0}
               onPress={() => setBuyerType(0)}
-            >
-              <Text style={[styles.typeText, { color: buyerType === 0 ? '#FFFFFF' : palette.labelSecondary }]}>{t('个人')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.typeBtn,
-                { backgroundColor: buyerType === 1 ? palette.tint : palette.fill2 },
-              ]}
+              style={styles.typeBtn}
+            />
+            <Pill
+              label={t('企业')}
+              selected={buyerType === 1}
               onPress={() => setBuyerType(1)}
-            >
-              <Text style={[styles.typeText, { color: buyerType === 1 ? '#FFFFFF' : palette.labelSecondary }]}>{t('企业')}</Text>
-            </TouchableOpacity>
+              style={styles.typeBtn}
+            />
           </View>
 
           <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('发票抬头')}</Text>
           <TextInput
-            style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]}
+            style={[styles.input, styles.fillInput, { backgroundColor: palette.fill2, color: palette.label }]}
             value={buyerName}
             onChangeText={setBuyerName}
             placeholder={t('输入发票抬头')}
@@ -206,78 +209,73 @@ export default function InvoiceScreen() {
           {buyerType === 1 && (
             <>
               <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('纳税人识别号')}</Text>
-              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerTaxNo} onChangeText={setBuyerTaxNo} placeholder={t('输入纳税人识别号')} placeholderTextColor={palette.labelTertiary} autoCapitalize="characters" />
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.fill2, color: palette.label }]} value={buyerTaxNo} onChangeText={setBuyerTaxNo} placeholder={t('输入纳税人识别号')} placeholderTextColor={palette.labelTertiary} autoCapitalize="characters" />
               <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('企业地址')}</Text>
-              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerAddress} onChangeText={setBuyerAddress} placeholder={t('输入企业地址')} placeholderTextColor={palette.labelTertiary} />
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.fill2, color: palette.label }]} value={buyerAddress} onChangeText={setBuyerAddress} placeholder={t('输入企业地址')} placeholderTextColor={palette.labelTertiary} />
               <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('企业电话')}</Text>
-              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerPhone} onChangeText={setBuyerPhone} placeholder={t('输入企业电话')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" />
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.fill2, color: palette.label }]} value={buyerPhone} onChangeText={setBuyerPhone} placeholder={t('输入企业电话')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" />
               <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('开户银行')}</Text>
-              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerBankName} onChangeText={setBuyerBankName} placeholder={t('输入开户银行')} placeholderTextColor={palette.labelTertiary} />
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.fill2, color: palette.label }]} value={buyerBankName} onChangeText={setBuyerBankName} placeholder={t('输入开户银行')} placeholderTextColor={palette.labelTertiary} />
               <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('银行账号')}</Text>
-              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={buyerBankAccount} onChangeText={setBuyerBankAccount} placeholder={t('输入银行账号')} placeholderTextColor={palette.labelTertiary} keyboardType="numeric" />
+              <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.fill2, color: palette.label }]} value={buyerBankAccount} onChangeText={setBuyerBankAccount} placeholder={t('输入银行账号')} placeholderTextColor={palette.labelTertiary} keyboardType="numeric" />
             </>
           )}
 
           <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('接收邮箱')}</Text>
-          <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={notifyEmail} onChangeText={setNotifyEmail} placeholder={t('输入邮箱地址')} placeholderTextColor={palette.labelTertiary} keyboardType="email-address" />
+          <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.fill2, color: palette.label }]} value={notifyEmail} onChangeText={setNotifyEmail} placeholder={t('输入邮箱地址')} placeholderTextColor={palette.labelTertiary} keyboardType="email-address" />
           <Text style={[styles.label, { color: palette.labelSecondary }]}>{t('手机号')}</Text>
-          <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]} value={notifyMobile} onChangeText={setNotifyMobile} placeholder={t('输入手机号')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" />
+          <TextInput style={[styles.input, styles.fillInput, { backgroundColor: palette.fill2, color: palette.label }]} value={notifyMobile} onChangeText={setNotifyMobile} placeholder={t('输入手机号')} placeholderTextColor={palette.labelTertiary} keyboardType="phone-pad" />
 
-          <TouchableOpacity
-            style={[styles.submitBtn, { backgroundColor: palette.tint }, (submitting || !selectedCount) && styles.disabledBtn]}
+          <Button
+            title={submitting ? t('提交中...') : t('提交申请 (已选 {count} 单)', { count: selectedCount })}
             onPress={handleSubmit}
             disabled={submitting || !selectedCount}
-          >
-            <Text style={styles.submitText}>
-              {submitting ? t('提交中...') : t('提交申请 (已选 {count} 单)', { count: selectedCount })}
-            </Text>
-          </TouchableOpacity>
+            loading={submitting}
+            variant="filled"
+            size="md"
+            fullWidth
+            style={styles.submitBtn}
+          />
         </View>
       </ScrollView>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800' },
   scroll: { padding: 16, paddingBottom: 60 },
   sectionTitle: { fontSize: 15, fontWeight: '800', marginBottom: 8 },
-  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, paddingHorizontal: 4 },
-  errorText: { color: '#ff6f91', fontSize: 13, flex: 1, lineHeight: 18 },
-  retryBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 14 },
-  retryBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  empty: { fontSize: 14, textAlign: 'center', paddingVertical: 20 },
   orderCard: {
     flexDirection: 'row', alignItems: 'center',
-    borderRadius: 16, padding: 12, marginBottom: 5,
+    borderRadius: radiiAlias.card, padding: 12, marginBottom: 6,
     borderWidth: StyleSheet.hairlineWidth,
   },
   cardDisabled: { opacity: 0.5 },
+  orderInfo: { flex: 1, minWidth: 0, paddingRight: 8 },
+  orderName: { fontSize: 13, fontWeight: '600' },
+  orderMeta: { fontSize: 11, marginTop: 3 },
+  orderAmount: { fontSize: 15, fontWeight: '800', marginRight: 10 },
+  statusPill: { borderRadius: radiiAlias.chip, paddingHorizontal: 8, paddingVertical: 3 },
+  statusPillText: { fontSize: 10, fontWeight: '700' },
   checkbox: {
     width: 22, height: 22, borderRadius: 7,
-    borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 10,
+    borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 0,
   },
-  orderInfo: { flex: 1 },
-  orderName: { fontSize: 14, fontWeight: '700' },
-  orderMeta: { fontSize: 12, marginTop: 3 },
-  statusText: { fontSize: 12, fontWeight: '800', marginLeft: 8 },
+  actionPill: { marginLeft: 10 },
   formCard: {
     marginTop: 12,
     padding: 14,
-    borderRadius: 16,
+    borderRadius: radiiAlias.card,
     borderWidth: StyleSheet.hairlineWidth,
   },
   typeRow: { flexDirection: 'row', marginBottom: 12, gap: 6 },
-  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 16 },
-  typeText: { fontSize: 14, fontWeight: '800' },
+  typeBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: radiiAlias.button },
   label: { fontSize: 13, fontWeight: '600', marginBottom: 4, marginTop: 8 },
   input: {
-    padding: 10, borderRadius: 14, fontSize: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+    padding: 10, borderRadius: radiiAlias.input, fontSize: 14,
   },
   fillInput: {},
-  submitBtn: { backgroundColor: '#ff6f91', borderRadius: 18, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
-  disabledBtn: { opacity: 0.45 },
-  submitText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  submitBtn: { marginTop: 20 },
 });

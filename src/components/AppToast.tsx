@@ -8,7 +8,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { useUiStore } from '../store';
-import { usePalette } from '../theme';
+import { usePalette, radii } from '../theme';
 import { typography } from '../theme/typography';
 import { motion } from '../theme/motion';
 
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   pill: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 22,
+    borderRadius: radii.sheet,
     borderWidth: StyleSheet.hairlineWidth,
     maxWidth: '100%',
   },

@@ -20,11 +20,12 @@ export function Pill({ label, selected, onPress, accent, style }: PillProps) {
   const palette = usePalette();
   const filled = accent || selected;
   const bg = filled ? palette.tint : palette.fill3;
-  const fg = filled ? '#FFFFFF' : palette.label;
+  const fg = filled ? palette.onTint : palette.label;
 
   return (
     <Pressable
       onPress={onPress}
+      hitSlop={{ top: 4, bottom: 4, left: 5, right: 5 }}
       style={({ pressed }) => [
         styles.pill,
         {

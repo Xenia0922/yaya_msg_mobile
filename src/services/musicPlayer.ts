@@ -2,6 +2,7 @@ import { useMusicPlayerStore, Track, LyricLine } from '../store/musicPlayerStore
 import { normalizeUrl } from '../utils/data';
 import { parseLrc } from '../utils/lyrics';
 import { getLyricsMatcher } from '../utils/lyricsIndex';
+import { fetchWithTimeout } from '../utils/network';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LYRICS_BASE_URL = 'https://yaya-data.pages.dev/lyrics';
@@ -160,6 +161,34 @@ export const MusicEngine = {
     }
   },
 
+  /**
+   * 恢复播放（主页「继续播放」/ 记忆恢复统一入口）：
+   * 保留当前 position 转成 seekTarget（Video onLoad 后就绪续播），重新解析 URL 并播放。
+   * 与 playTrack 的区别：playTrack 永远从 0 开始，resume 从记忆位置继续。
+   */
+  async resume() {
+    const store = useMusicPlayerStore.getState();
+    const track = store.queue[store.currentIndex];
+    if (!track) return null;
+    store.play(track, store.queue, true);
+    this._fetchLyrics(track);
+    this._initDefaultResolver();
+    const resolver = await this._waitForResolver();
+    if (!resolver) { store.setError('解析器未就绪'); return null; }
+    try {
+      const url = await resolver(track);
+      if (!url) throw new Error('no url');
+      if (!isPlayableHost(url)) throw new Error('不支持的播放源');
+      if (!/^https?:\/\//i.test(url)) throw new Error('非法播放地址');
+      store.setUrl(url);
+      store.setPlaybackState('playing');
+      return track;
+    } catch (e: any) {
+      store.setError(e?.message || '恢复播放失败');
+      return null;
+    }
+  },
+
   /** Next track, fetch URL and play */
   async next() {
     const nextTrack = useMusicPlayerStore.getState().next();
@@ -185,6 +214,24 @@ export const MusicEngine = {
     useMusicPlayerStore.setState({ currentIndex: index });
     await this.playTrack(t, s.queue);
     return t;
+  },
+
+  /** 从播放列表移除歌曲；移除当前播放曲时自动续播下一首（或停止） */
+  async removeFromQueue(id: string) {
+    const s = useMusicPlayerStore.getState();
+    const idx = s.queue.findIndex((t) => String(t.musicId || t.id) === String(id));
+    if (idx < 0) return;
+    const wasCurrent = idx === s.currentIndex;
+    useMusicPlayerStore.getState().removeFromQueue(id);
+    const after = useMusicPlayerStore.getState();
+    if (!wasCurrent) return;
+    // 当前曲被移除：续播原位置的下一首（removeFromQueue 已把 currentIndex 指向它）
+    const nextTrack = after.queue[after.currentIndex];
+    if (nextTrack && after.queue.length > 0) {
+      await this.playTrack(nextTrack, after.queue);
+    } else {
+      useMusicPlayerStore.setState({ url: '', playbackState: 'idle', position: 0, duration: 0, lyrics: [] });
+    }
   },
 
   /**
@@ -239,21 +286,34 @@ export const MusicEngine = {
   async _fetchLyrics(track: Track) {
     const title = String(track.title || '').trim();
     if (!title) return;
-    const group = (track as any).joinMemberNames || (track as any).subTitle ||
-      (track as any).groupLabel || (track as any).artist || '';
+    // 优先用真实团体/艺人名（groupLabel/artist），成员名（joinMemberNames）次之；
+    // 多团体名（如「SNH48、BEJ48」）拆分后逐个尝试——拼接串归一化后匹配不到 LRC，
+    // 会落到纯歌名模糊匹配而错配其他版本的歌词（用户反馈「歌词对不上」的根因）。
+    const rawGroup = String(
+      (track as any).groupLabel || (track as any).artist || (track as any).subTitle || (track as any).joinMemberNames || ''
+    ).trim();
+    const candidates: string[] = [];
+    const parts = rawGroup.split(/[、,，/·+&;；\s]+/).map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 1) candidates.push(...parts);
+    if (rawGroup) candidates.push(rawGroup);
+    candidates.push(''); // 纯标题兜底（Tier 6 模糊匹配）
     try {
       const { matcher } = await getLyricsMatcher();
-      const result = matcher.match({ song: title, group });
-      if (result) {
-        const url = `${LYRICS_BASE_URL}/${encodeURI(result.entry.filePath)}`;
-        const cacheKey = `lyric:${result.entry.filePath}`;
+      let best: ReturnType<typeof matcher.match> = null;
+      for (const g of candidates) {
+        const r = matcher.match(g ? { song: title, group: g } : { song: title });
+        if (r && (!best || r.tier < best.tier || (r.tier === best.tier && r.score > best.score))) best = r;
+      }
+      if (best) {
+        const url = `${LYRICS_BASE_URL}/${encodeURI(best.entry.filePath)}`;
+        const cacheKey = `lyric:${best.entry.filePath}`;
         const cache = await readLyricCache();
         const hit = cache[cacheKey];
         if (hit && Date.now() - hit.t < LYRICS_CACHE_TTL) {
           useMusicPlayerStore.getState().setLyrics(parseLrc(hit.text));
           return;
         }
-        const lrcResp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        const lrcResp = await fetchWithTimeout(url, {}, 10000);
         const raw = await lrcResp.text();
         useMusicPlayerStore.getState().setLyrics(parseLrc(raw));
         // 落盘（整表重写有界：最多保留 200 首，超出丢最旧）
@@ -269,7 +329,7 @@ export const MusicEngine = {
         }
         AsyncStorage.setItem(LYRICS_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
       } else {
-        console.warn('[lyrics] no match for', title, 'group=', group);
+        console.warn('[lyrics] no match for', title, 'group=', rawGroup);
       }
     } catch (e) {
       console.warn('[lyrics] fetch failed', title, e);

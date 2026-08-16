@@ -1,6 +1,8 @@
-export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime?: number): string {
+export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime?: number, showControls = true): string {
   const poster = posterUrl || '';
   const startTime = Number.isFinite(initialTime) && (initialTime as number) > 0 ? (initialTime as number) : 0;
+  // 直播流不挂原生 controls：HTML5 播放条上的进度条/预览对直播无意义且遮挡画面
+  const videoControls = showControls ? 'controls' : '';
 
   return `<!DOCTYPE html>
 <html>
@@ -22,7 +24,7 @@ export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime
 </head>
 <body>
 <div id="player-wrapper">
-  <video id="video" controls autoplay playsinline webkit-playsinline poster="${poster}"></video>
+  <video id="video" ${videoControls} autoplay playsinline webkit-playsinline poster="${poster}"></video>
   <div id="loading">
     <div class="spinner"></div>
   </div>

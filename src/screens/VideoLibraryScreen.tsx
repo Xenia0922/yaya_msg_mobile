@@ -3,24 +3,25 @@ import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   Image,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import Video from 'react-native-video';
-import { useNavigation } from '@react-navigation/native';
 import officialMediaApi from '../api/officialMedia';
 import { useI18n } from '../i18n';
 import { useSettingsStore } from '../store';
-import { FadeInView } from '../components/Motion';
+import { FadeInView, ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
 import { EmptyState, ErrorState } from '../components/StateViews';
+import { Skeleton } from '../components/Skeleton';
 import { errorMessage, normalizeUrl, unwrapList } from '../utils/data';
 import { formatTimestamp, formatDuration } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
+import { HeaderAction } from '../components/HeaderAction';
 import { usePalette } from '../theme';
-import { useAppTheme } from '../hooks/useAppTheme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 function normalizeVideos(res: any): any[] {
@@ -68,8 +69,6 @@ function videoCoverUrl(item: any): string {
 }
 
 export default function VideoLibraryScreen() {
-  const navigation = useNavigation<any>();
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const [videos, setVideos] = useState<any[]>([]);
@@ -146,15 +145,11 @@ export default function VideoLibraryScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('视频')} right={
-        <TouchableOpacity onPress={() => load(true)} disabled={loading}>
-          <Text style={[styles.backBtn, { color: palette.tint }, loading && styles.disabledText]}>{t('刷新')}</Text>
-        </TouchableOpacity>
+        <HeaderAction label={t('刷新')} onPress={() => load(true)} disabled={loading} />
       } />
       {status && !loading ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
       {loading && videos.length === 0 ? (
-        <View style={{ flex: 1 }}>
-          <CenterSpinner dark={isDark} text={t('加载中…')} />
-        </View>
+        <VideoSkeletonGrid />
       ) : loadError && videos.length === 0 ? (
         <View style={{ flex: 1 }}>
           <ErrorState title={t('加载失败')} hint={loadError} onAction={() => load(true)} />
@@ -164,7 +159,7 @@ export default function VideoLibraryScreen() {
           <EmptyState icon="play-box-outline" title={t('暂无视频')} hint={t('官方视频资源暂不可用，可点击右上角刷新重试')} />
         </View>
       ) : (
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+      <FadeInView delay={60} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={videos.length > 1 ? videos.slice(1) : []}
           keyExtractor={(item, index) => String(item.videoId || item.id || `g${index}`)}
@@ -177,70 +172,79 @@ export default function VideoLibraryScreen() {
           removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={() => load(true)}
+              tintColor={palette.tint}
+              colors={[palette.tint]}
+            />
+          }
           ListHeaderComponent={
             videos.length > 0 ? (
-              <TouchableOpacity
-                style={[
-                  styles.bannerCard,
-                  {
-                    backgroundColor: palette.surface,
-                    borderColor: palette.hairline,
-                  },
-                ]}
-                onPress={() => play(videos[0])}
-                activeOpacity={0.9}
-              >
-                <View style={[styles.bannerCover, { backgroundColor: palette.fill3 }]}>
-                  {videoCoverUrl(videos[0]) ? (
-                    <Image source={{ uri: videoCoverUrl(videos[0]) }} style={styles.bannerCoverImg} resizeMode="cover" />
-                  ) : (
-                    <View style={styles.bannerCoverFallback}>
-                      <MaterialCommunityIcons name="video" size={40} color={palette.labelTertiary} />
+              <FadeInView delay={60} distance={8}>
+                <ScalePressable
+                  style={styles.bannerCard}
+                  onPress={() => play(videos[0])}
+                  pressedScale={0.97}
+                >
+                  <View style={[styles.bannerCover, { backgroundColor: palette.fill3 }]}>
+                    {videoCoverUrl(videos[0]) ? (
+                      <Image source={{ uri: videoCoverUrl(videos[0]) }} style={styles.bannerCoverImg} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.bannerCoverFallback}>
+                        <MaterialCommunityIcons name="video" size={40} color={palette.labelTertiary} />
+                      </View>
+                    )}
+                    {/* 渐变遮罩 + 信息上浮 + 播放按钮 + 时长 */}
+                    <View pointerEvents="none" style={styles.bannerShade} />
+                    <View style={styles.bannerInfoOverlay}>
+                      <Text style={styles.bannerTitleOverlay} numberOfLines={2}>
+                        {videos[0].title || t('无标题')}
+                      </Text>
+                      <Text style={styles.bannerMetaOverlay} numberOfLines={1}>
+                        {videoMeta(videos[0])}
+                      </Text>
                     </View>
-                  )}
-                  {/* 渐变遮罩 + 信息上浮 */}
-                  <View pointerEvents="none" style={styles.bannerShade1} />
-                  <View pointerEvents="none" style={styles.bannerShade2} />
-                  <View pointerEvents="none" style={styles.bannerShade3} />
-                  <View style={styles.bannerInfoOverlay}>
-                    <Text style={styles.bannerTitleOverlay} numberOfLines={2}>
-                      {videos[0].title || t('无标题')}
-                    </Text>
-                    <Text style={styles.bannerMetaOverlay} numberOfLines={1}>
-                      {videoMeta(videos[0])}
-                    </Text>
+                    <View style={styles.bannerPlay}>
+                      <View style={styles.bannerPlayBtn}>
+                        <MaterialCommunityIcons name="play" size={22} color="#FFFFFF" />
+                      </View>
+                    </View>
+                    {videoDuration(videos[0]) ? (
+                      <View style={[styles.bannerDuration, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+                        <MaterialCommunityIcons name="clock-outline" size={11} color="#FFFFFF" style={{ marginRight: 2 }} />
+                        <Text style={styles.bannerDurationText}>{videoDuration(videos[0])}</Text>
+                      </View>
+                    ) : null}
                   </View>
-                  {videoDuration(videos[0]) ? (
-                    <View style={[styles.bannerDuration, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-                      <Text style={styles.bannerDurationText}>{videoDuration(videos[0])}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              </TouchableOpacity>
+                </ScalePressable>
+              </FadeInView>
             ) : null
           }
-          ListFooterComponent={loadingMore ? <CenterSpinner dark={isDark} text={t('加载更多...')} /> : null}
+          ListFooterComponent={loadingMore ? <CenterSpinner text={t('加载更多...')} /> : null}
           renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300} style={styles.gridItem}>
-              <TouchableOpacity
-                style={[
-                  styles.gridCard,
-                  {
-                    backgroundColor: palette.surface,
-                    borderColor: palette.hairline,
-                  },
-                ]}
+            <FadeInView delay={index < 12 ? 60 + index * 25 : 0} distance={8} style={styles.gridItem}>
+              <ScalePressable
+                style={styles.gridCard}
                 onPress={() => play(item)}
-                activeOpacity={0.9}
+                pressedScale={0.96}
               >
                 <View style={[styles.gridCover, { backgroundColor: palette.fill3 }]}>
                   {videoCoverUrl(item) ? (
                     <Image source={{ uri: videoCoverUrl(item) }} style={styles.gridCoverImg} resizeMode="cover" />
                   ) : (
                     <View style={styles.gridCoverFallback}>
-                      <MaterialCommunityIcons name="video" size={28} color={palette.labelTertiary} />
+                      <MaterialCommunityIcons name="video" size={24} color={palette.labelTertiary} />
                     </View>
                   )}
+                  {videoDuration(item) ? (
+                    <View style={[styles.gridDuration, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                      <Text style={styles.gridDurationText}>{videoDuration(item)}</Text>
+                    </View>
+                  ) : null}
+                  {/* 播放遮罩 */}
+                  <View pointerEvents="none" style={styles.gridPlayShade} />
                 </View>
                 <View style={styles.gridInfo}>
                   <Text style={[styles.gridTitle, { color: palette.label }]} numberOfLines={2}>
@@ -250,7 +254,7 @@ export default function VideoLibraryScreen() {
                     {formatTimestamp(item.ctime).slice(0, 10)}
                   </Text>
                 </View>
-              </TouchableOpacity>
+              </ScalePressable>
             </FadeInView>
           )}
         />
@@ -260,56 +264,90 @@ export default function VideoLibraryScreen() {
   );
 }
 
+/** 首屏骨架：banner 大卡 + 2 列网格（与真实内容同构） */
+function VideoSkeletonGrid() {
+  return (
+    <View style={styles.skeletonWrap}>
+      <Skeleton height={190} radius={16} style={styles.skeletonBanner} />
+      <View style={styles.skeletonRow}>
+        {[0, 1].map((c) => (
+          <Skeleton key={c} height={150} radius={16} style={{ flex: 1, marginHorizontal: 6 }} />
+        ))}
+      </View>
+      <View style={styles.skeletonRow}>
+        {[0, 1].map((c) => (
+          <Skeleton key={c} height={150} radius={16} style={{ flex: 1, marginHorizontal: 6 }} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
-  disabledText: { opacity: 0.45 },
   status: { marginHorizontal: 16, marginTop: 8, fontSize: 12, textAlign: 'center' },
   listContent: { paddingTop: 8, paddingHorizontal: 12, paddingBottom: 120 },
-  // 大 banner 卡（第一个视频）
-  bannerCard: {
-    marginHorizontal: 4,
-    marginBottom: 12,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  bannerCover: { width: '100%', height: 196, overflow: 'hidden' },
+  // 大 banner 卡（第一个视频 16:9）
+  bannerCard: { marginHorizontal: 4, marginBottom: 12, borderRadius: 16, overflow: 'hidden', backgroundColor: '#000' },
+  bannerCover: { width: '100%', aspectRatio: 16 / 9, overflow: 'hidden' },
   bannerCoverImg: { width: '100%', height: '100%' },
   bannerCoverFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  bannerShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 100, backgroundColor: 'rgba(0,0,0,0.16)' },
-  bannerShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 66, backgroundColor: 'rgba(0,0,0,0.28)' },
-  bannerShade3: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 40, backgroundColor: 'rgba(0,0,0,0.48)' },
+  bannerShade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '60%',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+  },
   bannerInfoOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingBottom: 10 },
-  bannerTitleOverlay: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', lineHeight: 22, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
-  bannerMetaOverlay: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 4, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  bannerTitleOverlay: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', lineHeight: 22, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  bannerMetaOverlay: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 4, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  bannerPlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  bannerPlayBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 3,
+  },
   bannerDuration: {
     position: 'absolute',
     left: 10,
     bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   bannerDurationText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-  bannerInfo: { padding: 12 },
-  bannerTitle: { fontSize: 15, fontWeight: '700', lineHeight: 21 },
-  bannerMeta: { fontSize: 12, marginTop: 5 },
-  // 2 列网格卡
+  // 2 列 16:9 网格卡
   gridRow: { marginHorizontal: 4 },
   gridItem: { flex: 1, margin: 4 },
-  gridCard: {
-    flex: 1,
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  gridCover: { width: '100%', aspectRatio: 1, overflow: 'hidden' },
+  gridCard: { flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#000' },
+  gridCover: { width: '100%', aspectRatio: 16 / 9, overflow: 'hidden' },
   gridCoverImg: { width: '100%', height: '100%' },
   gridCoverFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  gridPlayShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.12)' },
+  gridDuration: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignItems: 'center',
+  },
+  gridDurationText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
   gridInfo: { padding: 10 },
-  gridTitle: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
+  gridTitle: { fontSize: 14, fontWeight: '600', lineHeight: 19 },
   gridDate: { fontSize: 11, marginTop: 4 },
+  skeletonWrap: { paddingHorizontal: 12, paddingTop: 8 },
+  skeletonBanner: { marginBottom: 12 },
+  skeletonRow: { flexDirection: 'row', marginBottom: 12 },
   playerPage: { flex: 1, backgroundColor: '#000' },
   videoPlayer: { flex: 1, backgroundColor: '#000' },
 });

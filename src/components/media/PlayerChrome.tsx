@@ -18,29 +18,37 @@ export const chromeStyles = StyleSheet.create({
   topBar: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 44, paddingBottom: 14, paddingHorizontal: 8,
-    backgroundColor: 'rgba(0,0,0,0.32)',
+    paddingTop: 44, paddingBottom: 14, paddingHorizontal: 10,
+    backgroundColor: 'rgba(0,0,0,0.34)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.10)',
   },
   navBtn: {
     width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.28)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
-  titleWrap: { flex: 1, marginHorizontal: 8, justifyContent: 'center' },
+  titleWrap: { flex: 1, marginHorizontal: 10, justifyContent: 'center' },
   titleText: {
-    color: '#fff', fontSize: 15, fontWeight: '700',
+    color: '#fff', fontSize: 16, fontWeight: '800',
     textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 2,
   },
   subtitleText: {
-    color: 'rgba(255,255,255,0.78)', fontSize: 11, marginTop: 2,
+    color: 'rgba(255,255,255,0.80)', fontSize: 11, marginTop: 2,
     textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 2,
   },
 
-  // ===== 底部控制坞 =====
+  // ===== 底部悬浮玻璃坞（B站新风格：圆角胶囊 + 阴影） =====
   bottomDock: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 30,
+    position: 'absolute', left: 10, right: 10, bottom: 10, zIndex: 30,
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 10, paddingBottom: 16, paddingHorizontal: 8,
-    backgroundColor: 'rgba(0,0,0,0.52)',
+    paddingTop: 8, paddingBottom: 8, paddingHorizontal: 8,
+    borderRadius: 22,
+    backgroundColor: 'rgba(16,16,18,0.62)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000', shadowOpacity: 0.32, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8,
   },
   dockIconBtn: {
     width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
@@ -58,11 +66,13 @@ export const chromeStyles = StyleSheet.create({
   liveDot: {
     width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#ff4d4f', marginRight: 6,
   },
-  liveChipTime: { color: 'rgba(255,255,255,0.8)', fontSize: 11 },
-  // 工具按钮（弹幕 / 倍速 / 更多）
+  liveChipTime: { color: 'rgba(255,255,255,0.85)', fontSize: 11 },
+  // 工具按钮（弹幕 / 画质 / 倍速 / 更多）
   toolBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 8, height: 36, borderRadius: 18, minWidth: 44,
+    paddingHorizontal: 10, height: 34, borderRadius: 17, minWidth: 46,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    marginLeft: 4,
   },
   toolText: { color: '#fff', fontSize: 12, fontWeight: '700', marginLeft: 4 },
   toolTextOn: { color: BILI_PINK },
@@ -163,6 +173,9 @@ export function PlayerBottomBar({
   onSeek,
   onMore,
   onRotate,
+  qualityLabel,
+  onPickQuality,
+  hideLiveChip = false,
 }: {
   isLive: boolean;
   paused: boolean;
@@ -181,9 +194,16 @@ export function PlayerBottomBar({
   onMore?: () => void;
   /** 横屏/竖屏切换（仅旋转，不影响沉浸）；不传则不显示该按钮 */
   onRotate?: () => void;
+  /** 画质文字按钮（如「原画」）；不传则不显示 */
+  qualityLabel?: string;
+  onPickQuality?: () => void;
+  /** 直播时不显示红点+时长占位（B站直播不需要，避免被误认作进度条预览） */
+  hideLiveChip?: boolean;
 }) {
   const { t } = useI18n();
   const trackWidth = useRef(0);
+  const trackX = useRef(0); // 进度轨道在屏幕上的绝对 X
+  const trackRef = useRef<View>(null);
   const dragRatioRef = useRef(0);
   // 手势有效性守卫：只有「按下时轨道宽度已测到」才算一次有效拖拽。
   // 否则（控件刚出现 / 旋转后首帧布局未就绪，trackWidth 仍为 0）ratioFromX 会回退到缓存的 0，
@@ -192,20 +212,21 @@ export function PlayerBottomBar({
   const [dragTime, setDragTime] = useState<number | null>(null);
   // 松手后保持目标进度，直到播放器上报的 currentTime 追上目标值附近，避免「松手后回跳再前跳」的乱跳
   const [heldTime, setHeldTime] = useState<number | null>(null);
-  // 宽度未知时返回 null（而非回退到 0），让 grant/move/release 直接忽略本次手势，绝不会误 seek 到 0
-  const ratioFromX = (x: number): number | null => {
+  // 宽度未知时返回 null（而非回退到 0），让 grant/move/release 直接忽略本次手势，绝不会误 seek 到 0。
+  // 用 pageX - 轨道起点换算：locationX 在 Android 上相对「事件目标视图」，滑出轨道会突变导致闪回 0。
+  const ratioFromX = (pageX: number): number | null => {
     const w = trackWidth.current;
     if (!w || w < 2) return null;
-    return Math.max(0, Math.min(1, x / w));
+    return Math.max(0, Math.min(1, (pageX - trackX.current) / w));
   };
   const onTrackGrant = (e: any) => {
-    const r = ratioFromX(e.nativeEvent.locationX);
+    const r = ratioFromX(e.nativeEvent.pageX);
     if (r == null) { gestureActive.current = false; return; }
     gestureActive.current = true;
     dragRatioRef.current = r; setHeldTime(null); setDragTime(r * duration);
   };
   const onTrackMove = (e: any) => {
-    const r = ratioFromX(e.nativeEvent.locationX);
+    const r = ratioFromX(e.nativeEvent.pageX);
     if (r == null) return;
     dragRatioRef.current = r; setDragTime(r * duration);
   };
@@ -231,21 +252,27 @@ export function PlayerBottomBar({
       </TouchableOpacity>
 
       {isLive ? (
-        <View style={chromeStyles.liveChip}>
-          <View style={chromeStyles.liveDot} />
-          {typeof elapsed === 'number' ? <Text style={chromeStyles.liveChipTime}>{fmtTime(elapsed)}</Text> : null}
-        </View>
+        hideLiveChip ? (
+          <View style={{ flex: 1 }} />
+        ) : (
+          <View style={chromeStyles.liveChip}>
+            <View style={chromeStyles.liveDot} />
+            {typeof elapsed === 'number' ? <Text style={chromeStyles.liveChipTime}>{fmtTime(elapsed)}</Text> : null}
+          </View>
+        )
       ) : (
         <>
           <Text style={chromeStyles.timeText}>{fmtTime(displayTime)}</Text>
           <View
+            ref={trackRef}
             style={chromeStyles.ctrlTrack}
-            onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; }}
+            onLayout={(e) => { trackWidth.current = e.nativeEvent.layout.width; trackRef.current?.measureInWindow?.((x: number) => { trackX.current = x; }); }}
             onStartShouldSetResponder={() => true}
             onMoveShouldSetResponder={() => true}
             onResponderGrant={onTrackGrant}
             onResponderMove={onTrackMove}
             onResponderRelease={onTrackRelease}
+            onResponderTerminate={onTrackRelease}
           >
             <View style={chromeStyles.ctrlBar}>
               <View style={[chromeStyles.ctrlFill, { width: `${pct}%` }]} />
@@ -260,6 +287,13 @@ export function PlayerBottomBar({
         <TouchableOpacity style={chromeStyles.toolBtn} onPress={onToggleDanmaku} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
           <MaterialCommunityIcons name={danmakuOn ? 'comment-text' : 'comment-text-outline'} size={20} color={danmakuOn ? BILI_PINK : '#fff'} />
           <Text style={[chromeStyles.toolText, danmakuOn && chromeStyles.toolTextOn]}>{t('弹幕')}</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {qualityLabel && onPickQuality ? (
+        <TouchableOpacity style={chromeStyles.toolBtn} onPress={onPickQuality} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+          <MaterialCommunityIcons name="high-definition-box" size={20} color={BILI_PINK} />
+          <Text style={[chromeStyles.toolText, chromeStyles.toolTextOn]}>{qualityLabel}</Text>
         </TouchableOpacity>
       ) : null}
 

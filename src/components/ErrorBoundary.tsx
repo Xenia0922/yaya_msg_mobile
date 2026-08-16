@@ -1,23 +1,25 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useSettingsStore } from '../store';
+import { View } from 'react-native';
 import { logCrash } from '../utils/runtimeLog';
-import { useAppTheme } from '../hooks/useAppTheme';
 import { useI18n } from '../i18n';
+import { ErrorState } from './StateViews';
+import { usePalette } from '../theme';
 
 interface Props { children: ReactNode; }
 interface State { error: Error | null; }
 
 function ErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
-      <Text style={styles.title}>{t('出现错误')}</Text>
-      <Text style={[styles.message, isDark && styles.messageDark]}>{error.message}</Text>
-      <TouchableOpacity style={styles.btn} onPress={onRetry}>
-        <Text style={styles.btnText}>{t('重试')}</Text>
-      </TouchableOpacity>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: palette.background, padding: 40 }}>
+      <ErrorState
+        icon="alert-circle-outline"
+        title={t('出现错误')}
+        hint={error.message}
+        actionLabel={t('重试')}
+        onAction={onRetry}
+      />
     </View>
   );
 }
@@ -36,13 +38,3 @@ export default class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40, backgroundColor: '#f5f5f5' },
-  containerDark: { backgroundColor: '#1a1a1a' },
-  title: { fontSize: 20, fontWeight: '800', color: '#ff6f91', marginBottom: 12 },
-  message: { fontSize: 13, color: '#555', textAlign: 'center', marginBottom: 24, lineHeight: 20 },
-  messageDark: { color: '#aaa' },
-  btn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91' },
-  btnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-});

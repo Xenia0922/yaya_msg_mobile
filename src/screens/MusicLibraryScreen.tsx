@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
+  Animated,
+  Easing,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,17 +19,53 @@ import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine, mediaUrl as buildMediaUrl, isPlayableHost } from '../services/musicPlayer';
 import { errorMessage } from '../utils/data';
 import { logError } from '../utils/runtimeLog';
-import { formatTimestamp } from '../utils/format';
+import { formatTimestamp, joinMeta } from '../utils/format';
 import ScreenHeader from '../components/ScreenHeader';
+import { HeaderAction } from '../components/HeaderAction';
 import MiniPlayerBar from '../components/MiniPlayerBar';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import CoverArt from '../components/CoverArt';
-import { CenterSpinner } from '../components/Loaders';
+import { Skeleton } from '../components/Skeleton';
+import { EmptyState, ErrorState } from '../components/StateViews';
+import { FadeInView, ScalePressable } from '../components/Motion';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useAppTheme } from '../hooks/useAppTheme';
-import { usePalette } from '../theme';
+import { usePalette, radii, radiiAlias } from '../theme';
 import { useI18n } from '../i18n';
 
+/** 播放中均衡器：三根柱子错峰跳动（Animated loop + native driver） */
+function EqualizerBars({ color, size = 13 }: { color: string; size?: number }) {
+  const bars = [useRef(new Animated.Value(0.35)).current, useRef(new Animated.Value(0.35)).current, useRef(new Animated.Value(0.35)).current];
+  useEffect(() => {
+    const loops = bars.map((v, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(v, { toValue: 1, duration: 340 + i * 120, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          Animated.timing(v, { toValue: 0.35, duration: 340 + i * 120, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        ]),
+      ),
+    );
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+  }, []);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: size }}>
+      {bars.map((v, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 3,
+            height: size,
+            borderRadius: 1.5,
+            backgroundColor: color,
+            transform: [{ scaleY: v }],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** 拼接歌曲元信息并去重：专辑/歌手/团体名常重复（如 album=SNH48 + artist=SNH48），只保留一份 */
 const GROUP_TABS = ['ALL', 'SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'FAV'];
 const GROUP_LABELS: Record<string, string> = {
   ALL: '全部',
@@ -38,14 +76,13 @@ const GROUP_LABELS: Record<string, string> = {
   CGT48: 'CGT48',
   FAV: '收藏',
 };
-const CHIP_BASE_WIDTH = 72;
+const CHIP_MIN_WIDTH = 64;
 const CHIP_GAP = 8;
-const CHIP_FAV_WIDTH = 104;
+const CHIP_FAV_MIN_WIDTH = 92;
 const CHIP_HEIGHT = 28;
 const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
 
 export default function MusicLibraryScreen() {
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
@@ -147,6 +184,12 @@ export default function MusicLibraryScreen() {
       setShowFullScreen(true);
       return;
     }
+    // 同一首（记忆恢复/暂停中）：走 resume 保留进度续播，而不是 playTrack 从 0 开始
+    if (sameAsCurrent && st.position > 0) {
+      MusicEngine.resume();
+      setShowFullScreen(true);
+      return;
+    }
     // 克隆队列：播放器 store 与列表 songs 解耦，避免共享同一批对象引用时，
     // 任何播放态写入（或 FlatList 复用）反噬列表渲染。
     MusicEngine.playTrack(item, filteredSongs.map((t) => ({ ...t })));
@@ -154,11 +197,9 @@ export default function MusicLibraryScreen() {
   };
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('音乐')} right={
-        <TouchableOpacity onPress={() => loadAll()} disabled={loading} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <MaterialCommunityIcons name="refresh" size={22} color={palette.label} style={loading ? styles.disabledText : undefined} />
-        </TouchableOpacity>
+        <HeaderAction label={t('刷新')} onPress={() => loadAll()} loading={loading} disabled={loading} />
       } />
       <View style={[styles.searchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
         <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
@@ -170,9 +211,9 @@ export default function MusicLibraryScreen() {
           style={[styles.searchInput, { color: palette.label }]}
         />
         {query ? (
-          <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <ScalePressable onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} pressedScale={0.9} activeOpacity={0.6}>
             <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
-          </TouchableOpacity>
+          </ScalePressable>
         ) : null}
       </View>
       {/* 横向标签栏：使用 flex:1 的 ScrollView + flexDirection: row，配合固定宽度 chip，
@@ -186,51 +227,63 @@ export default function MusicLibraryScreen() {
           contentContainerStyle={styles.tabsContent}
         >
           {GROUP_TABS.map((g, idx) => (
-            <TouchableOpacity
+            <ScalePressable
               key={g}
               onPress={() => onGroupChange(g)}
+              pressedScale={0.96}
+              activeOpacity={0.7}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               style={[
                 styles.gChip,
                 { backgroundColor: group === g ? palette.tint : palette.fill2 },
                 g === 'FAV' ? styles.gChipFav : styles.gChipBase,
               ]}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
               <Text
                 numberOfLines={1}
                 ellipsizeMode="tail"
                 style={[
                   styles.gText,
-                  { color: group === g ? '#FFFFFF' : palette.labelSecondary },
+                  { color: group === g ? palette.onTint : palette.labelSecondary },
                 ]}
               >
                 {g === 'FAV' ? t('收藏{count}', { count: favorites.length ? `(${favorites.length})` : '' }) : t(GROUP_LABELS[g] || g)}
               </Text>
-            </TouchableOpacity>
+            </ScalePressable>
           ))}
         </ScrollView>
       </View>
       {status ? (
         /失败|错误/.test(status) ? (
-          <View style={styles.statusOverlay}>
-            <Text style={[styles.status, { color: palette.danger }]}>{status}</Text>
-            <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.tint }]} onPress={() => loadAll()} disabled={loading}>
-              <Text style={styles.retryBtnText}>{t('重试')}</Text>
-            </TouchableOpacity>
-          </View>
+          <ErrorState title={t('加载失败')} hint={status} onAction={() => loadAll()} />
         ) : (
-          <View pointerEvents="none" style={styles.statusOverlay}>
+          <View pointerEvents="none" style={styles.statusInfo}>
             <Text style={[styles.status, { color: palette.tint }]}>{status}</Text>
           </View>
         )
       ) : null}
       {loading && songs.length === 0 ? (
         <View style={{ flex: 1 }}>
-          <CenterSpinner dark={isDark} text={t('加载中…')} />
+          <View style={styles.listContent}>
+            {[0, 1, 2].map((row) => (
+              <View key={row} style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Skeleton width="100%" height={150} radius={16} />
+                  <Skeleton width="70%" height={12} radius={6} style={{ marginTop: 8 }} />
+                  <Skeleton width="45%" height={10} radius={6} style={{ marginTop: 6 }} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Skeleton width="100%" height={150} radius={16} />
+                  <Skeleton width="70%" height={12} radius={6} style={{ marginTop: 8 }} />
+                  <Skeleton width="45%" height={10} radius={6} style={{ marginTop: 6 }} />
+                </View>
+              </View>
+            ))}
+          </View>
         </View>
       ) : !loading && songs.length === 0 && !status ? (
         <View style={styles.emptyWrap}>
-          <Text style={[styles.status, { color: palette.labelTertiary }]}>{t('暂无音乐')}</Text>
+          <EmptyState icon="music-off" title={t('暂无音乐')} hint={t('点击右上角刷新，拉取官方曲库')} />
         </View>
       ) : (
       <PerfFlatList
@@ -250,6 +303,7 @@ export default function MusicLibraryScreen() {
             const active = queue[currentIndex] && (String(queue[currentIndex].musicId || queue[currentIndex].id) === id);
             const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
             return (
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={{ width: '48.5%' }}>
               <TouchableOpacity
                 style={[
                   styles.songItem,
@@ -260,14 +314,16 @@ export default function MusicLibraryScreen() {
               >
                 <View style={styles.coverWrap}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
-                  {/* 正在播放指示 */}
+                  {/* 正在播放指示：三根均衡器柱错峰跳动 */}
                   {active ? (
                     <View style={[styles.playingBadge, { backgroundColor: palette.tint }]}>
-                      <MaterialCommunityIcons name="equalizer" size={13} color="#FFFFFF" />
+                      <EqualizerBars color={palette.onTint} />
                     </View>
                   ) : null}
-                  <TouchableOpacity
+                  <ScalePressable
                     style={styles.favBtn}
+                    pressedScale={0.85}
+                    activeOpacity={0.6}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     onPress={(e) => {
                       e.stopPropagation();
@@ -278,15 +334,15 @@ export default function MusicLibraryScreen() {
                     <MaterialCommunityIcons
                       name={favorites.includes(String(item.musicId || item.id || '')) ? 'heart' : 'heart-outline'}
                       size={20}
-                      color={favorites.includes(String(item.musicId || item.id || '')) ? '#ff3b5c' : '#fff'}
+                      color={favorites.includes(String(item.musicId || item.id || '')) ? palette.danger : palette.onTint}
                     />
-                  </TouchableOpacity>
+                  </ScalePressable>
                 </View>
                 <View style={styles.songInfo}>
                   <Text style={[styles.songTitle, { color: palette.label }]} numberOfLines={2}>{item.title || t('无标题')}</Text>
                   <View style={styles.songMetaLine}>
                     <Text style={[styles.songArtist, { color: palette.labelSecondary }]} numberOfLines={1}>
-                      {[item.album, item.artist, item.groupLabel].filter(Boolean).join(' · ') || t('官方音乐')}
+                      {joinMeta([item.album, item.artist, item.groupLabel]) || t('官方音乐')}
                     </Text>
                     {item.ctime ? (
                       <Text style={[styles.dateText, { color: palette.labelTertiary }]}>
@@ -296,6 +352,7 @@ export default function MusicLibraryScreen() {
                   </View>
                 </View>
               </TouchableOpacity>
+            </FadeInView>
             );
           }}
         />
@@ -386,9 +443,6 @@ export default function MusicLibraryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  backBtn: { color: '#ff6f91', fontSize: 14, fontWeight: '700' },
-  disabledText: { opacity: 0.45 },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -396,7 +450,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 8,
     paddingHorizontal: 12,
-    height: 42,
+    height: 40,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
@@ -408,8 +462,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, 
     borderBottomWidth: StyleSheet.hairlineWidth, 
   },
-  tabsBarLight: { borderBottomColor: 'rgba(0,0,0,0.06)' },
-  tabsBarDark: { borderBottomColor: 'rgba(255,255,255,0.08)' },
   // 内容区：flex row，靠左对齐，gap 由 marginRight 控制
   tabsContent: { 
     flexDirection: 'row', 
@@ -420,8 +472,7 @@ const styles = StyleSheet.create({
   gChip: { 
     height: CHIP_HEIGHT, 
     paddingHorizontal: 16, 
-    borderRadius: 16, 
-    backgroundColor: 'rgba(0,0,0,0.06)', 
+    borderRadius: radii.pill, 
     alignItems: 'center', 
     justifyContent: 'center', 
     flexShrink: 0, 
@@ -429,34 +480,22 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginRight: CHIP_GAP,
   },
-  gChipDark: { backgroundColor: 'rgba(255,255,255,0.12)' },
-  gChipOn: { backgroundColor: '#ff6f91' },
-  gChipFav: { width: CHIP_FAV_WIDTH },
-  gChipBase: { width: CHIP_BASE_WIDTH },
-  gText: { fontSize: 14, color: '#555', fontWeight: '700' },
-  gTextDark: { color: '#d6d6d6' },
-  gTextOn: { color: '#fff' },
-  status: { color: '#ff6f91', fontSize: 12, fontWeight: '700' },
-  statusOverlay: { position: 'absolute', top: 140, left: 0, right: 0, zIndex: 10, alignItems: 'center' },
-  retryBtn: {
-    marginTop: 10,
-    paddingHorizontal: 22,
-    paddingVertical: 8,
-    borderRadius: 16,
-  },
-  retryBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  gChipFav: { minWidth: CHIP_FAV_MIN_WIDTH },
+  gChipBase: { minWidth: CHIP_MIN_WIDTH },
+  gText: { fontSize: 14, fontWeight: '700' },
+  status: { fontSize: 12, fontWeight: '700' },
+  statusInfo: { paddingVertical: 16, alignItems: 'center' },
   
   // 列表内容：顶部留出标签栏高度，底部留出迷你播放器空间
   listContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 120 },
-  emptyWrap: { alignItems: 'center', marginTop: 80 },
+  emptyWrap: { flex: 1, alignItems: 'stretch' },
   // 去掉 gridRow（width:'48%'+space-between 在 Android FlatList 上切歌后左列塌陷）。
   // 现由 FlatList numColumns=2 默认等分两列，songItem 用 flex:1 + 自身 padding 自适应。
   songItem: {
     flex: 1,
     margin: 5,
-    borderRadius: 16,
+    borderRadius: radiiAlias.card,
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
     // 克制阴影增强浮起感
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -464,10 +503,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  cardDark: { backgroundColor: '#1C1C1F' },
-  songItemActiveDark: { borderColor: '#ff8fa8' },
-  songItemActive: { borderWidth: 2, borderColor: '#ff6f91' },
-  coverWrap: { width: '100%', aspectRatio: 1, backgroundColor: '#111' },
+  coverWrap: { width: '100%', aspectRatio: 1 },
   playingBadge: {
     position: 'absolute',
     left: 8,
@@ -479,17 +515,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   favBtn: { position: 'absolute', top: 6, right: 6, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.32)' },
-  coverImg: { width: '100%', height: '100%' },
-  coverPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e8e8e8' },
-  coverPlaceholderText: { color: '#fff', fontSize: 28, fontWeight: '800', opacity: 0.5 },
-  unavailableBadge: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-  unavailableText: { color: '#ffd479', fontSize: 10, fontWeight: '700' },
   songInfo: { padding: 10 },
-  songTitle: { fontSize: 15, fontWeight: '800', color: '#222', lineHeight: 20 },
+  songTitle: { fontSize: 15, fontWeight: '800', lineHeight: 20 },
   songMetaLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, gap: 6 },
-  songArtist: { fontSize: 12, color: '#888', flex: 1 },
-  dateText: { fontSize: 11, color: '#aaa' },
+  songArtist: { fontSize: 12, flex: 1 },
+  dateText: { fontSize: 11 },
   tinyPlayer: { width: 0, height: 0 },
-  textDark: { color: '#eee' },
-  textSubDark: { color: '#eeeeee' },
 });

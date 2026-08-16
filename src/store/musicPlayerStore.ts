@@ -95,7 +95,7 @@ interface MusicPlayerState {
   removeFromQueue: (id: string) => void;
   clearQueue: () => void;
   /** 载入曲目到队列并置为 loading 态（不自动播放）。URL 由 MusicEngine 异步解析后 setUrl。 */
-  play: (track: Track, queue?: Track[]) => void;
+  play: (track: Track, queue?: Track[], keepPosition?: boolean) => void;
   setUrl: (url: string) => void;
   setPlaybackState: (state: PlaybackState) => void;
   setMode: (mode: PlayMode) => void;
@@ -153,20 +153,25 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       /**
        * 载入曲目到队列并置为 loading 态，但不写 url —— url 由 MusicEngine 异步解析后
        * 通过 setUrl 单独写入，从而避免 Video 经历 url:'' → url:http 的 source 翻转。
+       *
+       * keepPosition=true（主页「继续播放」/ 记忆恢复）：保留当前 position 并把其转成
+       * seekTarget，等 Video onLoad 就绪后 seek 回去 —— 否则 play() 会把进度清零，
+       * 播放记忆形同虚设。
        */
-      play: (track, queue) => set((s) => {
+      play: (track, queue, keepPosition = false) => set((s) => {
         const q = queue || s.queue;
         const idx = q.findIndex((t) => (t.musicId || t.id) === (track.musicId || track.id));
+        const resumePos = keepPosition && idx === s.currentIndex && s.position > 0 ? s.position : 0;
         return {
           queue: q,
           currentIndex: idx >= 0 ? idx : 0,
           playbackState: 'loading',
           url: '',            // 暂空，等 setUrl 写入后 Video 挂载一次即稳定
-          duration: 0,
-          position: 0,
+          duration: resumePos > 0 ? s.duration : 0,
+          position: resumePos,
           lyrics: [],
           error: null,
-          seekTarget: 0,
+          seekTarget: resumePos,
         };
       }),
 

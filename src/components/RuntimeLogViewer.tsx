@@ -10,9 +10,12 @@ import {
   View,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { useSettingsStore, useUiStore } from '../store';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { useUiStore } from '../store';
 import { useI18n } from '../i18n';
+import { usePalette, radii, spacing } from '../theme';
+import { typography } from '../theme/typography';
+import { Pill } from './Pill';
+import { CenterSpinner } from './Loaders';
 import {
   clearLog,
   exportLogText,
@@ -31,7 +34,7 @@ const LEVELS: { key: FilterKey; label: string }[] = [
   { key: 'crash', label: '崩溃' },
 ];
 
-function levelColor(level: LogLevel, isDark: boolean): string {
+function levelColor(level: LogLevel): string {
   switch (level) {
     case 'crash':
       return '#ff3b30';
@@ -40,7 +43,7 @@ function levelColor(level: LogLevel, isDark: boolean): string {
     case 'warn':
       return '#e6a700';
     default:
-      return isDark ? '#9aa0a6' : '#888';
+      return '#888';
   }
 }
 
@@ -51,7 +54,7 @@ function fmtTime(t: number): string {
 }
 
 export default function RuntimeLogViewer({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
   const [entries, setEntries] = useState(getLogEntries());
@@ -111,54 +114,57 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, isDark && styles.containerDark]}>
-        <View style={[styles.header, isDark && styles.headerDark]}>
-          <Text style={[styles.title, isDark && styles.textLight]}>{t('运行日志')}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={[styles.closeText, isDark && styles.textLight]}>{t('关闭')}</Text>
+      <View style={[styles.container, { backgroundColor: palette.background }]}>
+        <View style={[styles.header, { backgroundColor: palette.surface, borderBottomColor: palette.hairline }]}>
+          <Text style={[typography.title3, { color: palette.label }]}>{t('运行日志')}</Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.6} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={[typography.subhead, { color: palette.tint, fontWeight: '700' }]}>{t('关闭')}</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.filterRow}>
+        <View style={[styles.filterRow, { backgroundColor: palette.surface, borderBottomColor: palette.hairline }]}>
           {LEVELS.map((lv) => {
             const c = lv.key === 'all' ? entries.length : counts[lv.key as LogLevel];
             const active = filter === lv.key;
-            const label = t(lv.label);
             return (
-              <TouchableOpacity
+              <Pill
                 key={lv.key}
-                style={[styles.filterChip, isDark && styles.filterChipDark, active && styles.filterChipOn]}
+                label={`${t(lv.label)} ${c}`}
+                selected={active}
                 onPress={() => setFilter(lv.key)}
-              >
-                <Text style={[styles.filterText, isDark && styles.textSubLight, active && styles.filterTextOn]}>
-                  {label} {c}
-                </Text>
-              </TouchableOpacity>
+              />
             );
           })}
         </View>
 
         <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator>
           {filtered.length === 0 ? (
-            <Text style={[styles.empty, isDark && styles.textSubLight]}>{t('暂无记录')}</Text>
+            <CenterSpinner text={t('暂无记录')} style={{ marginTop: 60 }} />
           ) : (
             filtered.map((e) => (
               <TouchableOpacity
                 key={e.id}
-                style={[styles.row, isDark && styles.rowDark]}
+                style={[
+                  styles.row,
+                  {
+                    backgroundColor: palette.surface,
+                    borderLeftColor: levelColor(e.level),
+                  },
+                ]}
                 onLongPress={() => onCopyEntry(e)}
+                activeOpacity={0.8}
                 hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               >
                 <View style={styles.rowTop}>
-                  <Text style={[styles.time, isDark && styles.textSubLight]}>{fmtTime(e.t)}</Text>
-                  <View style={[styles.badge, { backgroundColor: levelColor(e.level, isDark) }]}>
+                  <Text style={[styles.time, { color: palette.labelTertiary }]}>{fmtTime(e.t)}</Text>
+                  <View style={[styles.badge, { backgroundColor: levelColor(e.level) }]}>
                     <Text style={styles.badgeText}>{e.level.toUpperCase()}</Text>
                   </View>
-                  {e.ctx ? <Text style={[styles.ctx, isDark && styles.textSubLight]}>{e.ctx}</Text> : null}
+                  {e.ctx ? <Text style={[styles.ctx, { color: palette.labelTertiary }]} numberOfLines={1}>{e.ctx}</Text> : null}
                 </View>
-                <Text style={[styles.msg, isDark && styles.textLight]}>{e.msg}</Text>
+                <Text style={[typography.subhead, styles.msg, { color: palette.label }]}>{e.msg}</Text>
                 {e.stack ? (
-                  <Text style={[styles.stack, isDark && styles.textSubLight]} numberOfLines={6}>
+                  <Text style={[styles.stack, { color: palette.labelTertiary }]} numberOfLines={6}>
                     {e.stack}
                   </Text>
                 ) : null}
@@ -167,18 +173,18 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
           )}
         </ScrollView>
 
-        <View style={[styles.toolbar, isDark && styles.toolbarDark]}>
-          <TouchableOpacity style={[styles.toolBtn, isDark && styles.toolBtnDark]} onPress={refresh}>
-            <Text style={[styles.toolText, isDark && styles.textLight]}>{t('刷新')}</Text>
+        <View style={[styles.toolbar, { backgroundColor: palette.surface, borderTopColor: palette.hairline }]}>
+          <TouchableOpacity style={[styles.toolBtn, { backgroundColor: palette.fill2 }]} onPress={refresh} activeOpacity={0.7}>
+            <Text style={[styles.toolText, { color: palette.label }]}>{t('刷新')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.toolBtn, isDark && styles.toolBtnDark]} onPress={onCopy}>
-            <Text style={[styles.toolText, isDark && styles.textLight]}>{t('复制')}</Text>
+          <TouchableOpacity style={[styles.toolBtn, { backgroundColor: palette.fill2 }]} onPress={onCopy} activeOpacity={0.7}>
+            <Text style={[styles.toolText, { color: palette.label }]}>{t('复制')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.toolBtn, isDark && styles.toolBtnDark]} onPress={onShare}>
-            <Text style={[styles.toolText, isDark && styles.textLight]}>{t('分享')}</Text>
+          <TouchableOpacity style={[styles.toolBtn, { backgroundColor: palette.fill2 }]} onPress={onShare} activeOpacity={0.7}>
+            <Text style={[styles.toolText, { color: palette.label }]}>{t('分享')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.toolBtnDanger} onPress={onClear}>
-            <Text style={styles.toolTextDanger}>{t('清空')}</Text>
+          <TouchableOpacity style={[styles.toolBtn, { backgroundColor: palette.tintSoft }]} onPress={onClear} activeOpacity={0.7}>
+            <Text style={[styles.toolText, { color: palette.danger }]}>{t('清空')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -187,38 +193,52 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  containerDark: { backgroundColor: '#111' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 48, paddingBottom: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
-  headerDark: { backgroundColor: '#1a1a1a', borderBottomColor: 'rgba(255,255,255,0.08)' },
-  title: { fontSize: 18, fontWeight: '800', color: '#222' },
-  textLight: { color: '#fff' },
-  textSubLight: { color: '#bbb' },
+  container: { flex: 1 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: 48,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   closeBtn: { paddingHorizontal: 10, paddingVertical: 6 },
-  closeText: { fontSize: 14, color: '#ff6f91', fontWeight: '700' },
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
-  filterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.05)' },
-  filterChipDark: { backgroundColor: 'rgba(255,255,255,0.08)' },
-  filterChipOn: { backgroundColor: '#ff6f91' },
-  filterText: { fontSize: 12, color: '#555', fontWeight: '700' },
-  filterTextOn: { color: '#fff' },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   list: { flex: 1 },
-  listContent: { padding: 12, paddingBottom: 24 },
-  empty: { textAlign: 'center', color: '#999', marginTop: 60, fontSize: 13 },
-  row: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: 'rgba(0,0,0,0.1)' },
-  rowDark: { backgroundColor: '#1e1e1e', borderLeftColor: 'rgba(255,255,255,0.15)' },
+  listContent: { padding: spacing.sm, paddingBottom: 24 },
+  row: {
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.xs,
+    borderLeftWidth: 3,
+  },
   rowTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 },
-  time: { fontSize: 11, color: '#999' },
+  time: { fontSize: 11 },
   badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
   badgeText: { fontSize: 9, color: '#fff', fontWeight: '800' },
-  ctx: { fontSize: 11, color: '#999', fontStyle: 'italic' },
-  msg: { fontSize: 13, color: '#222', lineHeight: 18 },
-  stack: { fontSize: 10, color: '#999', marginTop: 4, lineHeight: 14 },
-  toolbar: { flexDirection: 'row', padding: 10, gap: 8, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
-  toolbarDark: { backgroundColor: '#1a1a1a', borderTopColor: 'rgba(255,255,255,0.08)' },
-  toolBtn: { flex: 1, minHeight: 42, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.05)', alignItems: 'center', justifyContent: 'center' },
-  toolBtnDark: { backgroundColor: 'rgba(255,255,255,0.08)' },
-  toolBtnDanger: { flex: 1, minHeight: 42, borderRadius: 18, backgroundColor: 'rgba(255,0,0,0.1)', alignItems: 'center', justifyContent: 'center' },
-  toolText: { color: '#333', fontWeight: '800', fontSize: 13 },
-  toolTextDanger: { color: '#e74c3c', fontWeight: '800', fontSize: 13 },
+  ctx: { fontSize: 11, fontStyle: 'italic', flexShrink: 1 },
+  msg: { lineHeight: 18 },
+  stack: { fontSize: 10, marginTop: 4, lineHeight: 14 },
+  toolbar: {
+    flexDirection: 'row',
+    padding: 10,
+    gap: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  toolBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolText: { fontWeight: '800', fontSize: 13 },
 });

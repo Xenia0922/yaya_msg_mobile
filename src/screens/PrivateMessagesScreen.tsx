@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
+  KeyboardAvoidingView,
+  Platform,
   FlatList,
   Image,
   Linking,
@@ -16,16 +19,16 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
-import { FadeInView } from '../components/Motion';
+import { FadeInView, ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
-import { ErrorState } from '../components/StateViews';
+import { EmptyState, ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
+import { HeaderAction } from '../components/HeaderAction';
 import { formatTimestamp } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
 import { errorMessage, messagePayload, messageText, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
-import { usePalette } from '../theme';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette, usePageBackground } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 
@@ -282,7 +285,6 @@ function lowestPrice(item: any) { return Math.min(...[item.normalCost, item.priv
 
 export default function PrivateMessagesScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const members = useMemberStore((s) => s.members);
@@ -291,6 +293,35 @@ export default function PrivateMessagesScreen() {
   const [hasMoreConvs, setHasMoreConvs] = useState(false);
   const convCursorRef = useRef(0);
   const convLoadingRef = useRef(false);
+  // 置顶会话（私信区同理：可置顶 + 可调换顺序），按目标用户 id 持久化
+  const [pinnedConvs, setPinnedConvs] = useState<string[]>([]);
+  useEffect(() => {
+    AsyncStorage.getItem('yaya_pinned_convs').then((v) => {
+      if (v) { try { setPinnedConvs(JSON.parse(v)); } catch { setPinnedConvs([]); } }
+    });
+  }, []);
+  const persistPinned = async (next: string[]) => {
+    setPinnedConvs(next);
+    try {
+      await AsyncStorage.setItem('yaya_pinned_convs', JSON.stringify(next));
+    } catch (error: any) {
+      showToast(t('置顶保存失败：{msg}', { msg: error?.message || String(error) }));
+    }
+  };
+  const togglePinConv = (conv: any) => {
+    const id = convTargetId(conv);
+    if (!id) return;
+    const next = pinnedConvs.includes(id) ? pinnedConvs.filter((x) => x !== id) : [...pinnedConvs, id];
+    persistPinned(next);
+  };
+  const movePinConv = (id: string, dir: -1 | 1) => {
+    const idx = pinnedConvs.indexOf(id);
+    const to = idx + dir;
+    if (idx < 0 || to < 0 || to >= pinnedConvs.length) return;
+    const next = [...pinnedConvs];
+    [next[idx], next[to]] = [next[to], next[idx]];
+    persistPinned(next);
+  };
   // 会话按时间分组（今天/昨天/更早）：组头 + 组内会话行
   const todayStr = (() => {
     const d = new Date();
@@ -314,17 +345,33 @@ export default function PrivateMessagesScreen() {
       const yKey = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
       return key === yKey ? 'yesterday' : 'more';
     };
+    const pinnedSet = new Set(pinnedConvs);
+    const pinnedItems: any[] = [];
+    const rest: any[] = [];
     for (const c of convs) {
+      const target = convTargetId(c);
+      if (target && pinnedSet.has(target)) pinnedItems.push(c);
+      else rest.push(c);
+    }
+    // 置顶会话按 pinnedConvs 顺序排列（可调换），其余按时间分组
+    const pinnedOrdered = pinnedItems
+      .slice()
+      .sort((a, b) => pinnedConvs.indexOf(convTargetId(a)) - pinnedConvs.indexOf(convTargetId(b)));
+    const flat: { type: 'header' | 'item'; key: string; title?: string; item?: any }[] = [];
+    if (pinnedOrdered.length) {
+      flat.push({ type: 'header', key: 'h-pinned', title: t('置顶') });
+      pinnedOrdered.forEach((it, i) => flat.push({ type: 'item', key: `i-pinned-${String(convTargetId(it) || i)}`, item: it }));
+    }
+    for (const c of rest) {
       groups[idxOf[groupOf(Number(c.lastTime || c.msgTime || 0))]].items.push(c);
     }
-    const flat: { type: 'header' | 'item'; key: string; title?: string; item?: any }[] = [];
     groups.forEach((g) => {
       if (!g.items.length) return;
       flat.push({ type: 'header', key: `h-${g.key}`, title: g.title });
       g.items.forEach((it, i) => flat.push({ type: 'item', key: `i-${g.key}-${String(convTargetId(it) || i)}`, item: it }));
     });
     return flat;
-  }, [convs, todayStr, t]);
+  }, [convs, todayStr, t, pinnedConvs]);
   const [sel, setSel] = useState<any>(null);
   const [msgs, setMsgs] = useState<any[]>([]);
   const [text, setText] = useState('');
@@ -474,13 +521,51 @@ export default function PrivateMessagesScreen() {
 
   if (sel) {
     const targetId = convTargetId(sel);
+    // 聊天行数据：按天插入日期分隔条 + 3 分钟内同侧消息分组（组内连排小圆角）
+    const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n));
+    const dayKeyOf = (ts: number) => {
+      const d = new Date(ts);
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    };
+    const todayK = dayKeyOf(Date.now());
+    const yesterdayK = dayKeyOf(Date.now() - 86400000);
+    const dayLabel = (ts: number) => {
+      const k = dayKeyOf(ts);
+      if (k === todayK) return t('今天');
+      if (k === yesterdayK) return t('昨天');
+      return `${pad2(new Date(ts).getMonth() + 1)}-${pad2(new Date(ts).getDate())}`;
+    };
+    const chatRows: { type: 'date' | 'msg'; key: string; label?: string; item?: any; groupStart?: boolean }[] = [];
+    let prevDay = '';
+    let prevMine: boolean | null = null;
+    let prevTs = 0;
+    msgs.forEach((item, i) => {
+      const ts = msgTimeNumber(item);
+      const mine = isMineMessage(item, targetId, uid);
+      const dk = dayKeyOf(ts);
+      if (dk !== prevDay) {
+        chatRows.push({ type: 'date', key: `d-${dk}`, label: dayLabel(ts) });
+        prevDay = dk;
+        prevMine = null;
+        prevTs = 0;
+      }
+      const groupStart = prevMine === null || prevMine !== mine || ts - prevTs > 3 * 60 * 1000;
+      chatRows.push({ type: 'msg', key: `m-${msgId(item, i)}`, item, groupStart });
+      prevMine = mine;
+      prevTs = ts;
+    });
     return (
-      <View style={[styles.screen, { backgroundColor: palette.background }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.screenContainer}
+        keyboardVerticalOffset={0}
+      >
+        <View style={[styles.screen, { backgroundColor: usePageBackground() }]}>
         <ScreenHeader title={convName(sel)} onBack={() => setSel(null)} />
         <PerfFlatList
           ref={flatRef}
-          data={msgs}
-          keyExtractor={(item, i) => msgId(item, i)}
+          data={chatRows}
+          keyExtractor={(row) => row.key}
           contentContainerStyle={styles.msgList}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
@@ -488,8 +573,19 @@ export default function PrivateMessagesScreen() {
           removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.3}
-          renderItem={({ item, index }) => {
+          renderItem={({ item: row, index }) => {
+            if (row.type === 'date') {
+              return (
+                <View style={styles.dateSepWrap}>
+                  <View style={[styles.dateSep, { backgroundColor: palette.fill2 }]}>
+                    <Text style={[styles.dateSepText, { color: palette.labelTertiary }]}>{row.label}</Text>
+                  </View>
+                </View>
+              );
+            }
+            const item = row.item;
             const mine = isMineMessage(item, targetId, uid);
+            const groupStart = !!row.groupStart;
             const media = privateMessageMedia(item);
             const txt = privateMessageText(item);
             const hasText = txt && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(txt) && txt !== '[空消息]';
@@ -500,38 +596,40 @@ export default function PrivateMessagesScreen() {
                   <View
                     style={[
                       styles.bubble,
-                      mine ? styles.bubbleMine : styles.bubbleOther,
-                      { borderColor: mine ? 'transparent' : palette.hairline, backgroundColor: mine ? undefined : palette.surface },
+                      mine ? styles.bubbleMine : null,
+                      !groupStart && mine && styles.bubbleMineMid,
+                      !groupStart && !mine && styles.bubbleOtherMid,
+                      { borderColor: mine ? 'transparent' : palette.hairline, backgroundColor: mine ? palette.tint : palette.surface },
                     ]}
                   >
-                    {hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, !mine && { color: palette.label }]}>{txt}</Text> : null}
+                    {hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{txt}</Text> : null}
                     {media ? (
                       media.type === 'image' ? (
-                        <Image source={{ uri: media.url }} style={styles.inlineImg} resizeMode="cover" />
+                        <Image source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
                       ) : (
-                        <TouchableOpacity style={[styles.mediaBtn, { backgroundColor: palette.fill2 }]} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
-                          <Text style={[styles.mediaBtnText, mine && styles.msgTextMine, !mine && { color: palette.tint }]}>{playUrl === media.url ? t('收起') : `${mediaLabel}`}</Text>
-                          {playUrl !== media.url ? <MaterialCommunityIcons name="play" size={14} color={mine ? '#FFFFFF' : palette.tint} style={{ marginLeft: 4 }} /> : null}
-                        </TouchableOpacity>
+                        <ScalePressable style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
+                          <Text style={[styles.mediaBtnText, mine && { color: palette.onTint }, !mine && { color: palette.tint }]}>{playUrl === media.url ? t('收起') : `${mediaLabel}`}</Text>
+                          {playUrl !== media.url ? <MaterialCommunityIcons name="play" size={14} color={mine ? palette.onTint : palette.tint} style={{ marginLeft: 4 }} /> : null}
+                        </ScalePressable>
                       )
-                    ) : !hasText ? <Text style={[styles.msgText, mine && styles.msgTextMine, !mine && { color: palette.label }]}>{t('[空消息]')}</Text> : null}
+                    ) : !hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{t('[空消息]')}</Text> : null}
                     {playUrl === media?.url ? (
                       <Video source={{ uri: media!.url }} style={media!.type === 'audio' ? styles.audio : styles.video} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
                     ) : null}
-                    <Text style={[styles.msgTime, mine && styles.msgTimeMine, !mine && { color: palette.labelTertiary }]}>{formatTimestamp(msgTimeNumber(item))}</Text>
+                    <Text style={[styles.msgTime, mine && { color: 'rgba(255,255,255,0.75)' }, !mine && { color: palette.labelTertiary }]}>{formatTimestamp(msgTimeNumber(item))}</Text>
                   </View>
                 </View>
               </FadeInView>
             );
           }}
-          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{loading ? '' : t('暂无消息')}</Text>}
+          ListEmptyComponent={loading ? null : <EmptyState icon="message-text-outline" title={t('暂无消息')} />}
         />
         {member ? (
           <View style={[styles.flipBar, { backgroundColor: palette.surface, borderTopColor: palette.hairline }]}>
             <Text style={[styles.flipName, { color: palette.labelSecondary }]}>{t('{name} 翻牌', { name: member.ownerName || '' })}</Text>
             <View style={styles.flipRow}>
               {prices.slice(0, 3).map((p) => (
-                <TouchableOpacity
+                <ScalePressable
                   key={p.answerType}
                   style={[
                     styles.flipChip,
@@ -544,45 +642,46 @@ export default function PrivateMessagesScreen() {
                   <Text
                     style={[
                       styles.flipChipT,
-                      flipType === p.answerType ? styles.flipChipTOn : { color: palette.labelSecondary },
+                      flipType === p.answerType ? { color: palette.onTint } : { color: palette.labelSecondary },
                     ]}
                   >
                     {flipTypeName(p.answerType)}·{lowestPrice(p)}
                   </Text>
-                </TouchableOpacity>
+                </ScalePressable>
               ))}
               <View style={styles.flipSpacer} />
               {money ? <Text style={[styles.flipMoney, { color: palette.tint }]}>{t('余额 {money}', { money })}</Text> : null}
-              <TouchableOpacity style={[styles.flipRechargeBtn, { backgroundColor: palette.tint }]} onPress={() => navigation.navigate('RechargeScreen')}>
-                <Text style={styles.flipRechargeT}>{t('充值')}</Text>
-              </TouchableOpacity>
+              <ScalePressable style={[styles.flipRechargeBtn, { backgroundColor: palette.tint }]} onPress={() => navigation.navigate('RechargeScreen')}>
+                <Text style={[styles.flipRechargeT, { color: palette.onTint }]}>{t('充值')}</Text>
+              </ScalePressable>
             </View>
           </View>
         ) : null}
-        <View style={[styles.inputBar, { backgroundColor: palette.surface, borderTopColor: palette.hairline }]}>
+        <View style={[styles.inputBar, { backgroundColor: palette.surfaceGlassStrong, borderTopColor: palette.hairline }]}>
           {flipType > 0 ? <Text style={[styles.flipLabel, { color: palette.tint }]}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
             <TextInput
-              style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, color: palette.label }]}
+              style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]}
               placeholder={t('输入内容...')}
               placeholderTextColor={palette.labelTertiary}
               value={text}
               onChangeText={setText}
               multiline
             />
-            <TouchableOpacity style={[styles.sendBtn, { backgroundColor: palette.tint }]} onPress={doSend} disabled={loading || !text.trim()}>
-              <Text style={styles.sendT}>{loading ? '..' : flipType ? t('翻牌') : t('发送')}</Text>
-            </TouchableOpacity>
+            <ScalePressable style={[styles.sendBtn, { backgroundColor: palette.tint }]} onPress={doSend} disabled={loading || !text.trim()}>
+              <Text style={[styles.sendT, { color: palette.onTint }]}>{loading ? '..' : flipType ? t('翻牌') : t('发送')}</Text>
+            </ScalePressable>
           </View>
         </View>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: palette.background }]}>
+    <View style={[styles.screen, { backgroundColor: usePageBackground() }]}>
       <ScreenHeader title={t('私信列表')} right={
-        <TouchableOpacity onPress={() => loadConvs(true)}><Text style={[styles.refreshBtn, { color: palette.tint }]}>{t('刷新')}</Text></TouchableOpacity>
+        <HeaderAction label={t('刷新')} onPress={() => loadConvs(true)} />
       } />
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
@@ -603,18 +702,28 @@ export default function PrivateMessagesScreen() {
             const name = convName(conv);
             const unread = Number(conv.noreadNum);
             const latestTime = Number(conv.lastTime || conv.msgTime || 0);
+            const isPinned = pinnedConvs.includes(convTargetId(conv));
+            // 真实成员头像：按会话目标 id 从成员库匹配；无头像时回落首字母
+            const convTarget = String(convTargetId(conv));
+            const convMember = members.find((m: any) => String(m.id || m.userId || m.memberId) === convTarget);
+            const convAvatarUrl = (convMember as any)?.avatar || (convMember as any)?.avatarUrl || '';
             return (
               <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
+                <View style={styles.convRowWrap}>
                 <TouchableOpacity
                   style={[
                     styles.convCard,
-                    { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16 },
+                    { backgroundColor: palette.surface, borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16 },
                   ]}
                   onPress={() => openConv(conv)}
                   activeOpacity={0.88}
                 >
                   <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
-                    <Text style={[styles.convAvatarText, { color: palette.tint }]}>{name.trim().slice(0, 1).toUpperCase()}</Text>
+                    {convAvatarUrl ? (
+                      <Image source={{ uri: convAvatarUrl }} style={styles.convAvatarImg} resizeMode="cover" />
+                    ) : (
+                      <Text style={[styles.convAvatarText, { color: palette.tint }]}>{name.trim().slice(0, 1).toUpperCase()}</Text>
+                    )}
                   </View>
                   <View style={styles.convInfo}>
                     <View style={styles.convTitleRow}>
@@ -633,21 +742,58 @@ export default function PrivateMessagesScreen() {
                     </View>
                   </View>
                 </TouchableOpacity>
+                <View style={styles.convActions}>
+                  {isPinned && pinnedConvs.length > 1 ? (
+                    <View style={styles.pinMoveCol}>
+                      <ScalePressable
+                        style={[styles.pinMoveBtn, { backgroundColor: palette.fill2 }]}
+                        onPress={() => movePinConv(convTargetId(conv), -1)}
+                        pressedScale={0.85}
+                        hitSlop={{ top: 4, bottom: 2, left: 4, right: 4 }}
+                        disabled={pinnedConvs.indexOf(convTargetId(conv)) === 0}
+                      >
+                        <MaterialCommunityIcons name="chevron-up" size={13} color={palette.labelSecondary} />
+                      </ScalePressable>
+                      <ScalePressable
+                        style={[styles.pinMoveBtn, { backgroundColor: palette.fill2 }]}
+                        onPress={() => movePinConv(convTargetId(conv), 1)}
+                        pressedScale={0.85}
+                        hitSlop={{ top: 2, bottom: 4, left: 4, right: 4 }}
+                        disabled={pinnedConvs.indexOf(convTargetId(conv)) === pinnedConvs.length - 1}
+                      >
+                        <MaterialCommunityIcons name="chevron-down" size={13} color={palette.labelSecondary} />
+                      </ScalePressable>
+                    </View>
+                  ) : null}
+                  <ScalePressable
+                    style={[styles.convPinBtn, { backgroundColor: isPinned ? palette.tintSoft : palette.fill2 }]}
+                    onPress={() => togglePinConv(conv)}
+                    pressedScale={0.9}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialCommunityIcons
+                      name={isPinned ? 'pin' : 'pin-outline'}
+                      size={15}
+                      color={isPinned ? palette.tint : palette.labelTertiary}
+                    />
+                  </ScalePressable>
+                </View>
+                </View>
               </FadeInView>
             );
           }}
           ListEmptyComponent={
-            loading ? <CenterSpinner dark={isDark} text={t('正在加载会话…')} />
+            loading ? <CenterSpinner text={t('正在加载会话…')} />
             : convError ? (
               <ErrorState title={t('加载失败')} hint={convError} onAction={() => loadConvs()} />
             ) : (
-              <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无私信')}</Text>
+              <EmptyState icon="message-outline" title={t('暂无私信')} />
             )
           }
           onEndReached={() => { if (hasMoreConvs) loadConvs(false); }}
           onEndReachedThreshold={0.4}
           ListFooterComponent={
-            hasMoreConvs ? <CenterSpinner dark={isDark} text={t('加载更多会话…')} /> : null
+            hasMoreConvs ? <CenterSpinner text={t('加载更多会话…')} /> : null
           }
         />
       </FadeInView>
@@ -657,18 +803,24 @@ export default function PrivateMessagesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  refreshBtn: { fontSize: 13, fontWeight: '700' },
+  screenContainer: { flex: 1 },
   convList: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 },
   groupTitle: { fontSize: 13, fontWeight: '800', marginTop: 12, marginBottom: 2, paddingLeft: 4 },
-  convCard: { padding: 12, flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
+  convCard: { padding: 12, flexDirection: 'row', alignItems: 'center', marginVertical: 4, flex: 1 },
+  convRowWrap: { flexDirection: 'row', alignItems: 'center' },
+  convActions: { marginLeft: 8, gap: 8, alignItems: 'center' },
+  convPinBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  pinMoveCol: { gap: 2, alignItems: 'center' },
+  pinMoveBtn: { width: 22, height: 18, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   convAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  convAvatarImg: { width: 44, height: 44, borderRadius: 999 },
   convAvatarText: { fontSize: 17, fontWeight: '800' },
   convInfo: { flex: 1, marginLeft: 12 },
   convTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -679,18 +831,20 @@ const styles = StyleSheet.create({
   badge: { borderRadius: 999, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   badgeT: { color: '#fff', fontSize: 11, fontWeight: '700' },
   msgList: { paddingHorizontal: 12, paddingVertical: 8 },
+  dateSepWrap: { alignItems: 'center', marginVertical: 10 },
+  dateSep: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
+  dateSepText: { fontSize: 10, fontWeight: '700' },
   msgRow: { marginVertical: 2, alignItems: 'flex-start' },
   msgRowMine: { alignItems: 'flex-end' },
   bubble: { maxWidth: '82%', padding: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, borderTopLeftRadius: 6 },
-  bubbleMine: { backgroundColor: '#7BC6FF', borderTopLeftRadius: 16, borderTopRightRadius: 6 },
-  bubbleOther: { backgroundColor: '#FFFFFF' },
+  bubbleMine: { borderTopLeftRadius: 16, borderTopRightRadius: 6 },
+  bubbleMineMid: { borderTopRightRadius: 16, borderBottomRightRadius: 6 },
+  bubbleOtherMid: { borderTopLeftRadius: 16, borderBottomLeftRadius: 6 },
   msgText: { fontSize: 14, lineHeight: 20 },
-  msgTextMine: { color: '#fff' },
   msgTime: { fontSize: 10, marginTop: 4 },
-  msgTimeMine: { color: 'rgba(255,255,255,0.75)' },
   mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' },
   mediaBtnText: { fontSize: 12, fontWeight: '800' },
-  inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 12, backgroundColor: '#EEEEEF' },
+  inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 12 },
   audio: { height: 48, minWidth: 200, marginTop: 4, borderRadius: 10 },
   video: { height: 150, minWidth: 200, marginTop: 4, backgroundColor: '#000', borderRadius: 10 },
   flipBar: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
@@ -698,16 +852,14 @@ const styles = StyleSheet.create({
   flipRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   flipChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
   flipChipT: { fontSize: 11, fontWeight: '700' },
-  flipChipTOn: { color: '#fff' },
   flipSpacer: { flex: 1 },
   flipMoney: { fontSize: 11, fontWeight: '700' },
   flipRechargeBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 18 },
-  flipRechargeT: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  flipRechargeT: { fontSize: 10, fontWeight: '800' },
   flipLabel: { fontSize: 10, fontWeight: '800', marginBottom: 2 },
   inputBar: { paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   input: { flex: 1, padding: 10, borderRadius: 18, borderWidth: 1, fontSize: 14, maxHeight: 80 },
   sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18 },
-  sendT: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
+  sendT: { fontWeight: '800', fontSize: 13 },
 });

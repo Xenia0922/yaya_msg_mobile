@@ -39,7 +39,7 @@ export function AppScaffold({
 }: AppScaffoldProps) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
-  const bgColor = bg ?? (palette.name === 'dark' ? '#000000' : '#F2F2F7');
+  const bgColor = bg ?? palette.background;
 
   return (
     <View style={[styles.outer, { backgroundColor: bgColor }, style]}>

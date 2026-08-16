@@ -1,5 +1,21 @@
 type JsonValue = any;
 
+/**
+ * 带超时的 fetch 封装（Hermes 兼容）。
+ * 注意：不能用 AbortSignal.timeout() —— 该 API 在 React Native Hermes 中不存在，
+ * 调用会抛 "undefined is not a function"（历史教训：曾导致音乐库/弹幕 LRC/歌词/成员库全部静默失败）。
+ */
+export function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 10000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = options.signal ?? controller.signal;
+  return fetch(url, { ...options, signal }).finally(() => clearTimeout(timer));
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST';
   body?: any;

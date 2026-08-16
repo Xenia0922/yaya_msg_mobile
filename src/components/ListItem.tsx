@@ -44,7 +44,7 @@ export function ListItem({
       style={({ pressed }) => [
         styles.row,
         {
-          backgroundColor: pressed ? (palette.name === 'dark' ? '#2A2A2C' : '#F2F2F7') : 'transparent',
+          backgroundColor: pressed ? palette.fill2 : 'transparent',
           opacity: disabled ? 0.45 : 1,
         },
         style,

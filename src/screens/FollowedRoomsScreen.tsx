@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
-import { useAppTheme } from '../hooks/useAppTheme';
-import { usePalette } from '../theme';
+import { usePalette, radii, radiiAlias } from '../theme';
 
 import {
   ActivityIndicator,
@@ -25,7 +24,8 @@ import Video from 'react-native-video';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
 import { CenterSpinner } from '../components/Loaders';
-import { FadeInView } from '../components/Motion';
+import { EmptyState, ErrorState } from '../components/StateViews';
+import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp } from '../utils/format';
@@ -347,6 +347,7 @@ function findLastMessage(messages: any[], member?: Member) {
   if (!member) return null;
   return messages.find((msg) => (
     String(msg.channelId || '') === String(member.channelId || '')
+    || String(msg.channelId || '') === String(member.yklzId || '')
     || String(msg.serverId || '') === String(member.serverId || '')
     || String(msg.userId || msg.ownerId || '') === String(member.id || '')
   ));
@@ -674,6 +675,7 @@ function playerSource(url: string) {
 }
 
 function VideoCoverCard({ media, onPress, onLongPress }: { media: RoomMedia; onPress: () => void; onLongPress: () => void }) {
+  const palette = usePalette();
   const [loaded, setLoaded] = useState(false);
   const hasCover = !!media.cover;
   return (
@@ -695,7 +697,7 @@ function VideoCoverCard({ media, onPress, onLongPress }: { media: RoomMedia; onP
           />
           {!loaded ? (
             <View style={styles.videoCoverPlaceholder}>
-              <Text style={styles.videoCoverPlaceholderText}>{t('视频')}</Text>
+              <Text style={[styles.videoCoverPlaceholderText, { color: palette.tint }]}>{t('视频')}</Text>
             </View>
           ) : null}
         </View>
@@ -827,7 +829,6 @@ function deepFindDuration(value: any, depth = 0): number {
 }
 
 export default function FollowedRoomsScreen() {
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const token = useSettingsStore((state) => state.settings.p48Token);
@@ -840,6 +841,8 @@ export default function FollowedRoomsScreen() {
   const [selectedRoom, setSelectedRoom] = useState<Member | null>(null);
   const [roomMessages, setRoomMessages] = useState<RoomMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [followedError, setFollowedError] = useState('');
+  const [roomMsgError, setRoomMsgError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [roomSearchQuery, setRoomSearchQuery] = useState('');
@@ -955,6 +958,21 @@ export default function FollowedRoomsScreen() {
     }
   };
 
+  /** 置顶成员调换：dir=-1 上移 / 1 下移（交换相邻置顶位） */
+  const movePin = async (memberId: string, dir: -1 | 1) => {
+    const idx = pinned.indexOf(memberId);
+    const to = idx + dir;
+    if (idx < 0 || to < 0 || to >= pinned.length) return;
+    const next = [...pinned];
+    [next[idx], next[to]] = [next[to], next[idx]];
+    setPinned(next);
+    try {
+      await AsyncStorage.setItem('yaya_pinned_rooms', JSON.stringify(next));
+    } catch (error: any) {
+      showToast(t('置顶保存失败：{msg}', { msg: error?.message || String(error) }));
+    }
+  };
+
   const toggleFollow = useCallback(async (member: Member) => {
     if (!token) { showToast(t('请先登录后再关注成员')); return; }
     const id = String((member as any).id || (member as any).userId || '');
@@ -1007,14 +1025,22 @@ export default function FollowedRoomsScreen() {
         return { memberId: id, member };
       }).filter((item: any) => item.member?.channelId);
       const serverIds = followedMembers.map((item: any) => Number(item.member?.serverId || 0)).filter((id: number) => id > 0);
-      const lastMsgsRes = serverIds.length ? await pocketApi.getLastMessages(serverIds) : null;
+      // 小房间没有独立 serverId，用 yklzId（小房间 channelId）一起查询最新消息，
+      // 否则小房间在列表里永远显示「暂无消息」
+      const smallRoomIds = followedMembers.map((item: any) => Number(item.member?.yklzId || 0)).filter((id: number) => id > 0);
+      const queryIds = Array.from(new Set([...serverIds, ...smallRoomIds]));
+      const lastMsgsRes = queryIds.length ? await pocketApi.getLastMessages(queryIds) : null;
       const lastMsgs = unwrapList(lastMsgsRes, ['content.lastMsgList', 'content.data', 'data', 'lastMsgList']);
       setFollowed(followedMembers.map((item: any) => ({
         ...item,
         lastMessage: findLastMessage(lastMsgs, item.member),
       })));
       if (!silent) showToast(t('已加载 {count} 个房间', { count: followedMembers.length }));
-    } catch (e) { if (!silent) showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
+      setFollowedError('');
+    } catch (e) {
+      setFollowedError(errorMessage(e));
+      if (!silent) showToast(t('加载失败：{msg}', { msg: errorMessage(e) }));
+    }
     finally { setLoading(false); }
   }, [members, showToast, t, token]);
   loadFollowedRef.current = loadFollowed;
@@ -1032,6 +1058,7 @@ export default function FollowedRoomsScreen() {
     setPlayingMedia(null);
     setLoading(true);
     setRoomMessages([]);
+    setRoomMsgError('');
     setRoomNextTime(0);
     setHasMoreMessages(false);
     setRoomMode(nextMode);
@@ -1051,12 +1078,14 @@ export default function FollowedRoomsScreen() {
       });
       const list = unwrapList(res, ['content.messageList', 'content.message', 'content.messages', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'messages', 'list']);
       setRoomMessages(sortMessagesNewestFirst(list));
+      setRoomMsgError('');
       const nextTime = getNextTime(res, list);
       setRoomNextTime(nextTime);
       setHasMoreMessages(nextTime > 0 && list.length > 0);
     } catch (error) {
       showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
       setRoomMessages([]);
+      setRoomMsgError(errorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -1196,7 +1225,14 @@ export default function FollowedRoomsScreen() {
       });
     }
     const pinnedIds = new Set(pinned);
-    return [...list].sort((a, b) => (pinnedIds.has(b.memberId) ? 1 : 0) - (pinnedIds.has(a.memberId) ? 1 : 0));
+    // 置顶成员按 pinned 数组顺序排列（可调换），未置顶保持原序
+    const pinIdx = (id: string) => pinned.indexOf(id);
+    return [...list].sort((a, b) => {
+      const pa = pinnedIds.has(a.memberId) ? pinIdx(a.memberId) : Number.MAX_SAFE_INTEGER;
+      const pb = pinnedIds.has(b.memberId) ? pinIdx(b.memberId) : Number.MAX_SAFE_INTEGER;
+      if (pa !== pb) return pa - pb;
+      return 0;
+    });
   }, [followed, searchQuery, pinned]);
 
   // 搜索时从全量成员库匹配（未关注的成员可直接在此关注）
@@ -1276,18 +1312,18 @@ export default function FollowedRoomsScreen() {
         {roomPlayer ? (
           <View style={[styles.roomPlayerPage, roomPlayerFullscreen && styles.roomPlayerPageFullscreen]}>
             {!roomPlayerFullscreen ? <View style={styles.roomPlayerHeader}>
-              <TouchableOpacity onPress={closeRoomPlayer} style={styles.roomPlayerBack}>
-                <Text style={styles.roomPlayerBackText}>{t('返回房间')}</Text>
+              <TouchableOpacity onPress={closeRoomPlayer} style={styles.roomPlayerBack} activeOpacity={0.85}>
+                <Text style={[styles.roomPlayerBackText, { color: palette.tint }]}>{t('返回房间')}</Text>
               </TouchableOpacity>
               <Text style={styles.roomPlayerTitle} numberOfLines={1}>{roomPlayer.title}</Text>
-              <TouchableOpacity onPress={openRoomRankPanel} style={styles.roomPlayerTool}>
+              <TouchableOpacity onPress={openRoomRankPanel} style={styles.roomPlayerTool} activeOpacity={0.85} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                 <Text style={styles.roomPlayerToolText}>{t('贡献榜')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setRoomPlayerFullscreen(true)} style={styles.roomPlayerTool}>
+              <TouchableOpacity onPress={() => setRoomPlayerFullscreen(true)} style={styles.roomPlayerTool} activeOpacity={0.85} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                 <Text style={styles.roomPlayerToolText}>{t('全屏')}</Text>
               </TouchableOpacity>
             </View> : (
-              <TouchableOpacity onPress={() => setRoomPlayerFullscreen(false)} style={styles.exitRoomFullscreenBtn}>
+              <TouchableOpacity onPress={() => setRoomPlayerFullscreen(false)} style={styles.exitRoomFullscreenBtn} activeOpacity={0.85}>
                 <Text style={styles.exitRoomFullscreenText}>{t('退出全屏')}</Text>
               </TouchableOpacity>
             )}
@@ -1307,25 +1343,42 @@ export default function FollowedRoomsScreen() {
             )}
             <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
               <View style={styles.roomModalShade}>
-                <View style={styles.roomRankPanel}>
-                  <View style={styles.roomRankHeader}>
-                    <Text style={styles.roomRankTitle}>{t('贡献榜')}</Text>
-                    <TouchableOpacity onPress={() => setRankVisible(false)}>
-                      <Text style={styles.roomPlayerBackText}>{t('关闭')}</Text>
-                    </TouchableOpacity>
+                <View style={[styles.roomRankPanel, { backgroundColor: palette.surface }]}>
+                  {/* 顶部 handle */}
+                  <View style={styles.roomRankHandleWrap}>
+                    <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
                   </View>
-                  <Text style={styles.roomRankStatus}>{rankStatus}</Text>
-                  <ScrollView style={styles.roomRankList}>
-                    {rankRows.map((row, index) => (
-                      <View key={String(row.userId || row.id || index)} style={styles.roomRankRow}>
-                        <Text style={styles.roomRankNo}>{row.rank || index + 1}</Text>
-                        {row.avatar ? <Image source={{ uri: row.avatar }} style={styles.roomRankAvatar} /> : <View style={styles.roomRankAvatar} />}
-                        <View style={styles.roomRankInfo}>
-                          <Text style={styles.roomRankName} numberOfLines={1}>{row.name}</Text>
-                          <Text style={styles.roomRankValue} numberOfLines={1}>{row.value ? t('贡献 {value}', { value: row.value }) : t('贡献用户')}</Text>
-                        </View>
+                  <View style={styles.roomRankHeader}>
+                    <Text style={[styles.roomRankTitle, { color: palette.label }]}>{t('贡献榜')}</Text>
+                    <ScalePressable onPress={() => setRankVisible(false)} pressedScale={0.92} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <View style={[styles.roomRankClose, { backgroundColor: palette.fill2 }]}>
+                        <MaterialCommunityIcons name="close" color={palette.labelSecondary} size={18} />
                       </View>
-                    ))}
+                    </ScalePressable>
+                  </View>
+                  <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>{rankStatus}</Text>
+                  <ScrollView style={styles.roomRankList} showsVerticalScrollIndicator={false}>
+                    {(() => {
+                      // 归一化进度条：取最高贡献值作为基准
+                      const maxValue = rankRows.reduce((max, r) => Math.max(max, Number(r.value) || 0), 0);
+                      return rankRows.map((row, index) => {
+                        const valNum = Number(row.value) || 0;
+                        const progress = maxValue > 0 ? Math.max(0, Math.min(1, valNum / maxValue)) : 0;
+                        return (
+                          <View key={String(row.userId || row.id || index)} style={[styles.roomRankRow, { borderBottomColor: palette.hairline }]}>
+                            <Text style={[styles.roomRankNo, { color: palette.tint }]}>{row.rank || index + 1}</Text>
+                            {row.avatar ? <Image source={{ uri: row.avatar }} style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} /> : <View style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} />}
+                            <View style={styles.roomRankInfo}>
+                              <Text style={[styles.roomRankName, { color: palette.label }]} numberOfLines={1}>{row.name}</Text>
+                              <View style={[styles.roomRankProgressTrack, { backgroundColor: palette.fill3 }]}>
+                                <View style={[styles.roomRankProgressFill, { width: `${progress * 100}%`, backgroundColor: palette.tint }]} />
+                              </View>
+                            </View>
+                            <Text style={[styles.roomRankValue, { color: palette.labelSecondary }]} numberOfLines={1}>{row.value ? t('贡献 {value}', { value: row.value }) : t('贡献用户')}</Text>
+                          </View>
+                        );
+                      });
+                    })()}
                   </ScrollView>
                 </View>
               </View>
@@ -1336,84 +1389,87 @@ export default function FollowedRoomsScreen() {
         <ScreenHeader title={shortName(selectedRoom)} onBack={closeRoom} right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
-              style={[styles.followBtn, isFollowingRoom && styles.followBtnOn]}
+              style={[styles.followBtn, { backgroundColor: isFollowingRoom ? palette.tintSoft : palette.tint }]}
               disabled={followBusyRoom}
               onPress={() => toggleFollow(selectedRoom)}
+              activeOpacity={0.85}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
             >
               {followBusyRoom ? (
-                <ActivityIndicator color={isFollowingRoom ? '#ff6f91' : '#ffffff'} size="small" />
+                <ActivityIndicator color={isFollowingRoom ? palette.tint : palette.onTint} size="small" />
               ) : (
-                <Text style={[styles.followBtnText, isFollowingRoom && styles.followBtnTextOn]}>{isFollowingRoom ? t('已关注') : t('关注')}</Text>
+                <Text style={[styles.followBtnText, { color: isFollowingRoom ? palette.tint : palette.onTint }]}>{isFollowingRoom ? t('已关注') : t('关注')}</Text>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(String(selectedRoom.id || ''))}>
-              <Text style={styles.pinBtnText}>{pinned.includes(String(selectedRoom.id || '')) ? t('取消置顶') : t('置顶')}</Text>
+            <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(String(selectedRoom.id || ''))} activeOpacity={0.85} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+              <Text style={[styles.pinBtnText, { color: palette.tint }]}>{pinned.includes(String(selectedRoom.id || '')) ? t('取消置顶') : t('置顶')}</Text>
             </TouchableOpacity>
           </View>
         } />
 
-          <View style={styles.chatTools}>
+          {/* 聊天工具条：surfaceGlassStrong 底圆角 18 + 分段胶囊 + tint 圆操作钮 */}
+          <View style={[styles.chatTools, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
           {/* 分段切换：大房间 / 小房间 */}
           <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
             <TouchableOpacity
               style={[styles.segmentItem, roomMode === 'big' && { backgroundColor: palette.tint }]}
               onPress={() => openRoom(selectedRoom, 'big', showFanMessages)}
+              activeOpacity={0.85}
             >
-              <Text style={[styles.segmentText, { color: roomMode === 'big' ? '#FFFFFF' : palette.labelSecondary }]}>{t('大房间')}</Text>
+              <Text style={[styles.segmentText, { color: roomMode === 'big' ? palette.onTint : palette.labelSecondary }]}>{t('大房间')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.segmentItem, roomMode === 'small' && { backgroundColor: palette.tint }]}
               onPress={() => openRoom(selectedRoom, 'small', showFanMessages)}
+              activeOpacity={0.85}
             >
-              <Text style={[styles.segmentText, { color: roomMode === 'small' ? '#FFFFFF' : palette.labelSecondary }]}>{t('小房间')}</Text>
+              <Text style={[styles.segmentText, { color: roomMode === 'small' ? palette.onTint : palette.labelSecondary }]}>{t('小房间')}</Text>
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }} />
-          <TouchableOpacity
-            style={[styles.chatToolIcon, { backgroundColor: palette.fill2 }]}
+          <ScalePressable
+            style={[styles.chatToolCircle, { backgroundColor: roomSearchOpen ? palette.tint : palette.fill2 }]}
             onPress={() => setRoomSearchOpen((v) => !v)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            pressedScale={0.9}
           >
             <MaterialCommunityIcons
               name={roomSearchOpen ? 'close' : 'magnify'}
               size={18}
-              color={roomSearchOpen ? palette.tint : palette.labelSecondary}
+              color={roomSearchOpen ? palette.onTint : palette.labelSecondary}
             />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.chatToolIcon, { backgroundColor: showFanMessages ? palette.tintSoft : palette.fill2 }]}
+          </ScalePressable>
+          <ScalePressable
+            style={[styles.chatToolCircle, { backgroundColor: showFanMessages ? palette.tint : palette.fill2 }]}
             onPress={() => openRoom(selectedRoom, roomMode, !showFanMessages)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            pressedScale={0.9}
           >
             <MaterialCommunityIcons
               name="account-group"
               size={18}
-              color={showFanMessages ? palette.tint : palette.labelSecondary}
+              color={showFanMessages ? palette.onTint : palette.labelSecondary}
             />
-            <Text style={[styles.chatToolIconText, { color: showFanMessages ? palette.tint : palette.labelSecondary }]}>
-              {showFanMessages ? t('粉丝') : t('成员')}
-            </Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
 
         {roomSearchOpen ? (
-          <View style={styles.roomSearchWrap}>
+          <View style={[styles.roomSearchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
+            <MaterialCommunityIcons name="magnify" size={17} color={palette.labelTertiary} />
             <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: palette.surfaceGlassStrong,
-                  borderColor: palette.innerStroke,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  color: palette.label,
-                },
-              ]}
+              style={[styles.roomSearchInput, { color: palette.label }]}
               placeholder={t('搜索聊天记录、成员名、粉丝名...')}
               placeholderTextColor={palette.labelTertiary}
               value={roomSearchQuery}
               onChangeText={setRoomSearchQuery}
               autoFocus
+              returnKeyType="search"
             />
+            {roomSearchQuery ? (
+              <TouchableOpacity onPress={() => setRoomSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -1432,7 +1488,7 @@ export default function FollowedRoomsScreen() {
             roomMessages.length ? (
               <View style={styles.chatFooter}>
                 {loadingMoreMessages ? (
-                  <CenterSpinner dark={isDark} />
+                  <CenterSpinner />
                 ) : hasMoreMessages ? (
                   <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('上滑加载更多')}</Text>
                 ) : (
@@ -1443,24 +1499,23 @@ export default function FollowedRoomsScreen() {
           }
           ListEmptyComponent={
             loading ? (
-              <CenterSpinner dark={isDark} text={t('正在加载消息…')} />
+              <CenterSpinner text={t('正在加载消息…')} />
             ) : roomSearchQuery.trim() ? (
               <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有匹配的消息')}</Text>
+            ) : roomMsgError ? (
+              <ErrorState title={t('加载失败')} hint={roomMsgError} onAction={() => selectedRoom && openRoom(selectedRoom, roomMode, showFanMessages)} />
             ) : (
-              <View style={styles.emptyWrap}>
-                <MaterialCommunityIcons name="message-text-outline" size={40} color={palette.labelTertiary} />
-                <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无消息，切换大/小房间试试')}</Text>
-              </View>
+              <EmptyState icon="message-text-outline" title={t('暂无消息，切换大/小房间试试')} />
             )
           }
           renderItem={({ item: row }: any) => {
-            // 日期分隔条
+            // 日期分隔条：居中胶囊 fill2 底
             if (row.type === 'date') {
               return (
                 <View style={styles.chatDateRow}>
-                  <View style={[styles.chatDateLine, { backgroundColor: palette.fill3 }]} />
-                  <Text style={[styles.chatDateText, { color: palette.labelTertiary }]}>{row.label}</Text>
-                  <View style={[styles.chatDateLine, { backgroundColor: palette.fill3 }]} />
+                  <View style={[styles.chatDatePill, { backgroundColor: palette.fill2 }]}>
+                    <Text style={[styles.chatDateText, { color: palette.labelTertiary }]}>{row.label}</Text>
+                  </View>
                 </View>
               );
             }
@@ -1510,7 +1565,7 @@ export default function FollowedRoomsScreen() {
                   {/* 组首显示名字 + HH:mm；组内不重复 */}
                   {row.groupStart ? (
                     <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
-                      <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? '#7BC6FF' : palette.labelSecondary }]} numberOfLines={1}>
+                      <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
                         {profile.name}
                       </Text>
                       <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>
@@ -1518,23 +1573,23 @@ export default function FollowedRoomsScreen() {
                       </Text>
                     </View>
                   ) : null}
-                  <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, !row.groupStart && styles.msgBubbleMid, { backgroundColor: (!idol && !mine) ? palette.surfaceGlass : undefined, borderColor: (!idol && !mine) ? palette.innerStroke : undefined, borderWidth: (!idol && !mine) ? StyleSheet.hairlineWidth : 0 }]}>
+                  <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, !row.groupStart && styles.msgBubbleMid, { backgroundColor: idol ? palette.tint : mine ? palette.tint : palette.surfaceGlass, borderColor: idol || mine ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: !row.groupStart ? 0 : StyleSheet.hairlineWidth }]}>
                     {replyName || replyQuoted ? (
-                      <View style={[styles.replyCard, { backgroundColor: 'rgba(0,0,0,0.04)', borderLeftColor: palette.tint }]}>
+                      <View style={[styles.replyCard, { backgroundColor: palette.fill2, borderLeftColor: palette.tint }]}>
                         {replyName ? <Text style={[styles.replyName, { color: palette.tint }]} numberOfLines={1}>{replyName}</Text> : null}
                         {replyQuoted ? <Text style={[styles.replyText, { color: palette.labelSecondary }]} numberOfLines={3}>{replyQuoted}</Text> : null}
                       </View>
                     ) : null}
                     {bubbleText ? (
-                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, (!idol && !mine) && { color: palette.labelSecondary }]}>
+                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, (idol || mine) ? { color: palette.onTint } : { color: palette.labelSecondary }]}>
                         {bubbleText}
                       </Text>
                     ) : null}
                     {gift && !giftReplyText ? (
-                      <View style={[styles.giftCard, giftReplyText ? styles.giftCardCompact : null]}>
-                        {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={styles.giftImage} /> : <View style={styles.giftImageFallback}><MaterialCommunityIcons name="gift" size={16} color="#FFFFFF" /></View>) : null}
+                      <View style={[styles.giftCard, { backgroundColor: palette.fill2, borderColor: palette.tintSoft }, giftReplyText ? styles.giftCardCompact : null]}>
+                        {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={[styles.giftImage, { backgroundColor: palette.surface }]} /> : <View style={[styles.giftImageFallback, { backgroundColor: palette.tint }]}><MaterialCommunityIcons name="gift" size={16} color={palette.onTint} /></View>) : null}
                         <View style={styles.giftTextWrap}>
-                          <Text style={styles.giftName} numberOfLines={1}>{idol ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
+                          <Text style={[styles.giftName, { color: palette.label }]} numberOfLines={1}>{idol ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
                           <Text style={[styles.giftMeta, { color: palette.labelSecondary }]}>{t('数量')} x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
                         </View>
                       </View>
@@ -1563,43 +1618,39 @@ export default function FollowedRoomsScreen() {
                       // 视频消息：优先用服务器封面，否则用视频首帧（paused 渲染）做封面
                       <VideoCoverCard media={media} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} />
                     ) : (
-                      <TouchableOpacity style={[styles.mediaCard, (idol || mine) && styles.mediaCardHighlight]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)} onPress={() => media.type === 'live' ? playMedia(media) : undefined}>
+                      <TouchableOpacity style={[styles.mediaCard, { backgroundColor: (idol || mine) ? palette.tint : palette.surfaceGlass, borderColor: (idol || mine) ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)}>
                         {media.cover ? (
                           <Image source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" />
                         ) : null}
                         <View style={styles.mediaMeta}>
-                          <Text style={[styles.mediaIcon, (idol || mine) && styles.mediaTextHighlight]}>{t(mediaLabel(media.type))}</Text>
+                          <Text style={[styles.mediaIcon, (idol || mine) ? { color: palette.onTint } : { color: palette.tint }]}>{t(mediaLabel(media.type))}</Text>
                           {media.type !== 'audio' && media.type !== 'video' && media.title ? (
-                            <Text style={[styles.mediaTitle, (idol || mine) && styles.mediaTextHighlight, isDark && !(idol || mine) && styles.mediaTitleDark]} numberOfLines={2}>{media.title}</Text>
+                            <Text style={[styles.mediaTitle, (idol || mine) ? { color: palette.onTint } : { color: palette.label }]} numberOfLines={2}>{media.title}</Text>
                           ) : null}
-                          {media.duration ? <Text style={[styles.mediaDuration, (idol || mine) && styles.mediaTextHighlight, isDark && !(idol || mine) && styles.mediaDurationDark]}>{media.duration}s</Text> : null}
+                          {media.duration ? <Text style={[styles.mediaDuration, (idol || mine) ? { color: palette.onTint } : { color: palette.labelSecondary }]}>{media.duration}s</Text> : null}
                         </View>
                         <TouchableOpacity
-                          style={[styles.mediaPlayBtn, (idol || mine) && styles.mediaPlayBtnHighlight]}
+                          style={[styles.mediaPlayBtn, { backgroundColor: palette.tint, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }]}
                           onPress={() => playMedia(media)}
+                          activeOpacity={0.85}
                         >
-                          <TouchableOpacity
-                            style={[styles.mediaPlayBtn, (idol || mine) && styles.mediaPlayBtnHighlight, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }]}
-                            onPress={() => playMedia(media)}
-                          >
-                            <MaterialCommunityIcons
-                              name={playingMedia?.url && media.url && playingMedia.url === media.url ? 'pause' : 'play'}
-                              size={14}
-                              color={(idol || mine) ? '#ff6f91' : '#FFFFFF'}
-                            />
-                            <Text style={[styles.mediaPlayText, (idol || mine) && styles.mediaPlayTextHighlight]}>
-                              {playingMedia?.url && media.url && playingMedia.url === media.url ? t('暂停') : media.duration ? `${media.duration}s` : t('播放')}
-                            </Text>
-                          </TouchableOpacity>
+                          <MaterialCommunityIcons
+                            name={playingMedia?.url && media.url && playingMedia.url === media.url ? 'pause' : 'play'}
+                            size={14}
+                            color={palette.onTint}
+                          />
+                          <Text style={[styles.mediaPlayText, { color: palette.onTint }]}>
+                            {playingMedia?.url && media.url && playingMedia.url === media.url ? t('暂停') : media.duration ? `${media.duration}s` : t('播放')}
+                          </Text>
                         </TouchableOpacity>
                       </TouchableOpacity>
                     )) : (!bubbleText && !gift) ? (
-                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, isDark && !mine && !idol && styles.textSubDark]}>{t('[空消息]')}</Text>
+                      <Text style={[styles.msgBody, (idol || mine) && styles.msgBodyHighlight, (idol || mine) ? { color: palette.onTint } : { color: palette.labelSecondary }]}>{t('[空消息]')}</Text>
                     ) : null}
                     {media?.url && playingMedia?.url === media.url ? (
                       media.type === 'link' ? (
-                        <TouchableOpacity style={styles.openLinkBtn} onPress={() => Linking.openURL(media.url).catch(() => {})}>
-                          <Text style={styles.openLinkText} numberOfLines={1}>{media.url}</Text>
+                        <TouchableOpacity style={styles.openLinkBtn} onPress={() => Linking.openURL(media.url).catch(() => {})} activeOpacity={0.85}>
+                          <Text style={[styles.openLinkText, { color: palette.tint }]} numberOfLines={1}>{media.url}</Text>
                         </TouchableOpacity>
                       ) : media.type === 'audio' ? (
                         <View style={styles.inlineAudioWrap}>
@@ -1636,16 +1687,16 @@ export default function FollowedRoomsScreen() {
 
   return (
     <View style={[styles.container]}>
-      <ScreenHeader title={t('房间')} right={
+      <ScreenHeader title={t('房间')} hideBack right={
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => setSearchOpen((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity onPress={() => setSearchOpen((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
             <MaterialCommunityIcons
               name={searchOpen ? 'close' : 'magnify'}
               size={22}
               color={palette.label}
             />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => loadFollowed()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity onPress={() => loadFollowed()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
             <MaterialCommunityIcons name="refresh" size={22} color={palette.label} />
           </TouchableOpacity>
         </View>
@@ -1661,9 +1712,10 @@ export default function FollowedRoomsScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoFocus
+            returnKeyType="search"
           />
           {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
               <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
             </TouchableOpacity>
           ) : null}
@@ -1714,11 +1766,12 @@ export default function FollowedRoomsScreen() {
                       disabled={busy}
                       onPress={() => toggleFollow(member)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.85}
                     >
                       {busy ? (
-                        <ActivityIndicator color={isFollowing ? palette.tint : '#ffffff'} size="small" />
+                        <ActivityIndicator color={isFollowing ? palette.tint : palette.onTint} size="small" />
                       ) : (
-                        <Text style={[styles.memberHitBtnText, isFollowing && { color: palette.tint }]}>
+                        <Text style={[styles.memberHitBtnText, { color: isFollowing ? palette.tint : palette.onTint }]}>
                           {isFollowing ? t('已关注') : t('关注')}
                         </Text>
                       )}
@@ -1731,12 +1784,10 @@ export default function FollowedRoomsScreen() {
           )
         ) : (
         <PerfFlatList
-          key="rooms-grid"
+          key="rooms-list"
           data={filtered}
           keyExtractor={(item) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
-          numColumns={2}
-          columnWrapperStyle={styles.memberGridRow}
           renderItem={({ item, index }) => {
             const fid = String(item.member?.id || item.memberId);
             const isFollowing = followedIds.has(fid);
@@ -1746,105 +1797,144 @@ export default function FollowedRoomsScreen() {
             const team = item.member?.team || item.member?.groupName || '';
             const lastTime = Number(item.lastMessage?.msgTime || item.lastMessage?.ctime || 0);
             const lastText = item.lastMessage ? messageText(item.lastMessage) : '';
+            // 直播中判定：最近一条消息是 LIVE 类型且发生在 30 分钟内（否则房间列表不会全是「直播中」）
+            const lastMsgType = String(item.lastMessage?.msgType || item.lastMessage?.liveType || item.lastMessage?.messageType || '');
+            const isLiveNow = /LIVE/i.test(lastMsgType) && !!lastTime && Date.now() - lastTime < 30 * 60 * 1000;
             return (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.memberGridItem}>
-              <TouchableOpacity
-                style={[
-                  styles.memberCard,
-                  {
-                    backgroundColor: palette.surface,
-                    borderColor: isPinned ? palette.tint : palette.hairline,
-                    borderWidth: isPinned ? 1.5 : StyleSheet.hairlineWidth,
-                  },
-                ]}
-                onPress={() => item.member && openRoom(item.member)}
-                activeOpacity={0.88}
-              >
-                <TouchableOpacity
-                  style={[styles.memberPin, { backgroundColor: isPinned ? palette.tintSoft : palette.fill2 }]}
-                  onPress={() => togglePin(item.memberId)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.roomRow}>
+              <View style={[styles.roomRowCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+                <ScalePressable
+                  style={styles.roomRowMain}
+                  onPress={() => item.member && openRoom(item.member)}
+                  pressedScale={0.98}
+                  activeOpacity={0.9}
                 >
-                  <MaterialCommunityIcons
-                    name={isPinned ? 'pin' : 'pin-outline'}
-                    size={15}
-                    color={isPinned ? palette.tint : palette.labelTertiary}
-                  />
-                </TouchableOpacity>
-                <View style={[styles.memberAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
-                  {item.member?.avatar ? (
-                    <Image source={{ uri: item.member.avatar }} style={styles.memberAvatarImg} />
-                  ) : (
-                    <Text style={[styles.memberAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
-                  )}
-                </View>
-                <View style={styles.memberInfo}>
-                  <View style={styles.memberNameRow}>
-                    <Text style={[styles.memberName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
-                  </View>
-                  {team ? (
-                    <Text style={[styles.memberTeam, { color: palette.tint }]} numberOfLines={1}>{team}</Text>
-                  ) : null}
-                  <Text style={[styles.memberLast, { color: palette.labelSecondary }]} numberOfLines={2}>
-                    {lastText || t('点击查看房间消息')}
-                  </Text>
-                  <View style={styles.memberFoot}>
-                    {lastTime ? (
-                      <Text style={[styles.memberTime, { color: palette.labelTertiary }]} numberOfLines={1}>
-                        {formatTimestamp(lastTime).slice(5, 16)}
-                      </Text>
+                  {/* 封面 56 圆角 12 */}
+                  <View style={[styles.roomCover, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
+                    {item.member?.avatar ? (
+                      <Image source={{ uri: item.member.avatar }} style={styles.roomCoverImg} />
                     ) : (
-                      <Text style={[styles.memberTime, { color: palette.labelTertiary }]} numberOfLines={1}>{t('暂无消息')}</Text>
+                      <Text style={[styles.roomCoverText, { color: palette.tint }]} numberOfLines={1}>{avatarInitial(name)}</Text>
                     )}
-                    {item.member ? (
-                      <TouchableOpacity
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        disabled={busy}
-                        onPress={() => {
-                          if (isFollowing) {
-                            // 取关不可恢复，二次确认防误触
-                            Alert.alert(
-                              t('取消关注'),
-                              t('确定不再关注 {name} 吗？', { name: shortName(item.member, item.memberId) }),
-                              [
-                                { text: t('保留'), style: 'cancel' },
-                                { text: t('取消关注'), style: 'destructive', onPress: () => toggleFollow(item.member!) },
-                              ],
-                            );
-                          } else {
-                            toggleFollow(item.member!);
-                          }
-                        }}
-                      >
-                        {busy ? (
-                          <ActivityIndicator color={palette.tint} size="small" />
-                        ) : (
-                          <MaterialCommunityIcons
-                            name={isFollowing ? 'heart' : 'heart-outline'}
-                            size={20}
-                            color={isFollowing ? palette.tint : palette.labelTertiary}
-                          />
-                        )}
-                      </TouchableOpacity>
-                    ) : null}
                   </View>
+                  <View style={styles.roomInfo}>
+                    <View style={styles.roomNameRow}>
+                      <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
+                      {/* 在线状态点：有最近消息视为在线 */}
+                      <View style={[styles.statusDot, { backgroundColor: lastTime ? palette.success : palette.labelTertiary }]} />
+                      {isLiveNow ? (
+                        <View style={[styles.liveBadgeChip, { backgroundColor: palette.tint }]}>
+                          <MaterialCommunityIcons name="broadcast" size={10} color={palette.onTint} />
+                          <Text style={styles.liveBadgeChipText}>{t('直播中')}</Text>
+                        </View>
+                      ) : null}
+                      {isPinned ? (
+                        <View style={[styles.pinTagChip, { backgroundColor: palette.tintSoft }]}>
+                          <MaterialCommunityIcons name="pin" size={10} color={palette.tint} />
+                          <Text style={[styles.pinTagChipText, { color: palette.tint }]}>{t('置顶')}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    {team ? (
+                      <Text style={[styles.roomTeam, { color: palette.labelTertiary }]} numberOfLines={1}>{team}</Text>
+                    ) : null}
+                    <Text style={[styles.roomLast, { color: palette.labelSecondary }]} numberOfLines={1}>
+                      {lastText || t('点击查看房间消息')}
+                    </Text>
+                    <View style={styles.roomFoot}>
+                      <Text style={[styles.roomTime, { color: palette.labelTertiary }]} numberOfLines={1}>
+                        {lastTime ? formatTimestamp(lastTime).slice(5, 16) : ''}
+                      </Text>
+                    </View>
+                  </View>
+                </ScalePressable>
+                <View style={styles.roomActions}>
+                  {isPinned && pinned.length > 1 ? (
+                    /* 排序胶囊：单个圆角方块内竖向排列 ↑ / ↓，整体像一个排序手柄 */
+                    <View style={[styles.sortCapsule, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
+                      <ScalePressable
+                        style={styles.sortHalfV}
+                        onPress={() => movePin(item.memberId, -1)}
+                        pressedScale={0.8}
+                        hitSlop={{ top: 4, bottom: 1, left: 6, right: 6 }}
+                        disabled={pinned.indexOf(item.memberId) === 0}
+                      >
+                        <MaterialCommunityIcons name="chevron-up" size={14} color={pinned.indexOf(item.memberId) === 0 ? palette.labelTertiary : palette.labelSecondary} />
+                      </ScalePressable>
+                      <View style={[styles.sortDividerV, { backgroundColor: palette.innerStroke }]} />
+                      <ScalePressable
+                        style={styles.sortHalfV}
+                        onPress={() => movePin(item.memberId, 1)}
+                        pressedScale={0.8}
+                        hitSlop={{ top: 1, bottom: 4, left: 6, right: 6 }}
+                        disabled={pinned.indexOf(item.memberId) === pinned.length - 1}
+                      >
+                        <MaterialCommunityIcons name="chevron-down" size={14} color={pinned.indexOf(item.memberId) === pinned.length - 1 ? palette.labelTertiary : palette.labelSecondary} />
+                      </ScalePressable>
+                    </View>
+                  ) : null}
+                  <ScalePressable
+                    style={[styles.roomPinBtn, { backgroundColor: isPinned ? palette.tintSoft : palette.fill2 }]}
+                    onPress={() => togglePin(item.memberId)}
+                    pressedScale={0.9}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <MaterialCommunityIcons
+                      name={isPinned ? 'pin' : 'pin-outline'}
+                      size={15}
+                      color={isPinned ? palette.tint : palette.labelTertiary}
+                    />
+                  </ScalePressable>
+                  <ScalePressable
+                    style={[styles.roomFollowBtn, { backgroundColor: isFollowing ? palette.tintSoft : palette.fill2 }]}
+                    disabled={busy}
+                    pressedScale={0.9}
+                    activeOpacity={0.85}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    onPress={() => {
+                      if (isFollowing) {
+                        Alert.alert(
+                          t('取消关注'),
+                          t('确定不再关注 {name} 吗？', { name: shortName(item.member, item.memberId) }),
+                          [
+                            { text: t('保留'), style: 'cancel' },
+                            { text: t('取消关注'), style: 'destructive', onPress: () => item.member && toggleFollow(item.member) },
+                          ],
+                        );
+                      } else if (item.member) {
+                        toggleFollow(item.member);
+                      }
+                    }}
+                  >
+                    {busy ? (
+                      <ActivityIndicator color={palette.tint} size="small" />
+                    ) : (
+                      <MaterialCommunityIcons
+                        name={isFollowing ? 'heart' : 'heart-outline'}
+                        size={17}
+                        color={isFollowing ? palette.tint : palette.labelTertiary}
+                      />
+                    )}
+                  </ScalePressable>
                 </View>
-              </TouchableOpacity>
+              </View>
             </FadeInView>
             );
           }}
           ListEmptyComponent={
             searchOpen && searchQuery.trim() ? null : loading ? (
-            <CenterSpinner dark={isDark} text={t('加载中…')} />
+            <CenterSpinner text={t('加载中…')} />
           ) : !token ? (
-            <View style={styles.emptyWrap}>
-              <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('登录后可查看关注房间和最新消息')}</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('LoginScreen')} style={styles.emptyLink}>
-                <Text style={[styles.loginLink, { color: palette.tint }]}>{t('去登录')}</Text>
-              </TouchableOpacity>
-            </View>
+            <EmptyState
+              icon="account-key-outline"
+              title={t('登录后可查看关注房间和最新消息')}
+              actionLabel={t('去登录')}
+              onAction={() => navigation.navigate('LoginScreen')}
+            />
+          ) : followedError ? (
+            <ErrorState title={t('加载失败')} hint={followedError} onAction={() => loadFollowed(true)} />
           ) : (
-            <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无关注房间')}</Text>
+            <EmptyState icon="heart-outline" title={t('暂无关注房间')} />
           )}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
@@ -1859,57 +1949,54 @@ export default function FollowedRoomsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+  chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, padding: 6, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth },
   segment: {
     flexDirection: 'row',
-    borderRadius: 14,
+    borderRadius: radii.pill,
     padding: 3,
     gap: 2,
   },
   segmentItem: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 6,
-    borderRadius: 11,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 64,
   },
   segmentText: { fontSize: 12, fontWeight: '800' },
-  chatToolIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    width: 38,
+  chatToolCircle: {
+    width: 34,
     height: 34,
-    borderRadius: 12,
+    borderRadius: 17,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  chatToolIconText: { fontSize: 10, fontWeight: '800' },
   chatDateRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    marginVertical: 12,
+    paddingVertical: 10,
   },
-  chatDateLine: { flex: 1, height: StyleSheet.hairlineWidth },
+  chatDatePill: {
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+  },
   chatDateText: { fontSize: 11, fontWeight: '600' },
   roomSearchWrap: { paddingHorizontal: 16, paddingBottom: 8 },
-  modePill: { flex: 1, minHeight: 46, paddingVertical: 10, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  modePillActive: { backgroundColor: '#ff6f91' },
-  modePillText: { color: '#444', fontSize: 13, fontWeight: '800' },
-  modePillTextActive: { color: '#fff' },
-  modePillDark: { backgroundColor: '#1C1C1F' },
-  modePillTextDark: { color: '#aaa' },
-  subtitle: { fontSize: 12, color: '#3f3f3f', marginTop: 2, paddingHorizontal: 16 },
-  row: { flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
-  input: { flex: 1, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', backgroundColor: '#FFFFFF', color: '#333' },
-  inputDark: { backgroundColor: '#1C1C1F', borderColor: '#444', color: '#eeeeee' },
-  refreshBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, backgroundColor: '#ff6f91', justifyContent: 'center' },
-  refreshBtnDisabled: { opacity: 0.5 },
-  refreshText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  headerAction: { color: '#ff6f91', fontWeight: '800', fontSize: 13 },
+  roomSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: radiiAlias.input,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  roomSearchInput: { flex: 1, fontSize: 14, padding: 0, height: 40 },
+  input: { flex: 1, padding: 10, borderRadius: radiiAlias.input, borderWidth: StyleSheet.hairlineWidth },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   searchBar: {
     flexDirection: 'row',
@@ -1919,17 +2006,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 12,
     height: 40,
-    borderRadius: 14,
+    borderRadius: radiiAlias.input,
     borderWidth: StyleSheet.hairlineWidth,
   },
   searchInput: { flex: 1, fontSize: 15, padding: 0 },
   memberHitsListContent: { paddingHorizontal: 8, paddingBottom: 112 },
-  memberHitsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-  },
   memberHitCard: {
     flex: 1,
     padding: 14,
@@ -1964,7 +2045,7 @@ const styles = StyleSheet.create({
     minWidth: 64,
     marginTop: 10,
   },
-  memberHitBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  memberHitBtnText: { fontSize: 13, fontWeight: '800' },
   memberHitsEmpty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   memberGridRow: { paddingHorizontal: 8 },
   memberGridItem: { width: '50%', padding: 4 },
@@ -2013,79 +2094,109 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   memberTime: { fontSize: 12 },
-  loginLink: { color: '#333', fontWeight: '800', fontSize: 13 },
-  loginLinkDark: { color: '#eee', fontWeight: '800', fontSize: 13 },
-  status: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
-  mediaStatus: { color: '#6b4a00', backgroundColor: 'rgba(255,243,205,0.92)', marginHorizontal: 16, marginTop: 4, padding: 8, borderRadius: 12, fontSize: 12, lineHeight: 18 },
-  statusDark: { color: '#ffe2a0', backgroundColor: 'rgba(70,52,12,0.82)' },
-  listContent: { paddingBottom: 112 },
-  chatContent: { paddingBottom: 132, paddingTop: 4 },
-  roomItem: { padding: 12, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginVertical: 4, borderWidth: StyleSheet.hairlineWidth },
-  roomItemDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.12)' },
-  roomItemRow: { flexDirection: 'row', alignItems: 'center' },
-  roomAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  listContent: { paddingBottom: 112, paddingTop: 4 },
+  /** 房间行卡：封面 56 圆角 12 + 房间名 + 状态点 + 直播中徽标 */
+  roomRow: { paddingHorizontal: 16, marginBottom: 8 },
+  roomRowCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
-  roomAvatarText: { fontSize: 20, fontWeight: '800' },
-  roomMetaInline: { fontSize: 11, marginLeft: 6 },
-  roomTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  roomName: { fontSize: 15, fontWeight: '900', color: '#333', flex: 1 },
-  roomTeam: { fontSize: 11, color: '#ff6f91', fontWeight: '800' },
-  pinBtn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(255,111,145,0.12)' },
-  pinBtnText: { fontSize: 9, color: '#ff6f91', fontWeight: '800' },
-  followBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center', minWidth: 52, height: 26 },
-  followBtnOn: { backgroundColor: 'rgba(255,111,145,0.16)' },
-  followBtnText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  followBtnTextOn: { color: '#ff6f91' },
-  roomMetaRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  roomMeta: { fontSize: 10, color: '#3f3f3f', backgroundColor: 'rgba(255,111,145,0.14)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
-  lastMessage: { fontSize: 12, color: '#3f3f3f', marginTop: 6 },
+  roomRowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  roomCover: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  roomCoverImg: { width: 56, height: 56, borderRadius: 12 },
+  roomCoverText: { fontSize: 22, fontWeight: '800' },
+  roomInfo: { flex: 1, minWidth: 0, marginLeft: 12 },
+  roomNameRow: { flexDirection: 'row', alignItems: 'center' },
+  roomName: { fontSize: 15, fontWeight: '700', flexShrink: 1 },
+  statusDot: { width: 8, height: 8, borderRadius: 4, marginLeft: 6 },
+  liveBadgeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  liveBadgeChipText: { color: '#FFFFFF', fontSize: 9, fontWeight: '800' },
+  roomTeam: { fontSize: 11, marginTop: 3, fontWeight: '600' },
+  roomLast: { fontSize: 12, marginTop: 4, lineHeight: 16 },
+  roomFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  roomTime: { fontSize: 11 },
+  roomPinTag: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  pinTagChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
+  },
+  pinTagChipText: { fontSize: 9, fontWeight: '800' },
+  roomActions: { marginLeft: 6, gap: 6, alignItems: 'center', paddingRight: 12, paddingVertical: 10 },
+  /* 排序胶囊：单个圆角方块内竖向排列 ↑ / ↓ */
+  sortCapsule: {
+    width: 32, height: 32, borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden',
+  },
+  sortHalfV: { width: 32, height: 15, alignItems: 'center', justifyContent: 'center' },
+  sortDividerV: { width: 14, height: StyleSheet.hairlineWidth, alignSelf: 'center' },
+  roomPinBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  roomFollowBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  chatContent: { paddingBottom: 132, paddingTop: 4 },
+  pinBtn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  pinBtnText: { fontSize: 9, fontWeight: '800' },
+  followBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: radiiAlias.button, alignItems: 'center', justifyContent: 'center', minWidth: 52, height: 26 },
+  followBtnText: { fontSize: 11, fontWeight: '800' },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },
-  chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginVertical: 6 },
-  chatRowTight: { marginTop: -3, marginBottom: 3 },
+  chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginTop: 7, marginBottom: 2 },
+  chatRowTight: { marginTop: 2, marginBottom: 1 },
   chatRowMine: { justifyContent: 'flex-end' },
-  avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 9, backgroundColor: '#FFFFFF' },
+  avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 9 },
   avatarPlaceholder: { width: 40, height: 40, marginRight: 9 },
-  avatarFallback: { width: 40, height: 40, borderRadius: 20, marginRight: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  avatarText: { color: '#ff6f91', fontWeight: '900', fontSize: 15 },
-  msgBlock: { maxWidth: '78%', minWidth: 120 },
+  avatarFallback: { width: 40, height: 40, borderRadius: 20, marginRight: 9, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontWeight: '900', fontSize: 15 },
+  msgBlock: { maxWidth: '78%', minWidth: 48 },
   msgBlockMine: { alignItems: 'flex-end' },
-  replyCard: { marginBottom: 6, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
-  replyCardDark: { backgroundColor: 'rgba(255,255,255,0.08)' },
-  replyName: { fontSize: 12, color: '#ff6f91', fontWeight: '700', marginBottom: 2 },
-  replyText: { fontSize: 13, color: '#555', lineHeight: 18 },
-  replyTextDark: { color: '#aaa' },
+  replyCard: { marginBottom: 6, padding: 8, borderRadius: radii.sm, borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
+  replyName: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
+  replyText: { fontSize: 13, lineHeight: 18 },
   msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, paddingHorizontal: 6 },
   msgMetaLineMine: { justifyContent: 'flex-end' },
-  msgSender: { fontSize: 12, fontWeight: '700', color: '#333', maxWidth: 150 },
-  msgSenderIdol: { color: '#ff4f7f' },
-  msgSenderMine: { color: '#3a6f99' },
-  msgTime: { fontSize: 10, color: '#4a4a4a' },
-  msgTimeMine: { color: '#3a6f99' },
-  msgTimeDark: { color: '#aaa' },
-  msgBubble: { padding: 10, paddingHorizontal: 14, backgroundColor: '#FFFFFF', borderRadius: 18, borderTopLeftRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)' },
-  msgBubbleMid: { borderTopLeftRadius: 18, borderTopRightRadius: 18 },
-  msgBubbleIdol: { backgroundColor: 'rgba(255,111,145,0.90)', borderColor: 'rgba(255,255,255,0.28)' },
-  msgBubbleMine: { backgroundColor: 'rgba(123,198,255,0.92)', borderTopLeftRadius: 18, borderTopRightRadius: 6, borderColor: 'rgba(255,255,255,0.32)' },
-  msgBubbleDark: { backgroundColor: '#1C1C1F', borderColor: 'rgba(255,255,255,0.10)' },
-  msgBody: { fontSize: 15, color: '#444', lineHeight: 22 },
-  msgBodyHighlight: { color: '#fff' },
-  giftCard: { marginTop: 8, minWidth: 210, padding: 10, borderRadius: 14, backgroundColor: 'rgba(255,240,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,111,145,0.24)', flexDirection: 'row', alignItems: 'center', gap: 10 },
+  msgSender: { fontSize: 12, fontWeight: '600', maxWidth: 150 },
+  msgTime: { fontSize: 10 },
+  msgBubble: { padding: 10, paddingHorizontal: 14, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  msgBubbleMid: { borderRadius: 6 },
+  msgBubbleIdol: { borderTopLeftRadius: 6 },
+  msgBubbleMine: { borderTopRightRadius: 6 },
+  msgBody: { fontSize: 15, lineHeight: 22 },
+  msgBodyHighlight: {},
+  giftCard: { marginTop: 8, minWidth: 210, padding: 10, borderRadius: radiiAlias.cardCompact, backgroundColor: 'rgba(255,240,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,111,145,0.24)', flexDirection: 'row', alignItems: 'center', gap: 10 },
   giftCardCompact: { minWidth: 0, padding: 8, gap: 0 } as any,
-  giftImage: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#fff' },
-  giftImageFallback: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
+  giftImage: { width: 34, height: 34, borderRadius: radii.xs, backgroundColor: '#fff' },
+  giftImageFallback: { width: 34, height: 34, borderRadius: radii.xs, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
   giftEmoji: { color: '#fff', fontSize: 13, fontWeight: '800' },
   giftTextWrap: { flex: 1, minWidth: 0 },
-  giftName: { fontSize: 13, color: '#ff6f91', fontWeight: '800' },
-  giftMeta: { marginTop: 3, fontSize: 11, color: '#666' },
-  giftMetaDark: { color: '#aaa' },
-  mediaCard: { marginTop: 8, minWidth: 214, padding: 10, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)' },
-  mediaCardHighlight: { backgroundColor: 'rgba(255,255,255,0.20)', borderColor: 'rgba(255,255,255,0.30)' },
+  giftName: { fontSize: 13, fontWeight: '800' },
+  giftMeta: { marginTop: 3, fontSize: 11 },
+  mediaCard: { marginTop: 8, minWidth: 214, padding: 10, borderRadius: radiiAlias.cardCompact, borderWidth: StyleSheet.hairlineWidth },
   liveCover: { width: '100%', height: 130, borderRadius: 10, marginBottom: 8, backgroundColor: 'rgba(128,128,128,0.1)' },
   liveCardWrap: { marginTop: 8, width: 228, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.1)' },
   liveCardImg: { width: 228, height: 228, borderRadius: 14 },
@@ -2102,23 +2213,18 @@ const styles = StyleSheet.create({
   liveCardTitleBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: 'rgba(0,0,0,0.5)' },
   liveCardTitle: { color: '#fff', fontSize: 13, fontWeight: '700' },
   mediaMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  mediaIcon: { color: '#ff6f91', fontSize: 12, fontWeight: '900' },
-  mediaTitle: { flex: 1, color: '#333', fontSize: 13, fontWeight: '800', lineHeight: 18 },
-  mediaTitleDark: { color: '#aaa' },
-  mediaDuration: { color: '#3f3f3f', fontSize: 11, fontWeight: '700' },
-  mediaDurationDark: { color: '#aaa' },
-  mediaTextHighlight: { color: '#fff' },
-  mediaPlayBtn: { marginTop: 9, minHeight: 38, paddingVertical: 9, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f91' },
-  mediaPlayBtnHighlight: { backgroundColor: '#fff' },
-  mediaPlayText: { color: '#fff', fontSize: 13, fontWeight: '900' },
-  mediaPlayTextHighlight: { color: '#ff6f91' },
+  mediaIcon: { fontSize: 12, fontWeight: '900' },
+  mediaTitle: { flex: 1, fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  mediaDuration: { fontSize: 11, fontWeight: '700' },
+  mediaPlayBtn: { marginTop: 9, minHeight: 38, paddingVertical: 9, borderRadius: radiiAlias.button, alignItems: 'center', justifyContent: 'center' },
+  mediaPlayText: { fontSize: 13, fontWeight: '900' },
   inlineAudio: { height: 52, minWidth: 224, marginTop: 8 },
   inlineAudioWrap: { height: 0, overflow: 'hidden' },
   inlineAudioHidden: { height: 0, width: 0 },
   inlineVideo: { height: 190, minWidth: 246, marginTop: 8, backgroundColor: '#000', borderRadius: 12 },
   inlineImage: { width: 228, height: 228, marginTop: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
   inlineSticker: { width: 120, height: 120, marginTop: 6, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
-  openLinkBtn: { marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.10)' },
+  openLinkBtn: { marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.10)', maxWidth: '100%', alignSelf: 'flex-start' },
   openLinkText: { color: '#ff6f91', fontSize: 11, fontWeight: '800' },
   roomPlayerPage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 1000, elevation: 1000, backgroundColor: '#000' },
   roomPlayerPageFullscreen: { paddingTop: 0 },
@@ -2132,21 +2238,21 @@ const styles = StyleSheet.create({
   exitRoomFullscreenText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   roomNativeVideo: { flex: 1, backgroundColor: '#000' },
   roomModalShade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
-  roomRankPanel: { maxHeight: '82%', padding: 14, borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: '#1C1C1F' },
+  roomRankPanel: { maxHeight: '82%', padding: 14, paddingBottom: 24, borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet },
+  roomRankHandleWrap: { alignItems: 'center', paddingTop: 2, paddingBottom: 10 },
+  roomRankHandle: { width: 40, height: 5, borderRadius: 3 },
   roomRankHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  roomRankTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  roomRankStatus: { color: '#d8d8d8', fontSize: 12, marginBottom: 10 },
+  roomRankClose: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  roomRankTitle: { fontSize: 18, fontWeight: '900' },
+  roomRankStatus: { fontSize: 12, marginBottom: 10 },
   roomRankList: { maxHeight: 420 },
-  roomRankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.10)' },
-  roomRankNo: { width: 24, color: '#ff6f91', fontSize: 13, fontWeight: '900', textAlign: 'center' },
-  roomRankAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.18)' },
+  roomRankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  roomRankNo: { width: 24, fontSize: 13, fontWeight: '900', textAlign: 'center' },
+  roomRankAvatar: { width: 34, height: 34, borderRadius: 17 },
   roomRankInfo: { flex: 1, minWidth: 0 },
-  roomRankName: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  roomRankValue: { color: '#cfcfcf', fontSize: 11, marginTop: 2 },
-  textDark: { color: '#eee' },
-  textSubDark: { color: '#eeeeee' },
-  empty: { textAlign: 'center', color: '#3f3f3f', marginTop: 60, fontSize: 14, paddingHorizontal: 24, lineHeight: 20 },
-  emptyDark: { color: '#aaa' },
-  emptyWrap: { alignItems: 'center', paddingVertical: 60 },
-  emptyLink: { marginTop: 12 },
+  roomRankName: { fontSize: 13, fontWeight: '800' },
+  roomRankProgressTrack: { height: 4, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
+  roomRankProgressFill: { height: 4, borderRadius: 2 },
+  roomRankValue: { fontSize: 11, fontWeight: '700', marginLeft: 6, flexShrink: 1 },
+  empty: { textAlign: 'center', marginTop: 60, fontSize: 14, paddingHorizontal: 24, lineHeight: 20 },
 });

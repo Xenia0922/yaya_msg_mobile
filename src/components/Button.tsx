@@ -16,7 +16,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { usePalette, radii, motion } from '../theme';
+import { usePalette, radii } from '../theme';
 import { typography } from '../theme/typography';
 
 export type ButtonVariant = 'filled' | 'tinted' | 'plain';
@@ -65,7 +65,7 @@ export function Button({
       : 'transparent';
   const fg =
     variant === 'filled'
-      ? '#FFFFFF'
+      ? palette.onTint
       : variant === 'tinted'
       ? palette.tint
       : palette.tint;
@@ -126,6 +126,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-
-// re-export motion so other files import from one place
-export { motion };

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, ImageBackground, Modal, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, ImageBackground, Modal, Image, TouchableOpacity, Linking, StyleSheet, Animated, Easing } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation';
 import { loadSettings } from './src/services/settings';
@@ -66,6 +66,21 @@ export default function App() {
   // v2.6: Announcement modal
   const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
   const [announceModal, setAnnounceModal] = useState<{ title: string; header: string; content: string; imageUrl: string; link: string } | null>(null);
+  // 公告卡片 spring 入场
+  const announceAnim = React.useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (announceModal) {
+      announceAnim.setValue(0);
+      Animated.spring(announceAnim, {
+        toValue: 1,
+        damping: 16,
+        mass: 0.9,
+        stiffness: 190,
+        overshootClamping: false,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [announceModal, announceAnim]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -105,6 +120,10 @@ export default function App() {
         setMessage((prev) => `${prev}\n签名模块初始化失败：${error?.message || String(error)}`);
       });
 
+      // 性能：不等待成员库解析再进首页——设置加载完立即 ready，
+      // 成员库在后台异步填充（首页问候数先显示 —，各页空态会自动更新）。
+      if (mounted) setReady(true);
+
       try {
         const backup = require('./assets/members.json');
         const localMembers = await loadMembers(backup);
@@ -120,8 +139,6 @@ export default function App() {
       } catch (error: any) {
         if (mounted) setMessage(`成员数据加载失败：${error?.message || String(error)}`);
       }
-
-      if (mounted) setReady(true);
     })();
 
     return () => {
@@ -140,7 +157,8 @@ export default function App() {
   }, [ready]);
 
   if (!ready) {
-    // 原生开屏已展示 app 图标（与开屏同色纯背景，避免黑屏闪烁）；不再叠加 JS 加载 UI
+    // 原生开屏已展示 app 图标（与开屏同色纯背景，避免黑屏闪烁）；不再叠加 JS 加载 UI。
+    // WebViewSigner 由下方统一常驻渲染（启动即预热，首次签名请求不用现场启动 WebView）
     return <View style={{ flex: 1, backgroundColor: splashBg }} />;
   }
 
@@ -159,12 +177,23 @@ export default function App() {
       ) : null}
       <SafeAreaBridge>
         <AppNavigator />
-        <WebViewSigner />
       </SafeAreaBridge>
       {/* v2.6: Global announcement modal */}
       <Modal visible={!!announceModal} transparent animationType="fade" onRequestClose={() => setAnnounceModal(null)}>
         <View style={anStyles.overlay}>
-          <View style={[anStyles.card, appTheme === 'dark' && { backgroundColor: '#1e1e1e' }]}>
+          <Animated.View
+            style={[
+              anStyles.card,
+              appTheme === 'dark' && { backgroundColor: '#1e1e1e' },
+              {
+                opacity: announceAnim,
+                transform: [
+                  { scale: announceAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
+                  { translateY: announceAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) },
+                ],
+              },
+            ]}
+          >
             {announceModal?.header ? (
               <Text style={[anStyles.header, { color: '#ff6f91' }]}>{announceModal.header}</Text>
             ) : null}
@@ -187,27 +216,34 @@ export default function App() {
                 <Text style={[anStyles.btnText, appTheme === 'dark' && { color: '#eee' }]}>关闭</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </View>
   );
 
-  return backgroundSource ? (
-    <ImageBackground
-      key={`${backgroundSource.uri}-${customBackgroundUpdatedAt || 0}`}
-      source={backgroundSource}
-      style={{ flex: 1, backgroundColor: appTheme === 'dark' ? Colors.bgDark : '#fff7fb' }}
-      resizeMode="cover"
-      onLoad={() => setBackgroundLoadError('')}
-      onError={(event) => setBackgroundLoadError(`背景图加载失败：${backgroundSource.uri} ${event.nativeEvent?.error || ''}`)}
-    >
-      <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: appTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)' }} />
-      {/* 错误边界外扩到 App 级：Modal/WebViewSigner/背景层渲染异常也有兜底（页面级由导航内的 ErrorBoundary 捕获） */}
-      <ErrorBoundary>{content}</ErrorBoundary>
-    </ImageBackground>
-  ) : (
-    <ErrorBoundary>{content}</ErrorBoundary>
+  return (
+    <>
+      {backgroundSource ? (
+        <ImageBackground
+          key={`${backgroundSource.uri}-${customBackgroundUpdatedAt || 0}`}
+          source={backgroundSource}
+          style={{ flex: 1, backgroundColor: appTheme === 'dark' ? Colors.bgDark : '#fff7fb' }}
+          resizeMode="cover"
+          onLoad={() => setBackgroundLoadError('')}
+          onError={(event) => setBackgroundLoadError(`背景图加载失败：${backgroundSource.uri} ${event.nativeEvent?.error || ''}`)}
+        >
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: appTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)' }} />
+          {/* 错误边界外扩到 App 级：Modal/WebViewSigner/背景层渲染异常也有兜底（页面级由导航内的 ErrorBoundary 捕获） */}
+          <ErrorBoundary>{content}</ErrorBoundary>
+        </ImageBackground>
+      ) : (
+        <ErrorBoundary>{content}</ErrorBoundary>
+      )}
+      {/* WebViewSigner 常驻挂载：签名 WebView 启动即预热（含闪屏期），
+          首次口袋接口请求不再现场启动 WebView（首页直播/各列表首屏提速） */}
+      <WebViewSigner />
+    </>
   );
 }
 

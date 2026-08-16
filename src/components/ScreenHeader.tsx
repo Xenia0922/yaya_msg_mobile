@@ -1,9 +1,10 @@
 import React, { useCallback } from 'react';
-import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { Platform, StatusBar, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useI18n } from '../i18n';
 import { usePalette } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { ScalePressable } from './Motion';
 
 interface Props {
   title: string;
@@ -12,6 +13,8 @@ interface Props {
   style?: ViewStyle;
   /** 图片背景页（如直播间）传 true：返回键用玻璃胶囊，标题加轻阴影保证可读 */
   overlay?: boolean;
+  /** tab 根页传 true：不渲染返回键，但保留左槽位，标题位置与二级页完全一致 */
+  hideBack?: boolean;
 }
 
 /**
@@ -20,7 +23,7 @@ interface Props {
  *  - 三栏布局保留：左(返回) | 中(标题占满) | 右(操作位)
  *  - 兼容旧 props（title/onBack/right/style），全站调用点无需改动
  */
-export default function ScreenHeader({ title, onBack, right, style, overlay }: Props) {
+export default function ScreenHeader({ title, onBack, right, style, overlay, hideBack }: Props) {
   const navigation = useNavigation();
   const { t } = useI18n();
   const palette = usePalette();
@@ -29,11 +32,12 @@ export default function ScreenHeader({ title, onBack, right, style, overlay }: P
 
   return (
     <View style={[styles.header, { paddingTop: topPad }, style]}>
-      <View style={styles.sideLeft}>
-        <TouchableOpacity
+      {!hideBack ? (
+        <ScalePressable
           onPress={goBack}
           accessibilityRole="button"
           accessibilityLabel={t('返回')}
+          pressedScale={0.9}
           style={[
             styles.backBtn,
             {
@@ -44,8 +48,8 @@ export default function ScreenHeader({ title, onBack, right, style, overlay }: P
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <MaterialCommunityIcons name="chevron-left" color={palette.label} size={26} />
-        </TouchableOpacity>
-      </View>
+        </ScalePressable>
+      ) : null}
       <Text
         numberOfLines={1}
         style={[
@@ -71,9 +75,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     marginBottom: 2,
+    gap: 8,
   },
-  sideLeft: { width: 56, alignItems: 'flex-start', justifyContent: 'center' },
-  sideRight: { width: 56, alignItems: 'flex-end', justifyContent: 'center' },
+  sideRight: { minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' },
   backBtn: {
     width: 36,
     height: 36,
@@ -89,7 +93,6 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     fontWeight: '800',
     letterSpacing: -0.3,
-    paddingHorizontal: 6,
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },

@@ -1,6 +1,8 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import NetworkImage from './NetworkImage';
+import { radii } from '../theme';
 
 // 口袋48官网源的音乐对象只有 mp3/artist/title，没有封面图。
 // 封面来自官网 records（专辑记录）：buildTracks 已按 专辑/歌名/音频分组 四级匹配，
@@ -65,6 +67,12 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
   const [errored, setErrored] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
   const retried = React.useRef(false);
+  const mounted = React.useRef(true);
+
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   // uri 变化重置（FlatList 回收单元格复用本组件实例时，避免上一首的状态串到新歌）
   React.useEffect(() => {
@@ -77,7 +85,7 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
   // loaded 成功后不再受超时影响（图已正常显示）。
   React.useEffect(() => {
     if (!uri || loaded) return;
-    const timer = setTimeout(() => setErrored(true), 15000);
+    const timer = setTimeout(() => { if (mounted.current) setErrored(true); }, 15000);
     return () => clearTimeout(timer);
   }, [uri, loaded]);
 
@@ -85,15 +93,15 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
   const handleImageError = React.useCallback(() => {
     if (!retried.current) {
       retried.current = true;
-      setErrored(true);
-      setTimeout(() => setErrored(false), 3000);
+      if (mounted.current) setErrored(true);
+      setTimeout(() => { if (mounted.current) setErrored(false); }, 3000);
     } else {
-      setErrored(true);
+      if (mounted.current) setErrored(true);
     }
   }, []);
 
   const boxStyle: any = fill
-    ? { width: '100%', height: '100%', borderRadius: round ? 999 : 0 }
+    ? { width: '100%', height: '100%', borderRadius: round ? radii.pill : 0 }
     : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
   const showImage = !!uri && !errored;
   const iconSize = fill ? 44 : Math.round((size || 0) * 0.34);
@@ -102,10 +110,10 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     <View style={[styles.box, boxStyle, { backgroundColor: c1 }]}>
       <View style={[styles.overlay, { backgroundColor: c2, opacity: 0.5, transform: [{ rotate: '35deg' }] }]} />
       {showImage ? (
-        <Image
+        <NetworkImage
           key={uri}
           source={{ uri }}
-          style={[StyleSheet.absoluteFill, { borderRadius: round ? 999 : 0 }]}
+          style={[StyleSheet.absoluteFill, { borderRadius: round ? radii.pill : 0 }]}
           resizeMode="cover"
           // scale：保留原图分辨率由 GPU 缩放，比 resize 预解码缩放更锐利（修复封面发糊）
           resizeMethod="scale"

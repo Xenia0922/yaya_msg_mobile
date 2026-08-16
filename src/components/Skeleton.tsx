@@ -49,5 +49,3 @@ export function SkeletonRow() {
     <Skeleton width="60%" height={12} radius={6} style={{ marginVertical: 6 }} />
   );
 }
-
-const styles = StyleSheet.create({});

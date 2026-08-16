@@ -2,9 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
-  ActivityIndicator,
   BackHandler,
-  FlatList,
   Image,
   Linking,
   StyleSheet,
@@ -16,19 +14,20 @@ import {
 import Video from 'react-native-video';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useNavigation } from '@react-navigation/native';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import { useSettingsStore, useUiStore } from '../store';
-import { FadeInView } from '../components/Motion';
+import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
+import { HeaderAction } from '../components/HeaderAction';
+import { Skeleton } from '../components/Skeleton';
+import { EmptyState, ErrorState } from '../components/StateViews';
 import pocketApi from '../api/pocket48';
 import { translate, useI18n } from '../i18n';
 import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { openNativeLivePlayer } from '../native/LivePlayer';
-import { useAppTheme } from '../hooks/useAppTheme';
 import { usePalette } from '../theme';
 
 interface OpenLiveItem {
@@ -161,8 +160,6 @@ function shortMemberName(member?: Member | null) {
 }
 
 export default function OpenLiveScreen() {
-  const navigation = useNavigation<any>();
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
@@ -173,6 +170,7 @@ export default function OpenLiveScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(t('暂无公演记录'));
+  const [listError, setListError] = useState('');
   const [playing, setPlaying] = useState<{ url: string; title: string } | null>(null);
   const [playerError, setPlayerError] = useState('');
   const [isLandscape, setIsLandscape] = useState(false);
@@ -210,6 +208,7 @@ export default function OpenLiveScreen() {
       setHasMore(false);
     }
     setStatus('');
+    setListError('');
     try {
       const cursor = append ? nextTime : 0;
       const res = await pocketApi.getOpenLive({ memberId: nextMember.id, nextTime: cursor });
@@ -224,6 +223,7 @@ export default function OpenLiveScreen() {
       showToast(text);
     } catch (error) {
       const text = t('加载失败：{error}', { error: errorMessage(error) });
+      setListError(errorMessage(error));
       setStatus(text);
       showToast(text);
     } finally {
@@ -282,43 +282,50 @@ export default function OpenLiveScreen() {
     return (
       <View style={styles.playerPage}>
         <ScreenHeader title={playing.title} onBack={() => setPlaying(null)} right={
-          <TouchableOpacity onPress={toggleOrientation}><Text style={styles.headerAction}>{isLandscape ? t('竖屏') : t('横屏')}</Text></TouchableOpacity>
+          <HeaderAction label={isLandscape ? t('竖屏') : t('横屏')} onPress={toggleOrientation} />
         } />
         {playerError ? (
           <View style={styles.playerErrorWrap}>
-            <Text style={[styles.playerErrorText, { color: '#FF6B6B' }]}>{playerError}</Text>
-            <TouchableOpacity style={[styles.playerRetryBtn, { backgroundColor: palette.tint }]} onPress={() => setPlayerError('')}>
-              <Text style={styles.playerRetryText}>{t('返回')}</Text>
+            <Text style={[styles.playerErrorText, { color: palette.danger }]}>{playerError}</Text>
+            <TouchableOpacity activeOpacity={0.7} style={[styles.playerRetryBtn, { backgroundColor: palette.tint }]} onPress={() => setPlayerError('')}>
+              <Text style={[styles.playerRetryText, { color: palette.onTint }]}>{t('返回')}</Text>
             </TouchableOpacity>
           </View>
         ) : (
         <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} onError={(e: any) => setPlayerError(t('播放失败：{msg}', { msg: String(e?.error || e?.nativeError || '').slice(0, 120) || t('无法解码或网络错误') }))} />
         )}
-        <TouchableOpacity style={styles.externalBtn} onPress={() => Linking.openURL(playing.url)}>
-          <Text style={styles.externalText}>{t('外部打开')}</Text>
+        <TouchableOpacity activeOpacity={0.7} style={[styles.externalBtn, { backgroundColor: palette.tint }]} onPress={() => Linking.openURL(playing.url)}>
+          <Text style={[styles.externalText, { color: palette.onTint }]}>{t('外部打开')}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('公演记录')} right={
-        <TouchableOpacity disabled={!member || loading} onPress={() => member && loadMemberShows(member)}>
-          <Text style={[styles.headerAction, (!member || loading) && styles.disabledText]}>{t('刷新')}</Text>
-        </TouchableOpacity>
+        <HeaderAction label={t('刷新')} disabled={!member || loading} onPress={() => member && loadMemberShows(member)} />
       } />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.controls}>
           <MemberPicker selectedMember={member} onSelect={(next) => loadMemberShows(next, false)} placeholder={t('搜索成员并打开公演记录...')} />
-          <TextInput
-            style={[styles.search, { backgroundColor: palette.surface, borderColor: palette.hairline, color: palette.label }]}
-            placeholder={t('筛选标题、成员、liveId...')}
-            placeholderTextColor={palette.labelTertiary}
-            value={query}
-            onChangeText={setQuery}
-          />
+          <View style={[styles.searchBar, { backgroundColor: palette.fill2 }]}>
+            <MaterialCommunityIcons name="magnify" size={16} color={palette.labelTertiary} />
+            <TextInput
+              style={[styles.searchInput, { color: palette.label }]}
+              placeholder={t('筛选标题、成员、liveId...')}
+              placeholderTextColor={palette.labelTertiary}
+              value={query}
+              onChangeText={setQuery}
+              returnKeyType="search"
+            />
+            {query ? (
+              <ScalePressable onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
+              </ScalePressable>
+            ) : null}
+          </View>
           <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading && !items.length ? '' : status}</Text>
         </View>
 
@@ -334,15 +341,25 @@ export default function OpenLiveScreen() {
           onEndReachedThreshold={0.35}
           ListEmptyComponent={
             loading ? (
-              <View style={styles.emptyWrap}>
-                <ActivityIndicator size="large" color={palette.tint} />
+              <View style={styles.skeletonWrap}>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <View key={i} style={[styles.skeletonCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                    <Skeleton width={56} height={56} radius={12} />
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                      <Skeleton width="70%" height={13} />
+                      <Skeleton width="40%" height={10} style={{ marginTop: 8 }} />
+                      <Skeleton width="50%" height={10} style={{ marginTop: 8 }} />
+                    </View>
+                  </View>
+                ))}
               </View>
+            ) : listError ? (
+              <ErrorState title={t('加载失败')} hint={listError} onAction={() => member && loadMemberShows(member)} />
             ) : (
-              <View style={styles.emptyWrap}>
-                <Text style={[styles.empty, { color: palette.labelTertiary }]}>
-                  {member ? t('暂无公演记录') : t('请搜索选择成员查看公演记录')}
-                </Text>
-              </View>
+              <EmptyState
+                icon="playlist-play"
+                title={member ? t('暂无公演记录') : t('请搜索选择成员查看公演记录')}
+              />
             )
           }
           ListFooterComponent={items.length ? (
@@ -351,20 +368,34 @@ export default function OpenLiveScreen() {
             </Text>
           ) : null}
           renderItem={({ item, index }) => (
-            <FadeInView delay={80 + index * 30} duration={300}>
-              <TouchableOpacity
+            <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
+              <ScalePressable
                 style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline }]}
-                activeOpacity={0.9}
+                activeOpacity={0.85}
+                pressedScale={0.97}
                 onPress={() => playItem(item)}
                 onLongPress={() => downloadItem(item)}
               >
-                {item.cover ? <Image source={{ uri: item.cover }} style={[styles.cover, { backgroundColor: palette.fill2 }]} resizeMode="cover" /> : <View style={[styles.coverPlaceholder, { backgroundColor: palette.tintSoft }]}><MaterialCommunityIcons name="play" size={28} color={palette.tint} /></View>}
+                {item.cover ? (
+                  <Image source={{ uri: item.cover }} style={[styles.cover, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: palette.tintSoft }]}>
+                    <MaterialCommunityIcons name="play" size={24} color={palette.tint} />
+                  </View>
+                )}
                 <View style={styles.cardBody}>
                   <Text style={[styles.cardTitle, { color: palette.label }]} numberOfLines={2}>{item.title}</Text>
                   <Text style={[styles.meta, { color: palette.labelSecondary }]} numberOfLines={1}>{item.nickname || shortMemberName(member) || t('成员')}</Text>
-                  <Text style={[styles.time, { color: palette.labelTertiary }]}>{formatTimestamp(item.msgTime)}</Text>
+                  <View style={styles.cardFoot}>
+                    <Text style={[styles.time, { color: palette.labelSecondary }]}>{formatTimestamp(item.msgTime)}</Text>
+                    <View style={[styles.badge, { backgroundColor: palette.tintSoft }]}>
+                      <MaterialCommunityIcons name="play-circle-outline" size={12} color={palette.tint} />
+                      <Text style={[styles.badgeText, { color: palette.tint }]}>{t('可看')}</Text>
+                    </View>
+                  </View>
                 </View>
-              </TouchableOpacity>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} style={styles.chevron} />
+              </ScalePressable>
             </FadeInView>
           )}
         />
@@ -375,29 +406,52 @@ export default function OpenLiveScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
-  headerAction: { color: '#ff6f91', fontSize: 14, fontWeight: '800', minWidth: 54 },
-  disabledText: { opacity: 0.45 },
   controls: { paddingHorizontal: 14, gap: 8, marginBottom: 8 },
-  search: { minHeight: 42, borderRadius: 14, paddingHorizontal: 12, borderWidth: StyleSheet.hairlineWidth },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 40,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  searchInput: { flex: 1, fontSize: 15, padding: 0, margin: 0 },
   status: { fontSize: 12, lineHeight: 18 },
   list: { padding: 14, paddingBottom: 112 },
-  card: { flexDirection: 'row', padding: 10, marginVertical: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
-  cover: { width: 82, height: 82, borderRadius: 14 },
-  coverPlaceholder: { width: 82, height: 82, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  cardBody: { flex: 1, minWidth: 0, paddingLeft: 12, justifyContent: 'space-between' },
-  cardTitle: { fontSize: 15, fontWeight: '700', lineHeight: 21 },
-  meta: { fontSize: 12 },
+  card: { flexDirection: 'row', alignItems: 'center', padding: 10, marginVertical: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  cover: { width: 56, height: 56, borderRadius: 12 },
+  coverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  cardBody: { flex: 1, minWidth: 0, paddingLeft: 12 },
+  cardTitle: { fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  meta: { fontSize: 12, marginTop: 3 },
+  cardFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   time: { fontSize: 11 },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  chevron: { marginLeft: 6 },
   footerText: { marginVertical: 14, textAlign: 'center', fontSize: 12, fontWeight: '700' },
-  emptyWrap: { minHeight: 220, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  empty: { textAlign: 'center', fontSize: 14 },
   playerPage: { flex: 1, backgroundColor: '#000000' },
   player: { flex: 1, backgroundColor: '#000000' },
   playerErrorWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   playerErrorText: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
   playerRetryBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 9, borderRadius: 18 },
-  playerRetryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  externalBtn: { margin: 16, minHeight: 44, borderRadius: 18, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
-  externalText: { color: '#ffffff', fontWeight: '900' },
+  playerRetryText: { fontSize: 13, fontWeight: '800' },
+  externalBtn: { margin: 16, minHeight: 44, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  externalText: { fontWeight: '900' },
+  skeletonWrap: { padding: 4 },
+  skeletonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginVertical: 4,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
 });

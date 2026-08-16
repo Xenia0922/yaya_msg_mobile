@@ -37,8 +37,7 @@ export function formatDuration(seconds: number): string {
 }
 
 export function formatCount(n: number): string {
-  if (!Number.isFinite(n)) return '0';
-  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
+  if (!Number.isFinite(n)) return '0';  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
@@ -84,4 +83,24 @@ export function extractNumber(str: string): number | null {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 拼接展示用元信息（专辑 · 歌手 · 团体名），并去重：
+ * 官方曲库中 album/artist/groupLabel 经常重复（如 album=SNH48 且 artist=SNH48），
+ * 只保留一份团体名，避免「SNH48 · SNH48」。
+ */
+export function joinMeta(parts: Array<string | undefined | null>): string {
+  const list = parts.filter(Boolean).map(String);
+  const out: string[] = [];
+  for (const part of list) {
+    if (out.some((p) => p === part)) continue;
+    // 短片段（团体名级别）若已被其他片段包含，跳过
+    if (out.some((p) => p.includes(part) && part.length <= 8)) continue;
+    // 反向：已有片段被当前长片段包含（长片段更完整，跳过已有短片段）
+    const dupIdx = out.findIndex((p) => part.includes(p) && p.length <= 8);
+    if (dupIdx >= 0) out[dupIdx] = part;
+    else out.push(part);
+  }
+  return out.join(' · ');
 }

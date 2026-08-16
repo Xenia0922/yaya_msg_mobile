@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
-import { Image, Linking, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -9,16 +9,18 @@ import { RootStackParamList } from '../navigation/types';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
-import { FadeInView } from '../components/Motion';
+import { HeaderAction } from '../components/HeaderAction';
+import { FadeInView, ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
+import { Skeleton } from '../components/Skeleton';
+import { EmptyState, ErrorState } from '../components/StateViews';
 import { Pill } from '../components/Pill';
 import { useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { errorMessage, messagePayload, messageText, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
-import { useAppTheme } from '../hooks/useAppTheme';
-import { usePalette } from '../theme';
+import { usePalette, radii } from '../theme';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -115,15 +117,8 @@ function countBy<T>(items: T[], keyOf: (item: T) => string, unknownLabel = '未�
   return [...map.values()].sort((a, b) => b.count - a.count);
 }
 
-function chunk<T>(list: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
-  return out;
-}
-
 export default function AnalysisScreen() {
   const navigation = useNavigation<Nav>();
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
@@ -344,65 +339,84 @@ export default function AnalysisScreen() {
     { label: '礼物', value: summary.gifts },
   ];
 
-  const roomOverview = cards;
-
   return (
-    <View style={[styles.container, isDark && styles.containerDark]}>
+    <View style={styles.container}>
       <ScreenHeader title={t('数据统计')} right={
-        <TouchableOpacity onPress={() => { setLoadError(''); setLoading(true); loadRoomStats(member!).finally(() => loadFlipStats().finally(() => setLoading(false))); }} disabled={!member || loading}>
-          <Text style={[styles.refreshText, { color: palette.tint }, (!member || loading) && { opacity: 0.45 }]}>{t('刷新')}</Text>
-        </TouchableOpacity>
+        <HeaderAction label={t('刷新')} onPress={() => { setLoadError(''); setLoading(true); loadRoomStats(member!).finally(() => loadFlipStats().finally(() => setLoading(false))); }} disabled={!member || loading} loading={loading} />
       } />
 
       <View style={styles.pickerWrap}>
         <MemberPicker selectedMember={member} onSelect={loadRoomStats} />
         {loading ? (
-          <CenterSpinner dark={isDark} text={t('加载中…')} />
+          <CenterSpinner text={t('加载中…')} />
         ) : (
-          <>
-            <Text style={[styles.statusText, { color: palette.labelSecondary }]}>{status}</Text>
-            {loadError ? (
-              <TouchableOpacity
-                style={[styles.retryBtn, { backgroundColor: palette.tint }]}
-                onPress={() => { setLoadError(''); loadRoomStats(member!).finally(() => loadFlipStats()); }}
-              >
-                <Text style={styles.retryBtnText}>{t('重试')}</Text>
-              </TouchableOpacity>
-            ) : null}
-          </>
+          <Text style={[styles.statusText, { color: palette.labelSecondary }]}>{status}</Text>
         )}
+        {loadError && !loading ? (
+          <ErrorState title={t('加载失败')} hint={loadError} onAction={() => { setLoadError(''); loadRoomStats(member!).finally(() => loadFlipStats()); }} />
+        ) : null}
       </View>
-      <View style={styles.tabsRow}>
-        {TABS.map((item) => (
-          <View key={item.key} style={styles.tabWrap}>
-            <Pill
-              label={t(item.label)}
-              selected={tab === item.key}
+      {/* 分段控件：fill2 底 + 选中白胶囊（spec §7 Segmented） */}
+      <View style={[styles.segmented, { backgroundColor: palette.fill2 }]}>
+        {TABS.map((item) => {
+          const active = tab === item.key;
+          return (
+            <ScalePressable
+              key={item.key}
+              activeOpacity={0.8}
+              pressedScale={0.97}
+              style={[styles.segItem, active && { backgroundColor: palette.surface }]}
               onPress={() => { setTab(item.key); if (item.key === 'flip' && !flips.length) loadFlipStats(); }}
-              style={styles.tabPill}
-            />
-          </View>
-        ))}
+            >
+              <Text
+                numberOfLines={1}
+                style={[styles.segText, { color: active ? palette.label : palette.labelSecondary }]}
+              >
+                {t(item.label)}
+              </Text>
+            </ScalePressable>
+          );
+        })}
       </View>
 
       {tab === 'room' ? (
         <FadeInView delay={80} duration={300}>
+          {loading && messages.length === 0 ? (
+            // 首屏加载占位：与真实内容同构的 Skeleton（spec §8）
+            <View style={styles.content}>
+              <View style={styles.statsGrid}>
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={[styles.statCard, { backgroundColor: palette.surface }]}>
+                    <Skeleton width={44} height={20} radius={6} />
+                    <Skeleton width={40} height={11} radius={5} style={{ marginTop: 8 }} />
+                  </View>
+                ))}
+              </View>
+              <View style={[styles.rankCard, { backgroundColor: palette.surface }]}>
+                <Skeleton width={90} height={15} radius={6} />
+                <Skeleton width={130} height={11} radius={5} style={{ marginTop: 8 }} />
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={[styles.rankRow, { marginTop: 8 }]}>
+                    <Skeleton width={72} height={13} radius={6} />
+                    <Skeleton width="55%" height={10} radius={3} style={{ flex: 1, marginHorizontal: 8 }} />
+                    <Skeleton width={28} height={11} radius={5} />
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : (
           <ScrollView contentContainerStyle={styles.content}>
-            <View style={[styles.summaryCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-              {chunk(roomOverview, 4).map((row, ri) => (
-                <View key={ri} style={[styles.summaryRow, ri > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.hairline }]}>
-                  {row.map((item) => (
-                    <View key={item.label} style={styles.summaryCell}>
-                      <Text style={[styles.summaryValue, { color: palette.tint }]}>{item.value}</Text>
-                      <Text style={[styles.summaryLabel, { color: palette.labelSecondary }]}>{t(item.label)}</Text>
-                    </View>
-                  ))}
-                  {row.length < 4 ? <View style={styles.summaryCell} /> : null}
+            {/* 概览区：2 列统计卡（数值 20/800 + 标签 11） */}
+            <View style={styles.statsGrid}>
+              {cards.map((item) => (
+                <View key={item.label} style={[styles.statCard, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                  <Text style={[styles.statValue, { color: palette.tint }]}>{item.value}</Text>
+                  <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t(item.label)}</Text>
                 </View>
               ))}
             </View>
 
-            {/* 成员排行 · 横向条形图（纯 View 宽度百分比，无图表依赖） */}
+            {/* 成员排行 · 横向条形图（轨道 fill2 + 填充 tint 圆角 3） */}
             <View style={[styles.rankCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
               <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('成员排行')}</Text>
               <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('按发言次数 Top {count}', { count: memberRankTop8.length })}</Text>
@@ -433,6 +447,7 @@ export default function AnalysisScreen() {
               </View>
             ))}
           </ScrollView>
+          )}
         </FadeInView>
       ) : null}
 
@@ -446,7 +461,7 @@ export default function AnalysisScreen() {
             maxToRenderPerBatch={12}
             windowSize={7}
             removeClippedSubviews
-            ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无日期数据')}</Text>}
+            ListEmptyComponent={<EmptyState icon="calendar-month-outline" title={t('暂无日期数据')} />}
             renderItem={({ item, index }) => {
               const totalPct = (item.total / dateMax) * 100;
               const memberPct = (item.member / dateMax) * 100;
@@ -498,6 +513,7 @@ export default function AnalysisScreen() {
                 </View>
               </FadeInView>
             )}
+            ListEmptyComponent={<EmptyState icon="account-group-outline" title={t('暂无发言数据')} />}
           />
         </FadeInView>
       ) : null}
@@ -513,16 +529,11 @@ export default function AnalysisScreen() {
             windowSize={7}
             removeClippedSubviews
             ListHeaderComponent={
-              <View style={[styles.summaryCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-                {chunk(cards.slice(3), 4).map((row, ri) => (
-                  <View key={ri} style={[styles.summaryRow, ri > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.hairline }]}>
-                    {row.map((item) => (
-                      <View key={item.label} style={styles.summaryCell}>
-                        <Text style={[styles.summaryValue, { color: palette.tint }]}>{item.value}</Text>
-                        <Text style={[styles.summaryLabel, { color: palette.labelSecondary }]}>{t(item.label)}</Text>
-                      </View>
-                    ))}
-                    {row.length < 4 ? <View style={styles.summaryCell} /> : null}
+              <View style={styles.statsGrid}>
+                {cards.slice(3).map((item) => (
+                  <View key={item.label} style={[styles.statCard, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                    <Text style={[styles.statValue, { color: palette.tint }]}>{item.value}</Text>
+                    <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t(item.label)}</Text>
                   </View>
                 ))}
               </View>
@@ -563,6 +574,7 @@ export default function AnalysisScreen() {
                 </FadeInView>
               );
             }}
+            ListEmptyComponent={<EmptyState icon="image-off-outline" title={t('暂无媒体消息')} />}
           />
         </FadeInView>
       ) : null}
@@ -578,35 +590,35 @@ export default function AnalysisScreen() {
           removeClippedSubviews
           ListHeaderComponent={
             <View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.flipChipScroll}>
-                <View style={styles.flipChipRow}>
-                  {flipMemberNames.map((name: string) => (
-                    <TouchableOpacity
-                      key={name}
-                      style={[styles.flipChip, { backgroundColor: flipMemberFilter === name ? palette.tint : palette.fill2 }]}
-                      onPress={() => setFlipMemberFilter(name === '全部成员' ? '' : name)}
-                    >
-                      <Text style={[styles.flipChipText, { color: flipMemberFilter === name ? '#FFFFFF' : palette.labelSecondary }]}>{name === '全部成员' || name === '成员' ? t(name) : name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+              {/* 成员过滤：Pill 横滑 chips */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.flipChipScroll} contentContainerStyle={styles.flipChipRow}>
+                {flipMemberNames.map((name: string) => (
+                  <Pill
+                    key={name}
+                    label={name === '全部成员' || name === '成员' ? t(name) : name}
+                    selected={flipMemberFilter === name || (name === '全部成员' && !flipMemberFilter)}
+                    onPress={() => setFlipMemberFilter(name === '全部成员' ? '' : name)}
+                    style={styles.flipChip}
+                  />
+                ))}
               </ScrollView>
-              <View style={[styles.flipCardsCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-                <View style={[styles.flipCell, { borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: palette.hairline }]}>
-                  <Text style={[styles.flipCardValue, { color: palette.tint }]}>{flipStats.totalCount}</Text>
-                  <Text style={[styles.flipCardLabel, { color: palette.labelSecondary }]}>{t('总翻牌数')}</Text>
+              {/* 概览统计：2 列卡 */}
+              <View style={styles.statsGrid}>
+                <View style={[styles.statCard, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                  <Text style={[styles.statValue, { color: palette.tint }]}>{flipStats.totalCount}</Text>
+                  <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总翻牌数')}</Text>
                 </View>
-                <View style={[styles.flipCell, { borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: palette.hairline }]}>
-                  <Text style={[styles.flipCardValue, { color: palette.label }]}>{flipStats.totalCost}</Text>
-                  <Text style={[styles.flipCardLabel, { color: palette.labelSecondary }]}>{t('总消耗(鸡腿)')}</Text>
+                <View style={[styles.statCard, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                  <Text style={[styles.statValue, { color: palette.tint }]}>{flipStats.totalCost}</Text>
+                  <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总消耗(鸡腿)')}</Text>
                 </View>
-                <View style={[styles.flipCell, styles.flipCellBig]}>
-                  <Text style={[styles.flipCardValue, { color: palette.label }]}>{formatDurationMs(flipStats.avgDur)}</Text>
-                  <Text style={[styles.flipCardLabel, { color: palette.labelSecondary }]}>{t('平均耗时')}</Text>
+                <View style={[styles.statCard, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                  <Text style={[styles.statValue, { color: palette.tint }]}>{formatDurationMs(flipStats.avgDur)}</Text>
+                  <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('平均耗时')}</Text>
                   {flipStats.minDur > 0 ? <Text style={[styles.flipCardRange, { color: palette.labelTertiary }]}>{formatDurationMs(flipStats.minDur)} ~ {formatDurationMs(flipStats.maxDur)}</Text> : null}
                 </View>
               </View>
-              <View style={[styles.typeCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+              <View style={[styles.blockCard, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
                 <Text style={[styles.sectionSub, { color: palette.labelSecondary }]}>{t('回复类型分布')}</Text>
                 {[
                   { key: 'text', label: t('文字'), count: flipStats.typeStats.text },
@@ -631,21 +643,22 @@ export default function AnalysisScreen() {
                 const avgPrice = m.count > 0 ? Math.round(m.cost / m.count) : 0;
                 const avgTime = m.answeredCount > 0 ? formatDurationMs(m.durSum / m.answeredCount) : '';
                 return (
-                  <View key={m.name} style={[styles.flipMemberCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-                    <View style={styles.flipMemberHeader}>
-                      <Text style={[styles.flipMemberName, { color: palette.label }]} numberOfLines={1}>{idx + 1}. {m.name}</Text>
-                      <Text style={[styles.flipMemberCost, { color: palette.tint }]}>{t('{cost} 鸡腿', { cost: m.cost })}</Text>
+                  <View key={m.name} style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                    <View style={[styles.rowIcon, styles.rankIconNo, { backgroundColor: palette.fill2 }]}>
+                      <Text style={[styles.rankNo, { color: palette.labelTertiary }]}>{idx + 1}</Text>
                     </View>
-                    <View style={[styles.flipBarBg, { backgroundColor: palette.fill2 }]}>
-                      <View style={[styles.flipBarFg, { width: `${pct}%`, backgroundColor: palette.tint }]} />
+                    <View style={styles.rowBody}>
+                      <Text style={[styles.rowTitle, { color: palette.label }]} numberOfLines={1}>{m.name}</Text>
+                      <Text style={[styles.rowSub, { color: palette.labelSecondary }]} numberOfLines={1}>
+                        {t('共 {count} 条 · 均{avg}鸡腿', { count: m.count, avg: avgPrice })}
+                      </Text>
                     </View>
-                    <Text style={[styles.flipMemberMeta, { color: palette.labelSecondary }]}>
-                      {t('共 {count} 条 · 文字{text} 语音{audio} 视频{video}', { count: m.count, text: m.typeCounts.text, audio: m.typeCounts.audio, video: m.typeCounts.video })}
-                    </Text>
-                    <Text style={[styles.flipMemberMeta, { color: palette.labelSecondary, marginTop: 2 }]}>
-                      {t('均{avg}鸡腿 · 最高{max} · 最低{min}', { avg: avgPrice, max: m.maxCost, min: m.minCost === Infinity ? '-' : m.minCost })}
-                    </Text>
-                    {avgTime ? <Text style={[styles.flipMemberMeta, { color: palette.labelSecondary, marginTop: 2 }]}>{t('均耗时{time} · 最快{min} · 最慢{max}', { time: avgTime, min: formatDurationMs(m.minDur), max: formatDurationMs(m.maxDur) })}</Text> : null}
+                    <View style={styles.flipRankVal}>
+                      <Text style={[styles.rankValue, { color: palette.tint }]}>{t('{cost} 鸡腿', { cost: m.cost })}</Text>
+                      <View style={[styles.miniTrack, { backgroundColor: palette.fill3 }]}>
+                        <View style={[styles.miniFill, { width: `${pct}%`, backgroundColor: palette.tint }]} />
+                      </View>
+                    </View>
                   </View>
                 );
               })}
@@ -710,13 +723,13 @@ export default function AnalysisScreen() {
                           {t('答：{text}', { text: answerText || (isVoice ? t('[语音回复]') : t('[视频回复]')) })}
                         </Text>
                         {answerUrl ? (
-                          <TouchableOpacity style={[styles.flipPlayBtn, { backgroundColor: palette.tint }]} onPress={() => setFlipPlayUrl((prev) => prev === answerUrl ? '' : answerUrl)}>
-                            <MaterialCommunityIcons name={flipPlayUrl === answerUrl ? 'chevron-up' : 'play'} size={14} color="#FFFFFF" />
-                            <Text style={[styles.flipPlayText, { color: '#FFFFFF' }]}>{flipPlayUrl === answerUrl ? t('收起') : `${answerDuration > 0 ? (answerDuration < 60 ? `${answerDuration}s` : `${Math.floor(answerDuration / 60)}:${String(answerDuration % 60).padStart(2, '0')}`) : (isVoice ? t('语音') : t('视频'))}`}</Text>
-                          </TouchableOpacity>
+                          <ScalePressable style={[styles.flipPlayBtn, { backgroundColor: palette.tint }]} onPress={() => setFlipPlayUrl((prev) => prev === answerUrl ? '' : answerUrl)}>
+                            <MaterialCommunityIcons name={flipPlayUrl === answerUrl ? 'chevron-up' : 'play'} size={14} color={palette.onTint} />
+                            <Text style={[styles.flipPlayText, { color: palette.onTint }]}>{flipPlayUrl === answerUrl ? t('收起') : `${answerDuration > 0 ? (answerDuration < 60 ? `${answerDuration}s` : `${Math.floor(answerDuration / 60)}:${String(answerDuration % 60).padStart(2, '0')}`) : (isVoice ? t('语音') : t('视频'))}`}</Text>
+                          </ScalePressable>
                         ) : null}
                         {flipPlayUrl === answerUrl && answerUrl ? (
-                          <Video source={{ uri: answerUrl }} style={isVoice ? styles.flipAudio : styles.flipVideo} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
+                          <Video source={{ uri: answerUrl }} style={[isVoice ? styles.flipAudio : styles.flipVideo, isVoice && { backgroundColor: palette.surface }]} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
                         ) : null}
                       </View>
                     ) : !isAnswered ? (
@@ -734,6 +747,7 @@ export default function AnalysisScreen() {
               </FadeInView>
             );
           }}
+          ListEmptyComponent={<EmptyState icon="card-outline" title={t('暂无翻牌记录')} />}
         />
       ) : null}
       {mediaFullUrl ? (
@@ -766,53 +780,82 @@ export default function AnalysisScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  containerDark: { backgroundColor: 'transparent' },
   pickerWrap: { paddingHorizontal: 16 },
-  refreshText: { fontSize: 14, minWidth: 54, textAlign: 'right', fontWeight: '700' },
   statusText: { marginTop: 8, fontSize: 12 },
-  retryBtn: {
-    alignSelf: 'center',
-    marginTop: 10,
-    paddingHorizontal: 22,
-    paddingVertical: 8,
-    borderRadius: 16,
-  },
-  retryBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  tabsRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingVertical: 10 },
-  tabWrap: { flex: 1 },
-  tabPill: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 14, paddingBottom: 112 },
-  summaryCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', marginBottom: 12 },
-  summaryRow: { flexDirection: 'row', paddingVertical: 14, paddingHorizontal: 6 },
-  summaryCell: { flex: 1, alignItems: 'center' },
-  summaryValue: { fontSize: 18, fontWeight: '900' },
-  summaryLabel: { fontSize: 11, marginTop: 4 },
+  // 分段控件（spec §7）
+  segmented: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginVertical: 10,
+    borderRadius: radii.md,
+    padding: 3,
+    backgroundColor: 'transparent',
+  },
+  segItem: {
+    flex: 1,
+    height: 40,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  segText: { fontSize: 13, fontWeight: '700' },
+  // 概览统计卡（2 列，数值 20/800 + 标签 11）
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  statCard: {
+    width: '48.5%',
+    marginHorizontal: '0.75%',
+    marginBottom: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: radii.md,
+    alignItems: 'center',
+  },
+  statValue: { fontSize: 20, fontWeight: '800' },
+  statLabel: { fontSize: 11, marginTop: 4, fontWeight: '600' },
+  // 统一列表行（spec §3 变体：28 圆角图标底 + 14/600 标题 + 12 副标题）
   rowCard: {
     flexDirection: 'row', alignItems: 'center', padding: 12, marginBottom: 5,
-    borderRadius: 16, borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md, borderWidth: StyleSheet.hairlineWidth,
+  },  rowIcon: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', marginRight: 10,
   },
-  rowIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  rankIconNo: { width: 28 },
   rowBody: { flex: 1, minWidth: 0, paddingRight: 8 },
-  rowTitle: { fontSize: 14, fontWeight: '700' },
+  rowTitle: { fontSize: 14, fontWeight: '600' },
   rowSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
   rowMeta: { fontSize: 11 },
-  rankNo: { fontSize: 18, fontWeight: '900' },
+  rankNo: { fontSize: 14, fontWeight: '800' },
   rankValue: { fontSize: 13, fontWeight: '800' },
   dateHeader: { flex: 1, minWidth: 0 },
   dateMember: { fontWeight: '700' },
   barWrap: { position: 'relative', height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 8 },
   barFg: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3 },
   barFg2: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3 },
-  rankCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 12 },
+  // 条形图区块卡
+  blockCard: {
+    borderRadius: radii.md, padding: 14, marginBottom: 12,
+  },
+  rankCard: {
+    borderRadius: radii.md, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 12,
+  },
   rankHeaderTitle: { fontSize: 15, fontWeight: '700' },
   rankHeaderSub: { fontSize: 11, marginTop: 3, marginBottom: 6 },
   rankRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 5 },
-  rankRowName: { fontSize: 13, fontWeight: '700', width: 72, marginRight: 8 },
+  rankRowName: { fontSize: 13, fontWeight: '700', flex: 1, marginRight: 8 },
   rankTrack: { flex: 1, height: 10, borderRadius: 3, overflow: 'hidden', backgroundColor: 'transparent' },
   rankBar: { height: 10, borderRadius: 3 },
   rankRowCount: { fontSize: 11, width: 28, textAlign: 'right', marginLeft: 8 },
-  typeCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 12 },
-  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
+  // 成员翻牌榜行右侧数值 + 迷你进度条
+  flipRankVal: { alignItems: 'flex-end', maxWidth: 110 },
+  miniTrack: { height: 3, borderRadius: 2, overflow: 'hidden', width: 60, marginTop: 4 },
+  miniFill: { height: 3, borderRadius: 2 },
   flipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   flipQ: { fontSize: 13, lineHeight: 20, marginBottom: 6 },
   flipABlock: { padding: 8, borderRadius: 12, marginBottom: 6 },
@@ -835,22 +878,10 @@ const styles = StyleSheet.create({
   videoClose: { paddingTop: 50, paddingHorizontal: 16, paddingBottom: 8, alignSelf: 'flex-start' },
   videoCloseText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   videoPlayer: { flex: 1, backgroundColor: '#000' },
-  flipCardsCard: { flexDirection: 'row', paddingVertical: 16, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, marginBottom: 12 },
-  flipCell: { flex: 1, alignItems: 'center', paddingVertical: 4, paddingHorizontal: 4 },
-  flipCellBig: { flex: 1.4 },
-  flipCardValue: { fontSize: 18, fontWeight: '900' },
-  flipCardLabel: { fontSize: 11, marginTop: 4 },
   flipCardRange: { fontSize: 10, marginTop: 2 },
   sectionSub: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
-  flipMemberCard: { padding: 12, borderRadius: 12, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth },
-  flipMemberHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  flipMemberName: { fontSize: 13, fontWeight: '700', flex: 1 },
-  flipMemberCost: { fontSize: 12, fontWeight: '800' },
-  flipBarBg: { height: 4, borderRadius: 2, marginBottom: 4 },
-  flipBarFg: { height: 4, borderRadius: 2 },
-  flipMemberMeta: { fontSize: 10, lineHeight: 16 },
-  flipChipScroll: { marginBottom: 10, marginTop: 4 },
-  flipChipRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14 },
-  flipChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
-  flipChipText: { fontSize: 11, fontWeight: '600' },
+  flipChipScroll: { marginBottom: 10, marginTop: 4, flexGrow: 0 },
+  flipChipRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
+  flipChip: { flexShrink: 0 },
 });
+

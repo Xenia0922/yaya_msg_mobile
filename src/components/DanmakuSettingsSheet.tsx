@@ -1,14 +1,16 @@
 /**
  * 弹幕设置面板（哔哩哔哩风格）：总开关、显示区域、速度、字号、不透明度、重置。
- * 设置来自 useDanmakuSettings，记忆持久化。
+ * 设置来自 useDanmakuSettings，记忆持久化。全主题化（usePalette）+ 统一 Pill/Button。
  */
 import React from 'react';
 import { Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useSettingsStore } from '../store';
 import { useDanmakuSettings, DanmakuArea } from '../store/danmakuSettings';
 import { useI18n } from '../i18n';
-import { useAppTheme } from '../hooks/useAppTheme';
+import { usePalette, radii, spacing } from '../theme';
+import { typography } from '../theme/typography';
+import { Pill } from './Pill';
+import { Button } from './Button';
 
 interface Props {
   visible: boolean;
@@ -37,117 +39,72 @@ const OPACITIES: { v: number; label: string }[] = [
   { v: 1, label: '高' },
 ];
 
-function Chip({
-  active,
-  label,
-  onPress,
-  isDark,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-  isDark: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.chip, isDark && styles.chipD, active && styles.chipOn]}
-      onPress={onPress}
-    >
-      <Text style={[styles.chipText, isDark && styles.chipTextD, active && styles.chipTextOn]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
 export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const { enabled, area, speed, fontSize, opacity, set, reset } = useDanmakuSettings();
+
+  const chipRow = (items: { key?: string; label: string; active: boolean; onPress: () => void }[]) => (
+    <View style={styles.chipRow}>
+      {items.map((item) => (
+        <Pill key={item.key || item.label} label={item.label} selected={item.active} onPress={item.onPress} />
+      ))}
+    </View>
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.mask} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.sheet, isDark && styles.sheetD]} onStartShouldSetResponder={() => true}>
-          <View style={styles.handle} />
+        <View
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: palette.surface,
+              borderTopLeftRadius: radii.sheet,
+              borderTopRightRadius: radii.sheet,
+            },
+          ]}
+          onStartShouldSetResponder={() => true}
+        >
+          <View style={[styles.handle, { backgroundColor: palette.fill3 }]} />
           <View style={styles.header}>
-            <Text style={[styles.title, isDark && styles.textLight]}>{t('弹幕设置')}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name="close" size={20} color={isDark ? '#ccc' : '#666'} />
+            <Text style={[typography.headline, { color: palette.label }]}>{t('弹幕设置')}</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.6}>
+              <MaterialCommunityIcons name="close" size={20} color={palette.labelSecondary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
             {/* 总开关 */}
             <View style={styles.row}>
-              <Text style={[styles.rowLabel, isDark && styles.textLight]}>{t('显示弹幕')}</Text>
+              <Text style={[typography.subhead, { color: palette.label, fontWeight: '600' }]}>{t('显示弹幕')}</Text>
               <Switch
                 value={enabled}
                 onValueChange={(v) => set({ enabled: v })}
-                thumbColor={enabled ? '#ff6f91' : '#fff'}
-                trackColor={{ false: isDark ? '#444' : '#ccc', true: '#ff6f91' }}
+                thumbColor={enabled ? palette.tint : palette.onTint}
+                trackColor={{ false: palette.fill2, true: palette.tint }}
               />
             </View>
 
             {/* 显示区域 */}
-            <Text style={[styles.section, isDark && styles.sectionD]}>{t('显示区域')}</Text>
-            <View style={styles.chipRow}>
-              {AREAS.map((a) => (
-                <Chip
-                  key={a.key}
-                  active={area === a.key}
-                  label={t(a.label)}
-                  onPress={() => set({ area: a.key })}
-                  isDark={isDark}
-                />
-              ))}
-            </View>
+            <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('显示区域')}</Text>
+            {chipRow(AREAS.map((a) => ({ key: a.key, label: t(a.label), active: area === a.key, onPress: () => set({ area: a.key }) })))}
 
             {/* 速度 */}
-            <Text style={[styles.section, isDark && styles.sectionD]}>{t('滚动速度')}</Text>
-            <View style={styles.chipRow}>
-              {SPEEDS.map((s) => (
-                <Chip
-                  key={s.label}
-                  active={speed === s.v}
-                  label={t(s.label)}
-                  onPress={() => set({ speed: s.v })}
-                  isDark={isDark}
-                />
-              ))}
-            </View>
+            <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('滚动速度')}</Text>
+            {chipRow(SPEEDS.map((s) => ({ key: s.label, label: t(s.label), active: speed === s.v, onPress: () => set({ speed: s.v }) })))}
 
             {/* 字号 */}
-            <Text style={[styles.section, isDark && styles.sectionD]}>{t('字号')}</Text>
-            <View style={styles.chipRow}>
-              {SIZES.map((s) => (
-                <Chip
-                  key={s.label}
-                  active={fontSize === s.v}
-                  label={t(s.label)}
-                  onPress={() => set({ fontSize: s.v })}
-                  isDark={isDark}
-                />
-              ))}
-            </View>
+            <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('字号')}</Text>
+            {chipRow(SIZES.map((s) => ({ key: s.label, label: t(s.label), active: fontSize === s.v, onPress: () => set({ fontSize: s.v }) })))}
 
             {/* 不透明度 */}
-            <Text style={[styles.section, isDark && styles.sectionD]}>{t('不透明度')}</Text>
-            <View style={styles.chipRow}>
-              {OPACITIES.map((o) => (
-                <Chip
-                  key={o.label}
-                  active={opacity === o.v}
-                  label={t(o.label)}
-                  onPress={() => set({ opacity: o.v })}
-                  isDark={isDark}
-                />
-              ))}
-            </View>
+            <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('不透明度')}</Text>
+            {chipRow(OPACITIES.map((o) => ({ key: o.label, label: t(o.label), active: opacity === o.v, onPress: () => set({ opacity: o.v }) })))}
 
-            <TouchableOpacity style={styles.reset} onPress={() => reset()}>
-              <Text style={styles.resetText}>{t('恢复默认')}</Text>
-            </TouchableOpacity>
+            <View style={styles.resetWrap}>
+              <Button title={t('恢复默认')} onPress={() => reset()} variant="plain" size="sm" />
+            </View>
           </ScrollView>
         </View>
       </TouchableOpacity>
@@ -159,28 +116,19 @@ const styles = StyleSheet.create({
   mask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     maxHeight: '82%',
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
     paddingBottom: 18,
   },
-  sheetD: { backgroundColor: '#1b1b1b' },
-  handle: { width: 38, height: 4, borderRadius: 2, backgroundColor: '#ddd', alignSelf: 'center', marginTop: 8, marginBottom: 4 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
-  title: { fontSize: 16, fontWeight: '800', color: '#222' },
-  body: { paddingHorizontal: 16 },
+  handle: { width: 38, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 4 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  body: { paddingHorizontal: spacing.md },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
-  rowLabel: { fontSize: 14, fontWeight: '700', color: '#333' },
-  section: { fontSize: 12, color: '#999', fontWeight: '700', marginTop: 12, marginBottom: 6 },
-  sectionD: { color: '#aaa' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.05)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' },
-  chipD: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)' },
-  chipOn: { backgroundColor: '#ff6f91', borderColor: '#ff6f91' },
-  chipText: { fontSize: 13, color: '#555', fontWeight: '700' },
-  chipTextD: { color: '#ccc' },
-  chipTextOn: { color: '#fff' },
-  reset: { marginTop: 18, alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 9, borderRadius: 16, borderWidth: 1, borderColor: '#ff6f91' },
-  resetText: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
-  textLight: { color: '#eee' },
+  section: { fontSize: 12, fontWeight: '700', marginTop: 12, marginBottom: 6 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  resetWrap: { marginTop: 18, alignItems: 'center' },
 });

@@ -3,13 +3,11 @@ import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   Alert,
-  FlatList,
   Image,
   Modal,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -18,8 +16,12 @@ import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
-import { useAppTheme } from '../hooks/useAppTheme';
-import { usePalette } from '../theme';
+import { HeaderAction } from '../components/HeaderAction';
+import { ScalePressable } from '../components/Motion';
+import { Button } from '../components/Button';
+import { EmptyState } from '../components/StateViews';
+import { NetworkImage } from '../components/NetworkImage';
+import { usePalette, radii } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
 import {
@@ -63,7 +65,6 @@ function typeIcon(type: DownloadItem['type']): string {
 
 export default function DownloadScreen() {
   const navigation = useNavigation<Nav>();
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
@@ -187,9 +188,7 @@ export default function DownloadScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('下载管理')} right={
-        <TouchableOpacity onPress={clearDone} disabled={doneCount + failedCount === 0}>
-          <Text style={[styles.clearBtn, { color: doneCount + failedCount === 0 ? palette.labelTertiary : palette.tint }]}>{t('清理完成')}</Text>
-        </TouchableOpacity>
+        <HeaderAction label={t('清理完成')} onPress={clearDone} disabled={doneCount + failedCount === 0} />
       } />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
@@ -205,10 +204,11 @@ export default function DownloadScreen() {
             value={url}
             onChangeText={setUrl}
             autoCapitalize="none"
+            returnKeyType="done"
+            onSubmitEditing={startManualDownload}
+            blurOnSubmit={false}
           />
-          <TouchableOpacity style={[styles.addBtn, { backgroundColor: palette.tint }, busy && styles.btnDisabled]} onPress={startManualDownload} disabled={busy}>
-            <Text style={styles.addBtnText}>{busy ? t('下载中') : t('添加下载')}</Text>
-          </TouchableOpacity>
+          <Button title={t('添加下载')} onPress={startManualDownload} variant="filled" size="md" fullWidth loading={busy} disabled={busy} style={styles.addBtn} />
         </View>
 
         <PerfFlatList
@@ -235,7 +235,7 @@ export default function DownloadScreen() {
               </View>
             ) : null
           }
-          ListEmptyComponent={<Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('暂无下载项目')}</Text>}
+          ListEmptyComponent={<EmptyState icon="download-off" title={t('暂无下载项目')} hint={t('通过上方输入框粘贴链接下载')} />}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
@@ -247,37 +247,54 @@ export default function DownloadScreen() {
               );
             }
             const task = item.item as DownloadItem;
+            const progress = Math.round((task.progress || 0) * 100);
+            const thumbUri = task.type === 'image' ? (task.localUri || task.url) : '';
             return (
-              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-                <View style={[styles.task, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
-                  <View style={[styles.taskIconWrap, { backgroundColor: palette.tintSoft }]}>
-                    <MaterialCommunityIcons name={typeIcon(task.type)} size={20} color={palette.tint} />
-                  </View>
-                  <View style={styles.taskBody}>
-                    <Text style={[styles.taskName, { color: palette.label }]} numberOfLines={1}>{task.name}</Text>
-                    <Text style={[styles.taskSub, { color: palette.labelTertiary }]} numberOfLines={1}>
-                      {t(typeLabel(task.type))}
-                    </Text>
-                    <View style={[styles.progressTrack, { backgroundColor: palette.fill2 }]}>
-                      <View style={[styles.progressFill, { backgroundColor: task.status === 'failed' ? palette.danger : palette.tint, width: `${Math.round((task.progress || 0) * 100)}%` }]} />
+              <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300}>
+                <View style={[styles.task, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                  {/* 缩略图 44 圆角 10：图片用本地/网络缩略，其余回退为类型图标 */}
+                  {thumbUri ? (
+                    <NetworkImage source={{ uri: thumbUri }} style={[styles.taskThumb, { backgroundColor: palette.fill3 }]} />
+                  ) : (
+                    <View style={[styles.taskThumb, styles.taskThumbIcon, { backgroundColor: palette.tintSoft }]}>
+                      <MaterialCommunityIcons name={typeIcon(task.type)} size={20} color={palette.tint} />
                     </View>
-                    <Text style={[styles.taskStatus, { color: palette.labelSecondary }]} numberOfLines={1}>
-                      {task.status === 'done' ? t('完成') : task.status === 'failed' ? t('失败：{msg}', { msg: task.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(task.downloadedBytes), total: formatBytes(task.totalBytes) })}
-                    </Text>
+                  )}
+                  <View style={styles.taskBody}>
+                    <View style={styles.taskTitleRow}>
+                      <Text style={[styles.taskName, { color: palette.label }]} numberOfLines={1}>{task.name}</Text>
+                      <View style={[styles.taskTypePill, { backgroundColor: palette.fill2 }]}>
+                        <Text style={[styles.taskTypeText, { color: palette.labelSecondary }]}>{t(typeLabel(task.type))}</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.progressTrack, { backgroundColor: palette.fill3 }]}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          { backgroundColor: task.status === 'failed' ? palette.danger : palette.tint, width: `${progress}%` },
+                        ]}
+                      />
+                    </View>
+                    <View style={styles.taskMetaRow}>
+                      <Text style={[styles.taskStatus, { color: task.status === 'failed' ? palette.danger : palette.labelSecondary }]} numberOfLines={1}>
+                        {task.status === 'done' ? t('完成') : task.status === 'failed' ? t('失败：{msg}', { msg: task.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(task.downloadedBytes), total: formatBytes(task.totalBytes) })}
+                      </Text>
+                      <Text style={[styles.taskPercent, { color: palette.labelTertiary }]}>{progress}%</Text>
+                    </View>
                   </View>
                   <View style={styles.taskActions}>
                     {task.status === 'failed' ? (
-                      <TouchableOpacity onPress={() => retryTask(task)} style={styles.actionBtn}>
+                      <ScalePressable onPress={() => retryTask(task)} style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <MaterialCommunityIcons name="refresh" size={16} color={palette.tint} />
-                      </TouchableOpacity>
+                      </ScalePressable>
                     ) : (
-                      <TouchableOpacity onPress={() => handleOpen(task).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))} style={styles.actionBtn}>
+                      <ScalePressable onPress={() => handleOpen(task).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))} style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <MaterialCommunityIcons name="open-in-app" size={16} color={palette.tint} />
-                      </TouchableOpacity>
+                      </ScalePressable>
                     )}
-                    <TouchableOpacity onPress={() => remove(task.id)} style={styles.actionBtn}>
+                    <ScalePressable onPress={() => remove(task.id)} style={styles.actionBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <MaterialCommunityIcons name="delete-outline" size={16} color={palette.danger} />
-                    </TouchableOpacity>
+                    </ScalePressable>
                   </View>
                 </View>
               </FadeInView>
@@ -287,9 +304,9 @@ export default function DownloadScreen() {
       </FadeInView>
       {imgPreview ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setImgPreview('')}>
-          <TouchableOpacity style={styles.imgModal} activeOpacity={1} onPress={() => setImgPreview('')}>
+          <ScalePressable style={styles.imgModal} activeOpacity={1} onPress={() => setImgPreview('')}>
             <Image source={{ uri: imgPreview }} style={styles.imgFull} resizeMode="contain" />
-          </TouchableOpacity>
+          </ScalePressable>
         </Modal>
       ) : null}
     </View>
@@ -298,49 +315,54 @@ export default function DownloadScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  clearBtn: { fontSize: 13, minWidth: 54, textAlign: 'right', fontWeight: '700' },
   manualCard: { marginHorizontal: 16, marginBottom: 8, padding: 14, borderRadius: 16 },
   manualHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   manualTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
-  urlInput: { minHeight: 44, paddingHorizontal: 14, borderRadius: 14, fontSize: 13 },
-  addBtn: { marginTop: 10, minHeight: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  btnDisabled: { opacity: 0.55 },
-  addBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
+  urlInput: { minHeight: 42, paddingHorizontal: 14, borderRadius: 14, fontSize: 13 },
+  addBtn: { marginTop: 10, alignSelf: 'stretch' },
   list: { padding: 4, paddingBottom: 112 },
-  // 状态概览卡
+  // 状态概览卡（3 列统计：value 20/800 + label 11，中间分隔）
   overviewCard: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 12,
     marginTop: 4,
     marginBottom: 6,
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingVertical: 16,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
   },
   overviewItem: { flex: 1, alignItems: 'center' },
   overviewNum: { fontSize: 20, fontWeight: '800' },
   overviewLabel: { fontSize: 11, marginTop: 2 },
-  overviewDivider: { width: StyleSheet.hairlineWidth, height: 28 },
-  groupTitle: { fontSize: 13, fontWeight: '800', marginTop: 10, marginBottom: 2, paddingLeft: 16 },
+  overviewDivider: { width: StyleSheet.hairlineWidth, height: 32, alignSelf: 'center' },
+  groupTitle: { fontSize: 13, fontWeight: '800', marginTop: 12, marginBottom: 4, paddingLeft: 16 },
   task: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 12,
     marginVertical: 4,
     padding: 12,
-    borderRadius: 16,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  taskIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  taskBody: { flex: 1, marginLeft: 12, minWidth: 0 },
-  taskName: { fontSize: 15, fontWeight: '700' },
-  taskSub: { fontSize: 11, marginTop: 2 },
-  progressTrack: { height: 5, marginTop: 8, borderRadius: 4, overflow: 'hidden' },
-  progressFill: { height: 5, borderRadius: 4 },
-  taskStatus: { fontSize: 11, marginTop: 6 },
-  taskActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 10 },
-  actionBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
-  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
+  taskThumb: { width: 44, height: 44, borderRadius: 10, marginRight: 12 },
+  taskThumbIcon: { alignItems: 'center', justifyContent: 'center' },
+  taskBody: { flex: 1, minWidth: 0 },
+  taskTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  taskName: { fontSize: 14, fontWeight: '600', flex: 1 },
+  taskTypePill: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
+  taskTypeText: { fontSize: 10, fontWeight: '700' },
+  progressTrack: { height: 4, marginTop: 8, borderRadius: 2, overflow: 'hidden', backgroundColor: 'transparent' },
+  progressFill: { height: 4, borderRadius: 2 },
+  taskMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  taskStatus: { fontSize: 11, flex: 1 },
+  taskPercent: { fontSize: 11, fontWeight: '800' },
+  taskActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 10 },
+  actionBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+  },
   imgModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
   imgFull: { width: '96%', height: '80%' },
 });

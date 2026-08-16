@@ -37,6 +37,8 @@ import MeleeRankScreen from '../screens/MeleeRankScreen';
 import MemberDynamicScreen from '../screens/MemberDynamicScreen';
 import MemberWeiboScreen from '../screens/MemberWeiboScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
+import CommunityScreen from '../screens/CommunityScreen';
+import CommunityPostDetailScreen from '../screens/CommunityPostDetailScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { ui } from '../theme/ui';
@@ -116,6 +118,8 @@ const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDura
 const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10);
 const MemberWeiboStackScreen = withPageMotion(MemberWeiboScreen, ui.motion.stackDuration, 10);
 const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10);
+const CommunityStackScreen = withPageMotion(CommunityScreen, ui.motion.stackDuration, 10);
+const CommunityPostDetailStackScreen = withPageMotion(CommunityPostDetailScreen, ui.motion.stackDuration, 10);
 
 function MainTabBar({
   state,
@@ -261,6 +265,8 @@ export default function AppNavigator() {
           <Stack.Screen name="MemberDynamicScreen" component={MemberDynamicStackScreen} />
           <Stack.Screen name="MemberWeiboScreen" component={MemberWeiboStackScreen} />
           <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
+          <Stack.Screen name="CommunityScreen" component={CommunityStackScreen} />
+          <Stack.Screen name="CommunityPostDetailScreen" component={CommunityPostDetailStackScreen} />
         </Stack.Navigator>
         <AppToast />
       </>

@@ -1,20 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import { PerfFlatList } from './/PerfFlatList';
+import { PerfFlatList } from './PerfFlatList';
 import { CenterSpinner } from './Loaders';
 
 import {
-  FlatList,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { useMemberStore, useSettingsStore } from '../store';
+import { useMemberStore } from '../store';
 import { Member } from '../types';
 import { normalizeMember, memberSearchText } from '../utils/members';
-import { useAppTheme } from '../hooks/useAppTheme';
 import { useI18n } from '../i18n';
+import { usePalette, radii, spacing } from '../theme';
+import { typography } from '../theme/typography';
+import { Pill } from './Pill';
 
 interface MemberPickerProps {
   selectedMember: Member | null;
@@ -33,7 +33,7 @@ export default function MemberPicker({
   placeholder = '搜索成员...',
   limit = 80,
 }: MemberPickerProps) {
-  const isDark = useAppTheme();
+  const palette = usePalette();
   const { t } = useI18n();
   const members = useMemberStore((state) => state.members);
   const membersLoaded = useMemberStore((state) => state.membersLoaded);
@@ -48,16 +48,29 @@ export default function MemberPicker({
   }, [members, query, limit]);
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, { paddingHorizontal: spacing.md }]}>
       <TextInput
-        style={[styles.input, isDark && styles.inputDark]}
+        style={[
+          styles.input,
+          {
+            backgroundColor: palette.surfaceGlassStrong,
+            borderColor: palette.innerStroke,
+            color: palette.label,
+            borderRadius: radii.md,
+          },
+        ]}
         placeholder={ph}
-        placeholderTextColor={isDark ? '#aaa' : '#5a5a5a'}
+        placeholderTextColor={palette.labelTertiary}
         value={query}
         onChangeText={setQuery}
+        returnKeyType="search"
       />
-      {selectedMember ? <Text style={styles.selected}>{t('已选择：{name}', { name: selectedMember.ownerName })}</Text> : null}
-      {!membersLoaded ? <CenterSpinner dark={isDark} /> : null}
+      {selectedMember ? (
+        <Text style={[typography.footnote, { color: palette.tint, fontWeight: '600' }]}>
+          {t('已选择：{name}', { name: selectedMember.ownerName })}
+        </Text>
+      ) : null}
+      {!membersLoaded ? <CenterSpinner /> : null}
       <PerfFlatList
         data={filtered}
         horizontal
@@ -68,20 +81,20 @@ export default function MemberPicker({
         renderItem={({ item }) => {
           const active = selectedMember?.id === item.id;
           return (
-            <TouchableOpacity
-              style={[styles.chip, isDark && styles.chipDark, active && styles.chipActive]}
-              onPress={() => onSelect(normalizeMember(item))}
-              activeOpacity={0.75}
-            >
-              <Text style={[styles.chipText, isDark && styles.chipTextDark, active && styles.chipTextActive]}>
-                {memberShortName(item)}
-              </Text>
-              {item.team ? <Text style={[styles.team, isDark && styles.teamDark, active && styles.teamActive]}>{item.team}</Text> : null}
-            </TouchableOpacity>
+            <View style={{ marginRight: spacing.xs }}>
+              <Pill
+                label={`${memberShortName(item)}${item.team ? ` · ${item.team}` : ''}`}
+                selected={active}
+                onPress={() => onSelect(normalizeMember(item))}
+                style={styles.chip}
+              />
+            </View>
           );
         }}
         ListEmptyComponent={
-          <Text style={[styles.hint, isDark && styles.hintDark]}>{query.trim() ? (membersLoaded ? t('没有匹配成员') : t('暂无成员数据')) : ph}</Text>
+          <Text style={[typography.footnote, { color: palette.labelTertiary, paddingVertical: spacing.xs }]}>
+            {query.trim() ? (membersLoaded ? t('没有匹配成员') : t('暂无成员数据')) : ph}
+          </Text>
         }
       />
     </View>
@@ -89,34 +102,14 @@ export default function MemberPicker({
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: 8, paddingHorizontal: 14 },
+  wrapper: { gap: spacing.xs },
   input: {
     padding: 10,
-    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#FFFFFF',
-    color: '#333',
   },
-  inputDark: { backgroundColor: '#1C1C1F', borderColor: '#444', color: '#eeeeee' },
-  selected: { fontSize: 13, color: '#ff6f91' },
   list: { maxHeight: 58 },
   chip: {
     minWidth: 72,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(238,238,238,0.82)',
-    marginRight: 8,
   },
-  chipDark: { backgroundColor: '#1C1C1F' },
-  chipActive: { backgroundColor: '#ff6f91' },
-  chipText: { fontSize: 12, color: '#444', fontWeight: '600' },
-  chipTextDark: { color: '#cccccc' },
-  chipTextActive: { color: '#fff' },
-  team: { fontSize: 9, color: '#333333', marginTop: 2 },
-  teamDark: { color: '#cccccc' },
-  teamActive: { color: '#d47082' },
-  hint: { color: '#333333', fontSize: 12, paddingVertical: 8 },
-  hintDark: { color: '#cccccc' },
 });

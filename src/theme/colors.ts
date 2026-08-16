@@ -60,6 +60,8 @@ const light = {
   name: 'light' as const,
   tint: accent.pink,
   tintSoft: accent.pinkSoft,
+  /** tint 填充之上的前景色（按钮/胶囊白字） */
+  onTint: '#FFFFFF',
 } as const;
 
 const dark = {
@@ -69,6 +71,7 @@ const dark = {
   name: 'dark' as const,
   tint: accent.pinkOnDark,
   tintSoft: 'rgba(255,143,168,0.20)',
+  onTint: '#FFFFFF',
 } as const;
 
 export type Palette = typeof light | typeof dark;
@@ -82,6 +85,17 @@ import { useSettingsStore } from '../store';
 export function usePalette(): Palette {
   const mode = useSettingsStore((s) => s.settings.theme);
   return mode === 'dark' ? dark : light;
+}
+
+/**
+ * 页面根容器背景色：
+ * - 未设置自定义背景图 → 正常不透明 palette.background
+ * - 已设置背景图 → 返回 transparent，让 App 根层 ImageBackground 透出（否则会被不透明底色盖住）
+ */
+export function usePageBackground(): string {
+  const hasBg = !!useSettingsStore((s) => s.settings.customBackgroundFile?.trim());
+  const palette = usePalette();
+  return hasBg ? 'transparent' : palette.background;
 }
 
 /** 兼容旧 Colors 引用：返回扁平 token 对象（默认 light）—— 旧 screens 不爆炸 */

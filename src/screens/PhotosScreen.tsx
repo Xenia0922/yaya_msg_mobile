@@ -2,24 +2,22 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { NetworkImage } from '../components/NetworkImage';
 
-import {
-  View, Text, TouchableOpacity, FlatList, Image, StyleSheet,
-} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { useSettingsStore, useUiStore } from '../store';
-import { FadeInView } from '../components/Motion';
-import { CenterSpinner } from '../components/Loaders';
+import { View, Text, RefreshControl, StyleSheet } from 'react-native';
+import { useUiStore } from '../store';
+import { FadeInView, ScalePressable } from '../components/Motion';
+import { Skeleton } from '../components/Skeleton';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
+import { HeaderAction } from '../components/HeaderAction';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
-import { useAppTheme } from '../hooks/useAppTheme';
-import { usePalette } from '../theme';
+import { usePalette, spacing, radii } from '../theme';
 import { useI18n } from '../i18n';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 function normalizeImageUrl(value: any): string {
   const direct = normalizeUrl(value);
@@ -92,8 +90,6 @@ function deepFindImageUrl(value: any, depth = 0): string {
 }
 
 export default function PhotosScreen() {
-  const navigation = useNavigation();
-  const isDark = useAppTheme();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
@@ -175,42 +171,80 @@ export default function PhotosScreen() {
 
   const renderPhotoItem = useCallback(({ item, index }: { item: any; index: number }) => {
     const url = photoUrls[index] || deepFindImageUrl(item);
-    const delay = index < 12 ? 80 + index * 30 : 0;
-    const title = item?.name || item?.title || '';
+    const delay = index < 12 ? 60 + index * 25 : 0;
     return (
-      <FadeInView delay={delay} duration={300} style={{ flex: 1 }}>
-        <View style={[styles.photoCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+      <FadeInView delay={delay} distance={8} style={{ flex: 1 }}>
+        <ScalePressable
+          style={styles.photoCell}
+          activeOpacity={0.9}
+          pressedScale={0.96}
+          onPress={() => setPreviewUrl(url)}
+          onLongPress={() => downloadPhoto(url)}
+        >
           {url ? (
-            <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUrl(url)} onLongPress={() => downloadPhoto(url)}>
-              <NetworkImage source={{ uri: url }} style={[styles.photo, { backgroundColor: palette.fill3 }]} resizeMode="cover" />
-            </TouchableOpacity>
-          ) : <View style={[styles.photo, { backgroundColor: palette.fill3 }]} />}
-          {title ? (
-            <>
-              <View pointerEvents="none" style={styles.photoShade} />
-              <View style={styles.photoTitleOverlay}>
-                <Text style={styles.photoTitleText} numberOfLines={1}>{title}</Text>
-              </View>
-            </>
-          ) : null}
-        </View>
+            <NetworkImage source={{ uri: url }} style={[styles.photo, { backgroundColor: palette.fill3 }]} resizeMode="cover" />
+          ) : (
+            <View style={[styles.photo, styles.photoFallback, { backgroundColor: palette.fill3 }]}>
+              <MaterialCommunityIcons name="image-off-outline" size={20} color={palette.labelTertiary} />
+            </View>
+          )}
+        </ScalePressable>
       </FadeInView>
     );
   }, [downloadPhoto, palette, photoUrls]);
 
+  /** 首屏网格骨架占位（与 3 列网格同构） */
+  const renderSkeletonGrid = () => {
+    const rows = [0, 1, 2];
+    return (
+      <View style={styles.skeletonWrap}>
+        {rows.map((r) => (
+          <View key={r} style={styles.skeletonRow}>
+            {[0, 1, 2].map((c) => (
+              <Skeleton key={`${r}-${c}`} height={100} radius={radii.sm} style={styles.skeletonCell} />
+            ))}
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      <ScreenHeader title={t('个人相册')} />
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <View style={styles.pickerWrap}>
-          <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
+      <ScreenHeader
+        title={t('个人相册')}
+        right={
+          <HeaderAction label={t('刷新')} onPress={() => selectedMember && loadPhotos(selectedMember)} disabled={!selectedMember || loading} loading={loading} />
+        }
+      />
+      <FadeInView delay={60} duration={300} style={{ flex: 1 }}>
+        <View style={styles.pickerCard}>
+          <View style={[styles.pickerRow, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+            <View style={[styles.avatar, { backgroundColor: palette.tintSoft }]}>
+              {selectedMember ? (
+                <NetworkImage source={{ uri: selectedMember.avatar }} style={styles.avatarImg} resizeMode="cover" />
+              ) : (
+                <MaterialCommunityIcons name="account" size={22} color={palette.tint} />
+              )}
+            </View>
+            <View style={styles.pickerInfo}>
+              <Text style={[styles.pickerName, { color: palette.label }]} numberOfLines={1}>
+                {selectedMember ? selectedMember.ownerName : t('选择成员查看相册')}
+              </Text>
+              <Text style={[styles.pickerSub, { color: palette.labelTertiary }]} numberOfLines={1}>
+                {selectedMember ? t('点击刷新或长按图片下载') : t('搜索并选择成员，查看个人照片')}
+              </Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-down" size={20} color={palette.labelTertiary} />
+          </View>
+          <View style={styles.pickerBody}>
+            <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
+          </View>
           {status && !loading ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
         </View>
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
-        {loading ? (
-          <View style={{ flex: 1 }}>
-            <CenterSpinner dark={isDark} text={t('加载中…')} />
-          </View>
+        {loading && photos.length === 0 ? (
+          renderSkeletonGrid()
         ) : loadError ? (
           <View style={{ flex: 1 }}>
             <ErrorState title={t('加载失败')} hint={loadError} onAction={() => selectedMember && loadPhotos(selectedMember)} />
@@ -226,7 +260,7 @@ export default function PhotosScreen() {
         ) : (
         <PerfFlatList
           data={photos}
-          numColumns={2}
+          numColumns={3}
           keyExtractor={(item, index) => String(item.id || item.nftId || index)}
           contentContainerStyle={styles.list}
           renderItem={renderPhotoItem}
@@ -234,6 +268,14 @@ export default function PhotosScreen() {
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={() => selectedMember && loadPhotos(selectedMember)}
+              tintColor={palette.tint}
+              colors={[palette.tint]}
+            />
+          }
         />
         )}
       </FadeInView>
@@ -243,13 +285,27 @@ export default function PhotosScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  pickerWrap: { padding: 16 },
-  status: { marginTop: 8, fontSize: 12 },
-  list: { padding: 10, paddingBottom: 40 },
-  photoCard: { flex: 1, margin: 4, borderRadius: 16, overflow: 'hidden' },
-  photo: { width: '100%', aspectRatio: 1 },
-  photoShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 44, backgroundColor: 'rgba(0,0,0,0.42)' },
-  photoTitleOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 8, paddingBottom: 6 },
-  photoTitleText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
-  empty: { textAlign: 'center', marginTop: 60, fontSize: 14 },
+  pickerCard: { paddingHorizontal: 16, paddingTop: 4 },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  avatar: { width: 48, height: 48, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImg: { width: '100%', height: '100%' },
+  pickerInfo: { flex: 1, minWidth: 0, marginLeft: 12, marginRight: 8 },
+  pickerName: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
+  pickerSub: { fontSize: 12, marginTop: 2 },
+  pickerBody: { marginTop: 6 },
+  status: { marginTop: 10, fontSize: 12, textAlign: 'center' },
+  list: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 96 },
+  photoCell: { flex: 1, margin: 3, borderRadius: radii.sm, overflow: 'hidden', aspectRatio: 1 },
+  photo: { width: '100%', height: '100%' },
+  photoFallback: { alignItems: 'center', justifyContent: 'center' },
+  skeletonWrap: { paddingHorizontal: 6, paddingTop: 6 },
+  skeletonRow: { flexDirection: 'row', marginBottom: 6 },
+  skeletonCell: { flex: 1, margin: 3 },
 });

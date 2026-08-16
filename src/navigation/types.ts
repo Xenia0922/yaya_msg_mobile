@@ -13,7 +13,7 @@ export type RootStackParamList = {
   RoomRadioScreen: undefined;
   OpenLiveScreen: undefined;
   PrivateMessagesScreen: { targetUserId?: string; targetName?: string } | undefined;
-  BilibiliLiveScreen: undefined;
+  BilibiliLiveScreen: { roomId?: string; roomName?: string } | undefined;
   VideoLibraryScreen: undefined;
   MusicLibraryScreen: undefined;
   AudioProgramsScreen: undefined;
@@ -25,6 +25,8 @@ export type RootStackParamList = {
   MemberDynamicScreen: undefined;
   MemberWeiboScreen: undefined;
   InvoiceScreen: undefined;
+  CommunityScreen: undefined;
+  CommunityPostDetailScreen: { postId: string; title?: string };
 };
 
 export type TabParamList = {
