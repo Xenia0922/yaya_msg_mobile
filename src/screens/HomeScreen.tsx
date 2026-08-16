@@ -11,6 +11,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, AppState, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -154,9 +155,12 @@ function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void
             <MaterialCommunityIcons name="video" color={palette.labelTertiary} size={44} />
           </View>
         )}
-        <View pointerEvents="none" style={styles.liveBannerShade1} />
-        <View pointerEvents="none" style={styles.liveBannerShade2} />
-        <View pointerEvents="none" style={styles.liveBannerShade3} />
+        {/* 底部平滑渐变（顶部透明 → 底部 0.58 黑），替代多层色阶遮罩 */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.58)']}
+          style={styles.liveBannerShade}
+        />
         <View style={[styles.liveBadge, styles.liveBannerBadge]}>
           <Text style={styles.liveBadgeText}>直播中</Text>
         </View>
@@ -689,9 +693,7 @@ const styles = StyleSheet.create({
   },
   liveBannerCover: { width: '100%', height: '100%' },
   liveBannerFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  liveBannerShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%', backgroundColor: 'rgba(0,0,0,0.10)' },
-  liveBannerShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '38%', backgroundColor: 'rgba(0,0,0,0.22)' },
-  liveBannerShade3: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '22%', backgroundColor: 'rgba(0,0,0,0.42)' },
+  liveBannerShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '58%' },
   liveBannerBadge: { top: 12, left: 12 },
   liveBannerInfo: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingBottom: 12 },
   liveBannerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', lineHeight: 24, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },

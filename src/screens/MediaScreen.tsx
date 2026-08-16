@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
@@ -1827,8 +1828,12 @@ export default function MediaScreen() {
                             </View>
                           ) : null}
                         </View>
-                        <View pointerEvents="none" style={styles.vodShade1} />
-                        <View pointerEvents="none" style={styles.vodShade2} />
+                        {/* 底部平滑渐变遮罩（替代两层色阶） */}
+                        <LinearGradient
+                          pointerEvents="none"
+                          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']}
+                          style={styles.vodShade}
+                        />
                         <View style={styles.vodInfoOverlay}>
                           <Text style={styles.vodTitleOverlay} numberOfLines={2}>
                             {it.title || it.liveRoomTitle || t('无标题')}
@@ -1898,8 +1903,12 @@ export default function MediaScreen() {
                         )}
                       </View>
                     </View>
-                    <View pointerEvents="none" style={styles.vodShade1} />
-                    <View pointerEvents="none" style={styles.vodShade2} />
+                    {/* 底部平滑渐变遮罩（替代两层色阶） */}
+                    <LinearGradient
+                      pointerEvents="none"
+                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']}
+                      style={styles.vodShade}
+                    />
                     <View style={styles.vodInfoOverlay}>
                       <Text style={styles.vodTitleOverlay} numberOfLines={2}>
                         {item.title || item.liveRoomTitle || t('无标题')}
@@ -2102,8 +2111,8 @@ const styles = StyleSheet.create({
     gap: 4,
     alignItems: 'center',
   },
-  vodShade1: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 88, backgroundColor: 'rgba(0,0,0,0.18)' },
-  vodShade2: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, backgroundColor: 'rgba(0,0,0,0.45)' },
+  // 底部平滑渐变遮罩：顶部透明 → 底部 0.55 黑，替代两层色阶（vodShade1/vodShade2）
+  vodShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 88 },
   vodInfoOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 8, paddingBottom: 7 },
   vodTitleOverlay: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', lineHeight: 17, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   vodMetaOverlay: { color: 'rgba(255,255,255,0.85)', fontSize: 10, marginTop: 2, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },

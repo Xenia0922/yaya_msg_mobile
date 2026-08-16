@@ -41,6 +41,7 @@
     "expo-asset": "~12.0.13",
     "expo-file-system": "~19.0.22",
     "expo-image-picker": "~17.0.11",
+    "expo-linear-gradient": "~15.0.8",
     "expo-media-library": "~18.2.1",
     "expo-screen-orientation": "~9.0.9",
     "expo-status-bar": "~3.0.9",
