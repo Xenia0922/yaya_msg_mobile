@@ -2,7 +2,7 @@
   <img src="assets/banner.svg" width="100%" alt="牙牙消息" />
 </p>
 <p align="center">
-  <img src="assets/logo.jpg" width="96" alt="logo" />
+  <img src="assets/logo-rounded.png" width="96" alt="logo" />
 </p>
 
 <p align="center">
