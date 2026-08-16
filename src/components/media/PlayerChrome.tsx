@@ -41,9 +41,9 @@ export const chromeStyles = StyleSheet.create({
 
   // ===== 底部悬浮玻璃坞（B站新风格：圆角胶囊 + 阴影） =====
   bottomDock: {
-    position: 'absolute', left: 10, right: 10, bottom: 10, zIndex: 30,
+    position: 'absolute', left: 8, right: 8, bottom: 8, zIndex: 30,
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 8, paddingBottom: 8, paddingHorizontal: 8,
+    paddingTop: 6, paddingBottom: 6, paddingHorizontal: 6,
     borderRadius: 22,
     backgroundColor: 'rgba(16,16,18,0.62)',
     borderWidth: StyleSheet.hairlineWidth,
@@ -51,30 +51,30 @@ export const chromeStyles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.32, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8,
   },
   dockIconBtn: {
-    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
   },
-  timeText: { color: '#fff', fontSize: 11, minWidth: 36, textAlign: 'center', marginHorizontal: 2 },
-  // 进度条：外层 24px 触控区，内层 4px 视觉条（可拖动跟手）
-  ctrlTrack: { flex: 1, height: 24, justifyContent: 'center', marginHorizontal: 8, position: 'relative' },
+  timeText: { color: '#fff', fontSize: 10, minWidth: 30, textAlign: 'center', marginHorizontal: 1 },
+  // 进度条：外层 24px 触控区，内层 4px 视觉条（可拖动跟手）；压缩两侧元素后轨道更长
+  ctrlTrack: { flex: 1, height: 24, justifyContent: 'center', marginHorizontal: 6, position: 'relative' },
   ctrlBar: { position: 'relative', height: 4, width: '100%', borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.32)' },
   ctrlFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 2, backgroundColor: BILI_PINK },
   ctrlKnob: { position: 'absolute', top: -3, width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff', marginLeft: -5 },
   // 直播标识（替代进度条）：红色圆点 + 已播时长（还原用户偏好，不用文字）
   liveChip: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', marginHorizontal: 8,
+    flex: 1, flexDirection: 'row', alignItems: 'center', marginHorizontal: 6,
   },
   liveDot: {
     width: 9, height: 9, borderRadius: 4.5, backgroundColor: '#ff4d4f', marginRight: 6,
   },
   liveChipTime: { color: 'rgba(255,255,255,0.85)', fontSize: 11 },
-  // 工具按钮（弹幕 / 画质 / 倍速 / 更多）
+  // 工具按钮（弹幕 / 画质 / 倍速 / 更多）——紧凑尺寸，给进度条让位
   toolBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 10, height: 34, borderRadius: 17, minWidth: 46,
+    paddingHorizontal: 6, height: 32, borderRadius: 16, minWidth: 38,
     backgroundColor: 'rgba(255,255,255,0.10)',
-    marginLeft: 4,
+    marginLeft: 3,
   },
-  toolText: { color: '#fff', fontSize: 12, fontWeight: '700', marginLeft: 4 },
+  toolText: { color: '#fff', fontSize: 11, fontWeight: '700', marginLeft: 3 },
   toolTextOn: { color: BILI_PINK },
 
   // ===== 更多面板 =====
