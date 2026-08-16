@@ -126,7 +126,7 @@ interface UpdateState {
   hasUpdate: boolean;
   /** 最新版本号（如 v2.6.6），无更新时为空 */
   latestVersion: string;
-  /** 最新版 APK 直链；Release 无 APK 附件时回退到 Release 页面 */
+  /** 最新版 APK 直链（releases/download，免登录直接下载）；无 APK 附件时为空 */
   latestUrl: string;
   /** 本次会话已检查的时间戳，0 表示未检查 */
   lastCheckedAt: number;
@@ -143,8 +143,9 @@ export const useUpdateStore = create<UpdateState>((set) => ({
   lastCheckedAt: 0,
   // 应用启动时静默检测一次（限流 24h）；失败（网络/无 Release/超时）静默视为无更新，
   // 绝不打扰用户 —— 没有红点就当作没有更新。
-  // force=true 为设置页手动「检查更新」：绕过 24h 限流立即请求；
-  // 检查失败会 throw（手动入口据此提示「检查更新失败」），且不写入缓存，下次可重试。
+  // force=true 为设置页手动「检查更新」：绕过 24h 限流立即请求。
+  // 任何失败都不抛错、一律视为「无更新」（返回 false），成功/失败都写缓存限流；
+  // 手动 force 不受缓存影响，随时可重试。
   checkUpdate: async (force = false) => {
     if (updateChecking) return false;
     const { lastCheckedAt } = useUpdateStore.getState();
@@ -154,6 +155,11 @@ export const useUpdateStore = create<UpdateState>((set) => ({
     const lastTs = Math.max(lastCheckedAt, persistedTs);
     if (!force && lastTs && Date.now() - lastTs < UPDATE_CHECK_INTERVAL) return false;
     updateChecking = true;
+    const finish = (has: boolean, tag: string, url: string) => {
+      const now = Date.now();
+      set({ hasUpdate: has, latestVersion: has ? tag : '', latestUrl: has ? url : '', lastCheckedAt: now });
+      AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, String(now)).catch(() => {});
+    };
     try {
       // 源1：GitHub API（未认证匿名限流 60/h，共享出口 IP 时可能 403）
       let tag = '';
@@ -167,7 +173,8 @@ export const useUpdateStore = create<UpdateState>((set) => ({
         const data: any = await res.json();
         tag = String(data.tag_name || data.name || '');
         const apk = (data.assets || []).find((a: any) => String(a.name || '').toLowerCase().endsWith('.apk'));
-        url = String(apk?.browser_download_url || data.html_url || '');
+        // 无 APK 附件时视为无更新（不打开 release 页面，避免登录墙）
+        url = String(apk?.browser_download_url || '');
       } catch {
         // 源2：GitHub release 页面 HTML（无 API 匿名限流）：重定向 URL 提取 tag；
         // 新版页面 HTML 不含 APK 链接（assets 由 expanded_assets 片段异步提供），再抓片段提取 APK 直链
@@ -190,20 +197,17 @@ export const useUpdateStore = create<UpdateState>((set) => ({
         for (const m of frag.matchAll(/href="(\/Xenia0922\/yaya_msg_mobile\/releases\/download\/[^"]+\.apk)"/g)) {
           links.push(m[1]);
         }
-        // 优先通用包（不带 -v8a/-v7a/-x64/-x86 后缀），其次任意 APK；拿不到直链则回退 release 页面
+        // 优先通用包（不带 -v8a/-v7a/-x64/-x86 后缀），其次任意 APK；无直链时视为无更新
         const pick = links.find((l) => !/-(v8a|v7a|x64|x86)\.apk$/i.test(l)) || links[0];
-        url = pick ? `https://github.com${pick}` : finalUrl;
-        if (!url) throw new Error('no release url');
+        url = pick ? `https://github.com${pick}` : '';
       }
       const has = !!tag && !!url && isNewerVersion(tag, APP_VERSION);
-      const now = Date.now();
-      // 仅成功后写入缓存（失败不缓存：下次仍可重试）
-      set({ hasUpdate: has, latestVersion: has ? tag : '', latestUrl: has ? url : '', lastCheckedAt: now });
-      AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, String(now)).catch(() => {});
+      finish(has, tag, url);
       return has;
-    } catch (err) {
-      set({ hasUpdate: false, latestVersion: '', latestUrl: '' });
-      throw err;
+    } catch {
+      // 检查失败（网络不通/两个源都不可用）：视为无更新，不抛错不打扰
+      finish(false, '', '');
+      return false;
     } finally {
       updateChecking = false;
     }

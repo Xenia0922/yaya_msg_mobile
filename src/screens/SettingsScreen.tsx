@@ -195,12 +195,13 @@ export default function SettingsScreen() {
     if (up && latestUrl) {
       Linking.openURL(latestUrl).catch(() => {});
     } else {
-      // force=true：绕过 24h 限流立即请求（否则冷启静默检查后 24h 内手动检查会直接跳过）
-      useUpdateStore.getState().checkUpdate(true).then(() => {
+      // force=true：绕过 24h 限流立即请求（否则冷启静默检查后 24h 内手动检查会直接跳过）；
+      // 检查不到更新（含网络失败，视为无更新）统一提示「已是最新版本」
+      useUpdateStore.getState().checkUpdate(true).then((has) => {
         const next = useUpdateStore.getState();
-        if (next.hasUpdate && next.latestUrl) Linking.openURL(next.latestUrl).catch(() => {});
+        if (has && next.hasUpdate && next.latestUrl) Linking.openURL(next.latestUrl).catch(() => {});
         else showToast(t('已是最新版本'));
-      }).catch(() => showToast(t('检查更新失败，请稍后再试')));
+      }).catch(() => showToast(t('已是最新版本')));
     }
   };
 
