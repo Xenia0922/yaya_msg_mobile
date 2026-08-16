@@ -9,13 +9,18 @@
       <stop offset="0%" stop-color="#ff6f91"/>
       <stop offset="100%" stop-color="#ff8fa8"/>
     </linearGradient>
+    <clipPath id="round">
+      <rect width="1200" height="240" rx="28"/>
+    </clipPath>
   </defs>
-  <rect width="1200" height="240" fill="url(#bg)"/>
-  <circle cx="1050" cy="40" r="180" fill="#ff6f91" opacity="0.08"/>
-  <circle cx="150" cy="220" r="140" fill="#ff8fa8" opacity="0.07"/>
-  <text x="60" y="110" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="52" font-weight="700" fill="#ffffff">牙牙消息</text>
-  <text x="60" y="160" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="26" fill="#ff8fa8">Yaya Message · 口袋48 第三方移动客户端</text>
-  <rect x="60" y="180" width="220" height="8" rx="4" fill="url(#pink)"/>
-  <text x="840" y="150" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" fill="#c9c9ce">React Native 0.81 · v2.7</text>
-  <text x="840" y="184" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" fill="#8e8e93">兼容 鸿蒙 2/3/4 · Android 8.0+</text>
+  <g clip-path="url(#round)">
+    <rect width="1200" height="240" fill="url(#bg)"/>
+    <circle cx="1050" cy="40" r="180" fill="#ff6f91" opacity="0.08"/>
+    <circle cx="150" cy="220" r="140" fill="#ff8fa8" opacity="0.07"/>
+    <text x="60" y="110" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="52" font-weight="700" fill="#ffffff">牙牙消息</text>
+    <text x="60" y="160" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="26" fill="#ff8fa8">Yaya Message · 口袋48 第三方移动客户端</text>
+    <rect x="60" y="180" width="220" height="8" rx="4" fill="url(#pink)"/>
+    <text x="840" y="150" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="22" fill="#c9c9ce">React Native 0.81 · v2.7</text>
+    <text x="840" y="184" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="18" fill="#8e8e93">兼容 鸿蒙 2/3/4 · Android 8.0+</text>
+  </g>
 </svg>
