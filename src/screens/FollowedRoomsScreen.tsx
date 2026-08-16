@@ -1134,27 +1134,15 @@ export default function FollowedRoomsScreen() {
     let next = media;
     try {
       if (media.type === 'live' || media.liveId) {
-        showToast(t('正在解析直播/录播地址...'));
-        // 接口串行重试最坏可卡 1 分钟以上，这里加 12s 总超时，失败立即给出明确反馈
-        next = await Promise.race([
-          resolveRoomLiveMedia(media),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error(t('解析播放地址超时，请稍后重试'))), 12000)),
-        ]);
-      }
-      if (!next.url) {
-        Alert.alert(t('播放失败'), t('没有解析到可播放地址。\n可稍后重试，或前往「直播」页的回放列表查找该录播。'));
-        return;
-      }
-      if (next.type === 'live') {
-        // v2.6: use unified MediaScreen player; pass the already-resolved URL directly
-        // so MediaScreen doesn't re-resolve (which failed and left the user on the list)
-        const targetMode = next.isLive ? 'live' : 'vod';
+        // v2.7: 点击即进统一播放器（MediaScreen 内先渲染播放器 shell 再解析地址并播放）。
+        // 不再在房间页前置解析（串行接口解析慢、失败时用户被留在列表页，体验差）；
+        // 播放器内有「正在解析…」loading 与失败重试反馈。
+        const targetMode = media.isLive ? 'live' : 'vod';
         navigation.navigate('Media', {
           mode: targetMode,
-          playLiveId: next.liveId,
-          playTitle: next.title,
-          playCover: next.cover,
-          playUrl: next.url,
+          playLiveId: media.liveId,
+          playTitle: media.title,
+          playCover: media.cover,
           playNonce: Date.now(),
           fromRoom: true,
         });

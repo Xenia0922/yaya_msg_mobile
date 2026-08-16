@@ -312,6 +312,25 @@ function normalizeLiveList(res: any): VODItem[] {
   })) as VODItem[];
 }
 
+/** 按 liveId 在直播/录播列表（首屏）中查找条目，作为详情接口解析失败的兜底 */
+async function findLiveItemInLists(liveId: string, record: boolean) {
+  const calls: Promise<any>[] = [
+    pocketApi.getLiveList({ record, debug: true, next: 0 }),
+    pocketApi.getOpenLivePublicList({ record, next: 0 }),
+  ];
+  for (const p of calls) {
+    try {
+      const res = await p;
+      const list = unwrapList(res, ['content.liveList', 'content.list', 'data.liveList', 'liveList', 'list', 'data']);
+      const found = list.find((it: any) => String(it.liveId || it.id || it.live_id || '') === String(liveId));
+      if (found) return found;
+    } catch {
+      /* 尝试下一个源 */
+    }
+  }
+  return null;
+}
+
 function mergeUniqueLiveItems(prev: VODItem[], next: VODItem[]) {
   const seen = new Set(prev.map((item: any, index) => String(item.liveId || item.id || item.title || index)));
   const merged = [...prev];
@@ -534,7 +553,7 @@ export default function MediaScreen() {
   const [isLandscape, setIsLandscape] = useState(false);
   // 画面旋转（翻转）：0/90/180/270，每按一次步进 90°
   const [videoRotate, setVideoRotate] = useState(0);
-  const [playing, setPlaying] = useState<{ url: string; urls: string[]; title: string; cover?: string; item: any; isLive: boolean; needsVlc: boolean } | null>(null);
+  const [playing, setPlaying] = useState<{ url: string; urls: string[]; title: string; cover?: string; item: any; isLive: boolean; needsVlc: boolean; resolving?: boolean } | null>(null);
   // 续播位置：打开回放时读取上次进度，播放中由 WebView 回传进度落盘
   const [webResumeTime, setWebResumeTime] = useState(0);
   const [giftVisible, setGiftVisible] = useState(false);
@@ -871,12 +890,35 @@ export default function MediaScreen() {
           return;
         }
         if (!lid) return;
+        // 点击即进播放器：先以「解析中」状态渲染播放器 shell，解析完成后无缝播放；
+        // 失败在播放器内提示（含重试），不再停留在列表页干等或弹窗
+        const guessTitle = route.params?.playTitle || t('直播');
+        const guessCover = route.params?.playCover || '';
+        setPlaying({
+          url: '',
+          urls: [],
+          title: guessTitle,
+          cover: normalizeUrl(guessCover),
+          item: { liveId: lid, title: guessTitle, liveCover: guessCover },
+          isLive,
+          needsVlc: false,
+          resolving: true,
+        });
+        // 解析：详情接口 → 公开详情 → 直播/录播列表按 liveId 查找（多层兜底）
         let detail: any = await pocketApi.getLiveOne(lid).catch(() => null);
         if (!detail) detail = await pocketApi.getOpenLiveOne(lid).catch(() => null);
         const item = (detail?.content || detail?.data || detail || {}) as any;
-        const urls = pickPlayableUrls(item, isLive);
+        let urls = pickPlayableUrls(item, isLive);
+        if (!urls.length) {
+          const found = await findLiveItemInLists(lid, isLive).catch(() => null);
+          if (found) urls = pickPlayableUrls(found, isLive);
+        }
         const url = urls[0] || '';
-        if (!url) { Alert.alert(t('播放失败'), t('未解析到播放地址，请稍后重试。')); return; }
+        if (!url) {
+          setPlayerError(t('未解析到播放地址，请点击重试。'));
+          setPlaying((p) => (p ? { ...p, resolving: false } : p));
+          return;
+        }
         const title = route.params?.playTitle || item.title || item.liveRoomTitle || t('直播');
         const cover = route.params?.playCover || item.liveCover || item.coverPath || '';
         setPlaying({
@@ -887,10 +929,14 @@ export default function MediaScreen() {
           item: { ...item, liveId: lid, title, liveCover: cover },
           isLive,
           needsVlc: streamNeedsProxy(url),
+          resolving: false,
         });
         // Switch tab to match mode
         if (!isLive && tab !== 'vod') switchTab('vod');
-      } catch (e) { showToast(t('播放失败：{error}', { error: errorMessage(e) })); }
+      } catch (e) {
+        setPlayerError(errorMessage(e));
+        setPlaying((p) => (p ? { ...p, resolving: false } : p));
+      }
     })();
   }, [route.params?.playLiveId, route.params?.playUrl, route.params?.playNonce]);
 
@@ -1238,6 +1284,18 @@ export default function MediaScreen() {
     setDuration(0);
     setPlaybackTime(0);
     setLoading(true);
+    // 点击即进播放器：解析完成前先以「解析中」状态渲染播放器 shell（loading 提示），
+    // 解析完成后无缝替换为真实播放；不再让用户停留在列表页干等或失败弹窗
+    setPlaying({
+      url: '',
+      urls: [],
+      title: item.title || item.liveRoomTitle || t('直播 / 回放'),
+      cover: item.liveCover || item.coverPath,
+      item,
+      isLive: tab === 'live',
+      needsVlc: false,
+      resolving: true,
+    });
     try {
       let urls = pickPlayableUrls(item, tab === 'live');
       let detail: any = item;
@@ -1278,7 +1336,9 @@ export default function MediaScreen() {
       urls = Array.from(new Set(urls.filter(Boolean)));
       const baseUrl = urls[0] || '';
       if (!baseUrl) {
-        setError(t('这个条目没有可播放地址，接口也没有返回播放流'));
+        // 播放器内提示（播放器已进入，用户可见错误与重试），不再只停留在列表页
+        setPlayerError(t('未解析到播放地址，可点击重试'));
+        setPlaying((p) => (p ? { ...p, resolving: false } : p));
         return;
       }
       setPlaying({
@@ -1289,9 +1349,12 @@ export default function MediaScreen() {
         item: { ...item, ...(detail?.content || detail?.data || detail) },
         isLive: tab === 'live',
         needsVlc: streamNeedsProxy(baseUrl),
+        resolving: false,
       });
     } catch (err) {
       setError(errorMessage(err));
+      setPlayerError(errorMessage(err));
+      setPlaying((p) => (p ? { ...p, resolving: false } : p));
     } finally {
       setLoading(false);
     }
@@ -1446,7 +1509,27 @@ export default function MediaScreen() {
           </Animated.View>
         ) : null}
 
-        {playing.needsVlc && Platform.OS === 'android' && LiveExoView ? (
+        {/* 解析中/解析失败：url 未就绪时渲染播放器 shell 内提示（点击即进播放器的等待态） */}
+        {!playing.url ? (
+          <View style={styles.player}>
+            {playerError ? (
+              <View style={styles.resolvingWrap}>
+                <Text style={styles.resolvingText}>{playerError}</Text>
+                <TouchableOpacity
+                  style={[styles.webFallbackBtn, { backgroundColor: palette.tint }]}
+                  onPress={() => startPlay(playing.item)}
+                >
+                  <Text style={styles.webFallbackText}>{t('重试')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.resolvingWrap}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+                <Text style={styles.resolvingText}>{t('正在解析播放地址…')}</Text>
+              </View>
+            )}
+          </View>
+        ) : playing.needsVlc && Platform.OS === 'android' && LiveExoView ? (
           <View style={styles.player}>
             <LiveExoView style={styles.nativeVideo} url={playing.url} />
           </View>
@@ -2038,6 +2121,9 @@ const styles = StyleSheet.create({
   vlcGateError: { color: '#ffb3c2', fontSize: 12, marginTop: 12 },
   playerError: { position: 'absolute', left: 16, right: 16, bottom: 24, padding: 12, borderRadius: 16, backgroundColor: '#1C1C1F' },
   playerErrorText: { color: '#fff', fontSize: 12, lineHeight: 18 },
+  // 播放器内解析中/失败视图
+  resolvingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  resolvingText: { color: 'rgba(255,255,255,0.85)', fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
   webFallbackBtn: { marginTop: 10, alignSelf: 'flex-start', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   webFallbackText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   // 哔哩哔哩风格底部控制条（停靠在 bottomDock 内）
