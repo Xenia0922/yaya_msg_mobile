@@ -424,6 +424,8 @@ export default function BilibiliLiveScreen() {
                   resizeMode="contain"
                   paused={paused}
                   ignoreSilentSwitch="ignore"
+                  // B 站直播流音频响度普遍低于口袋流：Android ExoPlayer 侧做 1.5x 线性增益补偿
+                  volume={1.5}
                   onLoad={() => { setPlayerError(''); setBuffering(false); videoRef.current?.resume?.(); }}
                   onBuffer={(e: any) => setBuffering(!!e?.isBuffering)}
                   onError={(event) => {

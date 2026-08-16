@@ -1,18 +1,16 @@
 // iOS 26 排版梯度（基于 SF Pro / 中文 PingFang SC 回退）
 // 大标题 + 系统字体梯度，字号与行高按 Apple HIG 节奏给到 round numbers。
-// 全局字体：iOS 用系统字体（中文即苹方 PingFang SC）；Android 打包苹方 TTF
-// （android/app/src/main/assets/fonts/PingFangSC.ttf + PingFangSC_bold.ttf，RN 按
-// 「Family + _bold」约定解析字重），全站统一苹方观感。
+// 全局字体跟随系统：iOS 中文即苹方（系统自带）；Android 用系统默认字体（不打包自定义字体）。
 import { Platform, TextStyle } from 'react-native';
 
 const systemFamily = Platform.select({
   ios: 'System',
-  android: 'PingFangSC',
+  android: undefined,
   default: 'System',
 });
 const roundedFamily = Platform.select({
   ios: 'System',
-  android: 'PingFangSC',
+  android: undefined,
   default: 'System',
 });
 

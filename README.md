@@ -28,11 +28,11 @@
 
 从 [Releases](https://github.com/Xenia0922/yaya_msg_mobile/releases) 下载：
 
-- `yaya-msg-mobile-v2.7.apk`：通用包（全 ABI）
+- `yaya-msg-mobile-v2.7.apk`：通用包（全 ABI，体积最大）
 - `yaya-msg-mobile-v2.7-x64.apk`：x86_64 模拟器专用
-- `yaya-msg-mobile-v2.7-v8a.apk` / `-v7a.apk`：真机包
+- `yaya-msg-mobile-v2.7-v8a.apk` / `-v7a.apk`：真机包（**推荐真机使用**，比通用包小约 40%）
 
-模拟器请用 x64 包，否则无法启动。
+模拟器请用 x64 包，否则无法启动。App 内「检查更新」始终提供通用包直链，真机如需最小体积请在 Release 页面按架构下载。
 
 ## 构建
 

@@ -10,7 +10,7 @@
  * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局结构。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, AppState, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -181,6 +181,10 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const token = settings.p48Token;
+  // 屏幕宽度驱动快捷入口像素宽度：横竖屏切换（如 B 站直播自动横屏后返回）时立即重算，
+  // 避免 flexBasis 百分比在旋转后残留横屏宽度（按钮被拉长不恢复）
+  const { width: winW } = useWindowDimensions();
+  const quickCellW = (winW - spacing.md * 2 - 24) / 4;
 
   const [lives, setLives] = useState<LiveCardItem[]>([]);
   const [livesOk, setLivesOk] = useState(false);
@@ -517,7 +521,7 @@ export default function HomeScreen() {
           <SectionHeader title={t('快捷入口')} />
           <View style={styles.quickRow}>
             {quick.map((item, index) => (
-              <FadeInView key={item.title} delay={index < 12 ? 60 + index * 25 : 0} duration={280} distance={8} style={styles.quickCell}>
+              <FadeInView key={item.title} delay={index < 12 ? 60 + index * 25 : 0} duration={280} distance={8} style={[styles.quickCell, { width: quickCellW }]}>
                 <ScalePressable
                   onPress={() => handleNav(item)}
                   pressedScale={0.94}
@@ -619,27 +623,31 @@ export default function HomeScreen() {
   );
 }
 
-/** 指示点随动动画：膨胀 + 变色 */
+/** 指示点随动动画：膨胀 + 变色。
+ *  外层固定等宽槽位（16）居中，保证 active 横条与其它小点的中心距均匀对齐；
+ *  宽度动画用 JS driver（width 不支持 native driver，否则横竖屏/轮播切换时宽度错乱）。 */
 function AnimatedDots({ active, color, idle }: { active: boolean; color: string; idle: string }) {
-  const w = useRef(new Animated.Value(6)).current;
+  const w = useRef(new Animated.Value(active ? 16 : 6)).current;
   const c = useRef(new Animated.Value(active ? 1 : 0)).current;
   useEffect(() => {
-    Animated.timing(w, { toValue: active ? 16 : 6, duration: 220, useNativeDriver: true }).start();
+    Animated.timing(w, { toValue: active ? 16 : 6, duration: 220, useNativeDriver: false }).start();
     // 颜色不逐帧动画（JS driver 开销），直接切换；宽度脉冲已提供动效反馈
     c.setValue(active ? 1 : 0);
   }, [active, w, c]);
   return (
-    <Animated.View
-      style={{
-        height: 6,
-        borderRadius: 3,
-        width: w,
-        backgroundColor: c.interpolate({
-          inputRange: [0, 1],
-          outputRange: [idle, color],
-        }),
-      }}
-    />
+    <View style={styles.dotSlot}>
+      <Animated.View
+        style={{
+          height: 6,
+          borderRadius: 3,
+          width: w,
+          backgroundColor: c.interpolate({
+            inputRange: [0, 1],
+            outputRange: [idle, color],
+          }),
+        }}
+      />
+    </View>
   );
 }
 
@@ -699,6 +707,8 @@ const styles = StyleSheet.create({
   liveBannerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', lineHeight: 24, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   liveBannerNick: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 3, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   bannerDots: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 8 },
+  /** 指示点等宽槽位：active 横条与小点中心距均匀（防止横条与相邻点视觉错位） */
+  dotSlot: { width: 16, alignItems: 'center' },
   liveList: { gap: 8 },
   /** 直播行卡：surface + hairline 圆角 16 */
   liveRow: {
@@ -748,7 +758,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   quickRow: { flexDirection: 'row', gap: 8 },
-  quickCell: { flexBasis: '24%', flexGrow: 1 },
+  quickCell: {},
   quickCellInner: { width: '100%' },
   chipIcon: {
     width: 30,
