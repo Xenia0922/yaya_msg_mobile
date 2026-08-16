@@ -65,3 +65,7 @@ harmony/oh-package-lock.json5
 harmony/entry/oh-package-lock.json5
 *.hsp
 *.hap
+
+# opencode 本地工具配置（不入库）
+.opencode/
+opencode.json
