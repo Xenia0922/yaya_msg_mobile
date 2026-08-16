@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
-import { useSettingsStore, useUiStore } from '../store';
+import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
 import { Palettes } from '../theme/colors';
 import { ensureMemberData } from '../services/memberData';
 import { RootStackParamList, TabParamList } from './types';
@@ -226,6 +226,11 @@ export default function AppNavigator() {
   // 启动即自动同步成员数据库（进入软件自动更新；失败静默忽略，不阻塞启动）
   useEffect(() => {
     ensureMemberData().catch(() => {});
+  }, []);
+
+  // 启动静默检查版本更新（24h 限流；失败静默，有更新时设置页显示红点）
+  useEffect(() => {
+    useUpdateStore.getState().checkUpdate().catch(() => {});
   }, []);
 
   return (

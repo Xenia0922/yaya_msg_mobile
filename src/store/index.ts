@@ -92,6 +92,8 @@ AsyncStorage.getItem(ANNOUNCEMENT_SEEN_KEY)
 // --- 版本更新检测 ---
 
 const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Xenia0922/yaya_msg_mobile/releases/latest';
+// 降级源：GitHub release 页面 HTML（无 API 匿名限流；共享出口 IP 触发 403 时自动切换）
+const GITHUB_RELEASES_PAGE = 'https://github.com/Xenia0922/yaya_msg_mobile/releases/latest';
 const UPDATE_TIMEOUT = 8000;
 // 检查结果持久化，24h 内不重复打 GitHub API（未认证限流 60/h，冷启全打会快速耗尽）
 const UPDATE_LAST_CHECK_KEY = 'yaya_update_last_check';
@@ -128,40 +130,82 @@ interface UpdateState {
   latestUrl: string;
   /** 本次会话已检查的时间戳，0 表示未检查 */
   lastCheckedAt: number;
-  checkUpdate: () => Promise<void>;
+  checkUpdate: (force?: boolean) => Promise<boolean>;
 }
+
+// 请求互斥：并发/连点只发一个请求
+let updateChecking = false;
 
 export const useUpdateStore = create<UpdateState>((set) => ({
   hasUpdate: false,
   latestVersion: '',
   latestUrl: '',
   lastCheckedAt: 0,
-  // 应用启动时自动检测一次；失败（网络/无 Release/超时）静默视为无更新，
+  // 应用启动时静默检测一次（限流 24h）；失败（网络/无 Release/超时）静默视为无更新，
   // 绝不打扰用户 —— 没有红点就当作没有更新。
-  checkUpdate: async () => {
+  // force=true 为设置页手动「检查更新」：绕过 24h 限流立即请求；
+  // 检查失败会 throw（手动入口据此提示「检查更新失败」），且不写入缓存，下次可重试。
+  checkUpdate: async (force = false) => {
+    if (updateChecking) return false;
     const { lastCheckedAt } = useUpdateStore.getState();
-    // 合并内存与持久化的检查时间：24h 内已查过则直接跳过，避免每次冷启都请求 GitHub API
+    // 合并内存与持久化的检查时间：非强制且 24h 内已查过则直接跳过（启动静默限流）
     const persisted = await AsyncStorage.getItem(UPDATE_LAST_CHECK_KEY).catch(() => null);
     const persistedTs = persisted ? Number(persisted) || 0 : 0;
     const lastTs = Math.max(lastCheckedAt, persistedTs);
-    if (lastTs && Date.now() - lastTs < UPDATE_CHECK_INTERVAL) return;
-    const now = Date.now();
-    set({ lastCheckedAt: now });
-    AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, String(now)).catch(() => {});
+    if (!force && lastTs && Date.now() - lastTs < UPDATE_CHECK_INTERVAL) return false;
+    updateChecking = true;
     try {
-      const res = await Promise.race([
-        fetch(GITHUB_RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'yaya-msg-mobile' } }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT)),
-      ]);
-      if (!res.ok) { set({ hasUpdate: false, latestVersion: '', latestUrl: '' }); return; }
-      const data: any = await res.json();
-      const tag = String(data.tag_name || data.name || '');
-      const apk = (data.assets || []).find((a: any) => String(a.name || '').toLowerCase().endsWith('.apk'));
-      const url = String(apk?.browser_download_url || data.html_url || '');
+      // 源1：GitHub API（未认证匿名限流 60/h，共享出口 IP 时可能 403）
+      let tag = '';
+      let url = '';
+      try {
+        const res = await Promise.race([
+          fetch(GITHUB_RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'yaya-msg-mobile' } }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT)),
+        ]);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: any = await res.json();
+        tag = String(data.tag_name || data.name || '');
+        const apk = (data.assets || []).find((a: any) => String(a.name || '').toLowerCase().endsWith('.apk'));
+        url = String(apk?.browser_download_url || data.html_url || '');
+      } catch {
+        // 源2：GitHub release 页面 HTML（无 API 匿名限流）：重定向 URL 提取 tag；
+        // 新版页面 HTML 不含 APK 链接（assets 由 expanded_assets 片段异步提供），再抓片段提取 APK 直链
+        const UA = 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36';
+        const page = await Promise.race([
+          fetch(GITHUB_RELEASES_PAGE, { headers: { 'User-Agent': UA } }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT + 2000)),
+        ]);
+        if (!page.ok) throw new Error(`HTTP ${page.status}`);
+        const finalUrl = page.url || GITHUB_RELEASES_PAGE;
+        const tagMatch = finalUrl.match(/\/releases\/tag\/([^/?#]+)/);
+        tag = tagMatch ? decodeURIComponent(tagMatch[1]) : '';
+        if (!tag) throw new Error('page missing tag');
+        const assets = await Promise.race([
+          fetch(`https://github.com/Xenia0922/yaya_msg_mobile/releases/expanded_assets/${encodeURIComponent(tag)}`, { headers: { 'User-Agent': UA } }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT)),
+        ]);
+        const frag = assets.ok ? await assets.text() : '';
+        const links: string[] = [];
+        for (const m of frag.matchAll(/href="(\/Xenia0922\/yaya_msg_mobile\/releases\/download\/[^"]+\.apk)"/g)) {
+          links.push(m[1]);
+        }
+        // 优先通用包（不带 -v8a/-v7a/-x64/-x86 后缀），其次任意 APK；拿不到直链则回退 release 页面
+        const pick = links.find((l) => !/-(v8a|v7a|x64|x86)\.apk$/i.test(l)) || links[0];
+        url = pick ? `https://github.com${pick}` : finalUrl;
+        if (!url) throw new Error('no release url');
+      }
       const has = !!tag && !!url && isNewerVersion(tag, APP_VERSION);
-      set({ hasUpdate: has, latestVersion: has ? tag : '', latestUrl: has ? url : '' });
-    } catch {
+      const now = Date.now();
+      // 仅成功后写入缓存（失败不缓存：下次仍可重试）
+      set({ hasUpdate: has, latestVersion: has ? tag : '', latestUrl: has ? url : '', lastCheckedAt: now });
+      AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, String(now)).catch(() => {});
+      return has;
+    } catch (err) {
       set({ hasUpdate: false, latestVersion: '', latestUrl: '' });
+      throw err;
+    } finally {
+      updateChecking = false;
     }
   },
 }));
