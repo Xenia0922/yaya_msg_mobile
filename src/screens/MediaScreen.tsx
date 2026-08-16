@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   AppState,
@@ -975,11 +976,11 @@ export default function MediaScreen() {
     const haveFilter = !!search.trim() || !!selectedMember || groupId === -1;
     if (!haveFilter || !hasMore) return;
     if (selectedMember && tab !== 'vod') return; // 成员检索固定在录播页，等 tab 切到 vod 再翻
-    // 「关注」录播若已走并行翻页（page 参数生效），不再走游标链，避免重复拉取
-    if (groupId === -1 && tab === 'vod' && pageModeOk !== false) return;
-    // 「关注」tag 翻页上限：最多补 20 页（400 条），覆盖被新录播挤到深处的关注成员；静默加载不闪控件
+    // 「关注」录播：并行扫描进行中不重复走游标链；扫描完成后从最深处继续兜底补更老录播
+    if (groupId === -1 && tab === 'vod' && pageModeOk !== false && !scanDoneRef.current) return;
+    // 「关注」tag 翻页上限：最多补 60 页（1200 条），覆盖被新录播挤到深处的关注成员；静默加载不闪控件
     if (groupId === -1) {
-      if (filterPages.current >= 20) return;
+      if (filterPages.current >= 60) return;
       filterPages.current += 1;
     }
     const id = setTimeout(() => loadMore(groupId === -1), 60);
@@ -991,62 +992,130 @@ export default function MediaScreen() {
     filterPages.current = 0;
   }, [search, selectedMember, groupId]);
 
-  // 「关注」录播快速并行翻页：page 参数生效时 4 并发批量拉取（约 2-3s 拉完 20 页），
-  // page 参数无效时自动退回上面的游标链。
+  // 「关注」录播快速并行扫描：
+  // 实测口袋 getLiveList 的游标 = 上一页最后一条的 liveId，且 liveId 随时间近似线性增长（约 2^22/ms），
+  // 因此可按「时间分片」一次性并行拉取近 48 小时的录播（每片约一页），再以相邻真实边界的中点闭合间隙；
+  // 游标不可跳（探针失败）时自动退回上面的游标链。
   const followLoadingRef = useRef(false);
+  const [followFetching, setFollowFetching] = useState(false);
+  const scanDoneRef = useRef(false);
   const loadFollowVodFast = useCallback(async () => {
     if (followLoadingRef.current || groupId !== -1 || tab !== 'vod') return;
     followLoadingRef.current = true;
+    setFollowFetching(true);
+    const t0 = Date.now();
+    const merge = (items: any[]) => setVodList((prev) => {
+      const merged = mergeUniqueLiveItems(prev, items);
+      // 并行分片返回的页序不保证时间序（探针页/间隙中点页会乱序插入），统一按开播时间倒序
+      return merged.sort((a: any, b: any) => (startTimeOf(b) - startTimeOf(a)) || 0);
+    });
+    const nextOf = (res: any) => Number(res?.content?.next ?? res?.data?.next ?? res?.next ?? 0) || 0;
+    const startTimeOf = (it: any) => Number(it?.startTime || it?.ctime || 0);
     try {
-      const idOf = (it: any) => String(it.liveId || it.id || it.title || '');
-      let p1: any[] = [];
-      let p2: any[] = [];
-      try {
-        const [r1, r2] = await Promise.all([
-          pocketApi.getLiveList({ page: 1, record: true, debug: true }),
-          pocketApi.getLiveList({ page: 2, record: true, debug: true }),
-        ]);
-        p1 = normalizeLiveList(r1);
-        p2 = normalizeLiveList(r2);
-      } catch {
-        /* 走游标链回退 */
+      // 1) 首屏页（并行失败兜底：至少最新 20 条）
+      const page1 = await pocketApi.getLiveList({ next: 0, record: true, debug: true }).catch(() => null);
+      const p1 = page1 ? normalizeLiveList(page1) : [];
+      const c1 = nextOf(page1);
+      if (!p1.length || !c1) {
+        scanDoneRef.current = true;
+        setPageModeOk(false); // 走游标链
+        console.info(`[FollowVod] 首屏页异常 p1=${p1.length} c1=${c1} → 游标链`);
+        return;
       }
-      const same = p1.length > 0 && p2.length > 0 && p1.some((a) => p2.some((b) => idOf(b) === idOf(a)));
-      if (p2.length > 0 && !same) {
-        setPageModeOk(true);
-        if (p1.length) setVodList((prev) => mergeUniqueLiveItems(prev, p1));
-        const CAP = 20;
-        const BATCH = 4;
-        let cur = 2;
-        outer: while (cur <= CAP) {
-          if (groupId !== -1) break;
-          const batch: number[] = [];
-          for (let i = cur; i < cur + BATCH && i <= CAP; i++) batch.push(i);
-          const results = await Promise.allSettled(
-            batch.map((pg) => pocketApi.getLiveList({ page: pg, record: true, debug: true })),
-          );
-          for (const r of results) {
-            if (r.status !== 'fulfilled') continue;
-            const items = normalizeLiveList(r.value);
-            if (!items.length) break outer;
-            setVodList((prev) => mergeUniqueLiveItems(prev, items));
-            if (items.length < 20) break outer;
-          }
-          cur += BATCH;
+      merge(p1);
+      const p1Last = startTimeOf(p1[p1.length - 1]);
+      // 2) 探针：跳 6 小时验证游标可跳 + 校准 liveId/ms 速率
+      const probe = await pocketApi.getLiveList({ next: c1 - 6 * 3600 * 1000 * 4194304, record: true, debug: true }).catch(() => null);
+      const probeItems = probe ? normalizeLiveList(probe) : [];
+      const probeNextReal = nextOf(probe);
+      const probeLast = probeItems.length ? startTimeOf(probeItems[probeItems.length - 1]) : 0;
+      const jumpOk = probeItems.length > 0 && probeNextReal > 0 && p1Last > 0 && probeLast > 0 && probeLast < p1Last;
+      if (!jumpOk) {
+        scanDoneRef.current = true;
+        setPageModeOk(false);
+        console.info(`[FollowVod] 游标不可跳 probe=${probeItems.length} → 游标链`);
+        return;
+      }
+      merge(probeItems);
+      setPageModeOk(true);
+      // 校准速率：每毫秒 liveId 增量 = (c1 - probeNextReal) / (p1Last - probeLast)
+      const rate = Math.max(1, (c1 - probeNextReal) / Math.max(1, p1Last - probeLast));
+      console.info(`[FollowVod] 游标可跳 p1=${p1.length} rate=${rate.toFixed(1)} 开始并行扫描`);
+      // 3) 时间分片并行扫描：近 48 小时，间隔 = 首页 20 条的跨度（钳制 20min~4h）
+      const p1First = startTimeOf(p1[0]);
+      const span = Math.max(20 * 60 * 1000, Math.min(4 * 3600 * 1000, (p1First - p1Last) || 90 * 60 * 1000));
+      const DEPTH = 48 * 3600 * 1000;
+      const K = Math.min(Math.ceil(DEPTH / span), 40);
+      // 网格锚定：第一片从 C1 上方 span/2 起（覆盖首页底与第一片顶之间的区域），每片间隔 span
+      const fetchPage = (next: number) => pocketApi.getLiveList({ next, record: true, debug: true });
+      const BATCH = 6;
+      const realBounds: number[] = [c1, c1 - DEPTH * rate]; // 末端人工边界：让闭合能看到「最深处猜测失败」造成的尾部空洞
+      const guessAt = (k: number) => c1 + (span / 2 - k * span) * rate;
+      for (let k = 1; k <= K; k += BATCH) {
+        if (groupId !== -1) return;
+        const ks: number[] = [];
+        for (let j = k; j < k + BATCH && j <= K; j++) ks.push(j);
+        let results = await Promise.allSettled(ks.map((j) => fetchPage(guessAt(j))));
+        // 失败页重试一次（瞬时限流/网络抖动）
+        await Promise.allSettled(results.map((r, i) => {
+          if (r.status !== 'rejected') return Promise.resolve();
+          return fetchPage(guessAt(ks[i])).then((v) => {
+            results[i] = { status: 'fulfilled', value: v };
+          }).catch(() => {});
+        }));
+        let got = 0;
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          if (r.status !== 'fulfilled') continue;
+          const items = normalizeLiveList(r.value);
+          if (!items.length) continue;
+          got += 1;
+          merge(items);
+          const nb = nextOf(r.value);
+          if (nb > 0) realBounds.push(nb);
         }
-      } else {
-        setPageModeOk(false); // page 参数无效 → 由游标链 effect 接管
-        if (p1.length) setVodList((prev) => mergeUniqueLiveItems(prev, p1));
+        console.info(`[FollowVod] 批次 k=${ks[0]}..${ks[ks.length - 1]} 成功=${got}/${ks.length}`);
       }
+      // 4) 多轮间隙闭合：相邻真实边界差 > 0.8×span 时取中点补拉（含末端人工边界，兜住失败猜测的尾部空洞）
+      let closed = 0;
+      for (let round = 0; round < 3; round++) {
+        const sorted = Array.from(new Set(realBounds)).sort((a, b) => b - a);
+        const mids: number[] = [];
+        for (let i = 0; i + 1 < sorted.length; i++) {
+          const gap = sorted[i] - sorted[i + 1];
+          if (gap > 0.8 * span * rate) mids.push(Math.floor((sorted[i] + sorted[i + 1]) / 2));
+        }
+        if (!mids.length) break;
+        const results = await Promise.allSettled(mids.map((m) => fetchPage(m)));
+        for (const r of results) {
+          if (r.status !== 'fulfilled') continue;
+          const items = normalizeLiveList(r.value);
+          if (!items.length) continue;
+          merge(items);
+          const nb = nextOf(r.value);
+          if (nb > 0) realBounds.push(nb);
+        }
+        closed += mids.length;
+      }
+      // 5) 让游标链从扫描最深处继续兜底（补足 48h 之外的更老录播）
+      const finalBounds = Array.from(new Set(realBounds)).sort((a, b) => b - a);
+      nextCursorRef.current = finalBounds.length > 1 ? finalBounds[finalBounds.length - 1] : c1;
+      scanDoneRef.current = true;
+      setPageVersion((v) => v + 1);
+      console.info(`[FollowVod] 并行扫描完成 span=${Math.round(span / 60000)}min K=${K} 闭合=${closed} 边界=${finalBounds.length} 耗时=${Date.now() - t0}ms`);
     } finally {
       followLoadingRef.current = false;
+      setFollowFetching(false);
     }
   }, [groupId, tab]);
 
-  // 进入「关注」录播视图或下拉刷新后触发并行翻页
+  // 进入「关注」录播视图或下拉刷新后触发并行扫描
   const [refreshTick, setRefreshTick] = useState(0);
   useEffect(() => {
-    if (groupId === -1 && tab === 'vod') loadFollowVodFast();
+    if (groupId === -1 && tab === 'vod') {
+      scanDoneRef.current = false;
+      loadFollowVodFast();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, tab, refreshTick]);
 
@@ -1703,7 +1772,7 @@ export default function MediaScreen() {
           key={tab === 'vod' ? 'vod-1col' : 'live-2col'}
           // 直播页去宣传栏（banner）：统一双列网格，即使只有 1 条直播也保持双列
           data={tab === 'vod' ? (vodRows ?? []) as any : list}
-          keyExtractor={(item: any, index) => item?.key || item?.liveId || String(index)}
+          keyExtractor={(item: any, index) => String(item?.liveId || item?.key || index)}
           numColumns={tab === 'vod' ? 1 : 2}
           columnWrapperStyle={tab === 'vod' ? null : styles.vodGridRow}
           renderItem={({ item, index }) => {
@@ -1847,6 +1916,13 @@ export default function MediaScreen() {
           ListEmptyComponent={
             loading ? (
               <MediaGridSkeleton />
+            ) : followFetching ? (
+              <View style={styles.followScanWrap}>
+                <ActivityIndicator size="small" color={palette.tint} />
+                <Text style={[styles.followScanText, { color: palette.labelSecondary }]}>
+                  {t('正在翻找关注成员的录播…')}
+                </Text>
+              </View>
             ) : (
               <EmptyState
                 icon="file-cancel-outline"
@@ -1916,6 +1992,8 @@ const styles = StyleSheet.create({
   glassBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
   glassBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   footer: { paddingVertical: 14, alignItems: 'center' },
+  followScanWrap: { paddingVertical: 60, alignItems: 'center' },
+  followScanText: { marginTop: 10, fontSize: 13 },
   listContent: { paddingBottom: 120 },
   error: { flex: 1, fontSize: 12, lineHeight: 18 },
   errorRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, padding: 10, borderRadius: radiiAlias.input },
@@ -1999,7 +2077,8 @@ const styles = StyleSheet.create({
   vodGroupTitle: { paddingHorizontal: 14, paddingTop: 18, paddingBottom: 6, fontSize: 13, fontWeight: '700' },
   vodRow: { flexDirection: 'row', paddingHorizontal: 8 },
   vodGridRow: { paddingHorizontal: 8 },
-  vodGridItem: { flex: 1, margin: 4 },
+  // 固定 50% 宽而非 flex:1：numColumns=2 下末行奇数项不会把单卡撑成整行宽
+  vodGridItem: { width: '50%', padding: 4 },
   vodGridCard: {
     flex: 1,
     borderRadius: 14,
