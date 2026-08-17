@@ -172,8 +172,10 @@ export const useUpdateStore = create<UpdateState>((set) => ({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: any = await res.json();
         tag = String(data.tag_name || data.name || '');
-        const apk = (data.assets || []).find((a: any) => String(a.name || '').toLowerCase().endsWith('.apk'));
-        // 无 APK 附件时视为无更新（不打开 release 页面，避免登录墙）
+        // 优先通用包（不带 -v8a/-v7a/-x64/-x86 后缀），其次任意 APK；无 APK 附件视为无更新
+        const apkList: any[] = data.assets || [];
+        const apk = apkList.find((a) => /\.apk$/i.test(String(a.name || '')) && !/-(v8a|v7a|x64|x86)\.apk$/i.test(String(a.name || '')))
+          || apkList.find((a) => /\.apk$/i.test(String(a.name || '')));
         url = String(apk?.browser_download_url || '');
       } catch {
         // 源2：GitHub release 页面 HTML（无 API 匿名限流）：重定向 URL 提取 tag；
