@@ -19,10 +19,9 @@
 
 - 房间消息 / 私信 / 翻牌
 - 口袋直播与回放
-- B站直播
-- 音乐库
+- 公演主播（B站直播）
+- 官方音乐库
 - 翻牌统计、成员数据库、鸡腿充值
-- 直播/录播「关注」筛选、实时开播检测
 
 ## 安装
 从[夸克网盘](https://pan.quark.cn/s/5b103245218a)下载
@@ -50,4 +49,4 @@ node scripts/build-apk.js
 
 ## 致谢
 
-基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发。
+基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发，感谢原作者的开发与贡献。
