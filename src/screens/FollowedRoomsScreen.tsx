@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { usePalette, radii, radiiAlias } from '../theme';
+import { useResolvedTheme } from '../hooks/useAppTheme';
 
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
   Image,
+  ImageBackground,
   Linking,
   Modal,
   Platform,
@@ -18,6 +20,7 @@ import {
   TextInput,
   StyleSheet,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import Video from 'react-native-video';
@@ -146,6 +149,13 @@ const PLAY_URL_FIELDS = [
 function shortName(member?: Member, fallback = '') {
   const raw = member?.ownerName || fallback || t('未知成员');
   return raw.replace(/^(SNH48|GNZ48|BEJ48|CKG48|CGT48)-/, '');
+}
+
+/** 通用文本限位（房间名等） */
+function capText(text: string, max = 18) {
+  const clean = (text || '').trim();
+  if (!clean) return '';
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
 function parseObject(value: any) {
@@ -354,7 +364,7 @@ function findLastMessage(messages: any[], member?: Member) {
 }
 
 function roomChannelId(member: Member, mode: RoomMode) {
-  return String(mode === 'small' ? (member.yklzId || member.channelId || '') : (member.channelId || ''));
+  return String(mode === 'small' ? (member.yklzId || '') : (member.channelId || ''));
 }
 
 function roomLabel(member: Member, mode: RoomMode) {
@@ -830,6 +840,7 @@ function deepFindDuration(value: any, depth = 0): number {
 
 export default function FollowedRoomsScreen() {
   const palette = usePalette();
+  const resolvedTheme = useResolvedTheme();
   const { t } = useI18n();
   const token = useSettingsStore((state) => state.settings.p48Token);
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
@@ -852,6 +863,10 @@ export default function FollowedRoomsScreen() {
   const [playingMedia, setPlayingMedia] = useState<RoomMedia | null>(null);
   const [roomNextTime, setRoomNextTime] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  // 房间内展示：房间名（channelInfo.channelName）+ 背景图（channelInfo.bgImg）
+  const [roomMeta, setRoomMeta] = useState<{ name: string; bg: string }>({ name: '', bg: '' });
+  const roomMetaCache = useRef<Record<string, { name: string; bg: string }>>({});
+  const activeChannelRef = useRef('');
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const loadingMoreMessagesRef = useRef(false);
   const [currentUserId, setCurrentUserId] = useState('');
@@ -943,6 +958,8 @@ export default function FollowedRoomsScreen() {
     setRoomPlayerFullscreen(false);
     setPlayingMedia(null);
     setSelectedRoom(null);
+    setRoomMeta({ name: '', bg: '' });
+    activeChannelRef.current = '';
     setLiveImmersiveMode(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     setTabBarHidden(false);
@@ -1054,6 +1071,10 @@ export default function FollowedRoomsScreen() {
       return;
     }
     setSelectedRoom(room);
+    const channelChanged = activeChannelRef.current !== channelId;
+    activeChannelRef.current = channelId;
+    // 同房间（如切换成员/粉丝发言）不清 meta，避免背景图闪烁
+    if (channelChanged) setRoomMeta({ name: '', bg: '' });
     setRoomSearchQuery('');
     setPlayingMedia(null);
     setLoading(true);
@@ -1077,11 +1098,30 @@ export default function FollowedRoomsScreen() {
         fallbackChannelId: nextMode === 'small' ? room.channelId : undefined,
       });
       const list = unwrapList(res, ['content.messageList', 'content.message', 'content.messages', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'messages', 'list']);
-      setRoomMessages(sortMessagesNewestFirst(list));
+      const sorted = sortMessagesNewestFirst(list);
+      setRoomMessages(sorted);
       setRoomMsgError('');
       const nextTime = getNextTime(res, list);
       setRoomNextTime(nextTime);
       setHasMoreMessages(nextTime > 0 && list.length > 0);
+      // 房间名 + 背景图：room/info -> channelInfo.channelName / channelInfo.bgImg（按 channelId 缓存，异步拉取不阻塞消息）
+      const cachedMeta = roomMetaCache.current[channelId];
+      if (cachedMeta !== undefined) {
+        setRoomMeta(cachedMeta);
+      } else {
+        roomMetaCache.current[channelId] = { name: '', bg: '' };
+        pocketApi.getRoomInfo(channelId)
+          .then((r: any) => {
+            const ci = r?.content?.channelInfo || {};
+            const ucc = r?.content?.userChatConfig || {};
+            return {
+              name: String(ci.channelName || ''),
+              bg: normalizeUrl(ci.bgImg || ucc.bgImg || ''),
+            };
+          })
+          .then((meta) => { roomMetaCache.current[channelId] = meta; setRoomMeta(meta); })
+          .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; });
+      }
     } catch (error) {
       showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
       setRoomMessages([]);
@@ -1295,8 +1335,17 @@ export default function FollowedRoomsScreen() {
     const fid = String(selectedRoom.id || '');
     const isFollowingRoom = followedIds.has(fid);
     const followBusyRoom = followBusy.has(fid);
+    const headerTitle = roomMeta.name ? capText(roomMeta.name, 18) : shortName(selectedRoom);
+    const roomBgUri = roomMeta.bg || '';
+    const roomScrim = resolvedTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)';
     return (
       <View style={[styles.container]}>
+        {roomBgUri ? (
+          <>
+            <ImageBackground source={{ uri: roomBgUri }} resizeMode="cover" style={styles.roomBgLayer} onError={() => setRoomMeta((m) => ({ ...m, bg: '' }))} />
+            <View pointerEvents="none" style={[styles.roomBgLayer, { backgroundColor: roomScrim }]} />
+          </>
+        ) : null}
         {roomPlayer ? (
           <View style={[styles.roomPlayerPage, roomPlayerFullscreen && styles.roomPlayerPageFullscreen]}>
             {!roomPlayerFullscreen ? <View style={styles.roomPlayerHeader}>
@@ -1374,7 +1423,7 @@ export default function FollowedRoomsScreen() {
           </View>
         ) : null}
         <ZoomImageModal url={fullImageUrl} onClose={() => setFullImageUrl('')} />
-        <ScreenHeader title={shortName(selectedRoom)} onBack={closeRoom} right={
+        <ScreenHeader title={headerTitle} onBack={closeRoom} overlay={!!roomBgUri} right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
               style={[styles.followBtn, { backgroundColor: isFollowingRoom ? palette.tintSoft : palette.tint }]}
@@ -1389,14 +1438,17 @@ export default function FollowedRoomsScreen() {
                 <Text style={[styles.followBtnText, { color: isFollowingRoom ? palette.tint : palette.onTint }]}>{isFollowingRoom ? t('已关注') : t('关注')}</Text>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.pinBtn} onPress={() => togglePin(String(selectedRoom.id || ''))} activeOpacity={0.85} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-              <Text style={[styles.pinBtnText, { color: palette.tint }]}>{pinned.includes(String(selectedRoom.id || '')) ? t('取消置顶') : t('置顶')}</Text>
-            </TouchableOpacity>
           </View>
         } />
 
-          {/* 聊天工具条：surfaceGlassStrong 底圆角 18 + 分段胶囊 + tint 圆操作钮 */}
-          <View style={[styles.chatTools, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
+          {/* 聊天工具条：高斯模糊玻璃（按深浅色 tint，不挡房间背景）*/}
+          <View style={[styles.chatToolsClip, { borderColor: palette.innerStroke }]}>
+            <BlurView
+              intensity={70}
+              tint={resolvedTheme === 'dark' ? 'dark' : 'light'}
+              experimentalBlurMethod="dimezisBlurView"
+              style={styles.chatTools}
+            >
           {/* 分段切换：大房间 / 小房间 */}
           <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
             <TouchableOpacity
@@ -1439,7 +1491,8 @@ export default function FollowedRoomsScreen() {
               color={showFanMessages ? palette.onTint : palette.labelSecondary}
             />
           </ScalePressable>
-        </View>
+            </BlurView>
+          </View>
 
         {roomSearchOpen ? (
           <View style={[styles.roomSearchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
@@ -1514,7 +1567,7 @@ export default function FollowedRoomsScreen() {
             const idol = role === 'idol';
             const msgProfile = senderProfile(item, selectedRoom);
             const profile = idol
-              ? { id: selectedRoom.id, name: shortName(selectedRoom), avatar: msgProfile.avatar || selectedRoom.avatar }
+              ? { id: selectedRoom.id, name: (msgProfile.name || '').trim() || shortName(selectedRoom), avatar: msgProfile.avatar || selectedRoom.avatar }
               : msgProfile;
             const media = roomMedia(item);
             const gift = roomGiftInfo(item);
@@ -1563,9 +1616,9 @@ export default function FollowedRoomsScreen() {
                   ) : null}
                   <View style={[styles.msgBubble, idol && styles.msgBubbleIdol, mine && styles.msgBubbleMine, !row.groupStart && styles.msgBubbleMid, { backgroundColor: idol ? palette.tint : mine ? palette.tint : palette.surfaceGlass, borderColor: idol || mine ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: !row.groupStart ? 0 : StyleSheet.hairlineWidth }]}>
                     {replyName || replyQuoted ? (
-                      <View style={[styles.replyCard, { backgroundColor: palette.fill2, borderLeftColor: palette.tint }]}>
-                        {replyName ? <Text style={[styles.replyName, { color: palette.tint }]} numberOfLines={1}>{replyName}</Text> : null}
-                        {replyQuoted ? <Text style={[styles.replyText, { color: palette.labelSecondary }]} numberOfLines={3}>{replyQuoted}</Text> : null}
+                      <View style={[styles.replyCard, { backgroundColor: (idol || mine) ? 'rgba(255,255,255,0.18)' : palette.fill2, borderLeftColor: (idol || mine) ? 'rgba(255,255,255,0.85)' : palette.tint }]}>
+                        {replyName ? <Text style={[styles.replyName, { color: (idol || mine) ? palette.onTint : palette.tint }]} numberOfLines={1}>{replyName}</Text> : null}
+                        {replyQuoted ? <Text style={[styles.replyText, { color: (idol || mine) ? 'rgba(255,255,255,0.85)' : palette.labelSecondary }]} numberOfLines={3}>{replyQuoted}</Text> : null}
                       </View>
                     ) : null}
                     {bubbleText ? (
@@ -1703,7 +1756,7 @@ export default function FollowedRoomsScreen() {
             returnKeyType="search"
           />
           {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
+            <TouchableOpacity onPress={() => setSearchOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
               <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
             </TouchableOpacity>
           ) : null}
@@ -1937,7 +1990,9 @@ export default function FollowedRoomsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, padding: 6, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth },
+  roomBgLayer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  chatToolsClip: { marginHorizontal: 12, marginBottom: 8, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, borderRadius: 18 },
   segment: {
     flexDirection: 'row',
     borderRadius: radii.pill,
@@ -2149,8 +2204,6 @@ const styles = StyleSheet.create({
   roomPinBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   roomFollowBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   chatContent: { paddingBottom: 132, paddingTop: 4 },
-  pinBtn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  pinBtnText: { fontSize: 9, fontWeight: '800' },
   followBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: radiiAlias.button, alignItems: 'center', justifyContent: 'center', minWidth: 52, height: 26 },
   followBtnText: { fontSize: 11, fontWeight: '800' },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },

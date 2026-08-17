@@ -88,6 +88,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
+    minWidth: 0,
     textAlign: 'left',
     fontSize: 24,
     lineHeight: 30,

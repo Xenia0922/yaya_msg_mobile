@@ -256,14 +256,14 @@ const styles = StyleSheet.create({
   orderInfo: { flex: 1, minWidth: 0, paddingRight: 8 },
   orderName: { fontSize: 13, fontWeight: '600' },
   orderMeta: { fontSize: 11, marginTop: 3 },
-  orderAmount: { fontSize: 15, fontWeight: '800', marginRight: 10 },
-  statusPill: { borderRadius: radiiAlias.chip, paddingHorizontal: 8, paddingVertical: 3 },
+  orderAmount: { flexShrink: 0, fontSize: 15, fontWeight: '800', marginRight: 10 },
+  statusPill: { flexShrink: 0, borderRadius: radiiAlias.chip, paddingHorizontal: 8, paddingVertical: 3 },
   statusPillText: { fontSize: 10, fontWeight: '700' },
   checkbox: {
     width: 22, height: 22, borderRadius: 7,
     borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 0,
   },
-  actionPill: { marginLeft: 10 },
+  actionPill: { flexShrink: 0, marginLeft: 10 },
   formCard: {
     marginTop: 12,
     padding: 14,

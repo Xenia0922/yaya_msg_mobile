@@ -21,6 +21,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -39,6 +40,7 @@ import { EmptyState, ErrorState } from '../components/StateViews';
 import { Button } from '../components/Button';
 import { Skeleton } from '../components/Skeleton';
 import { usePalette, radii, radiiAlias, makeShadows } from '../theme';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { useI18n } from '../i18n';
 import { usePaginator } from '../hooks/usePaginator';
 import { useSettingsStore, useUiStore } from '../store';
@@ -66,6 +68,7 @@ export default function CommunityScreen() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
   const shadows = makeShadows(palette.name === 'dark');
+  const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const token = useSettingsStore((s) => s.settings.p48Token);
   const showToast = useUiStore((s) => s.showToast);
@@ -194,7 +197,7 @@ export default function CommunityScreen() {
       <PerfFlatList
         data={items}
         keyExtractor={(item) => item.postId}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 88 }]}
         initialNumToRender={10}
         onEndReached={() => { if (hasMore && !loadingRef.current) loadMore(); }}
         onEndReachedThreshold={0.35}
@@ -222,7 +225,7 @@ export default function CommunityScreen() {
         onPress={openCompose}
         pressedScale={0.94}
         activeOpacity={0.85}
-        style={[styles.fab, { backgroundColor: palette.tint, ...shadows.sm }]}
+        style={[styles.fab, { backgroundColor: palette.tint, bottom: insets.bottom + 12, ...shadows.sm }]}
         accessibilityRole="button"
         accessibilityLabel={t('发布')}
       >
@@ -314,7 +317,8 @@ function ComposeModal({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.modalRoot}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
       >
         <TouchableOpacity style={styles.modalMask} activeOpacity={1} onPress={onClose} />
         <View style={[styles.sheet, { backgroundColor: palette.surfaceGlassStrong }]}>
@@ -325,49 +329,55 @@ function ComposeModal({
               <MaterialCommunityIcons name="close" size={22} color={palette.labelSecondary} />
             </TouchableOpacity>
           </View>
-
-          <TextInput
-            style={[styles.input, { backgroundColor: palette.fill2, color: palette.label }]}
-            placeholder={t('标题（选填）')}
-            placeholderTextColor={palette.labelTertiary}
-            value={title}
-            onChangeText={setTitle}
-            maxLength={80}
-            returnKeyType="next"
-            onSubmitEditing={() => topicRef.current?.focus()}
-          />
-          <TextInput
-            ref={topicRef}
-            style={[styles.input, { backgroundColor: palette.fill2, color: palette.label }]}
-            placeholder={t('话题（选填，如：#今日公演#）')}
-            placeholderTextColor={palette.labelTertiary}
-            value={topic}
-            onChangeText={setTopic}
-            maxLength={40}
-            returnKeyType="done"
-          />
-          <TextInput
-            style={[styles.contentInput, { backgroundColor: palette.fill2, color: palette.label }]}
-            placeholder={t('分享新鲜事…')}
-            placeholderTextColor={palette.labelTertiary}
-            value={content}
-            onChangeText={setContent}
-            multiline
-            maxLength={2000}
-            textAlignVertical="top"
-          />
-          <View style={styles.sheetFoot}>
-            <Text style={[styles.counter, { color: palette.labelTertiary }]}>{content.length}/2000</Text>
-            <Button
-              title={sending ? t('发布中…') : t('发布')}
-              onPress={submit}
-              disabled={sending}
-              loading={sending}
-              variant="filled"
-              size="sm"
-              style={styles.submitBtn}
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <TextInput
+              style={[styles.input, { backgroundColor: palette.fill2, color: palette.label }]}
+              placeholder={t('标题（选填）')}
+              placeholderTextColor={palette.labelTertiary}
+              value={title}
+              onChangeText={setTitle}
+              maxLength={80}
+              returnKeyType="next"
+              onSubmitEditing={() => topicRef.current?.focus()}
             />
-          </View>
+            <TextInput
+              ref={topicRef}
+              style={[styles.input, { backgroundColor: palette.fill2, color: palette.label }]}
+              placeholder={t('话题（选填，如：#今日公演#）')}
+              placeholderTextColor={palette.labelTertiary}
+              value={topic}
+              onChangeText={setTopic}
+              maxLength={40}
+              returnKeyType="done"
+            />
+            <TextInput
+              style={[styles.contentInput, { backgroundColor: palette.fill2, color: palette.label }]}
+              placeholder={t('分享新鲜事…')}
+              placeholderTextColor={palette.labelTertiary}
+              value={content}
+              onChangeText={setContent}
+              multiline
+              maxLength={2000}
+              textAlignVertical="top"
+            />
+            <View style={styles.sheetFoot}>
+              <Text style={[styles.counter, { color: palette.labelTertiary }]}>{content.length}/2000</Text>
+              <Button
+                title={sending ? t('发布中…') : t('发布')}
+                onPress={submit}
+                disabled={sending}
+                loading={sending}
+                variant="filled"
+                size="sm"
+                style={styles.submitBtn}
+              />
+            </View>
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -376,7 +386,7 @@ function ComposeModal({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  list: { padding: 8, paddingBottom: 96 },
+  list: { padding: 8 },
   footer: { textAlign: 'center', fontSize: 12, paddingVertical: 12 },
   tabs: {
     flexDirection: 'row',
@@ -396,7 +406,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 96,
+    bottom: 12,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -410,7 +420,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radii.sheet,
     padding: 16,
     paddingBottom: 28,
+    maxHeight: '92%',
   },
+  sheetScroll: { flexShrink: 1 },
+  sheetScrollContent: { paddingBottom: 4 },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 12 },
   sheetHead: {
     flexDirection: 'row',

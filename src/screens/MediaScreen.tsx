@@ -9,7 +9,6 @@ import {
   AppState,
   BackHandler,
   DeviceEventEmitter,
-  Dimensions,
   FlatList,
   Image,
   Modal,
@@ -21,6 +20,7 @@ import {
   TextInput,
   TouchableWithoutFeedback,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -1051,6 +1051,8 @@ export default function MediaScreen() {
     followLoadingRef.current = true;
     setFollowFetching(true);
     const t0 = Date.now();
+    // 每页条数：接口默认 20，实测支持更大 pageSize（单请求 100 条 → 覆盖更长时间窗，slice 数更少、更快）
+    const PAGE_SIZE = 100;
     const merge = (items: any[]) => setVodList((prev) => {
       const merged = mergeUniqueLiveItems(prev, items);
       // 并行分片返回的页序不保证时间序（探针页/间隙中点页会乱序插入），统一按开播时间倒序
@@ -1060,7 +1062,7 @@ export default function MediaScreen() {
     const startTimeOf = (it: any) => Number(it?.startTime || it?.ctime || 0);
     try {
       // 1) 首屏页（并行失败兜底：至少最新 20 条）
-      const page1 = await pocketApi.getLiveList({ next: 0, record: true, debug: true }).catch(() => null);
+      const page1 = await pocketApi.getLiveList({ next: 0, record: true, debug: true, size: PAGE_SIZE }).catch(() => null);
       const p1 = page1 ? normalizeLiveList(page1) : [];
       const c1 = nextOf(page1);
       if (!p1.length || !c1) {
@@ -1072,7 +1074,7 @@ export default function MediaScreen() {
       merge(p1);
       const p1Last = startTimeOf(p1[p1.length - 1]);
       // 2) 探针：跳 6 小时验证游标可跳 + 校准 liveId/ms 速率
-      const probe = await pocketApi.getLiveList({ next: c1 - 6 * 3600 * 1000 * 4194304, record: true, debug: true }).catch(() => null);
+      const probe = await pocketApi.getLiveList({ next: c1 - 6 * 3600 * 1000 * 4194304, record: true, debug: true, size: PAGE_SIZE }).catch(() => null);
       const probeItems = probe ? normalizeLiveList(probe) : [];
       const probeNextReal = nextOf(probe);
       const probeLast = probeItems.length ? startTimeOf(probeItems[probeItems.length - 1]) : 0;
@@ -1094,8 +1096,8 @@ export default function MediaScreen() {
       const DEPTH = 48 * 3600 * 1000;
       const K = Math.min(Math.ceil(DEPTH / span), 40);
       // 网格锚定：第一片从 C1 上方 span/2 起（覆盖首页底与第一片顶之间的区域），每片间隔 span
-      const fetchPage = (next: number) => pocketApi.getLiveList({ next, record: true, debug: true });
-      const BATCH = 6;
+      const fetchPage = (next: number) => pocketApi.getLiveList({ next, record: true, debug: true, size: PAGE_SIZE });
+      const BATCH = 12;
       const realBounds: number[] = [c1, c1 - DEPTH * rate]; // 末端人工边界：让闭合能看到「最深处猜测失败」造成的尾部空洞
       const guessAt = (k: number) => c1 + (span / 2 - k * span) * rate;
       for (let k = 1; k <= K; k += BATCH) {
@@ -1149,7 +1151,7 @@ export default function MediaScreen() {
       nextCursorRef.current = finalBounds.length > 1 ? finalBounds[finalBounds.length - 1] : c1;
       scanDoneRef.current = true;
       setPageVersion((v) => v + 1);
-      console.info(`[FollowVod] 并行扫描完成 span=${Math.round(span / 60000)}min K=${K} 闭合=${closed} 边界=${finalBounds.length} 耗时=${Date.now() - t0}ms`);
+      console.info(`[FollowVod] 并行扫描完成 span=${Math.round(span / 60000)}min size=${PAGE_SIZE} K=${K} 闭合=${closed} 边界=${finalBounds.length} 耗时=${Date.now() - t0}ms`);
     } finally {
       followLoadingRef.current = false;
       setFollowFetching(false);
@@ -1460,7 +1462,7 @@ export default function MediaScreen() {
   }, []);
 
   // 画面旋转（翻转）：旋转 90° 时交换容器宽高，使视频填满屏幕且不裁剪
-  const screen = Dimensions.get('window');
+  const screen = useWindowDimensions();
   const videoRotated = videoRotate === 90 || videoRotate === 270;
   const videoBoxW = videoRotated ? screen.height : screen.width;
   const videoBoxH = videoRotated ? screen.width : screen.height;
@@ -1566,7 +1568,7 @@ export default function MediaScreen() {
               <Video
                 ref={videoRef}
                 source={playerSource(playing.url)}
-                style={[styles.nativeVideo, { transform: [{ rotate: videoRotateDeg }] }]}
+                style={styles.nativeVideo}
                 resizeMode="contain"
                 paused={paused}
                 rate={playbackRate}
@@ -1895,14 +1897,8 @@ export default function MediaScreen() {
                           />
                           <Text style={styles.v2BadgeText}>{it.liveType === 2 ? t('电台') : t('视频')}</Text>
                         </View>
-                        {/* 右上角时间徽标行：开播时间 + 时长 */}
+                        {/* 右上角徽标：时长（开播时间已显示在标题下方 meta） */}
                         <View style={styles.vodBadgeRow}>
-                          {it.startTime ? (
-                            <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
-                              <MaterialCommunityIcons name="clock-outline" size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-                              <Text style={styles.v2BadgeText}>{formatTimestamp(it.startTime).slice(5, 16)}</Text>
-                            </View>
-                          ) : null}
                           {it.endTime && it.startTime ? (
                             <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
                               <Text style={styles.v2BadgeText}>
@@ -1964,14 +1960,8 @@ export default function MediaScreen() {
                       />
                       <Text style={styles.v2BadgeText}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
                     </View>
-                    {/* 右上角时间徽标行：开播时间 + 直播中/电台 */}
+                    {/* 右上角徽标：直播中/电台（开播时间已显示在标题下方 meta） */}
                     <View style={styles.vodBadgeRow}>
-                      {item.startTime ? (
-                        <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
-                          <MaterialCommunityIcons name="clock-outline" size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-                          <Text style={styles.v2BadgeText}>{formatTimestamp(item.startTime).slice(5, 16)}</Text>
-                        </View>
-                      ) : null}
                       <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
                         {item.liveType === 2 ? (
                           <>
@@ -2188,7 +2178,7 @@ const styles = StyleSheet.create({
   vodGridCoverImg: { width: '100%', height: '100%' },
   vodGridFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   vodGridType: { position: 'absolute', top: 8, left: 8 },
-  /* 右上角时间徽标行（开播时间 + 时长/直播中） */
+  /* 右上角徽标行（录播时长 / 指定直播中） */
   vodBadgeRow: {
     position: 'absolute',
     top: 8,

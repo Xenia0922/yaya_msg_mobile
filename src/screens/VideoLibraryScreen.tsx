@@ -137,7 +137,20 @@ export default function VideoLibraryScreen() {
     return (
       <View style={styles.playerPage}>
         <ScreenHeader title={playing?.title || t('视频')} onBack={() => setPlayUrl('')} />
-        <Video source={{ uri: playUrl }} style={styles.videoPlayer} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" onError={() => setPlayUrl('')} />
+        <Video
+          source={{ uri: playUrl }}
+          style={styles.videoPlayer}
+          controls
+          paused={false}
+          resizeMode="contain"
+          ignoreSilentSwitch="ignore"
+          onError={(event: any) => {
+            setPlayUrl('');
+            setStatus(t('播放失败：{error}', {
+              error: String(event?.error || event?.nativeError || t('无法解码或网络错误')).slice(0, 160),
+            }));
+          }}
+        />
       </View>
     );
   }

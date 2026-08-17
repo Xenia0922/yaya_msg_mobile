@@ -13,7 +13,7 @@ import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { NOTICE_URL } from './src/constants';
 import { initRuntimeLog, logCrash } from './src/utils/runtimeLog';
-import { Colors } from './src/theme/colors';
+import { usePalette } from './src/theme/colors';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { useSafeAreaInsets } from './src/hooks/useSafeAreaInsets';
 // 仅用 JS 包的安全区上下文（不链接其 native 包）：react-navigation 的 BottomTabView 会无条件
@@ -58,10 +58,11 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState('正在初始化...');
   const appTheme = useResolvedTheme();
+  const palette = usePalette();
   const customBackgroundFile = useSettingsStore((state) => state.settings.customBackgroundFile);
   const customBackgroundUpdatedAt = useSettingsStore((state) => state.settings.customBackgroundUpdatedAt);
   const [backgroundLoadError, setBackgroundLoadError] = useState('');
-  const splashBg = appTheme === 'dark' ? Colors.bgDark : '#fff7fb';
+  const splashBg = palette.background;
 
   // v2.6: Announcement modal
   const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
@@ -156,19 +157,13 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [ready]);
 
-  if (!ready) {
-    // 原生开屏已展示 app 图标（与开屏同色纯背景，避免黑屏闪烁）；不再叠加 JS 加载 UI。
-    // WebViewSigner 由下方统一常驻渲染（启动即预热，首次签名请求不用现场启动 WebView）
-    return <View style={{ flex: 1, backgroundColor: splashBg }} />;
-  }
-
   const backgroundUri = customBackgroundFile?.trim();
   const backgroundSource = backgroundUri
     ? { uri: backgroundUri.match(/^[a-z][a-z0-9+.-]*:/i) ? backgroundUri : `file://${backgroundUri}` }
     : null;
 
   const content = (
-    <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : (appTheme === 'dark' ? Colors.bgDark : '#fff7fb') }}>
+    <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : palette.background }}>
       <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
       {backgroundLoadError ? (
         <View pointerEvents="none" style={{ position: 'absolute', left: 10, right: 10, top: 36, zIndex: 9999, padding: 8, borderRadius: 8, backgroundColor: 'rgba(180,0,0,0.82)' }}>
@@ -184,7 +179,7 @@ export default function App() {
           <Animated.View
             style={[
               anStyles.card,
-              appTheme === 'dark' && { backgroundColor: '#1e1e1e' },
+              { backgroundColor: palette.surface },
               {
                 opacity: announceAnim,
                 transform: [
@@ -195,25 +190,25 @@ export default function App() {
             ]}
           >
             {announceModal?.header ? (
-              <Text style={[anStyles.header, { color: '#ff6f91' }]}>{announceModal.header}</Text>
+              <Text style={[anStyles.header, { color: palette.tint }]}>{announceModal.header}</Text>
             ) : null}
             {announceModal?.title ? (
-              <Text style={[anStyles.title, appTheme === 'dark' && { color: '#eee' }]}>{announceModal.title}</Text>
+              <Text style={[anStyles.title, { color: palette.label }]}>{announceModal.title}</Text>
             ) : null}
             {announceModal?.imageUrl ? (
               <Image source={{ uri: announceModal.imageUrl }} style={anStyles.image} resizeMode="contain" />
             ) : null}
             {announceModal?.content ? (
-              <Text style={[anStyles.content, appTheme === 'dark' && { color: '#ccc' }]}>{announceModal.content}</Text>
+              <Text style={[anStyles.content, { color: palette.labelSecondary }]}>{announceModal.content}</Text>
             ) : null}
             <View style={anStyles.btnRow}>
               {announceModal?.link ? (
-                <TouchableOpacity style={[anStyles.btn, { backgroundColor: '#ff6f91' }]} onPress={() => { if (announceModal?.link) Linking.openURL(announceModal.link); }}>
+                <TouchableOpacity style={[anStyles.btn, { backgroundColor: palette.tint }]} onPress={() => { if (announceModal?.link) Linking.openURL(announceModal.link); }}>
                   <Text style={anStyles.btnText}>查看详情</Text>
                 </TouchableOpacity>
               ) : null}
               <TouchableOpacity style={[anStyles.btn, { backgroundColor: 'rgba(128,128,128,0.2)' }]} onPress={() => setAnnounceModal(null)}>
-                <Text style={[anStyles.btnText, appTheme === 'dark' && { color: '#eee' }]}>关闭</Text>
+                <Text style={[anStyles.btnText, { color: palette.label }]}>关闭</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -224,11 +219,14 @@ export default function App() {
 
   return (
     <>
-      {backgroundSource ? (
+      {!ready ? (
+        // 原生开屏已展示 app 图标（与开屏同色纯背景，避免黑屏闪烁）；签名 WebView 仍在后台预热。
+        <View style={{ flex: 1, backgroundColor: splashBg }} />
+      ) : backgroundSource ? (
         <ImageBackground
           key={`${backgroundSource.uri}-${customBackgroundUpdatedAt || 0}`}
           source={backgroundSource}
-          style={{ flex: 1, backgroundColor: appTheme === 'dark' ? Colors.bgDark : '#fff7fb' }}
+          style={{ flex: 1, backgroundColor: palette.background }}
           resizeMode="cover"
           onLoad={() => setBackgroundLoadError('')}
           onError={(event) => setBackgroundLoadError(`背景图加载失败：${backgroundSource.uri} ${event.nativeEvent?.error || ''}`)}
@@ -240,8 +238,7 @@ export default function App() {
       ) : (
         <ErrorBoundary>{content}</ErrorBoundary>
       )}
-      {/* WebViewSigner 常驻挂载：签名 WebView 启动即预热（含闪屏期），
-          首次口袋接口请求不再现场启动 WebView（首页直播/各列表首屏提速） */}
+      {/* WebViewSigner 常驻挂载：即使 JS 开屏仍在显示，也提前预热签名模块。 */}
       <WebViewSigner />
     </>
   );

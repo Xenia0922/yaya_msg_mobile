@@ -19,6 +19,8 @@ export function fetchWithTimeout(
 interface RequestOptions {
   method?: 'GET' | 'POST';
   body?: any;
+  /** POST body 编码，默认 JSON；raw 用于 form-urlencoded 等已序列化请求。 */
+  bodyType?: 'json' | 'raw';
   headers?: Record<string, string>;
   /** 超时时间（毫秒），默认 GET=10000 / POST=15000 */
   timeout?: number;
@@ -93,7 +95,11 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
       const res = await fetch(url, {
         method,
         headers,
-        body: method === 'POST' ? JSON.stringify(options.body ?? {}) : undefined,
+        body: method === 'POST'
+          ? options.bodyType === 'raw'
+            ? String(options.body ?? '')
+            : JSON.stringify(options.body ?? {})
+          : undefined,
         signal: options.signal ?? controller.signal,
       });
 

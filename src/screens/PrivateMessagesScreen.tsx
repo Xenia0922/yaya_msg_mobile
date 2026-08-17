@@ -388,6 +388,7 @@ export default function PrivateMessagesScreen() {
   const [hasMore, setHasMore] = useState(false);
   const flatRef = useRef<FlatList>(null);
   const [playUrl, setPlayUrl] = useState('');
+  const requestIdRef = useRef(0);
 
   const member = useMemo(() => {
     if (!sel) return null;
@@ -415,6 +416,7 @@ export default function PrivateMessagesScreen() {
   // 首屏只拉少量批次，剩余走「上滑加载更多」，避免一次性 60 轮全量拉取
   const loadConvs = async (initial = true) => {
     if (convLoadingRef.current) return;
+    const requestId = ++requestIdRef.current;
     convLoadingRef.current = true;
     if (initial) setLoading(true);
     setConvError('');
@@ -425,6 +427,7 @@ export default function PrivateMessagesScreen() {
       const maxLoops = initial ? 5 : 10;
       while (loops < maxLoops) {
         const res = await pocketApi.getPrivateMessageList(cursor);
+        if (requestId !== requestIdRef.current) return;
         const list = unwrapList(res, ['content.userMessageList', 'content.list', 'content.data', 'data.userMessageList', 'userMessageList', 'list']);
         const incoming = Array.isArray(list) ? list : [];
         all = all.concat(incoming.filter((it: any) => !all.find((a: any) => (convTargetId(a) || a.userMessageId) === (convTargetId(it) || it.userMessageId))));
@@ -449,7 +452,12 @@ export default function PrivateMessagesScreen() {
       // 是否还有更多（本批拉满 且 游标有前进）
       setHasMoreConvs(loops >= maxLoops && cursor > 0);
     } catch (e) { setConvError(errorMessage(e)); showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
-    finally { convLoadingRef.current = false; setLoading(false); }
+    finally {
+      if (requestId === requestIdRef.current) {
+        convLoadingRef.current = false;
+        setLoading(false);
+      }
+    }
   };
 
   const openConv = async (c: any) => {

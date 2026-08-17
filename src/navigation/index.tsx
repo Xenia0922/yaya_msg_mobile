@@ -66,12 +66,14 @@ function withPageMotion<T extends object>(
     useFocusEffect(
       useCallback(() => {
         value.setValue(0);
-        Animated.timing(value, {
+        const animation = Animated.timing(value, {
           toValue: 1,
           duration,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
-        }).start();
+        });
+        animation.start();
+        return () => animation.stop();
       }, [value]),
     );
 

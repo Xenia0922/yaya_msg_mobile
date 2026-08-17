@@ -8,7 +8,7 @@
  *   - 纯 RN Animated 实现，零额外依赖
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, StyleSheet, Text } from 'react-native';
+import { Animated, StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { DanmakuItem } from '../utils/danmaku';
 import { useDanmakuSettings } from '../store/danmakuSettings';
 
@@ -40,8 +40,7 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
   const lastTime = useRef(0);
   const laneFreeAt = useRef<number[]>([]);
   const counter = useRef(0);
-  const width = Dimensions.get('window').width;
-  const screenH = Dimensions.get('window').height;
+  const { width, height: screenH } = useWindowDimensions();
 
   // 显示区域 → 泳道数（顶部少、全屏多）
   const rowH = fontSize + 10;

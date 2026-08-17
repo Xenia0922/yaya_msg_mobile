@@ -69,6 +69,13 @@ react {
  * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
  */
 def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
+def releaseStoreFile = findProperty('RELEASE_STORE_FILE')
+def releaseStorePassword = findProperty('RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = findProperty('RELEASE_KEY_ALIAS')
+def releaseKeyPassword = findProperty('RELEASE_KEY_PASSWORD')
+def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { value ->
+    value != null && value.toString().trim()
+}
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -100,8 +107,8 @@ android {
         // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2070005
-        versionName "2.7"
+        versionCode 2070006
+        versionName "2.7.1"
 
         // 真机架构 + 模拟器架构。MuMu 等安卓模拟器为 x86_64，缺此 ABI 会导致 libhermes 等原生库
         // 无法加载（UnsatisfiedLinkError），表现为「启动即闪退进不去」。为兼容模拟器测试必须保留。
@@ -122,15 +129,28 @@ android {
             v1SigningEnabled true
             v2SigningEnabled true
         }
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile.toString())
+                storePassword releaseStorePassword.toString()
+                keyAlias releaseKeyAlias.toString()
+                keyPassword releaseKeyPassword.toString()
+                v1SigningEnabled true
+                v2SigningEnabled true
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // 本地未提供 release 签名参数时保留 debug 兜底，方便开发构建；
+            // 正式出包必须通过 Gradle properties / CI secrets 提供 RELEASE_* 参数。
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            if (!hasReleaseSigning) {
+                println("WARNING: RELEASE_* signing properties are missing; release APK uses debug signing.")
+            }
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

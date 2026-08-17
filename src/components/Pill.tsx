@@ -37,6 +37,8 @@ export function Pill({ label, selected, onPress, accent, style }: PillProps) {
       ]}
     >
       <Text
+        numberOfLines={1}
+        ellipsizeMode="tail"
         style={[
           typography.subhead,
           {
@@ -44,6 +46,7 @@ export function Pill({ label, selected, onPress, accent, style }: PillProps) {
             fontWeight: '600',
             fontSize: 14,
             lineHeight: 18,
+            flexShrink: 1,
           },
         ]}
       >

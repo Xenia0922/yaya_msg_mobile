@@ -21,19 +21,26 @@ export default function AppToast() {
   const op = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    ty.stopAnimation();
+    op.stopAnimation();
     if (!message) {
-      Animated.parallel([
+      const exit = Animated.parallel([
         Animated.timing(ty, { toValue: 40, duration: motion.duration.fast, useNativeDriver: true }),
         Animated.timing(op, { toValue: 0, duration: motion.duration.fast, useNativeDriver: true }),
-      ]).start();
-      return;
+      ]);
+      exit.start();
+      return () => exit.stop();
     }
-    Animated.parallel([
+    const enter = Animated.parallel([
       Animated.spring(ty, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: true }),
       Animated.timing(op, { toValue: 1, duration: motion.duration.base, useNativeDriver: true }),
-    ]).start();
+    ]);
+    enter.start();
     const t = setTimeout(() => hideToast(), 2200);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      enter.stop();
+    };
   }, [hideToast, message, op, ty]);
 
   if (!message) return null;

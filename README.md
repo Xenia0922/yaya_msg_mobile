@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-ff6f91" alt="license" /></a>
-  <a href="https://github.com/Xenia0922/yaya_msg_mobile/releases"><img src="https://img.shields.io/badge/release-v2.7-22c3a6" alt="release" /></a>
+  <a href="https://github.com/Xenia0922/yaya_msg_mobile/releases"><img src="https://img.shields.io/badge/release-v2.7.1-22c3a6" alt="release" /></a>
   <img src="https://img.shields.io/badge/platform-Android-3DDC84?logo=android" alt="Android" />
 </p>
 
@@ -17,9 +17,9 @@
 
 ## 功能
 
-- 房间消息 / 私信 / 翻牌
-- 口袋直播与回放（断点续播、录播按日期分组）
-- B站直播（弹幕、画质切换、公演封面与标题）
+- 房间消息 / 私信 / 翻牌（房内支持成员自定义昵称、房间背景与毛玻璃工具条）
+- 口袋直播与回放（断点续播、录播按日期分组、关注回放批量快速抓取）
+- B站直播（扫码登录、弹幕、画质切换、公演封面与标题）
 - 音乐库（分团筛选、搜索、歌词、收藏、播放记忆）
 - 翻牌统计、成员数据库、鸡腿充值
 - 直播/录播「关注」筛选、实时开播检测
@@ -28,9 +28,9 @@
 
 从 [Releases](https://github.com/Xenia0922/yaya_msg_mobile/releases) 下载：
 
-- `yaya-msg-mobile-v2.7.apk`：通用包（全 ABI，体积最大）
-- `yaya-msg-mobile-v2.7-x64.apk`：x86_64 模拟器专用
-- `yaya-msg-mobile-v2.7-v8a.apk` / `-v7a.apk`：真机包（**推荐真机使用**，比通用包小约 40%）
+- `yaya-msg-mobile-v2.7.1.apk`：通用包（全 ABI，体积最大）
+- `yaya-msg-mobile-v2.7.1-x64.apk`：x86_64 模拟器专用
+- `yaya-msg-mobile-v2.7.1-v8a.apk` / `-v7a.apk`：真机包（**推荐真机使用**，比通用包小约 40%）
 
 模拟器请用 x64 包，否则无法启动。App 内「检查更新」始终提供通用包直链，真机如需最小体积请在 Release 页面按架构下载。
 

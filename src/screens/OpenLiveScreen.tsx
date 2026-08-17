@@ -169,7 +169,7 @@ export default function OpenLiveScreen() {
   const [nextTime, setNextTime] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState(t('暂无公演记录'));
+  const [status, setStatus] = useState('');
   const [listError, setListError] = useState('');
   const [playing, setPlaying] = useState<{ url: string; title: string } | null>(null);
   const [playerError, setPlayerError] = useState('');
@@ -326,7 +326,9 @@ export default function OpenLiveScreen() {
               </ScalePressable>
             ) : null}
           </View>
-          <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading && !items.length ? '' : status}</Text>
+          {member && status ? (
+            <Text style={[styles.status, { color: palette.labelSecondary }]}>{loading && !items.length ? '' : status}</Text>
+          ) : null}
         </View>
 
         <PerfFlatList

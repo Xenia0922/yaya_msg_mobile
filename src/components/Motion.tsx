@@ -31,13 +31,15 @@ export function FadeInView({
 
   useEffect(() => {
     value.setValue(0);
-    Animated.timing(value, {
+    const animation = Animated.timing(value, {
       toValue: 1,
       duration,
       delay,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
-    }).start();
+    });
+    animation.start();
+    return () => animation.stop();
   }, [delay, duration, value]);
 
   return (
@@ -78,6 +80,7 @@ export function ScalePressable({
   const scale = useRef(new Animated.Value(1)).current;
 
   const animateTo = (toValue: number) => {
+    scale.stopAnimation();
     Animated.spring(scale, {
       toValue,
       speed: 28,

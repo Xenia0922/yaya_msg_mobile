@@ -47,9 +47,12 @@ function TabCell({
   const pop = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    pop.stopAnimation();
     if (active) {
       pop.setValue(0.92);
-      Animated.spring(pop, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: true }).start();
+      const animation = Animated.spring(pop, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: true });
+      animation.start();
+      return () => animation.stop();
     } else {
       pop.setValue(1);
     }

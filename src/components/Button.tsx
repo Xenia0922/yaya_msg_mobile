@@ -97,12 +97,15 @@ export function Button({
         <View style={styles.row}>
           {icon ? <View style={{ marginRight: 8 }}>{icon}</View> : null}
           <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
             style={[
               {
                 ...cfg.font,
                 fontWeight: cfg.fontWeight,
                 color: fg,
                 textAlign: 'center',
+                flexShrink: 1,
               },
               textStyle,
             ]}
@@ -124,5 +127,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 0,
   },
 });

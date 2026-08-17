@@ -64,7 +64,7 @@ export function ListItem({
         ) : null}
       </View>
       {caption ? (
-        <Text style={[typography.footnote, { color: palette.labelTertiary, marginRight: spacing.xs }]}>
+        <Text numberOfLines={1} ellipsizeMode="tail" style={[typography.footnote, { color: palette.labelTertiary, marginRight: spacing.xs, maxWidth: '32%', flexShrink: 1 }]}>
           {caption}
         </Text>
       ) : null}

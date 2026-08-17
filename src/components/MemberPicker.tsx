@@ -66,7 +66,7 @@ export default function MemberPicker({
         returnKeyType="search"
       />
       {selectedMember ? (
-        <Text style={[typography.footnote, { color: palette.tint, fontWeight: '600' }]}>
+        <Text style={[typography.footnote, { color: palette.tint, fontWeight: '600' }]} numberOfLines={1}>
           {t('已选择：{name}', { name: selectedMember.ownerName })}
         </Text>
       ) : null}

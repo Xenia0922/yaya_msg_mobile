@@ -30,8 +30,10 @@ export function SectionHeader({
   const palette = usePalette();
   return (
     <View style={[styles.container, { paddingHorizontal: insets.screenHorizontal }]}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
         <Text
+          numberOfLines={2}
+          ellipsizeMode="tail"
           style={[
             large ? typography.largeTitle : typography.title3,
             { color: palette.label },
@@ -52,6 +54,8 @@ export function SectionHeader({
           style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}
         >
           <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
             style={[
               typography.subhead,
               { color: palette.tint, fontWeight: '600' },

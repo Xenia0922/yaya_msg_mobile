@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
   Easing,
   FlatList,
   GestureResponderEvent,
@@ -12,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -24,7 +24,6 @@ import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
 
-const { width: SW } = Dimensions.get('window');
 const ANIM_DURATION = 300;
 
 function formatTime(seconds: number): string {
@@ -68,6 +67,9 @@ function FullScreenPlayerInner({
 }: FullScreenPlayerInnerProps) {
   const { t } = useI18n();
   const palette = usePalette();
+  const { width: screenWidth } = useWindowDimensions();
+  const screenWidthRef = useRef(screenWidth);
+  screenWidthRef.current = screenWidth;
   const trackFavId = track ? String(track.musicId || track.id || '') : '';
   const isFav = trackFavId ? favorites.includes(trackFavId) : false;
   const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
@@ -173,7 +175,7 @@ function FullScreenPlayerInner({
     onPanResponderMove: (_, gs) => { if (Math.abs(gs.dy) > 15) slideAnim.setValue(gs.dy); },
     onPanResponderRelease: (_, gs) => {
       if (gs.dy > 60) {
-        Animated.timing(slideAnim, { toValue: SW, duration: motion.duration.fast, easing: Easing.inOut(Easing.ease), useNativeDriver: true }).start(() => onCloseRef.current());
+        Animated.timing(slideAnim, { toValue: screenWidthRef.current, duration: motion.duration.fast, easing: Easing.inOut(Easing.ease), useNativeDriver: true }).start(() => onCloseRef.current());
       } else {
         Animated.spring(slideAnim, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: true }).start();
       }

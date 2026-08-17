@@ -420,7 +420,7 @@ export default function BilibiliLiveScreen() {
                     uri: streamUrl,
                     headers: bilibiliApi.headers(currentCandidate?.realRoomId),
                   }}
-                  style={[styles.nativeVideo, { transform: [{ rotate: videoRotateDeg }] }]}
+                  style={styles.nativeVideo}
                   resizeMode="contain"
                   paused={paused}
                   ignoreSilentSwitch="ignore"

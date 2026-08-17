@@ -81,10 +81,10 @@ export const Palettes = { light, dark } as const;
 
 /** 通过 useAppTheme / useResolvedTheme 选其一返回 */
 import { useSettingsStore } from '../store';
+import { useResolvedTheme } from '../hooks/useAppTheme';
 
 export function usePalette(): Palette {
-  const mode = useSettingsStore((s) => s.settings.theme);
-  return mode === 'dark' ? dark : light;
+  return useResolvedTheme() === 'dark' ? dark : light;
 }
 
 /**

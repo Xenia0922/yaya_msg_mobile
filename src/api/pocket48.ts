@@ -723,6 +723,10 @@ export const pocketApi = {
     return tryPocketPost(attempts, 'get room messages failed');
   },
 
+  async getRoomInfo(channelId: string) {
+    return pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) }, { tokenRequired: false, fallback: '获取房间信息失败' });
+  },
+
   async getRoomAlbum(params: { channelId: string; nextTime?: number }) {
     return pocketPost(`${BASE}/im/api/v1/team/msg/list/img`, {
       channelId: String(params.channelId),
@@ -952,7 +956,7 @@ export const pocketApi = {
     }, { tokenRequired: false, fallback: '获取个人相册失败' });
   },
 
-  async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean; debug?: boolean; next?: number }) {
+  async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean; debug?: boolean; next?: number; size?: number }) {
     const payload: any = {
       groupId: params.groupId ?? 0,
       debug: params.debug ?? false,
@@ -961,6 +965,7 @@ export const pocketApi = {
       record: params.record ?? false,
     };
     if (params.page !== undefined) payload.page = params.page;
+    if (params.size !== undefined) payload.size = params.size;
     return pocketPost(`${BASE}/live/api/v1/live/getLiveList`, payload, { tokenRequired: false, fallback: '获取直播列表失败' });
   },
 
@@ -1437,6 +1442,7 @@ export const pocketApi = {
             {
               method: 'POST',
               body: payload,
+              bodyType: 'raw',
               headers: {
                 ...pageHeaders,
                 Origin: 'https://live.48.cn',

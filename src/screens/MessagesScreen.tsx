@@ -6,7 +6,7 @@
  * - 成员选择 Modal 改底部 sheet（Modal transparent + 底部圆角 radii.sheet=22 + 顶部 handle + 搜索条 + 带头像+名字+team 的虚拟化行）
  * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
@@ -45,6 +45,7 @@ export default function MessagesScreen() {
   const [search, setSearch] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
+  const requestIdRef = useRef(0);
 
   const pickerList = useMemo(() => {
     const query = pickerQuery.trim().toLowerCase();
@@ -59,6 +60,7 @@ export default function MessagesScreen() {
       showToast(t('请先在账号设置里登录口袋48或粘贴 Token'));
       return;
     }
+    const requestId = ++requestIdRef.current;
     setSelectedMember(member);
     setLoading(true);
     setLoadError('');
@@ -70,12 +72,14 @@ export default function MessagesScreen() {
         fetchAll: true,
       });
       const list = unwrapList(res, ['content.messageList', 'content.message', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'list']);
+      if (requestId !== requestIdRef.current) return;
       setMessages(list.slice().sort((a, b) => msgTime(b) - msgTime(a)));
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
       setLoadError(errorMessage(error));
       setMessages([]);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [showToast, t, token]);
 

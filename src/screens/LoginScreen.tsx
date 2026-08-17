@@ -29,17 +29,13 @@ import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { translate, useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-function buildBilibiliCookieFromUrl(rawUrl = ''): string {
+const BILI_COOKIE_KEYS = ['SESSDATA', 'bili_jct', 'DedeUserID', 'DedeUserID__ckMd5', 'sid'];
+
+/** 从一段 search/hash 裸参数字符串里提取 B站 cookie（仅用 URLSearchParams，不依赖 Hermes 的 new URL） */
+function biliCookiesFromSearch(search = ''): string {
   try {
-    const url = new URL(rawUrl);
-    const params = new URLSearchParams(url.search);
-    if (url.hash) {
-      const hash = url.hash.replace(/^#/, '');
-      const hashParams = new URLSearchParams(hash.includes('?') ? hash.split('?').pop() : hash);
-      hashParams.forEach((value, key) => params.set(key, value));
-    }
-    const keys = ['SESSDATA', 'bili_jct', 'DedeUserID', 'DedeUserID__ckMd5', 'sid'];
-    return keys
+    const params = new URLSearchParams(search);
+    return BILI_COOKIE_KEYS
       .map((key) => {
         const value = params.get(key);
         return value ? `${key}=${value}` : '';
@@ -49,6 +45,42 @@ function buildBilibiliCookieFromUrl(rawUrl = ''): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * 从扫码确认回调 url/参数串提取 B站 cookie，兼容几种 B站实测/历史形态：
+ *  1) 完整 crossDomain URL：query 里带 cookie（https://passport.bilibili.com/x/passport-login/web/crossDomain?DedeUserID=..&SESSDATA=..）
+ *  2) hash 里带参数：.../#SESSDATA=..&bili_jct=..
+ *  3) 整个 URL 被 encodeURIComponent 嵌了一层（SESSDATA%3D..%26bili_jct%3D..）
+ *  4) 裸 key=value 串（无协议无路径）
+ */
+function buildBilibiliCookieFromUrl(rawUrl = ''): string {
+  const extract = (source: string): string => {
+    let search = source;
+    const q = source.indexOf('?');
+    if (q >= 0) search = source.slice(q + 1);
+    const parts = search.split('#');
+    let query = parts[0] || '';
+    const hash = parts.length > 1 ? parts[1] : '';
+    if (hash) query = query ? `${query}&${hash}` : hash;
+    return biliCookiesFromSearch(query);
+  };
+
+  let cookie = extract(rawUrl);
+  if (cookie.includes('SESSDATA')) return cookie;
+
+  // 嵌套编码：整串先 decode 一层再提取
+  try {
+    const decoded = decodeURIComponent(rawUrl);
+    if (decoded !== rawUrl && decoded.includes('SESSDATA')) {
+      const nested = extract(decoded);
+      if (nested.includes('SESSDATA')) return nested;
+    }
+  } catch {
+    /* 非法编码串，忽略 */
+  }
+
+  return cookie;
 }
 
 /** Token 掩码：只显示首 6 + 尾 4 字符，避免完整 Token 常驻屏幕 */
@@ -299,6 +331,11 @@ export default function LoginScreen() {
         if (res.data.code === 0) {
           const cookie = buildBilibiliCookieFromUrl(res.data?.url || '');
           if (!cookie.includes('SESSDATA')) {
+            // 记录真实回调 url（截断），下次仍失败时 logcat 可定位是 B站侧缺参数还是解析问题
+            logWarn(
+              `[bili-login] 扫码已确认但 url 未解析出 SESSDATA（前 200 字符）: ${String(res.data?.url || '').slice(0, 200)} code=${res.data?.code}`,
+              'login.pollBili',
+            );
             setBiliStatus(t('B站已确认但没有拿到Cookie'));
             return;
           }
