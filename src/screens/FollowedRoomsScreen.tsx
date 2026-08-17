@@ -848,6 +848,8 @@ export default function FollowedRoomsScreen() {
   const navigation = useNavigation<any>();
   const members = useMemberStore((state) => state.members);
   const [followed, setFollowed] = useState<FollowedRoom[]>([]);
+  // 直播状态：ids=直播中主播 id 集合，names=直播中昵称集合（接口字段不一，昵称兜底）
+  const [liveNow, setLiveNow] = useState<{ ids: Set<string>; names: Set<string> }>({ ids: new Set(), names: new Set() });
   const [pinned, setPinned] = useState<string[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Member | null>(null);
   const [roomMessages, setRoomMessages] = useState<RoomMessage[]>([]);
@@ -1052,6 +1054,21 @@ export default function FollowedRoomsScreen() {
         ...item,
         lastMessage: findLastMessage(lastMsgs, item.member),
       })));
+      // 直播状态：拉取首页直播列表（非阻塞），按主播 id / liveRoomId / 昵称匹配关注成员点亮状态点
+      pocketApi.getLiveList({ record: false, next: 0, size: 100 }).then((res: any) => {
+        const liveItems = unwrapList(res, ['content.liveList', 'content.list', 'data.liveList', 'liveList', 'list', 'data']);
+        const ids = new Set<string>();
+        const names = new Set<string>();
+        liveItems.forEach((it: any) => {
+          const owner = String(it.userId || it.ownerId || it.memberId || it.userInfo?.userId || it.userInfo?.id || it.user?.userId || it.owner?.userId || it.memberInfo?.userId || it.hostId || it.account || '');
+          if (owner) ids.add(owner);
+          const lr = String(it.liveRoomId || it.roomId || '');
+          if (lr) ids.add(lr);
+          const nick = String(it.nickname || it.nickName || it.userInfo?.nickname || it.userInfo?.starName || '').replace(/^(SNH48|GNZ48|BEJ48|CKG48|CGT48)-/i, '').trim().toLowerCase();
+          if (nick) names.add(nick);
+        });
+        setLiveNow({ ids, names });
+      }).catch(() => {});
       if (!silent) showToast(t('已加载 {count} 个房间', { count: followedMembers.length }));
       setFollowedError('');
     } catch (e) {
@@ -1838,9 +1855,12 @@ export default function FollowedRoomsScreen() {
             const team = item.member?.team || item.member?.groupName || '';
             const lastTime = Number(item.lastMessage?.msgTime || item.lastMessage?.ctime || 0);
             const lastText = item.lastMessage ? messageText(item.lastMessage) : '';
-            // 直播中判定：最近一条消息是 LIVE 类型且发生在 30 分钟内（否则房间列表不会全是「直播中」）
-            const lastMsgType = String(item.lastMessage?.msgType || item.lastMessage?.liveType || item.lastMessage?.messageType || '');
-            const isLiveNow = /LIVE/i.test(lastMsgType) && !!lastTime && Date.now() - lastTime < 30 * 60 * 1000;
+            // 直播中判定：以直播列表接口为准（id / liveRoomId / account / 昵称命中关注成员）
+            const mid = String(item.member?.id || item.memberId);
+            const mroom = String((item.member as any)?.liveRoomId || '');
+            const macct = String((item.member as any)?.account || '');
+            const mnick = String(item.member?.ownerName || '').replace(/^(SNH48|GNZ48|BEJ48|CKG48|CGT48)-/i, '').trim().toLowerCase();
+            const isLiveNow = liveNow.ids.has(mid) || (mroom && liveNow.ids.has(mroom)) || (macct && liveNow.ids.has(macct)) || (mnick && liveNow.names.has(mnick));
             return (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.roomRow}>
               <View style={[styles.roomRowCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
@@ -1862,7 +1882,7 @@ export default function FollowedRoomsScreen() {
                     <View style={styles.roomNameRow}>
                       <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
                       {/* 在线状态点：有最近消息视为在线 */}
-                      <View style={[styles.statusDot, { backgroundColor: lastTime ? palette.success : palette.labelTertiary }]} />
+                      <View style={[styles.statusDot, { backgroundColor: isLiveNow ? palette.success : palette.labelTertiary }]} />
                       {isLiveNow ? (
                         <View style={[styles.liveBadgeChip, { backgroundColor: palette.tint }]}>
                           <MaterialCommunityIcons name="broadcast" size={10} color={palette.onTint} />
