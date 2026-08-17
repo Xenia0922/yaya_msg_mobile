@@ -1730,7 +1730,7 @@ export default function FollowedRoomsScreen() {
     <View style={[styles.container]}>
       <ScreenHeader title={t('房间')} hideBack right={
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => setSearchOpen((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => { if (searchOpen) setSearchQuery(''); setSearchOpen((v) => !v); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
             <MaterialCommunityIcons
               name={searchOpen ? 'close' : 'magnify'}
               size={22}
@@ -1756,7 +1756,7 @@ export default function FollowedRoomsScreen() {
             returnKeyType="search"
           />
           {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
               <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
             </TouchableOpacity>
           ) : null}
