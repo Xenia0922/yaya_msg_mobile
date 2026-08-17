@@ -25,7 +25,7 @@
 - 直播/录播「关注」筛选、实时开播检测
 
 ## 安装
-
+从夸克网盘下载https://pan.quark.cn/s/5b103245218a
 从 [Releases](https://github.com/Xenia0922/yaya_msg_mobile/releases) 下载：
 
 - `yaya-msg-mobile-v2.7.1.apk`：通用包（全 ABI，体积最大）
