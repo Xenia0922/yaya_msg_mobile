@@ -753,20 +753,31 @@ export const pocketApi = {
     return pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) }, { tokenRequired: false, fallback: '获取房间信息失败' });
   },
 
-  /** 解析房间信息（大/小房间通用）：channelInfoList 匹配 channelId → 房间名 + 背景图。
+  /** 解析房间信息（大/小房间通用）：room/info → content.channelInfo（单数，FollowedRooms 同款字段）
+   *  channelName + bgImg（部分接口用 channelInfoList 或 userChatConfig.bgImg 兜底）。
    *  小房间（yklzId）同样适用——用户指定：小房间名字与背景解析是可实现的。 */
   async getRoomMeta(channelId: string | number) {
     const cid = String(channelId);
     const res = await this.getRoomInfo(cid).catch(() => null);
     const content = (res as any)?.content || (res as any)?.data || {};
-    const list = Array.isArray(content.channelInfoList) ? content.channelInfoList : [];
-    const hit = list.find((c: any) => String(c?.channelId) === cid);
-    if (!hit) return { name: '', bg: '' };
-    const bg = String(
-      hit.backgroundImg || hit.backgroundImgUrl || hit.bgImg || hit.bgImgUrl
-      || hit.backImg || hit.backImgUrl || hit.homeBgImg || hit.homeBgImgUrl || hit.bannerUrl || ''
-    );
-    return { name: String(hit.channelName || ''), bg: bg ? normalizeUrl(bg) : '' };
+    // 优先 content.channelInfo（单数，room/info 直接返回当前房间）
+    const ci = content.channelInfo || {};
+    let name = String(ci.channelName || '');
+    let bg = String(ci.bgImg || ci.backgroundImg || ci.backgroundImgUrl || ci.bgImgUrl || '');
+    // 兜底：channelInfoList（数组）匹配 channelId
+    if (!name && Array.isArray(content.channelInfoList)) {
+      const hit = content.channelInfoList.find((c: any) => String(c?.channelId) === cid);
+      if (hit) {
+        name = String(hit.channelName || '');
+        bg = String(hit.bgImg || hit.backgroundImg || hit.backgroundImgUrl || hit.bgImgUrl || '');
+      }
+    }
+    // 兜底：userChatConfig.bgImg（FollowedRooms 同款）
+    if (!bg) {
+      const ucc = content.userChatConfig || {};
+      bg = String(ucc.bgImg || ucc.bgImgUrl || '');
+    }
+    return { name, bg: bg ? normalizeUrl(bg) : '' };
   },
 
   async getRoomAlbum(params: { channelId: string; nextTime?: number }) {
