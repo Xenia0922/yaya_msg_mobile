@@ -47,6 +47,10 @@ node scripts/build-apk.js
 
 鸿蒙 2/3/4 与 Android 8.0+（minSdk 26）。
 
+## 已知问题
+
+- **直播小窗播放用不了**：部分直播（RTMP 流）切入应用内小窗后无法正常播放，建议直接全屏观看；录播 / 回放小窗不受影响。
+
 ## 致谢
 
 基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发，感谢原作者的开发与贡献。
