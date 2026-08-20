@@ -578,21 +578,17 @@ export default function LoginScreen() {
               <Button title={t('检查Token')} variant="tinted" size="md" onPress={handleCheckToken} disabled={loading} fullWidth />
               <Button title={t('保存Token')} variant="filled" size="md" onPress={handleSaveManualToken} disabled={loading} loading={loading} fullWidth />
             </View>
-            {/* 已保存 Token：浅色圆角状态块，明确归属卡片内部 */}
+            {/* 已保存 Token + Token 状态：卡片内普通段落（紧贴按钮列），无独立块背景，
+                避免被误认为\"卡片外独立横条\" */}
             {settings.p48Token ? (
-              <View style={[styles.tokenInfoBlock, { backgroundColor: palette.fill3, borderColor: palette.hairline }]}>
-                <MaterialCommunityIcons name="key-outline" size={13} color={palette.tint} style={{ marginRight: 6 }} />
-                <Text style={[styles.tokenInfoText, { color: palette.labelSecondary }]} numberOfLines={2}>
-                  {t('已保存Token：{token}', { token: maskToken(settings.p48Token) })}
-                </Text>
-              </View>
+              <Text style={[styles.tokenInfo, { color: palette.labelSecondary }]} numberOfLines={2}>
+                {t('已保存Token：{token}', { token: maskToken(settings.p48Token) })}
+              </Text>
             ) : null}
-            {/* Token 状态：浅色圆角状态块（有效/无效） */}
             {status && mode === 'token' ? (
-              <View style={[styles.tokenInfoBlock, { marginTop: 0, backgroundColor: palette.tintSoft, borderColor: palette.tint }]}>
-                <MaterialCommunityIcons name={status.startsWith(t('Token有效')) ? 'check-circle-outline' : 'alert-circle-outline'} size={13} color={palette.tint} style={{ marginRight: 6 }} />
-                <Text style={[styles.tokenInfoText, { color: palette.tint }]} numberOfLines={2}>{status}</Text>
-              </View>
+              <Text style={[styles.status, status.startsWith(t('Token有效')) ? { color: palette.tint, fontWeight: '700' } : { color: palette.danger, fontWeight: '700' }]} numberOfLines={2}>
+                {status}
+              </Text>
             ) : null}
           </View>
         ) : null}
@@ -777,7 +773,6 @@ const styles = StyleSheet.create({
   areaInput: { minWidth: 44, paddingVertical: 12, paddingHorizontal: 0, fontSize: 14 },
   phoneInput: { flex: 1 },
   avatarRow: { marginTop: 4 },
-  status: { fontSize: 12, lineHeight: 18, flexShrink: 0 },
   biliStatus: { marginTop: 10, fontSize: 12, textAlign: 'center', lineHeight: 18, flexShrink: 0, marginBottom: 4 },
   qrCard: {
     alignSelf: 'center',
@@ -810,20 +805,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   qrRetryText: { fontSize: 13, fontWeight: '700' },
-  tokenInfo: { fontSize: 12, lineHeight: 18, flexShrink: 0, minHeight: 18 },
-  // 已保存 Token / Token 状态：浅色圆角块（inline 背景色由组件注入 palette）
-  tokenInfoBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
-  tokenInfoText: { flex: 1, fontSize: 12, lineHeight: 17 },
+  tokenInfo: { fontSize: 12, lineHeight: 18, flexShrink: 0, minHeight: 18, marginTop: 12 },
+  status: { fontSize: 12, lineHeight: 18, flexShrink: 0, marginTop: 6 },
   metaLine: { marginTop: 8, marginBottom: 10, fontSize: 12, lineHeight: 18, flexShrink: 1 },
   // 账号行卡
   accountRow: {
