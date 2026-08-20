@@ -211,7 +211,7 @@ export default function RoomRadioScreen() {
                     paused={!playing}
                     muted={muted}
                     controls={false}
-                    ignoreSilentSwitch="ignore"
+                    ignoreSilentSwitch="ignore" playInBackground playWhenInactive
                     onLoad={() => setStatus(t('正在播放'))}
                     onError={(e: any) => setStatus(t('播放失败：{error}', { error: JSON.stringify(e?.error || e).slice(0, 120) }))}
                     onEnd={() => { setStatus(t('上麦已结束')); setPlaying(false); }}

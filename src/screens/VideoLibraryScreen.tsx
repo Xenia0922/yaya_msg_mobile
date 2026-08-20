@@ -143,7 +143,7 @@ export default function VideoLibraryScreen() {
           controls
           paused={false}
           resizeMode="contain"
-          ignoreSilentSwitch="ignore"
+          ignoreSilentSwitch="ignore" playInBackground playWhenInactive
           onError={(event: any) => {
             setPlayUrl('');
             setStatus(t('播放失败：{error}', {

@@ -1,5 +1,6 @@
 package com.yk1z.yayamsg
 
+import android.app.PictureInPictureParams
 import android.os.Build
 import android.os.Bundle
 
@@ -17,6 +18,23 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
+  }
+
+  /**
+   * 用户按 Home / 切到其他应用时：若 RN 侧标记有视频在播，自动进入画中画悬浮窗。
+   * （RN 侧在播放器 onLoad 时 setVideoPlaying(true)，onEnd/onError/暂停时置 false）
+   */
+  override fun onUserLeaveHint() {
+    super.onUserLeaveHint()
+    if (PipModule.videoPlaying
+        && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        && !isInPictureInPictureMode) {
+      try {
+        enterPictureInPictureMode(PictureInPictureParams.Builder().build())
+      } catch (_: Exception) {
+        // 部分 ROM 限制，静默
+      }
+    }
   }
 
   /**

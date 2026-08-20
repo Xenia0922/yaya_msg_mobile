@@ -634,7 +634,7 @@ export default function PrivateMessagesScreen() {
                       )
                     ) : !hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{t('[空消息]')}</Text> : null}
                     {playUrl === media?.url ? (
-                      <Video source={{ uri: media!.url }} style={media!.type === 'audio' ? styles.audio : styles.video} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
+                      <Video source={{ uri: media!.url }} style={media!.type === 'audio' ? styles.audio : styles.video} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground playWhenInactive />
                     ) : null}
                     <Text style={[styles.msgTime, mine && { color: 'rgba(255,255,255,0.75)' }, !mine && { color: palette.labelTertiary }]}>{formatTimestamp(msgTimeNumber(item))}</Text>
                   </View>

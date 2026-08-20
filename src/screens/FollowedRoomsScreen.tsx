@@ -32,6 +32,7 @@ import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp } from '../utils/format';
+import { setPipPlaying } from '../utils/pip';
 import {
   errorMessage,
   messagePayload,
@@ -701,8 +702,8 @@ function VideoCoverCard({ media, onPress, onLongPress }: { media: RoomMedia; onP
             controls={false}
             resizeMode="cover"
             muted
-            playWhenInactive={false}
-            playInBackground={false}
+            playWhenInactive
+            playInBackground
             onLoad={() => setLoaded(true)}
           />
           {!loaded ? (
@@ -875,6 +876,11 @@ export default function FollowedRoomsScreen() {
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
   const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
+
+  // 画中画（悬浮窗）状态同步：房间播放器打开且未全屏时置位
+  useEffect(() => {
+    setPipPlaying(!!roomPlayer && !roomPlayerFullscreen);
+  }, [roomPlayer, roomPlayerFullscreen]);
   const [rankVisible, setRankVisible] = useState(false);
   const [rankRows, setRankRows] = useState<any[]>([]);
   const [rankStatus, setRankStatus] = useState('');
@@ -1383,9 +1389,7 @@ export default function FollowedRoomsScreen() {
                 controls
                 paused={false}
                 resizeMode="contain"
-                ignoreSilentSwitch="ignore"
-                playInBackground={false}
-                playWhenInactive={false}
+                ignoreSilentSwitch="ignore" playInBackground playWhenInactive
               />
             )}
             <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
@@ -1709,8 +1713,7 @@ export default function FollowedRoomsScreen() {
                             source={playerSource(media.url)}
                             style={styles.inlineAudioHidden}
                             paused={false}
-                            ignoreSilentSwitch="ignore"
-                            playInBackground={false}
+                            ignoreSilentSwitch="ignore" playInBackground playWhenInactive
                             onEnd={() => setPlayingMedia(null)}
                           />
                         </View>
@@ -1721,7 +1724,7 @@ export default function FollowedRoomsScreen() {
                           controls
                           paused={false}
                           resizeMode="contain"
-                          ignoreSilentSwitch="ignore"
+                          ignoreSilentSwitch="ignore" playInBackground playWhenInactive
                         />
                       )
                     ) : null}

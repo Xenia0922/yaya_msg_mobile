@@ -169,7 +169,7 @@ export default function AudioProgramsScreen() {
             style={styles.audioPlayer}
             controls
             paused={false}
-            ignoreSilentSwitch="ignore"
+            ignoreSilentSwitch="ignore" playInBackground playWhenInactive
             onError={() => {
               if (urlIndex + 1 < playUrls.length) setUrlIndex((prev) => prev + 1);
               else setStatus(t('音频播放失败：所有备用线路都不可用'));

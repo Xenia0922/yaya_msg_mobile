@@ -363,7 +363,7 @@ export default function MusicLibraryScreen() {
         source={{ uri: playUrl || '' }}
         style={styles.tinyPlayer}
         paused={playbackState !== 'playing'}
-        ignoreSilentSwitch="ignore"
+        ignoreSilentSwitch="ignore" playInBackground playWhenInactive
         onAudioBecomingNoisy={() => {
           // 拔耳机/蓝牙断开：暂停播放，避免外放打扰
           try {

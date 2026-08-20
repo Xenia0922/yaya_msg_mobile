@@ -565,7 +565,7 @@ export default function FlipScreen() {
                         controls
                         paused={false}
                         resizeMode="contain"
-                        ignoreSilentSwitch="ignore"
+                        ignoreSilentSwitch="ignore" playInBackground playWhenInactive
                       />
                     </View>
                   ) : null}

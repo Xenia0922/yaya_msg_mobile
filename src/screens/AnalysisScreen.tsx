@@ -720,7 +720,7 @@ export default function AnalysisScreen() {
                           </ScalePressable>
                         ) : null}
                         {flipPlayUrl === answerUrl && answerUrl ? (
-                          <Video source={{ uri: answerUrl }} style={[isVoice ? styles.flipAudio : styles.flipVideo, isVoice && { backgroundColor: palette.surface }]} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" />
+                          <Video source={{ uri: answerUrl }} style={[isVoice ? styles.flipAudio : styles.flipVideo, isVoice && { backgroundColor: palette.surface }]} controls paused={false} resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground playWhenInactive />
                         ) : null}
                       </View>
                     ) : !isAnswered ? (
@@ -760,7 +760,7 @@ export default function AnalysisScreen() {
               controls
               resizeMode="contain"
               paused={false}
-              ignoreSilentSwitch="ignore"
+              ignoreSilentSwitch="ignore" playInBackground playWhenInactive
             />
           </View>
         </Modal>

@@ -19,6 +19,7 @@ import Video from 'react-native-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
+import { setPipPlaying, enterPipMode } from '../utils/pip';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
@@ -154,6 +155,11 @@ export default function BilibiliLiveScreen() {
   const currentCandidate = visibleCandidates[safeIndex];
   const streamUrl = currentCandidate?.url || '';
   const qualityLabel = qualities.find((q) => q.qn === qualityQn)?.label || '';
+
+  // 画中画（悬浮窗）状态同步：直播流解析成功且未暂停、非网页播放器时置位
+  useEffect(() => {
+    setPipPlaying(!!streamUrl && !paused && !useWebPlayer);
+  }, [streamUrl, paused, useWebPlayer]);
 
   useEffect(() => {
     const parent = navigation.getParent?.();
@@ -423,7 +429,7 @@ export default function BilibiliLiveScreen() {
                   style={styles.nativeVideo}
                   resizeMode="contain"
                   paused={paused}
-                  ignoreSilentSwitch="ignore"
+                  ignoreSilentSwitch="ignore" playInBackground playWhenInactive
                   // B 站直播流音频响度普遍低于口袋流：Android ExoPlayer 侧做 1.5x 线性增益补偿
                   volume={1.5}
                   onLoad={() => { setPlayerError(''); setBuffering(false); videoRef.current?.resume?.(); }}
@@ -434,6 +440,14 @@ export default function BilibiliLiveScreen() {
                     switchToNextCandidate(t('原生播放器失败：{detail}', { detail }));
                   }}
                 />
+                {/* 悬浮窗按钮：Android 系统画中画（小窗） */}
+                <TouchableOpacity
+                  style={styles.pipBtn}
+                  onPress={enterPipMode}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -641,6 +655,8 @@ const styles = StyleSheet.create({
   playerPage: { flex: 1, backgroundColor: '#000' },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },
+  // 画中画（悬浮窗）按钮：播放器右上角
+  pipBtn: { position: 'absolute', top: 12, right: 12, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   startingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
   startingText: { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600' },
   bufferingWrap: {

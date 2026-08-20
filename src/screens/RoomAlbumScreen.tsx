@@ -261,7 +261,7 @@ export default function RoomAlbumScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" onError={(e: any) => setVideoError(t('视频播放失败：{msg}', { msg: String(e?.error || e?.nativeError || '').slice(0, 120) || t('无法解码或网络错误') }))} />
+        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground playWhenInactive onError={(e: any) => setVideoError(t('视频播放失败：{msg}', { msg: String(e?.error || e?.nativeError || '').slice(0, 120) || t('无法解码或网络错误') }))} />
         )}
       </View>
     );

@@ -30,6 +30,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
+import { setPipPlaying, enterPipMode } from '../utils/pip';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { VODItem, Member } from '../types';
@@ -715,6 +716,11 @@ export default function MediaScreen() {
   const [duration, setDuration] = useState(0);
   const [paused, setPaused] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+
+  // 画中画（悬浮窗）状态同步：正在播放且未暂停时置位，切后台自动进悬浮窗
+  useEffect(() => {
+    setPipPlaying(!!playing && !paused && !useWebPlayer);
+  }, [playing, paused, useWebPlayer]);
   // 搜索：选中成员后，搜索框转为「该成员的标题/日期」过滤
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [dateFilter, setDateFilter] = useState<Date | null>(null);
@@ -1550,14 +1556,22 @@ export default function MediaScreen() {
                 paused={paused}
                 rate={playbackRate}
                 progressUpdateInterval={250}
-                playInBackground={false}
-                playWhenInactive={false}
-                ignoreSilentSwitch="ignore"
+                ignoreSilentSwitch="ignore" playInBackground playWhenInactive
                 onLoad={(e) => { setDuration(e.duration || 0); setPlaybackTime(webResumeTime || 0); setPlayerError(''); }}
                 onProgress={(e) => { if (Date.now() < seekLockRef.current) return; if (!paused) setPlaybackTime(e.currentTime || 0); }}
-                onEnd={() => clearResumePosition(resumeKey)}
+                onEnd={() => { clearResumePosition(resumeKey); setPipPlaying(false); }}
                 onError={(event) => setPlayerError(t('原生播放器失败：{detail}', { detail: JSON.stringify(event?.error || event).slice(0, 220) }))}
               />
+              {/* 悬浮窗按钮：Android 系统画中画（小窗） */}
+              {Platform.OS === 'android' ? (
+                <TouchableOpacity
+                  style={styles.pipBtn}
+                  onPress={enterPipMode}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              ) : null}
               {playerError ? (
                 <View style={styles.playerError}>
                   <Text style={styles.playerErrorText}>{playerError}</Text>
@@ -2090,6 +2104,8 @@ const styles = StyleSheet.create({
   vlcGateError: { color: '#ffb3c2', fontSize: 12, marginTop: 12 },
   playerError: { position: 'absolute', left: 16, right: 16, bottom: 24, padding: 12, borderRadius: 16, backgroundColor: '#1C1C1F' },
   playerErrorText: { color: '#fff', fontSize: 12, lineHeight: 18 },
+  // 画中画（悬浮窗）按钮：播放器右上角
+  pipBtn: { position: 'absolute', top: 12, right: 12, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   // 播放器内解析中/失败视图
   resolvingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   resolvingText: { color: 'rgba(255,255,255,0.85)', fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },

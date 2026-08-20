@@ -292,7 +292,7 @@ export default function OpenLiveScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground={false} playWhenInactive={false} onError={(e: any) => setPlayerError(t('播放失败：{msg}', { msg: String(e?.error || e?.nativeError || '').slice(0, 120) || t('无法解码或网络错误') }))} />
+        <Video source={{ uri: playing.url }} style={styles.player} controls resizeMode="contain" ignoreSilentSwitch="ignore" playInBackground playWhenInactive onError={(e: any) => setPlayerError(t('播放失败：{msg}', { msg: String(e?.error || e?.nativeError || '').slice(0, 120) || t('无法解码或网络错误') }))} />
         )}
         <TouchableOpacity activeOpacity={0.7} style={[styles.externalBtn, { backgroundColor: palette.tint }]} onPress={() => Linking.openURL(playing.url)}>
           <Text style={[styles.externalText, { color: palette.onTint }]}>{t('外部打开')}</Text>
