@@ -9,6 +9,7 @@ import { Palettes } from '../theme/colors';
 import { ensureMemberData } from '../services/memberData';
 import { RootStackParamList, TabParamList } from './types';
 import { AppTabBar, MCI } from '../components/AppTabBar';
+import { MiniPlayer } from '../components/MiniPlayer';
 import { usePalette } from '../theme';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
@@ -276,6 +277,8 @@ export default function AppNavigator() {
           <Stack.Screen name="CommunityPostDetailScreen" component={CommunityPostDetailStackScreen} />
         </Stack.Navigator>
         <AppToast />
+        {/* 应用内悬浮小窗播放器（全局挂载，导航上下文内可用） */}
+        <MiniPlayer />
       </>
     </NavigationContainer>
     </ErrorBoundary>

@@ -21,6 +21,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
 import { setPipPlaying, enterPipMode } from '../utils/pip';
+import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
@@ -226,6 +227,20 @@ export default function BilibiliLiveScreen() {
     // 从主页公演栏直达进来的：退出播放器直接回主页（不再落到 B站列表二级菜单）
     if (route.params?.roomId) navigation.goBack();
   };
+
+  // 应用内小窗：直播流交棒给悬浮小窗
+  const handleMiniPlayer = useCallback(() => {
+    if (!streamUrl) return;
+    useMiniPlayerStore.getState().open({
+      url: streamUrl,
+      title: streamTitle || t('B站直播'),
+      cover: '',
+      isLive: true,
+      position: 0,
+      backTo: { mode: 'live', playUrl: streamUrl, playTitle: streamTitle, playCover: '' },
+    });
+    closePlayer();
+  }, [streamUrl, streamTitle, closePlayer]);
 
   const refreshingRef = useRef(false);
   const checkStatuses = useCallback(async (silent = false) => {
@@ -494,6 +509,7 @@ export default function BilibiliLiveScreen() {
             onMore={() => setMoreVisible(true)}
             onRefresh={() => activeRoom && startWatch(activeRoom)}
             onPiP={Platform.OS === 'android' ? enterPipMode : undefined}
+            onMini={handleMiniPlayer}
           />
         </Animated.View>
 

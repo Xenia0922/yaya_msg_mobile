@@ -31,6 +31,7 @@ import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navig
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { setPipPlaying, enterPipMode } from '../utils/pip';
+import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { VODItem, Member } from '../types';
@@ -1214,6 +1215,26 @@ export default function MediaScreen() {
     setAnnounceExpanded(false);
   };
 
+  // 应用内小窗：当前播放交棒给悬浮小窗（小窗独立 Video 实例续播），关掉大播放器
+  const handleMiniPlayer = useCallback(() => {
+    const cur = playing;
+    if (!cur?.url) return;
+    useMiniPlayerStore.getState().open({
+      url: cur.url,
+      title: cur.title,
+      cover: cur.cover,
+      isLive: !!cur.isLive,
+      position: playbackTime,
+      backTo: {
+        mode: cur.isLive ? 'live' : 'vod',
+        playUrl: cur.url,
+        playTitle: cur.title,
+        playCover: cur.cover,
+      },
+    });
+    closePlayer();
+  }, [playing, playbackTime, closePlayer]);
+
   // v2.6: came from room (explicit fromRoom flag) → hide list, back goes to room
   // 注意：不能仅凭 playLiveId 判断——首页直播卡跳转也带 playLiveId，
   // 无 fromRoom 标记时保持列表页（不误切 Rooms tab）
@@ -1488,6 +1509,7 @@ export default function MediaScreen() {
             onMore={() => setMoreVisible(true)}
             onRefresh={() => startPlay(playing.item)}
             onPiP={Platform.OS === 'android' ? enterPipMode : undefined}
+            onMini={handleMiniPlayer}
           />
         </Animated.View>
 
