@@ -572,7 +572,7 @@ export default function LoginScreen() {
               placeholderTextColor={palette.labelTertiary}
               value={manualToken}
               onChangeText={setManualToken}
-              multiline
+              numberOfLines={1}
             />
             <View style={styles.btnCol}>
               <Button title={t('检查Token')} variant="tinted" size="md" onPress={handleCheckToken} disabled={loading} fullWidth />
@@ -766,7 +766,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   field: { height: 42, paddingHorizontal: 12, borderRadius: radiiAlias.input, marginBottom: 10, fontSize: 14 },
-  tokenInput: { minHeight: 86, textAlignVertical: 'top', paddingVertical: 10 },
+  tokenInput: { minHeight: 46, textAlignVertical: 'center', paddingVertical: 8 },
   btnCol: { gap: 10, marginTop: 4 },
   phoneRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   areaWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 10 },
