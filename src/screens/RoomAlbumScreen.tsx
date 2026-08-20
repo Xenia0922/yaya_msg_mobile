@@ -179,8 +179,8 @@ export default function RoomAlbumScreen() {
     setLoadError('');
     setStatus('');
     setRoomName(''); setRoomBg('');
-    // 小房间/大房间名字 + 背景解析（getRoomInfo → channelInfo；小房间 2001 无权限时回退大房间背景）
-    pocketApi.getRoomMeta(channelId, mode === 'small' ? member.channelId : undefined).then((meta) => {
+    // 小房间/大房间名字 + 背景解析：room/info → 塞纳河 server/detail（channelInfoList 房间名 + 背景墙图）
+    pocketApi.getRoomMeta(channelId, mode === 'small' ? member.channelId : undefined, member.serverId).then((meta) => {
       if (meta?.name) setRoomName(meta.name);
       if (meta?.bg) setRoomBg(meta.bg);
     }).catch(() => {});

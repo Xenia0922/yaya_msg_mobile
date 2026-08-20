@@ -753,16 +753,17 @@ export const pocketApi = {
     return pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) }, { tokenRequired: false, fallback: '获取房间信息失败' });
   },
 
-  /** 解析房间信息（大/小房间通用）：room/info → content.channelInfo（单数，FollowedRooms 同款字段）。
-   *  小房间（yklzId）实测服务端返回 2001 无权限（channelName/bgImg 全空，无其他数据源）——
-   *  因此支持 fallbackChannelId：小房间解析失败时回退用同成员大房间的 meta（背景图可复用）。
-   *  channelName + bgImg + userChatConfig.bgImg 兜底。 */
-  async getRoomMeta(channelId: string | number, fallbackChannelId?: string | number) {
+  /** 解析房间信息（大/小房间通用）：
+   *  1) room/info → content.channelInfo（单数，FollowedRooms 同款字段）
+   *  2) 小房间（yklzId）实测 room/info 返回 2001 无权限 → 回退【塞纳河接口】
+   *     im/api/seine/server/detail（seine48 头）：返回 channelInfoList（大/小房间 channelId+channelName）
+   *     + chatServerInfo.serverBgWallImg（背景墙图）+ serverName。
+   *  serverId 必须传入（成员数据里有），否则无法走塞纳河兜底。 */
+  async getRoomMeta(channelId: string | number, fallbackChannelId?: string | number, serverId?: string | number) {
     const cid = String(channelId);
-    const tryOne = async (target: string): Promise<{ name: string; bg: string }> => {
+    const tryRoomInfo = async (target: string): Promise<{ name: string; bg: string }> => {
       const res = await this.getRoomInfo(target).catch(() => null);
       const content = (res as any)?.content || (res as any)?.data || {};
-      // 小房间/无权限：status!=200 或 content 空 → 视为失败
       if ((res as any)?.status && Number((res as any)?.status) !== 200) return { name: '', bg: '' };
       const ci = content.channelInfo || {};
       let name = String(ci.channelName || '');
@@ -780,10 +781,28 @@ export const pocketApi = {
       }
       return { name, bg: bg ? normalizeUrl(bg) : '' };
     };
-    let meta = await tryOne(cid);
-    // 小房间无权限/解析空 → 回退同成员大房间（至少背景可复用）
+    let meta = await tryRoomInfo(cid);
+    // 小房间/解析失败 → 塞纳河 server/detail（channelInfoList 含大小房间名 + serverBgWallImg）
+    if ((!meta.name && !meta.bg) && serverId !== undefined && serverId !== null && String(serverId) !== '') {
+      try {
+        const res = await this.getSeineServerDetail(Number(serverId)).catch(() => null);
+        const content = (res as any)?.content || (res as any)?.data || {};
+        const list = Array.isArray(content.channelInfoList) ? content.channelInfoList : [];
+        const hit = list.find((c: any) => String(c?.channelId) === cid)
+          || (fallbackChannelId !== undefined && fallbackChannelId !== null ? list.find((c: any) => String(c?.channelId) === String(fallbackChannelId)) : undefined);
+        const si = content.chatServerInfo || {};
+        const bg = String(si.serverBgWallImg || si.bgImg || '');
+        if (hit || bg) {
+          meta = {
+            name: meta.name || (hit ? String(hit.channelName || '') : ''),
+            bg: meta.bg || (bg ? normalizeUrl(bg) : ''),
+          };
+        }
+      } catch { /* 塞纳河兜底失败忽略 */ }
+    }
+    // 最终兜底：回退同成员大房间背景
     if (!meta.name && !meta.bg && fallbackChannelId !== undefined && fallbackChannelId !== null && String(fallbackChannelId) !== cid) {
-      const fb = await tryOne(String(fallbackChannelId)).catch(() => ({ name: '', bg: '' }));
+      const fb = await tryRoomInfo(String(fallbackChannelId)).catch(() => ({ name: '', bg: '' }));
       if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }
     return meta;

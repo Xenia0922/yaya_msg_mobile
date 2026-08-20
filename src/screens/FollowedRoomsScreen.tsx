@@ -1127,8 +1127,8 @@ export default function FollowedRoomsScreen() {
         setRoomMeta(cachedMeta);
       } else {
         roomMetaCache.current[channelId] = { name: '', bg: '' };
-        // 小房间 room/info 服务端 2001 无权限（实测）→ 回退同成员大房间 meta，至少背景可复用
-        pocketApi.getRoomMeta(channelId, nextMode === 'small' ? room.channelId : undefined)
+        // 小房间 room/info 服务端 2001 无权限（实测）→ 塞纳河 server/detail 拿 channelInfoList 房间名 + 背景墙图
+        pocketApi.getRoomMeta(channelId, nextMode === 'small' ? room.channelId : undefined, room.serverId)
           .then((meta) => { roomMetaCache.current[channelId] = meta; setRoomMeta(meta); })
           .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; });
       }
