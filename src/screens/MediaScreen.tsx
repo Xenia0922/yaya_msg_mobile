@@ -47,6 +47,7 @@ import { memberSearchText } from '../utils/members';
 import { PlayerTopBar, PlayerBottomBar, PlayerMorePanel, MoreItem } from '../components/media/PlayerChrome';
 import { CenterSpinner } from '../components/Loaders';
 import { EmptyState } from '../components/StateViews';
+import { LoginPrompt } from '../components/LoginPrompt';
 import { Button } from '../components/Button';
 import { Skeleton } from '../components/Skeleton';
 import { usePalette, radii, radiiAlias } from '../theme';
@@ -537,6 +538,7 @@ export default function MediaScreen() {
   const showToast = useUiStore((state) => state.showToast);
   const members = useMemberStore((state) => state.members);
   const [tab, setTab] = useState<'live' | 'vod'>(route.params?.mode ?? 'live');
+  const token = useSettingsStore((s) => s.settings.p48Token);
   const [showSearch, setShowSearch] = useState(false);
   const [vodList, setVodList] = useState<VODItem[]>([]);
   const [liveList, setLiveList] = useState<VODItem[]>([]);
@@ -1186,7 +1188,7 @@ export default function MediaScreen() {
   // 进入「关注」录播视图或下拉刷新后触发并行扫描
   const [refreshTick, setRefreshTick] = useState(0);
   useEffect(() => {
-    if (groupId === -1 && tab === 'vod') {
+    if (groupId === -1 && tab === 'vod' && token) {
       scanDoneRef.current = false;
       loadFollowVodFast();
     }
@@ -2024,6 +2026,8 @@ export default function MediaScreen() {
           ListEmptyComponent={
             loading ? (
               <MediaGridSkeleton />
+            ) : groupId === -1 && !token ? (
+              <LoginPrompt hint={t('查看关注成员的直播/录播需要登录')} />
             ) : followFetching ? (
               <View style={styles.followScanWrap}>
                 <ActivityIndicator size="small" color={palette.tint} />

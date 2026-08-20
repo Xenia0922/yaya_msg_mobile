@@ -14,6 +14,7 @@ import { FadeInView, ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
 import { Skeleton } from '../components/Skeleton';
 import { EmptyState, ErrorState } from '../components/StateViews';
+import { LoginPrompt } from '../components/LoginPrompt';
 import { Pill } from '../components/Pill';
 import { useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
@@ -121,6 +122,7 @@ export default function AnalysisScreen() {
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
+  const token = useSettingsStore((s) => s.settings.p48Token);
   const [member, setMember] = useState<Member | null>(null);
   const [tab, setTab] = useState<TabKey>('room');
   const [messages, setMessages] = useState<any[]>([]);
@@ -352,7 +354,10 @@ export default function AnalysisScreen() {
 
       <View style={styles.pickerWrap}>
         <MemberPicker selectedMember={member} onSelect={loadRoomStats} />
-        {loading ? (
+        {/* 未登录引导：选了成员但缺 token 时显示，避免"全 0"误导 */}
+        {(member && !token) ? (
+          <LoginPrompt hint={t('统计该成员的互动画像需要登录')} />
+        ) : loading ? (
           <CenterSpinner text={t('加载中…')} />
         ) : (
           <Text style={[styles.statusText, { color: palette.labelSecondary }]}>{status}</Text>
