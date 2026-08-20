@@ -1,0 +1,20 @@
+{
+  "直播播放失败": {
+    "zh-Hant": "直播播放失敗",
+    "en": "Live playback failed",
+    "ja": "ライブ再生に失敗しました",
+    "ko": "라이브 재생 실패"
+  },
+  "确定": {
+    "zh-Hant": "確定",
+    "en": "OK",
+    "ja": "OK",
+    "ko": "확인"
+  },
+  "缺少 liveId，无法打开礼物面板": {
+    "zh-Hant": "缺少 liveId，無法開啟禮物面板",
+    "en": "Missing liveId; cannot open the gift panel",
+    "ja": "liveId がないため、ギフトパネルを開けません",
+    "ko": "liveId가 없어 선물 패널을 열 수 없습니다"
+  }
+}
