@@ -99,6 +99,20 @@ interface LiveCardItem {
 /** 首页直播列表缓存（stale-while-revalidate：冷启动秒显上次内容） */
 const LIVES_CACHE_KEY = 'yaya_home_lives_cache_v1';
 
+/** 公演直播（B站开播状态）缓存：B站接口不稳定，冷启动秒显上次检测结果，后台刷新 */
+const GONGYAN_CACHE_KEY = 'yaya_home_gongyan_cache_v1';
+
+/** B站单请求短超时：开播检测只需状态，6s 未回视为失败，避免拖慢首页骨架 */
+const BILI_FAST_TIMEOUT = 6000;
+
+/** Promise 竞速超时：返回 null 表示超时（不 abort，仅放弃等待） */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    p,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
 function normalizeLiveList(res: any): LiveCardItem[] {
   const source = unwrapList(res, [
     'content.liveList', 'content.list', 'content.data', 'content.records',
@@ -191,6 +205,7 @@ export default function HomeScreen() {
   const [livesError, setLivesError] = useState('');
   const [bannerIndex, setBannerIndex] = useState(0);
   const fetchedRef = useRef(false);
+  const livesRetryRef = useRef(0);
 
   // 公演直播：B站直播间开播检测（仅五个团 SNH48/GNZ48/BEJ48/CGT48/CKG48，其余直播间不展示）
   const GONGYAN_ROOMS = useMemo(
@@ -201,26 +216,28 @@ export default function HomeScreen() {
   const [gongyanLive, setGongyanLive] = useState<Record<string, boolean>>({});
   const [gongyanInfo, setGongyanInfo] = useState<Record<string, { title: string; cover: string }>>({});
   const [gongyanOk, setGongyanOk] = useState(false);
+  const [gongyanError, setGongyanError] = useState('');
   const gongyanTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const gongyanRetryRef = useRef(0);
+  const gongyanHasDataRef = useRef(false);
 
   const fetchGongyanStatus = useCallback(async () => {
     try {
       const rooms = await externalApi.fetchBilibiliConfig();
       const filtered = rooms.filter((room) => GONGYAN_ROOMS.includes(String(room.name || '').trim()));
-      setGongyanRooms(filtered);
-      // 并行检测开播状态（串行 5 个请求会拖慢首页约 2-4s）
+      // 并行检测开播状态（每请求 6s 竞速超时：B站接口不稳，单请求挂起不应拖住整个公演区）
       const results = await Promise.allSettled(
-        filtered.map((room) => bilibiliApi.getRoomInit(room.roomId)),
+        filtered.map((room) => withTimeout(bilibiliApi.getRoomInit(room.roomId), BILI_FAST_TIMEOUT)),
       );
       const next: Record<string, boolean> = {};
       filtered.forEach((room, index) => {
         const r = results[index];
-        next[room.roomId] = r.status === 'fulfilled' && Number(r.value?.data?.live_status) === 1;
+        next[room.roomId] = r.status === 'fulfilled' && !!r.value && Number(r.value?.data?.live_status) === 1;
       });
       setGongyanLive(next);
-      // 在播房间并行抓取封面 + 直播标题（公演行展示真实封面与场次标题）
+      // 在播房间并行抓取封面 + 直播标题（公演行展示真实封面与场次标题；6s 竞速超时）
       const liveIds = filtered.filter((room) => next[room.roomId]).map((room) => room.roomId);
-      const infoResults = await Promise.allSettled(liveIds.map((id) => bilibiliApi.getRoomInfo(id)));
+      const infoResults = await Promise.allSettled(liveIds.map((id) => withTimeout(bilibiliApi.getRoomInfo(id), BILI_FAST_TIMEOUT)));
       const infoMap: Record<string, { title: string; cover: string }> = {};
       infoResults.forEach((r, index) => {
         if (r.status === 'fulfilled' && r.value) {
@@ -232,11 +249,47 @@ export default function HomeScreen() {
         }
       });
       setGongyanInfo(infoMap);
+      setGongyanRooms(filtered);
       setGongyanOk(true);
-    } catch {
-      setGongyanOk(false);
+      setGongyanError('');
+      gongyanRetryRef.current = 0;
+      gongyanHasDataRef.current = true;
+      // 持久化成功结果：冷启动秒显上次开播状态（B站接口慢时骨架不空转）
+      AsyncStorage.setItem(
+        GONGYAN_CACHE_KEY,
+        JSON.stringify({ rooms: filtered, live: next, info: infoMap }),
+      ).catch(() => {});
+    } catch (e: any) {
+      // 刷新失败：保留旧数据继续展示（不闪骨架）；完全无数据时才记错误态
+      if (!gongyanHasDataRef.current) setGongyanError(e?.message || String(e));
+      // 初次失败 5s 后自动重试（最多 2 次），不必干等 60s 轮询
+      if (gongyanRetryRef.current < 2) {
+        gongyanRetryRef.current += 1;
+        setTimeout(() => {
+          if (AppState.currentState === 'active') fetchGongyanStatus();
+        }, 5000);
+      }
     }
   }, [GONGYAN_ROOMS]);
+
+  // 冷启动秒显公演缓存（stale-while-revalidate）
+  useEffect(() => {
+    AsyncStorage.getItem(GONGYAN_CACHE_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          const cached = JSON.parse(raw);
+          if (Array.isArray(cached?.rooms) && cached.rooms.length) {
+            setGongyanRooms(cached.rooms);
+            setGongyanLive(cached.live || {});
+            setGongyanInfo(cached.info || {});
+            setGongyanOk(true);
+            gongyanHasDataRef.current = true;
+          }
+        } catch { /* ignore */ }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchGongyanStatus();
@@ -277,21 +330,33 @@ export default function HomeScreen() {
         } catch { /* ignore */ }
       })
       .catch(() => {});
-    pocketApi
-      .getLiveList({ groupId: 0, liveType: 0, next: 0, record: false })
+    withTimeout(
+      pocketApi.getLiveList({ groupId: 0, liveType: 0, next: 0, record: false }),
+      10000,
+    )
       .then((res: any) => {
+        if (!res) throw new Error('timeout');
         const list = normalizeLiveList(res);
         setLives(list);
         setLivesOk(true);
         setLivesError('');
+        livesRetryRef.current = 0;
         if (list.length) {
           AsyncStorage.setItem(LIVES_CACHE_KEY, JSON.stringify(list)).catch(() => {});
         }
       })
       .catch((e: any) => {
         // 有缓存时网络失败不打断展示（保留缓存内容，仅静默）；
-        // 无缓存时 livesOk 保持 false 走错误态（此前 setLivesOk(prev => prev || false) 为恒等无效操作，已删除）
-        if (!fetchedRef.current) setLivesError(e?.message || String(e));
+        // 无缓存时：记错误态 + 5s 后自动重试一次（网络抖动自愈，不必等手动点重试）
+        if (!fetchedRef.current) {
+          setLivesError(e?.message || String(e));
+          if (livesRetryRef.current < 1) {
+            livesRetryRef.current += 1;
+            setTimeout(() => {
+              if (AppState.currentState === 'active') fetchLives();
+            }, 5000);
+          }
+        }
       });
   }, []);
 
@@ -461,9 +526,19 @@ export default function HomeScreen() {
             action_label={t('全部')}
             onAction={() => handleNav({ title: '', desc: '', route: 'BilibiliLiveScreen', icon: '' })}
           />
-          {!gongyanOk ? (
+          {!gongyanOk && !gongyanError ? (
             <FadeInView delay={80} duration={300}>
               <Skeleton height={64} radius={16} style={{ alignSelf: 'stretch', marginBottom: 8 }} />
+            </FadeInView>
+          ) : gongyanError && !gongyanOk ? (
+            <FadeInView delay={80} duration={300}>
+              <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
+                <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
+                  {t('公演直播加载失败')}
+                </Text>
+                <Button title={t('重试')} variant="tinted" size="sm" onPress={() => { setGongyanError(''); fetchGongyanStatus(); }} />
+              </View>
             </FadeInView>
           ) : liveGongyanRooms.length === 0 ? (
             <FadeInView delay={80} duration={320}>
