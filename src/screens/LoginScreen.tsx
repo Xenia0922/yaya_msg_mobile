@@ -763,7 +763,7 @@ const styles = StyleSheet.create({
   areaInput: { minWidth: 44, paddingVertical: 12, paddingHorizontal: 0, fontSize: 14 },
   phoneInput: { flex: 1 },
   avatarRow: { marginTop: 4 },
-  status: { marginTop: 8, fontSize: 12, lineHeight: 18, flexShrink: 0, textAlign: 'left' },
+  status: { marginTop: 0, fontSize: 12, lineHeight: 18, flexShrink: 0, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: palette.fill3, overflow: 'hidden', textAlign: 'left' },
   biliStatus: { marginTop: 10, fontSize: 12, textAlign: 'center', lineHeight: 18, flexShrink: 0, marginBottom: 4 },
   qrCard: {
     alignSelf: 'center',
@@ -796,7 +796,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   qrRetryText: { fontSize: 13, fontWeight: '700' },
-  tokenInfo: { marginTop: 10, fontSize: 12, lineHeight: 18, flexShrink: 0, minHeight: 18, marginBottom: 8 },
+  tokenInfo: { marginTop: 10, fontSize: 12, lineHeight: 18, flexShrink: 0, minHeight: 18, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: palette.fill3, overflow: 'hidden' },
   metaLine: { marginTop: 8, marginBottom: 10, fontSize: 12, lineHeight: 18, flexShrink: 1 },
   // 账号行卡
   accountRow: {
