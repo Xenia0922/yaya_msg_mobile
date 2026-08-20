@@ -231,7 +231,7 @@ export default function App() {
           onLoad={() => setBackgroundLoadError('')}
           onError={(event) => setBackgroundLoadError(`背景图加载失败：${backgroundSource.uri} ${event.nativeEvent?.error || ''}`)}
         >
-          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: appTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)' }} />
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: appTheme === 'dark' ? 'rgba(11,11,15,0.88)' : 'rgba(245,245,247,0.92)' }} />
           {/* 错误边界外扩到 App 级：Modal/WebViewSigner/背景层渲染异常也有兜底（页面级由导航内的 ErrorBoundary 捕获） */}
           <ErrorBoundary>{content}</ErrorBoundary>
         </ImageBackground>
