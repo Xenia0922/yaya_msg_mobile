@@ -3,9 +3,12 @@ package com.yk1z.yayamsg;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.facebook.react.common.MapBuilder;
 import com.facebook.react.uimanager.SimpleViewManager;
 import com.facebook.react.uimanager.ThemedReactContext;
 import com.facebook.react.uimanager.annotations.ReactProp;
+
+import java.util.Map;
 
 public class LiveExoViewManager extends SimpleViewManager<LiveExoView> {
   public static final String REACT_CLASS = "LiveExoView";
@@ -25,6 +28,18 @@ public class LiveExoViewManager extends SimpleViewManager<LiveExoView> {
   @ReactProp(name = "url")
   public void setUrl(LiveExoView view, @Nullable String url) {
     view.setUrl(url);
+  }
+
+  @Override
+  @Nullable
+  public Map<String, Object> getExportedCustomBubblingEventTypeConstants() {
+    return MapBuilder.<String, Object>builder()
+        .put(
+            LiveSizeEvent.EVENT_NAME,
+            MapBuilder.of(
+                "phasedRegistrationNames",
+                MapBuilder.of("bubbled", "onSize", "captured", "onSizeCapture")))
+        .build();
   }
 
   @Override

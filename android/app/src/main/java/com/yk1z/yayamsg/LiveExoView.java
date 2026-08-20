@@ -44,9 +44,12 @@ public class LiveExoView extends FrameLayout {
   private int videoHeight = 0;
   private float videoPixelRatio = 1f;
   private boolean released = false;
+  private final com.facebook.react.uimanager.ThemedReactContext reactContext;
 
   public LiveExoView(Context context) {
     super(context);
+    this.reactContext = (context instanceof com.facebook.react.uimanager.ThemedReactContext)
+        ? (com.facebook.react.uimanager.ThemedReactContext) context : null;
     setBackgroundColor(Color.BLACK);
     textureView = new TextureView(context);
     addView(textureView, new LayoutParams(-1, -1, Gravity.CENTER));
@@ -125,6 +128,16 @@ public class LiveExoView extends FrameLayout {
           videoHeight = videoSize.height;
           videoPixelRatio = videoSize.pixelWidthHeightRatio <= 0f ? 1f : videoSize.pixelWidthHeightRatio;
           applyAspectTransform();
+          // 把视频实际尺寸发给 JS（小窗据此适配横竖屏容器比例）
+          if (reactContext != null && videoWidth > 0 && videoHeight > 0) {
+            try {
+              com.facebook.react.uimanager.UIManagerModule uiManager = reactContext.getNativeModule(com.facebook.react.uimanager.UIManagerModule.class);
+              if (uiManager != null) {
+                uiManager.getEventDispatcher().dispatchEvent(new LiveSizeEvent(getId(), videoWidth, videoHeight));
+              }
+            } catch (Throwable ignored) {
+            }
+          }
         }
       });
       player.prepare();

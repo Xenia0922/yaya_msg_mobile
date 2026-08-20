@@ -153,7 +153,7 @@ export function MiniPlayer() {
   // 只有非直播/普通 http 流（HLS 等）才用 react-native-video
   const lowerUrl = String(info?.url || '').toLowerCase();
   const isNativeLive = !!info?.isLive && !!info?.url && (lowerUrl.startsWith('rtmp://') || lowerUrl.includes('.flv')) && !!LiveExoView;
-  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{ style?: any; url: string }> | null;
+  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{ style?: any; url: string; onSize?: (e: any) => void }> | null;
 
   return (
     <>
@@ -173,7 +173,29 @@ export function MiniPlayer() {
       >
         {isNativeLive && NativeLiveView ? (
           /* RTMP/FLV 直播流：ExoPlayer 不支持，必须用原生 LiveExoView（与大播放器一致） */
-          <NativeLiveView style={StyleSheet.absoluteFill} url={info.url} />
+          <NativeLiveView
+            style={StyleSheet.absoluteFill}
+            url={info.url}
+            onSize={(e) => {
+              // 原生 onVideoSizeChanged 回调：按视频实际宽高自适应小窗容器（横屏 16:9 / 竖屏 9:16）
+              const w = e.nativeEvent?.width;
+              const h = e.nativeEvent?.height;
+              if (w > 0 && h > 0) {
+                const rawH = Math.round((W * h) / w);
+                if (rawH > 420) {
+                  boxHRef.current = H_MIN;
+                  setBoxH(H_MIN);
+                  setHasNatural(false);
+                } else {
+                  const hh = Math.max(H_MIN, rawH);
+                  boxHRef.current = hh;
+                  setBoxH(hh);
+                  setHasNatural(true);
+                }
+                setPipAspect(w, h);
+              }
+            }}
+          />
         ) : (
         <Video
           ref={videoRef}

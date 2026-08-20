@@ -36,6 +36,12 @@ export function setLiveImmersiveMode(enabled: boolean) {
   }
 }
 
+/** onSize 事件负载：视频实际宽高（小窗据此适配横竖屏容器） */
+export interface LiveSizeEventData {
+  width: number;
+  height: number;
+}
+
 export const LiveExoView = Platform.OS === 'android'
-  ? requireNativeComponent<ViewProps & { url: string }>('LiveExoView')
+  ? requireNativeComponent<ViewProps & { url: string; onSize?: (e: { nativeEvent: LiveSizeEventData }) => void }>('LiveExoView')
   : null;
