@@ -149,6 +149,15 @@ function parseAccountInfo(res: any) {
     const id = accountId(user);
     return id && list.findIndex((item) => accountId(item) === id) === index;
   });
+  // 当前账号排最前（切换入口一眼可见），其余保持大号/小号顺序
+  const currentId = accountId(current);
+  if (currentId) {
+    const idx = users.findIndex((u) => accountId(u) === currentId);
+    if (idx > 0) {
+      const [cur] = users.splice(idx, 1);
+      users.unshift(cur);
+    }
+  }
   return { current, users };
 }
 
@@ -619,6 +628,11 @@ export default function LoginScreen() {
           <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>
             {t('当前：{info}', { info: accountInfo.current ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}` : t('先检查Token读取账号') })}
           </Text>
+          {accountInfo.users.length ? (
+            <Text style={[styles.metaLine, { color: palette.labelTertiary }]}>
+              {t('已登录 {count} 个账号（含小号）', { count: accountInfo.users.length })}
+            </Text>
+          ) : null}
           {accountInfo.users.length ? accountInfo.users.map((user, index) => {
             const id = accountId(user);
             const isCurrent = !!id && id === accountId(accountInfo.current);
