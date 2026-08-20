@@ -25,6 +25,7 @@ import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePalette } from '../theme';
 import { setPipPlaying, setPipAspect } from '../utils/pip';
 import { useI18n } from '../i18n';
+import { LiveExoView } from '../native/LivePlayer';
 
 const W = 168;
 /** 高度按内容比例计算（竖屏内容窄条 -> 高条；横屏内容 16:9） */
@@ -148,9 +149,15 @@ export function MiniPlayer() {
 
   if (!visible || !info) return null;
 
+  // 口袋48 直播流默认是 RTMP（ExoPlayer 播不了）——必须走原生 LiveExoView；
+  // 只有非直播/普通 http 流（HLS 等）才用 react-native-video
+  const lowerUrl = String(info?.url || '').toLowerCase();
+  const isNativeLive = !!info?.isLive && !!info?.url && (lowerUrl.startsWith('rtmp://') || lowerUrl.includes('.flv')) && !!LiveExoView;
+  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{ style?: any; url: string }> | null;
+
   return (
     <>
-      {/* 容器（视觉层）：Video + 透明拖动层（elevation 盖过 SurfaceView 接收触摸） */}
+      {/* 容器（视觉层）：Video/LiveExoView + 透明拖动层（elevation 盖过 SurfaceView 接收触摸） */}
       <Animated.View
         style={[
           styles.wrap,
@@ -164,6 +171,10 @@ export function MiniPlayer() {
           },
         ]}
       >
+        {isNativeLive && NativeLiveView ? (
+          /* RTMP/FLV 直播流：ExoPlayer 不支持，必须用原生 LiveExoView（与大播放器一致） */
+          <NativeLiveView style={StyleSheet.absoluteFill} url={info.url} />
+        ) : (
         <Video
           ref={videoRef}
           key={`${info.url}-${info.position || 0}`}
@@ -218,6 +229,7 @@ export function MiniPlayer() {
             setErrorMsg(t('小窗播放失败：{detail}', { detail: JSON.stringify(event?.error || event).slice(0, 160) }));
           }}
         />
+        )}
         {errorMsg ? (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 8 }]} pointerEvents="none">
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#ff6b6b" />
