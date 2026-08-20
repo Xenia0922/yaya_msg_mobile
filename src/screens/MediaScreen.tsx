@@ -1073,117 +1073,66 @@ export default function MediaScreen() {
   const followLoadingRef = useRef(false);
   const [followFetching, setFollowFetching] = useState(false);
   const scanDoneRef = useRef(false);
+  // 关注成员录播：并发按 userId 服务端直查（用户指定实现）——
+  // 不再"扫描全局流 48h 再前端筛选"（慢且命中率低），直接对每个关注成员的 userId 调
+  // getLiveList({ userId }) 拿 TA 专属录播，合并去重。桌面基线/48tools 同款能力。
   const loadFollowVodFast = useCallback(async () => {
     if (followLoadingRef.current || groupId !== -1 || tab !== 'vod') return;
+    if (!useSettingsStore.getState().settings.p48Token) { scanDoneRef.current = true; return; }
     followLoadingRef.current = true;
     setFollowFetching(true);
     const t0 = Date.now();
-    // 每页条数：接口默认 20，实测支持更大 pageSize（单请求 100 条 → 覆盖更长时间窗，slice 数更少、更快）
     const PAGE_SIZE = 100;
+    const startTimeOf = (it: any) => Number(it?.startTime || it?.ctime || 0);
     const merge = (items: any[]) => setVodList((prev) => {
       const merged = mergeUniqueLiveItems(prev, items);
-      // 并行分片返回的页序不保证时间序（探针页/间隙中点页会乱序插入），统一按开播时间倒序
       return merged.sort((a: any, b: any) => (startTimeOf(b) - startTimeOf(a)) || 0);
     });
-    const nextOf = (res: any) => Number(res?.content?.next ?? res?.data?.next ?? res?.next ?? 0) || 0;
-    const startTimeOf = (it: any) => Number(it?.startTime || it?.ctime || 0);
     try {
-      // 1) 首屏页（并行失败兜底：至少最新 20 条）
-      const page1 = await pocketApi.getLiveList({ next: 0, record: true, debug: true, size: PAGE_SIZE }).catch(() => null);
-      const p1 = page1 ? normalizeLiveList(page1) : [];
-      const c1 = nextOf(page1);
-      if (!p1.length || !c1) {
+      // 1) 关注成员 id 列表
+      const idsRes = await pocketApi.getFollowedIds().catch(() => null);
+      const ids = idsRes ? unwrapList(idsRes, ['content.data', 'content', 'data', 'list']).map(String) : [];
+      // 2) 从成员库提取关注成员 userId（多候选：id/userId/memberId）
+      const userIds: string[] = [];
+      const seen = new Set<string>();
+      for (const m of members) {
+        const mid = String((m as any).id || (m as any).userId || (m as any).memberId || '');
+        if (mid && ids.includes(mid) && !seen.has(mid)) { seen.add(mid); userIds.push(mid); }
+      }
+      // 3) 并发按 userId 直查（每批 8 并发，防瞬间打爆接口）
+      if (!userIds.length) {
+        // 关注列表为空/未匹配到成员：兜底拉全局最新一页，避免"暂无"误导
+        const page1 = await pocketApi.getLiveList({ next: 0, record: true, debug: true, size: PAGE_SIZE }).catch(() => null);
+        if (page1) merge(normalizeLiveList(page1));
         scanDoneRef.current = true;
-        setPageModeOk(false); // 走游标链
-        console.info(`[FollowVod] 首屏页异常 p1=${p1.length} c1=${c1} → 游标链`);
         return;
       }
-      merge(p1);
-      const p1Last = startTimeOf(p1[p1.length - 1]);
-      // 2) 探针：跳 6 小时验证游标可跳 + 校准 liveId/ms 速率
-      const probe = await pocketApi.getLiveList({ next: c1 - 6 * 3600 * 1000 * 4194304, record: true, debug: true, size: PAGE_SIZE }).catch(() => null);
-      const probeItems = probe ? normalizeLiveList(probe) : [];
-      const probeNextReal = nextOf(probe);
-      const probeLast = probeItems.length ? startTimeOf(probeItems[probeItems.length - 1]) : 0;
-      const jumpOk = probeItems.length > 0 && probeNextReal > 0 && p1Last > 0 && probeLast > 0 && probeLast < p1Last;
-      if (!jumpOk) {
-        scanDoneRef.current = true;
-        setPageModeOk(false);
-        console.info(`[FollowVod] 游标不可跳 probe=${probeItems.length} → 游标链`);
-        return;
-      }
-      merge(probeItems);
-      setPageModeOk(true);
-      // 校准速率：每毫秒 liveId 增量 = (c1 - probeNextReal) / (p1Last - probeLast)
-      const rate = Math.max(1, (c1 - probeNextReal) / Math.max(1, p1Last - probeLast));
-      console.info(`[FollowVod] 游标可跳 p1=${p1.length} rate=${rate.toFixed(1)} 开始并行扫描`);
-      // 3) 时间分片并行扫描：近 48 小时，间隔 = 首页 20 条的跨度（钳制 20min~4h）
-      const p1First = startTimeOf(p1[0]);
-      const span = Math.max(20 * 60 * 1000, Math.min(4 * 3600 * 1000, (p1First - p1Last) || 90 * 60 * 1000));
-      const DEPTH = 48 * 3600 * 1000;
-      const K = Math.min(Math.ceil(DEPTH / span), 40);
-      // 网格锚定：第一片从 C1 上方 span/2 起（覆盖首页底与第一片顶之间的区域），每片间隔 span
-      const fetchPage = (next: number) => pocketApi.getLiveList({ next, record: true, debug: true, size: PAGE_SIZE });
-      const BATCH = 12;
-      const realBounds: number[] = [c1, c1 - DEPTH * rate]; // 末端人工边界：让闭合能看到「最深处猜测失败」造成的尾部空洞
-      const guessAt = (k: number) => c1 + (span / 2 - k * span) * rate;
-      for (let k = 1; k <= K; k += BATCH) {
+      const BATCH = 8;
+      for (let i = 0; i < userIds.length; i += BATCH) {
         if (groupId !== -1) return;
-        const ks: number[] = [];
-        for (let j = k; j < k + BATCH && j <= K; j++) ks.push(j);
-        let results = await Promise.allSettled(ks.map((j) => fetchPage(guessAt(j))));
-        // 失败页重试一次（瞬时限流/网络抖动）
-        await Promise.allSettled(results.map((r, i) => {
-          if (r.status !== 'rejected') return Promise.resolve();
-          return fetchPage(guessAt(ks[i])).then((v) => {
-            results[i] = { status: 'fulfilled', value: v };
-          }).catch(() => {});
-        }));
+        const chunk = userIds.slice(i, i + BATCH);
+        const results = await Promise.allSettled(
+          chunk.map((uid) => pocketApi.getLiveList({ next: 0, record: true, debug: true, size: PAGE_SIZE, userId: uid })),
+        );
         let got = 0;
-        for (let i = 0; i < results.length; i++) {
-          const r = results[i];
-          if (r.status !== 'fulfilled') continue;
-          const items = normalizeLiveList(r.value);
-          if (!items.length) continue;
-          got += 1;
-          merge(items);
-          const nb = nextOf(r.value);
-          if (nb > 0) realBounds.push(nb);
-        }
-        console.info(`[FollowVod] 批次 k=${ks[0]}..${ks[ks.length - 1]} 成功=${got}/${ks.length}`);
-      }
-      // 4) 多轮间隙闭合：相邻真实边界差 > 0.8×span 时取中点补拉（含末端人工边界，兜住失败猜测的尾部空洞）
-      let closed = 0;
-      for (let round = 0; round < 3; round++) {
-        const sorted = Array.from(new Set(realBounds)).sort((a, b) => b - a);
-        const mids: number[] = [];
-        for (let i = 0; i + 1 < sorted.length; i++) {
-          const gap = sorted[i] - sorted[i + 1];
-          if (gap > 0.8 * span * rate) mids.push(Math.floor((sorted[i] + sorted[i + 1]) / 2));
-        }
-        if (!mids.length) break;
-        const results = await Promise.allSettled(mids.map((m) => fetchPage(m)));
         for (const r of results) {
           if (r.status !== 'fulfilled') continue;
           const items = normalizeLiveList(r.value);
-          if (!items.length) continue;
-          merge(items);
-          const nb = nextOf(r.value);
-          if (nb > 0) realBounds.push(nb);
+          if (items.length) { got += 1; merge(items); }
         }
-        closed += mids.length;
+        setPageVersion((v) => v + 1);
+        console.info(`[FollowVod] userId 直查批次 ${i / BATCH + 1}/${Math.ceil(userIds.length / BATCH)} 命中成员=${got}/${chunk.length}`);
       }
-      // 5) 让游标链从扫描最深处继续兜底（补足 48h 之外的更老录播）
-      const finalBounds = Array.from(new Set(realBounds)).sort((a, b) => b - a);
-      nextCursorRef.current = finalBounds.length > 1 ? finalBounds[finalBounds.length - 1] : c1;
-      scanDoneRef.current = true;
-      setPageVersion((v) => v + 1);
-      console.info(`[FollowVod] 并行扫描完成 span=${Math.round(span / 60000)}min size=${PAGE_SIZE} K=${K} 闭合=${closed} 边界=${finalBounds.length} 耗时=${Date.now() - t0}ms`);
+      console.info(`[FollowVod] userId 并发直查完成 members=${userIds.length} 耗时=${Date.now() - t0}ms`);
+    } catch (e) {
+      console.warn('[FollowVod] userId 直查失败，退回游标链', e);
+      setPageModeOk(false);
     } finally {
       followLoadingRef.current = false;
       setFollowFetching(false);
+      scanDoneRef.current = true;
     }
-  }, [groupId, tab]);
+  }, [groupId, tab, members]);
 
   // 进入「关注」录播视图或下拉刷新后触发并行扫描
   const [refreshTick, setRefreshTick] = useState(0);

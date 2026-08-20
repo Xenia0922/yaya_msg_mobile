@@ -1,7 +1,7 @@
 import { useMemberStore, useSettingsStore } from '../store';
 import { generatePa, generatePaAsync, getWasmError, initWasm } from '../auth';
 import { requestJson, xhrPost, fetchWithTimeout } from '../utils/network';
-import { unwrapList } from '../utils/data';
+import { unwrapList, normalizeUrl } from '../utils/data';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BASE = 'https://pocketapi.48.cn';
@@ -751,6 +751,22 @@ export const pocketApi = {
 
   async getRoomInfo(channelId: string) {
     return pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) }, { tokenRequired: false, fallback: '获取房间信息失败' });
+  },
+
+  /** 解析房间信息（大/小房间通用）：channelInfoList 匹配 channelId → 房间名 + 背景图。
+   *  小房间（yklzId）同样适用——用户指定：小房间名字与背景解析是可实现的。 */
+  async getRoomMeta(channelId: string | number) {
+    const cid = String(channelId);
+    const res = await this.getRoomInfo(cid).catch(() => null);
+    const content = (res as any)?.content || (res as any)?.data || {};
+    const list = Array.isArray(content.channelInfoList) ? content.channelInfoList : [];
+    const hit = list.find((c: any) => String(c?.channelId) === cid);
+    if (!hit) return { name: '', bg: '' };
+    const bg = String(
+      hit.backgroundImg || hit.backgroundImgUrl || hit.bgImg || hit.bgImgUrl
+      || hit.backImg || hit.backImgUrl || hit.homeBgImg || hit.homeBgImgUrl || hit.bannerUrl || ''
+    );
+    return { name: String(hit.channelName || ''), bg: bg ? normalizeUrl(bg) : '' };
   },
 
   async getRoomAlbum(params: { channelId: string; nextTime?: number }) {

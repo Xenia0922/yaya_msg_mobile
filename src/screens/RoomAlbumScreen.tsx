@@ -3,6 +3,7 @@ import { PerfFlatList } from '../components/PerfFlatList';
 import { NetworkImage } from '../components/NetworkImage';
 
 import {
+  Image,
   RefreshControl,
   StyleSheet,
   Text,
@@ -154,6 +155,9 @@ export default function RoomAlbumScreen() {
   const [status, setStatus] = useState(t('暂无数据'));
   const [loadError, setLoadError] = useState('');
   const [videoError, setVideoError] = useState('');
+  // 小房间名字/背景解析（用户指定实现）：getRoomInfo → channelInfoList 匹配 channelId
+  const [roomName, setRoomName] = useState('');
+  const [roomBg, setRoomBg] = useState('');
   const loadingRef = useRef(false);
 
   const currentChannelId = useMemo(() => selectedMember ? channelFor(selectedMember, roomMode) : '', [roomMode, selectedMember]);
@@ -174,6 +178,12 @@ export default function RoomAlbumScreen() {
     setLoading(true);
     setLoadError('');
     setStatus('');
+    setRoomName(''); setRoomBg('');
+    // 小房间/大房间名字 + 背景解析（getRoomInfo → channelInfoList；失败静默，不影响列表）
+    pocketApi.getRoomMeta(channelId).then((meta) => {
+      if (meta?.name) setRoomName(meta.name);
+      if (meta?.bg) setRoomBg(meta.bg);
+    }).catch(() => {});
     try {
       const res = await pocketApi.getRoomAlbum({ channelId, nextTime: append ? nextTime : 0 });
       const nextItems = normalizeAlbumItems(res, mode);
@@ -286,6 +296,14 @@ export default function RoomAlbumScreen() {
             </View>
           </View>
           {status && !loading ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}
+          {(roomName || selectedMember) && !loadError ? (
+            <View style={styles.roomMetaRow}>
+              <MaterialCommunityIcons name="home-account" size={14} color={palette.tint} />
+              <Text style={[styles.roomMetaText, { color: palette.labelSecondary }]} numberOfLines={1}>
+                {t('{mode} · {name}', { mode: roomMode === 'small' ? t('小房间') : t('大房间'), name: roomName || selectedMember?.ownerName || '' })}
+              </Text>
+            </View>
+          ) : null}
           {loadError && !loading ? (
             <ErrorState
               title={t('加载失败')}
@@ -294,6 +312,20 @@ export default function RoomAlbumScreen() {
             />
           ) : null}
         </View>
+
+        {/* 房间背景横幅（小房间/大房间背景解析） */}
+        {roomBg && !playing ? (
+          <View style={[styles.roomBanner, { borderColor: palette.hairline }]}>
+            <Image source={{ uri: roomBg }} style={styles.roomBannerBg} resizeMode="cover" />
+            <View style={styles.roomBannerScrim} />
+            <View style={styles.roomBannerInfo}>
+              <MaterialCommunityIcons name="image-multiple" size={14} color="#FFFFFF" />
+              <Text style={styles.roomBannerTitle} numberOfLines={1}>
+                {roomName || (roomMode === 'small' ? t('小房间') : t('大房间'))}
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         <ZoomImageModal url={previewUrl} onClose={() => setPreviewUrl('')} />
         {loading && items.length === 0 ? (
@@ -418,6 +450,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   pickerWrap: { paddingHorizontal: 16, gap: 12 },
   segmentRow: { flexDirection: 'row' },
+  roomMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, paddingHorizontal: 2 },
+  roomMetaText: { fontSize: 12, flex: 1 },
+  roomBanner: {
+    marginHorizontal: 14,
+    marginTop: 4,
+    marginBottom: 2,
+    height: 92,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  roomBannerBg: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, width: '100%', height: '100%' },
+  roomBannerScrim: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)' },
+  roomBannerInfo: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', padding: 12, gap: 6 },
+  roomBannerTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', flex: 1, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   segment: { flex: 1, flexDirection: 'row', padding: 3, borderRadius: radii.sm, gap: 3 },
   segmentBtn: {
     flex: 1,
