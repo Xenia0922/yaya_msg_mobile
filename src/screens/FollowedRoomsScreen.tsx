@@ -808,15 +808,17 @@ const DURATION_KEYS = new Set([
   'duration', 'audioTime', 'voiceTime', 'voiceLength', 'fileDuration',
   'mediaDuration', 'msgDuration', 'seconds', 'playTime', 'totalTime',
   'length', 'timeLength', 'mediaLength', 'videoTime', 'time',
+  'videoLen', 'audioLen', 'voiceLen', 'mediaLen', 'fileTime', 'mediaTime', 'videoDuration', 'audioDuration',
 ]);
 
 function deepFindDuration(value: any, depth = 0): number {
   if (!value || depth > 5) return 0;
-  // 时长归一：0-24h 内视为秒；24h~24h*1000 视为毫秒（÷1000，房间消息语音/视频时长常为毫秒）；
+  // 时长归一：0-600 视为秒（语音/短视频消息不会超 10 分钟）；600~24h*1000 视为毫秒
+  // （÷1000，房间消息语音/视频时长常以毫秒返回，如 15000 = 15 秒，避免显示成 15000s）；
   // 更大的（Unix 秒/毫秒时间戳，如 time 字段）一律无效，防止误显示成时间戳
   const normalize = (n: number): number => {
     if (!Number.isFinite(n) || n <= 0) return 0;
-    if (n <= 86400) return n;
+    if (n <= 600) return n;
     if (n <= 86400000) return Math.round(n / 1000);
     return 0;
   };
@@ -1718,7 +1720,22 @@ export default function FollowedRoomsScreen() {
                       </TouchableOpacity>
                     ) : media.type === 'video' && media.url ? (
                       // 视频消息：优先用服务器封面，否则用视频首帧（paused 渲染）做封面
-                      <VideoCoverCard media={media} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} />
+                      playingMedia?.url === media.url ? (
+                        // 已点击：内嵌播放器替代封面卡片（带 controls）
+                        <View style={styles.videoCoverWrap}>
+                          <Video
+                            source={playerSource(media.url)}
+                            style={styles.inlineVideo}
+                            controls
+                            paused={false}
+                            resizeMode="contain"
+                            ignoreSilentSwitch="ignore" playInBackground playWhenInactive
+                            onEnd={() => setPlayingMedia(null)}
+                          />
+                        </View>
+                      ) : (
+                        <VideoCoverCard media={media} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} />
+                      )
                     ) : (
                       <TouchableOpacity style={[styles.mediaCard, { backgroundColor: (idol || mine) ? palette.tint : palette.surfaceGlass, borderColor: (idol || mine) ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)}>
                         {media.cover ? (
