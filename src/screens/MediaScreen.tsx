@@ -30,7 +30,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
-import { setPipPlaying, enterPipMode, setPipAspect } from '../utils/pip';
+import { setPipPlaying, setPipAspect } from '../utils/pip';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
@@ -1512,7 +1512,6 @@ export default function MediaScreen() {
             title={playing.title || (playing.isLive ? t('口袋直播') : t('回放'))}
             onMore={() => setMoreVisible(true)}
             onRefresh={() => startPlay(playing.item)}
-            onPiP={Platform.OS === 'android' ? enterPipMode : undefined}
             onMini={handleMiniPlayer}
           />
         </Animated.View>

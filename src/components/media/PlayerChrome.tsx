@@ -124,7 +124,6 @@ export function PlayerTopBar({
   subtitle,
   onMore,
   onRefresh,
-  onPiP,
   onMini,
   showMore = true,
 }: {
@@ -133,9 +132,7 @@ export function PlayerTopBar({
   subtitle?: string;
   onMore?: () => void;
   onRefresh?: () => void;
-  /** 画中画（悬浮窗）按钮；不传则不显示 */
-  onPiP?: () => void;
-  /** 应用内小窗按钮；不传则不显示 */
+  /** 小窗按钮（应用内悬浮窗）；不传则不显示 */
   onMini?: () => void;
   showMore?: boolean;
 }) {
@@ -153,14 +150,9 @@ export function PlayerTopBar({
           <MaterialCommunityIcons name="refresh" size={20} color="#fff" />
         </TouchableOpacity>
       ) : null}
-      {onPiP ? (
-        <TouchableOpacity style={chromeStyles.navBtn} onPress={onPiP} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={20} color="#fff" />
-        </TouchableOpacity>
-      ) : null}
       {onMini ? (
         <TouchableOpacity style={chromeStyles.navBtn} onPress={onMini} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <MaterialCommunityIcons name="picture-in-picture-top-right-outline" size={20} color="#fff" />
+          <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={20} color="#fff" />
         </TouchableOpacity>
       ) : null}
       {showMore && onMore ? (

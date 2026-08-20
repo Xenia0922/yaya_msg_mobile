@@ -32,7 +32,7 @@ import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp } from '../utils/format';
-import { setPipPlaying, enterPipMode } from '../utils/pip';
+import { setPipPlaying } from '../utils/pip';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import {
   errorMessage,
@@ -964,6 +964,21 @@ export default function FollowedRoomsScreen() {
     setTabBarHidden(!!selectedRoom);
   }, [selectedRoom, setTabBarHidden]);
 
+  // 应用内小窗：房间播放器交棒给悬浮小窗
+  const handleRoomMiniPlayer = useCallback(() => {
+    const cur = roomPlayer;
+    if (!cur?.url) return;
+    useMiniPlayerStore.getState().open({
+      url: cur.url,
+      title: cur.title,
+      cover: cur.cover,
+      isLive: !!cur.isLive,
+      position: 0,
+      backTo: { mode: 'vod', playUrl: cur.url, playTitle: cur.title, playCover: cur.cover },
+    });
+    closeRoomPlayer();
+  }, [roomPlayer, closeRoomPlayer]);
+
   const closeRoom = useCallback(() => {
     setRoomPlayer(null);
     setRoomPlayerFullscreen(false);
@@ -1372,11 +1387,9 @@ export default function FollowedRoomsScreen() {
                 <Text style={[styles.roomPlayerBackText, { color: palette.tint }]}>{t('返回房间')}</Text>
               </TouchableOpacity>
               <Text style={styles.roomPlayerTitle} numberOfLines={1}>{roomPlayer.title}</Text>
-              {Platform.OS === 'android' ? (
-                <TouchableOpacity onPress={enterPipMode} style={styles.roomPlayerTool} activeOpacity={0.85} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={17} color={palette.tint} />
-                </TouchableOpacity>
-              ) : null}
+              <TouchableOpacity onPress={handleRoomMiniPlayer} style={styles.roomPlayerTool} activeOpacity={0.85} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={17} color={palette.tint} />
+              </TouchableOpacity>
               <TouchableOpacity onPress={openRoomRankPanel} style={styles.roomPlayerTool} activeOpacity={0.85} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                 <Text style={styles.roomPlayerToolText}>{t('贡献榜')}</Text>
               </TouchableOpacity>

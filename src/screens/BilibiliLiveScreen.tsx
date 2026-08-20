@@ -20,7 +20,7 @@ import Video from 'react-native-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
-import { setPipPlaying, enterPipMode, setPipAspect } from '../utils/pip';
+import { setPipPlaying, setPipAspect } from '../utils/pip';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
@@ -517,7 +517,6 @@ export default function BilibiliLiveScreen() {
               : (qualityLabel || undefined)}
             onMore={() => setMoreVisible(true)}
             onRefresh={() => activeRoom && startWatch(activeRoom)}
-            onPiP={Platform.OS === 'android' ? enterPipMode : undefined}
             onMini={handleMiniPlayer}
           />
         </Animated.View>
