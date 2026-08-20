@@ -94,6 +94,19 @@ interface LiveCardItem {
   title: string;
   nickname: string;
   cover: string;
+  /** 主播用户 id（用于关注/置顶优先排序；接口字段多态） */
+  userId: string;
+}
+
+/** 成员直播排序：已关注+置顶 → 已关注未置顶 → 其他（保持原顺序） */
+function sortLivesByPreference(list: LiveCardItem[], followedIds: Set<string>, pinnedIds: string[]) {
+  if (!followedIds.size && !pinnedIds.length) return list;
+  const pinSet = new Set(pinnedIds);
+  const rank = (it: LiveCardItem) => {
+    if (followedIds.has(it.userId)) return pinSet.has(it.userId) ? 0 : 1;
+    return 2;
+  };
+  return [...list].sort((a, b) => rank(a) - rank(b));
 }
 
 /** 首页直播列表缓存（stale-while-revalidate：冷启动秒显上次内容） */
@@ -124,6 +137,7 @@ function normalizeLiveList(res: any): LiveCardItem[] {
       title: pickText(raw, ['title', 'liveTitle', 'liveRoomTitle', 'roomName', 'subject'], ''),
       nickname: pickText(raw, ['nickname', 'nickName', 'userInfo.nickname', 'userInfo.nickName', 'ownerName'], ''),
       cover: normalizeUrl(pickText(raw, ['liveCover', 'coverPath', 'cover', 'coverUrl', 'picPath', 'picturePath', 'imageUrl', 'poster', 'thumb', 'userInfo.avatar'], '')),
+      userId: String(pickText(raw, ['userId', 'ownerId', 'memberId', 'hostId', 'account', 'userInfo.userId', 'userInfo.id', 'owner.userId', 'memberInfo.userId', 'user.userId'], '')),
     }))
     .filter((item: LiveCardItem) => item.title)
     .slice(0, 8);
@@ -316,6 +330,22 @@ export default function HomeScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
+  // 成员直播排序偏好：已关注（getFollowedIds）+ 置顶（yaya_pinned_rooms）优先
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  useEffect(() => {
+    AsyncStorage.getItem('yaya_pinned_rooms')
+      .then((v) => { try { const a = JSON.parse(v || '[]'); if (Array.isArray(a)) setPinnedIds(a.map(String)); } catch { /* ignore */ } })
+      .catch(() => {});
+    if (!token) return;
+    pocketApi.getFollowedIds()
+      .then((res: any) => {
+        const ids = unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String);
+        setFollowedIds(new Set(ids));
+      })
+      .catch(() => {});
+  }, [token]);
+
   const fetchLives = useCallback(() => {
     // 秒显上次缓存（stale-while-revalidate）：冷启动立即有内容，后台刷新
     AsyncStorage.getItem(LIVES_CACHE_KEY)
@@ -324,7 +354,7 @@ export default function HomeScreen() {
         try {
           const cached = JSON.parse(raw);
           if (Array.isArray(cached) && cached.length && !fetchedRef.current) {
-            setLives(cached);
+            setLives(sortLivesByPreference(cached, followedIds, pinnedIds));
             setLivesOk(true);
           }
         } catch { /* ignore */ }
@@ -336,7 +366,7 @@ export default function HomeScreen() {
     )
       .then((res: any) => {
         if (!res) throw new Error('timeout');
-        const list = normalizeLiveList(res);
+        const list = sortLivesByPreference(normalizeLiveList(res), followedIds, pinnedIds);
         setLives(list);
         setLivesOk(true);
         setLivesError('');
@@ -347,10 +377,10 @@ export default function HomeScreen() {
       })
       .catch((e: any) => {
         // 有缓存时网络失败不打断展示（保留缓存内容，仅静默）；
-        // 无缓存时：记错误态 + 5s 后自动重试一次（网络抖动自愈，不必等手动点重试）
+        // 无缓存时：记错误态 + 5s 后自动重试（最多 3 次，网络抖动自愈，不必等手动点重试）
         if (!fetchedRef.current) {
           setLivesError(e?.message || String(e));
-          if (livesRetryRef.current < 1) {
+          if (livesRetryRef.current < 3) {
             livesRetryRef.current += 1;
             setTimeout(() => {
               if (AppState.currentState === 'active') fetchLives();
@@ -358,12 +388,29 @@ export default function HomeScreen() {
           }
         }
       });
-  }, []);
+  }, [followedIds, pinnedIds]);
 
+  // 关注/置顶数据到达后：已有列表立即按新偏好重排（不重新请求，幂等）
+  useEffect(() => {
+    setLives((prev) => (prev.length ? sortLivesByPreference(prev, followedIds, pinnedIds) : prev));
+  }, [followedIds, pinnedIds]);
+
+  // 首屏拉取（fetchedRef 防重复）
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     fetchLives();
+  }, [fetchLives]);
+
+  // 成员直播 60s 轮询 + 回前台立即刷新：避免「启动时网络差失败后永久骨架/错误态，只能手动重试」
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (AppState.currentState === 'active') fetchLives();
+    }, 60 * 1000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') fetchLives();
+    });
+    return () => { clearInterval(id); sub.remove(); };
   }, [fetchLives]);
 
   // banner 轮播：2.5s 自动切换下一条（最多轮前 4 条），切换带 crossfade + 位移动画
