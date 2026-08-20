@@ -6,8 +6,10 @@
  *   - 颜色统一白色（弹幕更干净，也避免花花绿绿看不清）
  *   - 设置（不透明度 / 速度 / 显示区域 / 字号 / 总开关）来自 useDanmakuSettings，记忆持久化
  *   - 纯 RN Animated 实现，零额外依赖
+ * 性能：单条弹幕抽成 memo 子组件——新弹幕入池只挂载新组件，
+ *       旧弹幕（anim/位置均未变）被 memo 拦截不重渲染，避免整屏 4Hz 全量 reconcile 卡顿。
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { DanmakuItem } from '../utils/danmaku';
 import { useDanmakuSettings } from '../store/danmakuSettings';
@@ -17,6 +19,8 @@ const SAFE_GAP = 600; // 同泳道两条之间的安全间隔（ms），杜绝�
 // 向前跳转超过此阈值（ms）即视为「拖动/快进」，清空当前屏而不补发历史弹幕，
 // 避免「拖一下蹦出一大片之前的弹幕」影响观感。
 const SEEK_FORWARD_MS = 1500;
+// 同屏弹幕上限：Android 上过密会拖慢合成，40 条足够覆盖主流密度
+const MAX_ACTIVE = 40;
 
 interface ActiveDanmaku {
   key: string;
@@ -24,6 +28,33 @@ interface ActiveDanmaku {
   lane: number;
   anim: Animated.Value;
 }
+
+/** 单条弹幕：memo 后仅在自身入池/出池时渲染，不被父级 4Hz spawn 连带重渲染 */
+const Bullet = memo(function Bullet({
+  text,
+  top,
+  fontSize: fs,
+  anim,
+  width: w,
+}: {
+  text: string;
+  top: number;
+  fontSize: number;
+  anim: Animated.Value;
+  width: number;
+}) {
+  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [w, -w * 0.72] });
+  return (
+    <Animated.Text
+      style={[
+        styles.bullet,
+        { top, fontSize: fs, transform: [{ translateX }], color: '#ffffff' },
+      ]}
+    >
+      {text}
+    </Animated.Text>
+  );
+});
 
 export interface DanmakuOverlayProps {
   danmaku: DanmakuItem[];
@@ -107,7 +138,7 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
         anim,
       };
     });
-    setActive((prev) => [...prev, ...newOnes].slice(-80));
+    setActive((prev) => [...prev, ...newOnes].slice(-MAX_ACTIVE));
   }, [currentTime, visible, enabled, danmaku, laneCount, speed, live]);
 
   if (!visible || !enabled) return null;
@@ -115,21 +146,16 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, { opacity, zIndex: 30, pointerEvents: 'none' }]} pointerEvents="none">
-      {active.map((a) => {
-        const translateX = a.anim.interpolate({ inputRange: [0, 1], outputRange: [width, -width * 0.72] });
-        const top = 8 + a.lane * (fontSize + 10);
-        return (
-          <Animated.Text
-            key={a.key}
-            style={[
-              styles.bullet,
-              { top, fontSize, transform: [{ translateX }], color: '#ffffff' },
-            ]}
-          >
-            {a.text}
-          </Animated.Text>
-        );
-      })}
+      {active.map((a) => (
+        <Bullet
+          key={a.key}
+          text={a.text}
+          top={8 + a.lane * (fontSize + 10)}
+          fontSize={fontSize}
+          anim={a.anim}
+          width={width}
+        />
+      ))}
     </Animated.View>
   );
 }

@@ -556,6 +556,8 @@ export default function MediaScreen() {
   const [isLandscape, setIsLandscape] = useState(false);
   // 画面旋转（翻转）：0/90/180/270，每按一次步进 90°
   const [videoRotate, setVideoRotate] = useState(0);
+  // 用户是否手动切过方向：手动后 onLoad 不再自动覆盖（尊重用户选择）
+  const manualOrientRef = useRef(false);
   const [playing, setPlaying] = useState<{ url: string; urls: string[]; title: string; cover?: string; item: any; isLive: boolean; needsVlc: boolean; resolving?: boolean } | null>(null);
   // 续播位置：打开回放时读取上次进度，播放中由 WebView 回传进度落盘
   const [webResumeTime, setWebResumeTime] = useState(0);
@@ -1264,6 +1266,9 @@ export default function MediaScreen() {
     setPlayerError('');
     setUseWebPlayer(false);
     setIsFullscreen(false);
+    setIsLandscape(false);
+    setVideoRotate(0);
+    manualOrientRef.current = false;
     setLiveImmersiveMode(false);
     setPaused(false);
     setDuration(0);
@@ -1451,6 +1456,19 @@ export default function MediaScreen() {
   const videoBoxH = videoRotated ? screen.width : screen.height;
   const videoRotateDeg = `${videoRotate}deg`;
 
+  // 按视频内容自动横/竖屏：横屏内容（宽>高）自动横屏，竖屏内容自动竖屏。
+  // 用户手动切过方向（manualOrientRef）则不覆盖；每次新开视频重置标记。
+  const autoOrient = useCallback((e: any) => {
+    if (manualOrientRef.current) return;
+    const ns = e?.naturalSize;
+    if (!ns) return;
+    const w = Number(ns.width) || 0;
+    const h = Number(ns.height) || 0;
+    if (w > 0 && h > 0 && w !== h) {
+      setIsLandscape(w > h);
+    }
+  }, []);
+
   if (playing) {
     return (
       <View style={[styles.playerPage, isFullscreen && styles.playerPageFullscreen]}>
@@ -1558,7 +1576,7 @@ export default function MediaScreen() {
                 rate={playbackRate}
                 progressUpdateInterval={250}
                 ignoreSilentSwitch="ignore" playInBackground playWhenInactive
-                onLoad={(e) => { setDuration(e.duration || 0); setPlaybackTime(webResumeTime || 0); setPlayerError(''); }}
+                onLoad={(e) => { setDuration(e.duration || 0); setPlaybackTime(webResumeTime || 0); setPlayerError(''); autoOrient(e); }}
                 onProgress={(e) => { if (Date.now() < seekLockRef.current) return; if (!paused) setPlaybackTime(e.currentTime || 0); }}
                 onEnd={() => { clearResumePosition(resumeKey); setPipPlaying(false); }}
                 onError={(event) => setPlayerError(t('原生播放器失败：{detail}', { detail: JSON.stringify(event?.error || event).slice(0, 220) }))}
@@ -1598,7 +1616,7 @@ export default function MediaScreen() {
             onCycleRate={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
             onTogglePlay={() => setPaused((p) => !p)}
             onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
-            onRotate={() => setIsLandscape((v) => !v)}
+            onRotate={() => { manualOrientRef.current = true; setIsLandscape((v) => !v); }}
           />
         </Animated.View>
 
