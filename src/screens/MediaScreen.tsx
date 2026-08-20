@@ -30,7 +30,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
-import { setPipPlaying, enterPipMode } from '../utils/pip';
+import { setPipPlaying, enterPipMode, setPipAspect } from '../utils/pip';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
@@ -722,6 +722,8 @@ export default function MediaScreen() {
 
   // 画中画（悬浮窗）状态同步：正在播放且未暂停时置位，切后台自动进悬浮窗
   useEffect(() => {
+    // 应用内小窗已接管 PiP 标志时不覆盖（防小窗切后台不进悬浮窗）
+    if (useMiniPlayerStore.getState().visible) return;
     setPipPlaying(!!playing && !paused && !useWebPlayer);
   }, [playing, paused, useWebPlayer]);
   // 搜索：选中成员后，搜索框转为「该成员的标题/日期」过滤
@@ -1480,11 +1482,13 @@ export default function MediaScreen() {
   // 按视频内容自动横/竖屏：横屏内容（宽>高）自动横屏，竖屏内容自动竖屏。
   // 用户手动切过方向（manualOrientRef）则不覆盖；每次新开视频重置标记。
   const autoOrient = useCallback((e: any) => {
-    if (manualOrientRef.current) return;
     const ns = e?.naturalSize;
     if (!ns) return;
     const w = Number(ns.width) || 0;
     const h = Number(ns.height) || 0;
+    // 同步 PiP 窗口比例（切后台悬浮窗跟随内容方向）
+    if (w > 0 && h > 0) setPipAspect(w, h);
+    if (manualOrientRef.current) return;
     if (w > 0 && h > 0 && w !== h) {
       setIsLandscape(w > h);
     }

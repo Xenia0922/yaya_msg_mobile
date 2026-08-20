@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  AppState,
   PanResponder,
   StyleSheet,
   Text,
@@ -22,7 +23,7 @@ import Video from 'react-native-video';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePalette } from '../theme';
-import { setPipPlaying } from '../utils/pip';
+import { setPipPlaying, setPipAspect } from '../utils/pip';
 import { useI18n } from '../i18n';
 
 const W = 168;
@@ -116,13 +117,22 @@ export function MiniPlayer() {
     setPipPlaying(visible && playing && !!info?.url);
   }, [visible, playing, info]);
 
+  // 切后台兜底：强制置 PiP 标志（防主播放器关闭时把标志覆盖成 false，导致小窗切后台不进悬浮窗）
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') {
+        setPipPlaying(visible && playing && !!info?.url);
+      }
+    });
+    return () => sub.remove();
+  }, [visible, playing, info]);
+
   if (!visible || !info) return null;
 
   return (
     <>
-      {/* 拖动/点击层 */}
+      {/* 容器（视觉层）：Video + 透明拖动层（elevation 盖过 SurfaceView 接收触摸） */}
       <Animated.View
-        {...pan.panHandlers}
         style={[
           styles.wrap,
           {
@@ -152,6 +162,8 @@ export function MiniPlayer() {
               const h = Math.max(H_MIN, Math.min(H_MAX, Math.round((W * Number(ns.height)) / Number(ns.width))));
               boxHRef.current = h;
               setBoxH(h);
+              // 同步 PiP 窗口比例（切后台的系统悬浮窗也跟随内容方向）
+              setPipAspect(ns.width, ns.height);
             }
             // 续播到交棒位置（仅录播）
             const t = Number(info.position) || 0;
@@ -162,6 +174,11 @@ export function MiniPlayer() {
           }}
           onEnd={() => setPlaying(false)}
           onError={() => close()}
+        />
+        {/* 透明拖动/点击层：elevation 让此 JS 层盖过 Android SurfaceView 接收触摸（否则 Video 消费触摸无法拖动） */}
+        <Animated.View
+          {...pan.panHandlers}
+          style={styles.dragLayer}
         />
         {/* 底部标题（随控件显隐） */}
         {controlsVisible ? (
@@ -224,6 +241,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
     zIndex: 999,
+  },
+  // 透明拖动层：elevation 提升使其盖过 Android Video 的 SurfaceView，触摸才能到 PanResponder
+  dragLayer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    elevation: 6,
+    zIndex: 5,
+    backgroundColor: 'transparent',
   },
   titleBar: {
     position: 'absolute',

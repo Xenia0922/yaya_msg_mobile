@@ -22,6 +22,9 @@ import com.facebook.react.bridge.ReactMethod;
 public class PipModule extends ReactContextBaseJavaModule {
   /** RN 侧标记当前是否有视频在播：true 时切后台自动进 PiP */
   public static volatile boolean videoPlaying = false;
+  /** PiP 窗口宽高比（跟随视频内容，默认 16:9；竖屏视频切后台悬浮窗也是竖的） */
+  private static volatile float pipAspectW = 16f;
+  private static volatile float pipAspectH = 9f;
 
   public PipModule(ReactApplicationContext reactContext) {
     super(reactContext);
@@ -38,6 +41,26 @@ public class PipModule extends ReactContextBaseJavaModule {
     videoPlaying = playing;
   }
 
+  /** 更新 PiP 窗口比例（RN 侧 onLoad 拿 naturalSize 后传入，竖屏内容竖屏悬浮窗） */
+  @ReactMethod
+  public void setAspectRatio(double w, double h) {
+    if (w > 0 && h > 0) {
+      pipAspectW = (float) w;
+      pipAspectH = (float) h;
+    }
+  }
+
+  /** 构建 PiP 参数（比例跟随内容） */
+  public static PictureInPictureParams buildPipParams() {
+    try {
+      return new PictureInPictureParams.Builder()
+          .setAspectRatio(new Rational(Math.round(pipAspectW), Math.round(pipAspectH)))
+          .build();
+    } catch (Exception e) {
+      return new PictureInPictureParams.Builder().build();
+    }
+  }
+
   /** 手动进入画中画（悬浮窗）：播放器控制条上的"小窗"按钮调用 */
   @ReactMethod
   public void enterPip() {
@@ -45,10 +68,7 @@ public class PipModule extends ReactContextBaseJavaModule {
     Activity activity = getCurrentActivity();
     if (activity == null || activity.isDestroyed() || activity.isInPictureInPictureMode()) return;
     try {
-      PictureInPictureParams params = new PictureInPictureParams.Builder()
-          .setAspectRatio(new Rational(16, 9))
-          .build();
-      activity.enterPictureInPictureMode(params);
+      activity.enterPictureInPictureMode(buildPipParams());
     } catch (Exception ignored) {
       // 部分 ROM 在转场等特定时刻调用会抛异常，静默忽略
     }

@@ -33,6 +33,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp } from '../utils/format';
 import { setPipPlaying, enterPipMode } from '../utils/pip';
+import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import {
   errorMessage,
   messagePayload,
@@ -879,6 +880,8 @@ export default function FollowedRoomsScreen() {
 
   // 画中画（悬浮窗）状态同步：房间播放器打开且未全屏时置位
   useEffect(() => {
+    // 应用内小窗已接管 PiP 标志时不覆盖（防小窗切后台不进悬浮窗）
+    if (useMiniPlayerStore.getState().visible) return;
     setPipPlaying(!!roomPlayer && !roomPlayerFullscreen);
   }, [roomPlayer, roomPlayerFullscreen]);
   const [rankVisible, setRankVisible] = useState(false);

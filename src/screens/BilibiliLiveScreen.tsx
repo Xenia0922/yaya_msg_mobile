@@ -20,7 +20,7 @@ import Video from 'react-native-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
-import { setPipPlaying, enterPipMode } from '../utils/pip';
+import { setPipPlaying, enterPipMode, setPipAspect } from '../utils/pip';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
@@ -160,6 +160,8 @@ export default function BilibiliLiveScreen() {
 
   // 画中画（悬浮窗）状态同步：直播流解析成功且未暂停、非网页播放器时置位
   useEffect(() => {
+    // 应用内小窗已接管 PiP 标志时不覆盖（防小窗切后台不进悬浮窗）
+    if (useMiniPlayerStore.getState().visible) return;
     setPipPlaying(!!streamUrl && !paused && !useWebPlayer);
   }, [streamUrl, paused, useWebPlayer]);
 
@@ -448,7 +450,14 @@ export default function BilibiliLiveScreen() {
                   ignoreSilentSwitch="ignore" playInBackground playWhenInactive
                   // B 站直播流音频响度普遍低于口袋流：Android ExoPlayer 侧做 1.5x 线性增益补偿
                   volume={1.5}
-                  onLoad={() => { setPlayerError(''); setBuffering(false); videoRef.current?.resume?.(); }}
+                  onLoad={(e: any) => {
+                    setPlayerError('');
+                    setBuffering(false);
+                    videoRef.current?.resume?.();
+                    // 同步 PiP 窗口比例（切后台悬浮窗跟随直播流方向）
+                    const ns = e?.naturalSize;
+                    if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) setPipAspect(ns.width, ns.height);
+                  }}
                   onBuffer={(e: any) => setBuffering(!!e?.isBuffering)}
                   onError={(event) => {
                     const detail = JSON.stringify(event?.error || event).slice(0, 180);

@@ -18,3 +18,15 @@ export function enterPipMode() {
     Pip.enterPip();
   } catch { /* ignore */ }
 }
+
+/** 更新 PiP 窗口比例（跟随视频内容 naturalSize，竖屏视频悬浮窗也是竖的） */
+export function setPipAspect(w: number | string, h: number | string) {
+  if (Platform.OS !== 'android' || !Pip?.setAspectRatio) return;
+  const nw = Number(w) || 0;
+  const nh = Number(h) || 0;
+  if (nw > 0 && nh > 0) {
+    try {
+      Pip.setAspectRatio(nw, nh);
+    } catch { /* ignore */ }
+  }
+}

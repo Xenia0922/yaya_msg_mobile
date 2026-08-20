@@ -1,6 +1,5 @@
 package com.yk1z.yayamsg
 
-import android.app.PictureInPictureParams
 import android.os.Build
 import android.os.Bundle
 
@@ -30,7 +29,7 @@ class MainActivity : ReactActivity() {
         && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
         && !isInPictureInPictureMode) {
       try {
-        enterPictureInPictureMode(PictureInPictureParams.Builder().build())
+        enterPictureInPictureMode(PipModule.buildPipParams())
       } catch (_: Exception) {
         // 部分 ROM 限制，静默
       }
