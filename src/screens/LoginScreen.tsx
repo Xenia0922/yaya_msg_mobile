@@ -761,6 +761,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: 16,
     marginBottom: 16,
+    overflow: 'hidden',
   },
   cardTitle: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
