@@ -1151,13 +1151,37 @@ export default function FollowedRoomsScreen() {
       // 房间名 + 背景图：room/info -> channelInfo.channelName / channelInfo.bgImg（按 channelId 缓存，异步拉取不阻塞消息）
       const cachedMeta = roomMetaCache.current[channelId];
       if (cachedMeta !== undefined) {
+        // 会话内命中：bg 已下载过（Fresco 磁盘缓存）→ 秒显
+        if (cachedMeta.bg) Image.prefetch(cachedMeta.bg).catch(() => {});
         setRoomMeta(cachedMeta);
       } else {
         roomMetaCache.current[channelId] = { name: '', bg: '' };
-        // 小房间 room/info 服务端 2001 无权限（实测）→ 塞纳河 server/detail 拿 channelInfoList 房间名 + 背景墙图
-        pocketApi.getRoomMeta(channelId, nextMode === 'small' ? room.channelId : undefined, room.serverId)
-          .then((meta) => { roomMetaCache.current[channelId] = meta; setRoomMeta(meta); })
-          .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; });
+        // 跨会话磁盘缓存（房间名 + bg URL），命中则跳过网络 + 图片从磁盘秒出
+        let diskMeta: { name: string; bg: string } | null = null;
+        try {
+          const raw = await AsyncStorage.getItem(`yaya_room_meta_${channelId}`);
+          if (raw) diskMeta = JSON.parse(raw);
+        } catch { diskMeta = null; }
+        if (diskMeta && diskMeta.name) {
+          roomMetaCache.current[channelId] = diskMeta;
+          if (diskMeta.bg) Image.prefetch(diskMeta.bg).catch(() => {});
+          setRoomMeta(diskMeta);
+        } else {
+          // 小房间 room/info 服务端 2001 无权限（实测）→ 塞纳河 server/detail 拿 channelInfoList 房间名 + 背景墙图
+          pocketApi.getRoomMeta(channelId, nextMode === 'small' ? room.channelId : undefined, room.serverId)
+            .then((meta) => {
+              roomMetaCache.current[channelId] = meta;
+              AsyncStorage.setItem(`yaya_room_meta_${channelId}`, JSON.stringify(meta)).catch(() => {});
+              // 房间名先秒显；bg 先 prefetch 下载完成再渲染 → 背景图从缓存秒出，无 loading 渐变
+              setRoomMeta((m) => ({ ...m, name: meta.name }));
+              if (meta.bg) {
+                Image.prefetch(meta.bg)
+                  .then(() => setRoomMeta((m) => ({ ...m, bg: meta.bg || '' })))
+                  .catch(() => setRoomMeta((m) => ({ ...m, bg: meta.bg || '' })));
+              }
+            })
+            .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; });
+        }
       }
     } catch (error) {
       showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
