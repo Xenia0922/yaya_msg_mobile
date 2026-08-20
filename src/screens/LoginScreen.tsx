@@ -763,7 +763,7 @@ const styles = StyleSheet.create({
   areaInput: { minWidth: 44, paddingVertical: 12, paddingHorizontal: 0, fontSize: 14 },
   phoneInput: { flex: 1 },
   avatarRow: { marginTop: 4 },
-  status: { marginTop: 12, fontSize: 13, textAlign: 'center', lineHeight: 20, flexShrink: 0, minHeight: 20, width: '100%', marginBottom: 10 },
+  status: { marginTop: 8, fontSize: 12, lineHeight: 18, flexShrink: 0, textAlign: 'left' },
   biliStatus: { marginTop: 10, fontSize: 12, textAlign: 'center', lineHeight: 18, flexShrink: 0, marginBottom: 4 },
   qrCard: {
     alignSelf: 'center',
