@@ -812,12 +812,17 @@ const DURATION_KEYS = new Set([
 
 function deepFindDuration(value: any, depth = 0): number {
   if (!value || depth > 5) return 0;
-  // 秒数上限 24h：防止把毫秒/Unix 时间戳（如 time 字段）误当播放时长显示成时间戳
-  const plausible = (n: number) => n > 0 && n <= 86400;
-  if (typeof value === 'number') return plausible(value) ? value : 0;
+  // 时长归一：0-24h 内视为秒；24h~24h*1000 视为毫秒（÷1000，房间消息语音/视频时长常为毫秒）；
+  // 更大的（Unix 秒/毫秒时间戳，如 time 字段）一律无效，防止误显示成时间戳
+  const normalize = (n: number): number => {
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (n <= 86400) return n;
+    if (n <= 86400000) return Math.round(n / 1000);
+    return 0;
+  };
+  if (typeof value === 'number') return normalize(value);
   if (typeof value === 'string') {
-    const n = parseFloat(value.trim());
-    return plausible(n) ? n : 0;
+    return normalize(parseFloat(value.trim()));
   }
   if (typeof value !== 'object') return 0;
   if (Array.isArray(value)) {
@@ -830,7 +835,8 @@ function deepFindDuration(value: any, depth = 0): number {
   for (const [key, v] of Object.entries(value)) {
     if (DURATION_KEYS.has(key)) {
       const n = typeof v === 'number' ? v : parseFloat(String(v || '').trim());
-      if (plausible(n)) return n;
+      const d = normalize(n);
+      if (d > 0) return d;
     }
   }
   for (const child of Object.values(value)) {
@@ -923,11 +929,8 @@ export default function FollowedRoomsScreen() {
 
   useEffect(() => {
     setLiveImmersiveMode(!!roomPlayer && roomPlayerFullscreen);
-    if (roomPlayerFullscreen) {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
-    } else {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-    }
+    // 不再强制锁横/竖屏：方向跟随手机持握（旋转手机自然横屏），
+    // 避免点开房间消息视频被强制全屏+强制横屏与持握方向冲突
     return () => setLiveImmersiveMode(false);
   }, [roomPlayer, roomPlayerFullscreen]);
 
@@ -1223,9 +1226,8 @@ export default function FollowedRoomsScreen() {
         return;
       }
       if (next.type === 'video') {
-        // 视频点击直接进入全屏播放器，不再在消息下方展开内嵌播放器
-        setRoomPlayer({ ...next, needsVlc: streamNeedsProxy(next.url) });
-        setRoomPlayerFullscreen(true);
+        // 点击内嵌播放（不自动全屏）；要看全屏自己点「全屏」按钮
+        setPlayingMedia(next);
         return;
       }
       setPlayingMedia(next);
