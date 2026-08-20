@@ -569,7 +569,6 @@ export default function MediaScreen() {
   // 画面旋转（翻转）：0/90/180/270，每按一次步进 90°
   const [videoRotate, setVideoRotate] = useState(0);
   // 用户是否手动切过方向：手动后 onLoad 不再自动覆盖（尊重用户选择）
-  const manualOrientRef = useRef(false);
   const [playing, setPlaying] = useState<{ url: string; urls: string[]; title: string; cover?: string; item: any; isLive: boolean; needsVlc: boolean; resolving?: boolean } | null>(null);
   // 续播位置：打开回放时读取上次进度，播放中由 WebView 回传进度落盘
   const [webResumeTime, setWebResumeTime] = useState(0);
@@ -1284,7 +1283,6 @@ export default function MediaScreen() {
     setIsFullscreen(false);
     setIsLandscape(false);
     setVideoRotate(0);
-    manualOrientRef.current = false;
     setLiveImmersiveMode(false);
     setPaused(false);
     setDuration(0);
@@ -1472,8 +1470,7 @@ export default function MediaScreen() {
   const videoBoxH = videoRotated ? screen.width : screen.height;
   const videoRotateDeg = `${videoRotate}deg`;
 
-  // 按视频内容自动横/竖屏：横屏内容（宽>高）自动横屏，竖屏内容自动竖屏。
-  // 用户手动切过方向（manualOrientRef）则不覆盖；每次新开视频重置标记。
+  // 同步 PiP 窗口比例：切后台悬浮窗跟随内容方向（不再自动锁横/竖屏，由手动旋转按钮控制）。
   const autoOrient = useCallback((e: any) => {
     const ns = e?.naturalSize;
     if (!ns) return;
@@ -1481,10 +1478,8 @@ export default function MediaScreen() {
     const h = Number(ns.height) || 0;
     // 同步 PiP 窗口比例（切后台悬浮窗跟随内容方向）
     if (w > 0 && h > 0) setPipAspect(w, h);
-    if (manualOrientRef.current) return;
-    if (w > 0 && h > 0 && w !== h) {
-      setIsLandscape(w > h);
-    }
+    // 不再自动锁横屏/竖屏：内容方向由用户手动旋转按钮控制（autoOrient 不强制改
+    // isLandscape，否则点开横屏内容的视频会被强制横屏，与手机当前持握方向冲突）
   }, []);
 
   if (playing) {
@@ -1634,7 +1629,7 @@ export default function MediaScreen() {
             onCycleRate={() => setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1))}
             onTogglePlay={() => setPaused((p) => !p)}
             onSeek={(t) => { setPlaybackTime(t); seekLockRef.current = Date.now() + 500; if (videoRef.current && videoRef.current.seek) videoRef.current.seek(t); }}
-            onRotate={() => { manualOrientRef.current = true; setIsLandscape((v) => !v); }}
+            onRotate={() => setIsLandscape((v) => !v)}
           />
         </Animated.View>
 
