@@ -753,31 +753,40 @@ export const pocketApi = {
     return pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) }, { tokenRequired: false, fallback: '获取房间信息失败' });
   },
 
-  /** 解析房间信息（大/小房间通用）：room/info → content.channelInfo（单数，FollowedRooms 同款字段）
-   *  channelName + bgImg（部分接口用 channelInfoList 或 userChatConfig.bgImg 兜底）。
-   *  小房间（yklzId）同样适用——用户指定：小房间名字与背景解析是可实现的。 */
-  async getRoomMeta(channelId: string | number) {
+  /** 解析房间信息（大/小房间通用）：room/info → content.channelInfo（单数，FollowedRooms 同款字段）。
+   *  小房间（yklzId）实测服务端返回 2001 无权限（channelName/bgImg 全空，无其他数据源）——
+   *  因此支持 fallbackChannelId：小房间解析失败时回退用同成员大房间的 meta（背景图可复用）。
+   *  channelName + bgImg + userChatConfig.bgImg 兜底。 */
+  async getRoomMeta(channelId: string | number, fallbackChannelId?: string | number) {
     const cid = String(channelId);
-    const res = await this.getRoomInfo(cid).catch(() => null);
-    const content = (res as any)?.content || (res as any)?.data || {};
-    // 优先 content.channelInfo（单数，room/info 直接返回当前房间）
-    const ci = content.channelInfo || {};
-    let name = String(ci.channelName || '');
-    let bg = String(ci.bgImg || ci.backgroundImg || ci.backgroundImgUrl || ci.bgImgUrl || '');
-    // 兜底：channelInfoList（数组）匹配 channelId
-    if (!name && Array.isArray(content.channelInfoList)) {
-      const hit = content.channelInfoList.find((c: any) => String(c?.channelId) === cid);
-      if (hit) {
-        name = String(hit.channelName || '');
-        bg = String(hit.bgImg || hit.backgroundImg || hit.backgroundImgUrl || hit.bgImgUrl || '');
+    const tryOne = async (target: string): Promise<{ name: string; bg: string }> => {
+      const res = await this.getRoomInfo(target).catch(() => null);
+      const content = (res as any)?.content || (res as any)?.data || {};
+      // 小房间/无权限：status!=200 或 content 空 → 视为失败
+      if ((res as any)?.status && Number((res as any)?.status) !== 200) return { name: '', bg: '' };
+      const ci = content.channelInfo || {};
+      let name = String(ci.channelName || '');
+      let bg = String(ci.bgImg || ci.backgroundImg || ci.backgroundImgUrl || ci.bgImgUrl || '');
+      if (!name && Array.isArray(content.channelInfoList)) {
+        const hit = content.channelInfoList.find((c: any) => String(c?.channelId) === target);
+        if (hit) {
+          name = String(hit.channelName || '');
+          bg = String(hit.bgImg || hit.backgroundImg || hit.backgroundImgUrl || hit.bgImgUrl || '');
+        }
       }
+      if (!bg) {
+        const ucc = content.userChatConfig || {};
+        bg = String(ucc.bgImg || ucc.bgImgUrl || '');
+      }
+      return { name, bg: bg ? normalizeUrl(bg) : '' };
+    };
+    let meta = await tryOne(cid);
+    // 小房间无权限/解析空 → 回退同成员大房间（至少背景可复用）
+    if (!meta.name && !meta.bg && fallbackChannelId !== undefined && fallbackChannelId !== null && String(fallbackChannelId) !== cid) {
+      const fb = await tryOne(String(fallbackChannelId)).catch(() => ({ name: '', bg: '' }));
+      if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }
-    // 兜底：userChatConfig.bgImg（FollowedRooms 同款）
-    if (!bg) {
-      const ucc = content.userChatConfig || {};
-      bg = String(ucc.bgImg || ucc.bgImgUrl || '');
-    }
-    return { name, bg: bg ? normalizeUrl(bg) : '' };
+    return meta;
   },
 
   async getRoomAlbum(params: { channelId: string; nextTime?: number }) {

@@ -1127,15 +1127,8 @@ export default function FollowedRoomsScreen() {
         setRoomMeta(cachedMeta);
       } else {
         roomMetaCache.current[channelId] = { name: '', bg: '' };
-        pocketApi.getRoomInfo(channelId)
-          .then((r: any) => {
-            const ci = r?.content?.channelInfo || {};
-            const ucc = r?.content?.userChatConfig || {};
-            return {
-              name: String(ci.channelName || ''),
-              bg: normalizeUrl(ci.bgImg || ucc.bgImg || ''),
-            };
-          })
+        // 小房间 room/info 服务端 2001 无权限（实测）→ 回退同成员大房间 meta，至少背景可复用
+        pocketApi.getRoomMeta(channelId, nextMode === 'small' ? room.channelId : undefined)
           .then((meta) => { roomMetaCache.current[channelId] = meta; setRoomMeta(meta); })
           .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; });
       }

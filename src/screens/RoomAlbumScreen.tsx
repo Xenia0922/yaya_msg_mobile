@@ -179,8 +179,8 @@ export default function RoomAlbumScreen() {
     setLoadError('');
     setStatus('');
     setRoomName(''); setRoomBg('');
-    // 小房间/大房间名字 + 背景解析（getRoomInfo → channelInfoList；失败静默，不影响列表）
-    pocketApi.getRoomMeta(channelId).then((meta) => {
+    // 小房间/大房间名字 + 背景解析（getRoomInfo → channelInfo；小房间 2001 无权限时回退大房间背景）
+    pocketApi.getRoomMeta(channelId, mode === 'small' ? member.channelId : undefined).then((meta) => {
       if (meta?.name) setRoomName(meta.name);
       if (meta?.bg) setRoomBg(meta.bg);
     }).catch(() => {});
