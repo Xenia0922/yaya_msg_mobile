@@ -56,6 +56,8 @@ export function MiniPlayer() {
   // 是否拿到内容比例：拿到 -> contain + 自适应容器（无黑边）；拿不到 -> cover 填满（无黑边）
   const [hasNatural, setHasNatural] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  // 小窗播放错误：onError 不再静默 close，显示在小窗上让用户能看到
+  const [errorMsg, setErrorMsg] = useState('');
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 实际渲染尺寸（等比缩放）
@@ -75,6 +77,11 @@ export function MiniPlayer() {
   }, []);
 
   useEffect(() => {
+    // 每次 visible 翻 true（新开/重开）重置错误消息 + seek 标记，确保新开小窗能正常报错
+    if (visible) {
+      setErrorMsg('');
+      seekedRef.current = false;
+    }
     showControls();
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
   }, [showControls, visible]);
@@ -162,10 +169,11 @@ export function MiniPlayer() {
           key={`${info.url}-${info.position || 0}`}
           source={{
             uri: info.url,
-            // 口袋48 直播流防盗链校验 Referer/UA——与大播放器 playerSource 一致，否则直播 403 播不了
+            // 口袋48 直播流防盗链校验 Referer/UA/Origin——与大播放器 playerSource 一致
             headers: {
               'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
               Referer: 'https://h5.48.cn/',
+              Origin: 'https://h5.48.cn',
             },
           }}
           style={StyleSheet.absoluteFill}
@@ -198,14 +206,24 @@ export function MiniPlayer() {
             }
             // 续播到交棒位置（仅录播）
             const t = Number(info.position) || 0;
-            if (t > 1 && !seekedRef.current && videoRef.current?.seek) {
+            // 仅录播续播：HLS 直播 seek 到过去位置会黑屏/错误，直播从 LIVE edge 播
+            if (t > 1 && !seekedRef.current && !info.isLive && videoRef.current?.seek) {
               seekedRef.current = true;
               videoRef.current.seek(t);
             }
           }}
           onEnd={() => setPlaying(false)}
-          onError={() => close()}
+          onError={(event) => {
+            // 不再静默 close：把错误显示在小窗里，用户截图/反馈能直接看到原因
+            setErrorMsg(t('小窗播放失败：{detail}', { detail: JSON.stringify(event?.error || event).slice(0, 160) }));
+          }}
         />
+        {errorMsg ? (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 8 }]} pointerEvents="none">
+            <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#ff6b6b" />
+            <Text style={{ color: '#fff', fontSize: 10, marginTop: 4, textAlign: 'center' }}>{errorMsg}</Text>
+          </View>
+        ) : null}
         {/* 透明拖动/点击层：elevation 让此 JS 层盖过 Android SurfaceView 接收触摸（否则 Video 消费触摸无法拖动） */}
         <Animated.View
           {...pan.panHandlers}
