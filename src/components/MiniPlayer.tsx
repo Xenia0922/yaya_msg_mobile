@@ -50,6 +50,8 @@ export function MiniPlayer() {
   // 小窗高度（按视频内容比例自适应）
   const [boxH, setBoxH] = useState(H_MIN);
   const boxHRef = useRef(H_MIN);
+  // 是否拿到内容比例：拿到 -> contain + 自适应容器（无黑边）；拿不到 -> cover 填满（无黑边）
+  const [hasNatural, setHasNatural] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -150,7 +152,7 @@ export function MiniPlayer() {
           key={`${info.url}-${info.position || 0}`}
           source={{ uri: info.url }}
           style={StyleSheet.absoluteFill}
-          resizeMode="contain"
+          resizeMode={hasNatural ? 'contain' : 'cover'}
           paused={!playing}
           playInBackground
           playWhenInactive
@@ -162,8 +164,12 @@ export function MiniPlayer() {
               const h = Math.max(H_MIN, Math.min(H_MAX, Math.round((W * Number(ns.height)) / Number(ns.width))));
               boxHRef.current = h;
               setBoxH(h);
+              setHasNatural(true);
               // 同步 PiP 窗口比例（切后台的系统悬浮窗也跟随内容方向）
               setPipAspect(ns.width, ns.height);
+            } else {
+              // 拿不到内容比例：cover 填满容器（无黑边），高度退回默认
+              setHasNatural(false);
             }
             // 续播到交棒位置（仅录播）
             const t = Number(info.position) || 0;
@@ -193,36 +199,38 @@ export function MiniPlayer() {
         </View>
       </Animated.View>
 
-      {/* 按钮层：常显返回全屏 + 关闭；暂停按钮随控件显隐 */}
+      {/* 按钮层：返回全屏/关闭/暂停 全部随控件显隐（3s 自动隐藏，点画面唤出） */}
       <Animated.View
         pointerEvents="box-none"
         style={[StyleSheet.absoluteFill, { left: pos.x, top: pos.y, width: W, height: boxH, zIndex: 1000 }]}
       >
-        {/* 返回全屏（常显，右上角） */}
-        <TouchableOpacity
-          style={styles.expandBtn}
-          onPress={backToFull}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <MaterialCommunityIcons name="arrow-expand" size={15} color="#fff" />
-        </TouchableOpacity>
-        {/* 关闭（常显，左上角） */}
-        <TouchableOpacity
-          style={styles.closeBtn}
-          onPress={close}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <MaterialCommunityIcons name="close" size={14} color="#fff" />
-        </TouchableOpacity>
-        {/* 暂停/继续（随控件显隐，右下角） */}
         {controlsVisible ? (
-          <TouchableOpacity
-            style={styles.playBtn}
-            onPress={() => setPlaying(!playing)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={14} color="#fff" />
-          </TouchableOpacity>
+          <>
+            {/* 返回全屏（右上角） */}
+            <TouchableOpacity
+              style={styles.expandBtn}
+              onPress={backToFull}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MaterialCommunityIcons name="arrow-expand" size={15} color="#fff" />
+            </TouchableOpacity>
+            {/* 关闭（左上角） */}
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={close}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MaterialCommunityIcons name="close" size={14} color="#fff" />
+            </TouchableOpacity>
+            {/* 暂停/继续（右下角） */}
+            <TouchableOpacity
+              style={styles.playBtn}
+              onPress={() => setPlaying(!playing)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={14} color="#fff" />
+            </TouchableOpacity>
+          </>
         ) : null}
       </Animated.View>
     </>
