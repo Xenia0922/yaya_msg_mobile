@@ -27,9 +27,10 @@ import { setPipPlaying, setPipAspect } from '../utils/pip';
 import { useI18n } from '../i18n';
 
 const W = 168;
-/** 高度按内容比例计算，钳制在此区间（竖屏内容窄条 -> 近似方块；横屏内容 16:9） */
+/** 高度按内容比例计算（竖屏内容窄条 -> 高条；横屏内容 16:9） */
 const H_MIN = 96;
-const H_MAX = 230;
+/** 小窗缩小档位：1 = 默认，0.72 = 缩小 */
+const SCALE_SMALL = 0.72;
 /** 拖动/点击判定阈值：位移小于该值视为点击 */
 const TAP_SLOP = 10;
 /** 控件自动隐藏时长（ms） */
@@ -50,10 +51,18 @@ export function MiniPlayer() {
   // 小窗高度（按视频内容比例自适应）
   const [boxH, setBoxH] = useState(H_MIN);
   const boxHRef = useRef(H_MIN);
+  // 缩小档位（1 默认 / SCALE_SMALL 缩小）：宽高等比缩放
+  const [scale, setScale] = useState(1);
   // 是否拿到内容比例：拿到 -> contain + 自适应容器（无黑边）；拿不到 -> cover 填满（无黑边）
   const [hasNatural, setHasNatural] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 实际渲染尺寸（等比缩放）
+  const boxW = Math.round(W * scale);
+  const boxHNow = Math.max(H_MIN, Math.round(boxH * scale));
+  const boxHNowRef = useRef(boxHNow);
+  boxHNowRef.current = boxHNow;
 
   // 初始位置：右下角，避开底部 tab dock
   const pos = useRef(new Animated.ValueXY({ x: winW - W - 12, y: winH - H_MIN - 90 })).current;
@@ -101,9 +110,10 @@ export function MiniPlayer() {
             });
             return;
           }
-          // 拖动：夹紧在屏幕内（用当前小窗高度）
-          const h = boxHRef.current;
-          const nx = Math.max(6, Math.min(winW - W - 6, basePos.current.x + g.dx));
+          // 拖动：夹紧在屏幕内（用当前小窗实际尺寸，含缩放）
+          const w = boxW;
+          const h = boxHNowRef.current;
+          const nx = Math.max(6, Math.min(winW - w - 6, basePos.current.x + g.dx));
           const ny = Math.max(6, Math.min(winH - h - 6, basePos.current.y + g.dy));
           basePos.current = { x: nx, y: ny };
           pos.setValue({ x: nx, y: ny });
@@ -111,7 +121,7 @@ export function MiniPlayer() {
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [info, winW, winH, navigation, showControls],
+    [info, winW, winH, navigation, showControls, boxW],
   );
 
   // 播放状态 → PiP 标志（小窗切后台自动进系统悬浮窗）
@@ -140,8 +150,8 @@ export function MiniPlayer() {
           {
             left: pos.x,
             top: pos.y,
-            width: W,
-            height: boxH,
+            width: boxW,
+            height: boxHNow,
             backgroundColor: '#000',
             borderColor: palette.hairline,
           },
@@ -158,13 +168,21 @@ export function MiniPlayer() {
           playWhenInactive
           ignoreSilentSwitch="ignore"
           onLoad={(e) => {
-            // 按内容比例自适应小窗高度（竖屏内容竖着小窗，不裁剪）
+            // 按内容比例自适应小窗高度：竖屏内容竖着小窗、横屏 16:9，比例完全贴合 → contain 无黑边
             const ns = e?.naturalSize;
             if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) {
-              const h = Math.max(H_MIN, Math.min(H_MAX, Math.round((W * Number(ns.height)) / Number(ns.width))));
-              boxHRef.current = h;
-              setBoxH(h);
-              setHasNatural(true);
+              const rawH = Math.round((W * Number(ns.height)) / Number(ns.width));
+              if (rawH > 420) {
+                // 超长内容（极高宽比）：cover 填满默认容器，避免小窗过高遮挡
+                boxHRef.current = H_MIN;
+                setBoxH(H_MIN);
+                setHasNatural(false);
+              } else {
+                const h = Math.max(H_MIN, rawH);
+                boxHRef.current = h;
+                setBoxH(h);
+                setHasNatural(true);
+              }
               // 同步 PiP 窗口比例（切后台的系统悬浮窗也跟随内容方向）
               setPipAspect(ns.width, ns.height);
             } else {
@@ -192,17 +210,12 @@ export function MiniPlayer() {
             <Text style={styles.title} numberOfLines={1}>{info.title}</Text>
           </View>
         ) : null}
-        {/* 小窗标签（常显） */}
-        <View style={styles.tag} pointerEvents="none">
-          <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={10} color="#fff" />
-          <Text style={styles.tagText}>{t('小窗')}</Text>
-        </View>
       </Animated.View>
 
-      {/* 按钮层：返回全屏/关闭/暂停 全部随控件显隐（3s 自动隐藏，点画面唤出） */}
+      {/* 按钮层：返回全屏/关闭/缩小/暂停 全部随控件显隐（3s 自动隐藏，点画面唤出） */}
       <Animated.View
         pointerEvents="box-none"
-        style={[StyleSheet.absoluteFill, { left: pos.x, top: pos.y, width: W, height: boxH, zIndex: 1000 }]}
+        style={[StyleSheet.absoluteFill, { left: pos.x, top: pos.y, width: boxW, height: boxHNow, zIndex: 1000 }]}
       >
         {controlsVisible ? (
           <>
@@ -221,6 +234,14 @@ export function MiniPlayer() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <MaterialCommunityIcons name="close" size={14} color="#fff" />
+            </TouchableOpacity>
+            {/* 缩小/还原（右上角第二颗，循环切换尺寸档位） */}
+            <TouchableOpacity
+              style={styles.shrinkBtn}
+              onPress={() => setScale((s) => (s === 1 ? SCALE_SMALL : 1))}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MaterialCommunityIcons name={scale === 1 ? 'arrow-collapse' : 'arrow-expand-all'} size={14} color="#fff" />
             </TouchableOpacity>
             {/* 暂停/继续（右下角） */}
             <TouchableOpacity
@@ -294,6 +315,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  shrinkBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 28,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   playBtn: {
     position: 'absolute',
     bottom: 18,
@@ -305,17 +337,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tag: {
-    position: 'absolute',
-    top: 26,
-    left: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  tagText: { color: '#fff', fontSize: 9, fontWeight: '700' },
 });
