@@ -1469,6 +1469,7 @@ export default function MediaScreen() {
             title={playing.title || (playing.isLive ? t('口袋直播') : t('回放'))}
             onMore={() => setMoreVisible(true)}
             onRefresh={() => startPlay(playing.item)}
+            onPiP={Platform.OS === 'android' ? enterPipMode : undefined}
           />
         </Animated.View>
 
@@ -1562,16 +1563,6 @@ export default function MediaScreen() {
                 onEnd={() => { clearResumePosition(resumeKey); setPipPlaying(false); }}
                 onError={(event) => setPlayerError(t('原生播放器失败：{detail}', { detail: JSON.stringify(event?.error || event).slice(0, 220) }))}
               />
-              {/* 悬浮窗按钮：Android 系统画中画（小窗） */}
-              {Platform.OS === 'android' ? (
-                <TouchableOpacity
-                  style={styles.pipBtn}
-                  onPress={enterPipMode}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-              ) : null}
               {playerError ? (
                 <View style={styles.playerError}>
                   <Text style={styles.playerErrorText}>{playerError}</Text>
@@ -2104,8 +2095,6 @@ const styles = StyleSheet.create({
   vlcGateError: { color: '#ffb3c2', fontSize: 12, marginTop: 12 },
   playerError: { position: 'absolute', left: 16, right: 16, bottom: 24, padding: 12, borderRadius: 16, backgroundColor: '#1C1C1F' },
   playerErrorText: { color: '#fff', fontSize: 12, lineHeight: 18 },
-  // 画中画（悬浮窗）按钮：播放器右上角
-  pipBtn: { position: 'absolute', top: 12, right: 12, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   // 播放器内解析中/失败视图
   resolvingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   resolvingText: { color: 'rgba(255,255,255,0.85)', fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },

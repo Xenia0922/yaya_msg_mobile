@@ -32,7 +32,7 @@ import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp } from '../utils/format';
-import { setPipPlaying } from '../utils/pip';
+import { setPipPlaying, enterPipMode } from '../utils/pip';
 import {
   errorMessage,
   messagePayload,
@@ -1369,6 +1369,11 @@ export default function FollowedRoomsScreen() {
                 <Text style={[styles.roomPlayerBackText, { color: palette.tint }]}>{t('返回房间')}</Text>
               </TouchableOpacity>
               <Text style={styles.roomPlayerTitle} numberOfLines={1}>{roomPlayer.title}</Text>
+              {Platform.OS === 'android' ? (
+                <TouchableOpacity onPress={enterPipMode} style={styles.roomPlayerTool} activeOpacity={0.85} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={17} color={palette.tint} />
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity onPress={openRoomRankPanel} style={styles.roomPlayerTool} activeOpacity={0.85} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                 <Text style={styles.roomPlayerToolText}>{t('贡献榜')}</Text>
               </TouchableOpacity>

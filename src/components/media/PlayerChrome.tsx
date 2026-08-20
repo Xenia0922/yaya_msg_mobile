@@ -124,6 +124,7 @@ export function PlayerTopBar({
   subtitle,
   onMore,
   onRefresh,
+  onPiP,
   showMore = true,
 }: {
   onBack: () => void;
@@ -131,6 +132,8 @@ export function PlayerTopBar({
   subtitle?: string;
   onMore?: () => void;
   onRefresh?: () => void;
+  /** 画中画（悬浮窗）按钮；不传则不显示 */
+  onPiP?: () => void;
   showMore?: boolean;
 }) {
   return (
@@ -145,6 +148,11 @@ export function PlayerTopBar({
       {onRefresh ? (
         <TouchableOpacity style={chromeStyles.navBtn} onPress={onRefresh} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <MaterialCommunityIcons name="refresh" size={20} color="#fff" />
+        </TouchableOpacity>
+      ) : null}
+      {onPiP ? (
+        <TouchableOpacity style={chromeStyles.navBtn} onPress={onPiP} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={20} color="#fff" />
         </TouchableOpacity>
       ) : null}
       {showMore && onMore ? (

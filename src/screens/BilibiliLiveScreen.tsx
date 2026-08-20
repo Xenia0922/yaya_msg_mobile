@@ -6,6 +6,7 @@ import {
   Animated,
   AppState,
   Easing,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -440,14 +441,6 @@ export default function BilibiliLiveScreen() {
                     switchToNextCandidate(t('原生播放器失败：{detail}', { detail }));
                   }}
                 />
-                {/* 悬浮窗按钮：Android 系统画中画（小窗） */}
-                <TouchableOpacity
-                  style={styles.pipBtn}
-                  onPress={enterPipMode}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <MaterialCommunityIcons name="picture-in-picture-bottom-right-outline" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -500,6 +493,7 @@ export default function BilibiliLiveScreen() {
               : (qualityLabel || undefined)}
             onMore={() => setMoreVisible(true)}
             onRefresh={() => activeRoom && startWatch(activeRoom)}
+            onPiP={Platform.OS === 'android' ? enterPipMode : undefined}
           />
         </Animated.View>
 
@@ -655,8 +649,6 @@ const styles = StyleSheet.create({
   playerPage: { flex: 1, backgroundColor: '#000' },
   player: { flex: 1, backgroundColor: '#000' },
   nativeVideo: { flex: 1, backgroundColor: '#000' },
-  // 画中画（悬浮窗）按钮：播放器右上角
-  pipBtn: { position: 'absolute', top: 12, right: 12, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   startingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
   startingText: { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600' },
   bufferingWrap: {
