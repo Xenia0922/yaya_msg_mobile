@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
@@ -81,6 +81,16 @@ function todayKey(d = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** 行程分区：全部 / 即将 / 今天 / 过往（易用性：默认聚焦未来行程，不再上下翻找） */
+type TripFilter = 'all' | 'upcoming' | 'today' | 'past';
+
+const TRIP_FILTERS: { key: TripFilter; label: string }[] = [
+  { key: 'upcoming', label: '即将' },
+  { key: 'today', label: '今天' },
+  { key: 'past', label: '过往' },
+  { key: 'all', label: '全部' },
+];
+
 export default function TripScreen() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
@@ -92,6 +102,7 @@ export default function TripScreen() {
   const [error, setError] = useState('');
   const [lastTime, setLastTime] = useState('0');
   const [hasMore, setHasMore] = useState(true);
+  const [tripFilter, setTripFilter] = useState<TripFilter>('upcoming');
   const today = todayKey();
 
   const fetchTrips = useCallback(async (reset = false) => {
@@ -119,6 +130,29 @@ export default function TripScreen() {
   }, [member, lastTime]);
 
   useEffect(() => { if (member) fetchTrips(true); }, [member]);
+
+  // 分区过滤（纯内存，数据已在手）
+  const filteredItems = useMemo(() => {
+    if (!tripFilter || tripFilter === 'all') return items;
+    return items.filter((item) => {
+      const state = tripNodeState(item.showDate, today);
+      if (tripFilter === 'today') return state === 'today';
+      if (tripFilter === 'past') return state === 'past';
+      return state !== 'past'; // upcoming：未来（含今天）
+    });
+  }, [items, tripFilter, today]);
+
+  // 分区计数（显示在 chip 上，帮助用户感知数据量）
+  const filterCounts = useMemo(() => {
+    const c: Record<TripFilter, number> = { all: items.length, upcoming: 0, today: 0, past: 0 };
+    for (const item of items) {
+      const state = tripNodeState(item.showDate, today);
+      if (state !== 'past') c.upcoming += 1;
+      if (state === 'today') c.today += 1;
+      if (state === 'past') c.past += 1;
+    }
+    return c;
+  }, [items, today]);
 
   const renderItem = ({ item, index }: { item: TripItem; index: number }) => {
     const state = tripNodeState(item.showDate, today);
@@ -225,20 +259,46 @@ export default function TripScreen() {
         <Text style={[styles.subtitle, { color: palette.labelSecondary }]}>{subtitle}</Text>
       ) : null}
       <MemberPicker selectedMember={member} onSelect={setMember} placeholder={t('搜索成员查看行程...')} />
+
+      {/* 行程分区页签：即将（默认）/ 今天 / 过往 / 全部 —— 结构升级：不再混排一条时间轴 */}
+      {member ? (
+        <View style={styles.filterRow}>
+          {TRIP_FILTERS.map((f) => {
+            const active = tripFilter === f.key;
+            const count = filterCounts[f.key];
+            return (
+              <ScalePressable
+                key={f.key}
+                onPress={() => setTripFilter(f.key)}
+                pressedScale={0.96}
+                style={[
+                  styles.filterChip,
+                  { backgroundColor: active ? palette.tintSoft : palette.fill2, borderColor: active ? palette.tint : 'transparent' },
+                ]}
+              >
+                <Text style={[styles.filterChipText, { color: active ? palette.tint : palette.labelSecondary, fontWeight: active ? '700' : '600' }]}>
+                  {t(f.label)}{count > 0 ? ` ${count}` : ''}
+                </Text>
+              </ScalePressable>
+            );
+          })}
+        </View>
+      ) : null}
+
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
-          data={items}
+          data={filteredItems}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
-          onEndReached={() => { if (hasMore && !loadingMore) fetchTrips(false); }}
+          onEndReached={() => { if (hasMore && !loadingMore && tripFilter !== 'past') fetchTrips(false); }}
           onEndReachedThreshold={0.35}
           renderItem={renderItem}
           ListFooterComponent={
-            items.length ? <Text style={[styles.footer, { color: palette.labelTertiary }]}>
+            filteredItems.length ? <Text style={[styles.footer, { color: palette.labelTertiary }]}>
               {loadingMore ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
             </Text> : null
           }
@@ -247,7 +307,11 @@ export default function TripScreen() {
             : error ? (
               <ErrorState title={t('加载失败')} hint={error} onAction={() => fetchTrips(true)} />
             ) : (
-              <EmptyState icon="calendar-heart" title={member ? t('暂无行程') : t('请搜索选择成员查看行程')} hint={member ? t('可点击右上角刷新重试') : undefined} />
+              <EmptyState
+                icon="calendar-heart"
+                title={member ? (tripFilter === 'past' ? t('暂无过往行程') : tripFilter === 'today' ? t('今天暂无行程') : tripFilter === 'upcoming' ? t('暂无即将到来的行程') : t('暂无行程')) : t('请搜索选择成员查看行程')}
+                hint={member ? t('可切换分区或点击右上角刷新') : undefined}
+              />
             )
           }
         />
@@ -259,6 +323,14 @@ export default function TripScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   subtitle: { paddingHorizontal: 16, fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  filterChipText: { fontSize: 12 },
   list: { padding: 16, paddingBottom: 40 },
   timelineRow: { flexDirection: 'row', alignItems: 'stretch', marginBottom: 5 },
   railWrap: { width: 22, alignItems: 'center' },

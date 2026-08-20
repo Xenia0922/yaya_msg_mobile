@@ -285,6 +285,7 @@ export default function MeleeRankScreen() {
               colors={[palette.tint]}
             />
           }
+          ListHeaderComponent={ranks.length >= 3 ? <Podium ranks={ranks.slice(0, 3)} /> : null}
           ListEmptyComponent={
             <EmptyState icon="trophy-outline" title={t('暂无排名数据')} />
           }
@@ -297,6 +298,54 @@ export default function MeleeRankScreen() {
     </View>
   );
 }
+
+/**
+ * 前三名领奖台（结构升级）：第 1 名居中放大 + tint 强调，第 2/3 名两侧；
+ * 让用户一眼看到头部格局，而不是从第一行往下数。
+ */
+const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
+  const palette = usePalette();
+  const { t } = useI18n();
+  const medal = (i: number) => (i === 0 ? 'trophy' : i === 1 ? 'medal-outline' : 'medal-outline');
+  const order = [ranks[1], ranks[0], ranks[2]]; // 2nd | 1st | 3rd
+  const heights = [76, 96, 64];
+  const tones = [palette.fill2, palette.tintSoft, palette.fill2];
+  return (
+    <FadeInView delay={60} duration={320} style={{ marginBottom: 12 }}>
+      <View style={[styles.podiumCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+        <Text style={[styles.podiumTitle, { color: palette.label }]}>{t('领奖台')}</Text>
+        <View style={styles.podiumRow}>
+          {order.map((item: any, idx: number) => {
+            const realIndex = idx === 0 ? 1 : idx === 1 ? 0 : 2;
+            const u = item.baseUserInfo || item.userInfo || item.user || item;
+            const name = String(u.userName || u.nickname || u.nickName || u.name || t('用户 {rank}', { rank: realIndex + 1 }));
+            const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
+            const melee = Number(item.melee || item.meleeValue || item.score || item.total || item.charm || 0);
+            const isFirst = realIndex === 0;
+            return (
+              <View key={realIndex} style={[styles.podiumCell, { flex: isFirst ? 1.15 : 1 }]}>
+                <View style={[styles.podiumAvatarWrap, { backgroundColor: tones[realIndex] }]}>
+                  {avatar ? (
+                    <Image source={{ uri: avatar }} style={styles.podiumAvatar} />
+                  ) : (
+                    <MaterialCommunityIcons name="account" size={26} color={palette.labelTertiary} />
+                  )}
+                </View>
+                <MaterialCommunityIcons name={medal(realIndex) as any} size={18} color={isFirst ? palette.warning : palette.labelTertiary} style={{ marginTop: 6 }} />
+                <Text style={[styles.podiumName, { color: palette.label, fontWeight: isFirst ? '800' : '600' }]} numberOfLines={1}>{name}</Text>
+                <View style={[styles.podiumBar, { height: heights[realIndex], backgroundColor: isFirst ? palette.tint : palette.fill3 }]}>
+                  <Text style={[styles.podiumMelee, { color: isFirst ? palette.onTint : palette.labelTertiary }]} numberOfLines={1}>
+                    {melee >= 10000 ? `${(melee / 10000).toFixed(1)}w` : String(melee)}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    </FadeInView>
+  );
+});
 
 /** 首屏榜单骨架：与真实榜单行同构的 Skeleton（spec §8） */
 function SkeletonRankList() {
@@ -419,6 +468,31 @@ const styles = StyleSheet.create({
   weekListContent: { paddingHorizontal: 16, alignItems: 'center', gap: 6 },
   weekChip: { marginRight: 0 },
   list: { padding: 14, paddingBottom: 40 },
+  podiumCard: {
+    borderRadius: radiiAlias.card,
+    padding: 14,
+    marginBottom: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  podiumTitle: { fontSize: 13, fontWeight: '700', marginBottom: 10 },
+  podiumRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
+  podiumCell: { alignItems: 'center', minWidth: 0 },
+  podiumAvatarWrap: {
+    width: 64, height: 64, borderRadius: 32,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  podiumAvatar: { width: 64, height: 64, borderRadius: 32 },
+  podiumName: { fontSize: 12, marginTop: 4, width: '100%', textAlign: 'center' },
+  podiumBar: {
+    marginTop: 6,
+    width: '100%',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 6,
+    minHeight: 40,
+  },
+  podiumMelee: { fontSize: 11, fontWeight: '800', maxWidth: '92%' },
   rankCard: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: radiiAlias.card, padding: 12, marginBottom: 5,

@@ -412,6 +412,37 @@ export default function AnalysisScreen() {
             </View>
           ) : (
           <ScrollView contentContainerStyle={styles.content}>
+            {/* 成员聚焦 hero（结构升级）：成员发言占比一眼可见，统计不再只是数字陈列 */}
+            {member && summary.total > 0 ? (
+              <View style={[styles.heroCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <View style={styles.heroHead}>
+                  <View style={[styles.heroAvatar, { backgroundColor: palette.tintSoft }]}>
+                    <MaterialCommunityIcons name="account-star" size={22} color={palette.tint} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[styles.heroTitle, { color: palette.label }]} numberOfLines={1}>{member.ownerName}</Text>
+                    <Text style={[styles.heroSub, { color: palette.labelSecondary }]}>{t('共 {total} 条消息 · 成员发言 {idol} 条', { total: summary.total, idol: summary.idol })}</Text>
+                  </View>
+                  <Text style={[styles.heroPct, { color: palette.tint }]}>
+                    {summary.total > 0 ? `${Math.round((summary.idol / summary.total) * 100)}%` : '0%'}
+                  </Text>
+                </View>
+                <View style={[styles.heroTrack, { backgroundColor: palette.fill2 }]}>
+                  <View style={[styles.heroFill, { width: `${summary.total > 0 ? (summary.idol / summary.total) * 100 : 0}%`, backgroundColor: palette.tint }]} />
+                </View>
+                <View style={styles.heroLegend}>
+                  <View style={styles.heroLegendItem}>
+                    <View style={[styles.heroDot, { backgroundColor: palette.tint }]} />
+                    <Text style={[styles.heroLegendText, { color: palette.labelSecondary }]}>{t('成员发言 {count}', { count: summary.idol })}</Text>
+                  </View>
+                  <View style={styles.heroLegendItem}>
+                    <View style={[styles.heroDot, { backgroundColor: palette.fill3 }]} />
+                    <Text style={[styles.heroLegendText, { color: palette.labelSecondary }]}>{t('粉丝发言 {count}', { count: summary.fan })}</Text>
+                  </View>
+                </View>
+              </View>
+            ) : null}
+
             {/* 概览区：2 列统计卡（数值 20/800 + 标签 11） */}
             <View style={styles.statsGrid}>
               {cards.map((item) => (
@@ -813,6 +844,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginBottom: 12,
   },
+  heroCard: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 12,
+  },
+  heroHead: { flexDirection: 'row', alignItems: 'center' },
+  heroAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  heroTitle: { fontSize: 15, fontWeight: '700' },
+  heroSub: { fontSize: 12, marginTop: 2 },
+  heroPct: { fontSize: 22, fontWeight: '900' },
+  heroTrack: { height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 12 },
+  heroFill: { height: 6, borderRadius: 3 },
+  heroLegend: { flexDirection: 'row', gap: 16, marginTop: 10 },
+  heroLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heroDot: { width: 8, height: 8, borderRadius: 4 },
+  heroLegendText: { fontSize: 12 },
   statCard: {
     width: '48.5%',
     marginHorizontal: '0.75%',

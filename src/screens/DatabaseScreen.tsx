@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -77,6 +77,18 @@ export default function DatabaseScreen() {
 
   const memberCount = storeMembers.length;
 
+  // 成员库概览：按团体聚合（结构升级：先给用户"库有多大、怎么分布"的感知）
+  const teamSummary = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of storeMembers) {
+      const team = String(m.team || m.groupName || '').trim();
+      if (team) map.set(team, (map.get(team) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8);
+  }, [storeMembers]);
+
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('数据库')} onBack={() => navigation.goBack()} right={
@@ -108,6 +120,24 @@ export default function DatabaseScreen() {
           )}
         </View>
       </View>
+
+      {/* 团体分布概览卡：总数 + 团体 chips（点击复制不可用则提示；纯概览用途） */}
+      {memberCount > 0 ? (
+        <View style={[styles.summaryCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+          <View style={styles.summaryHead}>
+            <Text style={[styles.summaryTitle, { color: palette.label }]}>{t('库内分布')}</Text>
+            <Text style={[styles.summaryCount, { color: palette.labelTertiary }]}>{t('共 {count} 位', { count: memberCount })}</Text>
+          </View>
+          <View style={styles.teamRow}>
+            {teamSummary.map(([team, count]) => (
+              <View key={team} style={[styles.teamChip, { backgroundColor: palette.fill2 }]}>
+                <Text style={[styles.teamChipName, { color: palette.label }]} numberOfLines={1}>{team}</Text>
+                <Text style={[styles.teamChipCount, { color: palette.tint }]}>{count}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       {/* WebView 容器卡：圆角 16 溢出隐藏；内嵌 Skeleton 加载占位 + 错误覆盖 */}
       <View style={[styles.webCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
@@ -186,6 +216,24 @@ const styles = StyleSheet.create({
   syncRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5, minHeight: 16 },
   syncText: { fontSize: 12, marginTop: 3 },
   syncError: { fontSize: 12, fontWeight: '700', marginTop: 3 },
+  summaryCard: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  summaryHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  summaryTitle: { fontSize: 14, fontWeight: '700' },
+  summaryCount: { fontSize: 12 },
+  teamRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  teamChip: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999, gap: 5,
+  },
+  teamChipName: { fontSize: 12, fontWeight: '600', maxWidth: 96 },
+  teamChipCount: { fontSize: 12, fontWeight: '800' },
   webCard: {
     flex: 1,
     margin: 16,

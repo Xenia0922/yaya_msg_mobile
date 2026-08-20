@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
@@ -123,6 +123,50 @@ export default function MemberWeiboScreen() {
     try { await fetchData(true); } finally { setRefreshing(false); }
   }, [fetchData]);
 
+  // 时间分组（结构升级）：今天 / 昨天 / 更早 三组扁平化渲染，组头吸顶感 + 日期分组导航，替代无差别长流
+  const wbRows = useMemo(() => {
+    const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+    const keyOf = (ts: number) => {
+      if (!ts) return '';
+      const d = new Date(ts);
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const yest = new Date(now.getTime() - 86400000);
+    const yestStr = `${yest.getFullYear()}-${pad(yest.getMonth() + 1)}-${pad(yest.getDate())}`;
+    const groupLabel = (k: string) => {
+      if (!k) return t('未知时间');
+      if (k === todayStr) return t('今天');
+      if (k === yestStr) return t('昨天');
+      return k.replace(/-/g, '/');
+    };
+    const order: string[] = [];
+    const map = new Map<string, WbItem[]>();
+    for (const it of items) {
+      const k = keyOf(it.time) || 'unknown';
+      if (!map.has(k)) { map.set(k, []); order.push(k); }
+      map.get(k)!.push(it);
+    }
+    const rows: { type: 'header' | 'item'; key: string; title?: string; item?: WbItem }[] = [];
+    for (const k of order) {
+      rows.push({ type: 'header', key: `h-${k}`, title: groupLabel(k) });
+      map.get(k)!.forEach((it, idx) => rows.push({ type: 'item', key: `i-${it.key}-${idx}`, item: it }));
+    }
+    return rows;
+  }, [items, t]);
+
+  const renderRow = ({ item, index }: { item: { type: 'header' | 'item'; key: string; title?: string; item?: WbItem }; index: number }) => {
+    if (item.type === 'header') {
+      return (
+        <View style={[styles.groupHeader, { backgroundColor: palette.background }]}>
+          <Text style={[styles.groupHeaderText, { color: palette.labelSecondary }]}>{item.title}</Text>
+        </View>
+      );
+    }
+    return renderItem({ item: item.item as WbItem, index });
+  };
+
   const renderItem = ({ item, index }: { item: WbItem; index: number }) => (
     <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
       <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
@@ -190,7 +234,7 @@ export default function MemberWeiboScreen() {
       } />
       <MemberPicker selectedMember={member} onSelect={setMember} placeholder={t('搜索成员查看微博...')} />
       <PerfFlatList
-        data={items}
+        data={wbRows}
         keyExtractor={(item) => item.key}
         contentContainerStyle={styles.list}
         refreshControl={
@@ -208,7 +252,7 @@ export default function MemberWeiboScreen() {
         removeClippedSubviews
         onEndReached={() => { if (hasMore && !loadingMore) fetchData(false); }}
         onEndReachedThreshold={0.35}
-        renderItem={renderItem}
+        renderItem={renderRow}
         ListFooterComponent={
           items.length ? <Text style={[styles.footer, { color: palette.labelSecondary }]}>
             {loadingMore ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
@@ -254,6 +298,8 @@ export default function MemberWeiboScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   list: { padding: 8, paddingBottom: 40 },
+  groupHeader: { paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 },
+  groupHeaderText: { fontSize: 12, fontWeight: '700' },
   card: { borderRadius: 16, padding: 14, marginVertical: 4 },
   ownerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   ownerAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10, overflow: 'hidden' },
