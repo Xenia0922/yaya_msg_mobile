@@ -25,13 +25,12 @@ import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 type Nav = StackNavigationProp<RootStackParamList, 'AnalysisScreen'>;
-type TabKey = 'room' | 'dates' | 'senders' | 'media' | 'flip';
+type TabKey = 'room' | 'flip';
 
+// 报告式收敛（结构升级）：不再用 6 个平级 tab 拆散画像——
+// 「消息画像」一页呈现（概览/日期/排行/媒体全部并入），翻牌统计独立成页。
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'room', label: '房间概览' },
-  { key: 'dates', label: '日期统计' },
-  { key: 'senders', label: '发言排行' },
-  { key: 'media', label: '媒体统计' },
+  { key: 'room', label: '消息画像' },
   { key: 'flip', label: '翻牌统计' },
 ];
 
@@ -483,136 +482,86 @@ export default function AnalysisScreen() {
                 <Text style={[styles.rowMeta, { color: palette.labelTertiary }]}>{formatTimestamp(msgTime(item))}</Text>
               </View>
             ))}
+
+            {/* 日期分布（并入画像：近 8 天成员/总数双条） */}
+            {dateStats.length > 0 ? (
+              <View style={[styles.rankCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('日期分布')}</Text>
+                <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('近 {count} 天发言节奏', { count: Math.min(8, dateStats.length) })}</Text>
+                {dateStats.slice(0, 8).map((item: any) => {
+                  const totalPct = (item.total / dateMax) * 100;
+                  const memberPct = (item.member / dateMax) * 100;
+                  return (
+                    <View key={item.date} style={styles.rankRow}>
+                      <Text style={[styles.rankRowName, { color: palette.label }]} numberOfLines={1}>{item.date.slice(5)}</Text>
+                      <View style={[styles.rankTrack, { backgroundColor: palette.fill2 }]}>
+                        <View style={[styles.rankBar, { width: `${totalPct}%`, backgroundColor: palette.tint, opacity: 0.25 }]} />
+                        <View style={[styles.rankBarAbs, { width: `${memberPct}%`, backgroundColor: palette.tint }]} />
+                      </View>
+                      <Text style={[styles.rankRowCount, { color: palette.labelTertiary }]}>{item.total}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {/* 发送者排行（并入画像：Top 8） */}
+            {senders.length > 0 ? (
+              <View style={[styles.rankCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('发言排行')}</Text>
+                <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('Top {count} 发言者', { count: Math.min(8, senders.length) })}</Text>
+                {senders.slice(0, 8).map((item: any, index: number) => {
+                  const pct = (item.count / sendersMax) * 100;
+                  return (
+                    <View key={item.key} style={styles.rankRow}>
+                      <Text style={[styles.rankRowName, { color: palette.label }]} numberOfLines={1}>{index + 1}. {item.key}</Text>
+                      <View style={[styles.rankTrack, { backgroundColor: palette.fill2 }]}>
+                        <View style={[styles.rankBar, { width: `${pct}%`, backgroundColor: palette.tint }]} />
+                      </View>
+                      <Text style={[styles.rankRowCount, { color: palette.labelTertiary }]}>{item.count}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {/* 媒体消息（并入画像：最近 10 条，可点击预览/播放） */}
+            {mediaMessages.length > 0 ? (
+              <View style={[styles.rankCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('媒体消息')}</Text>
+                <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('图片/语音/视频 最近 {count} 条', { count: Math.min(10, mediaMessages.length) })}</Text>
+                {mediaMessages.slice(0, 10).map((item: any, index: number) => {
+                  const isImg = isMedia(item, 'image');
+                  const isAud = isMedia(item, 'audio');
+                  const isVid = isMedia(item, 'video');
+                  const payload = messagePayload(item);
+                  const url = pickText(payload, ['url', 'imageUrl', 'audioUrl', 'videoUrl', 'message.url']);
+                  const label = isImg ? t('图片') : isAud ? t('语音') : t('视频');
+                  const mediaIcon = isVid ? 'video-outline' : isAud ? 'microphone-outline' : 'image-outline';
+                  return (
+                    <TouchableOpacity
+                      key={`media-${msgTime(item)}-${index}`}
+                      style={styles.rankRow}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (url) {
+                          if (isImg) setMediaFullUrl(url);
+                          else setPlayMedia({ url, type: isAud ? 'audio' : 'video' });
+                        }
+                      }}
+                    >
+                      <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
+                        <MaterialCommunityIcons name={mediaIcon as any} size={16} color={palette.tint} />
+                      </View>
+                      <Text style={[styles.rankRowName, { color: palette.label }]} numberOfLines={1}>{label} · {senderName(item, t('未知用户'))}</Text>
+                      <Text style={[styles.rankRowCount, { color: palette.labelTertiary }]}>{formatTimestamp(msgTime(item)).slice(5, 16)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
           </ScrollView>
           )}
-        </FadeInView>
-      ) : null}
-
-      {tab === 'dates' ? (
-        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <PerfFlatList
-            data={dateStats}
-            keyExtractor={(item) => item.date}
-            contentContainerStyle={styles.content}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-            removeClippedSubviews
-            ListEmptyComponent={<EmptyState icon="calendar-month-outline" title={t('暂无日期数据')} />}
-            renderItem={({ item, index }) => {
-              const totalPct = (item.total / dateMax) * 100;
-              const memberPct = (item.member / dateMax) * 100;
-              return (
-                <FadeInView delay={80 + index * 30} duration={300}>
-                  <View style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-                    <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
-                      <MaterialCommunityIcons name="calendar-month-outline" size={20} color={palette.tint} />
-                    </View>
-                    <View style={styles.dateHeader}>
-                      <Text style={[styles.rowTitle, { color: palette.label }]}>{item.date}</Text>
-                      <Text style={[styles.rowMeta, { color: palette.labelTertiary }]}>
-                        <Text style={[styles.dateMember, { color: palette.tint }]}>{t('成员: {count}', { count: item.member })}</Text>{` | `}{t('总: {count}', { count: item.total })}
-                      </Text>
-                    </View>
-                    <View style={[styles.barWrap, { backgroundColor: palette.fill2 }]}>
-                      <View style={[styles.barFg, { width: `${totalPct}%`, backgroundColor: palette.tint, opacity: 0.25 }]} />
-                      <View style={[styles.barFg2, { width: `${memberPct}%`, backgroundColor: palette.tint }]} />
-                    </View>
-                  </View>
-                </FadeInView>
-              );
-            }}
-          />
-        </FadeInView>
-      ) : null}
-
-      {tab === 'senders' ? (
-        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <PerfFlatList
-            data={senders}
-            keyExtractor={(item) => item.key}
-            contentContainerStyle={styles.content}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-            removeClippedSubviews
-            renderItem={({ item, index }) => (
-              <FadeInView delay={80 + index * 30} duration={300}>
-                <View style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-                  <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
-                    <Text style={[styles.rankNo, { color: palette.tint }]}>{index + 1}</Text>
-                  </View>
-                  <View style={styles.rowBody}>
-                    <Text style={[styles.rowTitle, { color: palette.label }]} numberOfLines={1}>{item.key}</Text>
-                    <Text style={[styles.rowSub, { color: palette.labelSecondary }]} numberOfLines={1}>{t('发言 {count} 条', { count: item.count })}</Text>
-                  </View>
-                  <Text style={[styles.rankValue, { color: palette.tint }]}>{t('{count} 条', { count: item.count })}</Text>
-                </View>
-              </FadeInView>
-            )}
-            ListEmptyComponent={<EmptyState icon="account-group-outline" title={t('暂无发言数据')} />}
-          />
-        </FadeInView>
-      ) : null}
-
-      {tab === 'media' ? (
-        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <PerfFlatList
-            data={mediaMessages}
-            keyExtractor={(item, index) => `media-${index}`}
-            contentContainerStyle={styles.content}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-            removeClippedSubviews
-            ListHeaderComponent={
-              <View style={styles.statsGrid}>
-                {cards.slice(3).map((item) => (
-                  <View key={item.label} style={[styles.statCard, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
-                    <Text style={[styles.statValue, { color: palette.tint }]}>{item.value}</Text>
-                    <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t(item.label)}</Text>
-                  </View>
-                ))}
-              </View>
-            }
-            renderItem={({ item, index }) => {
-              const isImg = isMedia(item, 'image');
-              const isAud = isMedia(item, 'audio');
-              const isVid = isMedia(item, 'video');
-              const payload = messagePayload(item);
-              const url = pickText(payload, ['url', 'imageUrl', 'audioUrl', 'videoUrl', 'message.url']);
-              const dur = parseDurationSeconds(payload?.duration || payload?.time || payload?.second || payload?.audioTime || payload?.length || 0);
-              const durStr = dur > 0 ? (dur < 60 ? `${Math.round(dur)}s` : `${Math.floor(dur/60)}:${String(Math.round(dur)%60).padStart(2,'0')}`) : '';
-              const label = isImg ? t('图片') : isAud ? `${t('语音')}${durStr ? ` ${durStr}` : ''}` : `${t('视频')}${durStr ? ` ${durStr}` : ''}`;
-              const mediaIcon = isVid ? 'video-outline' : isAud ? 'microphone-outline' : 'image-outline';
-              return (
-                <FadeInView delay={80 + index * 30} duration={300}>
-                  <TouchableOpacity
-                    style={[styles.rowCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      if (url) {
-                        if (isImg) setMediaFullUrl(url);
-                        else setPlayMedia({ url, type: isAud ? 'audio' : 'video' });
-                      }
-                    }}
-                  >
-                    <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
-                      <MaterialCommunityIcons name={mediaIcon as any} size={20} color={palette.tint} />
-                    </View>
-                    <View style={styles.rowBody}>
-                      <Text style={[styles.rowTitle, { color: palette.label }]} numberOfLines={1}>{label} · {senderName(item, t('未知用户'))}</Text>
-                      <Text style={[styles.rowSub, { color: palette.labelSecondary }]} numberOfLines={2}>
-                        {messageText(item) || t('(无文字)')}
-                      </Text>
-                    </View>
-                    <Text style={[styles.rowMeta, { color: palette.labelTertiary }]}>{formatTimestamp(msgTime(item))}</Text>
-                  </TouchableOpacity>
-                </FadeInView>
-              );
-            }}
-            ListEmptyComponent={<EmptyState icon="image-off-outline" title={t('暂无媒体消息')} />}
-          />
         </FadeInView>
       ) : null}
 
@@ -905,6 +854,7 @@ const styles = StyleSheet.create({
   rankRowName: { fontSize: 13, fontWeight: '700', flex: 1, marginRight: 8 },
   rankTrack: { flex: 1, height: 10, borderRadius: 3, overflow: 'hidden', backgroundColor: 'transparent' },
   rankBar: { height: 10, borderRadius: 3 },
+  rankBarAbs: { position: 'absolute', top: 0, left: 0, height: 10, borderRadius: 3 },
   rankRowCount: { fontSize: 11, width: 28, textAlign: 'right', marginLeft: 8 },
   // 成员翻牌榜行右侧数值 + 迷你进度条
   flipRankVal: { alignItems: 'flex-end', maxWidth: 110 },
