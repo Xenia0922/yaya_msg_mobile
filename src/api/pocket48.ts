@@ -2,6 +2,7 @@ import { useMemberStore, useSettingsStore } from '../store';
 import { generatePa, generatePaAsync, getWasmError, initWasm } from '../auth';
 import { requestJson, xhrPost, fetchWithTimeout } from '../utils/network';
 import { unwrapList } from '../utils/data';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BASE = 'https://pocketapi.48.cn';
 const APP_VERSION = '7.0.41';
@@ -19,11 +20,35 @@ function createDeviceId(): string {
   return `${rand(8)}-${rand(4)}-${rand(4)}-${rand(4)}-${rand(12)}`;
 }
 
-const DEVICE_ID = createDeviceId();
+// 设备指纹持久化：DEVICE_ID 不再每次冷启动随机（随机 id 会被服务端风控判定为异常设备，
+// 也破坏「同一账号同一设备」的连续性）。首次生成后写入 AsyncStorage，后续启动复用；
+// 进程内同步先落一个临时 id 保证早期请求可用，AsyncStorage 读回后以持久值替换。
+const DEVICE_ID_KEY = 'yaya_device_id_v1';
+let DEVICE_ID = createDeviceId();
+let deviceIdLoaded = false;
+AsyncStorage.getItem(DEVICE_ID_KEY)
+  .then((saved) => {
+    if (saved) DEVICE_ID = saved;
+    deviceIdLoaded = true;
+  })
+  .catch(() => { deviceIdLoaded = true; });
+
+/** 等待持久化 DEVICE_ID 就绪（最多 ~800ms，超时用内存临时 id 兜底，不阻塞请求） */
+async function ensureDeviceId(): Promise<string> {
+  if (deviceIdLoaded) return DEVICE_ID;
+  const deadline = Date.now() + 800;
+  while (!deviceIdLoaded && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  if (deviceIdLoaded) return DEVICE_ID;
+  // 持久化未回（异常环境）：本次进程使用临时 id，并尝试补写
+  AsyncStorage.setItem(DEVICE_ID_KEY, DEVICE_ID).catch(() => {});
+  return DEVICE_ID;
+}
 
 // --- App Info / Headers factories ---
 
-function appInfo(modern = false) {
+function appInfo(modern = false, deviceId = DEVICE_ID) {
   if (modern) {
     return {
       vendor: 'apple',
@@ -38,7 +63,7 @@ function appInfo(modern = false) {
   }
   return {
     vendor: 'apple',
-    deviceId: DEVICE_ID,
+    deviceId,
     appVersion: APP_VERSION,
     appBuild: APP_BUILD,
     osVersion: '16.3.1',
@@ -48,7 +73,7 @@ function appInfo(modern = false) {
   };
 }
 
-function createHeaders(token?: string, pa?: string | null, modern = false): HeadersMap {
+function createHeaders(token?: string, pa?: string | null, modern = false, deviceId = DEVICE_ID): HeadersMap {
   const headers: HeadersMap = {
     'Content-Type': 'application/json;charset=utf-8',
     'User-Agent': modern
@@ -57,7 +82,7 @@ function createHeaders(token?: string, pa?: string | null, modern = false): Head
     Host: 'pocketapi.48.cn',
     'Accept-Language': 'zh-Hans-CN;q=1',
     Accept: '*/*',
-    appInfo: JSON.stringify(appInfo(modern)),
+    appInfo: JSON.stringify(appInfo(modern, deviceId)),
   };
   if (token) headers.token = token;
   if (pa) headers.pa = pa;
@@ -294,8 +319,9 @@ async function createSignedHeaders(token?: string, modern = false, patch: Header
     const reason = getWasmError();
     throw new Error(reason ? `签名模块未就绪：${reason}` : '签名模块未就绪，无法请求口袋接口');
   }
+  const deviceId = await ensureDeviceId();
   return {
-    ...createHeaders(token, pa, modern),
+    ...createHeaders(token, pa, modern, deviceId),
     ...patch,
   };
 }
@@ -303,7 +329,7 @@ async function createSignedHeaders(token?: string, modern = false, patch: Header
 async function rawPost(url: string, data: any, options: { token?: string; modern?: boolean; headers?: HeadersMap; signed?: boolean } = {}) {
   const token = options.token ?? tokenFromStore();
   const headers = options.signed === false
-    ? { ...createHeaders(token, null, !!options.modern), ...(options.headers || {}) }
+    ? { ...createHeaders(token, null, !!options.modern, await ensureDeviceId()), ...(options.headers || {}) }
     : await createSignedHeaders(token, !!options.modern, options.headers || {});
   return xhrPost(url, data, headers);
 }
@@ -956,7 +982,7 @@ export const pocketApi = {
     }, { tokenRequired: false, fallback: '获取个人相册失败' });
   },
 
-  async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean; debug?: boolean; next?: number; size?: number }) {
+  async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean; debug?: boolean; next?: number; size?: number; userId?: number | string }) {
     const payload: any = {
       groupId: params.groupId ?? 0,
       debug: params.debug ?? false,
@@ -964,9 +990,26 @@ export const pocketApi = {
       next: params.next ?? 0,
       record: params.record ?? false,
     };
+    // 按成员（userId）服务端直查：桌面基线 fetchLiveList / 48tools requestLiveList 均透传 userId，
+    // 服务端原生支持按成员过滤直播/录播，避免「全量加载全局列表再前端筛选」导致的历史数据缺失。
+    // 注意官方坑：next=0 时带 userId 查不到数据，首次查询需先取列表最新 liveId 作为 next（调用方处理）。
+    if (params.userId !== undefined && params.userId !== null && params.userId !== '') {
+      payload.userId = Number(params.userId) || String(params.userId);
+    }
     if (params.page !== undefined) payload.page = params.page;
     if (params.size !== undefined) payload.size = params.size;
     return pocketPost(`${BASE}/live/api/v1/live/getLiveList`, payload, { tokenRequired: false, fallback: '获取直播列表失败' });
+  },
+
+  /** 服务端搜索（房间/成员/话题，48tools 同款 im/server/search）：返回 content.serverApiList[]，
+   *  每项含 serverId/serverName/serverIcon/serverOwner/followStatus。需登录 token。 */
+  async serverSearch(searchContent: string) {
+    return pocketPost(`${BASE}/im/api/v1/im/server/search`, { searchContent: String(searchContent || '').trim() }, { fallback: '搜索失败' });
+  },
+
+  /** 服务端跳转：由 starId 获取 serverId/channelId（进入房间/会话定位用，48tools 同款 im/server/jump） */
+  async serverJump(starId: number | string) {
+    return pocketPost(`${BASE}/im/api/v1/im/server/jump`, { starId: Number(starId), targetType: 1 }, { fallback: '获取房间信息失败' });
   },
 
   async operateRoomVoice(params: { channelId: string; serverId: string }) {

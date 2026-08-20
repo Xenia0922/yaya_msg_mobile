@@ -289,9 +289,9 @@ export default function HomeScreen() {
         }
       })
       .catch((e: any) => {
-        // 有缓存时网络失败不打断展示（保留缓存内容，仅静默）
+        // 有缓存时网络失败不打断展示（保留缓存内容，仅静默）；
+        // 无缓存时 livesOk 保持 false 走错误态（此前 setLivesOk(prev => prev || false) 为恒等无效操作，已删除）
         if (!fetchedRef.current) setLivesError(e?.message || String(e));
-        setLivesOk((prev) => prev || false);
       });
   }, []);
 

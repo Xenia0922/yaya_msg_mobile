@@ -48,6 +48,9 @@ type TrackUrlResolver = (track: Track) => Promise<string | null>;
 export const MusicEngine = {
   get state() { return useMusicPlayerStore.getState(); },
   _urlResolver: null as TrackUrlResolver | null,
+  // 播放请求序号：快速连点 play/resume 时递增，仅最新请求的 URL 解析结果可写回 store，
+  // 防止慢响应（旧曲目解析晚于新曲目）覆盖当前播放曲目导致「播错歌」。
+  _playSeq: 0,
 
   setUrlResolver(resolver: TrackUrlResolver) {
     this._urlResolver = resolver;
@@ -139,20 +142,24 @@ export const MusicEngine = {
    * 不再持有/操作 Video ref，不放 seek 锁。
    */
   async playTrack(track: Track, queue?: Track[]) {
+    const seq = ++this._playSeq;
     const store = useMusicPlayerStore.getState();
     store.play(track, queue);
     this._fetchLyrics(track);
     this._initDefaultResolver();
     const resolver = await this._waitForResolver();
+    if (seq !== this._playSeq) return; // 等待期间用户已发起更新的播放请求
     if (!resolver) { store.setError('解析器未就绪'); return; }
     try {
       const url = await resolver(track);
+      if (seq !== this._playSeq) return; // 解析期间用户已切换曲目，丢弃旧响应
       if (!url) throw new Error('no url');
       if (!isPlayableHost(url)) throw new Error('不支持的播放源');
       if (!/^https?:\/\//i.test(url)) throw new Error('非法播放地址');
       store.setUrl(url);
       store.setPlaybackState('playing');
     } catch (e: any) {
+      if (seq !== this._playSeq) return;
       store.setError(e?.message || 'play failed');
       // 无效的歌曲自动跳到下一首；但 single 模式/仅一首时 next() 会绕回同曲
       // （nextIndex 返回 current），造成无限重试，必须停在 error 态由用户手动处理
@@ -167,6 +174,7 @@ export const MusicEngine = {
    * 与 playTrack 的区别：playTrack 永远从 0 开始，resume 从记忆位置继续。
    */
   async resume() {
+    const seq = ++this._playSeq;
     const store = useMusicPlayerStore.getState();
     const track = store.queue[store.currentIndex];
     if (!track) return null;
@@ -174,9 +182,11 @@ export const MusicEngine = {
     this._fetchLyrics(track);
     this._initDefaultResolver();
     const resolver = await this._waitForResolver();
+    if (seq !== this._playSeq) return null; // 已有更新的播放请求
     if (!resolver) { store.setError('解析器未就绪'); return null; }
     try {
       const url = await resolver(track);
+      if (seq !== this._playSeq) return null; // 解析期间用户已切换，丢弃旧响应
       if (!url) throw new Error('no url');
       if (!isPlayableHost(url)) throw new Error('不支持的播放源');
       if (!/^https?:\/\//i.test(url)) throw new Error('非法播放地址');

@@ -68,10 +68,16 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
   const [loaded, setLoaded] = React.useState(false);
   const retried = React.useRef(false);
   const mounted = React.useRef(true);
+  const retryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
+    return () => {
+      mounted.current = false;
+      // 卸载时清理 3s 重试定时器，防止卸载后仍对已卸载组件 setState
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    };
   }, []);
 
   // uri 变化重置（FlatList 回收单元格复用本组件实例时，避免上一首的状态串到新歌）
@@ -79,6 +85,7 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     setErrored(false);
     setLoaded(false);
     retried.current = false;
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
   }, [uri]);
 
   // 15s 超时兜底：从未成功加载（loaded=false）时强制回退渐变，防「死块」永久遮挡。
@@ -94,7 +101,11 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     if (!retried.current) {
       retried.current = true;
       if (mounted.current) setErrored(true);
-      setTimeout(() => { if (mounted.current) setErrored(false); }, 3000);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        if (mounted.current) setErrored(false);
+      }, 3000);
     } else {
       if (mounted.current) setErrored(true);
     }

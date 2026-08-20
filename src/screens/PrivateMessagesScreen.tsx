@@ -389,6 +389,11 @@ export default function PrivateMessagesScreen() {
   const flatRef = useRef<FlatList>(null);
   const [playUrl, setPlayUrl] = useState('');
   const requestIdRef = useRef(0);
+  // 会话切换竞态防护：快速切换会话时丢弃慢响应，避免旧会话数据覆盖新会话
+  const convRequestIdRef = useRef(0);
+  // 回底滚动定时器句柄：卸载/切换会话时清理，防止卸载后触发
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current); }, []);
 
   const member = useMemo(() => {
     if (!sel) return null;
@@ -461,23 +466,30 @@ export default function PrivateMessagesScreen() {
   };
 
   const openConv = async (c: any) => {
+    const requestId = ++convRequestIdRef.current;
     setSel(c); setMsgs([]); setNextTime(0); setHasMore(false); setFlipType(0); setPlayUrl('');
     setLoading(true);
+    if (scrollTimerRef.current) { clearTimeout(scrollTimerRef.current); scrollTimerRef.current = null; }
     try {
       if (!uid) {
         const info = await pocketApi.getNimLoginInfo().catch(() => null);
         const id = pickText(info, ['content.userInfo.userId', 'content.userId', 'id', 'userId']);
-        if (id) setUid(String(id));
+        if (id && requestId === convRequestIdRef.current) setUid(String(id));
       }
       const res = await pocketApi.getPrivateMessageDetail(convTargetId(c));
+      if (requestId !== convRequestIdRef.current) return; // 已切换会话，丢弃慢响应
       const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'messageList', 'list']);
       const sorted = oldestFirst(list, msgTimeNumber);
       setMsgs(sorted);
       setNextTime(Number(res?.content?.nextTime || res?.data?.nextTime || 0));
       setHasMore(sorted.length > 0);
-      setTimeout(() => flatRef.current?.scrollToEnd?.({ animated: false }), 150);
-    } catch (e) { showToast(t('加载失败：{msg}', { msg: errorMessage(e) })); }
-    finally { setLoading(false); }
+      scrollTimerRef.current = setTimeout(() => flatRef.current?.scrollToEnd?.({ animated: false }), 150);
+    } catch (e) {
+      if (requestId !== convRequestIdRef.current) return;
+      showToast(t('加载失败：{msg}', { msg: errorMessage(e) }));
+    } finally {
+      if (requestId === convRequestIdRef.current) setLoading(false);
+    }
   };
 
   const loadMore = async () => {

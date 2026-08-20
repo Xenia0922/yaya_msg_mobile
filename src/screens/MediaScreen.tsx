@@ -642,7 +642,15 @@ export default function MediaScreen() {
             const merged = [...prev];
             for (const it of items) {
               const key = it.nick ? `${it.nick}:${it.text}` : it.text;
-              if (!seenMsg.has(key)) { seenMsg.add(key); merged.push(it); }
+              if (!seenMsg.has(key)) {
+                seenMsg.add(key);
+                // 长播防泄漏：去重集超出窗口后重建（最多短暂放行少量重复，避免无限增长直至 OOM）
+                if (seenMsg.size > 3000) {
+                  seenMsg.clear();
+                  seenMsg.add(key);
+                }
+                merged.push(it);
+              }
             }
             merged.sort((a, b) => a.time - b.time);
             return merged.slice(-800);
@@ -792,17 +800,8 @@ export default function MediaScreen() {
         );
       }
     }
-    // 选中成员后：先把列表收敛到该成员（昵称/标题/房间名/ID 命中），再叠加关键词搜索
-    if (selectedMember) {
-      const key = selectedMember.ownerName.toLowerCase();
-      const mid = String(selectedMember.id || '');
-      raw = raw.filter((item) =>
-        (item.nickname || '').toLowerCase().includes(key) ||
-        (item.title || '').toLowerCase().includes(key) ||
-        (item.liveRoomTitle || '').toLowerCase().includes(key) ||
-        (mid && String(item.liveId || '').includes(mid))
-      );
-    }
+    // 选中成员时数据已在服务端按 userId 直查（见 doFetch），此处无需内存筛选；
+    // 保留 selectedMember 依赖以在成员切换时触发重算（raw 源 vodList 已换为成员数据）。
     // 日历日期筛选：按录制日期(YYYY-MM-DD)精确过滤
     if (dateFilter) {
       const key = dateKeyOf(dateFilter);
@@ -964,13 +963,25 @@ export default function MediaScreen() {
     return () => subscription.remove();
   }, [playing]);
 
-  const doFetch = useCallback(async (mode: 'live' | 'vod', cursor = 0, append = false, silent = false) => {
+  const doFetch = useCallback(async (mode: 'live' | 'vod', cursor = 0, append = false, silent = false, userId?: string | number) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     if (!silent) setLoading(true);
     setError('');
     try {
-      const res = await pocketApi.getLiveList({ next: cursor, record: mode === 'vod', debug: true });
+      let finalCursor = cursor;
+      // 官方坑（桌面基线 fetchLiveList / 48tools 同款修复）：next=0 时带 userId 查询拿不到数据，
+      // 需先发一次不带 userId 的请求取列表最新 liveId 作为 next，再按成员直查。
+      if (userId !== undefined && userId !== null && userId !== '' && Number(cursor) === 0) {
+        const probe = await pocketApi.getLiveList({ next: 0, record: mode === 'vod', debug: true }).catch(() => null);
+        if (probe) {
+          const probeList = normalizeLiveList(probe);
+          const probeNext = Number((probe as any)?.content?.next ?? (probe as any)?.data?.next ?? 0) || 0;
+          if (probeList[0]?.liveId) finalCursor = Number(probeList[0].liveId) || probeNext || 0;
+          else if (probeNext) finalCursor = probeNext;
+        }
+      }
+      const res = await pocketApi.getLiveList({ next: finalCursor, record: mode === 'vod', debug: true, userId });
       const next = normalizeLiveList(res);
       const nextToken = Number((res as any)?.content?.next ?? (res as any)?.data?.next ?? (res as any)?.next ?? 0) || 0;
       setNextCursor(nextToken);
@@ -1004,14 +1015,28 @@ export default function MediaScreen() {
   // 选中成员时切到「回放」并重置列表，立即触发首屏加载。
   // 用 setTimeout(0) 让上面的 setState 先提交，避免读到切换前的旧 tab；
   // 覆盖「已在 vod tab 时初始加载 effect 不触发」以及「切 tab 时 loadingRef 把自动翻页挡掉」两种情况。
-  // 首屏加载后，下方自动翻页 effect 会在未命中该成员时继续补齐更多页。
+  // 成员检索改为服务端 userId 直查（对齐桌面基线/48tools）：getLiveList 带 userId 即返回该成员
+  // 完整直播/录播，替代「全量加载全局列表再前端筛选」——旧实现只能筛到已加载页面内的数据，
+  // 成员较早的录播永远搜不到。
   useEffect(() => {
     if (!selectedMember) return;
+    const mid = String(selectedMember.id || (selectedMember as any).userId || (selectedMember as any).memberId || '');
     setVodList([]); setNextCursor(0); setHasMore(true);
     setTab('vod');
-    const id = setTimeout(() => doFetch('vod', 0), 0);
+    const id = setTimeout(() => doFetch('vod', 0, false, false, mid), 0);
     return () => clearTimeout(id);
   }, [selectedMember, doFetch]);
+
+  // 退出成员筛选（selectedMember 清空）时恢复全局录播列表：成员模式下 vodList 存的是该成员数据，
+  // 不恢复会导致后续「全部/团/关注」看到的是残留的成员列表。
+  const prevMemberRef = useRef<any>(null);
+  useEffect(() => {
+    if (prevMemberRef.current && !selectedMember && tab === 'vod') {
+      setVodList([]); setNextCursor(0); setHasMore(true);
+      doFetch('vod', 0);
+    }
+    prevMemberRef.current = selectedMember;
+  }, [selectedMember, doFetch, tab]);
 
   // 搜索 / 选中成员 / 「关注」tag：自动翻页补齐更多数据（关注录播常分散在多页，只加载首屏会找不到）
   // 未筛选时（无搜索、无成员、非关注）不自动翻页，仅靠用户上滑 onEndReached 触发。
@@ -1273,7 +1298,8 @@ export default function MediaScreen() {
 
   const loadMore = (silent = false) => {
     if (loading || loadingRef.current || !hasMore) return;
-    doFetch(tab, nextCursorRef.current, true, silent);
+    const mid = selectedMember ? String(selectedMember.id || (selectedMember as any).userId || (selectedMember as any).memberId || '') : undefined;
+    doFetch(tab, nextCursorRef.current, true, silent, mid || undefined);
   };
 
   const startPlay = async (item: VODItem) => {

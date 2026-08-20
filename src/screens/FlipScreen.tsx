@@ -331,7 +331,9 @@ export default function FlipScreen() {
     const flat: { type: 'header' | 'item'; key: string; title?: string; item?: any }[] = [];
     for (const k of order) {
       flat.push({ type: 'header', key: `h-${k}`, title: k });
-      map.get(k)!.forEach((it) => flat.push({ type: 'item', key: `i-${String(it.questionId || it.id || Math.random())}`, item: it }));
+      // key 兜底用「组内序号」而非 Math.random()：random 会在每次渲染/滚动时重算，
+      // 导致项身份不稳定、触发整列重挂载与入场动画重放。
+      map.get(k)!.forEach((it, idx) => flat.push({ type: 'item', key: `i-${String(it.questionId || it.id || 'x')}-${idx}`, item: it }));
     }
     return flat;
   }, [flips, t]);

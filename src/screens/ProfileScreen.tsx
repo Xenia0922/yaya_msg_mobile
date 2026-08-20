@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -53,8 +53,11 @@ export default function ProfileScreen() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [archive, setArchive] = useState<ArchiveState>({ data: null, history: [], error: '' });
   const [loading, setLoading] = useState(false);
+  // 成员切换竞态防护：快速切换成员时丢弃慢响应，避免旧成员的档案覆盖新成员
+  const profileReqRef = useRef(0);
 
   const loadProfile = async (member: Member) => {
+    const requestId = ++profileReqRef.current;
     setSelectedMember(member);
     setArchive({ data: null, history: [], error: '' });
     setLoading(true);
@@ -64,6 +67,7 @@ export default function ProfileScreen() {
         pocketApi.getStarArchives(memberId).catch((e: any) => ({ __error: e?.message || String(e) })),
         pocketApi.getStarHistory(memberId).catch(() => null),
       ]);
+      if (requestId !== profileReqRef.current) return; // 已切换成员，丢弃慢响应
 
       const data = archiveRes?.content || archiveRes?.data || archiveRes;
       const error = data?.__error ? String(data.__error) : '';
@@ -76,7 +80,7 @@ export default function ProfileScreen() {
         error,
       });
     } finally {
-      setLoading(false);
+      if (requestId === profileReqRef.current) setLoading(false);
     }
   };
 

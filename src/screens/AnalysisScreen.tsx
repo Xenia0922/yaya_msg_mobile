@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import { Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -130,6 +130,8 @@ export default function AnalysisScreen() {
   const [status, setStatus] = useState(t('暂无数据'));
   const [loadError, setLoadError] = useState('');
   const [mediaFullUrl, setMediaFullUrl] = useState('');
+  // 成员切换竞态防护：快速切换成员时丢弃慢响应（房间统计循环翻页较久，旧响应不得覆盖新成员）
+  const statsReqRef = useRef(0);
   const [playMedia, setPlayMedia] = useState<{ url: string; type: string } | null>(null);
   const [flipPlayUrl, setFlipPlayUrl] = useState('');
   const [flipMemberFilter, setFlipMemberFilter] = useState('');
@@ -249,6 +251,7 @@ export default function AnalysisScreen() {
   }
 
   const loadRoomStats = async (nextMember: Member) => {
+    const requestId = ++statsReqRef.current;
     setMember(nextMember);
     setLoading(true);
     setStatus('');
@@ -258,6 +261,7 @@ export default function AnalysisScreen() {
       let nextTime = 0;
       const collected: any[] = [];
       for (let page = 0; page < 20; page += 1) {
+        if (requestId !== statsReqRef.current) return; // 已切换成员，丢弃慢响应
         const res = await pocketApi.getRoomMessages({
           channelId: String(nextMember.channelId || ''),
           serverId: String(nextMember.serverId || ''),
@@ -272,6 +276,7 @@ export default function AnalysisScreen() {
         nextTime = Number.isFinite(contentNext) && contentNext > 0 ? contentNext : 0;
         if (!nextTime) break;
       }
+      if (requestId !== statsReqRef.current) return; // 已切换成员，丢弃慢响应
       const seen = new Set<string>();
       const unique = collected.filter((item, index) => {
         const key = messageKey(item, index);
@@ -283,12 +288,13 @@ export default function AnalysisScreen() {
       setStatus(unique.length ? t('已加载 {count} 条房间消息', { count: unique.length }) : t('没有可统计的房间消息'));
       showToast(unique.length ? t('已加载 {count} 条消息', { count: unique.length }) : t('无房间消息可统计'));
     } catch (error) {
+      if (requestId !== statsReqRef.current) return;
       setMessages([]);
       setLoadError(errorMessage(error));
       setStatus(t('加载失败：{err}', { err: errorMessage(error) }));
       showToast(t('加载失败：{err}', { err: errorMessage(error) }));
     } finally {
-      setLoading(false);
+      if (requestId === statsReqRef.current) setLoading(false);
     }
   };
 
