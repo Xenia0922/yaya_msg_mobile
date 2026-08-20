@@ -1081,7 +1081,7 @@ export default function FollowedRoomsScreen() {
 
   useEffect(() => { loadFollowed(true); }, [loadFollowed]);
 
-  const openRoom = useCallback(async (room: Member, nextMode = roomMode, includeFans = showFanMessages) => {
+  const openRoom = useCallback(async (room: Member, nextMode: RoomMode = 'big', includeFans = showFanMessages) => {
     const channelId = roomChannelId(room, nextMode);
     if (!channelId) {
       showToast(nextMode === 'small' ? t('这个成员缺少小房间 channelId，无法打开小房间。') : t('这个成员缺少大房间 channelId，无法打开房间。'));
