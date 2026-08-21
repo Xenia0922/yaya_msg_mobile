@@ -1750,7 +1750,7 @@ export default function FollowedRoomsScreen() {
                       // 视频消息：优先用服务器封面，否则用视频首帧（paused 渲染）做封面。
                       // 正在播放时隐藏封面卡：无论是 roomPlayer 全屏播放器还是下方内联播放器，
                       // 都必须与封面首帧 Video 互斥 —— 否则一条消息同时渲染两个 Video 实例，
-                      // Android 上多个播放器叠加会互相遮盖/错位（"一个视频两个播放器"、画面被切/斜 45°）。
+                      // Android 上多个播放器叠加会互相遮盖/错位（"一个视频两个播放器"、画面被切/斜 90°）。
                       // 全屏播放时隐藏全部视频封面（SurfaceView 叠加问题不只影响当前条）。
                       (roomPlayerFullscreen || roomPlayer?.url === media.url || playingMedia?.url === media.url) ? null : (
                         <VideoCoverCard media={media} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} />
