@@ -43,8 +43,6 @@ npm install --legacy-peer-deps
 node scripts/build-apk.js
 ```
 
-产物输出到 `E:/yymsg/APK/`。
-
 ## 兼容
 
 鸿蒙 2/3/4 与 Android 8.0+（minSdk 26）。
