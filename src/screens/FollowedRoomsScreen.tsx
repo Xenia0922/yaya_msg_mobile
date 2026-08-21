@@ -32,6 +32,7 @@ import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp } from '../utils/format';
+import { findMediaDurationSeconds } from '../utils/mediaDuration';
 import { setPipPlaying } from '../utils/pip';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import {
@@ -628,7 +629,7 @@ function roomMedia(item: any): RoomMedia | null {
   }
   if (!url && !liveId) return null;
   const type = liveId ? 'live' : classifyMedia(url, msgType, text);
-  const durationSec = [item, ext, body].reduce((best, src) => best || deepFindDuration(src), 0);
+  const durationSec = [item, ext, body].reduce((best, src) => best || findMediaDurationSeconds(src), 0);
   const duration = durationSec > 0 ? String(Math.round(durationSec)) : '';
   // Audio/video 在房间里只用两个字前缀，避免「语音 语音消息」这种重复；live 保留完整标签
   const title = type === 'audio' ? t('语音')
@@ -686,26 +687,114 @@ function playerSource(url: string) {
   };
 }
 
+// 自适应宽高比的视频容器：监听 react-native-video onLoad 取 naturalSize，
+// 用真实宽高比驱动容器 aspectRatio，避免硬编码高度把竖屏 9:16 / 横屏 16:9 / 方屏 1:1 视频全部压扁或上下拉黑出现"上下两条"。
+// - 默认 16:9，避免第一帧 onLoad 之前视觉塌陷
+// - maxHeight 防止异常长方形视频挤爆消息气泡
+// - borderRadius / backgroundColor 与 inlineVideo 旧样式一致
+function AdaptiveAspectVideo({
+  url,
+  paused,
+  controls,
+  muted,
+  onLoad,
+  resizeMode = 'contain',
+  maxHeight = 340,
+  portraitWidth = 200,
+}: {
+  url: string;
+  paused?: boolean;
+  controls?: boolean;
+  muted?: boolean;
+  onLoad?: (data: any) => void;
+  resizeMode?: 'contain' | 'cover' | 'stretch' | 'none';
+  /** 视频画面最大高度（防异常超高/超长视频撑爆气泡） */
+  maxHeight?: number;
+  /** 竖屏（9:16 等）视频的显示宽度：竖屏视频按此窄宽 + 真实比例渲染，避免被横向撑满后上下压扁 */
+  portraitWidth?: number;
+}) {
+  const [aspect, setAspect] = useState<number | null>(null);
+  // 容器实际宽度（onLayout 测量）。RN 的 width:100% + aspectRatio + maxHeight 三者会互相冲突
+  // （高度被 clamp 时宽度不联动，导致竖屏视频被压扁/变形）—— 所以改为「量宽 → 按真实比例算高」。
+  const [boxW, setBoxW] = useState(0);
+  const handleLoad = (data: any) => {
+    try {
+      const w = Number(data?.naturalSize?.width);
+      const h = Number(data?.naturalSize?.height);
+      if (w > 0 && h > 0) {
+        setAspect(w / h);
+      }
+    } catch {}
+    if (onLoad) onLoad(data);
+  };
+  const ratio = aspect && aspect > 0 ? aspect : 16 / 9;
+  const isPortrait = ratio < 1;
+  // 竖屏：窄宽 + 真实比例（高 = 宽 / ratio）；横屏/方屏：铺满可用宽，高度按比例，超 maxHeight 再降宽
+  const vw = isPortrait ? portraitWidth : boxW > 0 ? boxW : undefined;
+  let vh: number | undefined;
+  if (vw && ratio > 0) {
+    vh = Math.round(vw / ratio);
+    if (!isPortrait && vh > maxHeight) vh = maxHeight;
+  } else if (!vw) {
+    vh = 190; // onLayout 前占位
+  }
+  const container = {
+    width: '100%' as const,
+    marginTop: 8,
+    backgroundColor: '#000',
+    borderRadius: 12,
+    overflow: 'hidden' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  };
+  return (
+    <View style={container} onLayout={(e) => setBoxW(Math.round(e.nativeEvent.layout.width))}>
+      <Video
+        source={playerSource(url)}
+        style={{ width: vw || '100%', height: vh, backgroundColor: '#000' } as any}
+        paused={paused}
+        controls={controls}
+        muted={muted}
+        resizeMode={resizeMode}
+        ignoreSilentSwitch="ignore"
+        playInBackground={false}
+        playWhenInactive={false}
+        onLoad={handleLoad}
+      />
+    </View>
+  );
+}
+
 function VideoCoverCard({ media, onPress, onLongPress }: { media: RoomMedia; onPress: () => void; onLongPress: () => void }) {
   const palette = usePalette();
   const [loaded, setLoaded] = useState(false);
+  const [aspect, setAspect] = useState<number | null>(null);
   const hasCover = !!media.cover;
+  // 用真实视频宽高比驱动封面卡片比例（onLoad 后异步更新）。加载未完成前用 1:1 占位，避免抖动。
+  const ratio = aspect && aspect > 0 ? aspect : 1;
+  const wrapStyle = [styles.videoCoverWrap, { aspectRatio: ratio }];
+  const imgStyle = [styles.videoCoverImg, { aspectRatio: ratio }];
   return (
-    <TouchableOpacity style={styles.videoCoverWrap} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.9}>
+    <TouchableOpacity style={wrapStyle as any} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.9}>
       {hasCover ? (
-        <Image source={{ uri: media.cover }} style={styles.videoCoverImg} resizeMode="cover" />
+        <Image source={{ uri: media.cover }} style={imgStyle as any} resizeMode="cover" />
       ) : (
-        <View style={styles.videoCoverImg}>
+        <View style={imgStyle as any}>
           <Video
             source={playerSource(media.url)}
-            style={StyleSheet.absoluteFill}
+            style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
             paused
             controls={false}
             resizeMode="cover"
             muted
             playWhenInactive
             playInBackground
-            onLoad={() => setLoaded(true)}
+            onLoad={(data: any) => {
+              setLoaded(true);
+              const w = Number(data?.naturalSize?.width);
+              const h = Number(data?.naturalSize?.height);
+              if (w > 0 && h > 0) setAspect(w / h);
+            }}
           />
           {!loaded ? (
             <View style={styles.videoCoverPlaceholder}>
@@ -804,49 +893,8 @@ function avatarInitial(name: string) {
   return (name || t('用')).trim().slice(0, 1).toUpperCase();
 }
 
-const DURATION_KEYS = new Set([
-  'duration', 'audioTime', 'voiceTime', 'voiceLength', 'fileDuration',
-  'mediaDuration', 'msgDuration', 'seconds', 'playTime', 'totalTime',
-  'length', 'timeLength', 'mediaLength', 'videoTime', 'time',
-  'videoLen', 'audioLen', 'voiceLen', 'mediaLen', 'fileTime', 'mediaTime', 'videoDuration', 'audioDuration',
-]);
-
-function deepFindDuration(value: any, depth = 0): number {
-  if (!value || depth > 5) return 0;
-  // 时长归一：0-600 视为秒（语音/短视频消息不会超 10 分钟）；600~24h*1000 视为毫秒
-  // （÷1000，房间消息语音/视频时长常以毫秒返回，如 15000 = 15 秒，避免显示成 15000s）；
-  // 更大的（Unix 秒/毫秒时间戳，如 time 字段）一律无效，防止误显示成时间戳
-  const normalize = (n: number): number => {
-    if (!Number.isFinite(n) || n <= 0) return 0;
-    if (n <= 600) return n;
-    if (n <= 86400000) return Math.round(n / 1000);
-    return 0;
-  };
-  if (typeof value === 'number') return normalize(value);
-  if (typeof value === 'string') {
-    return normalize(parseFloat(value.trim()));
-  }
-  if (typeof value !== 'object') return 0;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const d = deepFindDuration(item, depth + 1);
-      if (d > 0) return d;
-    }
-    return 0;
-  }
-  for (const [key, v] of Object.entries(value)) {
-    if (DURATION_KEYS.has(key)) {
-      const n = typeof v === 'number' ? v : parseFloat(String(v || '').trim());
-      const d = normalize(n);
-      if (d > 0) return d;
-    }
-  }
-  for (const child of Object.values(value)) {
-    const d = deepFindDuration(child, depth + 1);
-    if (d > 0) return d;
-  }
-  return 0;
-}
+// 时长归一逻辑：详见 src/utils/mediaDuration.ts（findMediaDurationSeconds）。
+// 该工具按字段名区分秒/毫秒，过滤掉「time」「seconds」等与时长无关的宽泛字段。
 
 export default function FollowedRoomsScreen() {
   const palette = usePalette();
@@ -931,8 +979,11 @@ export default function FollowedRoomsScreen() {
 
   useEffect(() => {
     setLiveImmersiveMode(!!roomPlayer && roomPlayerFullscreen);
-    // 不再强制锁横/竖屏：方向跟随手机持握（旋转手机自然横屏），
-    // 避免点开房间消息视频被强制全屏+强制横屏与持握方向冲突
+    if (roomPlayerFullscreen) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    }
     return () => setLiveImmersiveMode(false);
   }, [roomPlayer, roomPlayerFullscreen]);
 
@@ -1153,37 +1204,13 @@ export default function FollowedRoomsScreen() {
       // 房间名 + 背景图：room/info -> channelInfo.channelName / channelInfo.bgImg（按 channelId 缓存，异步拉取不阻塞消息）
       const cachedMeta = roomMetaCache.current[channelId];
       if (cachedMeta !== undefined) {
-        // 会话内命中：bg 已下载过（Fresco 磁盘缓存）→ 秒显
-        if (cachedMeta.bg) Image.prefetch(cachedMeta.bg).catch(() => {});
         setRoomMeta(cachedMeta);
       } else {
         roomMetaCache.current[channelId] = { name: '', bg: '' };
-        // 跨会话磁盘缓存（房间名 + bg URL），命中则跳过网络 + 图片从磁盘秒出
-        let diskMeta: { name: string; bg: string } | null = null;
-        try {
-          const raw = await AsyncStorage.getItem(`yaya_room_meta_${channelId}`);
-          if (raw) diskMeta = JSON.parse(raw);
-        } catch { diskMeta = null; }
-        if (diskMeta && diskMeta.name) {
-          roomMetaCache.current[channelId] = diskMeta;
-          if (diskMeta.bg) Image.prefetch(diskMeta.bg).catch(() => {});
-          setRoomMeta(diskMeta);
-        } else {
-          // 小房间 room/info 服务端 2001 无权限（实测）→ 塞纳河 server/detail 拿 channelInfoList 房间名 + 背景墙图
-          pocketApi.getRoomMeta(channelId, nextMode === 'small' ? room.channelId : undefined, room.serverId)
-            .then((meta) => {
-              roomMetaCache.current[channelId] = meta;
-              AsyncStorage.setItem(`yaya_room_meta_${channelId}`, JSON.stringify(meta)).catch(() => {});
-              // 房间名先秒显；bg 先 prefetch 下载完成再渲染 → 背景图从缓存秒出，无 loading 渐变
-              setRoomMeta((m) => ({ ...m, name: meta.name }));
-              if (meta.bg) {
-                Image.prefetch(meta.bg)
-                  .then(() => setRoomMeta((m) => ({ ...m, bg: meta.bg || '' })))
-                  .catch(() => setRoomMeta((m) => ({ ...m, bg: meta.bg || '' })));
-              }
-            })
-            .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; });
-        }
+        // 小房间 room/info 服务端 2001 无权限（实测）→ 塞纳河 server/detail 拿 channelInfoList 房间名 + 背景墙图
+        pocketApi.getRoomMeta(channelId, nextMode === 'small' ? room.channelId : undefined, room.serverId)
+          .then((meta) => { roomMetaCache.current[channelId] = meta; setRoomMeta(meta); })
+          .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; });
       }
     } catch (error) {
       showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
@@ -1252,8 +1279,9 @@ export default function FollowedRoomsScreen() {
         return;
       }
       if (next.type === 'video') {
-        // 点击内嵌播放（不自动全屏）；要看全屏自己点「全屏」按钮
-        setPlayingMedia(next);
+        // 视频点击直接进入全屏播放器，不再在消息下方展开内嵌播放器
+        setRoomPlayer({ ...next, needsVlc: streamNeedsProxy(next.url) });
+        setRoomPlayerFullscreen(true);
         return;
       }
       setPlayingMedia(next);
@@ -1719,21 +1747,12 @@ export default function FollowedRoomsScreen() {
                         </View>
                       </TouchableOpacity>
                     ) : media.type === 'video' && media.url ? (
-                      // 视频消息：优先用服务器封面，否则用视频首帧（paused 渲染）做封面
-                      playingMedia?.url === media.url ? (
-                        // 已点击：内嵌播放器替代封面卡片（带 controls）
-                        <View style={styles.videoCoverWrap}>
-                          <Video
-                            source={playerSource(media.url)}
-                            style={styles.inlineVideo}
-                            controls
-                            paused={false}
-                            resizeMode="contain"
-                            ignoreSilentSwitch="ignore" playInBackground playWhenInactive
-                            onEnd={() => setPlayingMedia(null)}
-                          />
-                        </View>
-                      ) : (
+                      // 视频消息：优先用服务器封面，否则用视频首帧（paused 渲染）做封面。
+                      // 正在播放时隐藏封面卡：无论是 roomPlayer 全屏播放器还是下方内联播放器，
+                      // 都必须与封面首帧 Video 互斥 —— 否则一条消息同时渲染两个 Video 实例，
+                      // Android 上多个播放器叠加会互相遮盖/错位（"一个视频两个播放器"、画面被切/斜 45°）。
+                      // 全屏播放时隐藏全部视频封面（SurfaceView 叠加问题不只影响当前条）。
+                      (roomPlayerFullscreen || roomPlayer?.url === media.url || playingMedia?.url === media.url) ? null : (
                         <VideoCoverCard media={media} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} />
                       )
                     ) : (
@@ -1782,13 +1801,12 @@ export default function FollowedRoomsScreen() {
                           />
                         </View>
                       ) : (
-                        <Video
-                          source={playerSource(media.url)}
-                          style={styles.inlineVideo}
+                        <AdaptiveAspectVideo
+                          url={media.url}
                           controls
                           paused={false}
                           resizeMode="contain"
-                          ignoreSilentSwitch="ignore" playInBackground playWhenInactive
+                          maxHeight={340}
                         />
                       )
                     ) : null}
@@ -2322,8 +2340,8 @@ const styles = StyleSheet.create({
   liveCardWrap: { marginTop: 8, width: 228, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.1)' },
   liveCardImg: { width: 228, height: 228, borderRadius: 14 },
   liveCardOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 36, alignItems: 'center', justifyContent: 'center' },
-  videoCoverWrap: { marginTop: 8, width: 228, height: 228, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center' },
-  videoCoverImg: { width: 228, height: 228, borderRadius: 14 },
+  videoCoverWrap: { marginTop: 8, width: '100%', maxWidth: 228, aspectRatio: 1, borderRadius: 14, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center' },
+  videoCoverImg: { width: '100%', aspectRatio: 1, borderRadius: 14 },
   videoCoverOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   videoCoverDuration: { position: 'absolute', right: 8, bottom: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.5)' },
   videoCoverDurationText: { color: '#fff', fontSize: 11, fontWeight: '700' },
@@ -2342,8 +2360,9 @@ const styles = StyleSheet.create({
   inlineAudio: { height: 52, minWidth: 224, marginTop: 8 },
   inlineAudioWrap: { height: 0, overflow: 'hidden' },
   inlineAudioHidden: { height: 0, width: 0 },
-  inlineVideo: { height: 190, minWidth: 246, marginTop: 8, backgroundColor: '#000', borderRadius: 12 },
-  inlineImage: { width: 228, height: 228, marginTop: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
+  // 内联视频已交给 <AdaptiveAspectVideo /> 处理真实宽高比，不再用固定 height/minWidth。
+  // （保留 inlineImage / inlineSticker 等其它媒体类型的固定尺寸样式。）
+  inlineImage: { width: '100%', maxWidth: 228, aspectRatio: 1, marginTop: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
   inlineSticker: { width: 120, height: 120, marginTop: 6, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
   openLinkBtn: { marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.10)', maxWidth: '100%', alignSelf: 'flex-start' },
   openLinkText: { color: '#ff6f91', fontSize: 11, fontWeight: '800' },
