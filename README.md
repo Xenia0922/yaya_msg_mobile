@@ -24,6 +24,8 @@
 - 翻牌统计、成员数据库、鸡腿充值
 
 ## 安装
+从[下载页](https://010push.a23xyz.xyz/app/)下载
+
 从[夸克网盘](https://pan.quark.cn/s/5b103245218a)下载
 
 从 [Releases](https://github.com/Xenia0922/yaya_msg_mobile/releases) 下载：
@@ -41,8 +43,6 @@ npm install --legacy-peer-deps
 node scripts/build-apk.js
 ```
 
-产物输出到 `E:/yymsg/APK/`。
-
 ## 兼容
 
 鸿蒙 2/3/4 与 Android 8.0+（minSdk 26）。
@@ -50,6 +50,12 @@ node scripts/build-apk.js
 ## 已知问题
 
 - **直播小窗播放用不了**：部分直播（RTMP 流）切入应用内小窗后无法正常播放，建议直接全屏观看；录播 / 回放小窗不受影响。
+
+房间消息在房间时不会自动刷新
+
+缺失上麦功能
+
+房间语音或视频时长显示错误
 
 ## 致谢
 
