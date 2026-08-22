@@ -289,10 +289,7 @@ export default function MeleeRankScreen() {
           ListEmptyComponent={
             <EmptyState icon="trophy-outline" title={t('暂无排名数据')} />
           }
-          ListFooterComponent={
-            loadingMore ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} />
-            : loading ? <ActivityIndicator color={palette.tint} style={{ padding: 12 }} /> : null
-          }
+          ListFooterComponent={null}
         />
       )}
     </View>

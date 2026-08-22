@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet,
 } from 'react-native';
@@ -7,6 +7,8 @@ import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
 import { useI18n } from '../i18n';
+import { RouteProp, useRoute } from '@react-navigation/native';
+import { RootStackParamList } from '../navigation/types';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
 import { EmptyState, ErrorState } from '../components/StateViews';
@@ -22,7 +24,8 @@ export default function RoomRadioScreen() {
   const palette = usePalette();
   const shadows = makeShadows(palette.name === 'dark');
   const { t } = useI18n();
-  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const route = useRoute<RouteProp<RootStackParamList, 'RoomRadioScreen'>>();
+  const [selectedMember, setSelectedMember] = useState<Member | null>(route.params?.member || null);
   const [radioUrl, setRadioUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -63,6 +66,15 @@ export default function RoomRadioScreen() {
   };
 
   const subtitle = muted ? t('已静音') : (playing ? t('正在播放') : (status || t('暂无电台地址')));
+
+  // 从上麦页 / 房间内按键带入成员时，进入页面自动拉取电台
+  useEffect(() => {
+    const m = route.params?.member;
+    if (m && !selectedMember) {
+      startRadio(m);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <View style={styles.container}>

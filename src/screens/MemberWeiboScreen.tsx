@@ -259,28 +259,7 @@ export default function MemberWeiboScreen() {
           </Text> : null
         }
         ListEmptyComponent={
-          loading ? (
-            <View style={styles.skeletonWrap}>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <View key={i} style={[styles.skeletonCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
-                  <View style={[styles.skeletonHead, { alignItems: 'center' }]}>
-                    <Skeleton width={40} height={40} radius={20} />
-                    <View style={{ marginLeft: 10, flex: 1 }}>
-                      <Skeleton width="40%" height={12} />
-                      <Skeleton width="28%" height={9} style={{ marginTop: 8 }} />
-                    </View>
-                  </View>
-                  <Skeleton width="92%" height={13} style={{ marginTop: 14 }} />
-                  <Skeleton width="100%" height={13} style={{ marginTop: 8 }} />
-                  <Skeleton width="55%" height={13} style={{ marginTop: 8 }} />
-                  <View style={{ flexDirection: 'row', gap: 4, marginTop: 14 }}>
-                    {[0, 1, 2].map((j) => <Skeleton key={j} width="31%" height={72} radius={10} />)}
-                  </View>
-                </View>
-              ))}
-            </View>
-          )
-          : error ? (
+          error ? (
             <ErrorState title={t('加载失败')} hint={error} onAction={() => fetchData(true)} />
           ) : (
             <EmptyState

@@ -38,8 +38,14 @@ function convTargetId(conv: any): string {
 function convName(conv: any): string {
   return pickText(conv, ['user.nickname', 'user.nickName', 'user.starName', 'user.realNickName', 'nickname', 'starName'], convTargetId(conv) || translate('私信'));
 }
-function msgId(msg: any, index: number): string {
-  return String(msg.messageId || msg.msgId || msg.id || msg.clientMsgId || index);
+function msgId(msg: any): string {
+  const direct = msg.messageId || msg.msgId || msg.id || msg.clientMsgId || msg.uuid;
+  if (direct) return String(direct);
+  // 无稳定 id：用 时间+发送者+内容 作近似键（不含 index，避免同消息在不同批次 index 不同导致去重失败）
+  const time = msgTimeNumber(msg);
+  const from = msgFromId(msg);
+  const body = messageText(msg);
+  return String(`${time}-${from}-${body || JSON.stringify(msg).slice(0, 80)}`);
 }
 function msgTimeNumber(msg: any): number {
   const v = Number(msg.timestamp || msg.msgTime || msg.ctime || msg.time || msg.createTime || msg.sendTime || 0);
@@ -501,8 +507,8 @@ export default function PrivateMessagesScreen() {
       if (!list.length) { setHasMore(false); return; }
       const older = oldestFirst(list, msgTimeNumber);
       setMsgs((prev) => {
-        const seen = new Set(prev.map((m, i) => msgId(m, i)));
-        const dedupedOlder = older.filter((m, i) => !seen.has(msgId(m, i)));
+        const seen = new Set(prev.map((m) => msgId(m)));
+        const dedupedOlder = older.filter((m) => !seen.has(msgId(m)));
         return oldestFirst([...dedupedOlder, ...prev], msgTimeNumber);
       });
       const nextCursor = Number(res?.content?.nextTime || res?.data?.nextTime || 0);
@@ -570,7 +576,7 @@ export default function PrivateMessagesScreen() {
         prevTs = 0;
       }
       const groupStart = prevMine === null || prevMine !== mine || ts - prevTs > 3 * 60 * 1000;
-      chatRows.push({ type: 'msg', key: `m-${msgId(item, i)}`, item, groupStart });
+      chatRows.push({ type: 'msg', key: `m-${msgId(item)}`, item, groupStart });
       prevMine = mine;
       prevTs = ts;
     });

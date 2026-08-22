@@ -246,8 +246,6 @@ export default function CommunityPostDetailScreen() {
             </View>
             {commentsError ? (
               <ErrorState title={t('评论加载失败')} hint={commentsError} onAction={() => loadComments(true)} />
-            ) : commentsLoading && comments.length === 0 ? (
-              <CenterSpinner text={t('加载中…')} />
             ) : comments.length === 0 ? (
               <EmptyState icon="comment-outline" title={t('暂无评论，来抢沙发～')} />
             ) : null}
@@ -274,9 +272,7 @@ export default function CommunityPostDetailScreen() {
         renderItem={renderComment}
         ListFooterComponent={
           comments.length ? (
-            commentsLoading ? (
-              <CenterSpinner />
-            ) : commentsHasMore ? (
+            commentsHasMore ? (
               <ScalePressable onPress={() => loadComments(false)} style={styles.loadMoreBtn}>
                 <Text style={[styles.loadMore, { color: palette.tint }]}>{t('查看更多评论')}</Text>
               </ScalePressable>

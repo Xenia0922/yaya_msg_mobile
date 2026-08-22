@@ -241,6 +241,13 @@ export default function SettingsScreen() {
           />
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
           <Row
+            icon="download-circle"
+            title={t('下载页')}
+            value="010push.a23xyz.xyz/app"
+            onPress={() => Linking.openURL('https://010push.a23xyz.xyz/app/')}
+          />
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          <Row
             icon="book-open-page-variant"
             title={t('开源协议')}
             value={t('GPL-3.0 · 本地缓存')}

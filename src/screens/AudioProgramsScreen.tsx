@@ -219,7 +219,7 @@ export default function AudioProgramsScreen() {
               />
             ) : null
           }
-          ListFooterComponent={loadingMore ? <CenterSpinner text={t('加载更多...')} /> : null}
+          ListFooterComponent={null}
           renderItem={({ item, index }) => {
             const isActive = String(active || '') === String(item.talkId || item.id);
             return (

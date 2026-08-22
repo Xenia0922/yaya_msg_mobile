@@ -761,6 +761,16 @@ export const pocketApi = {
    *  serverId 必须传入（成员数据里有），否则无法走塞纳河兜底。 */
   async getRoomMeta(channelId: string | number, fallbackChannelId?: string | number, serverId?: string | number) {
     const cid = String(channelId);
+    console.warn('[diag:roommeta] IN cid=' + cid + ' fb=' + String(fallbackChannelId ?? 'NONE') + ' serverId=' + String(serverId ?? 'EMPTY'));
+    // 传入 serverId 为空时（成员数据缺 serverId）自动解析，否则无法走塞纳河兜底 → name/bg 全空。
+    // 复刻 getRoomMessages 的 v2.4.2 逻辑：resolveServerId 从 room/info 的 content.serverId 提取并写回 store。
+    let resolvedSid = serverId;
+    if (!resolvedSid || String(resolvedSid) === '0' || String(resolvedSid) === '') {
+      try {
+        const s = await resolveServerId(cid);
+        if (s && s !== '0') { resolvedSid = s; rememberServerId(cid, s); }
+      } catch { /* 解析失败保持空，下方兜底流程自然跳过塞纳河 */ }
+    }
     const tryRoomInfo = async (target: string): Promise<{ name: string; bg: string }> => {
       const res = await this.getRoomInfo(target).catch(() => null);
       const content = (res as any)?.content || (res as any)?.data || {};
@@ -782,16 +792,18 @@ export const pocketApi = {
       return { name, bg: bg ? normalizeUrl(bg) : '' };
     };
     let meta = await tryRoomInfo(cid);
+    console.warn('[diag:roommeta] cid=' + cid + ' name=' + meta.name + ' bg=' + (meta.bg ? meta.bg.slice(0, 90) : 'EMPTY'));
     // 小房间/解析失败 → 塞纳河 server/detail（channelInfoList 含大小房间名 + serverBgWallImg）
-    if ((!meta.name && !meta.bg) && serverId !== undefined && serverId !== null && String(serverId) !== '') {
+    if ((!meta.name && !meta.bg) && resolvedSid !== undefined && resolvedSid !== null && String(resolvedSid) !== '' && String(resolvedSid) !== '0') {
       try {
-        const res = await this.getSeineServerDetail(Number(serverId)).catch(() => null);
+        const res = await this.getSeineServerDetail(Number(resolvedSid)).catch(() => null);
         const content = (res as any)?.content || (res as any)?.data || {};
         const list = Array.isArray(content.channelInfoList) ? content.channelInfoList : [];
         const hit = list.find((c: any) => String(c?.channelId) === cid)
           || (fallbackChannelId !== undefined && fallbackChannelId !== null ? list.find((c: any) => String(c?.channelId) === String(fallbackChannelId)) : undefined);
         const si = content.chatServerInfo || {};
         const bg = String(si.serverBgWallImg || si.bgImg || '');
+        console.warn('[diag:roommeta] SEINE cid=' + cid + ' listLen=' + list.length + ' hit=' + (hit ? 'Y:' + String(hit.channelName || '') + '/bg=' + String(hit.bgImg || hit.backgroundImg || hit.bgImgUrl || 'EMPTY') : 'N') + ' serverBg=' + (bg ? bg.slice(0, 60) : 'EMPTY'));
         if (hit || bg) {
           meta = {
             name: meta.name || (hit ? String(hit.channelName || '') : ''),
@@ -803,6 +815,7 @@ export const pocketApi = {
     // 最终兜底：回退同成员大房间背景
     if (!meta.name && !meta.bg && fallbackChannelId !== undefined && fallbackChannelId !== null && String(fallbackChannelId) !== cid) {
       const fb = await tryRoomInfo(String(fallbackChannelId)).catch(() => ({ name: '', bg: '' }));
+      console.warn('[diag:roommeta] FALLBACK cid=' + cid + ' fb=' + String(fallbackChannelId) + ' fbName=' + fb.name + ' fbBg=' + (fb.bg ? fb.bg.slice(0, 60) : 'EMPTY'));
       if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }
     return meta;

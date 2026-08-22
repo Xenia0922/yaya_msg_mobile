@@ -166,10 +166,9 @@ export default function InvoiceScreen() {
           <ErrorState title={t('加载失败')} hint={error} onAction={() => fetchOrders()} />
         ) : null}
         {orders.map((item, index) => renderOrder({ item, index }))}
-        {orders.length === 0 && !loading && !error ? (
+        {orders.length === 0 && !error ? (
           <EmptyState icon="receipt-outline" title={t('暂无订单')} />
         ) : null}
-        {loading && <CenterSpinner />}
 
         <View
           style={[

@@ -27,6 +27,7 @@ import { isPlayableHost, MusicEngine } from '../services/musicPlayer';
 import CoverArt from './CoverArt';
 import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
+import { useVinylSpin } from '../hooks/useVinylSpin';
 
 interface Props {
   onOpenFullScreen?: () => void;
@@ -51,7 +52,6 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
 
   const progRef = useRef<View>(null);
   const translateY = useRef(new Animated.Value(0)).current;
-  const rotationAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   // 展示进度：跟随播放位置平滑移动（快进/拖动后不再「弹一下」跳变）
   const [progWidth, setProgWidth] = useState(0);
@@ -125,28 +125,9 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
     })
   ).current;
 
-  useEffect(() => {
-    if (!isPlaying) return;
-    let cancelled = false;
-    let current = (rotationAnim as any).__turns ?? 0;
-    const step = () => {
-      if (cancelled) return;
-      const next = current + 1;
-      Animated.timing(rotationAnim, {
-        toValue: next, duration: 8000, easing: Easing.linear, useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished && !cancelled) {
-          current = next;
-          (rotationAnim as any).__turns = current;
-          step();
-        }
-      });
-    };
-    step();
-    return () => { cancelled = true; rotationAnim.stopAnimation(); };
-  }, [isPlaying, track?.id, rotationAnim]);
-
-  const spin = rotationAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  // 唱片旋转：模块级单例（见 useVinylSpin）——跨详情页重进有记忆，切歌归零，暂停冻结。
+  const spinValue = useVinylSpin(track?.id, isPlaying);
+  const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   const panResponder = useRef(
     PanResponder.create({

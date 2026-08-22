@@ -61,11 +61,11 @@ const ICONS: Record<string, string> = {
   Profile: 'account', MemberDynamic: 'star-circle', MemberWeibo: 'web', Trip: 'briefcase',
   VideoLibrary: 'play-box', MusicLibrary: 'music-note', AudioPrograms: 'podcast',
   MeleeRank: 'trophy', Database: 'database', Login: 'key-variant', Download: 'download', Invoice: 'file-document-outline', Settings: 'cog',
-  Community: 'forum',
+  Community: 'forum', OnMic: 'microphone',
 };
 
 const QUICK: NavItem[] = [
-  { title: '直播', desc: '', route: 'Media', icon: ICONS.LiveRoom },
+  { title: '直播', desc: '', route: 'Media', params: { mode: 'live' }, icon: ICONS.LiveRoom },
   { title: '回放', desc: '', route: 'Media', params: { mode: 'vod' }, icon: ICONS.Vod },
   { title: '音乐', desc: '', route: 'MusicLibraryScreen', icon: ICONS.MusicLibrary },
   { title: '私信', desc: '', route: 'PrivateMessagesScreen', icon: ICONS.PrivateMessages },
@@ -74,6 +74,7 @@ const QUICK: NavItem[] = [
 /** 工具：单行横向 chips（翻牌/统计/下载/账号/设置…） */
 const TOOL_CHIPS: NavItem[] = [
   { title: '翻牌', desc: '', route: 'FlipScreen', icon: ICONS.FlipSend },
+  { title: '上麦', desc: '', route: 'OnMicScreen', icon: ICONS.OnMic },
   { title: '统计', desc: '', route: 'AnalysisScreen', icon: ICONS.Analysis },
   { title: '社区', desc: '', route: 'CommunityScreen', icon: ICONS.Community },
   { title: '下载', desc: '', route: 'DownloadScreen', icon: ICONS.Download },
@@ -523,12 +524,7 @@ export default function HomeScreen() {
             onAction={() => handleNav({ title: '', desc: '', route: 'Media', icon: '' })}
           />
 
-          {!livesOk && !livesError ? (
-            <FadeInView delay={80} duration={300}>
-              {/* 直播区骨架：banner 占位 */}
-              <Skeleton height={180} radius={20} style={{ alignSelf: 'stretch', marginBottom: 12 }} />
-            </FadeInView>
-          ) : livesError && !livesOk ? (
+          {!livesOk && !livesError ? null : livesError && !livesOk ? (
             <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
               <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
               <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
@@ -573,11 +569,7 @@ export default function HomeScreen() {
             action_label={t('全部')}
             onAction={() => handleNav({ title: '', desc: '', route: 'BilibiliLiveScreen', icon: '' })}
           />
-          {!gongyanOk && !gongyanError ? (
-            <FadeInView delay={80} duration={300}>
-              <Skeleton height={64} radius={16} style={{ alignSelf: 'stretch', marginBottom: 8 }} />
-            </FadeInView>
-          ) : gongyanError && !gongyanOk ? (
+          {!gongyanOk && !gongyanError ? null : gongyanError && !gongyanOk ? (
             <FadeInView delay={80} duration={300}>
               <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
                 <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
@@ -689,7 +681,7 @@ export default function HomeScreen() {
                         <MaterialCommunityIcons name="music-note" color={palette.tint} size={24} />
                       )}
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                    <View style={{ flex: 1, marginHorizontal: 12, minWidth: 0 }}>
                       <Text style={[typography.headline, { color: palette.label }]} numberOfLines={1}>{trackTitle}</Text>
                       {trackArtist ? (
                         <Text style={[typography.footnote, { color: palette.labelSecondary, marginTop: 2 }]} numberOfLines={1}>

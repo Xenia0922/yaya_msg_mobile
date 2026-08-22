@@ -357,8 +357,6 @@ export default function AnalysisScreen() {
         {/* 未登录引导：选了成员但缺 token 时显示，避免"全 0"误导 */}
         {(member && !token) ? (
           <LoginPrompt hint={t('统计该成员的互动画像需要登录')} />
-        ) : loading ? (
-          <CenterSpinner text={t('加载中…')} />
         ) : (
           <Text style={[styles.statusText, { color: palette.labelSecondary }]}>{status}</Text>
         )}

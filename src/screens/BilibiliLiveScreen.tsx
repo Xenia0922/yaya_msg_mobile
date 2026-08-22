@@ -641,9 +641,7 @@ export default function BilibiliLiveScreen() {
           );
         }}
         ListEmptyComponent={
-          loading ? (
-            <CenterSpinner text={t('加载中…')} />
-          ) : configError ? (
+          configError ? (
             <ErrorState title={t('加载失败')} hint={configError} onAction={loadConfig} />
           ) : (
             <EmptyState icon="broadcast" title={t('暂无直播间')} hint={t('下拉刷新或稍后再来看看')} />

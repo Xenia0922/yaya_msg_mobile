@@ -3,7 +3,7 @@ import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@r
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Easing, ImageBackground, StyleSheet, View } from 'react-native';
 import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
 import { Palettes } from '../theme/colors';
 import { ensureMemberData } from '../services/memberData';
@@ -25,6 +25,7 @@ import PhotosScreen from '../screens/PhotosScreen';
 import RoomAlbumScreen from '../screens/RoomAlbumScreen';
 import RoomRadioScreen from '../screens/RoomRadioScreen';
 import OpenLiveScreen from '../screens/OpenLiveScreen';
+import OnMicScreen from '../screens/OnMicScreen';
 import PrivateMessagesScreen from '../screens/PrivateMessagesScreen';
 import BilibiliLiveScreen from '../screens/BilibiliLiveScreen';
 import VideoLibraryScreen from '../screens/VideoLibraryScreen';
@@ -94,6 +95,8 @@ function withPageMotion<T extends object>(
   };
 }
 
+// 注：4 个 tab 的入场淡入（opacity+translateY）自项目基线(ed271c0)起就由 withPageMotion 提供，
+// 是用户预期的转场观感，非性能负优化。保留 withPageMotion，不做无动画替换。
 const HomeTabScreen = withPageMotion(HomeScreen);
 const MediaTabScreen = withPageMotion(MediaScreen);
 const RoomsTabScreen = withPageMotion(FollowedRoomsScreen);
@@ -220,11 +223,16 @@ const AppDarkTheme = {
 
 export default function AppNavigator() {
   const theme = useResolvedTheme();
-  const hasBackground = !!useSettingsStore((state) => state.settings.customBackgroundFile?.trim());
+  const palette = usePalette();
+  const customBg = useSettingsStore((state) => state.settings.customBackgroundFile?.trim() || '');
+  const hasBackground = !!customBg;
   const navTheme = theme === 'dark' ? AppDarkTheme : AppTheme;
   const themed = hasBackground
     ? { ...navTheme, colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' } }
     : navTheme;
+  // 自定义背景暗化遮罩：浅色主题压一层白雾保证深色文字可读，深色主题压一层黑幕保证浅色文字可读。
+  // 取值克制（<=0.35），既保证可读性又不至于「看不清背景图」。
+  const bgScrim = theme === 'dark' ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.34)';
 
   // 启动即自动同步成员数据库（进入软件自动更新；失败静默忽略，不阻塞启动）
   useEffect(() => {
@@ -238,7 +246,18 @@ export default function AppNavigator() {
 
   return (
     <ErrorBoundary>
-    <NavigationContainer theme={themed}>
+    <>
+      {hasBackground ? (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <ImageBackground
+            source={{ uri: customBg }}
+            resizeMode="cover"
+            style={StyleSheet.absoluteFill}
+          />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: bgScrim }]} />
+        </View>
+      ) : null}
+      <NavigationContainer theme={themed}>
       <>
         <Stack.Navigator
           screenOptions={{
@@ -260,6 +279,7 @@ export default function AppNavigator() {
           <Stack.Screen name="RoomAlbumScreen" component={RoomAlbumStackScreen} />
           <Stack.Screen name="RoomRadioScreen" component={RoomRadioStackScreen} />
           <Stack.Screen name="OpenLiveScreen" component={OpenLiveStackScreen} />
+          <Stack.Screen name="OnMicScreen" component={withPageMotion(OnMicScreen, ui.motion.stackDuration, 10)} />
           <Stack.Screen name="PrivateMessagesScreen" component={PrivateMessagesStackScreen} />
           <Stack.Screen name="BilibiliLiveScreen" component={BilibiliLiveStackScreen} />
           <Stack.Screen name="VideoLibraryScreen" component={VideoLibraryStackScreen} />
@@ -280,7 +300,8 @@ export default function AppNavigator() {
         {/* 应用内悬浮小窗播放器（全局挂载，导航上下文内可用） */}
         <MiniPlayer />
       </>
-    </NavigationContainer>
+      </NavigationContainer>
+    </>
     </ErrorBoundary>
   );
 }

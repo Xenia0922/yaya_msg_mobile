@@ -587,7 +587,7 @@ export default function FlipScreen() {
             loadFlips(nextPage);
           }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={loading ? <CenterSpinner text={t('加载中…')} /> : !useSettingsStore.getState().settings.p48Token ? <LoginPrompt hint={t('查看翻牌记录需要登录')} /> : /失败|错误/.test(status) ? <ErrorState title={t('加载失败')} hint={status} onAction={() => loadFlips(1, true)} /> : <EmptyState icon="card-text-outline" title={t('暂无翻牌记录')} hint={t('去发送翻牌查询历史记录')} />}
+          ListEmptyComponent={!useSettingsStore.getState().settings.p48Token ? <LoginPrompt hint={t('查看翻牌记录需要登录')} /> : /失败|错误/.test(status) ? <ErrorState title={t('加载失败')} hint={status} onAction={() => loadFlips(1, true)} /> : <EmptyState icon="card-text-outline" title={t('暂无翻牌记录')} hint={t('去发送翻牌查询历史记录')} />}
         />
       </FadeInView>
     </View>

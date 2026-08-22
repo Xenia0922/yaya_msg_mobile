@@ -23,6 +23,7 @@ import { usePalette, radii, spacing, motion } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
+import { useVinylSpin } from '../hooks/useVinylSpin';
 
 const ANIM_DURATION = 300;
 
@@ -136,7 +137,6 @@ function FullScreenPlayerInner({
   const [showLyrics, setShowLyrics] = useState(false);
   const [lyricSize, setLyricSize] = useState(17);
   const [spacerH, setSpacerH] = useState(160);
-  const rotationAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const lyricScrollRef = useRef<ScrollView>(null);
   const lrcScrollH = useRef(400);
@@ -144,27 +144,9 @@ function FullScreenPlayerInner({
 
   useEffect(() => { lineYOffsets.current = new Array(lyrics.length).fill(0); }, [lyrics]);
 
-  useEffect(() => {
-    if (!isPlaying) return;
-    let cancelled = false;
-    let current = (rotationAnim as any).__turns ?? 0;
-    const step = () => {
-      if (cancelled) return;
-      const next = current + 1;
-      Animated.timing(rotationAnim, {
-        toValue: next,
-        duration: 12000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished && !cancelled) { current = next; (rotationAnim as any).__turns = current; step(); }
-      });
-    };
-    step();
-    return () => { cancelled = true; rotationAnim.stopAnimation(); };
-  }, [isPlaying, currentIndex]);
-
-  const spin = rotationAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  // 唱片旋转：模块级单例（见 useVinylSpin）——跨详情页重进有记忆，切歌归零，暂停冻结。
+  const spinValue = useVinylSpin(track?.id, isPlaying);
+  const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
