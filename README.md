@@ -49,6 +49,8 @@ node scripts/build-apk.js
 
 ## 已知问题
 
+公演直播左上角LIVE字样是原生播放器导致，可在播放器右上角功能页面切换至网页播放器可解决该问题
+
 ## 致谢
 
 基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发，感谢原作者的开发与贡献。
