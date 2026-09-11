@@ -73,6 +73,7 @@ function Row({
   onPress,
   danger,
   withChevron = true,
+  wrapValue = false,
 }: {
   icon: string;
   title: string;
@@ -80,6 +81,8 @@ function Row({
   onPress?: () => void;
   danger?: boolean;
   withChevron?: boolean;
+  /** value 完整显示（允许换行）——仓库地址等长文本用，默认仍单行截断 */
+  wrapValue?: boolean;
 }) {
   const palette = usePalette();
   return (
@@ -95,7 +98,11 @@ function Row({
       </View>
       <Text style={[styles.rowTitle, { color: danger ? palette.danger : palette.label }]} numberOfLines={1}>{title}</Text>
       {value ? (
-        <Text style={[styles.rowValue, { color: palette.labelTertiary }]} numberOfLines={1}>{value}</Text>
+        wrapValue ? (
+          <Text style={[styles.rowValue, styles.rowValueWrap, { color: palette.labelTertiary }]}>{value}</Text>
+        ) : (
+          <Text style={[styles.rowValue, { color: palette.labelTertiary }]} numberOfLines={1}>{value}</Text>
+        )
       ) : null}
       {withChevron ? (
         <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={20} />
@@ -261,14 +268,16 @@ export default function SettingsScreen() {
           <Row
             icon="github"
             title={t('本项目仓库')}
-            value="Xenia0922/yaya_msg_mobile"
+            value="github.com/Xenia0922/yaya_msg_mobile"
+            wrapValue
             onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile').catch(() => {})}
           />
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
           <Row
             icon="github"
             title={t('桌面端项目')}
-            value="yk1z/yaya_msg"
+            value="github.com/yk1z/yaya_msg"
+            wrapValue
             onPress={() => Linking.openURL('https://github.com/yk1z/yaya_msg').catch(() => {})}
           />
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
@@ -438,6 +447,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   rowTitle: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: '600' },
+  rowValueWrap: { flex: 1, textAlign: 'right', flexWrap: 'wrap' },
   rowValue: { flexShrink: 1, fontSize: 12, marginRight: 6, maxWidth: '48%', textAlign: 'right' },
   rowLabel: { fontSize: 12, lineHeight: 18, marginBottom: 6 },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 54 },
