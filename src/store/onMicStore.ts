@@ -13,8 +13,10 @@ export interface OnMicMemberInput {
   channelId: string;
   serverId: string;
   smallChannelId?: string;
-  /** 成员状态分类（官方源优先）：退团/暂休不进扫描 */
+  /** 成员状态分类（官方源优先） */
   state?: string;
+  /** 是否在团（桌面端 isInGroup !== false 语义）：false 表示退团/毕业，不参与扫描 */
+  isInGroup?: boolean;
 }
 
 export interface OnMicEntry {
@@ -40,15 +42,17 @@ interface OnMicState {
   onMic: Record<string, OnMicEntry>;
   scanning: boolean;
   lastScan: number;
-  /** 本轮扫描总数（供 UI 显示进度） */
+  /** 本轮扫描任务总数（大/小房间各算一个，供内部进度） */
   total: number;
+  /** 本轮参与扫描的成员数（UI 进度文案显示这个，任务数会让用户困惑） */
+  memberTotal: number;
   /** 本轮已探测数 */
   done: number;
   /** 成员最近一次探测时间（增量扫描按最久未探测排序取预算） */
   probedAt: Record<string, number>;
   /** 快照年龄（毫秒）：>0 表示当前数据来自快照恢复 */
   snapshotAgeMs?: number;
-  scan: (members: OnMicMemberInput[], opts?: { force?: boolean; smallFallback?: boolean }) => Promise<void>;
+  scan: (members: OnMicMemberInput[], opts?: { force?: boolean }) => Promise<void>;
   clear: () => void;
 }
 
@@ -59,20 +63,6 @@ const BUDGET_MIN = 40;
 /** 并发探测数 + 每请求间隔：对齐桌面端 room-radio-feature.js（ROOM_RADIO_SCAN_CONCURRENCY=24 / GAP=20ms） */
 const SCAN_CONCURRENCY = 24;
 const REQUEST_GAP_MS = 20;
-
-/**
- * 判断某成员的 `team/voice/operate`(operateCode=2) 返回内容是否处于「上麦中」：
- *  - content.streamUrl 非空 → 房间电台音频流已开（有人在麦上播音）
- *  - content.voiceUserList 中存在 voiceStatus !== false 的用户 → 有人在语音麦上
- * 两者任一满足即视为上麦中。
- */
-function parseOnMic(content: any): { hasRadio: boolean; onMicCount: number } {
-  if (!content) return { hasRadio: false, onMicCount: 0 };
-  const hasRadio = !!content.streamUrl;
-  const list = Array.isArray(content.voiceUserList) ? content.voiceUserList : [];
-  const onMicCount = list.filter((u: any) => u && u.voiceStatus !== false).length;
-  return { hasRadio, onMicCount };
-}
 
 let snapshotHydrated = false;
 
@@ -106,6 +96,8 @@ function buildScanTasks(members: OnMicMemberInput[]): ScanTask[] {
   for (const m of members) {
     const name = String(m.name || '').trim();
     if (!name || !m.memberId) continue;
+    // 对齐桌面端：退团/毕业成员（isInGroup === false）不参与扫描，避免几百个无效请求
+    if (m.isInGroup === false) continue;
     const cached = getRoomMapEntry(m.memberId);
     const big = normChannelId(m.channelId) || normChannelId(cached?.channelId);
     const small = normChannelId(m.smallChannelId) || normChannelId(cached?.yklzId);
@@ -136,6 +128,7 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
   scanning: false,
   lastScan: 0,
   total: 0,
+  memberTotal: 0,
   done: 0,
   probedAt: {},
   snapshotAgeMs: undefined,
@@ -208,7 +201,7 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
         set({ scanning: false, lastScan: Date.now(), done: 0, total: 0 });
         return;
       }
-      set({ total: queue.length });
+      set({ total: queue.length, memberTotal: uniq.length });
 
       // 成员级统计：仅当某成员的全部任务都成功返回且都没有流 → 才允许从列表移除（防网络抖动误清）
       const stat = new Map<string, { done: number; total: number; onAir: boolean; failed: number }>();
@@ -307,5 +300,5 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
       // 持久化失败忽略
     }
   },
-  clear: () => set({ onMic: {}, scanning: false, lastScan: 0, total: 0, done: 0, probedAt: {}, snapshotAgeMs: undefined }),
+  clear: () => set({ onMic: {}, scanning: false, lastScan: 0, total: 0, memberTotal: 0, done: 0, probedAt: {}, snapshotAgeMs: undefined }),
 }));

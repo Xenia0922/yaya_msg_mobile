@@ -27,11 +27,13 @@ export default function OnMicScreen() {
   const onMic = useOnMicStore((state: any) => state.onMic);
   const scanning = useOnMicStore((state: any) => state.scanning);
   const scanTotal = useOnMicStore((state: any) => state.total);
+  const scanMemberTotal = useOnMicStore((state: any) => state.memberTotal);
   const scanDone = useOnMicStore((state: any) => state.done);
   const [error, setError] = useState('');
 
-  // v2.7.4：全部成员上麦扫描（有 serverId 或 channelId 的成员都纳入；channelId 缺失由 scan 内按需补齐；
-  // 退团/暂休成员由 store 按官方分类过滤，不进扫描）
+  // v2.7.5：全部在团成员上麦扫描（对齐桌面端 room-radio-feature.js 的 isInGroup !== false）
+  //  - 过滤条件含 yklzId：只有小房间的成员此前被 (channelId || serverId) 漏掉
+  //  - isInGroup 透传下去由 buildScanTasks 排除退团/毕业成员（桌面语义）
   const buildInputs = useCallback(() => {
     return members
       .map((item: any) => ({
@@ -41,8 +43,9 @@ export default function OnMicScreen() {
         serverId: String(item.serverId || ''),
         smallChannelId: String(item.yklzId || ''),
         state: String(item.state || ''),
+        isInGroup: item.isInGroup !== false,
       }))
-      .filter((m: any) => m.memberId && (m.channelId || m.serverId));
+      .filter((m: any) => m.memberId && (m.channelId || m.serverId || m.smallChannelId));
   }, [members]);
 
   const scan = useCallback((opts?: { force?: boolean }) => {
@@ -122,7 +125,7 @@ export default function OnMicScreen() {
         <View style={[styles.scanBar, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
           <ActivityIndicator size="small" color={palette.tint} style={{ marginRight: 8 }} />
           <Text style={[styles.scanBarText, { color: palette.labelSecondary }]}>
-            {t('正在扫描全部成员上麦状态 {done}/{total}...', { done: Math.min(scanDone, scanTotal), total: scanTotal })}
+            {t('正在扫描全部成员上麦状态 {done}/{total}...', { done: Math.min(scanDone, scanTotal), total: scanMemberTotal || scanTotal })}
           </Text>
         </View>
       ) : null}
