@@ -24,6 +24,28 @@ member-db/
 
 > 修改 `overrides.json` / `extra.json` 后 push，Action 会在当晚自动合并；想立刻生效就手动触发一次。
 
+
+## 让自建库越用越全（回灌 App 运行时解析结果）
+
+App 使用中会通过 `seine/server/detail` 解析出成员的大小房间 channelId，这些数据比上游库更新。
+回灌流程：
+
+```bash
+# 1) 从设备导出 roomMap（MuMu / 有 root 的模拟器）
+adb root && adb pull /data/data/com.yk1z.yayamsg/databases/RKStorage ./RKStorage
+#    RN AsyncStorage 为 SQLite，表 catalystLocalStorage 中 key = yaya_member_room_map_v2
+#    取出 value 存为 member-db/roommap-export.json
+
+# 2) 合并进覆盖表（只补上游空缺，不覆盖上游已有值）
+node member-db/merge-roommap.mjs --dry-run   # 预览
+node member-db/merge-roommap.mjs             # 写入 overrides.json
+
+# 3) 重新产出
+node member-db/sync.mjs
+```
+
+> 原则：**上游已有值保持权威**，回灌只补空缺字段，避免我们这边的解析结果反向污染正确数据。
+
 ## 安全护栏（永不劣化）
 
 - 上游拉取失败 → **不写出**，保留上一份 `dist/members.json`
