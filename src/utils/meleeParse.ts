@@ -10,6 +10,9 @@ export interface WeekItem {
 export function extractRankList(data: any): any[] {
   if (!data || typeof data !== 'object') return [];
   const candidates = [
+    // rankUserList 是电脑版/官方周榜的用户列表字段（权威），必须优先于泛化猜测，
+    // 否则 BFS 兜底可能先撞上 weekRankList 等数组 → 榜单渲染成周列表
+    data.rankUserList, data.content?.rankUserList, data.data?.rankUserList,
     data.rankList, data.list, data.data, data.ranks, data.result, data.records,
     data.content?.rankList, data.content?.list, data.content?.data, data.content?.ranks,
     data.content?.result, data.content?.records,
