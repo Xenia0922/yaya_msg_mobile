@@ -740,5 +740,5 @@ export const en: Record<string, string> = {
   '更新成功：{detail}': 'Updated: {detail}',
   成员数据已更新: 'Member data updated',
   '更新失败：{msg}（已保留本地数据）': 'Update failed: {msg} (local data kept)',
-  '桌面端项目（致敬）': 'Desktop project (credit)',
+  '桌面端项目': 'Desktop project',
 };

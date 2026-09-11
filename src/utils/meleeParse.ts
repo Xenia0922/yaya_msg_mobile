@@ -6,6 +6,31 @@ export interface WeekItem {
   weekRankName: string;
 }
 
+/**
+ * 规范化周榜名。
+ * 上游数据存在笔误/格式不一（实测出现 `08日31日-09月06日`，把"月"写成"日"），
+ * 直接展示会看到"08日31日"。这里按数字重建：4 个数字 → MM月DD日-MM月DD日；
+ * 2 个数字 → MM月DD日；其余（如"第 3 期"）原样返回。
+ */
+export function normalizeWeekName(raw: string): string {
+  const s = String(raw || '').trim();
+  if (!s) return s;
+  const cleaned = s.replace(/(20\d{2})\s*[年\-/.]/g, ''); // 去年份
+  const nums = (cleaned.match(/\d{1,2}/g) || []).map((n) => Number(n));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  if (nums.length >= 4) {
+    const [m1, d1, m2, d2] = nums;
+    if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12 && d1 >= 1 && d1 <= 31 && d2 >= 1 && d2 <= 31) {
+      return `${pad(m1)}月${pad(d1)}日-${pad(m2)}月${pad(d2)}日`;
+    }
+  }
+  if (nums.length === 2) {
+    const [m, d] = nums;
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return `${pad(m)}月${pad(d)}日`;
+  }
+  return s;
+}
+
 /** 从多种返回形态中解析出排名数组。 */
 export function extractRankList(data: any): any[] {
   if (!data || typeof data !== 'object') return [];
@@ -50,7 +75,7 @@ export function extractWeeks(data: any): WeekItem[] {
           weekRankId: Number(it?.weekRankId ?? it?.rankId ?? it?.id ?? it?.week ?? 0),
           // 名称缺失时不再丢弃该周（此前要求 weekRankName 必填 → 接口改名/只给 id 时整份周列表为空，
           // 周切换直接失效）；用 rankId 兜底展示
-          weekRankName: String(it?.weekRankName ?? it?.rankName ?? it?.name ?? it?.title ?? '')
+          weekRankName: normalizeWeekName(String(it?.weekRankName ?? it?.rankName ?? it?.name ?? it?.title ?? ''))
             || (Number(it?.weekRankId ?? it?.rankId ?? it?.id ?? 0) > 0 ? `rankId ${Number(it?.weekRankId ?? it?.rankId ?? it?.id)}` : ''),
         }))
         .filter((w: WeekItem) => w.weekRankId > 0 && w.weekRankName);

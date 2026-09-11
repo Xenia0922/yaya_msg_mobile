@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import pocketApi from '../api/pocket48';
 import { logInfo, logWarn } from '../utils/runtimeLog';
-import { hydrateRoomMap, resolveMemberRooms } from '../services/roomMapCache';
+import { hydrateRoomMap, getRoomMapEntry } from '../services/roomMapCache';
 
 /** 上麦快照持久化 key：冷启动先展示旧结果，后台再增量重扫 */
 const SNAPSHOT_KEY = 'yaya_onmic_snapshot_v1';
@@ -56,8 +56,9 @@ interface OnMicState {
 const SCAN_INTERVAL = 60 * 1000;
 /** 非强制扫描每轮预算：最多探测 1/3 成员（至少 40 位），最久未探测的优先，约 3 轮全量覆盖 */
 const BUDGET_MIN = 40;
-/** 并发探测数：8→16（实测全量 529 人从 ~95s 降到 ~40s；配合「发现即上屏」体验显著变快） */
-const SCAN_CONCURRENCY = 16;
+/** 并发探测数 + 每请求间隔：对齐桌面端 room-radio-feature.js（ROOM_RADIO_SCAN_CONCURRENCY=24 / GAP=20ms） */
+const SCAN_CONCURRENCY = 24;
+const REQUEST_GAP_MS = 20;
 
 /**
  * 判断某成员的 `team/voice/operate`(operateCode=2) 返回内容是否处于「上麦中」：
@@ -74,12 +75,52 @@ function parseOnMic(content: any): { hasRadio: boolean; onMicCount: number } {
 }
 
 let snapshotHydrated = false;
+
+/** 规范化 channelId：仅「纯数字且非 0」视为有效（桌面端 normalizeRoomRadioChannelId 同款） */
+function normChannelId(value: any): string {
+  const v = String(value || '').trim();
+  return /^\d+$/.test(v) && v !== '0' ? v : '';
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface ScanTask {
+  memberId: string;
+  name: string;
+  serverId: string;
+  channelId: string;
+  roomType: 'big' | 'small';
+  bigChannelId: string;
+  smallChannelId: string;
+}
+
 /**
- * 小房间探测时间戳：大房间静默的成员在 90s 内不重复补测小房间
- * （此前无缓存 → 每轮扫描对同一批静默成员重复请求，请求量翻倍且易触发服务端限流）
+ * 构造扫描任务（桌面端 createRoomRadioScanTaskList 语义）：
+ *   每位成员 → 大房间(channelId) + 小房间(yklzId) 两个任务，去重键 `serverId:channelId`。
+ *   成员库字段缺失时用 roomMap 本地缓存补（纯本地，不联网）；
+ *   小房间被关闭（无 yklzId）→ 不生成该类任务，由大房间结果兜底。
  */
-const smallProbedAt: Record<string, number> = {};
-const SMALL_PROBE_TTL = 90 * 1000;
+function buildScanTasks(members: OnMicMemberInput[]): ScanTask[] {
+  const tasks: ScanTask[] = [];
+  const seen = new Set<string>();
+  for (const m of members) {
+    const name = String(m.name || '').trim();
+    if (!name || !m.memberId) continue;
+    const cached = getRoomMapEntry(m.memberId);
+    const big = normChannelId(m.channelId) || normChannelId(cached?.channelId);
+    const small = normChannelId(m.smallChannelId) || normChannelId(cached?.yklzId);
+    const serverId = String(m.serverId || cached?.serverId || '').trim();
+    const pairs: [string, 'big' | 'small'][] = [[big, 'big'], [small, 'small']];
+    for (const [channelId, roomType] of pairs) {
+      if (!channelId) continue;
+      const key = `${serverId}:${channelId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tasks.push({ memberId: m.memberId, name, serverId, channelId, roomType, bigChannelId: big, smallChannelId: small });
+    }
+  }
+  return tasks;
+}
 
 /**
  * v2.7.4 上麦扫描（语义：全部成员房间电台探测）：
@@ -130,132 +171,117 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
     }
     set({ scanning: true, total: 0, done: 0 });
     const updates: Record<string, OnMicEntry> = {};
-    let voiceSampleLogged = false;
+    const removable = new Set<string>();
     let uniq: OnMicMemberInput[] = [];
     try {
       await hydrateRoomMap();
       uniq = allMembers.filter(
         (m, i, arr) => arr.findIndex((x) => x.memberId === m.memberId) === i,
       );
-      // 退团/暂休成员不进上麦扫描：官方分类（channelId/serverId 缺失的也被滤掉）
-      const beforeState = uniq.length;
-      uniq = uniq.filter((m) => m.state !== 'left' && m.state !== 'paused');
-      if (uniq.length !== beforeState) {
-        logInfo(`[onMic] 状态过滤移除退团/暂休 ${beforeState - uniq.length} 位（剩余 ${uniq.length}）`, 'onMic');
-      }
       if (!uniq.length) {
         set({ scanning: false, lastScan: Date.now(), done: 0, total: 0 });
         return;
       }
 
-      // 预算制增量：非强制扫描只取「最久未探测」的子集
+      // 抄桌面端 room-radio-feature.js：不做运行时房间解析（不再逐人 serverJump/seine 联网），
+      // 直接用成员库(+roomMap 本地缓存)的 channelId / yklzId 构造「大房间 + 小房间」任务。
+      // 此前逐人 resolveMemberRooms，未登录或解析失败即 continue → 全量扫描只出个位数
+      // （用户反馈「根本收不到、只有 9 个」）。
+      const tasks = buildScanTasks(uniq);
+
+      // 预算制增量：非强制扫描只取「最久未探测」的成员子集
       const probedAt = { ...get().probedAt } as Record<string, number>;
-      let candidates = uniq;
+      let queue = tasks;
       if (!opts.force) {
         const budget = Math.max(BUDGET_MIN, Math.ceil(uniq.length / 3));
         if (uniq.length > budget) {
-          candidates = [...uniq]
-            .sort((a, b) => (probedAt[a.memberId] || 0) - (probedAt[b.memberId] || 0))
-            .slice(0, budget);
+          const keep = new Set(
+            [...uniq]
+              .sort((a, b) => (probedAt[a.memberId] || 0) - (probedAt[b.memberId] || 0))
+              .slice(0, budget)
+              .map((m) => m.memberId),
+          );
+          queue = tasks.filter((t) => keep.has(t.memberId));
         }
       }
-      set({ total: candidates.length });
-      // 小房间补测：此前仅在候选 ≤40（关注成员小扫描）时开启 → 进上麦页的全量扫描
-      // 从不测小房间，导致「只在小房间开麦」的成员永远搜不到。
-      // 改为始终尝试（且仍只对「大房间静默」的成员补测，请求量翻倍风险可控）；
-      // 无 yklzId 的成员=小房间已关闭/未配置 → 不补测，直接用大房间结果兜底。
-      const enableSmallFallback = opts.smallFallback ?? true;
-      // 成功探测集合：仅「本次请求成功且确认未上麦」的成员才允许从列表移除；
-      // 请求失败（网络/超时/未登录）的成员保留旧状态——避免一次网络抖动整列被清空（"加载不出上麦列表"根因）
-      const okIds = new Set<string>();
+      if (!queue.length) {
+        set({ scanning: false, lastScan: Date.now(), done: 0, total: 0 });
+        return;
+      }
+      set({ total: queue.length });
+
+      // 成员级统计：仅当某成员的全部任务都成功返回且都没有流 → 才允许从列表移除（防网络抖动误清）
+      const stat = new Map<string, { done: number; total: number; onAir: boolean; failed: number }>();
+      for (const t of queue) {
+        const st = stat.get(t.memberId) || { done: 0, total: 0, onAir: false, failed: 0 };
+        st.total += 1;
+        stat.set(t.memberId, st);
+      }
+
       let cursor = 0;
+      let sampleLogged = false;
       const worker = async () => {
-        while (cursor < candidates.length) {
-          const m = candidates[cursor++];
+        while (cursor < queue.length) {
+          const t = queue[cursor++];
+          const st = stat.get(t.memberId)!;
           try {
-            // 房间映射：缓存优先 → store → serverJump → seine（逐步补齐，持久化）
-            const room = await resolveMemberRooms(m.memberId, {
-              name: m.name,
-              knownChannelId: m.channelId,
-              knownYklzId: m.smallChannelId,
-              knownServerId: m.serverId,
-            });
-            if (!room.channelId || room.channelId === '0' || room.channelId === 'undefined') {
-              okIds.add(m.memberId);
-              probedAt[m.memberId] = Date.now();
-              continue; // 实在拿不到大房间 channelId 的成员跳过（成功判定：本次确无结果）
-            }
-            const res: any = await pocketApi.operateRoomVoice({ channelId: room.channelId, serverId: room.serverId });
+            const res: any = await pocketApi.operateRoomVoice({ channelId: t.channelId, serverId: t.serverId });
             const content = res?.content || (res?.data && res.data.content) || {};
-            // 诊断：首个候选的真实返回结构（校准解析字段）
-            if (!voiceSampleLogged) {
-              voiceSampleLogged = true;
-              logInfo(`[onMic] voice/operate 返回结构（${m.name} ch=${room.channelId} srv=${room.serverId}）：${JSON.stringify(res).slice(0, 700)}`, 'onMic');
+            if (!sampleLogged) {
+              sampleLogged = true;
+              logInfo(`[onMic] voice/operate 返回结构（${t.name} ch=${t.channelId} srv=${t.serverId}）：${JSON.stringify(res).slice(0, 700)}`, 'onMic');
             }
-            let { hasRadio, onMicCount } = parseOnMic(content);
-            let smallVoice = false;
-            let smallStreamUrl = '';
-            // 大房间无声 → 小房间补测（很多成员在小房间开语音）；
-            // 90s 内已补测过的人跳过，避免每轮重复打接口（全量扫描时请求量翻倍 → 限流风控）
-            const smallCid = room.yklzId || m.smallChannelId || '';
-            const smallFresh = Date.now() - (smallProbedAt[m.memberId] || 0) < SMALL_PROBE_TTL;
-            if (enableSmallFallback && !hasRadio && onMicCount === 0 && smallCid && smallCid !== '0' && !smallFresh) {
-              smallProbedAt[m.memberId] = Date.now();
-              try {
-                const smallRes: any = await pocketApi.operateRoomVoice({ channelId: smallCid, serverId: room.serverId });
-                const smallContent = smallRes?.content || (smallRes?.data && smallRes.data.content) || {};
-                const small = parseOnMic(smallContent);
-                if (small.hasRadio || small.onMicCount > 0) {
-                  hasRadio = small.hasRadio;
-                  onMicCount = small.onMicCount;
-                  smallVoice = true;
-                  smallStreamUrl = String(smallContent?.streamUrl || '');
-                  logInfo(`[onMic] ${m.name} 小房间上麦中：radio=${hasRadio} 在麦=${onMicCount} ch=${smallCid} srv=${room.serverId}`, 'onMic');
-                }
-              } catch {
-                // 小房间探测失败忽略
+            const voiceList = Array.isArray(content?.voiceUserList) ? content.voiceUserList : null;
+            const activeVoice = !!voiceList && voiceList.some((u: any) => u && u.voiceStatus !== false);
+            const streamUrl = String(content?.streamUrl || '');
+            // 与桌面端一致的判定：有 streamUrl 且（无 voiceUserList 或列表内存在活跃用户）才算在麦
+            const onAir = !!streamUrl && (!voiceList || activeVoice);
+            st.done += 1;
+            if (onAir) {
+              st.onAir = true;
+              const isSmall = t.roomType === 'small';
+              const prev = updates[t.memberId];
+              // 大房间结果优先；仅当小房间在麦且大房间无声时才标 smallVoice（播放页默认切小房间）
+              if (!prev || (prev.smallVoice && !isSmall)) {
+                const entry: OnMicEntry = {
+                  memberId: t.memberId,
+                  name: t.name,
+                  channelId: t.bigChannelId || t.channelId,
+                  serverId: t.serverId,
+                  smallChannelId: t.smallChannelId,
+                  hasRadio: true,
+                  onMicCount: voiceList ? voiceList.filter((u: any) => u && u.voiceStatus !== false).length : 0,
+                  smallVoice: isSmall || undefined,
+                  streamUrl: streamUrl || undefined,
+                  updatedAt: Date.now(),
+                };
+                updates[t.memberId] = entry;
+                // 发现即上屏：不等整轮扫描结束，立即写进列表
+                set((snap) => ({ onMic: { ...snap.onMic, [t.memberId]: entry } }));
+                logInfo(`[onMic] ${t.name} 上麦中（${isSmall ? '小' : '大'}房间）ch=${t.channelId} srv=${t.serverId}`, 'onMic');
               }
             }
-            if (hasRadio || onMicCount > 0) {
-              const entry: OnMicEntry = {
-                memberId: m.memberId,
-                name: m.name,
-                channelId: room.channelId,
-                serverId: room.serverId,
-                smallChannelId: room.yklzId || m.smallChannelId || '',
-                hasRadio,
-                onMicCount,
-                smallVoice: smallVoice || undefined,
-                streamUrl: smallVoice
-                  ? (smallStreamUrl || undefined)
-                  : (String(content?.streamUrl || '') || undefined),
-                updatedAt: Date.now(),
-              };
-              updates[m.memberId] = entry;
-              // 发现即上屏：不等整轮扫描结束，立即把该成员写进列表（新发现/快照成员都能即时出现）
-              set((s) => ({ onMic: { ...s.onMic, [entry.memberId]: entry } }));
-              if (!smallVoice) {
-                logInfo(`[onMic] ${m.name} 上麦中：radio=${hasRadio} 在麦=${onMicCount} ch=${room.channelId} srv=${room.serverId}`, 'onMic');
-              }
-            }
-            okIds.add(m.memberId);
           } catch {
-            // 单个成员查询失败（未登录 / 无权限 / 网络）忽略，不阻断整体扫描；不进 okIds → 列表保留其旧状态
+            // 单任务失败：计入 failed（该成员本轮不允许被移除），不影响其它任务
+            st.done += 1;
+            st.failed += 1;
           } finally {
-            probedAt[m.memberId] = Date.now();
-            set((s) => ({ done: s.done + 1 }));
+            probedAt[t.memberId] = Date.now();
+            set((snap) => ({ done: snap.done + 1 }));
+            if (cursor < queue.length) await sleep(REQUEST_GAP_MS);
           }
         }
       };
-      const workers = Array.from({ length: Math.min(SCAN_CONCURRENCY, candidates.length) }, () => worker());
+      const workers = Array.from({ length: Math.min(SCAN_CONCURRENCY, queue.length) }, () => worker());
       await Promise.all(workers);
-      logInfo(`[onMic] 扫描完成：${candidates.length} 位，发现上麦 ${Object.keys(updates).length} 位${opts.force ? '（全量）' : '（增量）'}`, 'onMic');
-      // 合并而非整体替换：本次扫描到的成员（在麦写入、未在麦移除），其余成员状态保持不变
-      set((s) => {
-        const next: Record<string, OnMicEntry> = { ...s.onMic };
-        const scannedIds = new Set(candidates.map((m) => m.memberId));
-        // 仅移除「成功确认未上麦」的成员；失败的保留（防误清）
-        scannedIds.forEach((id) => { if (okIds.has(id) && !(id in updates)) delete next[id]; });
+      // 仅移除「全部任务成功且都没有流」的成员；失败/部分成功的保留旧状态
+      stat.forEach((v, id) => {
+        if (v.failed === 0 && v.done >= v.total && !v.onAir) removable.add(id);
+      });
+      logInfo(`[onMic] 扫描完成：任务 ${queue.length} 个 / ${uniq.length} 位成员，上麦 ${Object.keys(updates).length} 位，确认无声 ${removable.size} 位${opts.force ? '（全量）' : '（增量）'}`, 'onMic');
+      set((snap) => {
+        const next: Record<string, OnMicEntry> = { ...snap.onMic };
+        removable.forEach((id) => { if (!(id in updates)) delete next[id]; });
         Object.assign(next, updates);
         return {
           onMic: next,

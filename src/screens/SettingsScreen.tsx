@@ -267,7 +267,7 @@ export default function SettingsScreen() {
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
           <Row
             icon="github"
-            title={t('桌面端项目（致敬）')}
+            title={t('桌面端项目')}
             value="yk1z/yaya_msg"
             onPress={() => Linking.openURL('https://github.com/yk1z/yaya_msg').catch(() => {})}
           />

@@ -6,6 +6,13 @@ export const BILIBILI_API = 'https://api.bilibili.com';
 
 // 成员数据权威源：数据发布于 data.gnz.hk（GNZ48 团站数据库镜像）。
 // 进入软件由 AppNavigator 调用 ensureMemberData() 无条件同步最新。
+/**
+ * 自建镜像成员库（推荐源）：GitHub Action 每日同步上游 + 应用本地 overrides/extra 后产出。
+ * 见 member-db/README.md。换成自建域名时只改这一行。
+ */
+export const MEMBERS_URL_SELF = 'https://cdn.jsdelivr.net/gh/Xenia0922/yaya_msg_mobile@main/member-db/dist/members.json';
+
+/** 上游 yk1z 库：自建源不可用时的回退（保证不全依赖自建可用性） */
 export const MEMBERS_URL = 'https://data.gnz.hk/members.json';
 
 export const APP_VERSION = '2.7.5';

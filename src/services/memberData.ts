@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadMembers, normalizeMember, classifyMemberState } from '../utils/members';
 import { Member } from '../types';
 import { useMemberStore } from '../store';
-import { MEMBERS_URL } from '../constants';
+import { MEMBERS_URL, MEMBERS_URL_SELF } from '../constants';
 import { fetchWithTimeout } from '../utils/network';
 import pocketApi from '../api/pocket48';
 import { logInfo, logWarn, logError } from '../utils/runtimeLog';
@@ -119,27 +119,40 @@ function sampleKeys(list: any[], label: string) {
 }
 
 /**
- * 拉取 yk1z 成员库（房间映射权威源）。
+ * 拉取成员库（房间映射权威源）。
+ * 优先自建镜像库（MEMBERS_URL_SELF：上游 yk1z 同步 + 我们自己的 overrides），
+ * 失败自动回退上游 yk1z 库 —— 自建挂掉或还没上线时行为与旧版完全一致。
  * 官方接口只给档案字段 + userId→serverId 字典，不给 channelId/yklzId；
  * 房间消息/大小房间切换必须靠本库的 channelId（大房间）/yklzId（小房间）/serverId。
  */
 async function fetchYk1zDb(): Promise<Member[]> {
-  const res = await fetchWithTimeout(`${MEMBERS_URL}?t=${Date.now()}`, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-  }, 15000);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  const arr = Array.isArray(json) ? json : (json.roomId || json.data || json.members || json.list || []);
-  const members = await loadMembers(arr);
-  if (!members.length) throw new Error('yk1z 成员库返回为空');
-  // 清理：normalizeMember 的 channelId 会兜底到 roomId，但 DB 的 roomId（如 67236601）是旧口袋房间
-  // id、不是大房间 channelId。仅当原始记录真的带 channelId 才算有效（毕业成员多为 roomId-only）。
-  for (const m of members) {
-    const raw = arr.find((x: any) => String(x?.id ?? x?.memberId ?? x?.userId) === String(m.id));
-    if (raw && !raw.channelId) m.channelId = '';
+  const sources = [MEMBERS_URL_SELF, MEMBERS_URL].filter(Boolean);
+  let lastErr: any = null;
+  for (const url of sources) {
+    try {
+      const res = await fetchWithTimeout(`${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      }, 15000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const arr = Array.isArray(json) ? json : (json.roomId || json.data || json.members || json.list || []);
+      const members = await loadMembers(arr);
+      if (!members.length) throw new Error('成员库返回为空');
+      // 清理：normalizeMember 的 channelId 会兜底到 roomId，但 DB 的 roomId（如 67236601）是旧口袋房间
+      // id、不是大房间 channelId。仅当原始记录真的带 channelId 才算有效（毕业成员多为 roomId-only）。
+      for (const m of members) {
+        const raw = arr.find((x: any) => String(x?.id ?? x?.memberId ?? x?.userId) === String(m.id));
+        if (raw && !raw.channelId) m.channelId = '';
+      }
+      logInfo(`[memberData] 成员库拉取成功：${members.length} 位（源 ${url === MEMBERS_URL_SELF ? '自建镜像' : '上游 yk1z'}）`, 'memberData');
+      return members;
+    } catch (e: any) {
+      lastErr = e;
+      logWarn(`[memberData] 成员库源失败（${url}）：${e?.message || String(e)}`, 'memberData');
+    }
   }
-  return members;
+  throw lastErr || new Error('成员库拉取失败');
 }
 
 /**

@@ -1,0 +1,36 @@
+name: member-db sync
+
+# 每日同步上游成员库 → 应用本地 overrides/extra → 产出 dist/members.json
+# 北京时间 04:00（UTC 20:00），也可在 Actions 页面手动触发
+on:
+  schedule:
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync members
+        run: node member-db/sync.mjs
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add member-db/dist/members.json
+          if git diff --staged --quiet; then
+            echo "无变化，跳过提交"
+          else
+            git commit -m "chore(member-db): 同步上游成员库 $(date -u +%Y-%m-%d)"
+            git push
+          fi
