@@ -6,7 +6,7 @@ import { MEMBERS_URL } from '../constants';
 import { fetchWithTimeout } from '../utils/network';
 import pocketApi from '../api/pocket48';
 import { logInfo, logWarn, logError } from '../utils/runtimeLog';
-import { hydrateRoomMap, seedRoomMapFromMembers } from './roomMapCache';
+import { hydrateRoomMap, seedRoomMapFromMembers, getRoomMapEntry } from './roomMapCache';
 
 // v6 结构：分类对齐 yk1z 库（isInGroup 为准，官方 IDFT 标的只有杨添淩 1 人真在团）。
 // 与 v5（官方分类）不兼容，升级 key 强制首启重拉。
@@ -23,6 +23,37 @@ const OLD_CACHE_KEYS = [
 
 /** 成员库冷启动 TTL：缓存未过期时直接展示并跳过网络同步，加速冷启动 */
 const MEMBER_CACHE_TTL = 6 * 60 * 60 * 1000;
+
+/** 覆盖前备份键：数据源退化导致误覆盖时，可从这里回滚（只保留最近一份） */
+const BACKUP_KEY = 'yaya_member_data_cache_bak';
+
+/** 统计房间映射字段覆盖率（护栏用：判断新数据是否比本地劣化） */
+function countMapping(list: Member[]): { channel: number; yklz: number; server: number } {
+  let channel = 0, yklz = 0, server = 0;
+  for (const m of list) {
+    if (m.channelId && m.channelId !== '0') channel += 1;
+    if (m.yklzId && m.yklzId !== '0') yklz += 1;
+    if (m.serverId && m.serverId !== '0') server += 1;
+  }
+  return { channel, yklz, server };
+}
+
+/** 从备份键恢复成员库（数据误覆盖后的兜底入口） */
+export async function restoreMemberDataFromBackup(): Promise<{ restored: boolean; count: number }> {
+  try {
+    const raw = await AsyncStorage.getItem(BACKUP_KEY);
+    if (!raw) return { restored: false, count: 0 };
+    const parsed = JSON.parse(raw);
+    const members = await loadMembers(parsed?.members);
+    if (!members.length) return { restored: false, count: 0 };
+    await AsyncStorage.setItem(CACHE_KEY, raw);
+    useMemberStore.getState().setMembers(members);
+    logInfo(`[memberData] 已从备份恢复成员库 ${members.length} 位`, 'memberData');
+    return { restored: true, count: members.length };
+  } catch {
+    return { restored: false, count: 0 };
+  }
+}
 
 export interface MemberDataMeta {
   savedAt: number;
@@ -321,9 +352,69 @@ export async function updateMemberData(): Promise<MemberUpdateResult> {
   const members = await fetchOfficialMembers();
   if (!members.length) throw new Error('成员数据为空');
 
+  // ---- 防丢失护栏（历史教训：某次云端源退化/字段变少 → 直接覆盖缓存 → 大量成员房间映射丢失）----
+  // 1) 字段回填：新数据缺失的映射字段（channelId/yklzId/serverId）用本地旧值补，避免「新源字段更少」造成退化
+  // 2) 劣化拒绝：条数骤降或映射字段覆盖率大跌时拒绝写入，保留本地数据
+  // 3) 写入前备份旧缓存，便于回滚/诊断
+  let prev: Member[] = [];
+  try { prev = (await loadCachedMemberData()) ?? []; } catch { /* 忽略 */ }
+  if (prev.length) {
+    const prevById = new Map(prev.map((m) => [String(m.id), m]));
+    let filled = 0;
+    for (const m of members) {
+      const p = prevById.get(String(m.id));
+      if (!p) continue;
+      if (!m.channelId && p.channelId) { m.channelId = p.channelId; filled += 1; }
+      if (!m.yklzId && p.yklzId) { m.yklzId = p.yklzId; filled += 1; }
+      if (!m.serverId && p.serverId) { m.serverId = p.serverId; filled += 1; }
+      if (!m.avatar && p.avatar) m.avatar = p.avatar;
+      if (!m.pinyin && p.pinyin) m.pinyin = p.pinyin;
+      if (!m.team && p.team) m.team = p.team;
+    }
+    const nowC = countMapping(members);
+    const prevC = countMapping(prev);
+    const tooFew = members.length < prev.length * 0.6;
+    const mapLost = prevC.channel > 0 && nowC.channel < prevC.channel * 0.7;
+    if (filled) logInfo(`[memberData] 护栏：用本地旧值回填映射字段 ${filled} 处`, 'memberData');
+    if (tooFew || mapLost) {
+      const detail = `云端 ${members.length} 位/大房间 ${nowC.channel}/小房间 ${nowC.yklz} ｜ 本地 ${prev.length} 位/大房间 ${prevC.channel}/小房间 ${prevC.yklz}（已拒绝覆盖）`;
+      logWarn(`[memberData] 数据劣化，拒绝覆盖本地缓存：${detail}`, 'memberData');
+      return {
+        updated: false,
+        count: prev.length,
+        message: '数据源返回异常，已保留本地数据',
+        source: 'none',
+        detail,
+      };
+    }
+    try {
+      const raw = await AsyncStorage.getItem(CACHE_KEY);
+      if (raw) await AsyncStorage.setItem(BACKUP_KEY, raw);
+    } catch { /* 备份失败不阻断 */ }
+  }
+
   const withServer = members.filter((m) => m.serverId && m.serverId !== '0').length;
   const withChannel = members.filter((m) => m.channelId && m.channelId !== '0').length;
   const withYklz = members.filter((m) => m.yklzId && m.yklzId !== '0').length;
+
+  // ---- 本地 overlay 固化（自维护数据基础）----
+  // 运行时用 seine/server/detail 解析出的房间映射存在 roomMapCache；这里回填进成员库并落盘，
+  // 使「手动更新」把自愈成果固化 —— 云端库缺字段时不必每次重新联网解析。
+  try {
+    await hydrateRoomMap();
+    let overlayPatched = 0;
+    for (const m of members) {
+      const e = getRoomMapEntry(String(m.id));
+      if (!e) continue;
+      if (!m.channelId && e.channelId) { m.channelId = e.channelId; overlayPatched += 1; }
+      if (!m.yklzId && e.yklzId) { m.yklzId = e.yklzId; overlayPatched += 1; }
+      if (!m.serverId && e.serverId) { m.serverId = e.serverId; overlayPatched += 1; }
+    }
+    if (overlayPatched) logInfo(`[memberData] 本地 overlay 固化房间映射 ${overlayPatched} 处`, 'memberData');
+    seedRoomMapFromMembers(members); // 反向播种：库里的映射写回 roomMap 缓存（补缺口）
+  } catch {
+    // overlay 失败不影响主流程
+  }
 
   await persist(members, 'official');
   // 清理历史版本缓存行（防 AsyncStorage 6MB 上限被旧行撑爆 → SQLITE_FULL）
