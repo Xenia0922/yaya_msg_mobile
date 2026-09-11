@@ -733,4 +733,12 @@ export const en: Record<string, string> = {
   '暂无评论，来抢沙发～': 'No comments yet — be the first!',
   查看更多评论: 'View more comments',
   '写评论…': 'Write a comment…',
+
+  手动更新成员数据: 'Update member data',
+  立即同步: 'Sync now',
+  '更新中…': 'Updating…',
+  '更新成功：{detail}': 'Updated: {detail}',
+  成员数据已更新: 'Member data updated',
+  '更新失败：{msg}（已保留本地数据）': 'Update failed: {msg} (local data kept)',
+  '桌面端项目（致敬）': 'Desktop project (credit)',
 };

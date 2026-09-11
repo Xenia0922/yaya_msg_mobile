@@ -52,7 +52,6 @@ export function MiniPlayer() {
   const playing = useMiniPlayerStore((s) => s.playing);
   const setPlaying = useMiniPlayerStore((s) => s.setPlaying);
   const close = useMiniPlayerStore((s) => s.close);
-  const pipAuto = useSettingsStore((s) => !!s.settings?.pip_auto);
   const videoRef = useRef<any>(null);
   const seekedRef = useRef(false);
   // 小窗高度（按视频内容比例自适应）
@@ -166,7 +165,7 @@ export function MiniPlayer() {
     });
     return () => sub.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, playing, info, pipAuto]);
+  }, [visible, playing, info]);
 
   // 系统 PiP ⏯ 点击（PipToggleBridge 经 store 发信号）→ 与小窗暂停键同逻辑切换当前小窗内容
   const sysToggleSeq = useMiniPlayerStore((s) => s.sysToggleSeq);

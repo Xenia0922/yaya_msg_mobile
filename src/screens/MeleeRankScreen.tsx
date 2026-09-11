@@ -34,6 +34,20 @@ const MODES: { key: ViewMode; label: string }[] = [
   { key: 'person', label: '成员贡献' },
 ];
 
+/**
+ * 取首个有效数值：只跳过 undefined/null/''，**保留 0**。
+ * 数值字段此前用 `a || b || c` 串联 → 真实值 0（新用户/0 贡献）会被跳过并落到下一字段，
+ * 显示成别的字段的数值（榜单出现"0 显示为别的数"）。
+ */
+function pickNum(...vals: any[]): number {
+  for (const v of vals) {
+    if (v === undefined || v === null || v === '') continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
 export default function MeleeRankScreen() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
@@ -80,7 +94,11 @@ export default function MeleeRankScreen() {
       const ws = extractWeeks(data);
       if (ws.length) {
         setWeeks((prev) => (prev.length ? prev : ws));
-        if (!selectedWeekRef.current) setSelectedWeek(ws[ws.length - 1]);
+        // 默认选中「最新一期」：不能假设数组顺序（接口可能降序，取末项会选到最旧周）
+        if (!selectedWeekRef.current) {
+          const latest = ws.reduce((a, b) => (Number(b.weekRankId) > Number(a.weekRankId) ? b : a), ws[0]);
+          setSelectedWeek(latest);
+        }
       }
       const list = extractRankList(data);
       // Y31: 过期响应丢弃（期间已切榜/切周）
@@ -179,7 +197,7 @@ export default function MeleeRankScreen() {
   const rankMax = useMemo(() => {
     let m = 1;
     for (const it of ranks) {
-      const v = Number(it.melee || it.meleeValue || it.score || it.total || it.charm || 0);
+      const v = pickNum(it.melee, it.meleeValue, it.score, it.total, it.charm);
       if (v > m) m = v;
     }
     return m;
@@ -321,7 +339,7 @@ const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
             const u = item.baseUserInfo || item.userInfo || item.user || item;
             const name = String(u.userName || u.nickname || u.nickName || u.name || t('用户 {rank}', { rank: realIndex + 1 }));
             const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
-            const melee = Number(item.melee || item.meleeValue || item.score || item.total || item.charm || 0);
+            const melee = pickNum(item.melee, item.meleeValue, item.score, item.total, item.charm);
             const isFirst = realIndex === 0;
             return (
               <View key={realIndex} style={[styles.podiumCell, { flex: isFirst ? 1.15 : 1 }]}>
@@ -378,7 +396,7 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
   const name = String(u.nickname || u.starName || u.userName || u.nickName || u.name || '');
   const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
   const topUser = String(topU.userName || topU.nickname || '');
-  const melee = Number(item.melee || item.meleeValue || item.score || item.total || item.charm || '0');
+  const melee = pickNum(item.melee, item.meleeValue, item.score, item.total, item.charm);
   const isTop = rankNum <= 3;
   // 除零保护：max 为 0（全榜 0 值/异常）时此前会产生 Infinity% → RN 宽度告警 + 进度条错乱
   const pct = max > 0 ? Math.max(2, Math.min(100, (melee / max) * 100)) : 2;
@@ -438,7 +456,7 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
   const name = String(u.nickname || u.realNickName || u.userName || u.nickName || u.name || '');
   const avatar = normalizeUrl(String(u.avatar || u.userAvatar || u.headImg || u.headUrl || u.picPath || item.userAvatar || item.avatar || item.headImg || ''));
   const userId = String(u.userId || u.id || item.userId || item.uid || '');
-  const charm = Number(item.totalCharm || item.charm || item.charmValue || item.total || item.score || item.melee || '0');
+  const charm = pickNum(item.totalCharm, item.charm, item.charmValue, item.total, item.score, item.melee);
   const rankNum = Number(item.rankNum || item.rank || 0) || index + 1;
   const privacy = !!item.privacy;
 

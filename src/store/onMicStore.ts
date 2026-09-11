@@ -74,6 +74,12 @@ function parseOnMic(content: any): { hasRadio: boolean; onMicCount: number } {
 }
 
 let snapshotHydrated = false;
+/**
+ * 小房间探测时间戳：大房间静默的成员在 90s 内不重复补测小房间
+ * （此前无缓存 → 每轮扫描对同一批静默成员重复请求，请求量翻倍且易触发服务端限流）
+ */
+const smallProbedAt: Record<string, number> = {};
+const SMALL_PROBE_TTL = 90 * 1000;
 
 /**
  * v2.7.4 上麦扫描（语义：全部成员房间电台探测）：
@@ -95,6 +101,8 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
   scan: async (allMembers, opts = {}) => {
     if (!allMembers || allMembers.length === 0) return;
     if (get().scanning) return;
+    // 立即置位防重入：下方 await 读快照期间若仍为 false，两个并发调用都能通过检查 → 双扫描
+    set({ scanning: true });
     // 节流：距上次扫描不足 SCAN_INTERVAL 时跳过（除非 force 强制刷新）
     const last = get().lastScan;
     if (!opts.force && last && Date.now() - last < SCAN_INTERVAL) {
@@ -187,9 +195,12 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
             let { hasRadio, onMicCount } = parseOnMic(content);
             let smallVoice = false;
             let smallStreamUrl = '';
-            // 大房间无声 → 小房间补测（仅小扫描开启；很多成员在小房间开语音）
+            // 大房间无声 → 小房间补测（很多成员在小房间开语音）；
+            // 90s 内已补测过的人跳过，避免每轮重复打接口（全量扫描时请求量翻倍 → 限流风控）
             const smallCid = room.yklzId || m.smallChannelId || '';
-            if (enableSmallFallback && !hasRadio && onMicCount === 0 && smallCid && smallCid !== '0') {
+            const smallFresh = Date.now() - (smallProbedAt[m.memberId] || 0) < SMALL_PROBE_TTL;
+            if (enableSmallFallback && !hasRadio && onMicCount === 0 && smallCid && smallCid !== '0' && !smallFresh) {
+              smallProbedAt[m.memberId] = Date.now();
               try {
                 const smallRes: any = await pocketApi.operateRoomVoice({ channelId: smallCid, serverId: room.serverId });
                 const smallContent = smallRes?.content || (smallRes?.data && smallRes.data.content) || {};
@@ -257,6 +268,8 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
       });
     } catch (e: any) {
       logWarn(`[onMic] 扫描异常：${e?.message || String(e)}`, 'onMic');
+      // 异常路径必须复位 scanning，否则页面永远停留「扫描中」且后续扫描被防重入拦死
+      set({ scanning: false });
     }
     // 无论成功失败都持久化当前结果（含快照恢复后的首次空结果）
     try {

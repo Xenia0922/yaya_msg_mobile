@@ -48,7 +48,10 @@ export function extractWeeks(data: any): WeekItem[] {
       const mapped = node
         .map((it: any) => ({
           weekRankId: Number(it?.weekRankId ?? it?.rankId ?? it?.id ?? it?.week ?? 0),
-          weekRankName: String(it?.weekRankName ?? it?.rankName ?? it?.name ?? it?.title ?? ''),
+          // 名称缺失时不再丢弃该周（此前要求 weekRankName 必填 → 接口改名/只给 id 时整份周列表为空，
+          // 周切换直接失效）；用 rankId 兜底展示
+          weekRankName: String(it?.weekRankName ?? it?.rankName ?? it?.name ?? it?.title ?? '')
+            || (Number(it?.weekRankId ?? it?.rankId ?? it?.id ?? 0) > 0 ? `rankId ${Number(it?.weekRankId ?? it?.rankId ?? it?.id)}` : ''),
         }))
         .filter((w: WeekItem) => w.weekRankId > 0 && w.weekRankName);
       if (mapped.length) return mapped;

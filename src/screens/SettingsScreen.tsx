@@ -6,7 +6,7 @@
  * - 区块入场 FadeInView 错峰
  * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toMs } from '../utils/format';
 import {
   Alert,
@@ -149,6 +149,9 @@ export default function SettingsScreen() {
   const [meta, setMeta] = useState<MemberDataMeta | null>(null);
   const [logVisible, setLogVisible] = useState(false);
   const [memberSyncing, setMemberSyncing] = useState(false);
+  // 卸载守卫：手动同步耗时较长，期间用户可能退出设置页 → 避免卸载后 setState / 弹 toast
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => {
     getMemberDataMeta().then(setMeta).catch(() => {});
@@ -156,17 +159,20 @@ export default function SettingsScreen() {
 
   /** 手动更新成员数据库（双源: yk1z 库 + 官方接口） */
   const manualSyncMembers = useCallback(async () => {
-    if (memberSyncing) return;
+    if (memberSyncing || !mountedRef.current) return;
     setMemberSyncing(true);
     try {
       const res = await updateMemberData();
+      if (!mountedRef.current) return;
       const fresh = await getMemberDataMeta();
+      if (!mountedRef.current) return;
       setMeta(fresh);
       showToast(res?.detail ? t('更新成功：{detail}', { detail: res.detail }) : t('成员数据已更新'));
     } catch (e: any) {
+      if (!mountedRef.current) return;
       showToast(t('更新失败：{msg}（已保留本地数据）', { msg: e?.message || String(e) }));
     } finally {
-      setMemberSyncing(false);
+      if (mountedRef.current) setMemberSyncing(false);
     }
   }, [memberSyncing, t, showToast]);
 

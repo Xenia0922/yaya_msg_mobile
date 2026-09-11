@@ -22,6 +22,8 @@ export interface RoomMapEntry {
   yklzId: string;    // 小房间 channelId
   serverId: string;  // 大房间 serverId
   updatedAt: number;
+  /** 最近一次「小房间补齐尝试」时间：yklzId 为空时用它做 24h 退避，避免每次扫描重复请求 */
+  yklzTriedAt?: number;
 }
 
 let roomMap: Record<string, RoomMapEntry> = {};
@@ -115,7 +117,11 @@ export async function resolveMemberRooms(
     if (!channelId) channelId = cached.channelId || '';
     if (!yklzId) yklzId = cached.yklzId || '';
     if (!serverId) serverId = cached.serverId || '';
-    if (channelId && serverId) return { channelId, yklzId, serverId, fromCache: true };
+    // ⚠️ 关键：仅当「大房间 + 小房间 mapping 都齐」才能短路返回。
+    // 此前条件是 channelId && serverId —— yklzId 为空也直接返回，导致小房间 channelId
+    // 永远不会被补齐，只在小房间开麦的成员在上麦页永远搜不到。
+    const yklzReady = !!yklzId || (cached.yklzTriedAt || 0) > Date.now() - 24 * 3600 * 1000;
+    if (channelId && serverId && yklzReady) return { channelId, yklzId, serverId, fromCache: true };
   }
 
   // 2) store 中已有（调用方没传）
@@ -128,8 +134,12 @@ export async function resolveMemberRooms(
     }
   }
   if (channelId && serverId) {
-    roomMap[id] = { channelId, yklzId, serverId, updatedAt: Date.now() };
-    return { channelId, yklzId, serverId, fromCache: true };
+    const tried = cached?.yklzTriedAt || 0;
+    if (yklzId || tried > Date.now() - 24 * 3600 * 1000) {
+      roomMap[id] = { channelId, yklzId, serverId, updatedAt: Date.now(), yklzTriedAt: tried || undefined };
+      return { channelId, yklzId, serverId, fromCache: true };
+    }
+    // yklzId 仍缺 → 落到下面走 seine 补齐（带上已有的大房间信息）
   }
 
   // 2b) 连 serverId 都没有 → im/server/jump 按 userId 直查（48tools 同款 ServerJumpResult：
@@ -152,14 +162,14 @@ export async function resolveMemberRooms(
     }
   }
 
-  // 3) seine/server/detail 反查（serverId 是必需入参）
-  if (serverId && !channelId) {
+  // 3) seine/server/detail 反查（serverId 是必需入参）；大房间已解析但小房间缺失时也走这里补齐
+  if (serverId && (!channelId || !yklzId)) {
     try {
       const res: any = await pocketApi.getSeineServerDetail(Number(serverId));
       const content = res?.content || res?.data || {};
       const parsed = parseSeineDetail(content);
       if (parsed.channelId) {
-        channelId = parsed.channelId;
+        channelId = channelId || parsed.channelId;
         if (!yklzId) yklzId = parsed.yklzId;
         if (!serverId) serverId = parsed.serverId || serverId;
       } else {
@@ -168,7 +178,12 @@ export async function resolveMemberRooms(
         const keys = content ? Object.keys(content).join(',') : 'EMPTY';
         logWarn(`[roomMap] seine 无大房间 userId=${id} ${opts.name || ''} srv=${serverId} listLen=${listLen} keys=${keys} raw=${JSON.stringify(content).slice(0, 300)}`, 'roomMap');
       }
-      roomMap[id] = { channelId, yklzId, serverId, updatedAt: Date.now() };
+      // yklzId 仍未拿到 → 记退避时间（24h 内不再为此人补查，防每轮扫描放大请求）
+      roomMap[id] = {
+        channelId, yklzId, serverId,
+        updatedAt: Date.now(),
+        yklzTriedAt: yklzId ? undefined : Date.now(),
+      };
       persistRoomMap();
       if (channelId || yklzId || serverId) {
         useMemberStore.getState().patchMemberByUserId(id, { channelId, yklzId, serverId });

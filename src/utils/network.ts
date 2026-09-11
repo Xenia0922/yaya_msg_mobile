@@ -12,8 +12,18 @@ export function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const signal = options.signal ?? controller.signal;
-  return fetch(url, { ...options, signal }).finally(() => clearTimeout(timer));
+  // 外部 signal 与内部超时需同时生效：此前直接优先使用外部 signal，导致调用方传入
+  // signal（如卸载取消）后自身 timeout 完全失效 → 请求可无限挂起
+  const ext = options.signal;
+  const onExtAbort = () => controller.abort();
+  if (ext) {
+    if (ext.aborted) controller.abort();
+    else ext.addEventListener('abort', onExtAbort, { once: true });
+  }
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+    clearTimeout(timer);
+    if (ext) ext.removeEventListener('abort', onExtAbort);
+  });
 }
 
 interface RequestOptions {
@@ -51,6 +61,15 @@ function parseResponse(text: string): JsonValue {
 // 同一时刻相同 URL 的并发请求只发一次；GET 可带 TTL 短缓存，降低弱网/重复拉取开销。
 const inflight = new Map<string, Promise<any>>();
 const responseCache = new Map<string, { ts: number; data: JsonValue }>();
+/** 缓存容量上限：超限时按插入顺序淘汰最旧项（此前 Map 无上限、过期项永不删除 → 长跑内存增长） */
+const CACHE_MAX = 200;
+function trimCache(map: Map<string, any>) {
+  while (map.size > CACHE_MAX) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
 
 function requestKey(method: string, url: string, body?: any): string {
   return `${method} ${url}` + (method === 'POST' && body !== undefined ? ` ${JSON.stringify(body)}` : '');
@@ -120,6 +139,7 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
       if (res.status >= 200 && res.status < 300) {
         if (method === 'GET' && cacheTtl > 0) {
           responseCache.set(key, { ts: Date.now(), data: body });
+          trimCache(responseCache);
         }
         return body as T;
       }
@@ -132,6 +152,9 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
     } catch (error: any) {
       clearTimeout(timer);
       if (error?.name === 'AbortError') {
+        // 区分「外部主动取消（切页/卸载）」与「超时」：此前统一报超时，
+        // 用户在切页瞬间会看到凭空出现的「网络请求超时」错误态
+        if (options.signal?.aborted) throw new Error('请求已取消');
         throw new Error('网络请求超时');
       }
       // fetch 网络层失败（无连接等）抛 TypeError
@@ -146,6 +169,7 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
 
   if (!options.signal) {
     inflight.set(key, promise);
+    trimCache(inflight);
   }
   return promise;
 }
