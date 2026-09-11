@@ -141,8 +141,10 @@ async function fetchYk1zDb(): Promise<Member[]> {
       if (!members.length) throw new Error('成员库返回为空');
       // 清理：normalizeMember 的 channelId 会兜底到 roomId，但 DB 的 roomId（如 67236601）是旧口袋房间
       // id、不是大房间 channelId。仅当原始记录真的带 channelId 才算有效（毕业成员多为 roomId-only）。
+      const rawById = new Map<string, any>();
+      for (const x of arr) rawById.set(String(x?.id ?? x?.memberId ?? x?.userId), x);
       for (const m of members) {
-        const raw = arr.find((x: any) => String(x?.id ?? x?.memberId ?? x?.userId) === String(m.id));
+        const raw = rawById.get(String(m.id));
         if (raw && !raw.channelId) m.channelId = '';
       }
       logInfo(`[memberData] 成员库拉取成功：${members.length} 位（源 ${url === MEMBERS_URL_SELF ? '自建镜像' : '上游 yk1z'}）`, 'memberData');

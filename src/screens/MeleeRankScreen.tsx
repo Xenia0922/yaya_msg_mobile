@@ -93,6 +93,9 @@ export default function MeleeRankScreen() {
       // 优先从返回体补齐周列表（部分接口把 weekList 挂在 content 下）
       const ws = extractWeeks(data);
       if (ws.length) {
+        // 稳定排序：按 weekRankId 降序（最新在前）——接口返回顺序不保证，
+        // chips 顺序飘忽会让用户找不到刚看过的那期
+        ws.sort((a, b) => Number(b.weekRankId) - Number(a.weekRankId));
         setWeeks((prev) => (prev.length ? prev : ws));
         // 默认选中「最新一期」：不能假设数组顺序（接口可能降序，取末项会选到最旧周）
         if (!selectedWeekRef.current) {
