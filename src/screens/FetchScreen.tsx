@@ -226,7 +226,7 @@ export default function FetchScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  panel: { padding: 14, marginHorizontal: 16, marginTop: 4, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, gap: 12 },
+  panel: { padding: 14, marginHorizontal: 16, marginTop: 4, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, gap: 12 },
   groupLabel: { fontSize: 13, fontWeight: '700', marginTop: 4 },
   segment: { flexDirection: 'row', padding: 3, borderRadius: radii.sm, gap: 3 },
   segmentBtn: {

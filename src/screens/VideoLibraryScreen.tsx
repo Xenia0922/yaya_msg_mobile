@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
   status: { marginHorizontal: 16, marginTop: 8, fontSize: 12, textAlign: 'center' },
   listContent: { paddingTop: 8, paddingHorizontal: 12, paddingBottom: 120 },
   // 大 banner 卡（第一个视频 16:9）
-  bannerCard: { marginHorizontal: 4, marginBottom: 12, borderRadius: 16, overflow: 'hidden', backgroundColor: '#000' },
+  bannerCard: { marginHorizontal: 4, marginBottom: 12, borderRadius: 20, overflow: 'hidden', backgroundColor: '#000' },
   bannerCover: { width: '100%', aspectRatio: 16 / 9, overflow: 'hidden' },
   bannerCoverImg: { width: '100%', height: '100%' },
   bannerCoverFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   bannerPlayBtn: {
     width: 52,
     height: 52,
-    borderRadius: 26,
+    borderRadius: 28,
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   // 2 列 16:9 网格卡
   gridRow: { marginHorizontal: 4 },
   gridItem: { flex: 1, margin: 4 },
-  gridCard: { flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#000' },
+  gridCard: { flex: 1, borderRadius: 20, overflow: 'hidden', backgroundColor: '#000' },
   gridCover: { width: '100%', aspectRatio: 16 / 9, overflow: 'hidden' },
   gridCoverImg: { width: '100%', height: '100%' },
   gridCoverFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },

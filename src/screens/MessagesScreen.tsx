@@ -288,14 +288,14 @@ const styles = StyleSheet.create({
   pickerAvatar: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pickerTag: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.04)',
     alignItems: 'center',
     justifyContent: 'center',

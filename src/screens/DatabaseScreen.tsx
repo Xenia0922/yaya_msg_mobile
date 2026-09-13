@@ -76,6 +76,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', gap: 12,
   },
   failText: { fontSize: 13 },
-  retryBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 16 },
+  retryBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
   retryText: { fontSize: 13, fontWeight: '700' },
 });

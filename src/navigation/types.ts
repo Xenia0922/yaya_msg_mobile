@@ -9,7 +9,6 @@ export type RootStackParamList = {
   FlipScreen: { mode?: 'view' | 'send' } | undefined;
   ProfileScreen: undefined;
   PhotosScreen: undefined;
-  RoomAlbumScreen: undefined;
   RoomRadioScreen: { member?: any; initialMode?: 'big' | 'small'; streamUrl?: string } | undefined;
   OpenLiveScreen: undefined;
   OnMicScreen: undefined;
@@ -21,13 +20,9 @@ export type RootStackParamList = {
   AnalysisScreen: undefined;
   DownloadScreen: undefined;
   DatabaseScreen: undefined;
-  TripScreen: undefined;
   MeleeRankScreen: undefined;
   MemberDynamicScreen: undefined;
-  MemberWeiboScreen: undefined;
   InvoiceScreen: undefined;
-  CommunityScreen: undefined;
-  CommunityPostDetailScreen: { postId: string; title?: string };
 };
 
 export type TabParamList = {

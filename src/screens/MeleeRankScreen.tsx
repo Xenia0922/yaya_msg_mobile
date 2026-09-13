@@ -512,10 +512,10 @@ const styles = StyleSheet.create({
   podiumRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
   podiumCell: { alignItems: 'center', minWidth: 0 },
   podiumAvatarWrap: {
-    width: 64, height: 64, borderRadius: 32,
+    width: 64, height: 64, borderRadius: 36,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  podiumAvatar: { width: 64, height: 64, borderRadius: 32 },
+  podiumAvatar: { width: 64, height: 64, borderRadius: 36 },
   podiumName: { fontSize: 12, marginTop: 4, width: '100%', textAlign: 'center' },
   podiumBar: {
     marginTop: 6,

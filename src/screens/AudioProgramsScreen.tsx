@@ -361,12 +361,12 @@ function AudioSkeletonList() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  playerBar: { marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  playerBar: { marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
   playerTitle: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
   audioPlayer: { height: 48, width: '100%' },
   switchLineBtn: {
     position: 'absolute', right: 8, bottom: 10, zIndex: 20,
-    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4,
   },
   switchLineText: { color: '#fff', fontSize: 10 },
   status: { marginHorizontal: 16, marginTop: 8, fontSize: 12, textAlign: 'center' },
@@ -378,13 +378,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     marginBottom: 12,
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 20,
     backgroundColor: 'transparent',
   },
   heroCover: {
     width: 96,
     height: 96,
-    borderRadius: 16,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
   heroPlayBtn: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -408,7 +408,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     marginVertical: 4,
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 20,
   },
   iconWrap: {
     width: 48,

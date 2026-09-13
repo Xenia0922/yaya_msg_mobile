@@ -409,7 +409,7 @@ export function MiniPlayer() {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    borderRadius: 12,
+    borderRadius: 14,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',

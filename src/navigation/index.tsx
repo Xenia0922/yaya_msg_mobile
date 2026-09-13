@@ -25,7 +25,6 @@ import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import FetchScreen from '../screens/FetchScreen';
 import PhotosScreen from '../screens/PhotosScreen';
-import RoomAlbumScreen from '../screens/RoomAlbumScreen';
 import RoomRadioScreen from '../screens/RoomRadioScreen';
 import OpenLiveScreen from '../screens/OpenLiveScreen';
 import OnMicScreen from '../screens/OnMicScreen';
@@ -37,13 +36,9 @@ import AudioProgramsScreen from '../screens/AudioProgramsScreen';
 import AnalysisScreen from '../screens/AnalysisScreen';
 import DownloadScreen from '../screens/DownloadScreen';
 import DatabaseScreen from '../screens/DatabaseScreen';
-import TripScreen from '../screens/TripScreen';
 import MeleeRankScreen from '../screens/MeleeRankScreen';
 import MemberDynamicScreen from '../screens/MemberDynamicScreen';
-import MemberWeiboScreen from '../screens/MemberWeiboScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
-import CommunityScreen from '../screens/CommunityScreen';
-import CommunityPostDetailScreen from '../screens/CommunityPostDetailScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { ui } from '../theme/ui';
@@ -111,7 +106,6 @@ const FetchStackScreen = withPageMotion(FetchScreen, ui.motion.stackDuration, 10
 const FlipStackScreen = withPageMotion(FlipScreen, ui.motion.stackDuration, 10);
 const ProfileStackScreen = withPageMotion(ProfileScreen, ui.motion.stackDuration, 10);
 const PhotosStackScreen = withPageMotion(PhotosScreen, ui.motion.stackDuration, 10);
-const RoomAlbumStackScreen = withPageMotion(RoomAlbumScreen, ui.motion.stackDuration, 10);
 const RoomRadioStackScreen = withPageMotion(RoomRadioScreen, ui.motion.stackDuration, 10);
 const OpenLiveStackScreen = withPageMotion(OpenLiveScreen, ui.motion.stackDuration, 10);
 const PrivateMessagesStackScreen = withPageMotion(PrivateMessagesScreen, ui.motion.stackDuration, 10);
@@ -122,13 +116,9 @@ const AudioProgramsStackScreen = withPageMotion(AudioProgramsScreen, ui.motion.s
 const AnalysisStackScreen = withPageMotion(AnalysisScreen, ui.motion.stackDuration, 10);
 const DownloadStackScreen = withPageMotion(DownloadScreen, ui.motion.stackDuration, 10);
 const DatabaseStackScreen = withPageMotion(DatabaseScreen, ui.motion.stackDuration, 10);
-const TripStackScreen = withPageMotion(TripScreen, ui.motion.stackDuration, 10);
 const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDuration, 10);
 const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10);
-const MemberWeiboStackScreen = withPageMotion(MemberWeiboScreen, ui.motion.stackDuration, 10);
 const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10);
-const CommunityStackScreen = withPageMotion(CommunityScreen, ui.motion.stackDuration, 10);
-const CommunityPostDetailStackScreen = withPageMotion(CommunityPostDetailScreen, ui.motion.stackDuration, 10);
 
 function MainTabBar({
   state,
@@ -311,7 +301,6 @@ export default function AppNavigator() {
           <Stack.Screen name="FlipScreen" component={FlipStackScreen} />
           <Stack.Screen name="ProfileScreen" component={ProfileStackScreen} />
           <Stack.Screen name="PhotosScreen" component={PhotosStackScreen} />
-          <Stack.Screen name="RoomAlbumScreen" component={RoomAlbumStackScreen} />
           <Stack.Screen name="RoomRadioScreen" component={RoomRadioStackScreen} />
           <Stack.Screen name="OpenLiveScreen" component={OpenLiveStackScreen} />
           <Stack.Screen name="OnMicScreen" component={withPageMotion(OnMicScreen, ui.motion.stackDuration, 10)} />
@@ -323,13 +312,9 @@ export default function AppNavigator() {
           <Stack.Screen name="AnalysisScreen" component={AnalysisStackScreen} />
           <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
           <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
-          <Stack.Screen name="TripScreen" component={TripStackScreen} />
           <Stack.Screen name="MeleeRankScreen" component={MeleeRankStackScreen} />
           <Stack.Screen name="MemberDynamicScreen" component={MemberDynamicStackScreen} />
-          <Stack.Screen name="MemberWeiboScreen" component={MemberWeiboStackScreen} />
           <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
-          <Stack.Screen name="CommunityScreen" component={CommunityStackScreen} />
-          <Stack.Screen name="CommunityPostDetailScreen" component={CommunityPostDetailStackScreen} />
         </Stack.Navigator>
         <AppToast />
         {/* 应用内悬浮小窗播放器（全局挂载，导航上下文内可用） */}

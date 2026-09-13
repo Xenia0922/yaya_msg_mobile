@@ -804,7 +804,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   heroCard: {
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
     marginBottom: 12,
@@ -872,7 +872,7 @@ const styles = StyleSheet.create({
   miniFill: { height: 3, borderRadius: 2 },
   flipHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   flipQ: { fontSize: 13, lineHeight: 20, marginBottom: 6 },
-  flipABlock: { padding: 8, borderRadius: 12, marginBottom: 6 },
+  flipABlock: { padding: 8, borderRadius: 14, marginBottom: 6 },
   flipA: { fontSize: 13, lineHeight: 20 },
   flipAText: { fontSize: 13, lineHeight: 20, marginBottom: 4 },
   flipPending: { fontSize: 12, fontWeight: '700' },

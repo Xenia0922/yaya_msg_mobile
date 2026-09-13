@@ -749,7 +749,7 @@ export default function PrivateMessagesScreen() {
                 <TouchableOpacity
                   style={[
                     styles.convCard,
-                    { backgroundColor: palette.surface, borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16 },
+                    { backgroundColor: palette.surface, borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 },
                   ]}
                   onPress={() => openConv(conv)}
                   activeOpacity={0.88}
@@ -872,15 +872,15 @@ const styles = StyleSheet.create({
   dateSepText: { fontSize: 10, fontWeight: '700' },
   msgRow: { marginVertical: 2, alignItems: 'flex-start' },
   msgRowMine: { alignItems: 'flex-end' },
-  bubble: { maxWidth: '82%', padding: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, borderTopLeftRadius: 6 },
+  bubble: { maxWidth: '82%', padding: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, borderTopLeftRadius: 6 },
   bubbleMine: { borderTopLeftRadius: 16, borderTopRightRadius: 6 },
   bubbleMineMid: { borderTopRightRadius: 16, borderBottomRightRadius: 6 },
   bubbleOtherMid: { borderTopLeftRadius: 16, borderBottomLeftRadius: 6 },
   msgText: { fontSize: 14, lineHeight: 20 },
   msgTime: { fontSize: 10, marginTop: 4 },
-  mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' },
+  mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' },
   mediaBtnText: { fontSize: 12, fontWeight: '800' },
-  inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 12 },
+  inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 14 },
   audio: { height: 48, minWidth: 200, marginTop: 4, borderRadius: 10 },
   video: { height: 150, minWidth: 200, marginTop: 4, backgroundColor: '#000', borderRadius: 10 },
   flipBar: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },

@@ -82,7 +82,12 @@ export default function DownloadScreen() {
   };
 
   const refresh = useCallback(async () => {
-    setItems(await loadDownloadItems());
+    const list = await loadDownloadItems();
+    // 列表排序：进行中 > 失败 > 已完成，组内新任务在前 —— 进行中的任务始终置顶可见
+    const order: Record<string, number> = { downloading: 0, failed: 1, done: 2 };
+    setItems([...list].sort(
+      (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.createdAt - a.createdAt,
+    ));
   }, []);
 
   useFocusEffect(useCallback(() => {
@@ -324,7 +329,7 @@ export default function DownloadScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  manualCard: { marginHorizontal: 16, marginBottom: 8, padding: 14, borderRadius: 16 },
+  manualCard: { marginHorizontal: 16, marginBottom: 8, padding: 14, borderRadius: 20 },
   manualHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   manualTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
   urlInput: { minHeight: 42, paddingHorizontal: 14, borderRadius: 14, fontSize: 13 },

@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 132,
     height: 132,
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 2,
     marginTop: 8,
   },
