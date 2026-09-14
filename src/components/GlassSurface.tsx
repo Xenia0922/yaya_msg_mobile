@@ -73,6 +73,8 @@ export interface GlassSurfaceProps {
   refraction?: boolean;
   /** 前景可读性薄纱 0–1：文字压在照片/视频上时调高 */
   legibilityFloor?: number;
+  /** 边缘虹彩/色散强度 0–1（Android） */
+  iridescence?: number;
   /** 染色（默认跟随主题给半透明白/黑） */
   tintColor?: string;
   style?: StyleProp<ViewStyle>;
@@ -87,6 +89,7 @@ export function GlassSurface({
   intensity,
   refraction,
   legibilityFloor,
+  iridescence,
   tintColor,
   style,
   children,
@@ -144,7 +147,11 @@ export function GlassSurface({
         pointerEvents={interactive && !asBackground ? 'auto' : 'none'}
         refraction={refraction}
         legibilityFloor={legibilityFloor}
-        tintColor={tintColor}
+        // 玻璃自身的染色：一层薄白给玻璃"体量"（太透会显薄、露底）；
+        // 立体感与彩边仍由材质自己的 rim / 折射 / 色散出，不靠染色堆。
+        tintColor={tintColor ?? (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.30)')}
+        // 四周那一点点色散/彩虹边（Android：rim 上的虹彩微光，0–1）
+        iridescence={iridescence ?? 0.2}
         style={StyleSheet.absoluteFill}
       />
       {children}
