@@ -1692,7 +1692,8 @@ export default function MediaScreen() {
         }
       />
       {/* 直播/录播分段控件 */}
-      <View style={[styles.segmentWrap, { backgroundColor: palette.fill2, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
+      <View style={[styles.segmentWrap, { backgroundColor: 'transparent', borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
+        <GlassBackground radius={999} refract={false} />
         {(['live', 'vod'] as const).map((key) => {
           const active = tab === key;
           return (
