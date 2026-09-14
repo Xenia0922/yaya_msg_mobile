@@ -308,7 +308,7 @@ export default function RoomRadioScreen() {
 
         <View style={styles.scroll}>
           {/* 播放器大卡 */}
-          <View style={[styles.playerCard, { backgroundColor: palette.surface, borderColor: palette.hairline }, shadows.sm]}>
+          <View style={[styles.playerCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }, shadows.sm]}>
             {/* 封面 120 圆角 20 居中；纯音频播放时环绕旋转细环 + 耳机角标 */}
             {selectedMember ? (
               <View style={styles.coverWrap}>
@@ -548,7 +548,7 @@ export function RoomRadioSkeleton() {
         <Skeleton width={80} height={32} radius={999} />
       </View>
       <View style={{ marginTop: 16, alignItems: 'center' }}>
-        <View style={{ backgroundColor: palette.surface, borderRadius: 20, padding: 24, width: '100%', alignItems: 'center' }}>
+        <View style={{ backgroundColor: palette.surfaceGlassStrong, borderRadius: 20, padding: 24, width: '100%', alignItems: 'center' }}>
           <Skeleton width={120} height={120} radius={20} />
           <Skeleton width="40%" height={18} style={{ marginTop: 16 }} />
           <Skeleton width="25%" height={12} style={{ marginTop: 8 }} />

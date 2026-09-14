@@ -18,7 +18,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { LiquidGlassView, LIQUID_GLASS_FROSTED } from '@uginy/react-native-liquid-glass';
 import { usePalette, motion } from '../theme';
 import { typography } from '../theme/typography';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -105,56 +105,19 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
       pointerEvents="box-none"
       style={[styles.outer, { paddingBottom: 16 }]}
     >
-      <View
-        style={[
-          styles.bar,
-          {
-            // 玻璃底色（更实不透）：液态玻璃感但不高透；保留 12% 让 blur 仍显磨砂
-            backgroundColor: isDark ? 'rgba(30,31,36,0.86)' : 'rgba(245,246,250,0.88)',
-            borderColor: palette.innerStroke,
-          },
-        ]}
-      >
-        {/* 磨砂层：Android 12+ 真模糊；iOS 系统毛玻璃 */}
-        <BlurView
+      <View style={[styles.bar, { backgroundColor: 'transparent' }]}>
+        <LiquidGlassView
+          {...LIQUID_GLASS_FROSTED}
+          cornerRadius={28}
+          blurRadius={20}
+          refractionStrength={0.22}
+          chromaticAberration={0.18}
+          edgeGlowIntensity={1.0}
+          edgeWidth={3}
+          glassOpacity={isDark ? 0.28 : 0.14}
+          tintColor={isDark ? '#1c1c22' : '#ffffff'}
+          glareIntensity={0.5}
           style={StyleSheet.absoluteFill}
-          tint={isDark ? 'dark' : 'light'}
-          intensity={isDark ? 62 : 82}
-        />
-        {/* tint 色相层：保证可读；浅色几乎透, 深色轻提亮 */}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: isDark
-                ? 'rgba(255,255,255,0.06)'
-                : 'rgba(255,255,255,0.12)',
-            },
-          ]}
-        />
-        {/* 顶部细高光：玻璃受光边沿（iOS Liquid Glass） */}
-        <View
-          pointerEvents="none"
-          style={[
-            styles.glassHighlight,
-            {
-              backgroundColor: isDark
-                ? 'rgba(255,255,255,0.20)'
-                : 'rgba(255,255,255,0.85)',
-            },
-          ]}
-        />
-        {/* 底部细暗边：玻璃下方投影边缘，液态质感 */}
-        <View
-          pointerEvents="none"
-          style={[
-            styles.glassShadowEdge,
-            {
-              backgroundColor: isDark
-                ? 'rgba(0,0,0,0.32)'
-                : 'rgba(0,0,0,0.10)',
-            },
-          ]}
         />
         {items.map((item) => {
           const active = item.key === activeKey;

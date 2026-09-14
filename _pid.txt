@@ -1,0 +1,219 @@
+--------- beginning of main
+09-14 08:00:28.165  5297  5297 W nativebridge: Failed to bind-mount /system/etc/cpuinfo.x86_64.txt as /proc/cpuinfo: No such file or directory
+09-14 08:00:28.165  5297  5297 W nativebridge: Failed to bind-mount /system/lib64/x86_64/cpuinfo as /proc/cpuinfo: No such file or directory
+09-14 08:00:28.165  5297  5297 E Zygote  : pkg name is 0 => com.yk1z.yayamsg, data dir is /data/user/0/com.yk1z.yayamsg
+09-14 08:00:28.167  5297  5297 W zygote64: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: nemuhotd
+09-14 08:00:28.185  5297  5297 I Zygote  : seccomp disabled by setenforce 0
+09-14 08:00:28.193  5297  5297 I om.yk1z.yayamsg: Using CollectorTypeCMC GC.
+09-14 08:00:28.194  5297  5297 W om.yk1z.yayamsg: Unexpected CPU variant for x86: x86_64.
+09-14 08:00:28.194  5297  5297 W om.yk1z.yayamsg: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, default
+09-14 08:00:28.194  5297  5297 V libnb   : enter native_bridge2_initialize /data/user/0/com.yk1z.yayamsg/code_cache arm64
+09-14 08:00:28.194  5297  5297 E libnb   : The translator implementation library has not been set.
+09-14 08:00:28.204  5297  5297 E libnb   : get_callbacks native_handle 0x43f8c02e2f9ecc6f: 1 libnb:/system/lib64/libhoudini.so
+09-14 08:00:28.205  5297  5297 I libnb   : Found /system/lib64/libhoudini.so version 7
+09-14 08:00:28.205  5297  5297 E HP      : patch_houdini_linker_null_crash: patched +0x2FFECE (je->jmp) OK
+09-14 08:00:28.205  5297  5297 D HP      : no libmumuhooker.so
+09-14 08:00:28.201  5297  5297 I om.yk1z.yayamsg: type=1400 audit(0.0:1161): avc:  denied  { write } for  name="property_service" dev="tmpfs" ino=664 scontext=u:r:untrusted_app:s0:c26,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=1 app=com.yk1z.yayamsg
+09-14 08:00:28.201  5297  5297 I om.yk1z.yayamsg: type=1400 audit(0.0:1162): avc:  denied  { connectto } for  path="/dev/socket/property_service" scontext=u:r:untrusted_app:s0:c26,c256,c512,c768 tcontext=u:r:init:s0 tclass=unix_stream_socket permissive=1 app=com.yk1z.yayamsg
+09-14 08:00:28.388  5297  5297 D HP      : mAbi = x86_64 enableHighFrame = 0
+09-14 08:00:28.388  5297  5297 D houdini : [5297] Houdini now in android app mode
+09-14 08:00:28.388  5297  5297 D houdini : [5297] Intel Bridge Technology for Netease Mumu only, Copyright(C) Intel Corp. 2012-2025.
+09-14 08:00:28.388  5297  5297 D houdini : [5297] Use permitted only under a valid commercial software license agreement - all other rights reserved.
+09-14 08:00:28.388  5297  5297 D houdini : [5297] Initialize library(version: 15.0.0_z.Netease_com2.0 RELEASE)... successfully.
+09-14 08:00:28.388  5297  5297 W HP      : x_initialize private_dir:/data/user/0/com.yk1z.yayamsg/code_cache instruction_set:arm64 getMethodShorty:0x74d597696700 ret:1
+09-14 08:00:28.392  5297  5297 E om.yk1z.yayamsg: Not starting debugger since process cannot load the jdwp agent.
+09-14 08:00:28.394  5297  5297 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+09-14 08:00:28.449  5297  5297 D nativeloader: Configuring clns-7 for other apk /data/app/~~qIbh-ZKpuQFvYUHP0NirNQ==/com.yk1z.yayamsg-W_PHmR2e9uWCoQW_j5X2bA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~qIbh-ZKpuQFvYUHP0NirNQ==/com.yk1z.yayamsg-W_PHmR2e9uWCoQW_j5X2bA==/lib/x86_64:/data/app/~~qIbh-ZKpuQFvYUHP0NirNQ==/com.yk1z.yayamsg-W_PHmR2e9uWCoQW_j5X2bA==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.yk1z.yayamsg
+09-14 08:00:28.453  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d618322cd8) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:28.455  5297  5297 V GraphicsEnvironment: Currently set values for:
+09-14 08:00:28.455  5297  5297 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+09-14 08:00:28.455  5297  5297 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+09-14 08:00:28.455  5297  5297 V GraphicsEnvironment: com.yk1z.yayamsg is not listed in per-application setting
+09-14 08:00:28.455  5297  5297 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+09-14 08:00:28.467  5297  5297 W SoLoader: Initializing SoLoader: 0
+09-14 08:00:28.467  5297  5297 W SoLoader: Recording new base apk path: /data/app/~~qIbh-ZKpuQFvYUHP0NirNQ==/com.yk1z.yayamsg-W_PHmR2e9uWCoQW_j5X2bA==/base.apk
+09-14 08:00:28.467  5297  5297 W SoLoader: Previously recorded 0 base apk paths.
+09-14 08:00:28.468  5297  5297 I SoLoader: Preparing SO source: DirectorySoSource[root = /vendor/lib64 flags = 2]
+09-14 08:00:28.468  5297  5297 I SoLoader: Preparing SO source: DirectorySoSource[root = /system/lib64 flags = 2]
+09-14 08:00:28.468  5297  5297 I SoLoader: Preparing SO source: DirectApkSoSource[root = [/data/app/~~qIbh-ZKpuQFvYUHP0NirNQ==/com.yk1z.yayamsg-W_PHmR2e9uWCoQW_j5X2bA==/base.apk!/lib/x86_64]]
+09-14 08:00:28.469  5297  5297 I SoLoader: Preparing SO source: ApplicationSoSource[DirectorySoSource[root = /data/app/~~qIbh-ZKpuQFvYUHP0NirNQ==/com.yk1z.yayamsg-W_PHmR2e9uWCoQW_j5X2bA==/lib/x86_64 flags = 0]]
+09-14 08:00:28.469  5297  5297 I SoLoader: init finish: 4 SO sources prepared
+09-14 08:00:28.469  5297  5297 W SoLoader: SoLoader initialized: 8
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Entering merged library JNI_OnLoad.
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing 12 pre-merged libs (including stub)
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libfabricjni_so.  onload_func: 0x74d50b8b1ba0
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libreact_devsupportjni_so.  onload_func: 0x74d50b98d530
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libreact_featureflagsjni_so.  onload_func: 0x74d50b9a00a0
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libreact_newarchdefaults_so.  onload_func: 0x74d50b9c6fa0
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libreactnativeblob_so.  onload_func: 0x74d50ba6ea50
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libreactnativejni_so.  onload_func: 0x74d50ba898c0
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libreactnativejni_common_so.  onload_func: 0x74d50ba90150
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register librninstance_so.  onload_func: 0x74d50baae450
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libturbomodulejsijni_so.  onload_func: 0x74d50bb59b80
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libuimanagerjni_so.  onload_func: 0x74d50bb61ab0
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: Preparing to register libyoga_so.  onload_func: 0x74d50bb69130
+09-14 08:00:28.482  5297  5297 D jni_lib_merge: About to register 11 actual methods.
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Entering merged library JNI_OnLoad.
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing 12 pre-merged libs (including stub)
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libfabricjni_so.  onload_func: 0x74d50b8b1ba0
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libreact_devsupportjni_so.  onload_func: 0x74d50b98d530
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libreact_featureflagsjni_so.  onload_func: 0x74d50b9a00a0
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libreact_newarchdefaults_so.  onload_func: 0x74d50b9c6fa0
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libreactnativeblob_so.  onload_func: 0x74d50ba6ea50
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libreactnativejni_so.  onload_func: 0x74d50ba898c0
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libreactnativejni_common_so.  onload_func: 0x74d50ba90150
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register librninstance_so.  onload_func: 0x74d50baae450
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libturbomodulejsijni_so.  onload_func: 0x74d50bb59b80
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libuimanagerjni_so.  onload_func: 0x74d50bb61ab0
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: Preparing to register libyoga_so.  onload_func: 0x74d50bb69130
+09-14 08:00:28.484  5297  5297 D jni_lib_merge: About to register 11 actual methods.
+09-14 08:00:28.493  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d618320a78) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:28.493  5297  5419 E libEGL  : intercept_property_get () for (persist.graphics.egl)
+09-14 08:00:28.498  5297  5297 D AppCompatDelegate: Checking for metadata for AppLocalesMetadataHolderService : Service not found
+09-14 08:00:28.498  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d61831e818) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:28.506  5297  5419 I EGL_emulation: EGL display initialized (version 1.4, rendererVersion=0x3, configs=120)
+09-14 08:00:28.538  5297  5297 W unknown:BridgelessReact: ReactHost{0}.startSurface(surfaceId = 0): Schedule
+09-14 08:00:28.538  5297  5297 W unknown:BridgelessReact: ReactHost{0}.attachSurface(surfaceId = 0)
+09-14 08:00:28.538  5297  5422 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask()
+09-14 08:00:28.538  5297  5422 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Start
+09-14 08:00:28.538  5297  5422 W unknown:BridgelessReact: ReactHost{0}.getJSBundleLoader()
+09-14 08:00:28.538  5297  5422 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactContext(): Creating BridgelessReactContext
+09-14 08:00:28.539  5297  5422 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Creating ReactInstance
+09-14 08:00:28.542  5297  5297 D DesktopModeFlagsUtil: Toggle override initialized to: OVERRIDE_OFF
+09-14 08:00:28.545  5297  5422 D jni_lib_merge: Entering merged library JNI_OnLoad.
+09-14 08:00:28.545  5297  5422 D jni_lib_merge: Preparing 4 pre-merged libs (including stub)
+09-14 08:00:28.545  5297  5422 D jni_lib_merge: Preparing to register libhermes_executor_so.  onload_func: 0x74d567023730
+09-14 08:00:28.545  5297  5422 D jni_lib_merge: Preparing to register libhermesinstancejni_so.  onload_func: 0x74d56702adb0
+09-14 08:00:28.545  5297  5422 D jni_lib_merge: Preparing to register libjsijniprofiler_so.  onload_func: 0x74d56702b540
+09-14 08:00:28.545  5297  5422 D jni_lib_merge: About to register 3 actual methods.
+09-14 08:00:28.549  5297  5297 W unknown:BridgelessReact: ReactHost{0}.onHostResume(activity)
+09-14 08:00:28.549  5297  5297 W unknown:BridgelessReact: ReactContext.onHostResume()
+09-14 08:00:28.555  5297  5297 W HWUI    : Unknown dataspace 0
+09-14 08:00:28.562  5297  5422 I ExpoModulesCore: ✅ AppContext was initialized
+09-14 08:00:28.570  5297  5417 I EGL_emulation: EGL display initialized (version 1.4, rendererVersion=0x3, configs=120)
+09-14 08:00:28.580  5297  5417 E HidlServiceManagement: getService: Potential race detected, descriptor: android.hardware.configstore@1.0::ISurfaceFlingerConfigs instance: default
+09-14 08:00:28.581  5297  5417 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+09-14 08:00:28.589  5297  5417 E HidlServiceManagement: getService: Potential race detected, descriptor: android.hardware.graphics.mapper@2.0::IMapper instance: default
+09-14 08:00:28.591  5297  5417 E HidlServiceManagement: getService: Potential race detected, descriptor: android.hardware.graphics.allocator@2.0::IAllocator instance: default
+09-14 08:00:28.592  5297  5417 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 08:00:28.600  5297  5422 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Loading JS Bundle
+09-14 08:00:28.602  5297  5434 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 08:00:28.602  5297  5422 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Calling DevSupportManagerBase.onNewReactContextCreated(reactContext)
+09-14 08:00:28.602  5297  5422 W unknown:BridgelessReact: ReactHost{0}.startSurface(surfaceId = 0): Execute
+09-14 08:00:28.602  5297  5434 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 08:00:28.613  5297  5297 W unknown:BridgelessReact: ReactContext.onHostResume()
+09-14 08:00:28.613  5297  5297 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Executing ReactInstanceEventListeners
+09-14 08:00:28.636  5297  5297 D InsetsController: hide(ime(), fromIme=false)
+09-14 08:00:28.636  5297  5297 I ImeTracker: com.yk1z.yayamsg:1e166f78: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+09-14 08:00:28.639  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.SearchBarManager
+09-14 08:00:28.640  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.uimanager.LayoutShadowNode
+09-14 08:00:28.640  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenFooterManager
+09-14 08:00:28.640  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenContainerViewManager
+09-14 08:00:28.641  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativecommunity.webview.RNCWebViewManager
+09-14 08:00:28.642  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ModalScreenViewManager
+09-14 08:00:28.642  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.yk1z.yayamsg.LiveExoViewManager
+09-14 08:00:28.642  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class expo.modules.kotlin.views.GroupViewManagerWrapper
+09-14 08:00:28.643  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackHeaderConfigViewManager
+09-14 08:00:28.643  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenContentWrapperManager
+09-14 08:00:28.644  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.tabs.TabsScreenViewManager
+09-14 08:00:28.644  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.safearea.SafeAreaViewManager
+09-14 08:00:28.644  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.safearea.paper.SafeAreaViewShadowNode
+09-14 08:00:28.644  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenViewManager
+09-14 08:00:28.644  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class expo.modules.kotlin.views.SimpleViewManagerWrapper
+09-14 08:00:28.645  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.stack.host.StackHostViewManager
+09-14 08:00:28.645  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackHeaderSubviewManager
+09-14 08:00:28.645  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.stack.screen.StackScreenViewManager
+09-14 08:00:28.645  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.yk1z.yayamsg.LiquidGlassViewManager
+09-14 08:00:28.646  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackViewManager
+09-14 08:00:28.646  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.brentvatne.exoplayer.ReactExoplayerViewManager
+09-14 08:00:28.647  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.tabs.TabsHostViewManager
+09-14 08:00:28.654  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.gesturehandler.react.RNGestureHandlerButtonViewManager
+09-14 08:00:28.655  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.safeareaview.ReactSafeAreaViewManager
+09-14 08:00:28.655  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.safeareaview.ReactSafeAreaViewShadowNode
+09-14 08:00:28.656  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.modal.ReactModalHostManager
+09-14 08:00:28.656  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.frescosupport.FrescoBasedReactTextInlineImageViewManager
+09-14 08:00:28.657  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.frescosupport.FrescoBasedReactTextInlineImageShadowNode
+09-14 08:00:28.657  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.progressbar.ReactProgressBarViewManager
+09-14 08:00:28.657  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.progressbar.ProgressBarShadowNode
+09-14 08:00:28.658  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactHorizontalScrollViewManager
+09-14 08:00:28.658  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.image.ReactImageManager
+09-14 08:00:28.659  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactTextViewManager
+09-14 08:00:28.660  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactTextShadowNode
+09-14 08:00:28.660  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactHorizontalScrollContainerViewManager
+09-14 08:00:28.661  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.unimplementedview.ReactUnimplementedViewManager
+09-14 08:00:28.662  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactScrollViewManager
+09-14 08:00:28.662  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.view.ReactViewManager
+09-14 08:00:28.663  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.drawer.ReactDrawerLayoutManager
+09-14 08:00:28.664  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.switchview.ReactSwitchManager
+09-14 08:00:28.664  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.switchview.ReactSwitchShadowNode
+09-14 08:00:28.664  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactVirtualTextViewManager
+09-14 08:00:28.664  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactVirtualTextShadowNode
+09-14 08:00:28.665  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.swiperefresh.SwipeRefreshLayoutManager
+09-14 08:00:28.666  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactRawTextManager
+09-14 08:00:28.666  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactRawTextShadowNode
+09-14 08:00:28.667  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.textinput.ReactTextInputManager
+09-14 08:00:28.667  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.textinput.ReactTextInputShadowNode
+09-14 08:00:28.668  5297  5423 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.gesturehandler.react.RNGestureHandlerRootViewManager
+09-14 08:00:28.670  5297  5423 W BridgelessReactContext: [WARNING] Bridgeless doesn't support CatalystInstance. Accessing an API that's not part of the new architecture is not encouraged usage.
+09-14 08:00:28.672  5297  5423 I ExpoModulesCore: ✅ JSI interop was installed
+09-14 08:00:28.674  5297  5423 I ExpoModulesCore: ✅ Constants were exported
+09-14 08:00:28.788  5297  5423 I ReactNativeJS: Running "main"
+09-14 08:00:28.789  5297  5423 D ReactNativeJS: 会话开始 · 牙牙消息 v2.7.5 · android 35
+09-14 08:00:28.805  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d618325578) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:28.805  5297  5297 I WebViewFactory: Loading com.android.webview version 110.0.5481.154.1 (code 548115537)
+09-14 08:00:28.805  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d618322058) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:28.805  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d618338df8) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:28.805  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d618333358) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:28.806  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d618334c58) locale list changing from [] to [zh-Hant-TW]
+--------- beginning of system
+09-14 08:00:28.806  5297  5297 V ResourcesManager: The following library key has been added: ResourcesKey{ mHash=31e15513 mResDir=null mSplitDirs=[] mOverlayDirs=[/data/resource-cache/com.android.systemui-neutral-8HYB.frro,/data/resource-cache/com.android.systemui-accent-Nx6E.frro,/data/resource-cache/com.android.systemui-dynamic-MFXu.frro] mLibDirs=[/system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk,/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk] mDisplayId=0 mOverrideConfig=v35 mCompatInfo={480dpi always-compat} mLoaders=[]}
+09-14 08:00:28.806  5297  5297 W ziparchive: Unable to open '/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.dm': No such file or directory
+09-14 08:00:28.806  5297  5297 W ziparchive: Unable to open '/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.dm': No such file or directory
+09-14 08:00:28.806  5297  5297 W om.yk1z.yayamsg: Entry not found
+09-14 08:00:28.807  5297  5297 D nativeloader: InitLlndkLibrariesProduct: libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libRS.so:libandroid_net.so:libapexsupport.so:libavf.so:libbinder_ndk.so:libc.so:libcgrouprc.so:libclang_rt.asan-i686-android.so:libclang_rt.asan-x86_64-android.so:libcom.android.tethering.connectivity_native.so:libdl.so:libft2.so:liblog.so:libm.so:libmediandk.so:libnativewindow.so:libneuralnetworks.so:libselinux.so:libsync.so:libvendorsupport.so:libvndksupport.so:libvulkan.so
+09-14 08:00:28.807  5297  5297 D nativeloader: Configuring product-clns-8 for unbundled product apk /system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk. target_sdk_version=33, uses_libraries=ALL, library_path=/system/product/app/TrichromeWebView_overseas/lib/x86_64:/system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk!/lib/x86_64:/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk!/lib/x86_64:/product/lib64:/system/product/lib64:/system/lib64, permitted_path=/data:/mnt/expand:/product/lib64:/system/product/lib64
+09-14 08:00:28.835  5297  5297 D nativeloader: InitVndkspLibrariesProduct: VNDK is deprecated with product
+09-14 08:00:28.836  5297  5297 D nativeloader: Configuring product-clns-9 for unbundled product apk /system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk. target_sdk_version=33, uses_libraries=, library_path=/system/product/app/TrichromeWebView_overseas/lib/x86_64:/system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk!/lib/x86_64:/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk!/lib/x86_64:/product/lib64:/system/product/lib64:/system/lib64, permitted_path=/data:/mnt/expand:/product/lib64:/system/product/lib64
+09-14 08:00:28.839  5297  5297 W webviewchromiumloader: Failed to open relro file /data/misc/shared_relro/libwebviewchromium64.relro: No such file or directory
+09-14 08:00:28.839  5297  5297 W WebViewLibraryLoader: failed to load with relro file, proceeding without
+09-14 08:00:28.839  5297  5423 W ReactNativeJS: '[initWasm] Native WASM unavailable (Hermes), falling back to WebView signer:', '当前运行环境缺少 WebAssembly 支持'
+09-14 08:00:28.863  5297  5297 I cr_WVCFactoryProvider: Loaded version=110.0.5481.154 minSdkVersion=29 isBundle=false multiprocess=true packageId=2
+09-14 08:00:28.902  5297  5450 I cr_LibraryLoader: Successfully loaded native library
+09-14 08:00:28.904  5297  5450 I cr_CachingUmaRecorder: Flushed 9 samples from 9 histograms.
+09-14 08:00:28.905  5297  5297 V WebViewChromiumAwInit: Binding Chromium to main looper Looper (main, tid 2) {b547a75}
+09-14 08:00:28.926  5297  5458 D cr_ChildProcLH: [ChildProcessLauncherHelperImpl.java:584] Create a new ChildConnectionAllocator with package name = com.android.webview, sandboxed = true
+09-14 08:00:28.929  5297  5297 D cr_BrowserStartup: [BrowserStartupControllerImpl.java:437] Initializing chromium process, singleProcess=false
+09-14 08:00:28.947  5297  5424 W unknown:ReactNative: StatusBarModule: Ignored status bar change, current activity is edge-to-edge.
+09-14 08:00:28.947  5297  5424 W unknown:ReactNative: StatusBarModule: Ignored status bar change, current activity is edge-to-edge.
+09-14 08:00:29.004  5297  5297 V cr_A11yState: [AccessibilityState.java:294] Enabled accessibility services list updated.
+09-14 08:00:29.004  5297  5297 V cr_A11yState: [AccessibilityState.java:313] Informing listeners of changes.
+09-14 08:00:29.012  5297  5423 D ReactNativeJS: [memberData] [memberData] 启动先用本地缓存展示 943 位
+09-14 08:00:29.015  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d618336878) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:29.017  5297  5297 I om.yk1z.yayamsg: AssetManager2(0x74d6183329f8) locale list changing from [] to [zh-Hant-TW]
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Entering merged library JNI_OnLoad.
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing 12 pre-merged libs (including stub)
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libfabricjni_so.  onload_func: 0x74d50b8b1ba0
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libreact_devsupportjni_so.  onload_func: 0x74d50b98d530
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libreact_featureflagsjni_so.  onload_func: 0x74d50b9a00a0
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libreact_newarchdefaults_so.  onload_func: 0x74d50b9c6fa0
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libreactnativeblob_so.  onload_func: 0x74d50ba6ea50
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libreactnativejni_so.  onload_func: 0x74d50ba898c0
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libreactnativejni_common_so.  onload_func: 0x74d50ba90150
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register librninstance_so.  onload_func: 0x74d50baae450
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libturbomodulejsijni_so.  onload_func: 0x74d50bb59b80
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libuimanagerjni_so.  onload_func: 0x74d50bb61ab0
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: Preparing to register libyoga_so.  onload_func: 0x74d50bb69130
+09-14 08:00:29.020  5297  5423 D jni_lib_merge: About to register 11 actual methods.
+09-14 08:00:29.043  5297  5423 D ReactNativeJS: [memberData] [memberData] 缓存 16 分钟前更新，未过期（TTL 6h），跳过网络同步
+09-14 08:00:29.098  5297  5297 D cr_AndroidStylus: [AndroidStylusWritingHandler.java:46] Stylus feature disabled.
+09-14 08:00:29.100  5297  5297 D cr_AndroidStylus: [AndroidStylusWritingHandler.java:46] Stylus feature disabled.
+09-14 08:00:29.116  5297  5458 D cr_ChildProcLH: [ChildProcessLauncherHelperImpl.java:287] Connection likely not created from app zygote
+09-14 08:00:29.116  5297  5458 D cr_ChildProcLauncher: [ChildProcessLauncher.java:250] on connect callback, pid=5459
+09-14 08:00:29.136  5297  5472 W cr_media: BLUETOOTH_CONNECT permission is missing.
+09-14 08:00:29.138  5297  5472 W cr_media: registerBluetoothIntentsIfNeeded: Requires BLUETOOTH permission
+09-14 08:00:29.224  5297  5297 W unknown:WrappingUtils: Don't know how to round that drawable: com.facebook.react.views.image.ReactImageDownloadListener$EmptyDrawable@21b2ed
+09-14 08:00:29.256  5297  5297 I ReactNative: [GESTURE HANDLER] Initialize gesture handler for root view com.facebook.react.runtime.ReactSurfaceView{68f0a02 V.E...... ......ID 0,0-1080,1920 #1}
+09-14 08:00:29.275  5297  5513 W HWUI    : Image decoding logging dropped!
+09-14 08:00:33.509  5297  5556 D ProfileInstaller: Installing profile for com.yk1z.yayamsg
+09-14 08:00:40.080  5297  5409 W System  : A resource failed to call close. 
+09-14 08:00:40.080  5297  5409 W System  : A resource failed to call close. 

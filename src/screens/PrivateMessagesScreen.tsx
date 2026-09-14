@@ -661,7 +661,7 @@ export default function PrivateMessagesScreen() {
           ListEmptyComponent={loading ? null : <EmptyState icon="message-text-outline" title={t('暂无消息')} />}
         />
         {member ? (
-          <View style={[styles.flipBar, { backgroundColor: palette.surface, borderTopColor: palette.hairline }]}>
+          <View style={[styles.flipBar, { backgroundColor: palette.surfaceGlassStrong, borderTopColor: palette.hairline }]}>
             <Text style={[styles.flipName, { color: palette.labelSecondary }]}>{t('{name} 翻牌', { name: member.ownerName || '' })}</Text>
             <View style={styles.flipRow}>
               {prices.slice(0, 3).map((p) => (
@@ -697,7 +697,7 @@ export default function PrivateMessagesScreen() {
           {flipType > 0 ? <Text style={[styles.flipLabel, { color: palette.tint }]}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
             <TextInput
-              style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.innerStroke, color: palette.label }]}
+              style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, color: palette.label }]}
               placeholder={t('输入内容...')}
               placeholderTextColor={palette.labelTertiary}
               value={text}
@@ -749,7 +749,7 @@ export default function PrivateMessagesScreen() {
                 <TouchableOpacity
                   style={[
                     styles.convCard,
-                    { backgroundColor: palette.surface, borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 },
+                    { backgroundColor: palette.surfaceGlassStrong, borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 },
                   ]}
                   onPress={() => openConv(conv)}
                   activeOpacity={0.88}

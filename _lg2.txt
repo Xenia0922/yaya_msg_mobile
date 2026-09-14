@@ -1,0 +1,1029 @@
+--------- beginning of system
+09-14 07:49:53.870  1349  1417 W ContextImpl: Calling a method in the system process without a qualified user: android.app.ContextImpl.sendBroadcast:1274 android.content.ContextWrapper.sendBroadcast:506 com.mumu.store.management.UpgradeHelper.notifyUpgrade:157 com.mumu.store.management.UpgradeHelper$1.onNext:52 com.mumu.store.management.UpgradeHelper$1.onNext:47 
+--------- beginning of main
+09-14 07:49:53.870  1349  1349 D AppStoreModel: onEvent: event.mBadgeType = 4
+09-14 07:49:53.870   842  1207 E ActivityManager: Sending non-protected broadcast com.mumu.ACTION_NOTIFY_FORCT_UPDATE from system 1349:com.mumu.store/1000 pkg com.mumu.store
+09-14 07:49:53.870   842  1207 E ActivityManager: java.lang.Throwable
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at com.android.server.am.BroadcastController.checkBroadcastFromSystem(BroadcastController.java:2118)
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at com.android.server.am.BroadcastController.broadcastIntentLockedTraced(BroadcastController.java:1635)
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at com.android.server.am.BroadcastController.broadcastIntentLocked(BroadcastController.java:807)
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at com.android.server.am.BroadcastController.broadcastIntentWithFeature(BroadcastController.java:740)
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at com.android.server.am.ActivityManagerService.broadcastIntentWithFeature(ActivityManagerService.java:14410)
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at android.app.IActivityManager$Stub.onTransact(IActivityManager.java:2888)
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at com.android.server.am.ActivityManagerService.onTransact(ActivityManagerService.java:2726)
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at android.os.Binder.execTransactInternal(Binder.java:1406)
+09-14 07:49:53.870   842  1207 E ActivityManager: 	at android.os.Binder.execTransact(Binder.java:1350)
+09-14 07:49:53.870  1349  1417 D AppStoreModel: onNext: SHOW_MANAGEMENT_BADGE
+09-14 07:49:53.870  1349  1349 D AppStoreModel: onEvent: event.mBadgeType = 4
+09-14 07:49:53.870  1349  1417 D AppStoreModel: onNext: SHOW_MANAGEMENT_BADGE
+09-14 07:49:53.950  1096  1096 D ControlsListingControllerImpl: ServiceConfig reloaded, count: 0
+09-14 07:49:53.951  1096  1096 D ControlsListingControllerImpl: ServiceConfig reloaded, count: 0
+09-14 07:49:53.952  1096  1096 D ControlsListingControllerImpl: ServiceConfig reloaded, count: 0
+09-14 07:49:53.953  1811  1811 W AccMsgReceiver: AccMsgReceiver: onReceive action = android.intent.action.PACKAGE_REMOVED
+09-14 07:49:53.956  2406  2406 D ActivityThread: Package [com.yk1z.yayamsg] reported as REPLACED, but missing application info. Assuming REMOVED.
+09-14 07:49:53.956   842  2407 D ActivityManager: sync unfroze 2406 com.google.android.gms for 6
+09-14 07:49:53.957  2406  2406 D ActivityThread: Package [com.yk1z.yayamsg] reported as REPLACED, but missing application info. Assuming REMOVED.
+09-14 07:49:53.957  2406  2406 W MessengerIpcClient: Received response for unknown request: 1
+09-14 07:49:53.958  1811  1811 W AccMsgReceiver: AccMsgReceiver: onReceive action = android.intent.action.PACKAGE_ADDED
+09-14 07:49:53.961   842  1487 W ActivityManager: Foreground service started from background can not have location/camera/microphone access: service com.mumu.acc/.AccService
+09-14 07:49:53.961  1562  1562 W MediaProvider: WorkProfileOwnerApps cache is empty
+09-14 07:49:53.962  1562  1562 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:49:53.962  1562  1562 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread main]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:49:53.962  1562  1562 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:49:53.962   842  2407 W ActivityManager: Foreground service started from background can not have location/camera/microphone access: service com.mumu.acc/.AccService
+09-14 07:49:53.966  1562  1562 W MediaProvider: Failed to invalidate FUSE dentry
+09-14 07:49:53.966  1562  1562 W MediaProvider: java.io.FileNotFoundException: Missing FUSE daemon for /mnt/shared/MuMuShared/Android/media/com.yk1z.yayamsg
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at com.android.providers.media.MediaProvider.getFuseDaemonForFile(MediaProvider.java:9950)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at com.android.providers.media.MediaProvider.invalidateFuseDentry(MediaProvider.java:9987)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at com.android.providers.media.MediaProvider.invalidateDentryForExternalStorage(MediaProvider.java:866)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at com.android.providers.media.MediaProvider.-$$Nest$minvalidateDentryForExternalStorage(MediaProvider.java:0)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at com.android.providers.media.MediaProvider$3.onReceive(MediaProvider.java:838)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at android.app.LoadedApk$ReceiverDispatcher$Args.lambda$getRunnable$0(LoadedApk.java:1825)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at android.app.LoadedApk$ReceiverDispatcher$Args.$r8$lambda$mcNAAl1SQ4MyJPyDg8TJ2x2h0Rk(Unknown Source:0)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at android.app.LoadedApk$ReceiverDispatcher$Args$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at android.app.ActivityThread.main(ActivityThread.java:8971)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at java.lang.reflect.Method.invoke(Native Method)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:597)
+09-14 07:49:53.966  1562  1562 W MediaProvider: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:919)
+09-14 07:49:53.975  1811  1932 I com.mumu.acc: AssetManager2(0x74d61832bc98) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:53.977  1811  1932 W HWUI    : Image decoding logging dropped!
+09-14 07:49:53.978  2204  3601 I ProximityAuth: [RecentAppsMediator] Package added: (user=UserHandle{0}) com.yk1z.yayamsg
+09-14 07:49:53.982  1811  1903 W AccRequestManager: getValidAccPkgDatasInScope: branch=C(new), forceRefresh=true
+09-14 07:49:53.986  1811  1903 D GameFetcher: getMergeGames() called
+09-14 07:49:53.993  2204  3601 I .gms.persistent: AssetManager2(0x74d61832e858) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:53.999  2204  3604 I Fitness : (REDACTED) FitCleanupIntentOperation received Intent %s
+09-14 07:49:54.001  2406  3620 I AppBackupStateCleanupIO: Backup state cleanup on uninstall is disabled. [CONTEXT service_id=229 ]
+09-14 07:49:54.011  2406  3621 I FraudProtectUtils: (REDACTED) Latest bank app list size: %d, %s isBankApp: %b
+09-14 07:49:54.011  2406  3621 I PackageInstalledIntentO: (REDACTED) Package %s is not a bank app. Skipping updates.
+09-14 07:49:54.023  2406  3620 I Auth    : (REDACTED) [SupervisedAccountIntentOperation] onHandleIntent: %s
+09-14 07:49:54.024  2406  3602 I FraudProtectUtils: (REDACTED) Latest bank app list size: %d, %s isBankApp: %b
+09-14 07:49:54.024  2406  3602 I PackageInstalledIntentO: (REDACTED) Package %s is not a bank app. Skipping updates.
+09-14 07:49:54.024  2406  3624 W AppInstallOperation: FDL Migration::InstallIntentOperation by FDL Module [CONTEXT service_id=77 ]
+09-14 07:49:54.026  2406  3602 I NearbyDiscovery: (REDACTED) processGrantSlicePermission: %s
+09-14 07:49:54.034  2406  2505 W System  : A resource failed to call close. 
+09-14 07:49:54.039  2406  3624 W SQLiteLog: (28) double-quoted string literal: "com.yk1z.yayamsg"
+09-14 07:49:54.040  2406  2932 I gle.android.gms: AssetManager2(0x74d61831b618) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.049  2406  2406 D BoundBrokerSvc: onBind: Intent { act=com.google.android.gms.feedback.internal.IFeedbackService dat=chimera-action:/... cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+09-14 07:49:54.049  2406  2406 D BoundBrokerSvc: Loading bound service for intent: Intent { act=com.google.android.gms.feedback.internal.IFeedbackService dat=chimera-action:/... cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+09-14 07:49:54.061  3634  3634 I init    : type=1400 audit(0.0:1018): avc:  denied  { transition } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:49:54.061  3634  3634 I init    : type=1400 audit(0.0:1019): avc:  denied  { entrypoint } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:su:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=1
+09-14 07:49:54.061  3634  3634 I init    : type=1400 audit(0.0:1020): avc:  denied  { noatsecure } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:49:54.061  3634  3634 I serial_console: type=1400 audit(0.0:1021): avc:  denied  { rlimitinh } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:49:54.061  3634  3634 I serial_console: type=1400 audit(0.0:1022): avc:  denied  { siginh } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:49:54.061  3634  3634 I serial_console: type=1400 audit(0.0:1023): avc:  denied  { map } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:su:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=1
+09-14 07:49:54.061  3634  3634 I serial_console: type=1400 audit(0.0:1024): avc:  denied  { read execute } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:su:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=1
+09-14 07:49:54.061  3634  3634 I serial_console: type=1400 audit(0.0:1025): avc:  denied  { read write } for  name="ttyS1" dev="tmpfs" ino=698 scontext=u:r:su:s0 tcontext=u:object_r:serial_device:s0 tclass=chr_file permissive=1
+09-14 07:49:54.061  3634  3634 I serial_console: type=1400 audit(0.0:1026): avc:  denied  { open } for  path="/dev/ttyS1" dev="tmpfs" ino=698 scontext=u:r:su:s0 tcontext=u:object_r:serial_device:s0 tclass=chr_file permissive=1
+09-14 07:49:54.091   842  1487 W ActivityTaskManager: callingPackage for (uid=2000, pid=3637) has no WPC
+09-14 07:49:54.094   842  1487 I system_server: AssetManager2(0x74d61833eed8) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.095   842  1487 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@8d4aa753 does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+09-14 07:49:54.095   842  1487 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_RESIZEABLE_ACTIVITY_OVERRIDES
+09-14 07:49:54.096   842  1487 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_MIN_ASPECT_RATIO_OVERRIDE
+09-14 07:49:54.097   842  1487 E CellBroadcastUtils: getDefaultCellBroadcastReceiverPackageName: no package found
+09-14 07:49:54.102  1096  1277 I ndroid.systemui: AssetManager2(0x74d61834e298) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.107  1096  1234 V WindowManagerShell: Transition requested (#6): android.os.BinderProxy@9df3524 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=21 effectiveUid=10026 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=com.yk1z.yayamsg/.MainActivity } baseActivity=ComponentInfo{com.yk1z.yayamsg/com.yk1z.yayamsg.MainActivity} topActivity=ComponentInfo{com.yk1z.yayamsg/com.yk1z.yayamsg.MainActivity} origActivity=null realActivity=ComponentInfo{com.yk1z.yayamsg/com.yk1z.yayamsg.MainActivity} numActivities=1 lastActiveTime=423073 supportsMultiWindow=true resizeMode=2 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@412c88d} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 0 - 0, 0) topActivityInfo=ActivityInfo{f288a42 com.yk1z.yayamsg.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isTopActivityNoDisplay=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false isActivityStackTransparent=false lastNonFullscreenBounds=Rect(225, 456 - 856, 1536) capturedLink=null capturedLinkTimestamp=0 requestedVisibleTypes=-9 topActivityRequestOpenInBrowserEducationTimestamp=0 appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false eligibleForLetterboxEducation= false isLetterboxEducationEnabled= false isLetterboxDoubleTapEnabled= false eligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 topActivityLetterboxAppWidth=-1 topActivityLetterboxAppHeight=-1 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false hasMinAspectRatioOverride=false topActivityLetterboxBounds=null cameraCompatTaskInfo=CameraCompatTaskInfo { freeformCameraCompatMode=inactive}} topActivityMainWindowFrame=null}, pipChange = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 6 }
+09-14 07:49:54.107  1096  1234 D ShellSplitScreen: logExit: no-op, mLoggerSessionId is null
+09-14 07:49:54.109   842  1487 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=com.yk1z.yayamsg/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+09-14 07:49:54.110  1096  1234 D WindowManagerShell: setLauncherKeepClearAreaHeight: visible=false, height=236
+09-14 07:49:54.112   842   864 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@8d4aa753 does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+09-14 07:49:54.112  1069  1069 W SplitSelectStateCtor: Missing session instanceIds
+09-14 07:49:54.112  1069  1069 D StatsLog: LAUNCHER_SPLIT_SELECTION_EXIT_INTERRUPTED
+09-14 07:49:54.119   702   702 I BpBinder: onLastStrongRef automatically unlinking death recipients: 
+09-14 07:49:54.123   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:54.123   657   657 D Zygote  : Forked child process 3640
+09-14 07:49:54.126   842   877 I ActivityManager: Start proc 3640:com.yk1z.yayamsg/u0a26 for next-top-activity {com.yk1z.yayamsg/com.yk1z.yayamsg.MainActivity}
+09-14 07:49:54.129  1096  1278 W HWUI    : Image decoding logging dropped!
+09-14 07:49:54.130  1096  1278 W HWUI    : Image decoding logging dropped!
+09-14 07:49:54.137   842  3460 D CoreBackPreview: Window{3dc6dfb u0 Splash Screen com.yk1z.yayamsg}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@19a62ad, mPriority=0, mIsAnimationCallback=false, mOverrideBehavior=0}
+09-14 07:49:54.138   842  1207 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE
+09-14 07:49:54.139  1096  1295 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 07:49:54.140  1096  1295 D HWUI    : HOOK FAILED! Expected 3 got = 2
+09-14 07:49:54.148  1096  3641 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 07:49:54.154  3640  3640 W nativebridge: Failed to bind-mount /system/etc/cpuinfo.x86_64.txt as /proc/cpuinfo: No such file or directory
+09-14 07:49:54.155  3640  3640 W nativebridge: Failed to bind-mount /system/lib64/x86_64/cpuinfo as /proc/cpuinfo: No such file or directory
+09-14 07:49:54.155  3640  3640 E Zygote  : pkg name is 0 => com.yk1z.yayamsg, data dir is /data/user/0/com.yk1z.yayamsg
+09-14 07:49:54.159  3640  3640 W zygote64: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: nemuhotd
+09-14 07:49:54.163   842   861 V WindowManager: Sent Transition (#6) createdAt=09-14 07:49:54.096 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=21 effectiveUid=10026 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=com.yk1z.yayamsg/.MainActivity } baseActivity=ComponentInfo{com.yk1z.yayamsg/com.yk1z.yayamsg.MainActivity} topActivity=ComponentInfo{com.yk1z.yayamsg/com.yk1z.yayamsg.MainActivity} origActivity=null realActivity=ComponentInfo{com.yk1z.yayamsg/com.yk1z.yayamsg.MainActivity} numActivities=1 lastActiveTime=423073 supportsMultiWindow=true resizeMode=2 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{8b9db2c Task{4dcfd7e #21 type=standard A=10026:com.yk1z.yayamsg}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 0 - 0, 0) topActivityInfo=ActivityInfo{85bbde7 com.yk1z.yayamsg.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isTopActivityNoDisplay=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false isActivityStackTransparent=false lastNonFullscreenBounds=Rect(225, 456 - 856, 1536) capturedLink=null capturedLinkTimestamp=0 requestedVisibleTypes=-9 topActivityRequestOpenInBrowserEducationTimestamp=0 appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false eligibleForLetterboxEducation= false isLetterboxEducationEnabled= false isLetterboxDoubleTapEnabled= false eligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 topActivityLetterboxAppWidth=-1 topActivityLetterboxAppHeight=-1 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false hasMinAspectRatioOverride=false topActivityLetterboxBounds=null cameraCompatTaskInfo=CameraCompatTaskInfo { freeformCameraCompatMode=inactive}} topActivityMainWindowFrame=null}, pipChange = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 6 }
+09-14 07:49:54.163   842   861 V WindowManager:     startWCT=WindowContainerTransaction { changes= {} hops= [] errorCallbackToken=null taskFragmentOrganizer=null }
+09-14 07:49:54.163   842   861 V WindowManager:     info={id=6 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+09-14 07:49:54.163   842   861 V WindowManager:         {WCT{RemoteToken{8b9db2c Task{4dcfd7e #21 type=standard A=10026:com.yk1z.yayamsg}}} m=OPEN f=NONE leash=Surface(name=Task=21)/@0x79ae9e2 sb=Rect(0, 0 - 1080, 1920) eb=Rect(0, 0 - 1080, 1920) epz=Point(1080, 1920) d=0 taskParent=-1},
+09-14 07:49:54.163   842   861 V WindowManager:         {WCT{RemoteToken{1020e3d Task{5294d55 #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x2c600e8 sb=Rect(0, 0 - 1080, 1920) eb=Rect(0, 0 - 1080, 1920) epz=Point(1080, 1920) d=0 taskParent=-1}
+09-14 07:49:54.163   842   861 V WindowManager:     ]}
+09-14 07:49:54.163  1096  2897 V WindowManagerShell: onTransitionReady(transaction=3616362463565)
+09-14 07:49:54.163  1096  1234 V WindowManagerShell: onTransitionReady (#6) android.os.BinderProxy@9df3524: {id=6 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+09-14 07:49:54.163  1096  1234 V WindowManagerShell:         {m=OPEN f=NONE leash=Surface(name=Task=21)/@0x5f4d769 sb=Rect(0, 0 - 1080, 1920) eb=Rect(0, 0 - 1080, 1920) epz=Point(1080, 1920) d=0 taskParent=-1},
+09-14 07:49:54.163  1096  1234 V WindowManagerShell:         {m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x717e5ee sb=Rect(0, 0 - 1080, 1920) eb=Rect(0, 0 - 1080, 1920) epz=Point(1080, 1920) d=0 taskParent=-1}
+09-14 07:49:54.163  1096  1234 V WindowManagerShell:     ]}
+09-14 07:49:54.163  1096  1234 V WindowManagerShell: Playing animation for (#6) android.os.BinderProxy@9df3524@0
+09-14 07:49:54.164  1096  1234 V ShellRecents: RecentsTransitionHandler.startAnimation: no controller found
+09-14 07:49:54.165  1096  1234 V WindowManagerShell: Transition doesn't have explicit remote, search filters for match for {id=6 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{m=OPEN f=NONE leash=Surface(name=Task=21)/@0x5f4d769 sb=Rect(0, 0 - 1080, 1920) eb=Rect(0, 0 - 1080, 1920) epz=Point(1080, 1920) d=0 taskParent=-1},{m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x717e5ee sb=Rect(0, 0 - 1080, 1920) eb=Rect(0, 0 - 1080, 1920) epz=Point(1080, 1920) d=0 taskParent=-1}]}
+09-14 07:49:54.165  1096  1234 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0] notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=TOP topActivity=ComponentInfo{app.lawnchair/app.lawnchair.LawnchairLauncher} launchCookie=null windowingMode=undefined},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined},{NOT atype=undefined independent=true modes=[] flags=NONE mustBeTask=true order=ANY topActivity=null launchCookie=null windowingMode=undefined}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@ae1480e, appThread = android.app.IApplicationThread$Stub$Proxy@eb4222f, debugName = QuickstepLaunchHome }}
+09-14 07:49:54.165  1096  1234 V WindowManagerShell:  Delegate animation for (#6) to null
+09-14 07:49:54.165  1096  1234 V WindowManagerShell: start default transition animation, info = {id=6 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{m=OPEN f=NONE leash=Surface(name=Task=21)/@0x5f4d769 sb=Rect(0, 0 - 1080, 1920) eb=Rect(0, 0 - 1080, 1920) epz=Point(1080, 1920) d=0 taskParent=-1},{m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x717e5ee sb=Rect(0, 0 - 1080, 1920) eb=Rect(0, 0 - 1080, 1920) epz=Point(1080, 1920) d=0 taskParent=-1}]}
+09-14 07:49:54.166  1096  1234 V WindowManagerShell: loadAnimation: anim=android.view.animation.AnimationSet@bb550ab animAttr=0x13 type=OPEN isEntrance=false
+09-14 07:49:54.166   842  3460 W UserManagerService: Requested status bar icon for non-badged user 0
+09-14 07:49:54.166  1096  1234 V WindowManagerShell: loadAnimation: anim=android.view.animation.AnimationSet@e764c87 animAttr=0x12 type=OPEN isEntrance=true
+09-14 07:49:54.167  1096  1234 V WindowManagerShell:  animated by com.android.wm.shell.transition.DefaultTransitionHandler@fb02827
+09-14 07:49:54.176  3640  3640 I Zygote  : seccomp disabled by setenforce 0
+09-14 07:49:54.179  3640  3640 I om.yk1z.yayamsg: Using CollectorTypeCMC GC.
+09-14 07:49:54.180  3640  3640 W om.yk1z.yayamsg: Unexpected CPU variant for x86: x86_64.
+09-14 07:49:54.180  3640  3640 W om.yk1z.yayamsg: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, default
+09-14 07:49:54.180  3640  3640 V libnb   : enter native_bridge2_initialize /data/user/0/com.yk1z.yayamsg/code_cache arm64
+09-14 07:49:54.181  3640  3640 E libnb   : The translator implementation library has not been set.
+09-14 07:49:54.182  1096  1234 V WindowManagerShell: Transition animation finished (aborted=false), notifying core (#6) android.os.BinderProxy@9df3524@0
+09-14 07:49:54.185   842   861 V WindowManager: Finish Transition (#6): created at 09-14 07:49:54.096 collect-started=0.026ms request-sent=8.302ms started=13.442ms ready=62.184ms sent=66.634ms finished=87.803ms
+09-14 07:49:54.185  1069  1069 D VRI[LawnchairLauncher]: visibilityChanged oldVisibility=true newVisibility=false
+09-14 07:49:54.186  1096  1234 V WindowManagerShell: Track 0 became idle
+09-14 07:49:54.186  1096  1234 V WindowManagerShell: All active transition animations finished
+09-14 07:49:54.192  3640  3640 E libnb   : get_callbacks native_handle 0xc488ac0731bfc18f: 1 libnb:/system/lib64/libhoudini.so
+09-14 07:49:54.192  3640  3640 I libnb   : Found /system/lib64/libhoudini.so version 7
+09-14 07:49:54.192  3640  3640 E HP      : patch_houdini_linker_null_crash: patched +0x2FFECE (je->jmp) OK
+09-14 07:49:54.192  3640  3640 D HP      : no libmumuhooker.so
+09-14 07:49:54.202   842  3460 W UserManagerService: Requested status bar icon for non-badged user 0
+09-14 07:49:54.203   842  3460 W UserManagerService: Requested status bar icon for non-badged user 0
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: setPresentationRotation 0 for com.yk1z.yayamsg:21
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: java.lang.Exception
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at com.android.server.mumu.tab.TaskTab.setPresentationRotation(TaskTab.java:52)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at com.android.server.wm.TaskUtils.getTopTaskOnDisplay(TaskUtils.java:557)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at com.android.server.wm.TaskUtils.updateTaskTabRotation(TaskUtils.java:1876)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at com.android.server.wm.TaskUtils.notifyOpen(TaskUtils.java:210)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at com.android.server.wm.WmBridge.notifyOpen(WmBridge.java:496)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at com.android.server.mumu.wm.TaskHandler.handleMessage(TaskHandler.java:32)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at android.os.Handler.dispatchMessage(Handler.java:109)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:49:54.203   842   861 E [MUMU]TaskTab: 	at com.android.server.ServiceThread.run(ServiceThread.java:49)
+09-14 07:49:54.208   842   861 E ActivityManager: Sending non-protected broadcast nemu.intent.action.NEW_TASK from system 842:system/1000 pkg android
+09-14 07:49:54.208   842   861 E ActivityManager: java.lang.Throwable
+09-14 07:49:54.208   842   861 E ActivityManager: 	at com.android.server.am.BroadcastController.checkBroadcastFromSystem(BroadcastController.java:2118)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at com.android.server.am.BroadcastController.broadcastIntentLockedTraced(BroadcastController.java:1635)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at com.android.server.am.BroadcastController.broadcastIntentLocked(BroadcastController.java:807)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at com.android.server.am.BroadcastController.broadcastIntentWithFeature(BroadcastController.java:740)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at com.android.server.am.ActivityManagerService.broadcastIntentWithFeature(ActivityManagerService.java:14410)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at android.app.ContextImpl.sendBroadcastAsUser(ContextImpl.java:1509)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at android.content.ContextWrapper.sendBroadcastAsUser(ContextWrapper.java:603)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at com.android.server.wm.TaskUtils.$r8$lambda$izZd96HXfmc2zvc_tMQT0zjG0cY(TaskUtils.java:2098)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at com.android.server.wm.TaskUtils$$ExternalSyntheticLambda1.run(R8$$SyntheticClass:0)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:49:54.208   842   861 E ActivityManager: 	at com.android.server.ServiceThread.run(ServiceThread.java:49)
+09-14 07:49:54.225   842  3460 W ActivityTaskManager: takeTaskSnapshot: taskId=16 not found or not visible
+09-14 07:49:54.225   842  3460 W ActivityTaskManager: takeTaskSnapshot: taskId=18 not found or not visible
+09-14 07:49:54.321  3640  3640 D HP      : mAbi = x86_64 enableHighFrame = 0
+09-14 07:49:54.321  3640  3640 D houdini : [3640] Houdini now in android app mode
+09-14 07:49:54.321  3640  3640 D houdini : [3640] Intel Bridge Technology for Netease Mumu only, Copyright(C) Intel Corp. 2012-2025.
+09-14 07:49:54.321  3640  3640 D houdini : [3640] Use permitted only under a valid commercial software license agreement - all other rights reserved.
+09-14 07:49:54.321  3640  3640 D houdini : [3640] Initialize library(version: 15.0.0_z.Netease_com2.0 RELEASE)... successfully.
+09-14 07:49:54.321  3640  3640 W HP      : x_initialize private_dir:/data/user/0/com.yk1z.yayamsg/code_cache instruction_set:arm64 getMethodShorty:0x74d597696700 ret:1
+09-14 07:49:54.323  3640  3640 E om.yk1z.yayamsg: Not starting debugger since process cannot load the jdwp agent.
+09-14 07:49:54.325  3640  3640 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+09-14 07:49:54.358   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:54.368  3640  3640 D nativeloader: Configuring clns-7 for other apk /data/app/~~1SLdHK8CRcpCHYZLV8zJFQ==/com.yk1z.yayamsg-3CyIxheNDltTL2KaYFiWWA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~1SLdHK8CRcpCHYZLV8zJFQ==/com.yk1z.yayamsg-3CyIxheNDltTL2KaYFiWWA==/lib/x86_64:/data/app/~~1SLdHK8CRcpCHYZLV8zJFQ==/com.yk1z.yayamsg-3CyIxheNDltTL2KaYFiWWA==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/com.yk1z.yayamsg
+09-14 07:49:54.370  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d618322cd8) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.372  3640  3640 V GraphicsEnvironment: Currently set values for:
+09-14 07:49:54.372  3640  3640 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+09-14 07:49:54.372  3640  3640 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+09-14 07:49:54.372  3640  3640 V GraphicsEnvironment: com.yk1z.yayamsg is not listed in per-application setting
+09-14 07:49:54.372  3640  3640 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+09-14 07:49:54.383  3640  3640 W SoLoader: Initializing SoLoader: 0
+09-14 07:49:54.383  3640  3640 W SoLoader: Recording new base apk path: /data/app/~~1SLdHK8CRcpCHYZLV8zJFQ==/com.yk1z.yayamsg-3CyIxheNDltTL2KaYFiWWA==/base.apk
+09-14 07:49:54.383  3640  3640 W SoLoader: Previously recorded 0 base apk paths.
+09-14 07:49:54.384  3640  3640 I SoLoader: Preparing SO source: DirectorySoSource[root = /vendor/lib64 flags = 2]
+09-14 07:49:54.384  3640  3640 I SoLoader: Preparing SO source: DirectorySoSource[root = /system/lib64 flags = 2]
+09-14 07:49:54.384  3640  3640 I SoLoader: Preparing SO source: DirectApkSoSource[root = [/data/app/~~1SLdHK8CRcpCHYZLV8zJFQ==/com.yk1z.yayamsg-3CyIxheNDltTL2KaYFiWWA==/base.apk!/lib/x86_64]]
+09-14 07:49:54.385  3640  3640 I SoLoader: Preparing SO source: ApplicationSoSource[DirectorySoSource[root = /data/app/~~1SLdHK8CRcpCHYZLV8zJFQ==/com.yk1z.yayamsg-3CyIxheNDltTL2KaYFiWWA==/lib/x86_64 flags = 0]]
+09-14 07:49:54.385  3640  3640 I SoLoader: init finish: 4 SO sources prepared
+09-14 07:49:54.385  3640  3640 W SoLoader: SoLoader initialized: 8
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Entering merged library JNI_OnLoad.
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing 12 pre-merged libs (including stub)
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libfabricjni_so.  onload_func: 0x74d5066b1ba0
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libreact_devsupportjni_so.  onload_func: 0x74d50678d530
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libreact_featureflagsjni_so.  onload_func: 0x74d5067a00a0
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libreact_newarchdefaults_so.  onload_func: 0x74d5067c6fa0
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libreactnativeblob_so.  onload_func: 0x74d50686ea50
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libreactnativejni_so.  onload_func: 0x74d5068898c0
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libreactnativejni_common_so.  onload_func: 0x74d506890150
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register librninstance_so.  onload_func: 0x74d5068ae450
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libturbomodulejsijni_so.  onload_func: 0x74d506959b80
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libuimanagerjni_so.  onload_func: 0x74d506961ab0
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: Preparing to register libyoga_so.  onload_func: 0x74d506969130
+09-14 07:49:54.396  3640  3640 D jni_lib_merge: About to register 11 actual methods.
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Entering merged library JNI_OnLoad.
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing 12 pre-merged libs (including stub)
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libfabricjni_so.  onload_func: 0x74d5066b1ba0
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libreact_devsupportjni_so.  onload_func: 0x74d50678d530
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libreact_featureflagsjni_so.  onload_func: 0x74d5067a00a0
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libreact_newarchdefaults_so.  onload_func: 0x74d5067c6fa0
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libreactnativeblob_so.  onload_func: 0x74d50686ea50
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libreactnativejni_so.  onload_func: 0x74d5068898c0
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libreactnativejni_common_so.  onload_func: 0x74d506890150
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register librninstance_so.  onload_func: 0x74d5068ae450
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libturbomodulejsijni_so.  onload_func: 0x74d506959b80
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libuimanagerjni_so.  onload_func: 0x74d506961ab0
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: Preparing to register libyoga_so.  onload_func: 0x74d506969130
+09-14 07:49:54.398  3640  3640 D jni_lib_merge: About to register 11 actual methods.
+09-14 07:49:54.401   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:54.401   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: setPresentationRotation 0 for com.yk1z.yayamsg:21
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: java.lang.Exception
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at com.android.server.mumu.tab.TaskTab.setPresentationRotation(TaskTab.java:52)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at com.android.server.wm.TaskUtils.getTopTaskOnDisplay(TaskUtils.java:557)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at com.android.server.wm.TaskUtils.updateTaskTabRotation(TaskUtils.java:1876)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at com.android.server.wm.TaskUtils.notifyOpen(TaskUtils.java:210)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at com.android.server.wm.WmBridge.notifyOpen(WmBridge.java:496)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at com.android.server.mumu.wm.TaskHandler.handleMessage(TaskHandler.java:32)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at android.os.Handler.dispatchMessage(Handler.java:109)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:49:54.402   842   861 E [MUMU]TaskTab: 	at com.android.server.ServiceThread.run(ServiceThread.java:49)
+09-14 07:49:54.404  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d618320a78) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.404  3640  3726 E libEGL  : intercept_property_get () for (persist.graphics.egl)
+09-14 07:49:54.416  3640  3726 I EGL_emulation: EGL display initialized (version 1.4, rendererVersion=0x3, configs=120)
+09-14 07:49:54.417  3640  3640 D AppCompatDelegate: Checking for metadata for AppLocalesMetadataHolderService : Service not found
+09-14 07:49:54.418  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d61831e818) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.452  3640  3640 W unknown:BridgelessReact: ReactHost{0}.startSurface(surfaceId = 0): Schedule
+09-14 07:49:54.452  3640  3640 W unknown:BridgelessReact: ReactHost{0}.attachSurface(surfaceId = 0)
+09-14 07:49:54.452  3640  3729 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask()
+09-14 07:49:54.452  3640  3729 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Start
+09-14 07:49:54.452  3640  3729 W unknown:BridgelessReact: ReactHost{0}.getJSBundleLoader()
+09-14 07:49:54.452  3640  3729 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactContext(): Creating BridgelessReactContext
+09-14 07:49:54.452  3640  3729 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Creating ReactInstance
+09-14 07:49:54.455  3640  3640 D DesktopModeFlagsUtil: Toggle override initialized to: OVERRIDE_OFF
+09-14 07:49:54.458  3640  3729 D jni_lib_merge: Entering merged library JNI_OnLoad.
+09-14 07:49:54.458  3640  3729 D jni_lib_merge: Preparing 4 pre-merged libs (including stub)
+09-14 07:49:54.458  3640  3729 D jni_lib_merge: Preparing to register libhermes_executor_so.  onload_func: 0x74d567320730
+09-14 07:49:54.458  3640  3729 D jni_lib_merge: Preparing to register libhermesinstancejni_so.  onload_func: 0x74d567327db0
+09-14 07:49:54.458  3640  3729 D jni_lib_merge: Preparing to register libjsijniprofiler_so.  onload_func: 0x74d567328540
+09-14 07:49:54.458  3640  3729 D jni_lib_merge: About to register 3 actual methods.
+09-14 07:49:54.463  3640  3640 W unknown:BridgelessReact: ReactHost{0}.onHostResume(activity)
+09-14 07:49:54.463  3640  3640 W unknown:BridgelessReact: ReactContext.onHostResume()
+09-14 07:49:54.469  3640  3640 W HWUI    : Unknown dataspace 0
+09-14 07:49:54.480  3640  3729 I ExpoModulesCore: ✅ AppContext was initialized
+09-14 07:49:54.484   842  3460 D CoreBackPreview: Window{65b1424 u0 com.yk1z.yayamsg/com.yk1z.yayamsg.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@1d0142, mPriority=0, mIsAnimationCallback=false, mOverrideBehavior=0}
+09-14 07:49:54.486  3640  3723 I EGL_emulation: EGL display initialized (version 1.4, rendererVersion=0x3, configs=120)
+09-14 07:49:54.497   485   485 I hwservicemanager: getTransport: Cannot find entry android.hardware.configstore@1.0::ISurfaceFlingerConfigs/default in either framework or device VINTF manifest.
+09-14 07:49:54.497  3640  3723 E HidlServiceManagement: getService: Potential race detected, descriptor: android.hardware.configstore@1.0::ISurfaceFlingerConfigs instance: default
+09-14 07:49:54.498  3640  3723 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+09-14 07:49:54.503   702   730 E HWComposer: getSupportedContentTypes: getSupportedContentTypes failed for display 4619827820427265280: UNSUPPORTED (8)
+09-14 07:49:54.504  3640  3723 E HidlServiceManagement: getService: Potential race detected, descriptor: android.hardware.graphics.mapper@2.0::IMapper instance: default
+09-14 07:49:54.505  3640  3723 E HidlServiceManagement: getService: Potential race detected, descriptor: android.hardware.graphics.allocator@2.0::IAllocator instance: default
+09-14 07:49:54.506  3640  3723 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 07:49:54.519  3640  3740 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 07:49:54.520  3640  3740 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 07:49:54.531  3640  3729 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Loading JS Bundle
+09-14 07:49:54.531  3640  3729 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Calling DevSupportManagerBase.onNewReactContextCreated(reactContext)
+09-14 07:49:54.531  3640  3729 W unknown:BridgelessReact: ReactHost{0}.startSurface(surfaceId = 0): Execute
+09-14 07:49:54.534  3640  3640 W unknown:BridgelessReact: ReactContext.onHostResume()
+09-14 07:49:54.534  3640  3640 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Executing ReactInstanceEventListeners
+09-14 07:49:54.535   842   861 I ActivityTaskManager: Displayed com.yk1z.yayamsg/.MainActivity for user 0: +440ms
+09-14 07:49:54.537  1069  1069 D BaseDepthController: setSurface:
+09-14 07:49:54.537  1069  1069 D BaseDepthController: 	mWaitingOnSurfaceValidity: false
+09-14 07:49:54.537  1069  1069 D BaseDepthController: 	mSurface: null
+09-14 07:49:54.540  1069  1069 D StateManager: goToState - fromState: Normal, toState: Normal, partial trace:
+09-14 07:49:54.540  1069  1069 D StateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(r8-map-id-bf3ad9256c728092d728133b817b3551c14198ea9f59d21ef0441e8960d05dbf:4)
+09-14 07:49:54.540  1069  1069 D StateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(r8-map-id-bf3ad9256c728092d728133b817b3551c14198ea9f59d21ef0441e8960d05dbf:1)
+09-14 07:49:54.540  1069  1069 D StateManager: 	at com.android.launcher3.statemanager.StatefulActivity.onStop(r8-map-id-bf3ad9256c728092d728133b817b3551c14198ea9f59d21ef0441e8960d05dbf:34)
+09-14 07:49:54.540  1069  1069 D StatsLog: LAUNCHER_ONSTOP
+09-14 07:49:54.550   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:54.552   842   952 I ImeTracker: com.yk1z.yayamsg:521f7726: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false
+09-14 07:49:54.552  3640  3640 D InsetsController: hide(ime(), fromIme=false)
+09-14 07:49:54.552  3640  3640 I ImeTracker: com.yk1z.yayamsg:521f7726: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+09-14 07:49:54.558  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.SearchBarManager
+09-14 07:49:54.558  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.uimanager.LayoutShadowNode
+09-14 07:49:54.559  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenFooterManager
+09-14 07:49:54.559  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenContainerViewManager
+09-14 07:49:54.559  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativecommunity.webview.RNCWebViewManager
+09-14 07:49:54.560  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ModalScreenViewManager
+09-14 07:49:54.560  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.yk1z.yayamsg.LiveExoViewManager
+09-14 07:49:54.561  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class expo.modules.kotlin.views.GroupViewManagerWrapper
+09-14 07:49:54.561  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackHeaderConfigViewManager
+09-14 07:49:54.561  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenContentWrapperManager
+09-14 07:49:54.561  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.tabs.TabsScreenViewManager
+09-14 07:49:54.562  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.safearea.SafeAreaViewManager
+09-14 07:49:54.562  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.safearea.paper.SafeAreaViewShadowNode
+09-14 07:49:54.562  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenViewManager
+09-14 07:49:54.562  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class expo.modules.kotlin.views.SimpleViewManagerWrapper
+09-14 07:49:54.562  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.stack.host.StackHostViewManager
+09-14 07:49:54.562  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackHeaderSubviewManager
+09-14 07:49:54.563  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.stack.screen.StackScreenViewManager
+09-14 07:49:54.563  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.yk1z.yayamsg.LiquidGlassViewManager
+09-14 07:49:54.563  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackViewManager
+09-14 07:49:54.564  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.brentvatne.exoplayer.ReactExoplayerViewManager
+09-14 07:49:54.564  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.tabs.TabsHostViewManager
+09-14 07:49:54.571  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.gesturehandler.react.RNGestureHandlerButtonViewManager
+09-14 07:49:54.572  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.safeareaview.ReactSafeAreaViewManager
+09-14 07:49:54.572  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.safeareaview.ReactSafeAreaViewShadowNode
+09-14 07:49:54.573  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.modal.ReactModalHostManager
+09-14 07:49:54.573  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.frescosupport.FrescoBasedReactTextInlineImageViewManager
+09-14 07:49:54.573  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.frescosupport.FrescoBasedReactTextInlineImageShadowNode
+09-14 07:49:54.574  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.progressbar.ReactProgressBarViewManager
+09-14 07:49:54.574  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.progressbar.ProgressBarShadowNode
+09-14 07:49:54.574  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactHorizontalScrollViewManager
+09-14 07:49:54.575  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.image.ReactImageManager
+09-14 07:49:54.576  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactTextViewManager
+09-14 07:49:54.576  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactTextShadowNode
+09-14 07:49:54.577  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactHorizontalScrollContainerViewManager
+09-14 07:49:54.577  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.unimplementedview.ReactUnimplementedViewManager
+09-14 07:49:54.578  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactScrollViewManager
+09-14 07:49:54.579  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.view.ReactViewManager
+09-14 07:49:54.579  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.drawer.ReactDrawerLayoutManager
+09-14 07:49:54.580  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.switchview.ReactSwitchManager
+09-14 07:49:54.580  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.switchview.ReactSwitchShadowNode
+09-14 07:49:54.581  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactVirtualTextViewManager
+09-14 07:49:54.581  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactVirtualTextShadowNode
+09-14 07:49:54.581  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.swiperefresh.SwipeRefreshLayoutManager
+09-14 07:49:54.582  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactRawTextManager
+09-14 07:49:54.582  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactRawTextShadowNode
+09-14 07:49:54.582  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.textinput.ReactTextInputManager
+09-14 07:49:54.583  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.textinput.ReactTextInputShadowNode
+09-14 07:49:54.584  3640  3730 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.gesturehandler.react.RNGestureHandlerRootViewManager
+09-14 07:49:54.586  3640  3730 W BridgelessReactContext: [WARNING] Bridgeless doesn't support CatalystInstance. Accessing an API that's not part of the new architecture is not encouraged usage.
+09-14 07:49:54.588  3640  3730 I ExpoModulesCore: ✅ JSI interop was installed
+09-14 07:49:54.588  3640  3730 I ExpoModulesCore: ✅ Constants were exported
+09-14 07:49:54.702  3640  3730 I ReactNativeJS: Running "main"
+09-14 07:49:54.703  3640  3730 D ReactNativeJS: 会话开始 · 牙牙消息 v2.7.5 · android 35
+09-14 07:49:54.710  1811  1811 W AccMsgReceiver: AccMsgReceiver: onReceive action = nemu.intent.action.NEW_TASK
+09-14 07:49:54.717   842  3460 W ActivityManager: Foreground service started from background can not have location/camera/microphone access: service com.mumu.acc/.AccService
+09-14 07:49:54.719  1811  1932 W AccServiceManager: onAppLaunch: packageName = com.yk1z.yayamsg
+09-14 07:49:54.720  1811  1932 W TranslateGameManager: onAppLaunch: packageName = com.yk1z.yayamsg, hasPackageLaunchedBefore = false, supportTranslateReally = false, isLocalTranslateEnabled = false
+09-14 07:49:54.724  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d618326518) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.725  3640  3640 I WebViewFactory: Loading com.android.webview version 110.0.5481.154.1 (code 548115537)
+09-14 07:49:54.725  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d6183371d8) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.725  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d618334f78) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.725  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d618338df8) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.726  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d618333358) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.726  3640  3640 V ResourcesManager: The following library key has been added: ResourcesKey{ mHash=31e15513 mResDir=null mSplitDirs=[] mOverlayDirs=[/data/resource-cache/com.android.systemui-neutral-8HYB.frro,/data/resource-cache/com.android.systemui-accent-Nx6E.frro,/data/resource-cache/com.android.systemui-dynamic-MFXu.frro] mLibDirs=[/system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk,/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk] mDisplayId=0 mOverrideConfig=v35 mCompatInfo={480dpi always-compat} mLoaders=[]}
+09-14 07:49:54.726  3640  3640 W ziparchive: Unable to open '/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.dm': No such file or directory
+09-14 07:49:54.726  3640  3640 W ziparchive: Unable to open '/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.dm': No such file or directory
+09-14 07:49:54.726  3640  3640 W om.yk1z.yayamsg: Entry not found
+09-14 07:49:54.727  3640  3640 D nativeloader: InitLlndkLibrariesProduct: libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libRS.so:libandroid_net.so:libapexsupport.so:libavf.so:libbinder_ndk.so:libc.so:libcgrouprc.so:libclang_rt.asan-i686-android.so:libclang_rt.asan-x86_64-android.so:libcom.android.tethering.connectivity_native.so:libdl.so:libft2.so:liblog.so:libm.so:libmediandk.so:libnativewindow.so:libneuralnetworks.so:libselinux.so:libsync.so:libvendorsupport.so:libvndksupport.so:libvulkan.so
+09-14 07:49:54.727  3640  3640 D nativeloader: Configuring product-clns-8 for unbundled product apk /system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk. target_sdk_version=33, uses_libraries=ALL, library_path=/system/product/app/TrichromeWebView_overseas/lib/x86_64:/system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk!/lib/x86_64:/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk!/lib/x86_64:/product/lib64:/system/product/lib64:/system/lib64, permitted_path=/data:/mnt/expand:/product/lib64:/system/product/lib64
+09-14 07:49:54.731  3640  3640 D nativeloader: InitVndkspLibrariesProduct: VNDK is deprecated with product
+09-14 07:49:54.732  3640  3640 D nativeloader: Configuring product-clns-9 for unbundled product apk /system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk. target_sdk_version=33, uses_libraries=, library_path=/system/product/app/TrichromeWebView_overseas/lib/x86_64:/system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk!/lib/x86_64:/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk!/lib/x86_64:/product/lib64:/system/product/lib64:/system/lib64, permitted_path=/data:/mnt/expand:/product/lib64:/system/product/lib64
+09-14 07:49:54.735  3640  3640 W webviewchromiumloader: Failed to open relro file /data/misc/shared_relro/libwebviewchromium64.relro: No such file or directory
+09-14 07:49:54.735  3640  3640 W WebViewLibraryLoader: failed to load with relro file, proceeding without
+09-14 07:49:54.749  3640  3730 W ReactNativeJS: '[initWasm] Native WASM unavailable (Hermes), falling back to WebView signer:', '当前运行环境缺少 WebAssembly 支持'
+09-14 07:49:54.759  3640  3640 I cr_WVCFactoryProvider: Loaded version=110.0.5481.154 minSdkVersion=29 isBundle=false multiprocess=true packageId=2
+09-14 07:49:54.803  3640  3746 I cr_LibraryLoader: Successfully loaded native library
+09-14 07:49:54.805  3640  3746 I cr_CachingUmaRecorder: Flushed 9 samples from 9 histograms.
+09-14 07:49:54.806  3640  3640 V WebViewChromiumAwInit: Binding Chromium to main looper Looper (main, tid 2) {b7e7577}
+09-14 07:49:54.827  3640  3751 D cr_ChildProcLH: [ChildProcessLauncherHelperImpl.java:584] Create a new ChildConnectionAllocator with package name = com.android.webview, sandboxed = true
+09-14 07:49:54.838  3640  3640 D cr_BrowserStartup: [BrowserStartupControllerImpl.java:437] Initializing chromium process, singleProcess=false
+09-14 07:49:54.859   842  3460 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@a80db701 does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+09-14 07:49:54.866   657   657 D Zygote  : Forked child process 3755
+09-14 07:49:54.871   842   877 I ActivityManager: Start proc 3755:com.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i4 for service {com.yk1z.yayamsg/org.chromium.content.app.SandboxedProcessService0:0}
+09-14 07:49:54.875  1811  1811 W RomSdkBridgeOversea: fetchAccGames: page = 1, pageGameSize = 20, hasNextPage = true
+09-14 07:49:54.875  1811  1811 W RomSdkBridgeOversea: fetchAccGames: early stop, rawSize = 20, packageNamesSize = 1
+09-14 07:49:54.875  1811  1811 W RomSdkBridgeOversea: fetchAccGames: done, pages = 1, raw = 20
+09-14 07:49:54.877  1811  1903 W AccRequestManager: handleRealAccRequest: uu.isSuccess=true
+09-14 07:49:54.887  3755  3755 W nativebridge: Failed to bind-mount /system/etc/cpuinfo.x86_64.txt as /proc/cpuinfo: No such file or directory
+09-14 07:49:54.887  3755  3755 W nativebridge: Failed to bind-mount /system/lib64/x86_64/cpuinfo as /proc/cpuinfo: No such file or directory
+09-14 07:49:54.887  3755  3755 E Zygote  : pkg name is isolate => com.android.webview, data dir is /data/user/0/com.android.webview
+09-14 07:49:54.888  3755  3755 W zygote64: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: nemuhotd
+09-14 07:49:54.910  1096  1277 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=false callback=android.view.ViewRootImpl$$ExternalSyntheticLambda13@1daa16
+09-14 07:49:54.910   842  1207 D CoreBackPreview: Window{3dc6dfb u0 Splash Screen com.yk1z.yayamsg EXITING}: Setting back callback null
+09-14 07:49:54.922  3755  3755 I Zygote  : seccomp disabled by setenforce 0
+09-14 07:49:54.926  3755  3755 I ocessService0:0: Using CollectorTypeCMC GC.
+09-14 07:49:54.926  3755  3755 W ocessService0:0: Unexpected CPU variant for x86: x86_64.
+09-14 07:49:54.926  3755  3755 W ocessService0:0: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, default
+09-14 07:49:54.926  3755  3755 W nativebridge: Cannot create code cache directory /data/user/0/com.android.webview/code_cache: No such file or directory.
+09-14 07:49:54.926  3755  3755 V libnb   : enter native_bridge2_initialize (null) arm64
+09-14 07:49:54.926  3755  3755 E libnb   : The translator implementation library has not been set.
+09-14 07:49:54.932  3640  3640 V cr_A11yState: [AccessibilityState.java:294] Enabled accessibility services list updated.
+09-14 07:49:54.932  3640  3640 V cr_A11yState: [AccessibilityState.java:313] Informing listeners of changes.
+09-14 07:49:54.933  3755  3755 E libnb   : get_callbacks native_handle 0x65831af9b08eeba5: 1 libnb:/system/lib64/libhoudini.so
+09-14 07:49:54.933  3755  3755 I libnb   : Found /system/lib64/libhoudini.so version 7
+09-14 07:49:54.933  3755  3755 E HP      : patch_houdini_linker_null_crash: patched +0x2FFECE (je->jmp) OK
+09-14 07:49:54.933  3755  3755 D HP      : no libmumuhooker.so
+09-14 07:49:54.935  3755  3755 D HP      : mAbi = x86_64 enableHighFrame = 0
+09-14 07:49:54.935  3755  3755 D houdini : [3755] Houdini now in android app mode
+09-14 07:49:54.935  3755  3755 D houdini : [3755] Intel Bridge Technology for Netease Mumu only, Copyright(C) Intel Corp. 2012-2025.
+09-14 07:49:54.935  3755  3755 D houdini : [3755] Use permitted only under a valid commercial software license agreement - all other rights reserved.
+09-14 07:49:54.935  3755  3755 D houdini : [3755] Initialize library(version: 15.0.0_z.Netease_com2.0 RELEASE)... successfully.
+09-14 07:49:54.935  3755  3755 W HP      : x_initialize private_dir:(null) instruction_set:arm64 getMethodShorty:0x74d597696700 ret:1
+09-14 07:49:54.938  3755  3755 E ocessService0:0: Not starting debugger since process cannot load the jdwp agent.
+09-14 07:49:54.939  3755  3755 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+09-14 07:49:54.942  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d618336558) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.943  3640  3640 I om.yk1z.yayamsg: AssetManager2(0x74d618334c58) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.949  3640  3731 W unknown:ReactNative: StatusBarModule: Ignored status bar change, current activity is edge-to-edge.
+09-14 07:49:54.949  3640  3731 W unknown:ReactNative: StatusBarModule: Ignored status bar change, current activity is edge-to-edge.
+09-14 07:49:54.964  3755  3755 W ziparchive: Unable to open '/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.dm': No such file or directory
+09-14 07:49:54.964  3755  3755 W ziparchive: Unable to open '/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.dm': No such file or directory
+09-14 07:49:54.964  3755  3755 W ocessService0:0: Entry not found
+09-14 07:49:54.966  3755  3755 D nativeloader: InitLlndkLibrariesProduct: libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libRS.so:libandroid_net.so:libapexsupport.so:libavf.so:libbinder_ndk.so:libc.so:libcgrouprc.so:libclang_rt.asan-i686-android.so:libclang_rt.asan-x86_64-android.so:libcom.android.tethering.connectivity_native.so:libdl.so:libft2.so:liblog.so:libm.so:libmediandk.so:libnativewindow.so:libneuralnetworks.so:libselinux.so:libsync.so:libvendorsupport.so:libvndksupport.so:libvulkan.so
+09-14 07:49:54.966  3755  3755 D nativeloader: Configuring product-clns-7 for unbundled product apk /system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk. target_sdk_version=33, uses_libraries=ALL, library_path=/system/product/app/TrichromeWebView_overseas/lib/x86_64:/system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk!/lib/x86_64:/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk!/lib/x86_64:/product/lib64:/system/product/lib64:/system/lib64, permitted_path=/data:/mnt/expand:/data/user/0/com.android.webview:/product/lib64:/system/product/lib64
+09-14 07:49:54.967   842  3460 D ActivityManager: sync unfroze 2539 com.android.webview:webview_service for 6
+09-14 07:49:54.967   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:54.967   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:54.973  2539  2539 D ActivityThread: Package [com.yk1z.yayamsg] reported as REPLACED, but missing application info. Assuming REMOVED.
+09-14 07:49:54.973  2539  2539 D ActivityThread: Package [com.yk1z.yayamsg] reported as REPLACED, but missing application info. Assuming REMOVED.
+09-14 07:49:54.974  3755  3755 D nativeloader: InitVndkspLibrariesProduct: VNDK is deprecated with product
+09-14 07:49:54.976  3755  3755 D nativeloader: Configuring product-clns-8 for unbundled product apk /system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk. target_sdk_version=33, uses_libraries=, library_path=/system/product/app/TrichromeWebView_overseas/lib/x86_64:/system/product/app/TrichromeWebView_overseas/TrichromeWebView_overseas.apk!/lib/x86_64:/system/product/app/TrichromeLibrary_overseas/TrichromeLibrary_overseas.apk!/lib/x86_64:/product/lib64:/system/product/lib64:/system/lib64, permitted_path=/data:/mnt/expand:/data/user/0/com.android.webview:/product/lib64:/system/product/lib64
+09-14 07:49:54.979  2539  3780 W cr_MetricsBridgeService: retained records has reached the max capacity, dropping record
+09-14 07:49:54.980  3755  3755 I ocessService0:0: AssetManager2(0x74d618320438) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:54.981  3755  3755 I LoadedApk: No resource references to update in package com.android.trichromelibrary
+09-14 07:49:54.982  2539  3782 W cr_MetricsBridgeService: retained records has reached the max capacity, dropping record
+09-14 07:49:54.983  3755  3755 I cr_WebViewApkApp: Launched version=110.0.5481.154 minSdkVersion=29 isBundle=false processName=com.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0
+09-14 07:49:54.984   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:54.986  3755  3755 I cr_ChildProcessService: Creating new ChildProcessService pid=3755
+09-14 07:49:54.993  3755  3755 W webviewchromiumloader: Failed to open relro file /data/misc/shared_relro/libwebviewchromium64.relro: No such file or directory
+09-14 07:49:54.993  3755  3755 W WebViewLibraryLoader: failed to load with relro file, proceeding without
+09-14 07:49:54.999   842  3460 D ConnectivityService: requestNetwork for uid/pid:10026/3640 activeRequest: null callbackRequest: 113 [NetworkRequest [ REQUEST id=114, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10026 RequestorUid: 10026 RequestorPkg: com.yk1z.yayamsg UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: ALL
+09-14 07:49:55.000   842  1001 D ConnectivityService: NetReassign [114 : null → 100] [c 0] [a 0] [i 1]
+09-14 07:49:55.000   842   989 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=114, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10026 RequestorUid: 10026 RequestorPkg: com.yk1z.yayamsg UnderlyingNetworks: Null] ]
+09-14 07:49:55.002   842   989 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=114, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10026 RequestorUid: 10026 RequestorPkg: com.yk1z.yayamsg UnderlyingNetworks: Null] ]
+09-14 07:49:55.002   842   989 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=114, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10026 RequestorUid: 10026 RequestorPkg: com.yk1z.yayamsg UnderlyingNetworks: Null] ]
+09-14 07:49:55.002   842   989 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=114, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10026 RequestorUid: 10026 RequestorPkg: com.yk1z.yayamsg UnderlyingNetworks: Null] ]
+09-14 07:49:55.003   842  1001 D ConnectivityService: NetReassign [no changes] [c 0] [a 0] [i 1]
+09-14 07:49:55.025  3640  3640 D cr_AndroidStylus: [AndroidStylusWritingHandler.java:46] Stylus feature disabled.
+09-14 07:49:55.027  3640  3640 D cr_AndroidStylus: [AndroidStylusWritingHandler.java:46] Stylus feature disabled.
+09-14 07:49:55.058  3640  3770 W cr_media: BLUETOOTH_CONNECT permission is missing.
+09-14 07:49:55.059  3640  3751 D cr_ChildProcLH: [ChildProcessLauncherHelperImpl.java:287] Connection likely not created from app zygote
+09-14 07:49:55.059  3640  3751 D cr_ChildProcLauncher: [ChildProcessLauncher.java:250] on connect callback, pid=3755
+09-14 07:49:55.061  3640  3770 W cr_media: registerBluetoothIntentsIfNeeded: Requires BLUETOOTH permission
+09-14 07:49:55.062  3640  3730 D ReactNativeJS: [memberData] [memberData] 启动先用本地缓存展示 943 位
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Entering merged library JNI_OnLoad.
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing 12 pre-merged libs (including stub)
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libfabricjni_so.  onload_func: 0x74d5066b1ba0
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libreact_devsupportjni_so.  onload_func: 0x74d50678d530
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libreact_featureflagsjni_so.  onload_func: 0x74d5067a00a0
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libreact_newarchdefaults_so.  onload_func: 0x74d5067c6fa0
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libreactnativeblob_so.  onload_func: 0x74d50686ea50
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libreactnativejni_so.  onload_func: 0x74d5068898c0
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libreactnativejni_common_so.  onload_func: 0x74d506890150
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register librninstance_so.  onload_func: 0x74d5068ae450
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libturbomodulejsijni_so.  onload_func: 0x74d506959b80
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libuimanagerjni_so.  onload_func: 0x74d506961ab0
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: Preparing to register libyoga_so.  onload_func: 0x74d506969130
+09-14 07:49:55.071  3640  3730 D jni_lib_merge: About to register 11 actual methods.
+09-14 07:49:55.078  3755  3783 I cr_LibraryLoader: Successfully loaded native library
+09-14 07:49:55.079  3755  3783 I cr_CachingUmaRecorder: Flushed 3 samples from 3 histograms.
+09-14 07:49:55.079  3640  3730 D ReactNativeJS: [memberData] [memberData] 缓存 5 分钟前更新，未过期（TTL 6h），跳过网络同步
+09-14 07:49:55.081  3755  3783 I ocessService0:0: AssetManager2(0x74d618322cd8) locale list changing from [] to [zh-Hant-TW]
+09-14 07:49:55.083  3755  3783 W SystemServiceRegistry: No service published for: uimode
+09-14 07:49:55.103  2539  3780 W cr_MetricsBridgeService: retained records has reached the max capacity, dropping record
+09-14 07:49:55.103  2539  3781 W cr_MetricsBridgeService: retained records has reached the max capacity, dropping record
+09-14 07:49:55.103  2539  3781 W cr_MetricsBridgeService: retained records has reached the max capacity, dropping record
+09-14 07:49:55.112   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:49:55.117  2204  3299 I FontLog : (REDACTED) Received query %s, URI %s
+09-14 07:49:55.117  2204  3299 I FontLog : (REDACTED) Query [%s] resolved to %s
+09-14 07:49:55.120  2204  3299 I FontLog : (REDACTED) Fetch %s end status %s
+09-14 07:49:55.122  2204  3299 I FontLog : (REDACTED) Pulling font file for id = %d, cache size = %d
+09-14 07:49:55.127  2204  3299 I FontLog : (REDACTED) Pulling font file for id = %d, cache size = %d
+09-14 07:49:55.158  3640  3640 W unknown:WrappingUtils: Don't know how to round that drawable: com.facebook.react.views.image.ReactImageDownloadListener$EmptyDrawable@bc0a791
+09-14 07:49:55.172  3640  3640 I ReactNative: [GESTURE HANDLER] Initialize gesture handler for root view com.facebook.react.runtime.ReactSurfaceView{cbbc857 V.E...... ......ID 0,0-1080,1920 #1}
+09-14 07:49:55.187  3640  3808 W HWUI    : Image decoding logging dropped!
+09-14 07:49:55.525  1349  3567 W System.err: java.net.ConnectException: Failed to connect to /10.0.2.2:32552
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.RealConnection.connectSocket(RealConnection.kt:297)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.RealConnection.connect(RealConnection.kt:207)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.ExchangeFinder.findConnection(ExchangeFinder.kt:226)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.ExchangeFinder.findHealthyConnection(ExchangeFinder.kt:106)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.ExchangeFinder.find(ExchangeFinder.kt:74)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.RealCall.initExchange$okhttp(RealCall.kt:255)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:32)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+09-14 07:49:55.528  1349  3567 W System.err: 	at io.sentry.okhttp.SentryOkHttpInterceptor.intercept(SentryOkHttpInterceptor.kt:108)
+09-14 07:49:55.528  1349  3567 W System.err: 	at io.sentry.android.okhttp.SentryOkHttpInterceptor.intercept(Unknown Source:7)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+09-14 07:49:55.528  1349  3567 W System.err: 	at com.mumu.store.data.source.remote.AppInfoInterceptor.intercept(AppInfoInterceptor.java:105)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:201)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.RealCall.execute(RealCall.kt:154)
+09-14 07:49:55.528  1349  3567 W System.err: 	at retrofit2.OkHttpCall.execute(OkHttpCall.java:207)
+09-14 07:49:55.528  1349  3567 W System.err: 	at retrofit2.adapter.rxjava2.CallExecuteObservable.subscribeActual(CallExecuteObservable.java:46)
+09-14 07:49:55.528  1349  3567 W System.err: 	at io.reactivex.Observable.subscribe(Observable.java:12284)
+09-14 07:49:55.528  1349  3567 W System.err: 	at retrofit2.adapter.rxjava2.BodyObservable.subscribeActual(BodyObservable.java:35)
+09-14 07:49:55.528  1349  3567 W System.err: 	at io.reactivex.Observable.subscribe(Observable.java:12284)
+09-14 07:49:55.528  1349  3567 W System.err: 	at io.reactivex.internal.operators.observable.ObservableSubscribeOn$SubscribeTask.run(ObservableSubscribeOn.java:96)
+09-14 07:49:55.528  1349  3567 W System.err: 	at io.reactivex.Scheduler$DisposeTask.run(Scheduler.java:608)
+09-14 07:49:55.528  1349  3567 W System.err: 	at io.reactivex.internal.schedulers.ScheduledRunnable.run(ScheduledRunnable.java:66)
+09-14 07:49:55.528  1349  3567 W System.err: 	at io.reactivex.internal.schedulers.ScheduledRunnable.call(ScheduledRunnable.java:57)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:348)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.lang.Thread.run(Thread.java:1119)
+09-14 07:49:55.528  1349  3567 W System.err: Caused by: java.net.ConnectException: failed to connect to /10.0.2.2 (port 32552) from /10.0.2.15 (port 55372) after 5000ms: isConnected failed: ECONNREFUSED (Connection refused)
+09-14 07:49:55.528  1349  3567 W System.err: 	at libcore.io.IoBridge.isConnected(IoBridge.java:347)
+09-14 07:49:55.528  1349  3567 W System.err: 	at libcore.io.IoBridge.connectErrno(IoBridge.java:237)
+09-14 07:49:55.528  1349  3567 W System.err: 	at libcore.io.IoBridge.connect(IoBridge.java:179)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.net.PlainSocketImpl.socketConnect(PlainSocketImpl.java:142)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.net.AbstractPlainSocketImpl.doConnect(AbstractPlainSocketImpl.java:390)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.net.AbstractPlainSocketImpl.connectToAddress(AbstractPlainSocketImpl.java:230)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.net.AbstractPlainSocketImpl.connect(AbstractPlainSocketImpl.java:212)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.net.SocksSocketImpl.connect(SocksSocketImpl.java:436)
+09-14 07:49:55.528  1349  3567 W System.err: 	at java.net.Socket.connect(Socket.java:646)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.platform.Platform.connectSocket(Platform.kt:128)
+09-14 07:49:55.528  1349  3567 W System.err: 	at okhttp3.internal.connection.RealConnection.connectSocket(RealConnection.kt:295)
+09-14 07:49:55.528  1349  3567 W System.err: 	... 34 more
+09-14 07:49:55.528  1349  3567 W System.err: Caused by: android.system.ErrnoException: isConnected failed: ECONNREFUSED (Connection refused)
+09-14 07:49:55.528  1349  3567 W System.err: 	at libcore.io.IoBridge.isConnected(IoBridge.java:334)
+09-14 07:49:55.528  1349  3567 W System.err: 	... 44 more
+09-14 07:49:59.065  3860  3860 I init    : type=1400 audit(0.0:1033): avc:  denied  { transition } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:49:59.065  3860  3860 I init    : type=1400 audit(0.0:1034): avc:  denied  { entrypoint } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:su:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=1
+09-14 07:49:59.065  3860  3860 I init    : type=1400 audit(0.0:1035): avc:  denied  { noatsecure } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:49:59.065  3860  3860 I serial_console: type=1400 audit(0.0:1036): avc:  denied  { rlimitinh } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:49:59.065  3860  3860 I serial_console: type=1400 audit(0.0:1037): avc:  denied  { siginh } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:49:59.087   842   857 D OomAdjuster: Not killing cached processes
+09-14 07:49:59.866  3640  3861 D ProfileInstaller: Installing profile for com.yk1z.yayamsg
+09-14 07:50:00.278   842  1001 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+09-14 07:50:00.279   842  1001 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+09-14 07:50:00.279   842  1001 D InetDiagMessage: Destroyed live tcp sockets for uids={10042} in 0ms
+09-14 07:50:00.279   842  1001 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+09-14 07:50:00.279   842  1001 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+09-14 07:50:00.279   842  1001 D InetDiagMessage: Destroyed live tcp sockets for uids={20042} in 1ms
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: Failed to verity-protect package restrictions
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: java.io.IOException: Failed to enable fs-verity on FD(556): Operation not supported on transport endpoint
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at com.android.internal.security.VerityUtils.setUpFsverity(VerityUtils.java:94)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at com.android.server.security.FileIntegrity.setUpFsVerity(FileIntegrity.java:66)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at com.android.server.pm.ResilientAtomicFile.finishWrite(ResilientAtomicFile.java:151)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at com.android.server.pm.Settings.writePackageRestrictions(Settings.java:2521)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at com.android.server.pm.Settings.writePackageRestrictions(Settings.java:2340)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at com.android.server.pm.PackageManagerService.writePendingRestrictions(PackageManagerService.java:1628)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at com.android.server.pm.PackageManagerService$2.handleMessage(PackageManagerService.java:1655)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at android.os.Handler.dispatchMessage(Handler.java:105)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:50:03.668   842   895 E ResilientAtomicFile: 	at com.android.server.ServiceThread.run(ServiceThread.java:49)
+09-14 07:50:05.272   842   936 D ActivityManager: freezing 2539 com.android.webview:webview_service
+09-14 07:50:05.273   842  1001 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+09-14 07:50:05.273   842  1001 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+09-14 07:50:05.273   842  1001 D InetDiagMessage: Destroyed live tcp sockets for uids={10042} in 1ms
+09-14 07:50:06.746  3640  3716 W System  : A resource failed to call close. 
+09-14 07:50:06.746  3640  3716 W System  : A resource failed to call close. 
+09-14 07:50:09.055   842   857 D OomAdjuster: Not killing cached processes
+09-14 07:50:09.055  2406  2406 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.feedback.internal.IFeedbackService dat=chimera-action:/... cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+09-14 07:50:10.638  3864  3864 W screencap: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: SurfaceFlingerAIDL
+09-14 07:50:10.639  3864  3864 W BpBinder: Linking to death on android.gui.ISurfaceComposer but there are no threads (yet?) listening to incoming transactions. See ProcessState::startThreadPool and ProcessState::setThreadPoolMaxThreadCount. Generally you should setup the binder threadpool before other initialization steps.
+09-14 07:50:10.639  3864  3864 W ProcessState: Extra binder thread started, but 0 threads requested. Do not use *startThreadPool when zero threads are requested.
+09-14 07:50:10.639   702   943 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 07:50:10.641  3864  3866 E HidlServiceManagement: getService: Potential race detected, descriptor: android.hardware.graphics.mapper@2.0::IMapper instance: default
+09-14 07:50:10.643  3864  3866 W screencap: Cannot open renderer configuration file (nemuhotd pid=502)
+09-14 07:50:10.674  1562  3340 W MediaProvider: isAppCloneUserPair for user 0: false
+09-14 07:50:10.677  1562  1667 E StorageManager: Failed to set extended attributes for /storage/emulated/0/s3.png to set project id.: Operation not supported on transport endpoint
+09-14 07:50:10.678  1562  1667 W MediaProvider: Failed to update quota type for /storage/emulated/0/s3.png
+09-14 07:50:10.678  1562  1667 W MediaProvider: java.io.IOException: Failed to update quota type for /storage/emulated/0/s3.png
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.storage.StorageManager.updateExternalStorageFileQuotaType(StorageManager.java:2598)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForFileInternal(MediaProvider.java:1020)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.lambda$onFileCreatedForFuse$16(MediaProvider.java:2290)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.$r8$lambda$QvobK0mrOcF7YLdAJMtFTbarHSw(MediaProvider.java:0)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$$ExternalSyntheticLambda18.run(R8$$SyntheticClass:0)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:50:10.678  1562  1667 E StorageManager: Failed to set extended attributes for /storage/emulated/0/s3.png to set project id.: Operation not supported on transport endpoint
+09-14 07:50:10.678  1562  1667 W MediaProvider: Failed to update quota type for /storage/emulated/0/s3.png
+09-14 07:50:10.678  1562  1667 W MediaProvider: java.io.IOException: Failed to update quota type for /storage/emulated/0/s3.png
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.storage.StorageManager.updateExternalStorageFileQuotaType(StorageManager.java:2598)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForFileInternal(MediaProvider.java:1020)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForUri(MediaProvider.java:999)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5.lambda$onInsert$0(MediaProvider.java:1058)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5.$r8$lambda$4KU7YPdO1inr9tOLVzprJ5YcfCE(MediaProvider.java:0)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5$$ExternalSyntheticLambda2.run(R8$$SyntheticClass:0)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:50:10.678  1562  1667 W MediaProvider: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:50:10.770   842  1207 I ActivityManager: Broadcasting: Intent { act=android.intent.action.MEDIA_SCANNER_SCAN_FILE dat=file:///... flg=0x400000 }
+09-14 07:50:10.772   842  1207 I ActivityManager: Enqueued broadcast Intent { act=android.intent.action.MEDIA_SCANNER_SCAN_FILE dat=file:///... flg=0x400000 }: 0
+09-14 07:50:10.773   842  2407 W JobInfo : Job 'com.android.providers.media.module/com.android.providers.media.MediaService#-300' has a deadline with no functional constraints. The deadline won't improve job execution latency. Consider removing the deadline.
+09-14 07:50:10.776   842   861 I ActivityManager: Broadcast completed: result=0
+09-14 07:50:10.778  1562  1721 I MediaProvider: Begin Intent { act=android.intent.action.MEDIA_SCANNER_SCAN_FILE dat=file:///... flg=0x1400010 cmp=com.android.providers.media.module/com.android.providers.media.MediaService }
+09-14 07:50:10.796  1562  1721 I MediaProvider: End Intent { act=android.intent.action.MEDIA_SCANNER_SCAN_FILE dat=file:///... flg=0x1400010 cmp=com.android.providers.media.module/com.android.providers.media.MediaService }
+09-14 07:50:10.797  1562  1667 E StorageManager: Failed to set extended attributes for /storage/emulated/0/s3.png to set project id.: Operation not supported on transport endpoint
+09-14 07:50:10.797  1562  1667 W MediaProvider: Failed to update quota type for /storage/emulated/0/s3.png
+09-14 07:50:10.797  1562  1667 W MediaProvider: java.io.IOException: Failed to update quota type for /storage/emulated/0/s3.png
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at android.os.storage.StorageManager.updateExternalStorageFileQuotaType(StorageManager.java:2598)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForFileInternal(MediaProvider.java:1020)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForUri(MediaProvider.java:999)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5.lambda$onUpdate$1(MediaProvider.java:1112)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5.$r8$lambda$dE6UDBp7rYHuVV_bubZzTbSKhbU(MediaProvider.java:0)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5$$ExternalSyntheticLambda0.run(R8$$SyntheticClass:0)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:50:10.797  1562  1667 W MediaProvider: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:50:10.801  1562  1678 D WM-SystemJobScheduler: Scheduling work ID 556cd34f-57ab-48ee-848a-ebcbf6bc7acbJob ID 35
+09-14 07:50:12.301  1562  1562 D WM-DelayedWorkTracker: Scheduling work 556cd34f-57ab-48ee-848a-ebcbf6bc7acb
+09-14 07:50:12.301  1562  1562 D WM-GreedyScheduler: Starting tracking for 556cd34f-57ab-48ee-848a-ebcbf6bc7acb
+09-14 07:50:12.302  1562  1688 D WM-ConstraintTracker: BatteryNotLowTracker: initial state = true
+09-14 07:50:12.302  1562  1688 D WM-BrdcstRcvrCnstrntTrc: BatteryNotLowTracker: registering receiver
+09-14 07:50:12.303  1562  1688 D WM-GreedyScheduler: Constraints met: Scheduling work ID WorkGenerationalId(workSpecId=556cd34f-57ab-48ee-848a-ebcbf6bc7acb, generation=0)
+09-14 07:50:12.303  1562  1688 D WM-Processor: Processor: processing WorkGenerationalId(workSpecId=556cd34f-57ab-48ee-848a-ebcbf6bc7acb, generation=0)
+09-14 07:50:12.306  1562  1562 D WM-WorkerWrapper: Starting work for com.android.providers.media.photopicker.sync.ProactiveSyncWorker
+09-14 07:50:12.306  1562  1562 D WM-SystemJobService: onStartJob for WorkGenerationalId(workSpecId=556cd34f-57ab-48ee-848a-ebcbf6bc7acb, generation=0)
+09-14 07:50:12.306  1562  3875 I PSyncWorker: Starting proactive picker sync from sync source: 1
+09-14 07:50:12.306  1562  1678 D WM-Processor: Work WorkGenerationalId(workSpecId=556cd34f-57ab-48ee-848a-ebcbf6bc7acb, generation=0) is already enqueued for processing
+09-14 07:50:12.306  1562  3875 I PickerSyncTracker: Created new sync future java.util.concurrent.CompletableFuture@aa891b8[Not completed, 1 dependents]. Future map: {556cd34f-57ab-48ee-848a-ebcbf6bc7acb=java.util.concurrent.CompletableFuture@aa891b8[Not completed, 1 dependents]}
+09-14 07:50:12.306  1562  3875 D PickerSyncController: syncAllMediaFromProvider() LOCAL, auth=com.android.providers.media.photopicker, retry=true
+09-14 07:50:12.306  1562  3875 D PickerSyncController: getSyncRequestParams() LOCAL, auth=com.android.providers.media.photopicker
+09-14 07:50:12.307  1562  3875 D PickerSyncController:    Latest ID/Gen=1506:c5152216-beeb-4cd8-9376-5d6a509021a5:41217664-9172-527a-b3d5-edabb50a7d69:external_primary/612
+09-14 07:50:12.307  1562  3875 D PickerSyncController:    Cached ID/Gen=1506:c5152216-beeb-4cd8-9376-5d6a509021a5:41217664-9172-527a-b3d5-edabb50a7d69:external_primary/603
+09-14 07:50:12.307  1562  3875 D PickerSyncController:    RESULT=SyncRequestParams{type=MEDIA_INCREMENTAL, gen=603, latest=Bundle[{last_media_sync_generation=612, media_collection_id=1506:c5152216-beeb-4cd8-9376-5d6a509021a5:41217664-9172-527a-b3d5-edabb50a7d69:external_primary}], pageSize=1000}
+09-14 07:50:12.308  1562  3875 I PickerSyncController: Executing SyncAdd. isLocal: true. authority: com.android.providers.media.photopicker
+09-14 07:50:12.308  1562  3875 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:50:12.308  1562  3875 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-3]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.308  1562  3875 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.308  1562  3875 D ExternalDbFacade: Token received for queryMedia = null
+09-14 07:50:12.309  1562  3875 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:50:12.309  1562  3875 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-3]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.309  1562  3875 D PickerSyncController: Saving next page token: 1789343410000|1000000045 for key: local_provider:media_add:resume
+09-14 07:50:12.309  1562  3875 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.310  1562  3875 D PickerNotificationSender: Sending a notification for media update
+09-14 07:50:12.310  1562  3875 D PickerNotificationSender: Sending a notification for merged album media update Videos
+09-14 07:50:12.310  1562  3875 D PickerNotificationSender: Sending a notification for album media update Videos
+09-14 07:50:12.310  1562  3875 D PickerNotificationSender: Sending a notification for merged album media update Favorites
+09-14 07:50:12.310  1562  3875 D PickerNotificationSender: Sending a notification for album media update Favorites
+09-14 07:50:12.310  1562  3875 D ExternalDbFacade: Token received for queryMedia = 1789343410000|1000000045
+09-14 07:50:12.311  1562  3875 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:50:12.311  1562  3875 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-3]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.311  1562  3875 D PickerSyncController: Clearing next page token for key: local_provider:media_add:resume
+09-14 07:50:12.311  1562  3875 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.311  1562  3875 D PickerNotificationSender: Sending a notification for media update
+09-14 07:50:12.311  1562  3875 D PickerNotificationSender: Sending a notification for merged album media update Videos
+09-14 07:50:12.311  1562  3875 D PickerNotificationSender: Sending a notification for album media update Videos
+09-14 07:50:12.311  1562  3875 D PickerNotificationSender: Sending a notification for merged album media update Favorites
+09-14 07:50:12.311  1562  3875 D PickerNotificationSender: Sending a notification for album media update Favorites
+09-14 07:50:12.312  1562  3875 I PickerSyncController: Paged sync successful. QueryArgs: Bundle[{android.provider.extra.PAGE_TOKEN=1789343410000|1000000045, android.provider.extra.SYNC_GENERATION=603, android.provider.extra.PAGE_SIZE=1000}] Total Rows: 1
+09-14 07:50:12.312  1562  3875 I PickerSyncController: Executing SyncRemove. isLocal: true. authority: com.android.providers.media.photopicker
+09-14 07:50:12.312  1562  3875 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:50:12.312  1562  3875 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-3]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.312  1562  3875 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.312  1562  3875 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:50:12.312  1562  3875 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-3]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.312  1562  3875 D PickerSyncController: Clearing next page token for key: local_provider:media_remove:resume
+09-14 07:50:12.312  1562  3875 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:50:12.312  1562  3875 D PickerNotificationSender: Sending a notification for media update
+09-14 07:50:12.313  1562  3875 D PickerNotificationSender: Sending a notification for merged album media update Videos
+09-14 07:50:12.313  1562  3875 D PickerNotificationSender: Sending a notification for album media update Videos
+09-14 07:50:12.313  1562  3875 D PickerNotificationSender: Sending a notification for merged album media update Favorites
+09-14 07:50:12.313  1562  3875 D PickerNotificationSender: Sending a notification for album media update Favorites
+09-14 07:50:12.313  1562  3875 I PickerSyncController: Paged sync successful. QueryArgs: Bundle[{android.provider.extra.PAGE_TOKEN=1789343410000|1000000045, android.provider.extra.SYNC_GENERATION=603, android.provider.extra.PAGE_SIZE=1000}] Total Rows: 0
+09-14 07:50:12.313  1562  3875 I PickerSyncTracker: Marked sync future complete for work id: 556cd34f-57ab-48ee-848a-ebcbf6bc7acb. Future map: {}
+09-14 07:50:12.314  1562  3875 I PSyncWorker: Completed picker proactive sync complete from local provider.
+09-14 07:50:12.314  1562  1687 I WM-WorkerWrapper: Worker result SUCCESS for Work [ id=556cd34f-57ab-48ee-848a-ebcbf6bc7acb, tags={ com.android.providers.media.photopicker.sync.ProactiveSyncWorker } ]
+09-14 07:50:12.314  1562  1562 D WM-Processor: Processor 556cd34f-57ab-48ee-848a-ebcbf6bc7acb executed; reschedule = false
+09-14 07:50:12.314  1562  1562 D WM-GreedyScheduler: Stopping tracking for WorkGenerationalId(workSpecId=556cd34f-57ab-48ee-848a-ebcbf6bc7acb, generation=0)
+09-14 07:50:12.315  1562  1562 D WM-SystemJobService: 556cd34f-57ab-48ee-848a-ebcbf6bc7acb executed on JobScheduler
+09-14 07:50:12.315  1562  1687 D WM-GreedyScheduler: Cancelling work ID 556cd34f-57ab-48ee-848a-ebcbf6bc7acb
+09-14 07:50:12.315  1562  1687 D WM-BrdcstRcvrCnstrntTrc: BatteryNotLowTracker: unregistering receiver
+09-14 07:50:12.316   842   857 W JobScheduler: Job didn't exist in JobStore: 8f04d3 {androidx.work.systemjobscheduler} #u0a50/35 @androidx.work.systemjobscheduler@com.android.providers.media.module/androidx.work.impl.background.systemjob.SystemJobService
+09-14 07:50:12.316  1562  1562 D WM-SystemJobService: onStopJob for WorkGenerationalId(workSpecId=556cd34f-57ab-48ee-848a-ebcbf6bc7acb, generation=0)
+09-14 07:50:12.325  2204  3879 I NetworkScheduler.Stats: (REDACTED) Task %s/%s started execution. cause:%s exec_start_elapsed_seconds: %s
+09-14 07:50:12.326  2204  3878 I .gms.persistent: AssetManager2(0x74d618330158) locale list changing from [] to [zh-Hant-TW]
+09-14 07:50:12.327  2204  3878 I TapAndPay: NfcAdapter is null while obtaining CardEmulation instance. [CONTEXT service_id=79 ]
+09-14 07:50:12.329  2204  3879 I NetworkScheduler.Stats: (REDACTED) Task %s/%s finished executing. cause:%s result: %s elapsed_millis: %s uptime_millis: %s exec_start_elapsed_seconds: %s
+09-14 07:50:12.340  2204  3878 I NetworkScheduler.Stats: (REDACTED) Task %s/%s started execution. cause:%s exec_start_elapsed_seconds: %s
+09-14 07:50:12.344  2204  3880 I TapAndPay: Sending QUICK_ACCESS_WALLET_STATE_CHANGED broadcast to wallet app. [CONTEXT service_id=79 ]
+09-14 07:50:12.348  2204  3880 I NetworkScheduler.Stats: (REDACTED) Task %s/%s finished executing. cause:%s result: %s elapsed_millis: %s uptime_millis: %s exec_start_elapsed_seconds: %s
+09-14 07:50:12.349  2406  2636 I GCM-GMS : Registering GMS 745476177629
+09-14 07:50:12.349  2204  3880 I NetworkScheduler.Stats: (REDACTED) Task %s/%s started execution. cause:%s exec_start_elapsed_seconds: %s
+09-14 07:50:12.359  2204  3879 I NetworkScheduler.Stats: (REDACTED) Task %s/%s started execution. cause:%s exec_start_elapsed_seconds: %s
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: The BackstopTask future failed!
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: java.io.IOException: dbii: Failed to process request
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at bijn.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):1012)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at bhto.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):568)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at hmlt.d(:com.google.android.gms@262031038@26.20.31 (260800-919905943):3)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at hmlv.run(:com.google.android.gms@262031038@26.20.31 (260800-919905943):47)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at bkql.c(:com.google.android.gms@262031038@26.20.31 (260800-919905943):50)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at bkql.run(:com.google.android.gms@262031038@26.20.31 (260800-919905943):66)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at bkwd.run(:com.google.android.gms@262031038@26.20.31 (260800-919905943):8)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at java.lang.Thread.run(Thread.java:1119)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: Caused by: dbii: Failed to process request
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at dbip.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):23)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at dbmm.b(:com.google.android.gms@262031038@26.20.31 (260800-919905943):15)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at dbnd.onFailed(:com.google.android.gms@262031038@26.20.31 (260800-919905943):15)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at m1.no.onFailed(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):3)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at m1.mk.run(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):16)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at hmni.execute(:com.google.android.gms@262031038@26.20.31 (260800-919905943):1)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at org.chromium.net.impl.CronetUrlRequest.onNativeAdapterDestroyed(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):74)
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: Caused by: m1.mx: Exception in CronetUrlRequest: net::ERR_CONNECTION_REFUSED, ErrorCode=7, InternalErrorCode=-102, Retryable=false
+09-14 07:50:13.846  2204  3527 E CCTBackstopTask: 	at org.chromium.net.impl.CronetUrlRequest.onError(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):3)
+09-14 07:50:14.089  3886  3886 I init    : type=1400 audit(0.0:1042): avc:  denied  { transition } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:50:14.089  3886  3886 I init    : type=1400 audit(0.0:1043): avc:  denied  { noatsecure } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:50:14.089  3886  3886 I serial_console: type=1400 audit(0.0:1044): avc:  denied  { rlimitinh } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:50:14.089  3886  3886 I serial_console: type=1400 audit(0.0:1045): avc:  denied  { siginh } for  scontext=u:r:init:s0 tcontext=u:r:su:s0 tclass=process permissive=1
+09-14 07:50:18.824  3755  3768 W System  : A resource failed to call close. 
+09-14 07:50:19.320   842  2407 D OomAdjuster: Not killing cached processes
+09-14 07:50:32.182  2406  2406 W MessengerIpcClient: Received response for unknown request: 1
+09-14 07:50:33.447  2204  2388 W GLSUser : [AppCertManager] Exception while requesting key: 
+09-14 07:50:33.447  2204  2388 W GLSUser : java.util.concurrent.ExecutionException: dbii: Failed to process request
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at hmli.j(:com.google.android.gms@262031038@26.20.31 (260800-919905943):21)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at hmlr.t(:com.google.android.gms@262031038@26.20.31 (260800-919905943):73)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at amzi.b(:com.google.android.gms@262031038@26.20.31 (260800-919905943):435)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at amzg.b(:com.google.android.gms@262031038@26.20.31 (260800-919905943):29)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at amzb.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):1)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at amze.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):58)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at ahxp.call(:com.google.android.gms@262031038@26.20.31 (260800-919905943):56)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at bkql.c(:com.google.android.gms@262031038@26.20.31 (260800-919905943):50)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at bkql.run(:com.google.android.gms@262031038@26.20.31 (260800-919905943):66)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at bkwd.run(:com.google.android.gms@262031038@26.20.31 (260800-919905943):8)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at java.lang.Thread.run(Thread.java:1119)
+09-14 07:50:33.447  2204  2388 W GLSUser : Caused by: dbii: Failed to process request
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at dbip.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):23)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at dbmm.b(:com.google.android.gms@262031038@26.20.31 (260800-919905943):15)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at dbnd.onFailed(:com.google.android.gms@262031038@26.20.31 (260800-919905943):15)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at m1.no.onFailed(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):3)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at m1.mk.run(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):16)
+09-14 07:50:33.447  2204  2388 W GLSUser : 	... 6 more
+09-14 07:50:33.447  2204  2388 W GLSUser : Caused by: m1.mx: Exception in CronetUrlRequest: net::ERR_CONNECTION_REFUSED, ErrorCode=7, InternalErrorCode=-102, Retryable=false
+09-14 07:50:33.447  2204  2388 W GLSUser : 	at org.chromium.net.impl.CronetUrlRequest.onError(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):3)
+09-14 07:50:33.456   842  2407 D OomAdjuster: Not killing cached processes
+09-14 07:50:33.456   842  2407 D ActivityManager: sync unfroze 3088 com.google.android.gms.unstable for 6
+09-14 07:50:33.457  3088  3088 D ActivityThread: Package [com.yk1z.yayamsg] reported as REPLACED, but missing application info. Assuming REMOVED.
+09-14 07:50:33.457  3088  3088 D ActivityThread: Package [com.yk1z.yayamsg] reported as REPLACED, but missing application info. Assuming REMOVED.
+09-14 07:50:33.461   842  2407 W ProcessStats: Tracking association SourceState{d6d87ed com.google.android.gms.persistent/10017 ImpBg #1273} whose proc state 6 is better than process ProcessState{e03560 com.google.android.gms.unstable/10017 pkg=com.google.android.gms} proc state 15 (10 skipped)
+09-14 07:50:33.462   842   936 D ActivityManager: freezing 1742 com.android.keychain
+09-14 07:50:33.462   842   936 D ActivityManager: freezing 2070 com.android.localtransport
+09-14 07:50:33.501  3088  3258 W TracingHelper: Mismatched RequestContext found for module CORE. Module id from RequestContext is MODULEID_UNKNOWN [CONTEXT service_id=259 ratelimit_count=1410065408 ]
+09-14 07:50:33.512  2204  2204 D BoundBrokerSvc: onRebind: Intent { act=com.google.android.gms.libs.gmscorelogger.service.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.PersistentDirectBootAwareApiService }
+09-14 07:50:35.584  2204  3489 I AlarmManager: setExactAndAllowWhileIdle [name: GCM_HB_ALARM type: 2 triggerAtMillis: 764553]
+09-14 07:50:35.585  2204  3489 I AlarmManager: setExactAndAllowWhileIdle [name: GCM_HB_ALARM type: 2 triggerAtMillis: 764553]
+09-14 07:50:39.500   842  3460 D WifiNl80211Manager: Scan result ready event
+09-14 07:50:39.500   842  3460 D WifiNative: Scan result ready event
+09-14 07:50:39.502  2204  3299 I WifiScanner: onFullResults
+09-14 07:50:39.532   842   875 D OomAdjuster: Not killing cached processes
+09-14 07:50:42.352  2406  3303 W MessengerIpcClient: Timing out request: 1
+09-14 07:50:42.353  2406  2636 W GCM-GMS : Failed to get registration: java.io.IOException: SERVICE_NOT_AVAILABLE
+09-14 07:50:42.354  2204  3901 I NetworkScheduler.Stats: (REDACTED) Task %s/%s finished executing. cause:%s result: %s elapsed_millis: %s uptime_millis: %s exec_start_elapsed_seconds: %s
+09-14 07:50:42.363  2204  3489 I NetworkScheduler.Stats: (REDACTED) Task %s/%s started execution. cause:%s exec_start_elapsed_seconds: %s
+09-14 07:50:42.363  2406  2932 I GCM-GMS : Registering GMS for direct boot.
+09-14 07:50:42.365  2406  2932 W GCM-GMS : Failed to get direct boot token: java.io.IOException: SERVICE_NOT_AVAILABLE
+09-14 07:50:42.366  2204  3901 I NetworkScheduler.Stats: (REDACTED) Task %s/%s finished executing. cause:%s result: %s elapsed_millis: %s uptime_millis: %s exec_start_elapsed_seconds: %s
+09-14 07:50:44.113  3904  3904 I init    : type=1400 audit(0.0:1046): avc:  denied  { entrypoint } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:su:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=1
+09-14 07:50:44.113  3904  3904 I serial_console: type=1400 audit(0.0:1047): avc:  denied  { map } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:su:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=1
+09-14 07:50:44.113  3904  3904 I serial_console: type=1400 audit(0.0:1048): avc:  denied  { read execute } for  path="/system/xbin/serial_console" dev="sda6" ino=4056 scontext=u:r:su:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=1
+09-14 07:50:46.494  3088  3892 E DGFRR   : FR error [CONTEXT service_id=25 ]
+09-14 07:50:46.494  3088  3892 E DGFRR   : java.io.IOException: Couldn't fetch response.
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at brhu.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):136)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at brga.b(:com.google.android.gms@262031038@26.20.31 (260800-919905943):45)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at brga.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):2)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at brfm.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):106)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at brfh.g(:com.google.android.gms@262031038@26.20.31 (260800-919905943):207)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at breq.c(:com.google.android.gms@262031038@26.20.31 (260800-919905943):168)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at brcg.e(:com.google.android.gms@262031038@26.20.31 (260800-919905943):58)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at brcg.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):14)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at bred.dispatchTransaction(:com.google.android.gms@262031038@26.20.31 (260800-919905943):30)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at ccie.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):64)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at aaek.onTransact(:com.google.android.gms@262031038@26.20.31 (260800-919905943):23)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at android.os.Binder.transact(Binder.java:1258)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at ccis.onTransact(:com.google.android.gms@262031038@26.20.31 (260800-919905943):169)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at android.os.Binder.execTransactInternal(Binder.java:1411)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at android.os.Binder.execTransact(Binder.java:1350)
+09-14 07:50:46.494  3088  3892 E DGFRR   : Caused by: java.util.concurrent.ExecutionException: dbii: Failed to process request
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at ljw.n(:com.google.android.gms@262031038@26.20.31 (260800-919905943):21)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at ljw.get(:com.google.android.gms@262031038@26.20.31 (260800-919905943):99)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at lkb.get(:com.google.android.gms@262031038@26.20.31 (260800-919905943):8)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at brhu.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):119)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	... 14 more
+09-14 07:50:46.494  3088  3892 E DGFRR   : Caused by: dbii: Failed to process request
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at dbip.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):23)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at dbmm.b(:com.google.android.gms@262031038@26.20.31 (260800-919905943):15)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at dbnd.onFailed(:com.google.android.gms@262031038@26.20.31 (260800-919905943):15)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at m1.no.onFailed(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):3)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at m1.mk.run(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):16)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at bkql.c(:com.google.android.gms@262031038@26.20.31 (260800-919905943):50)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at bkql.run(:com.google.android.gms@262031038@26.20.31 (260800-919905943):66)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at bkwd.run(:com.google.android.gms@262031038@26.20.31 (260800-919905943):8)
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at java.lang.Thread.run(Thread.java:1119)
+09-14 07:50:46.494  3088  3892 E DGFRR   : Caused by: m1.mx: Exception in CronetUrlRequest: net::ERR_TIMED_OUT, ErrorCode=4, InternalErrorCode=-7, Retryable=true
+09-14 07:50:46.494  3088  3892 E DGFRR   : 	at org.chromium.net.impl.CronetUrlRequest.onError(:com.google.android.gms.dynamite_cronetdynamite@262031038@26.20.31 (260800-0):3)
+09-14 07:50:46.494  3088  3892 W DG      : [flow devicekey] DroidGuardRunner.initSignalCollection() exception [CONTEXT service_id=25 ]
+09-14 07:50:46.494  3088  3892 W DG      : breo
+09-14 07:50:46.494  3088  3892 W DG      : 	at breq.c(:com.google.android.gms@262031038@26.20.31 (260800-919905943):180)
+09-14 07:50:46.494  3088  3892 W DG      : 	at brcg.e(:com.google.android.gms@262031038@26.20.31 (260800-919905943):58)
+09-14 07:50:46.494  3088  3892 W DG      : 	at brcg.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):14)
+09-14 07:50:46.494  3088  3892 W DG      : 	at bred.dispatchTransaction(:com.google.android.gms@262031038@26.20.31 (260800-919905943):30)
+09-14 07:50:46.494  3088  3892 W DG      : 	at ccie.a(:com.google.android.gms@262031038@26.20.31 (260800-919905943):64)
+09-14 07:50:46.494  3088  3892 W DG      : 	at aaek.onTransact(:com.google.android.gms@262031038@26.20.31 (260800-919905943):23)
+09-14 07:50:46.494  3088  3892 W DG      : 	at android.os.Binder.transact(Binder.java:1258)
+09-14 07:50:46.494  3088  3892 W DG      : 	at ccis.onTransact(:com.google.android.gms@262031038@26.20.31 (260800-919905943):169)
+09-14 07:50:46.494  3088  3892 W DG      : 	at android.os.Binder.execTransactInternal(Binder.java:1411)
+09-14 07:50:46.494  3088  3892 W DG      : 	at android.os.Binder.execTransact(Binder.java:1350)
+09-14 07:50:46.500   505   520 W keystore2: system/security/keystore2/src/remote_provisioning.rs:97 - Error occurred: system/security/keystore2/src/remote_provisioning.rs:131: Trying to get IRPC name.
+09-14 07:50:46.500   505   520 W keystore2: 
+09-14 07:50:46.500   505   520 W keystore2: Caused by:
+09-14 07:50:46.500   505   520 W keystore2:     0: system/security/keystore2/src/globals.rs:450: Failed to get rpc for sec level r#TRUSTED_ENVIRONMENT
+09-14 07:50:46.500   505   520 W keystore2:     1: Error::Km(r#HARDWARE_TYPE_UNAVAILABLE)
+09-14 07:50:46.533  2204  2387 W GmsUrlRequestImpl: [https://android.googleapis.com/auth/devicekey] Content-Type header is overwritten.
+09-14 07:50:48.500   842  1207 D OomAdjuster: Not killing cached processes
+09-14 07:50:48.500   842  1207 W ProcessStats: Tracking association SourceState{d6d87ed com.google.android.gms.persistent/10017 ImpBg #1288} whose proc state 6 is better than process ProcessState{e03560 com.google.android.gms.unstable/10017 pkg=com.google.android.gms} proc state 15 (12 skipped)
+09-14 07:50:48.518  2204  2204 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.libs.gmscorelogger.service.START dat=chimera-action:/... cmp=com.google.android.gms/.chimera.PersistentDirectBootAwareApiService }
+09-14 07:50:52.361  2204  3885 I NetworkScheduler.Stats: (REDACTED) Task %s/%s finished executing. cause:%s result: %s elapsed_millis: %s uptime_millis: %s exec_start_elapsed_seconds: %s
+09-14 07:50:52.416   842   936 D ActivityManager: freezing 2406 com.google.android.gms
+09-14 07:50:53.491   842   936 D ActivityManager: freezing 1499 com.android.permissioncontroller
+09-14 07:50:53.492   842  1001 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+09-14 07:50:53.492   842  1001 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+09-14 07:50:53.492   842  1001 D InetDiagMessage: Destroyed live tcp sockets for uids={10049} in 0ms
+09-14 07:50:54.429   694  2401 D PermissionCache: checking android.permission.MODIFY_PHONE_STATE for uid=1000 => granted (46 us)
+09-14 07:50:54.441   842  3918 I AudioTrack: createTrack_l(0): AUDIO_OUTPUT_FLAG_FAST successful; frameCount 0 -> 4512
+09-14 07:50:54.445   694  2401 D audioserver: logFgsApiBegin: FGS Logger Transaction failed, -129
+09-14 07:50:54.449   842  2407 W AS.PlaybackActivityMon: No piid assigned for invalid/internal port id 8
+09-14 07:50:54.468   668  3920 D audio_hw_primary: tunnel_pcm_open called!
+09-14 07:50:54.741   694   807 D audioserver: logFgsApiEnd: FGS Logger Transaction failed, -129
+09-14 07:50:54.742   694   796 I APM::AudioPolicyEngine: getDevicesForStrategyInt no device found for strategy 7
+09-14 07:50:54.787  3640  3730 D ReactNativeJS: [roomMap] [roomMap] 已加载房间映射缓存 553 条
+09-14 07:50:54.801  3640  3808 W HWUI    : Image decoding logging dropped!
+09-14 07:50:54.801  3640  3922 W HWUI    : Image decoding logging dropped!
+09-14 07:50:54.802  3640  3923 W HWUI    : Image decoding logging dropped!
+09-14 07:50:54.803  3640  3922 W HWUI    : Image decoding logging dropped!
+09-14 07:50:54.803  3640  3924 W HWUI    : Image decoding logging dropped!
+09-14 07:50:54.935  3640  3730 D ReactNativeJS: [onMic] [onMic] voice/operate 返回结构（谭思慧 ch=7063542 srv=2262216）：{"status":200,"success":true,"message":"OK","content":{"voiceUserList":[]}}
+09-14 07:50:55.151  3640  3730 D ReactNativeJS: [onMic] [onMic] 扫描完成：任务 17 个 / 9 位成员，上麦 0 位，确认无声 9 位（增量）
+09-14 07:50:57.011   505  3905 I keystore2: system/security/keystore2/watchdog/src/lib.rs:356 - Watchdog thread idle -> terminating. Have a great day.
+09-14 07:50:59.133  3940  3940 I serial_console: type=1400 audit(0.0:1049): avc:  denied  { read write } for  name="ttyS1" dev="tmpfs" ino=698 scontext=u:r:su:s0 tcontext=u:object_r:serial_device:s0 tclass=chr_file permissive=1
+09-14 07:50:59.133  3940  3940 I serial_console: type=1400 audit(0.0:1050): avc:  denied  { open } for  path="/dev/ttyS1" dev="tmpfs" ino=698 scontext=u:r:su:s0 tcontext=u:object_r:serial_device:s0 tclass=chr_file permissive=1
+09-14 07:51:00.893  3941  3941 W screencap: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: SurfaceFlingerAIDL
+09-14 07:51:00.894  3941  3941 W BpBinder: Linking to death on android.gui.ISurfaceComposer but there are no threads (yet?) listening to incoming transactions. See ProcessState::startThreadPool and ProcessState::setThreadPoolMaxThreadCount. Generally you should setup the binder threadpool before other initialization steps.
+09-14 07:51:00.894  3941  3941 W ProcessState: Extra binder thread started, but 0 threads requested. Do not use *startThreadPool when zero threads are requested.
+09-14 07:51:00.894   702   730 D gralloc_kona: gralloc_alloc: Creating ashmem region of size 8298496
+09-14 07:51:00.895  3941  3943 E HidlServiceManagement: getService: Potential race detected, descriptor: android.hardware.graphics.mapper@2.0::IMapper instance: default
+09-14 07:51:00.897  3941  3943 W screencap: Cannot open renderer configuration file (nemuhotd pid=502)
+09-14 07:51:00.927  1562  1713 W MediaProvider: isAppCloneUserPair for user 0: false
+09-14 07:51:00.930  1562  1667 E StorageManager: Failed to set extended attributes for /storage/emulated/0/r1.png to set project id.: Operation not supported on transport endpoint
+09-14 07:51:00.931  1562  1667 W MediaProvider: Failed to update quota type for /storage/emulated/0/r1.png
+09-14 07:51:00.931  1562  1667 W MediaProvider: java.io.IOException: Failed to update quota type for /storage/emulated/0/r1.png
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.storage.StorageManager.updateExternalStorageFileQuotaType(StorageManager.java:2598)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForFileInternal(MediaProvider.java:1020)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.lambda$onFileCreatedForFuse$16(MediaProvider.java:2290)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.$r8$lambda$QvobK0mrOcF7YLdAJMtFTbarHSw(MediaProvider.java:0)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$$ExternalSyntheticLambda18.run(R8$$SyntheticClass:0)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:51:00.931  1562  1667 E StorageManager: Failed to set extended attributes for /storage/emulated/0/r1.png to set project id.: Operation not supported on transport endpoint
+09-14 07:51:00.931  1562  1667 W MediaProvider: Failed to update quota type for /storage/emulated/0/r1.png
+09-14 07:51:00.931  1562  1667 W MediaProvider: java.io.IOException: Failed to update quota type for /storage/emulated/0/r1.png
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.storage.StorageManager.updateExternalStorageFileQuotaType(StorageManager.java:2598)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForFileInternal(MediaProvider.java:1020)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForUri(MediaProvider.java:999)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5.lambda$onInsert$0(MediaProvider.java:1058)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5.$r8$lambda$4KU7YPdO1inr9tOLVzprJ5YcfCE(MediaProvider.java:0)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5$$ExternalSyntheticLambda2.run(R8$$SyntheticClass:0)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:51:00.931  1562  1667 W MediaProvider: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:51:01.033   842  3360 I ActivityManager: Broadcasting: Intent { act=android.intent.action.MEDIA_SCANNER_SCAN_FILE dat=file:///... flg=0x400000 }
+09-14 07:51:01.034   842  3360 I ActivityManager: Enqueued broadcast Intent { act=android.intent.action.MEDIA_SCANNER_SCAN_FILE dat=file:///... flg=0x400000 }: 0
+09-14 07:51:01.035   842   876 D OomAdjuster: Not killing cached processes
+09-14 07:51:01.035   842  2407 W JobInfo : Job 'com.android.providers.media.module/com.android.providers.media.MediaService#-300' has a deadline with no functional constraints. The deadline won't improve job execution latency. Consider removing the deadline.
+09-14 07:51:01.038   842   861 I ActivityManager: Broadcast completed: result=0
+09-14 07:51:01.039  1562  1721 I MediaProvider: Begin Intent { act=android.intent.action.MEDIA_SCANNER_SCAN_FILE dat=file:///... flg=0x1400010 cmp=com.android.providers.media.module/com.android.providers.media.MediaService }
+09-14 07:51:01.058  1562  1721 I MediaProvider: End Intent { act=android.intent.action.MEDIA_SCANNER_SCAN_FILE dat=file:///... flg=0x1400010 cmp=com.android.providers.media.module/com.android.providers.media.MediaService }
+09-14 07:51:01.059  1562  1667 E StorageManager: Failed to set extended attributes for /storage/emulated/0/r1.png to set project id.: Operation not supported on transport endpoint
+09-14 07:51:01.059  1562  1667 W MediaProvider: Failed to update quota type for /storage/emulated/0/r1.png
+09-14 07:51:01.059  1562  1667 W MediaProvider: java.io.IOException: Failed to update quota type for /storage/emulated/0/r1.png
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at android.os.storage.StorageManager.updateExternalStorageFileQuotaType(StorageManager.java:2598)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForFileInternal(MediaProvider.java:1020)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider.updateQuotaTypeForUri(MediaProvider.java:999)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5.lambda$onUpdate$1(MediaProvider.java:1112)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5.$r8$lambda$dE6UDBp7rYHuVV_bubZzTbSKhbU(MediaProvider.java:0)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at com.android.providers.media.MediaProvider$5$$ExternalSyntheticLambda0.run(R8$$SyntheticClass:0)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:51:01.059  1562  1667 W MediaProvider: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:51:01.064  1562  1687 D WM-SystemJobScheduler: Scheduling work ID 14de2720-4360-4551-9808-8add9d715c95Job ID 36
+09-14 07:51:01.539   842   936 D ActivityManager: freezing 3088 com.google.android.gms.unstable
+09-14 07:51:02.563  1562  1562 D WM-DelayedWorkTracker: Scheduling work 14de2720-4360-4551-9808-8add9d715c95
+09-14 07:51:02.563  1562  1562 D WM-GreedyScheduler: Starting tracking for 14de2720-4360-4551-9808-8add9d715c95
+09-14 07:51:02.564  1562  1678 D WM-ConstraintTracker: BatteryNotLowTracker: initial state = true
+09-14 07:51:02.564  1562  1678 D WM-BrdcstRcvrCnstrntTrc: BatteryNotLowTracker: registering receiver
+09-14 07:51:02.565  1562  1678 D WM-GreedyScheduler: Constraints met: Scheduling work ID WorkGenerationalId(workSpecId=14de2720-4360-4551-9808-8add9d715c95, generation=0)
+09-14 07:51:02.565  1562  1678 D WM-Processor: Processor: processing WorkGenerationalId(workSpecId=14de2720-4360-4551-9808-8add9d715c95, generation=0)
+09-14 07:51:02.566  1562  1562 D WM-SystemJobService: onStartJob for WorkGenerationalId(workSpecId=14de2720-4360-4551-9808-8add9d715c95, generation=0)
+09-14 07:51:02.566  1562  1562 D WM-WorkerWrapper: Starting work for com.android.providers.media.photopicker.sync.ProactiveSyncWorker
+09-14 07:51:02.566  1562  1678 D WM-Processor: Work WorkGenerationalId(workSpecId=14de2720-4360-4551-9808-8add9d715c95, generation=0) is already enqueued for processing
+09-14 07:51:02.566  1562  3949 I PSyncWorker: Starting proactive picker sync from sync source: 1
+09-14 07:51:02.567  1562  3949 I PickerSyncTracker: Created new sync future java.util.concurrent.CompletableFuture@6d320b[Not completed, 1 dependents]. Future map: {14de2720-4360-4551-9808-8add9d715c95=java.util.concurrent.CompletableFuture@6d320b[Not completed, 1 dependents]}
+09-14 07:51:02.567  1562  3949 D PickerSyncController: syncAllMediaFromProvider() LOCAL, auth=com.android.providers.media.photopicker, retry=true
+09-14 07:51:02.567  1562  3949 D PickerSyncController: getSyncRequestParams() LOCAL, auth=com.android.providers.media.photopicker
+09-14 07:51:02.567  1562  3949 D PickerSyncController:    Latest ID/Gen=1506:c5152216-beeb-4cd8-9376-5d6a509021a5:41217664-9172-527a-b3d5-edabb50a7d69:external_primary/620
+09-14 07:51:02.567  1562  3949 D PickerSyncController:    Cached ID/Gen=1506:c5152216-beeb-4cd8-9376-5d6a509021a5:41217664-9172-527a-b3d5-edabb50a7d69:external_primary/612
+09-14 07:51:02.567  1562  3949 D PickerSyncController:    RESULT=SyncRequestParams{type=MEDIA_INCREMENTAL, gen=612, latest=Bundle[{last_media_sync_generation=620, media_collection_id=1506:c5152216-beeb-4cd8-9376-5d6a509021a5:41217664-9172-527a-b3d5-edabb50a7d69:external_primary}], pageSize=1000}
+09-14 07:51:02.567  1562  3949 I PickerSyncController: Executing SyncAdd. isLocal: true. authority: com.android.providers.media.photopicker
+09-14 07:51:02.567  1562  3949 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:51:02.567  1562  3949 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-4]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.567  1562  3949 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.567  1562  3949 D ExternalDbFacade: Token received for queryMedia = null
+09-14 07:51:02.569  1562  3949 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:51:02.569  1562  3949 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-4]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.569  1562  3949 D PickerSyncController: Saving next page token: 1789343461000|1000000046 for key: local_provider:media_add:resume
+09-14 07:51:02.569  1562  3949 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.569  1562  3949 D PickerNotificationSender: Sending a notification for media update
+09-14 07:51:02.569  1562  3949 D PickerNotificationSender: Sending a notification for merged album media update Videos
+09-14 07:51:02.569  1562  3949 D PickerNotificationSender: Sending a notification for album media update Videos
+09-14 07:51:02.569  1562  3949 D PickerNotificationSender: Sending a notification for merged album media update Favorites
+09-14 07:51:02.569  1562  3949 D PickerNotificationSender: Sending a notification for album media update Favorites
+09-14 07:51:02.569  1562  3949 D ExternalDbFacade: Token received for queryMedia = 1789343461000|1000000046
+09-14 07:51:02.570  1562  3949 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:51:02.570  1562  3949 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-4]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.570  1562  3949 D PickerSyncController: Clearing next page token for key: local_provider:media_add:resume
+09-14 07:51:02.570  1562  3949 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.570  1562  3949 D PickerNotificationSender: Sending a notification for media update
+09-14 07:51:02.570  1562  3949 D PickerNotificationSender: Sending a notification for merged album media update Videos
+09-14 07:51:02.570  1562  3949 D PickerNotificationSender: Sending a notification for album media update Videos
+09-14 07:51:02.570  1562  3949 D PickerNotificationSender: Sending a notification for merged album media update Favorites
+09-14 07:51:02.570  1562  3949 D PickerNotificationSender: Sending a notification for album media update Favorites
+09-14 07:51:02.571  1562  3949 I PickerSyncController: Paged sync successful. QueryArgs: Bundle[{android.provider.extra.PAGE_TOKEN=1789343461000|1000000046, android.provider.extra.SYNC_GENERATION=612, android.provider.extra.PAGE_SIZE=1000}] Total Rows: 1
+09-14 07:51:02.571  1562  3949 I PickerSyncController: Executing SyncRemove. isLocal: true. authority: com.android.providers.media.photopicker
+09-14 07:51:02.571  1562  3949 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:51:02.571  1562  3949 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-4]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.571  1562  3949 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.571  1562  3949 D PickerSyncLockManager: Trying to acquire lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = [] with timeout.
+09-14 07:51:02.571  1562  3949 D CloseableReentrantLock: Successfully acquired lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Locked by thread pool-4-thread-4]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.571  1562  3949 D PickerSyncController: Clearing next page token for key: local_provider:media_remove:resume
+09-14 07:51:02.571  1562  3949 D CloseableReentrantLock: Successfully released lock com.android.providers.media.photopicker.sync.CloseableReentrantLock@5eaf0fd[Unlocked]. Lock Name = CLOUD_PROVIDER_LOCK. Threads that may be waiting to acquire this lock = []
+09-14 07:51:02.571  1562  3949 D PickerNotificationSender: Sending a notification for media update
+09-14 07:51:02.572  1562  3949 D PickerNotificationSender: Sending a notification for merged album media update Videos
+09-14 07:51:02.572  1562  3949 D PickerNotificationSender: Sending a notification for album media update Videos
+09-14 07:51:02.572  1562  3949 D PickerNotificationSender: Sending a notification for merged album media update Favorites
+09-14 07:51:02.572  1562  3949 D PickerNotificationSender: Sending a notification for album media update Favorites
+09-14 07:51:02.572  1562  3949 I PickerSyncController: Paged sync successful. QueryArgs: Bundle[{android.provider.extra.PAGE_TOKEN=1789343461000|1000000046, android.provider.extra.SYNC_GENERATION=612, android.provider.extra.PAGE_SIZE=1000}] Total Rows: 0
+09-14 07:51:02.572  1562  3949 I PickerSyncTracker: Marked sync future complete for work id: 14de2720-4360-4551-9808-8add9d715c95. Future map: {}
+09-14 07:51:02.572  1562  3949 I PSyncWorker: Completed picker proactive sync complete from local provider.
+09-14 07:51:02.572  1562  1678 I WM-WorkerWrapper: Worker result SUCCESS for Work [ id=14de2720-4360-4551-9808-8add9d715c95, tags={ com.android.providers.media.photopicker.sync.ProactiveSyncWorker } ]
+09-14 07:51:02.573  1562  1562 D WM-Processor: Processor 14de2720-4360-4551-9808-8add9d715c95 executed; reschedule = false
+09-14 07:51:02.573  1562  1562 D WM-GreedyScheduler: Stopping tracking for WorkGenerationalId(workSpecId=14de2720-4360-4551-9808-8add9d715c95, generation=0)
+09-14 07:51:02.574  1562  1562 D WM-SystemJobService: 14de2720-4360-4551-9808-8add9d715c95 executed on JobScheduler
+09-14 07:51:02.574   842  3360 W JobScheduler: Job didn't exist in JobStore: 27c3ada {androidx.work.systemjobscheduler} #u0a50/36 @androidx.work.systemjobscheduler@com.android.providers.media.module/androidx.work.impl.background.systemjob.SystemJobService
+09-14 07:51:02.574  1562  1562 D WM-SystemJobService: onStopJob for WorkGenerationalId(workSpecId=14de2720-4360-4551-9808-8add9d715c95, generation=0)
+09-14 07:51:02.575  1562  1678 D WM-GreedyScheduler: Cancelling work ID 14de2720-4360-4551-9808-8add9d715c95
+09-14 07:51:02.575  1562  1678 D WM-BrdcstRcvrCnstrntTrc: BatteryNotLowTracker: unregistering receiver
+09-14 07:51:17.837   842   876 D OomAdjuster: Not killing cached processes
+09-14 07:51:17.852   842  3360 D ActivityManager: sync unfroze 2406 com.google.android.gms for 6
+09-14 07:51:17.852  2406  2406 W MessengerIpcClient: Received response for unknown request: 1
+09-14 07:51:17.852   842  3360 W ProcessStats: Tracking association SourceState{7eae87e com.google.android.gms.persistent/10017 ImpBg #1308} whose proc state 6 is better than process ProcessState{114dbeb com.google.android.gms/10017 pkg=com.google.android.gms} proc state 14 (4 skipped)
+09-14 07:51:17.853  2406  2406 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.common.BIND_SHARED_PREFS pkg=com.google.android.gms }
+09-14 07:51:17.853  2204  3880 I NetworkScheduler.Stats: (REDACTED) Task %s/%s started execution. cause:%s exec_start_elapsed_seconds: %s
+09-14 07:51:17.858  2406  2636 I Pay     : Active account was null, notification task will be cancelled. [CONTEXT service_id=198 ]
+09-14 07:51:17.861  2406  2636 E Pay     : NfcAdapter is null while obtaining CardEmulation instance. [CONTEXT service_id=198 ]
+09-14 07:51:17.861  2406  2636 E Pay     : CardEmulation is null while checking aid registration. [CONTEXT service_id=198 ]
+09-14 07:51:17.861  2406  2636 W SyntheticOperationsLogg: SyntheticOperationsLogger unable to log "com.google.android.gms.pay"'s use of "change_component_enabled_state" because installOperationsCollector never executed [CONTEXT service_id=238 ]
+09-14 07:51:17.863  2406  2636 I Pay     : (REDACTED) enabling component %s
+09-14 07:51:17.863  2406  2636 E Pay     : NfcAdapter is null while obtaining CardEmulation instance. [CONTEXT service_id=198 ]
+09-14 07:51:17.863  2406  2636 E Pay     : CardEmulation is null while trying to register AIDs. [CONTEXT service_id=198 ]
+09-14 07:51:17.863  2406  2636 W SyntheticOperationsLogg: SyntheticOperationsLogger unable to log "com.google.android.gms.pay"'s use of "change_component_enabled_state" because installOperationsCollector never executed [CONTEXT service_id=238 ]
+09-14 07:51:17.864  2406  2636 E Pay     : HCE service enablement failed: FAILED_CARD_EMULATION [CONTEXT service_id=198 ]
+09-14 07:51:17.865  2204  3880 I NetworkScheduler.Stats: (REDACTED) Task %s/%s finished executing. cause:%s result: %s elapsed_millis: %s uptime_millis: %s exec_start_elapsed_seconds: %s
+09-14 07:51:18.867  1156  1156 D CarrierSvcBindHelper: onPackageModified: com.google.android.gms
+09-14 07:51:18.868   842  1038 D ShortcutService: received package broadcast intent: Intent { act=android.intent.action.PACKAGE_CHANGED dat=package: flg=0x45000010 (has extras) }
+09-14 07:51:18.868   842  1038 D ShortcutService: changing package: com.google.android.gms userId=0
+09-14 07:51:18.868   842   875 W VoiceInteractionManager: no available voice recognition services found for user 0
+09-14 07:51:18.873  1069  1351 D PackageUpdatedTask: Package updated: mOp=UPDATE packages=[com.google.android.gms]
+09-14 07:51:18.873  1156  1156 D CarrierSvcBindHelper: No carrier app for: 0
+09-14 07:51:18.875  1069  1351 D LauncherApps: getActivityList: No launchable activities found forpackageName=com.google.android.gms, user=UserHandle{0}
+09-14 07:51:18.876  1069  1351 D LauncherApps: getActivityList: No launchable activities found forpackageName=com.google.android.gms, user=UserHandle{0}
+09-14 07:51:18.876  1069  1351 W AllAppsList: updatePromiseInstallInfo: no Activities matched updated package, removing all apps from package=com.google.android.gms
+09-14 07:51:18.879   842  1060 D ActivityManager: sync unfroze 1499 com.android.permissioncontroller for 6
+09-14 07:51:18.880   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:51:18.880   842  1039 D BackgroundInstallControlService: Package event received: 0
+09-14 07:51:18.881  1499  3461 I PermissionControllerServiceImpl: Updating user sensitive for uid 10017
+09-14 07:51:18.883   842   956 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: Failed to verity-protect shortcut package item
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: java.io.IOException: Failed to enable fs-verity on FD(556): Operation not supported on transport endpoint
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at com.android.internal.security.VerityUtils.setUpFsverity(VerityUtils.java:94)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at com.android.server.security.FileIntegrity.setUpFsVerity(FileIntegrity.java:66)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at com.android.server.pm.ResilientAtomicFile.finishWrite(ResilientAtomicFile.java:151)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at com.android.server.pm.ShortcutPackageItem.saveToFileLocked(ShortcutPackageItem.java:182)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at com.android.server.pm.ShortcutPackageItem.saveShortcutPackageItem(ShortcutPackageItem.java:226)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at com.android.server.pm.ShortcutPackageItem$$ExternalSyntheticLambda0.run(R8$$SyntheticClass:0)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at android.os.Handler.handleCallback(Handler.java:991)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at android.os.Handler.dispatchMessage(Handler.java:102)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at android.os.Looper.loopOnce(Looper.java:232)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at android.os.Looper.loop(Looper.java:317)
+09-14 07:51:18.986   842  1038 E ResilientAtomicFile: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+09-14 07:51:19.368  1096  1096 D ControlsListingControllerImpl: ServiceConfig reloaded, count: 0
+09-14 07:51:19.377  2406  3960 I ComponentChangedIO: Feature is not enabled, skipping component changed intent operation [CONTEXT service_id=469 ]

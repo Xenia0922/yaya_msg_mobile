@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
+import { PageBackdrop } from '../components/PageBackdrop';
 import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -55,40 +56,22 @@ const TAB_LABELS: Record<string, { icon: string; label: string }> = {
   Settings: { icon: 'cog', label: '设置' },
 };
 
+/**
+ * 页面包装：直接渲染，不做入场动画。
+ * 规范依据（emilkowalski/animate-expo）：tab 切换属「100+ 次/天」频次 → 不该有动画；
+ * 且入场淡入依赖 native driver，在 New Architecture 下若 native 动画不生效会把
+ * opacity 卡在 0（表现：页面内容闪一下就消失 / 整屏空白，只有 tab bar）。
+ */
 function withPageMotion<T extends object>(
   Screen: React.ComponentType<T>,
-  duration = ui.motion.tabDuration,
-  distance = 8,
+  _duration = ui.motion.tabDuration,
+  _distance = 8,
 ) {
   return function PageMotionScreen(props: T) {
-    const value = useRef(new Animated.Value(1)).current;
-
-    useFocusEffect(
-      useCallback(() => {
-        value.setValue(0);
-        const animation = Animated.timing(value, {
-          toValue: 1,
-          duration,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        });
-        animation.start();
-        return () => animation.stop();
-      }, [value]),
-    );
-
     return (
-      <Animated.View
-        style={{
-          flex: 1,
-          opacity: value,
-          transform: [{
-            translateY: value.interpolate({ inputRange: [0, 1], outputRange: [distance, 0] }),
-          }],
-        }}
-      >
+      <ErrorBoundary>
         <Screen {...props} />
-      </Animated.View>
+      </ErrorBoundary>
     );
   };
 }
@@ -252,9 +235,9 @@ export default function AppNavigator() {
   const customBg = useSettingsStore((state) => state.settings.customBackgroundFile?.trim() || '');
   const hasBackground = !!customBg;
   const navTheme = theme === 'dark' ? AppDarkTheme : AppTheme;
-  const themed = hasBackground
-    ? { ...navTheme, colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' } }
-    : navTheme;
+  // 导航层永远透明：液态玻璃的透光来源是根层 PageBackdrop/背景图，
+  // card 不透明会把底衬完全盖住 → 玻璃无从谈起
+  const themed = { ...navTheme, colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' } };
   // 自定义背景暗化遮罩：浅色主题压一层白雾保证深色文字可读，深色主题压一层黑幕保证浅色文字可读。
   // 取值克制（<=0.35），既保证可读性又不至于「看不清背景图」。
   const bgScrim = theme === 'dark' ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.34)';
@@ -281,7 +264,9 @@ export default function AppNavigator() {
           />
           <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: bgScrim }]} />
         </View>
-      ) : null}
+      ) : (
+        <PageBackdrop />
+      )}
       <NavigationContainer theme={themed}>
       <>
         <Stack.Navigator
@@ -290,7 +275,7 @@ export default function AppNavigator() {
             animation: 'none',
             cardOverlayEnabled: false,
             detachPreviousScreen: true,
-            cardStyle: hasBackground ? { backgroundColor: 'transparent' } : undefined,
+            cardStyle: { backgroundColor: 'transparent' },
           }}
         >
           <Stack.Screen name="Main" component={MainTabs} />

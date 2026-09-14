@@ -102,7 +102,7 @@ export default function ProfileScreen() {
         </View>
 
         {selectedMember ? (
-        <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+        <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
           <View style={styles.profileHead}>
             {avatar !== '-' ? <Image source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} /> : <View style={[styles.avatarFallback, { backgroundColor: palette.tintSoft }]} />}
             <View style={styles.profileTitleWrap}>
@@ -188,7 +188,7 @@ export default function ProfileScreen() {
       )}
 
       {fanRanks.length > 0 ? (
-        <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+        <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
           <Text style={[styles.sectionTitle, { color: palette.tint }]}>{t('粉丝排行')}</Text>
           {fanRanks.slice(0, 10).map((fan: any, index: number) => (
             <View key={`${fan.userId || fan.nickName || index}`} style={[styles.rankRow, { borderBottomColor: palette.innerStroke }]}>
@@ -203,7 +203,7 @@ export default function ProfileScreen() {
       ) : null}
 
       {archive.history.length > 0 ? (
-        <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+        <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
           <Text style={[styles.sectionTitle, { color: palette.tint }]}>{t('重要经历')}</Text>
           {archive.history.slice(0, 20).map((item: any, index: number) => (
             <View key={`${item.ctime || item.time || index}`} style={[styles.timelineRow, { borderBottomColor: palette.innerStroke }]}>

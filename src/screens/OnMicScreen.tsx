@@ -81,7 +81,7 @@ export default function OnMicScreen() {
     return (
       <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300} style={{ marginHorizontal: 16, marginTop: index === 0 ? 12 : 8 }}>
         <TouchableOpacity
-          style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+          style={[styles.row, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
           onPress={() => member && navigation.navigate('RoomRadioScreen', {
             member,
             initialMode: item.smallVoice ? 'small' : 'big',
@@ -122,7 +122,7 @@ export default function OnMicScreen() {
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <ScreenHeader title={t('上麦')} />
       {scanning ? (
-        <View style={[styles.scanBar, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+        <View style={[styles.scanBar, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
           <ActivityIndicator size="small" color={palette.tint} style={{ marginRight: 8 }} />
           <Text style={[styles.scanBarText, { color: palette.labelSecondary }]}>
             {t('正在扫描全部成员上麦状态 {done}/{total}...', { done: Math.min(scanDone, scanTotal), total: scanMemberTotal || scanTotal })}

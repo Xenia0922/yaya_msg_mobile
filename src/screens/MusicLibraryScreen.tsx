@@ -708,7 +708,7 @@ export default function MusicLibraryScreen() {
               <TouchableOpacity
                 style={[
                   styles.songItem,
-                  { backgroundColor: palette.surface, borderColor: active ? palette.tint : palette.hairline, borderWidth: active ? 2 : StyleSheet.hairlineWidth },
+                  { backgroundColor: palette.surfaceGlassStrong, borderColor: active ? palette.tint : palette.hairline, borderWidth: active ? 2 : StyleSheet.hairlineWidth },
                 ]}
                 onPress={() => playSong(item)}
                 activeOpacity={0.7}

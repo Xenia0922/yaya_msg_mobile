@@ -112,7 +112,7 @@ export default function InvoiceScreen() {
         : palette.labelTertiary;
     return (
       <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300}>
-        <View style={[styles.orderCard, { backgroundColor: palette.surface, borderColor: selected ? palette.tint : palette.hairline }, disabled && styles.cardDisabled]}>
+        <View style={[styles.orderCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: selected ? palette.tint : palette.hairline }, disabled && styles.cardDisabled]}>
           {/* 订单信息 */}
           <View style={styles.orderInfo}>
             <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>{item.goodsName}</Text>
@@ -174,7 +174,7 @@ export default function InvoiceScreen() {
           style={[
             styles.formCard,
             {
-              backgroundColor: palette.surface,
+              backgroundColor: palette.surfaceGlassStrong,
               borderColor: palette.hairline,
             },
           ]}

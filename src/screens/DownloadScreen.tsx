@@ -206,7 +206,7 @@ export default function DownloadScreen() {
       } />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <View style={[styles.manualCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+        <View style={[styles.manualCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
           <View style={styles.manualHead}>
             <MaterialCommunityIcons name="link-variant" size={18} color={palette.tint} />
             <Text style={[styles.manualTitle, { color: palette.label }]}>{t('手动添加下载')}</Text>
@@ -231,7 +231,7 @@ export default function DownloadScreen() {
           contentContainerStyle={styles.list}
           ListHeaderComponent={
             items.length > 0 ? (
-              <View style={[styles.overviewCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+              <View style={[styles.overviewCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
                 <View style={styles.overviewItem}>
                   <Text style={[styles.overviewNum, { color: palette.tint }]}>{activeCount}</Text>
                   <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>{t('下载中')}</Text>
@@ -265,7 +265,7 @@ export default function DownloadScreen() {
             const thumbUri = task.type === 'image' ? (task.localUri || task.url) : '';
             return (
               <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300}>
-                <View style={[styles.task, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                <View style={[styles.task, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
                   {/* 缩略图 44 圆角 10：图片用本地/网络缩略，其余回退为类型图标 */}
                   {thumbUri ? (
                     <NetworkImage source={{ uri: thumbUri }} style={[styles.taskThumb, { backgroundColor: palette.fill3 }]} />

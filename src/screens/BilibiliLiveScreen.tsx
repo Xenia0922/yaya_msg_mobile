@@ -497,7 +497,7 @@ export default function BilibiliLiveScreen() {
           <HeaderAction label={t('刷新状态')} onPress={() => checkStatuses(false)} />
         )
       } />
-      {status ? <Text style={[styles.status, { color: palette.labelSecondary, backgroundColor: palette.surface, borderColor: palette.hairline }]}>{status}</Text> : null}
+      {status ? <Text style={[styles.status, { color: palette.labelSecondary, backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>{status}</Text> : null}
       {fetchError ? (
         <TouchableOpacity
           activeOpacity={0.7}
@@ -528,7 +528,7 @@ export default function BilibiliLiveScreen() {
               <ScalePressable
                 activeOpacity={0.85}
                 pressedScale={0.97}
-                style={[styles.roomItem, { backgroundColor: palette.surface, borderColor: palette.hairline }]}
+                style={[styles.roomItem, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}
                 onPress={() => startWatch(item)}
               >
                 <View style={[styles.roomIcon, { backgroundColor: live ? palette.tintSoft : palette.fill2 }]}>

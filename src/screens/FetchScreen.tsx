@@ -127,7 +127,7 @@ export default function FetchScreen() {
       <ScreenHeader title={t('抓取消息')} />
 
       <FadeInView delay={60} duration={300} style={{ flex: 1 }}>
-        <View style={[styles.panel, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+        <View style={[styles.panel, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
           <MemberPicker selectedMember={selectedMember} onSelect={setSelectedMember} />
 
           {/* 消息范围分段 */}
@@ -135,14 +135,14 @@ export default function FetchScreen() {
           <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
             <TouchableOpacity
               activeOpacity={0.7}
-              style={[styles.segmentBtn, messageMode === 'all' && { backgroundColor: palette.surface }]}
+              style={[styles.segmentBtn, messageMode === 'all' && { backgroundColor: palette.surfaceGlassStrong }]}
               onPress={() => setMessageMode('all')}
             >
               <Text style={[styles.segmentText, { color: messageMode === 'all' ? palette.label : palette.labelTertiary, fontWeight: messageMode === 'all' ? '700' : '400' }]}>{t('全部消息')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
-              style={[styles.segmentBtn, messageMode === 'owner' && { backgroundColor: palette.surface }]}
+              style={[styles.segmentBtn, messageMode === 'owner' && { backgroundColor: palette.surfaceGlassStrong }]}
               onPress={() => setMessageMode('owner')}
             >
               <Text style={[styles.segmentText, { color: messageMode === 'owner' ? palette.label : palette.labelTertiary, fontWeight: messageMode === 'owner' ? '700' : '400' }]}>{t('成员消息')}</Text>
@@ -154,14 +154,14 @@ export default function FetchScreen() {
           <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
             <TouchableOpacity
               activeOpacity={0.7}
-              style={[styles.segmentBtn, roomMode === 'big' && { backgroundColor: palette.surface }]}
+              style={[styles.segmentBtn, roomMode === 'big' && { backgroundColor: palette.surfaceGlassStrong }]}
               onPress={() => setRoomMode('big')}
             >
               <Text style={[styles.segmentText, { color: roomMode === 'big' ? palette.label : palette.labelTertiary, fontWeight: roomMode === 'big' ? '700' : '400' }]}>{t('大房间')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.7}
-              style={[styles.segmentBtn, roomMode === 'small' && { backgroundColor: palette.surface }]}
+              style={[styles.segmentBtn, roomMode === 'small' && { backgroundColor: palette.surfaceGlassStrong }]}
               onPress={() => setRoomMode('small')}
             >
               <Text style={[styles.segmentText, { color: roomMode === 'small' ? palette.label : palette.labelTertiary, fontWeight: roomMode === 'small' ? '700' : '400' }]}>{t('小房间')}</Text>
@@ -202,7 +202,7 @@ export default function FetchScreen() {
           removeClippedSubviews
           renderItem={({ item, index }) => (
             <FadeInView delay={index < 12 ? 60 + index * 25 : 0} distance={8}>
-              <View style={[styles.msgItem, { backgroundColor: palette.surface }]}>
+              <View style={[styles.msgItem, { backgroundColor: palette.surfaceGlassStrong }]}>
                 <View style={styles.msgHead}>
                   <Text style={[styles.msgSender, { color: palette.label }]} numberOfLines={1}>
                     {item.senderName || item.senderNickName || item.extInfo?.user?.nickName || t('成员')}

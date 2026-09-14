@@ -173,7 +173,7 @@ export default function AudioProgramsScreen() {
       } />
 
       {playUrls[urlIndex] ? (
-        <View style={[styles.playerBar, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+        <View style={[styles.playerBar, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
           <Text style={[styles.playerTitle, { color: palette.label }]} numberOfLines={1}>
             {playing?.title || t('正在播放')}
           </Text>

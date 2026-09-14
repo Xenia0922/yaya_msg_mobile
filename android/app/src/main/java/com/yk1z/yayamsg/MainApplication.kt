@@ -34,6 +34,7 @@ class MainApplication : Application(), ReactApplication {
               // Packages that cannot be autolinked yet can be added manually here, for example:
               add(LivePlayerPackage())
               add(PipPackage())
+              add(LiquidGlassPackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

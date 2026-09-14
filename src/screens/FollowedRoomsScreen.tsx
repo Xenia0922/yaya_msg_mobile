@@ -2068,7 +2068,7 @@ export default function FollowedRoomsScreen() {
               ) : null}
               {gift && !giftReplyText ? (
                 <View style={[styles.giftCard, { backgroundColor: palette.fill2, borderColor: palette.tintSoft }, giftReplyText ? styles.giftCardCompact : null]}>
-                  {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={[styles.giftImage, { backgroundColor: palette.surface }]} /> : <View style={[styles.giftImageFallback, { backgroundColor: palette.tint }]}><MaterialCommunityIcons name="gift" size={16} color={palette.onTint} /></View>) : null}
+                  {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={[styles.giftImage, { backgroundColor: palette.surfaceGlassStrong }]} /> : <View style={[styles.giftImageFallback, { backgroundColor: palette.tint }]}><MaterialCommunityIcons name="gift" size={16} color={palette.onTint} /></View>) : null}
                   <View style={styles.giftTextWrap}>
                     <Text style={[styles.giftName, { color: palette.label }]} numberOfLines={1}>{idol ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
                     <Text style={[styles.giftMeta, { color: palette.labelSecondary }]}>{t('数量')} x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
@@ -2196,7 +2196,7 @@ export default function FollowedRoomsScreen() {
             />
             <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
               <View style={styles.roomModalShade}>
-                <View style={[styles.roomRankPanel, { backgroundColor: palette.surface }]}>
+                <View style={[styles.roomRankPanel, { backgroundColor: palette.surfaceGlassStrong }]}>
                   {/* 顶部 handle */}
                   <View style={styles.roomRankHandleWrap}>
                     <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
@@ -2238,7 +2238,7 @@ export default function FollowedRoomsScreen() {
             </Modal>
             <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
               <View style={styles.roomModalShade}>
-                <View style={[styles.roomRankPanel, { backgroundColor: palette.surface }]}>
+                <View style={[styles.roomRankPanel, { backgroundColor: palette.surfaceGlassStrong }]}>
                   <View style={styles.roomRankHandleWrap}>
                     <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
                   </View>
@@ -2547,7 +2547,7 @@ export default function FollowedRoomsScreen() {
                   <TouchableOpacity
                     style={[
                       styles.memberHitCard,
-                      { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
+                      { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
                     ]}
                     onPress={() => openRoom(member)}
                     activeOpacity={0.88}
@@ -2609,7 +2609,7 @@ export default function FollowedRoomsScreen() {
             const isOnMic = !isLiveNow && !!onMicMap[mid];
             return (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.roomRow}>
-              <View style={[styles.roomRowCard, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+              <View style={[styles.roomRowCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
                 <ScalePressable
                   style={styles.roomRowMain}
                   onPress={() => item.member && openRoom(item.member)}

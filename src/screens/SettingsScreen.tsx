@@ -53,7 +53,7 @@ function Section({ title, children, delay = 0 }: { title: string; children: Reac
         style={[
           styles.section,
           {
-            backgroundColor: palette.surface,
+            backgroundColor: palette.surfaceGlassStrong,
             borderColor: palette.hairline,
             borderRadius: radiiAlias.card,
           },

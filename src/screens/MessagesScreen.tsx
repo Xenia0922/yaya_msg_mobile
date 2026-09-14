@@ -98,7 +98,7 @@ export default function MessagesScreen() {
         style={[
           styles.msg,
           {
-            backgroundColor: palette.surface,
+            backgroundColor: palette.surfaceGlassStrong,
             borderColor: palette.hairline,
             borderWidth: StyleSheet.hairlineWidth,
           },
@@ -121,7 +121,7 @@ export default function MessagesScreen() {
       <View style={styles.topBar}>
         {/* 成员选择行卡：48 圆底图标 + 成员名 + 「共 N 位成员」 + chevron */}
         <ScalePressable
-          style={[styles.pickerRow, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+          style={[styles.pickerRow, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
           onPress={() => setPickerOpen(true)}
           pressedScale={0.98}
           activeOpacity={0.9}
@@ -163,7 +163,7 @@ export default function MessagesScreen() {
       {/* 成员选择底部 sheet */}
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <View style={[styles.sheetShade, { backgroundColor: usePageBackground() }]}>
-          <View style={[styles.sheetPanel, { backgroundColor: palette.surface, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
+          <View style={[styles.sheetPanel, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
             {/* 顶部 handle */}
             <View style={styles.sheetHandleWrap}>
               <View style={[styles.sheetHandle, { backgroundColor: palette.fill3 }]} />

@@ -321,7 +321,7 @@ export default function OpenLiveScreen() {
             loading ? (
               <View style={styles.skeletonWrap}>
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <View key={i} style={[styles.skeletonCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+                  <View key={i} style={[styles.skeletonCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
                     <Skeleton width={56} height={56} radius={12} />
                     <View style={{ marginLeft: 12, flex: 1 }}>
                       <Skeleton width="70%" height={13} />
@@ -348,7 +348,7 @@ export default function OpenLiveScreen() {
           renderItem={({ item, index }) => (
             <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
               <ScalePressable
-                style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline }]}
+                style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}
                 activeOpacity={0.85}
                 pressedScale={0.97}
                 onPress={() => playItem(item)}

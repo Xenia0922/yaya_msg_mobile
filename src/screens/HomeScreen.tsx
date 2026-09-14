@@ -634,7 +634,7 @@ export default function HomeScreen() {
           />
 
           {!livesOk && !livesError ? null : livesError && !livesOk ? (
-            <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+            <View style={[styles.liveStateCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
               <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
               <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
                 {t('直播列表加载失败')}
@@ -642,7 +642,7 @@ export default function HomeScreen() {
               <Button title={t('重试')} variant="tinted" size="sm" onPress={fetchLives} />
             </View>
           ) : livesOk && lives.length === 0 ? (
-            <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+            <View style={[styles.liveStateCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
               <MaterialCommunityIcons name="video-off" size={20} color={palette.labelTertiary} />
               <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('此时段暂无成员直播')}</Text>
             </View>
@@ -686,7 +686,7 @@ export default function HomeScreen() {
           />
           {!gongyanOk && !gongyanError ? null : gongyanError && !gongyanOk ? (
             <FadeInView delay={80} duration={300}>
-              <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+              <View style={[styles.liveStateCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
                 <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
                 <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
                   {t('公演直播加载失败')}
@@ -696,7 +696,7 @@ export default function HomeScreen() {
             </FadeInView>
           ) : liveGongyanRooms.length === 0 ? (
             <FadeInView delay={80} duration={320}>
-              <View style={[styles.liveStateCard, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+              <View style={[styles.liveStateCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
                 <MaterialCommunityIcons name="broadcast-off" size={20} color={palette.labelTertiary} />
                 <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('此时段暂无公演直播')}</Text>
               </View>
@@ -708,7 +708,7 @@ export default function HomeScreen() {
                   <ScalePressable
                     onPress={() => (navigation as any).navigate('BilibiliLiveScreen', { roomId: room.roomId, roomName: room.name })}
                     pressedScale={0.97}
-                    style={[styles.liveRow, shadows.xs, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, marginBottom: 8 }]}
+                    style={[styles.liveRow, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, marginBottom: 8 }]}
                   >
                     <View style={[styles.liveRowThumb, { backgroundColor: palette.tintSoft }]}>
                       {gongyanInfo[room.roomId]?.cover ? (

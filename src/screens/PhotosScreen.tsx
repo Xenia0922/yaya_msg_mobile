@@ -219,7 +219,7 @@ export default function PhotosScreen() {
       />
       <FadeInView delay={60} duration={300} style={{ flex: 1 }}>
         <View style={styles.pickerCard}>
-          <View style={[styles.pickerRow, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+          <View style={[styles.pickerRow, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
             <View style={[styles.avatar, { backgroundColor: palette.tintSoft }]}>
               {selectedMember ? (
                 <NetworkImage source={{ uri: selectedMember.avatar }} style={styles.avatarImg} resizeMode="cover" />

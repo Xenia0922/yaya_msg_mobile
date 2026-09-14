@@ -112,7 +112,7 @@ export default function MemberDynamicScreen() {
 
   const renderItem = ({ item, index }: { item: DynItem; index: number }) => (
     <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
-      <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+      <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
         {item.ownerName ? (
           <View style={styles.ownerRow}>
             {item.ownerAvatar ? (
