@@ -45,7 +45,9 @@ export type GlassRole =
 const ROLE_PRESET: Record<GlassRole, GlassPresetName | undefined> = {
   card: undefined, // 照片上的卡片：作者 recipe 用 variant="regular"，不用预设
   chip: undefined, // 玻璃按钮：作者 recipe 用默认（regular），强调时给 tintColor
-  bar: 'floatingTabBar', // 悬浮底栏：全厚度 + 活边（tab bar 专页 snippet1）
+  bar: undefined, // 底栏：与卡片同材质。floatingTabBar 预设自带 legibilityFloor 0.2 +
+  // edgeReflectionStrength 1（镜像回声），压在浅色底上会把整条底栏压成深灰，
+  // 和内容卡的浅白玻璃不一致（实拍对比确认）
   header: 'navigationBar', // 页头：浅镜片
   selector: undefined, // 底栏选中态：dock 上的控件 → clear（媒体控件 recipe）
   toast: 'toast', // 可读性优先的短提示
@@ -57,6 +59,7 @@ const ROLE_PRESET: Record<GlassRole, GlassPresetName | undefined> = {
 const ROLE_VARIANT: Partial<Record<GlassRole, 'regular' | 'clear'>> = {
   card: 'regular', // 照片上的卡片 recipe
   chip: 'regular', // 玻璃按钮 recipe（默认 regular）
+  bar: 'regular', // 与内容卡同材质，浅色主题下整条底栏才是浅玻璃
   selector: 'clear', // 媒体控件/dock 上的控件 recipe
 };
 
@@ -176,7 +179,10 @@ export function GlassSurface({
       variant={ROLE_VARIANT[role]}
       borderRadius={radius}
       interactive={interactive}
-      tintColor={tintColor}
+      // Kyant0 LiquidBottomTabs 的底栏表面色（onDrawSurface 画的那层）：
+      // 浅色 #FAFAFA@40% / 深色 #121212@40% —— 这层浅纱才是"浅色玻璃"的正确实现。
+      // 仅在调用方没有明确给 tint 时按主题取默认。
+      tintColor={tintColor ?? (isDark ? 'rgba(18,18,18,0.40)' : 'rgba(250,250,250,0.40)')}
       paused={paused}
       onPipelineReady={(e) => {
         const info = (e as any)?.nativeEvent ?? {};
