@@ -42,15 +42,22 @@ export type GlassRole =
  * 预设已含 variant/intensity/thickness/edgeReflection/legibilityFloor/borderRadius 的调音，
  * 我们只覆盖圆角（轮廓是我们自己的）。
  */
-const ROLE_PRESET: Record<GlassRole, GlassPresetName> = {
-  card: 'cardOverMedia', // 照片/内容上的卡片：clear + 可读性薄纱
-  chip: 'compactControl', // 小胶囊/徽标/悬浮控件：clear + 小数字
-  bar: 'floatingTabBar', // 悬浮底栏（下面会被 NAV_BAR_READABILITY 覆盖成作者的可读性配方）
-  header: 'navigationBar', // 页头：regular + 浅镜片
-  selector: 'compactControl', // 底栏选中态
+const ROLE_PRESET: Record<GlassRole, GlassPresetName | undefined> = {
+  card: undefined, // 照片上的卡片：作者 recipe 用 variant="regular"，不用预设
+  chip: undefined, // 玻璃按钮：作者 recipe 用默认（regular），强调时给 tintColor
+  bar: 'floatingTabBar', // 悬浮底栏：全厚度 + 活边（tab bar 专页 snippet1）
+  header: 'navigationBar', // 页头：浅镜片
+  selector: undefined, // 底栏选中态：dock 上的控件 → clear（媒体控件 recipe）
   toast: 'toast', // 可读性优先的短提示
   modal: 'frosted', // 重磨砂（设置页/模态背板）
   hero: 'crystal', // 装饰性主视觉：薄、硬、深折射
+};
+
+/** 角色 → variant（作者 recipes 的原始用法；与预设冲突时以 recipe 为准） */
+const ROLE_VARIANT: Partial<Record<GlassRole, 'regular' | 'clear'>> = {
+  card: 'regular', // 照片上的卡片 recipe
+  chip: 'regular', // 玻璃按钮 recipe（默认 regular）
+  selector: 'clear', // 媒体控件/dock 上的控件 recipe
 };
 
 /**
@@ -166,6 +173,7 @@ export function GlassSurface({
   return (
     <LiquidGlassView
       preset={ROLE_PRESET[role]}
+      variant={ROLE_VARIANT[role]}
       borderRadius={radius}
       interactive={interactive}
       tintColor={tintColor}
