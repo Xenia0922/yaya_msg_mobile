@@ -213,8 +213,8 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
             },
           ]}
         >
-          {/* 选中态：比底栏多一点体量、且微微偏灰（用户指定），保留虹彩边作为区分 */}
-          <GlassSurface role="chip" radius={999} tintColor="rgba(120,120,128,0.26)" iridescence={0.35} />
+          {/* 全屏唯一上真玻璃的地方之一：选中态（透明折射 + 边缘色散，拖动放大） */}
+          <GlassSurface role="selector" radius={999} />
         </Animated.View>
 
         {items.map((item, i) => (

@@ -30,26 +30,54 @@ export type GlassRole =
   | 'chip' // 胶囊 / 小控件
   | 'bar' // 悬浮底栏
   | 'header' // 页头 / 导航栏
+  | 'selector' // 底栏选中态（真玻璃 + 色散）
   | 'toast' // 短提示
   | 'modal' // 弹层 / 面板
   | 'hero'; // 装饰性主视觉
 
 /** 角色 → 材质配置。
  *
- * 实机对照过三版（MuMu / API 35 / 浅色底衬）：
- *  - A：`regular` 且无染色 → 一片中性灰（"脏"）
- *  - B：预设自带 `clear`   → 通透但偏薄，小胶囊上有明显放大鬼影
- *  - C（本版）：`regular` + 白纱染色 → 乳白磨砂，最接近苹果浅色材料 ✅
- * 所以内容层（card/chip）走 C；导航层（bar/header）保留预设自带的通透配方。
+ * ⚠️ 关键坑（实机 + 饱和底衬诊断确认）：
+ * 库的 `regular` 是「自适应磨砂」——**会给浅色底衬叠一层中性 veil，视觉上就是"灰"**。
+ * 之前为了让玻璃"看得见"把 card/chip 覆盖成 regular，结果整片发灰
+ * （诊断：底衬纯绿 (0,179,75) 经玻璃后变 (57,153,100) → 玻璃采到了真实背景，灰是 regular 叠的）。
+ * 所以一律用预设自带的 `clear`（真透明折射玻璃）。
  */
+/**
+ * 哪些角色上真 AGSL 玻璃 —— **只有底栏和底栏选中态**（用户最终定案）。
+ *
+ * 库的 Android 实现是每个实例每帧抓一次 backdrop + 跑一遍 AGSL（capture 最贵），
+ * 首页十几个胶囊/卡片全上的话帧率会崩；而且内容层铺满 AGSL 还会因为 `regular` 的自适应
+ * veil 整片发灰。所以内容层走「透明 + 发丝彩边」的轻量观感（见下方 lightweight 分支），
+ * 真玻璃只留给数量固定的导航层。
+ */
+const AGSL_ROLES: ReadonlySet<GlassRole> = new Set<GlassRole>(['bar', 'selector']);
+
 const ROLE_CONFIG: Record<
   GlassRole,
-  { preset: GlassPresetName; intensity?: number; variant?: 'regular' | 'clear' }
+  {
+    preset: GlassPresetName;
+    intensity?: number;
+    variant?: 'regular' | 'clear';
+    /** 镜片厚度：同时决定折射与**边缘色散带的宽度**（越小边越细） */
+    thickness?: number;
+    iridescence?: number;
+    tintColor?: string;
+  }
 > = {
-  card: { preset: 'cardOverMedia', variant: 'regular', intensity: 50 },
-  chip: { preset: 'compactControl', variant: 'regular', intensity: 45 },
-  bar: { preset: 'floatingTabBar' },
-  header: { preset: 'navigationBar' },
+  card: { preset: 'cardOverMedia' },
+  chip: { preset: 'compactControl' },
+  // 底栏：clear（透明折射），把「亮」让给选中态，否则全白一片选中态就看不见了
+  bar: { preset: 'floatingTabBar', variant: 'clear', intensity: 45, thickness: 0.55, iridescence: 0.1 },
+  header: { preset: 'navigationBar', variant: 'clear', intensity: 50, thickness: 0.55, iridescence: 0.1 },
+  // 选中态：regular（自适应磨砂）+ 中性偏灰 —— 苹果里选中那块就是比底栏更实的一层
+  selector: {
+    preset: 'compactControl',
+    variant: 'regular',
+    thickness: 0.7,
+    iridescence: 0.18,
+    tintColor: 'rgba(140,140,150,0.55)',
+  },
   toast: { preset: 'toast' },
   modal: { preset: 'frosted' },
   hero: { preset: 'crystal' },
@@ -71,6 +99,10 @@ export interface GlassSurfaceProps {
   intensity?: number;
   /** 覆盖预设的折射开关（API 33+ 生效） */
   refraction?: boolean;
+  /** 覆盖预设材质：regular=自适应磨砂（会偏灰），clear=透明折射玻璃 */
+  variant?: 'regular' | 'clear';
+  /** 镜片厚度：同时决定边缘色散带宽度（越小边越细） */
+  thickness?: number;
   /** 前景可读性薄纱 0–1：文字压在照片/视频上时调高 */
   legibilityFloor?: number;
   /** 边缘虹彩/色散强度 0–1（Android） */
@@ -88,6 +120,8 @@ export function GlassSurface({
   interactive = false,
   intensity,
   refraction,
+  variant,
+  thickness,
   legibilityFloor,
   iridescence,
   tintColor,
@@ -103,10 +137,20 @@ export function GlassSurface({
     ? [StyleSheet.absoluteFill, { borderRadius: radius }, style]
     : [{ borderRadius: radius }, style];
 
-  // 不支持玻璃的设备（含鸿蒙 2/3 的 Android 8~10 基座）：半透明白 + 发丝描边兜底。
-  // 用高不透明度而不是低透明度 —— 低透明在浅色底上会「发灰发脏」。
-  if (!canGlass) {
-    const veil = isDark ? 'rgba(26,26,32,0.78)' : 'rgba(255,255,255,0.82)';
+  const cfg = ROLE_CONFIG[role];
+  const useRealGlass = canGlass && AGSL_ROLES.has(role);
+  const isNav = role === 'bar' || role === 'header';
+
+  /**
+   * 轻量「透明玻璃」分支：内容层（card/chip/按钮…）与不支持玻璃的设备都走这里。
+   *
+   * 观感 = 几乎全透明 + 一条**发丝彩边**。彩边用「左右暖色 / 上下冷色」的对角双色模拟色散
+   * （RN 的 border 四边可分别设色），成本为零，但读起来就是「玻璃边缘在折光」。
+   */
+  if (!useRealGlass) {
+    const veil = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.10)';
+    const warm = isDark ? 'rgba(255,150,190,0.34)' : 'rgba(255,150,190,0.42)';
+    const cool = isDark ? 'rgba(140,205,255,0.34)' : 'rgba(140,205,255,0.42)';
     return (
       <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle}>
         <View
@@ -116,8 +160,11 @@ export function GlassSurface({
             {
               borderRadius: radius,
               backgroundColor: veil,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.92)',
+              borderWidth: StyleSheet.hairlineWidth * 2,
+              borderTopColor: warm,
+              borderLeftColor: warm,
+              borderBottomColor: cool,
+              borderRightColor: cool,
             },
           ]}
         />
@@ -126,32 +173,24 @@ export function GlassSurface({
     );
   }
 
-  const cfg = ROLE_CONFIG[role];
-
-  /**
-   * 不垫任何白纱/色膜 —— 液态玻璃就是玻璃本身，加膜会把它糊成一块奶白塑料。
-   * 色调只由材质参数（预设 / variant / intensity / tintColor）决定。
-   *
-   * ⚠️ 已知问题（未解）：MuMu(API35/x86_64) 上 AGSL 材质本身偏灰，且
-   * tintColor / brightness / saturation 对最终色调几乎没有影响（0.55→0.75 只差 3 个色阶），
-   * 换过底衬、换过图层顺序都不生效 → 高度怀疑是模拟器 GPU/驱动，**待真机确认**。
-   */
+  /** 真 AGSL 玻璃分支（仅导航层 + 底栏选中态）。 */
   return (
     <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle}>
       <LiquidGlassView
         preset={cfg.preset}
-        variant={cfg.variant}
+        variant={variant ?? cfg.variant}
         intensity={intensity ?? cfg.intensity}
         borderRadius={radius}
         interactive={interactive}
         pointerEvents={interactive && !asBackground ? 'auto' : 'none'}
         refraction={refraction}
-        legibilityFloor={legibilityFloor}
-        // 玻璃自身的染色：一层薄白给玻璃"体量"（太透会显薄、露底）；
-        // 立体感与彩边仍由材质自己的 rim / 折射 / 色散出，不靠染色堆。
-        tintColor={tintColor ?? (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.30)')}
-        // 四周那一点点色散/彩虹边（Android：rim 上的虹彩微光，0–1）
-        iridescence={iridescence ?? 0.2}
+        thickness={thickness ?? cfg.thickness}
+        legibilityFloor={legibilityFloor ?? 0}
+        // 几乎不染色：要的是「透明玻璃」，玻璃的颜色由背后的内容决定。
+        // （染白会把浅色底洗成中性灰 —— 之前"整片发灰"的两个原因之一）
+        tintColor={tintColor ?? cfg.tintColor ?? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)')}
+        // 四周那一点点色散/彩虹边（Android）：只给很淡的一点，边要细不要糊
+        iridescence={iridescence ?? cfg.iridescence ?? 0.12}
         style={StyleSheet.absoluteFill}
       />
       {children}
