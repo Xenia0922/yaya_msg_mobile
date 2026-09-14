@@ -125,23 +125,29 @@ export function GlassSurface({
 
   const cfg = ROLE_CONFIG[role];
 
+  /**
+   * 不垫任何白纱/色膜 —— 液态玻璃就是玻璃本身，加膜会把它糊成一块奶白塑料。
+   * 色调只由材质参数（预设 / variant / intensity / tintColor）决定。
+   *
+   * ⚠️ 已知问题（未解）：MuMu(API35/x86_64) 上 AGSL 材质本身偏灰，且
+   * tintColor / brightness / saturation 对最终色调几乎没有影响（0.55→0.75 只差 3 个色阶），
+   * 换过底衬、换过图层顺序都不生效 → 高度怀疑是模拟器 GPU/驱动，**待真机确认**。
+   */
   return (
-    <LiquidGlassView
-      preset={cfg.preset}
-      variant={cfg.variant}
-      intensity={intensity ?? cfg.intensity}
-      borderRadius={radius}
-      interactive={interactive}
-      pointerEvents={asBackground ? 'none' : 'auto'}
-      refraction={refraction}
-      legibilityFloor={legibilityFloor}
-      // 白纱是「乳白磨砂」的关键：regular 不带染色在浅底上会读成灰
-      tintColor={tintColor ?? (isDark ? 'rgba(20,20,26,0.45)' : 'rgba(255,255,255,0.55)')}
-      // Android：透射亮度微提，浅色底衬下玻璃才「亮」得起来（范围 0.5–1.5）
-      brightness={isDark ? 1 : 1.15}
-      style={boxStyle}
-    >
+    <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle}>
+      <LiquidGlassView
+        preset={cfg.preset}
+        variant={cfg.variant}
+        intensity={intensity ?? cfg.intensity}
+        borderRadius={radius}
+        interactive={interactive}
+        pointerEvents={interactive && !asBackground ? 'auto' : 'none'}
+        refraction={refraction}
+        legibilityFloor={legibilityFloor}
+        tintColor={tintColor}
+        style={StyleSheet.absoluteFill}
+      />
       {children}
-    </LiquidGlassView>
+    </View>
   );
 }

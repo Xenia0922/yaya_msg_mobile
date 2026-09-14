@@ -1,16 +1,24 @@
 /**
  * AppTabBar · iOS 26 Liquid Glass 底栏
- *  - 悬浮胶囊底栏，材质走 GlassSurface（floatingTabBar 预设：全厚度 + 活边）
- *  - 5 个 tab：图标 + label，label 常驻显示
- *  - active 项：中性玻璃灰胶囊 + accent 字 + 图标 spring 弹跳
- *  - Spring 按压反馈 / 安全留白底部 inset
  *
- * 注：受 React Navigation 限制，render tabBar 由 Tab.Navigator 的 `tabBar` prop 调用此组件。
- *     此组件自管事件 onTabPress(index)、当前 activeIndex。
+ * 行为对齐 iOS 26（WWDC25 session 284 / HIG）：
+ *  - 底栏悬浮胶囊，材质走 GlassSurface（floatingTabBar 预设）
+ *  - 选中指示器 = 一块**跟手滑动的玻璃胶囊**：按住底栏横向拖动时它跟着手指走，
+ *    松手 spring 到最近的 tab 并切换（对应 Apple「按住拖过不同 tab，玻璃液化成软胶跟手迁移」）
+ *  - 图标 spring 弹跳 + 按压反馈 + 安全留白
+ *
+ * 实现要点：
+ *  - 手势用 PanResponder 且 `onStartShouldSetPanResponder: () => false`，
+ *    只有横向位移 > 6px 才接管 → 点击仍然正常落到各 tab 的 Pressable 上
+ *  - 指示器位移用 native driver 的 translateX（不触发 JS 帧）
+ *
+ * 后续（未做）：`LiquidGlassContainer` 的平滑 min 融合（拖到隔壁 tab 时拉出「液桥」）、
+ * 滚动时底栏缩小/回弹 + 迷你播放器内联。
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -33,6 +41,11 @@ export interface AppTabBarProps {
   activeKey: string;
   onSelect: (key: string) => void;
 }
+
+/** 单格宽度（固定宽 → 指示器位移可直接用 index * CELL_W 算） */
+const CELL_W = 76;
+/** 底栏左右内边距（与 styles.bar.paddingHorizontal 保持一致） */
+const BAR_PAD = 8;
 
 function TabCell({
   item,
@@ -64,16 +77,7 @@ function TabCell({
       accessibilityState={{ selected: active }}
       hitSlop={6}
       onPress={onSelect}
-      style={({ pressed }) => [
-        styles.cell,
-        // iOS 26 选中态：中性玻璃灰底 + accent 文字图标（不再粉，克制）
-        active && {
-          backgroundColor:
-            palette.name === 'dark' ? 'rgba(120,120,128,0.30)' : 'rgba(120,120,128,0.16)',
-        },
-        active && pressed && { transform: [{ scale: 0.96 }] },
-        pressed && !active && { transform: [{ scale: 0.97 }] },
-      ]}
+      style={({ pressed }) => [styles.cell, pressed && { transform: [{ scale: 0.97 }] }]}
     >
       <Animated.View style={[styles.cellIcon, { transform: [{ scale: pop }] }]}>
         {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 23 })}
@@ -95,23 +99,131 @@ function TabCell({
 }
 
 export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
+  const palette = usePalette();
+  const isDark = palette.name === 'dark';
+
+  const activeIndex = Math.max(0, items.findIndex((it) => it.key === activeKey));
+  const maxShift = Math.max(0, (items.length - 1) * CELL_W);
+
+  const indX = useRef(new Animated.Value(activeIndex * CELL_W)).current;
+  const indXRef = useRef(activeIndex * CELL_W);
+  const startXRef = useRef(0);
+  /** 拖动时选中玻璃放大（对应 Apple「按住拖动时玻璃膨起」） */
+  const dragScale = useRef(new Animated.Value(1)).current;
+  const scaleTo = useCallback(
+    (v: number) => {
+      Animated.spring(dragScale, { toValue: v, ...motion.spring.bouncy, useNativeDriver: true }).start();
+    },
+    [dragScale],
+  );
+  /** 拖动中手指当前悬停的格子（用于给「将要选中」的那个 tab 上色） */
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const hoverRef = useRef<number | null>(null);
+
+  // 外部切页（含导航状态变化）时把指示器弹到位
+  useEffect(() => {
+    if (hoverRef.current != null) return; // 拖动中不要被外部状态拽走
+    const target = activeIndex * CELL_W;
+    indXRef.current = target;
+    Animated.spring(indX, { toValue: target, ...motion.spring.bouncy, useNativeDriver: true }).start();
+  }, [activeIndex, indX]);
+
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const activeKeyRef = useRef(activeKey);
+  activeKeyRef.current = activeKey;
+  const activeIndexRef = useRef(activeIndex);
+  activeIndexRef.current = activeIndex;
+
+  const settle = useCallback(
+    (x: number) => {
+      indXRef.current = x;
+      Animated.spring(indX, { toValue: x, ...motion.spring.bouncy, useNativeDriver: true }).start();
+    },
+    [indX],
+  );
+
+  const pan = useRef(
+    PanResponder.create({
+      // 点击不抢：只有横向拖动才接管，保证 tab 的点击照常触发
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderGrant: () => {
+        indX.stopAnimation((v: number) => {
+          indXRef.current = v;
+          startXRef.current = v;
+        });
+        hoverRef.current = Math.round(indXRef.current / CELL_W);
+        setHoverIndex(hoverRef.current);
+        scaleTo(1.12);
+      },
+      onPanResponderMove: (_, g) => {
+        const limit = Math.max(0, (itemsRef.current.length - 1) * CELL_W);
+        const nx = Math.min(limit, Math.max(0, startXRef.current + g.dx));
+        indXRef.current = nx;
+        indX.setValue(nx);
+        const h = Math.round(nx / CELL_W);
+        if (h !== hoverRef.current) {
+          hoverRef.current = h;
+          setHoverIndex(h);
+        }
+      },
+      onPanResponderRelease: () => {
+        const n = itemsRef.current.length;
+        const h = Math.min(n - 1, Math.max(0, Math.round(indXRef.current / CELL_W)));
+        hoverRef.current = null;
+        setHoverIndex(null);
+        settle(h * CELL_W);
+        scaleTo(1);
+        const target = itemsRef.current[h];
+        if (target && target.key !== activeKeyRef.current) onSelectRef.current(target.key);
+      },
+      onPanResponderTerminate: () => {
+        hoverRef.current = null;
+        setHoverIndex(null);
+        settle(activeIndexRef.current * CELL_W);
+        scaleTo(1);
+      },
+    }),
+  ).current;
+
+  const litIndex = hoverIndex ?? activeIndex;
+
   return (
     <View pointerEvents="box-none" style={[styles.outer, { paddingBottom: 16 }]}>
-      <View style={styles.bar}>
-        {/* 玻璃底：单一材质出口（floatingTabBar 预设）。旧的「保底白膜 + 手绘高光 + AGSL」
-            三层已被替换——那套叠加会产生硬边界与灰罩。 */}
+      <View style={styles.bar} {...pan.panHandlers}>
+        {/* 底栏玻璃材质 */}
         <GlassSurface role="bar" radius={28} asBackground />
-        {items.map((item) => {
-          const active = item.key === activeKey;
-          return (
-            <TabCell
-              key={item.key}
-              item={item}
-              active={active}
-              onSelect={() => onSelect(item.key)}
-            />
-          );
-        })}
+
+        {/* 选中指示器 = 一块真玻璃（带边缘色散），并做「拖动放大」。
+            色调分工与用户确认过的观感一致：底栏面 = 浅奶白（GlassSurface 的白纱定色），
+            选中态 = 玻璃本体（色散 + 拖动时放大）。
+            注意：不能用库的 interactive —— 触摸被底栏的 PanResponder 接管了，
+            放大由这里的 scale 动画自己出。 */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.indicator,
+            {
+              width: CELL_W,
+              transform: [{ translateX: indX }, { scale: dragScale }],
+            },
+          ]}
+        >
+          <GlassSurface role="chip" radius={999} />
+        </Animated.View>
+
+        {items.map((item, i) => (
+          <TabCell
+            key={item.key}
+            item={item}
+            active={i === litIndex}
+            onSelect={() => onSelect(item.key)}
+          />
+        ))}
       </View>
     </View>
   );
@@ -130,7 +242,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: 28,
     paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: BAR_PAD,
     minHeight: 64,
     overflow: 'hidden',
     ...Platform.select({
@@ -144,8 +256,16 @@ const styles = StyleSheet.create({
       default: null,
     }),
   },
+  /** 选中指示器：绝对定位 + 由 translateX / scale 驱动（native driver），视觉全交给玻璃 */
+  indicator: {
+    position: 'absolute',
+    top: 6,
+    bottom: 6,
+    left: BAR_PAD,
+    overflow: 'hidden',
+  },
   cell: {
-    width: 76,
+    width: CELL_W,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
