@@ -225,7 +225,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
             <GlassSurface
               role="selector"
               radius={999}
-              tintColor={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)'}
+              tintColor={isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.55)'}
               iridescence={0.6}
             />
           </Animated.View>
@@ -277,7 +277,6 @@ const styles = StyleSheet.create({
     bottom: 6,
     left: BAR_PAD,
     borderRadius: 28,
-    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   cell: {
