@@ -16,7 +16,14 @@
  * 其余全交给库。
  */
 import React from 'react';
-import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewProps,
+  type ViewStyle,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { NavigationContext } from '@react-navigation/native';
 import {
   LiquidGlassView,
@@ -61,6 +68,22 @@ const ROLE_VARIANT: Partial<Record<GlassRole, 'regular' | 'clear'>> = {
   chip: 'regular', // 玻璃按钮 recipe（默认 regular）
   bar: 'regular', // 与内容卡同材质，浅色主题下整条底栏才是浅玻璃
   selector: 'clear', // 媒体控件/dock 上的控件 recipe
+};
+
+/**
+ * 角色 → 模糊强度。iOS 26 实拍参考的玻璃是「轻模糊、高透」——
+ * 背后内容清晰可辨只是被柔化，而不是糊成一团。预设里 45~70 的强度在
+ * 浅色底上就是"超级磨砂"，这里统一压到 26~40。
+ */
+const ROLE_INTENSITY: Record<GlassRole, number> = {
+  card: 32,
+  chip: 32,
+  bar: 32,
+  header: 36,
+  selector: 28,
+  toast: 40,
+  modal: 50,
+  hero: 26,
 };
 
 /**
@@ -118,6 +141,8 @@ export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
   tintColor?: string;
   /** 边缘虹彩/色散强度 0–1（Android，对应 Kyant0 的 chromaticAberration） */
   iridescence?: number;
+  /** 覆盖角色模糊强度（官方：轻模糊高透，26–40） */
+  intensity?: number;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }
@@ -127,6 +152,7 @@ export function GlassSurface({
   radius = 20,
   asBackground = false,
   interactive = false,
+  intensity,
   tintColor,
   iridescence,
   style,
@@ -181,12 +207,13 @@ export function GlassSurface({
     <LiquidGlassView
       preset={ROLE_PRESET[role]}
       variant={ROLE_VARIANT[role]}
+      intensity={intensity ?? ROLE_INTENSITY[role]}
       borderRadius={radius}
       interactive={interactive}
       // Kyant0 LiquidBottomTabs 的底栏表面色（onDrawSurface 画的那层）：
       // 浅色 #FAFAFA@40% / 深色 #121212@40% —— 这层浅纱才是"浅色玻璃"的正确实现。
       // 仅在调用方没有明确给 tint 时按主题取默认。
-      tintColor={tintColor ?? (isDark ? 'rgba(18,18,18,0.40)' : 'rgba(250,250,250,0.40)')}
+      tintColor={tintColor ?? (isDark ? 'rgba(18,18,18,0.28)' : 'rgba(250,250,250,0.20)')}
       iridescence={iridescence}
       paused={paused}
       onPipelineReady={(e) => {
@@ -200,6 +227,29 @@ export function GlassSurface({
       ]}
       {...rest}
     >
+      {/* 官方三层结构的顶层：顶部连续高光带 + 极细半透明描边。
+          放在玻璃材质之上、内容之下；pointerEvents none 不吃触摸。 */}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            borderRadius: radius,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)',
+            overflow: 'hidden',
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[
+            isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.50)',
+            isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.08)',
+            'transparent',
+          ]}
+          style={{ height: '46%' }}
+        />
+      </View>
       {children}
     </LiquidGlassView>
   );

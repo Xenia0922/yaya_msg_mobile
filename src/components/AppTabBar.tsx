@@ -161,7 +161,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         hoverRef.current = Math.round(indXRef.current / CELL_W);
         setHoverIndex(hoverRef.current);
         scaleTo(1.12);
-        dragStretch.setValue(1.06);
+        dragStretch.setValue(1.04);
       },
       onPanResponderMove: (_, g) => {
         const limit = Math.max(0, (itemsRef.current.length - 1) * CELL_W);
@@ -170,7 +170,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         indX.setValue(nx);
         // 液化：拖得越远，胶囊沿拖动方向拉得越长（iOS 26 拖动的形变）
         const moved = Math.abs(nx - startXRef.current) / CELL_W;
-        dragStretch.setValue(Math.min(1.9, 1.06 + moved * 0.62));
+        dragStretch.setValue(Math.min(1.32, 1.04 + moved * 0.26));
         const h = Math.round(nx / CELL_W);
         if (h !== hoverRef.current) {
           hoverRef.current = h;
