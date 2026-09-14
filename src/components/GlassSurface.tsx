@@ -206,6 +206,7 @@ export function GlassSurface({
   return (
     <LiquidGlassView
       preset={ROLE_PRESET[role]}
+      legibilityFloor={role === 'bar' ? 0 : undefined}
       variant={ROLE_VARIANT[role]}
       intensity={intensity ?? ROLE_INTENSITY[role]}
       borderRadius={radius}
@@ -243,11 +244,11 @@ export function GlassSurface({
       >
         <LinearGradient
           colors={[
-            isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.50)',
-            isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.08)',
+            isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.28)',
+            isDark ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)',
             'transparent',
           ]}
-          style={{ height: '46%' }}
+          style={{ height: '40%' }}
         />
       </View>
       {children}
