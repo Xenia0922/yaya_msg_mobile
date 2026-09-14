@@ -747,7 +747,7 @@ export default function PrivateMessagesScreen() {
             return (
               <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <View style={styles.convRowWrap}>
-                <GlassSurface radius={20} role="card"
+                <TouchableOpacity
                   style={[
                     styles.convCard,
                     { backgroundColor: 'transparent', borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 },
@@ -755,6 +755,7 @@ export default function PrivateMessagesScreen() {
                   onPress={() => openConv(conv)}
                   activeOpacity={0.88}
                 >
+                <GlassSurface radius={20} role="card">
                   <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
                     {convAvatarUrl ? (
                       <Image source={{ uri: convAvatarUrl }} style={styles.convAvatarImg} resizeMode="cover" />
@@ -779,6 +780,7 @@ export default function PrivateMessagesScreen() {
                     </View>
                   </View>
                 </GlassSurface>
+                </TouchableOpacity>
                 <View style={styles.convActions}>
                   {isPinned && pinnedConvs.length > 1 ? (
                     <View style={styles.pinMoveCol}>

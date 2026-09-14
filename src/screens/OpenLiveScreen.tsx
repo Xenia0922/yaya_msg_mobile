@@ -348,12 +348,16 @@ export default function OpenLiveScreen() {
           ) : null}
           renderItem={({ item, index }) => (
             <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
-              <GlassSurface radius={20} role="card"
-                style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
+              <ScalePressable
                 activeOpacity={0.85}
                 pressedScale={0.97}
                 onPress={() => playItem(item)}
                 onLongPress={() => downloadItem(item)}
+              >
+              <GlassSurface
+                radius={20}
+                role="card"
+                style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
               >
                 {item.cover ? (
                   <Image source={{ uri: item.cover }} style={[styles.cover, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
@@ -375,6 +379,7 @@ export default function OpenLiveScreen() {
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} style={styles.chevron} />
               </GlassSurface>
+              </ScalePressable>
             </FadeInView>
           )}
         />

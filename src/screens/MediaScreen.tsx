@@ -1838,16 +1838,17 @@ export default function MediaScreen() {
                 const meta = [it.nickname, formatTimestamp(it.startTime).slice(0, 16)].filter(Boolean).join(' · ');
                 return (
                   <FadeInView duration={300} style={styles.vodGridItem}>
-                    <GlassSurface radius={20} role="card"
+                    <TouchableOpacity
                       style={[styles.vodGridCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                       onPress={() => startPlay(it)}
                       activeOpacity={0.88}
                     >
-                      <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
-                        {coverUrl ? (
-                          <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
-                        ) : (
-                          <View style={styles.vodGridFallback}>
+                      <GlassSurface radius={20} role="card">
+                        <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
+                          {coverUrl ? (
+                            <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
+                          ) : (
+                            <View style={styles.vodGridFallback}>
                             <MaterialCommunityIcons name="video" size={30} color={palette.labelTertiary} />
                           </View>
                         )}
@@ -1886,6 +1887,7 @@ export default function MediaScreen() {
                         </View>
                       </View>
                     </GlassSurface>
+                    </TouchableOpacity>
                   </FadeInView>
                 );
               };
@@ -1901,11 +1903,12 @@ export default function MediaScreen() {
             const meta = [item.nickname, formatTimestamp(item.startTime).slice(0, 16)].filter(Boolean).join(' · ');
             return (
               <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300} style={styles.vodGridItem}>
-                <GlassSurface radius={20} role="card"
+                <TouchableOpacity
                   style={[styles.vodGridCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                   onPress={() => startPlay(item)}
                   activeOpacity={0.88}
                 >
+                  <GlassSurface radius={20} role="card">
                   <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                     {coverUrl ? (
                       <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
@@ -1955,6 +1958,7 @@ export default function MediaScreen() {
                     </View>
                   </View>
                 </GlassSurface>
+                </TouchableOpacity>
               </FadeInView>
             );
           }}

@@ -2545,7 +2545,7 @@ export default function FollowedRoomsScreen() {
               const name = shortName(member, mid);
               return (
                 <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.memberGridItem}>
-                  <GlassSurface radius={20} role="card"
+                  <TouchableOpacity
                     style={[
                       styles.memberHitCard,
                       { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
@@ -2553,6 +2553,7 @@ export default function FollowedRoomsScreen() {
                     onPress={() => openRoom(member)}
                     activeOpacity={0.88}
                   >
+                  <GlassSurface radius={20} role="card">
                     <View style={[styles.memberHitAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
                       {member.avatar ? (
                         <Image source={{ uri: member.avatar }} style={styles.memberHitAvatarImg} />
@@ -2580,6 +2581,7 @@ export default function FollowedRoomsScreen() {
                       )}
                     </TouchableOpacity>
                   </GlassSurface>
+                  </TouchableOpacity>
                 </FadeInView>
               );
             }}

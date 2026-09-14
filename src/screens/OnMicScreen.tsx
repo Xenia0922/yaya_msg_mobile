@@ -81,8 +81,7 @@ export default function OnMicScreen() {
     const member = members.find((m: any) => String(m.id || m.userId) === item.memberId);
     return (
       <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300} style={{ marginHorizontal: 16, marginTop: index === 0 ? 12 : 8 }}>
-        <GlassSurface radius={20} role="card"
-          style={[styles.row, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+        <TouchableOpacity
           onPress={() => member && navigation.navigate('RoomRadioScreen', {
             member,
             initialMode: item.smallVoice ? 'small' : 'big',
@@ -90,6 +89,11 @@ export default function OnMicScreen() {
           })}
           activeOpacity={0.9}
         >
+          <GlassSurface
+            radius={20}
+            role="card"
+            style={[styles.row, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+          >
           {member?.avatar ? (
             <Image source={{ uri: member.avatar }} style={styles.avatar} />
           ) : (
@@ -114,7 +118,8 @@ export default function OnMicScreen() {
             </View>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
-        </GlassSurface>
+          </GlassSurface>
+        </TouchableOpacity>
       </FadeInView>
     );
   };
