@@ -78,3 +78,4 @@ scratch/
 _*.png
 _*.xml
 _*.log
+android/app/.cxx/
