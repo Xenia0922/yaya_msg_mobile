@@ -54,8 +54,8 @@ export function GlassBackground({ radius = 20, strong = false, refract = true }:
           {
             borderRadius: radius,
             backgroundColor: listMode
-              ? isDark ? 'rgba(38,38,44,0.62)' : 'rgba(255,255,255,0.62)'
-              : isDark ? 'rgba(30,30,36,0.45)' : 'rgba(255,255,255,0.42)',
+              ? isDark ? 'rgba(38,38,44,0.14)' : 'rgba(255,255,255,0.12)'
+              : isDark ? 'rgba(30,30,36,0.10)' : 'rgba(255,255,255,0.08)',
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.75)',
           },
