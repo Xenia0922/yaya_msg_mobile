@@ -656,7 +656,7 @@ export default function HomeScreen() {
               <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('此时段暂无成员直播')}</Text>
             </GlassSurface>
           ) : livesOk ? (
-            <FadeInView delay={80} duration={320}>
+            <FadeInView delay={0} duration={320}>
               {banner ? (
                 <View style={{ marginBottom: 12 }}>
                   {/* crossfade + 位移动画包裹 banner */}
@@ -694,7 +694,7 @@ export default function HomeScreen() {
             onAction={() => handleNav({ title: '', desc: '', route: 'BilibiliLiveScreen', icon: '' })}
           />
           {!gongyanOk && !gongyanError ? null : gongyanError && !gongyanOk ? (
-            <FadeInView delay={80} duration={300}>
+            <FadeInView delay={0} duration={300}>
               <GlassSurface
                 radius={20}
                 role="card"
@@ -708,7 +708,7 @@ export default function HomeScreen() {
               </GlassSurface>
             </FadeInView>
           ) : liveGongyanRooms.length === 0 ? (
-            <FadeInView delay={80} duration={320}>
+            <FadeInView delay={0} duration={320}>
               <GlassSurface
                 radius={20}
                 role="card"
@@ -719,9 +719,9 @@ export default function HomeScreen() {
               </GlassSurface>
             </FadeInView>
           ) : (
-            <FadeInView delay={80} duration={320}>
+            <FadeInView delay={0} duration={320}>
               {liveGongyanRooms.map((room, index) => (
-                <FadeInView key={room.roomId} delay={index < 12 ? 60 + index * 25 : 0} duration={300} distance={10}>
+                <FadeInView key={room.roomId} delay={index * 20} duration={300} distance={10}>
                   <ScalePressable
                     onPress={() => (navigation as any).navigate('BilibiliLiveScreen', { roomId: room.roomId, roomName: room.name })}
                     pressedScale={0.97}
@@ -775,7 +775,7 @@ export default function HomeScreen() {
           <SectionHeader title={t('快捷入口')} />
           <View style={styles.quickRow}>
             {quick.map((item, index) => (
-              <FadeInView key={item.title} delay={index < 12 ? 60 + index * 25 : 0} duration={280} distance={8} style={[styles.quickCell, { width: quickCellW }]}>
+              <FadeInView key={item.title} delay={index * 20} duration={280} distance={8} style={[styles.quickCell, { width: quickCellW }]}>
                 <ScalePressable
                   onPress={() => handleNav(item)}
                   pressedScale={0.94}
@@ -801,7 +801,7 @@ export default function HomeScreen() {
         {currentTrack && trackTitle ? (
           <View style={styles.sectionOuter}>
             <SectionHeader title={t('最近播放')} />
-            <FadeInView delay={150} duration={320}>
+            <FadeInView delay={0} duration={320}>
               <ScalePressable onPress={openMusicLibrary} pressedScale={0.97}>
                 <GlassCard strong padding={12} radius={20}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -854,7 +854,7 @@ export default function HomeScreen() {
         {/* 工具：单行横向 chips */}
         <View style={styles.sectionOuter}>
           <SectionHeader title={t('工具')} />
-          <FadeInView delay={190} duration={320}>
+          <FadeInView delay={0} duration={320}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}

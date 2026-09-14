@@ -194,36 +194,33 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
 
   return (
     <View pointerEvents="box-none" style={[styles.outer, { paddingBottom: 16 }]}>
-      <View style={styles.bar} {...pan.panHandlers}>
-        {/* 底栏玻璃材质 */}
-        <GlassSurface role="bar" radius={28} asBackground />
-
-        {/* 选中指示器 = 「同一块材质里更实的一块」，**不做第二层玻璃**。
-            库作者的性能规则明确写「不要玻璃叠玻璃」——每叠一层就多抓一次 backdrop + 多跑一遍
-            shader；苹果的实现也是同材质内的差异，而非两块玻璃。所以这里用普通染色胶囊，
-            跟手位移与拖动放大由 native driver 出，零额外 GPU 成本。
-            （interactive 不用：触摸已被底栏 PanResponder 接管） */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.indicator,
-            {
-              width: CELL_W,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.74)',
-              borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.9)',
-              transform: [{ translateX: indX }, { scale: dragScale }],
-            },
-          ]}
-        />
-
-        {items.map((item, i) => (
-          <TabCell
-            key={item.key}
-            item={item}
-            active={i === litIndex}
-            onSelect={() => onSelect(item.key)}
+      {/* 作者结构：tab 与选中指示器都作为玻璃的 children ——
+          children 会被排除在 backdrop 捕获之外，玻璃只折射底栏背后的内容，
+          不会再把 tab 自己折射一遍。PanResponder 挂在外层容器上。 */}
+      <View {...pan.panHandlers}>
+        <GlassSurface role="bar" radius={28} style={styles.bar}>
+          {/* 选中指示器：同材质内更实的一块（普通染色胶囊，拖动放大） */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.indicator,
+              {
+                width: CELL_W,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.74)',
+                borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.9)',
+                transform: [{ translateX: indX }, { scale: dragScale }],
+              },
+            ]}
           />
-        ))}
+          {items.map((item, i) => (
+            <TabCell
+              key={item.key}
+              item={item}
+              active={i === litIndex}
+              onSelect={() => onSelect(item.key)}
+            />
+          ))}
+        </GlassSurface>
       </View>
     </View>
   );
