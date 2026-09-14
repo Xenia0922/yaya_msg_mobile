@@ -63,7 +63,7 @@ function TabCell({
     pop.stopAnimation();
     if (active) {
       pop.setValue(0.92);
-      const animation = Animated.spring(pop, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: true });
+      const animation = Animated.spring(pop, { toValue: 1, tension: 240, friction: 26, useNativeDriver: true });
       animation.start();
       return () => animation.stop();
     } else {
@@ -114,7 +114,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const dragScale = useRef(new Animated.Value(1)).current;
   const scaleTo = useCallback(
     (v: number) => {
-      Animated.spring(dragScale, { toValue: v, ...motion.spring.bouncy, useNativeDriver: true }).start();
+      Animated.spring(dragScale, { toValue: v, tension: 240, friction: 26, useNativeDriver: true }).start();
     },
     [dragScale],
   );
@@ -127,7 +127,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
     if (hoverRef.current != null) return; // 拖动中不要被外部状态拽走
     const target = activeIndex * CELL_W;
     indXRef.current = target;
-    Animated.spring(indX, { toValue: target, ...motion.spring.bouncy, useNativeDriver: true }).start();
+    Animated.spring(indX, { toValue: target, tension: 240, friction: 26, useNativeDriver: true }).start();
   }, [activeIndex, indX]);
 
   const onSelectRef = useRef(onSelect);
@@ -142,7 +142,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const settle = useCallback(
     (x: number) => {
       indXRef.current = x;
-      Animated.spring(indX, { toValue: x, ...motion.spring.bouncy, useNativeDriver: true }).start();
+      Animated.spring(indX, { toValue: x, tension: 240, friction: 26, useNativeDriver: true }).start();
     },
     [indX],
   );
@@ -185,7 +185,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         settle(h * CELL_W);
         scaleTo(1);
         dragStretch.setValue(1);
-        Animated.spring(dragStretch, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: true }).start();
+        Animated.spring(dragStretch, { toValue: 1, tension: 240, friction: 26, useNativeDriver: true }).start();
         const target = itemsRef.current[h];
         if (target && target.key !== activeKeyRef.current) onSelectRef.current(target.key);
       },
@@ -194,7 +194,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         setHoverIndex(null);
         settle(activeIndexRef.current * CELL_W);
         scaleTo(1);
-        Animated.spring(dragStretch, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: true }).start();
+        Animated.spring(dragStretch, { toValue: 1, tension: 240, friction: 26, useNativeDriver: true }).start();
       },
     }),
   ).current;
