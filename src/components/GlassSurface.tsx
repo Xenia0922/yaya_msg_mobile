@@ -20,6 +20,7 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 import {
   LiquidGlassView,
+  getGlassCapabilities,
   useGlassSupport,
   type GlassPresetName,
 } from 'react-native-liquid-glassmorphism';
@@ -53,18 +54,6 @@ const ROLE_PRESET: Record<GlassRole, GlassPresetName> = {
 };
 
 /**
- * 作者针对「栏上有图标 + 文字」给出的可读性配方
- * （tab bar 专页 Code snippet 5），逐字照抄：
- *   variant="clear" + legibilityFloor 0.4（只在子元素下方加自适应遮罩，避免整体变暗）
- *   + edgeReflectionStrength 0.4（压住镜像边的回声，别糊住文字）+ borderRadius 28
- */
-const BAR_READABILITY = {
-  variant: 'clear' as const,
-  legibilityFloor: 0.4,
-  edgeReflectionStrength: 0.4,
-};
-
-/**
  * 焦点感知的暂停：作者性能规则 ——「导航栈里还活着但非活跃的屏幕，Android 感知不到，
  * 必须手动 paused」，否则那些离屏玻璃仍在每帧抓 backdrop。
  * 用 NavigationContext 而不是 useIsFocused()：后者在没有导航容器时会抛错，
@@ -84,6 +73,20 @@ function useGlassPaused(): boolean {
     };
   }, [nav]);
   return nav ? !focused : false;
+}
+
+// 诊断：报告设备能力与实际渲染 tier（一次性）。
+// AGSL 在部分模拟器上会编译失败 → 库静默降级到 blur/tint（视觉=一张灰膜），不看日志根本发现不了。
+let __glassDiagLogged = false;
+function logGlassDiag() {
+  if (__glassDiagLogged) return;
+  __glassDiagLogged = true;
+  try {
+    const cap = getGlassCapabilities();
+    console.log('[GlassDiag] capabilities:', JSON.stringify(cap));
+  } catch (e) {
+    console.log('[GlassDiag] capabilities failed:', String(e));
+  }
 }
 
 export interface GlassSurfaceProps {
@@ -120,6 +123,9 @@ export function GlassSurface({
   const isDark = palette.name === 'dark';
   const { tier } = useGlassSupport();
   const paused = useGlassPaused();
+  React.useEffect(() => {
+    logGlassDiag();
+  }, []);
 
   const boxStyle: StyleProp<ViewStyle> = asBackground
     ? [StyleSheet.absoluteFill, { borderRadius: radius }, style]
@@ -149,20 +155,32 @@ export function GlassSurface({
     );
   }
 
+  /**
+   * 作者文档的标准用法（ Minimal example / 全部 recipes 一致）：
+   *   <LiquidGlassView variant=... borderRadius=... style={{...}}>
+   *     {children}     ← 内容作为 children 放进玻璃里，"renders crisply on top of the glass"
+   *   </LiquidGlassView>
+   * 且所有片段都在 style 上加了 `overflow: 'hidden'`。
+   * 之前自创的「玻璃 absoluteFill 铺底 + 内容当兄弟节点」会让玻璃盖在内容上 —— 本末倒置。
+   */
   return (
-    <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle}>
-      <LiquidGlassView
-        preset={ROLE_PRESET[role]}
-        // 底栏肩上有图标+文字 → 用作者的可读性配方覆盖预设
-        {...(role === 'bar' ? BAR_READABILITY : null)}
-        borderRadius={radius}
-        interactive={interactive}
-        pointerEvents={interactive && !asBackground ? 'auto' : 'none'}
-        tintColor={tintColor}
-        paused={paused}
-        style={StyleSheet.absoluteFill}
-      />
+    <LiquidGlassView
+      preset={ROLE_PRESET[role]}
+      borderRadius={radius}
+      interactive={interactive}
+      tintColor={tintColor}
+      paused={paused}
+      onPipelineReady={(e) => {
+        const info = (e as any)?.nativeEvent ?? {};
+        console.log('[GlassDiag] pipeline:', JSON.stringify(info));
+      }}
+      style={[
+        { borderRadius: radius, overflow: 'hidden' },
+        asBackground ? StyleSheet.absoluteFill : null,
+        style,
+      ]}
+    >
       {children}
-    </View>
+    </LiquidGlassView>
   );
 }
