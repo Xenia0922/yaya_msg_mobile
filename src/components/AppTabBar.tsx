@@ -199,21 +199,27 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
           不会再把 tab 自己折射一遍。PanResponder 挂在外层容器上。 */}
       <View {...pan.panHandlers}>
         <GlassSurface role="bar" radius={28} style={styles.bar}>
-          {/* 选中指示器表面色照抄 Kyant0 LiquidBottomTabs 的 onDrawSurface：
-              浅色主题 = 黑 10%（不是白色！），深色主题 = 白 10%。
-              拖动放大保留，速度拉伸待加。 */}
+          {/* 选中态照抄 Kyant0 LiquidBottomTabs 第三层：
+              一块真玻璃（clear 变体），表面色浅色主题 = 黑 10%，
+              lens + chromaticAberration（色散）→ 我们的 iridescence 承担。
+              拖动放大保留；速度拉伸待加。 */}
           <Animated.View
             pointerEvents="none"
             style={[
               styles.indicator,
               {
                 width: CELL_W,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
-                borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.06)',
                 transform: [{ translateX: indX }, { scale: dragScale }],
               },
             ]}
-          />
+          >
+            <GlassSurface
+              role="selector"
+              radius={999}
+              tintColor={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)'}
+              iridescence={0.45}
+            />
+          </Animated.View>
           {items.map((item, i) => (
             <TabCell
               key={item.key}

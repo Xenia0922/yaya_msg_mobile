@@ -22,7 +22,7 @@ import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
 import { usePalette, radiiAlias } from '../theme';
 import { useI18n } from '../i18n';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 interface OrderItem {
   dataId: string;
@@ -113,8 +113,7 @@ export default function InvoiceScreen() {
         : palette.labelTertiary;
     return (
       <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300}>
-        <View style={[styles.orderCard, { backgroundColor: 'transparent', borderColor: selected ? palette.tint : palette.hairline }, disabled && styles.cardDisabled]}>
-          <GlassBackground radius={20} refract={false} />
+        <GlassSurface radius={20} role="card" style={[styles.orderCard, { backgroundColor: 'transparent', borderColor: selected ? palette.tint : palette.hairline }, disabled && styles.cardDisabled]}>
           {/* 订单信息 */}
           <View style={styles.orderInfo}>
             <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>{item.goodsName}</Text>
@@ -146,7 +145,7 @@ export default function InvoiceScreen() {
               ]}
             />
           )}
-        </View>
+        </GlassSurface>
       </FadeInView>
     );
   };
@@ -172,7 +171,7 @@ export default function InvoiceScreen() {
           <EmptyState icon="receipt-outline" title={t('暂无订单')} />
         ) : null}
 
-        <View
+        <GlassSurface radius={20} role="card"
           style={[
             styles.formCard,
             {
@@ -181,7 +180,6 @@ export default function InvoiceScreen() {
             },
           ]}
         >
-          <GlassBackground radius={20} refract={false} />
           <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('开票信息')}</Text>
 
           <View style={styles.typeRow}>
@@ -238,7 +236,7 @@ export default function InvoiceScreen() {
             fullWidth
             style={styles.submitBtn}
           />
-        </View>
+        </GlassSurface>
       </ScrollView>
     </View>
     </KeyboardAvoidingView>

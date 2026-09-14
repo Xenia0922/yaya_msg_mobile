@@ -24,7 +24,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
 import { usePalette } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 function normalizeTalks(res: any): any[] {
   return unwrapList(res, ['content.data', 'content.list', 'data.data', 'data.list', 'list']);
@@ -174,8 +174,7 @@ export default function AudioProgramsScreen() {
       } />
 
       {playUrls[urlIndex] ? (
-        <View style={[styles.playerBar, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-          <GlassBackground radius={20} refract={false} />
+        <GlassSurface radius={20} role="card" style={[styles.playerBar, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
           <Text style={[styles.playerTitle, { color: palette.label }]} numberOfLines={1}>
             {playing?.title || t('正在播放')}
           </Text>
@@ -202,7 +201,7 @@ export default function AudioProgramsScreen() {
               ) : null}
             </PlayerScreen>
           </View>
-        </View>
+        </GlassSurface>
       ) : null}
 
       {status && !loading ? <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text> : null}

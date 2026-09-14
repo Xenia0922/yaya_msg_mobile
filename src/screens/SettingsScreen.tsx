@@ -36,7 +36,7 @@ import { getMemberDataMeta, MemberDataMeta, updateMemberData } from '../services
 import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
@@ -50,7 +50,7 @@ function Section({ title, children, delay = 0 }: { title: string; children: Reac
       {title ? (
         <Text style={[styles.sectionTitle, { color: palette.label }]}>{title}</Text>
       ) : null}
-      <View
+      <GlassSurface radius={20} role="card"
         style={[
           styles.section,
           {
@@ -60,9 +60,8 @@ function Section({ title, children, delay = 0 }: { title: string; children: Reac
           },
         ]}
       >
-        <GlassBackground radius={20} refract={false} />
         {children}
-      </View>
+      </GlassSurface>
     </FadeInView>
   );
 }

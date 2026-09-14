@@ -38,7 +38,7 @@ import { usePalette } from '../theme';
 import type { Palette } from '../theme/colors';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 /** 直播状态点：直播中 success 呼吸动画（原生驱动）+ 文字；未开播 labelTertiary */
 function StatusDot({ live, palette, label }: { live: boolean; palette: Palette; label: string }) {
@@ -490,7 +490,7 @@ export default function BilibiliLiveScreen() {
 
   // 首屏（列表为空且加载中）显示居中转圈；刷新时列表保持不变，仅头部显示加载指示，避免闪屏
   return (
-    <View style={styles.container}>
+    <GlassSurface radius={20} role="card" style={styles.container}>
       <ScreenHeader title={t('B站直播')} right={
         loading ? (
           <ActivityIndicator color={palette.tint} />
@@ -499,7 +499,7 @@ export default function BilibiliLiveScreen() {
         )
       } />
       {status ? <Text style={[styles.status, { color: palette.labelSecondary, backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-        <GlassBackground radius={20} refract={false} />{status}</Text> : null}
+        {status}</Text> : null}
       {fetchError ? (
         <TouchableOpacity
           activeOpacity={0.7}
@@ -533,7 +533,6 @@ export default function BilibiliLiveScreen() {
                 style={[styles.roomItem, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
                 onPress={() => startWatch(item)}
               >
-                <GlassBackground radius={20} refract={false} />
                 <View style={[styles.roomIcon, { backgroundColor: live ? palette.tintSoft : palette.fill2 }]}>
                   {info?.cover ? (
                     <NetworkImage source={{ uri: info.cover }} style={styles.roomIcon} resizeMode="cover" />
@@ -566,7 +565,7 @@ export default function BilibiliLiveScreen() {
         windowSize={7}
         removeClippedSubviews
       />
-    </View>
+    </GlassSurface>
   );
 }
 

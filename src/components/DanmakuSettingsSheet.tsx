@@ -11,7 +11,7 @@ import { usePalette, radii, spacing } from '../theme';
 import { typography } from '../theme/typography';
 import { Pill } from './Pill';
 import { Button } from './Button';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 interface Props {
   visible: boolean;
@@ -56,7 +56,7 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={styles.mask} activeOpacity={1} onPress={onClose}>
-        <View
+        <GlassSurface radius={20} role="card"
           style={[
             styles.sheet,
             {
@@ -67,7 +67,6 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
           ]}
           onStartShouldSetResponder={() => true}
         >
-          <GlassBackground radius={20} refract={false} />
           <View style={[styles.handle, { backgroundColor: palette.fill3 }]} />
           <View style={styles.header}>
             <Text style={[typography.headline, { color: palette.label }]}>{t('弹幕设置')}</Text>
@@ -108,7 +107,7 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
               <Button title={t('恢复默认')} onPress={() => reset()} variant="plain" size="sm" />
             </View>
           </ScrollView>
-        </View>
+        </GlassSurface>
       </TouchableOpacity>
     </Modal>
   );

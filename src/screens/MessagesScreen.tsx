@@ -26,7 +26,7 @@ import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 function msgTime(item: any): number {
   const value = Number(item.msgTime || item.messageTime || item.ctime || item.time || item.createTime || 0);
@@ -95,7 +95,7 @@ export default function MessagesScreen() {
 
   const renderMsgItem = useCallback(({ item }: { item: any }) => (
     <FadeInView delay={80} duration={300} distance={8}>
-      <View
+      <GlassSurface radius={20} role="card"
         style={[
           styles.msg,
           {
@@ -105,13 +105,12 @@ export default function MessagesScreen() {
           },
         ]}
       >
-        <GlassBackground radius={20} refract={false} />
         <View style={styles.msgHeader}>
           <Text style={[styles.msgSender, { color: palette.tint }]} numberOfLines={1}>{item.senderName || item.senderNickName || t('成员')}</Text>
           <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
         </View>
         <Text style={[styles.msgBody, { color: palette.labelSecondary }]}>{messageText(item) || t('[空消息]')}</Text>
-      </View>
+      </GlassSurface>
     </FadeInView>
   ), [palette, t]);
 
@@ -120,7 +119,7 @@ export default function MessagesScreen() {
       <ScreenHeader title={t('消息检索')} />
 
       {/* 顶部留白区 */}
-      <View style={styles.topBar}>
+      <GlassSurface radius={20} role="card" style={styles.topBar}>
         {/* 成员选择行卡：48 圆底图标 + 成员名 + 「共 N 位成员」 + chevron */}
         <ScalePressable
           style={[styles.pickerRow, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
@@ -128,7 +127,6 @@ export default function MessagesScreen() {
           pressedScale={0.98}
           activeOpacity={0.9}
         >
-          <GlassBackground radius={20} refract={false} />
           <View style={[styles.pickerAvatar, { backgroundColor: palette.tintSoft }]}>
             <MaterialCommunityIcons name="account-star" color={palette.tint} size={24} />
           </View>
@@ -161,13 +159,12 @@ export default function MessagesScreen() {
             </ScalePressable>
           ) : null}
         </View>
-      </View>
+      </GlassSurface>
 
       {/* 成员选择底部 sheet */}
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <View style={[styles.sheetShade, { backgroundColor: usePageBackground() }]}>
-          <View style={[styles.sheetPanel, { backgroundColor: 'transparent', borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
-            <GlassBackground radius={20} refract={false} />
+          <GlassSurface radius={20} role="card" style={[styles.sheetPanel, { backgroundColor: 'transparent', borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
             {/* 顶部 handle */}
             <View style={styles.sheetHandleWrap}>
               <View style={[styles.sheetHandle, { backgroundColor: palette.fill3 }]} />
@@ -229,7 +226,7 @@ export default function MessagesScreen() {
             >
               <Text style={[typography.headline, { color: palette.label, fontWeight: '600' }]}>{t('关闭')}</Text>
             </ScalePressable>
-          </View>
+          </GlassSurface>
         </View>
       </Modal>
 

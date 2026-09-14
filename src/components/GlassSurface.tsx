@@ -16,7 +16,7 @@
  * 其余全交给库。
  */
 import React from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 import {
   LiquidGlassView,
@@ -99,7 +99,7 @@ function logGlassDiag() {
   }
 }
 
-export interface GlassSurfaceProps {
+export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
   /** 语义角色（选材质），默认 card */
   role?: GlassRole;
   /** 圆角（dp） */
@@ -116,6 +116,8 @@ export interface GlassSurfaceProps {
    * 不给就不染 —— 染色会把浅色底洗成中性灰，是「整片发灰」的主因。
    */
   tintColor?: string;
+  /** 边缘虹彩/色散强度 0–1（Android，对应 Kyant0 的 chromaticAberration） */
+  iridescence?: number;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }
@@ -126,8 +128,10 @@ export function GlassSurface({
   asBackground = false,
   interactive = false,
   tintColor,
+  iridescence,
   style,
   children,
+  ...rest
 }: GlassSurfaceProps) {
   const palette = usePalette();
   const isDark = palette.name === 'dark';
@@ -183,6 +187,7 @@ export function GlassSurface({
       // 浅色 #FAFAFA@40% / 深色 #121212@40% —— 这层浅纱才是"浅色玻璃"的正确实现。
       // 仅在调用方没有明确给 tint 时按主题取默认。
       tintColor={tintColor ?? (isDark ? 'rgba(18,18,18,0.40)' : 'rgba(250,250,250,0.40)')}
+      iridescence={iridescence}
       paused={paused}
       onPipelineReady={(e) => {
         const info = (e as any)?.nativeEvent ?? {};
@@ -193,6 +198,7 @@ export function GlassSurface({
         asBackground ? StyleSheet.absoluteFill : null,
         style,
       ]}
+      {...rest}
     >
       {children}
     </LiquidGlassView>

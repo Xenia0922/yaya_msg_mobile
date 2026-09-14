@@ -33,7 +33,7 @@ import { parseDurationSeconds } from '../utils/duration';
 import { usePalette, radii, radiiAlias } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 type FlipNavProp = StackNavigationProp<RootStackParamList, 'FlipScreen'>;
 type FlipRouteProp = RouteProp<RootStackParamList, 'FlipScreen'>;
@@ -358,8 +358,7 @@ export default function FlipScreen() {
 
         <FadeInView delay={60} duration={300}>
           {/* 成员选择行 */}
-          <View style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-            <GlassBackground radius={20} refract={false} />
+          <GlassSurface radius={20} role="card" style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
             <View style={styles.groupRowTop}>
               <View style={[styles.groupIcon, { backgroundColor: palette.tintSoft }]}>
                 <MaterialCommunityIcons name="account-heart-outline" size={18} color={palette.tint} />
@@ -367,11 +366,10 @@ export default function FlipScreen() {
               <Text style={[styles.groupLabel, { color: palette.label }]}>{t('选择成员')}</Text>
             </View>
             <MemberPicker selectedMember={selectedMember} onSelect={selectMemberForPrice} />
-          </View>
+          </GlassSurface>
 
           {/* 回复形式 */}
-          <View style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-            <GlassBackground radius={20} refract={false} />
+          <GlassSurface radius={20} role="card" style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
             <View style={styles.groupRowTop}>
               <View style={[styles.groupIcon, { backgroundColor: palette.tintSoft }]}>
                 <MaterialCommunityIcons name="message-reply-outline" size={18} color={palette.tint} />
@@ -393,11 +391,10 @@ export default function FlipScreen() {
               })}
             </View>
             {!prices.length ? <Text style={[styles.hint, { color: palette.labelTertiary }]}>{t('选择成员后显示可用的文字、语音、视频翻牌')}</Text> : null}
-          </View>
+          </GlassSurface>
 
           {/* 公开设置 */}
-          <View style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-            <GlassBackground radius={20} refract={false} />
+          <GlassSurface radius={20} role="card" style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
             <View style={styles.groupRowTop}>
               <View style={[styles.groupIcon, { backgroundColor: palette.tintSoft }]}>
                 <MaterialCommunityIcons name="eye-outline" size={18} color={palette.tint} />
@@ -420,11 +417,10 @@ export default function FlipScreen() {
                 );
               })}
             </View>
-          </View>
+          </GlassSurface>
 
           {/* 输入区 */}
-          <View style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-            <GlassBackground radius={20} refract={false} />
+          <GlassSurface radius={20} role="card" style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
             <View style={styles.groupRowTop}>
               <View style={[styles.groupIcon, { backgroundColor: palette.tintSoft }]}>
                 <MaterialCommunityIcons name="pencil-outline" size={18} color={palette.tint} />
@@ -463,7 +459,7 @@ export default function FlipScreen() {
               </View>
             ) : null}
             <Text style={[styles.costHint, { color: palette.labelTertiary }]}>{t('当前最低：{min} 鸡腿', { min: minCost || 0 })}</Text>
-          </View>
+          </GlassSurface>
 
           <View style={styles.sendFooter}>
             <Button title={t('发送翻牌')} variant="filled" size="lg" onPress={sendFlip} disabled={loading} loading={loading} fullWidth />
