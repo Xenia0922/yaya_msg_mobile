@@ -136,22 +136,15 @@ function MainTabBar({
   });
 
   const activeKey = state.routes[state.index]?.name || 'Home';
-  // reactnatively BottomNavigation：库的液态玻璃底栏（替代自制 AppTabBar）
+  // 自制玻璃底栏（LiquidGlassView 真折射），透光可调
   return (
-    <BottomNavigation
-      items={items.map((it) => ({
-        label: it.label,
-        // icon 是 render 函数（跟随 active 色调用它生成节点）
-        icon: typeof it.icon === 'function' ? (it.icon as any)({ color: palette.tint, size: 24 }) : (it.icon as any),
-        value: it.key,
-      }))}
-      value={activeKey}
-      onChange={(key) => {
+    <AppTabBar
+      items={items}
+      activeKey={activeKey}
+      onSelect={(key) => {
         const target = items.find((it) => it.key === key);
         target?.onPress();
       }}
-      glass
-      showLabel
     />
   );
 }

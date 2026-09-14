@@ -113,7 +113,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
             StyleSheet.absoluteFill,
             {
               borderRadius: 28,
-              backgroundColor: isDark ? 'rgba(26,26,32,0.86)' : 'rgba(255,255,255,0.86)',
+              backgroundColor: isDark ? 'rgba(26,26,32,0.38)' : 'rgba(255,255,255,0.32)',
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.7)',
             },
@@ -127,9 +127,9 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
           chromaticAberration={0.12}
           edgeGlowIntensity={0.3}
           edgeWidth={1.5}
-          glassOpacity={isDark ? 0.72 : 0.62}
-          saturation={0.85}
-          brightness={1.05}
+          glassOpacity={isDark ? 0.3 : 0.2}
+          saturation={0.9}
+          brightness={1.08}
           tintColor={isDark ? '#1c1c22' : '#ffffff'}
           glareIntensity={0.5}
           style={StyleSheet.absoluteFill}

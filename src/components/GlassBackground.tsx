@@ -78,8 +78,8 @@ export function GlassBackground({ radius = 20, strong = false, refract = true }:
       blurRadius={listMode ? 30 : strong ? 20 : 26}
       refractionStrength={refract ? (strong ? 0.14 : 0.1) : 0}
       chromaticAberration={refract ? (strong ? 0.12 : 0.09) : 0.03}
-      edgeGlowIntensity={listMode ? 0.9 : strong ? 0.85 : 0.6}
-      edgeWidth={listMode ? 2.6 : strong ? 2.6 : 2.0}
+      edgeGlowIntensity={listMode ? 0.5 : strong ? 0.85 : 0.6}
+      edgeWidth={listMode ? 1.6 : strong ? 2.6 : 2.0}
       glassOpacity={listMode ? 0.42 : strong ? 0.16 : 0.1}
       tintColor={isDark ? '#1b1b21' : '#ffffff'}
       saturation={listMode ? 0.78 : 1}
