@@ -13,19 +13,12 @@ import { GlassSurface } from './GlassSurface';
 
 export interface GlassBackgroundProps {
   radius?: number;
-  /** 强玻璃（大容器 / 需要更强可读性）→ card 材质；否则 chip 材质 */
+  /** 强玻璃（大容器 / 需要更强可读性）→ card 预设；否则 chip 预设 */
   strong?: boolean;
-  /** 是否开启折射（小控件可关，省一次 shader 采样） */
+  /** @deprecated 库作者配方里不调折射开关，保留仅为兼容旧调用点 */
   refract?: boolean;
 }
 
-export function GlassBackground({ radius = 20, strong = false, refract = true }: GlassBackgroundProps) {
-  return (
-    <GlassSurface
-      role={strong ? 'card' : 'chip'}
-      radius={radius}
-      asBackground
-      refraction={refract}
-    />
-  );
+export function GlassBackground({ radius = 20, strong = false }: GlassBackgroundProps) {
+  return <GlassSurface role={strong ? 'card' : 'chip'} radius={radius} asBackground />;
 }

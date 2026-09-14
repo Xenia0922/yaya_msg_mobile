@@ -198,24 +198,23 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         {/* 底栏玻璃材质 */}
         <GlassSurface role="bar" radius={28} asBackground />
 
-        {/* 选中指示器 = 一块真玻璃（带边缘色散），并做「拖动放大」。
-            色调分工与用户确认过的观感一致：底栏面 = 浅奶白（GlassSurface 的白纱定色），
-            选中态 = 玻璃本体（色散 + 拖动时放大）。
-            注意：不能用库的 interactive —— 触摸被底栏的 PanResponder 接管了，
-            放大由这里的 scale 动画自己出。 */}
+        {/* 选中指示器 = 「同一块材质里更实的一块」，**不做第二层玻璃**。
+            库作者的性能规则明确写「不要玻璃叠玻璃」——每叠一层就多抓一次 backdrop + 多跑一遍
+            shader；苹果的实现也是同材质内的差异，而非两块玻璃。所以这里用普通染色胶囊，
+            跟手位移与拖动放大由 native driver 出，零额外 GPU 成本。
+            （interactive 不用：触摸已被底栏 PanResponder 接管） */}
         <Animated.View
           pointerEvents="none"
           style={[
             styles.indicator,
             {
               width: CELL_W,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.74)',
+              borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.9)',
               transform: [{ translateX: indX }, { scale: dragScale }],
             },
           ]}
-        >
-          {/* 全屏唯一上真玻璃的地方之一：选中态（透明折射 + 边缘色散，拖动放大） */}
-          <GlassSurface role="selector" radius={999} />
-        </Animated.View>
+        />
 
         {items.map((item, i) => (
           <TabCell
@@ -257,12 +256,14 @@ const styles = StyleSheet.create({
       default: null,
     }),
   },
-  /** 选中指示器：绝对定位 + 由 translateX / scale 驱动（native driver），视觉全交给玻璃 */
+  /** 选中指示器：绝对定位 + translateX/scale 驱动（native driver），普通染色胶囊 */
   indicator: {
     position: 'absolute',
     top: 6,
     bottom: 6,
     left: BAR_PAD,
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   cell: {
