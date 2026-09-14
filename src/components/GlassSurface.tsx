@@ -76,14 +76,14 @@ const ROLE_VARIANT: Partial<Record<GlassRole, 'regular' | 'clear'>> = {
  * 浅色底上就是"超级磨砂"，这里统一压到 26~40。
  */
 const ROLE_INTENSITY: Record<GlassRole, number> = {
-  card: 32,
-  chip: 32,
-  bar: 32,
-  header: 36,
-  selector: 28,
-  toast: 40,
-  modal: 50,
-  hero: 26,
+  card: 48,
+  chip: 48,
+  bar: 50,
+  header: 50,
+  selector: 45,
+  toast: 52,
+  modal: 58,
+  hero: 44,
 };
 
 /**
@@ -214,7 +214,7 @@ export function GlassSurface({
       // Kyant0 LiquidBottomTabs 的底栏表面色（onDrawSurface 画的那层）：
       // 浅色 #FAFAFA@40% / 深色 #121212@40% —— 这层浅纱才是"浅色玻璃"的正确实现。
       // 仅在调用方没有明确给 tint 时按主题取默认。
-      tintColor={tintColor ?? (isDark ? 'rgba(18,18,18,0.28)' : 'rgba(250,250,250,0.20)')}
+      tintColor={tintColor ?? (isDark ? 'rgba(20,20,26,0.62)' : 'rgba(255,255,255,0.58)')}
       iridescence={iridescence}
       paused={paused}
       onPipelineReady={(e) => {
