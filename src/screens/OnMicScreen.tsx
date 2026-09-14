@@ -18,7 +18,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOnMicStore, OnMicEntry } from '../store/onMicStore';
 import { Member } from '../types';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 export default function OnMicScreen() {
   const palette = usePalette();
@@ -81,7 +81,7 @@ export default function OnMicScreen() {
     const member = members.find((m: any) => String(m.id || m.userId) === item.memberId);
     return (
       <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300} style={{ marginHorizontal: 16, marginTop: index === 0 ? 12 : 8 }}>
-        <TouchableOpacity
+        <GlassSurface radius={20} role="card"
           style={[styles.row, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
           onPress={() => member && navigation.navigate('RoomRadioScreen', {
             member,
@@ -90,7 +90,6 @@ export default function OnMicScreen() {
           })}
           activeOpacity={0.9}
         >
-          <GlassBackground radius={20} refract={false} />
           {member?.avatar ? (
             <Image source={{ uri: member.avatar }} style={styles.avatar} />
           ) : (
@@ -115,7 +114,7 @@ export default function OnMicScreen() {
             </View>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
-        </TouchableOpacity>
+        </GlassSurface>
       </FadeInView>
     );
   };
@@ -124,13 +123,12 @@ export default function OnMicScreen() {
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <ScreenHeader title={t('上麦')} />
       {scanning ? (
-        <View style={[styles.scanBar, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-          <GlassBackground radius={20} refract={false} />
+        <GlassSurface radius={20} role="card" style={[styles.scanBar, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
           <ActivityIndicator size="small" color={palette.tint} style={{ marginRight: 8 }} />
           <Text style={[styles.scanBarText, { color: palette.labelSecondary }]}>
             {t('正在扫描全部成员上麦状态 {done}/{total}...', { done: Math.min(scanDone, scanTotal), total: scanMemberTotal || scanTotal })}
           </Text>
-        </View>
+        </GlassSurface>
       ) : null}
       {error && entries.length === 0 ? (
         <EmptyState icon="alert-circle-outline" title={t('加载失败')} hint={error} onAction={() => scan({ force: true })} />

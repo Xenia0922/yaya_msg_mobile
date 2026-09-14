@@ -47,7 +47,7 @@ import { Button } from '../components/Button';
 import { Skeleton } from '../components/Skeleton';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { translate, useI18n } from '../i18n';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 /** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
@@ -197,8 +197,7 @@ function CalendarSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.calMask} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.calSheet, { backgroundColor: 'transparent', borderColor: palette.innerStroke }]} onStartShouldSetResponder={() => true}>
-          <GlassBackground radius={20} refract={false} />
+        <GlassSurface radius={20} role="card" style={[styles.calSheet, { backgroundColor: 'transparent', borderColor: palette.innerStroke }]} onStartShouldSetResponder={() => true}>
           <View style={styles.calHeader}>
             <TouchableOpacity onPress={() => setView(new Date(year, month - 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }} activeOpacity={0.7}>
               <MaterialCommunityIcons name="chevron-left" size={24} color={palette.label} />
@@ -236,7 +235,7 @@ function CalendarSheet({
               <Text style={[styles.calTodayText, { color: palette.onTint }]}>{t('今天')}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </GlassSurface>
       </TouchableOpacity>
     </Modal>
   );
@@ -1588,8 +1587,7 @@ export default function MediaScreen() {
 
         <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.modalShade}>
-            <View style={[styles.giftPanel, { backgroundColor: 'transparent' }]}>
-              <GlassBackground radius={20} refract={false} />
+            <GlassSurface radius={20} role="card" style={[styles.giftPanel, { backgroundColor: 'transparent' }]}>
               <View style={styles.giftHeader}>
                 <Text style={[styles.giftTitle, { color: palette.label }]}>{t('直播送礼')}</Text>
                 <TouchableOpacity onPress={() => setGiftVisible(false)} activeOpacity={0.8}>
@@ -1646,13 +1644,12 @@ export default function MediaScreen() {
               >
                 <Text style={[styles.rechargeText, { color: palette.tint }]}>{t('余额不足？去充值鸡腿')}</Text>
               </TouchableOpacity>
-            </View>
+            </GlassSurface>
           </View>
         </Modal>
         <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
           <View style={styles.modalShade}>
-            <View style={[styles.giftPanel, { backgroundColor: 'transparent' }]}>
-              <GlassBackground radius={20} refract={false} />
+            <GlassSurface radius={20} role="card" style={[styles.giftPanel, { backgroundColor: 'transparent' }]}>
               <View style={styles.giftHeader}>
                 <Text style={[styles.giftTitle, { color: palette.label }]}>{t('贡献榜')}</Text>
                 <TouchableOpacity onPress={() => setRankVisible(false)} activeOpacity={0.8}>
@@ -1672,7 +1669,7 @@ export default function MediaScreen() {
                   </View>
                 ))}
               </ScrollView>
-            </View>
+            </GlassSurface>
           </View>
         </Modal>
         <DanmakuSettingsSheet visible={showDanmakuSettings} onClose={() => setShowDanmakuSettings(false)} />
@@ -1692,8 +1689,7 @@ export default function MediaScreen() {
         }
       />
       {/* 直播/录播分段控件 */}
-      <View style={[styles.segmentWrap, { backgroundColor: 'transparent', borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
-        <GlassBackground radius={999} refract={false} />
+      <GlassSurface radius={999} role="card" style={[styles.segmentWrap, { backgroundColor: 'transparent', borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
         {(['live', 'vod'] as const).map((key) => {
           const active = tab === key;
           return (
@@ -1709,7 +1705,7 @@ export default function MediaScreen() {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </GlassSurface>
       {/* 单行筛选：分组 chips + 搜索图标 */}
       <View style={styles.filterRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupRowContent}>
@@ -1842,12 +1838,11 @@ export default function MediaScreen() {
                 const meta = [it.nickname, formatTimestamp(it.startTime).slice(0, 16)].filter(Boolean).join(' · ');
                 return (
                   <FadeInView duration={300} style={styles.vodGridItem}>
-                    <TouchableOpacity
+                    <GlassSurface radius={20} role="card"
                       style={[styles.vodGridCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                       onPress={() => startPlay(it)}
                       activeOpacity={0.88}
                     >
-                      <GlassBackground radius={20} refract={false} />
                       <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                         {coverUrl ? (
                           <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
@@ -1890,7 +1885,7 @@ export default function MediaScreen() {
                           ) : null}
                         </View>
                       </View>
-                    </TouchableOpacity>
+                    </GlassSurface>
                   </FadeInView>
                 );
               };
@@ -1906,12 +1901,11 @@ export default function MediaScreen() {
             const meta = [item.nickname, formatTimestamp(item.startTime).slice(0, 16)].filter(Boolean).join(' · ');
             return (
               <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300} style={styles.vodGridItem}>
-                <TouchableOpacity
+                <GlassSurface radius={20} role="card"
                   style={[styles.vodGridCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                   onPress={() => startPlay(item)}
                   activeOpacity={0.88}
                 >
-                  <GlassBackground radius={20} refract={false} />
                   <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                     {coverUrl ? (
                       <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
@@ -1960,7 +1954,7 @@ export default function MediaScreen() {
                       ) : null}
                     </View>
                   </View>
-                </TouchableOpacity>
+                </GlassSurface>
               </FadeInView>
             );
           }}

@@ -28,7 +28,7 @@ import CoverArt from './CoverArt';
 import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 interface Props {
   onOpenFullScreen?: () => void;
@@ -168,7 +168,7 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
   if (!track || playbackState === 'idle') return null;
 
   return (
-    <Animated.View
+    <GlassSurface radius={20} role="card"
       style={[
         styles.bar,
         shadows.md,
@@ -185,7 +185,6 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
       ]}
       {...panResponder.panHandlers}
     >
-      <GlassBackground radius={20} refract={false} />
       <View
         ref={progRef}
         style={styles.progressBar}
@@ -253,7 +252,7 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
           </Pressable>
         </View>
       </Pressable>
-    </Animated.View>
+    </GlassSurface>
   );
 }
 

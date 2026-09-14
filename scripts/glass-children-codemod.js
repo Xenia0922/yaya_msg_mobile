@@ -76,7 +76,14 @@ for (const file of files) {
   for (let j = 0; j < lines.length; j++) {
     if (glassSet.has(j)) continue; // 丢掉 GlassBackground 行
     if (openMap.has(j)) {
-      out.push(lines[j].replace('<View', `<GlassSurface radius={${openMap.get(j).radius}} role="card"`));
+      const s = openMap.get(j);
+      // 开标签按实际容器标签替换（View/TouchableOpacity/ScalePressable/Pressable/Animated.View）
+      out.push(
+        lines[j].replace(
+          new RegExp(`^([\\s]*)<${s.tag}`),
+          `$1<GlassSurface radius={${s.radius}} role="card"`,
+        ),
+      );
     } else if (closeMap.has(j)) {
       const s = closeMap.get(j);
       out.push(lines[j].replace(new RegExp(`</${s.tag}>`), '</GlassSurface>'));

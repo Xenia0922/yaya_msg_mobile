@@ -31,7 +31,7 @@ import pocketApi from '../api/pocket48';
 import { usePalette, usePageBackground } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 function convTargetId(conv: any): string {
   return String(conv?.targetUserId || conv?.user?.userId || conv?.userId || '');
@@ -662,8 +662,7 @@ export default function PrivateMessagesScreen() {
           ListEmptyComponent={loading ? null : <EmptyState icon="message-text-outline" title={t('暂无消息')} />}
         />
         {member ? (
-          <View style={[styles.flipBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
-            <GlassBackground radius={20} refract={false} />
+          <GlassSurface radius={20} role="card" style={[styles.flipBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
             <Text style={[styles.flipName, { color: palette.labelSecondary }]}>{t('{name} 翻牌', { name: member.ownerName || '' })}</Text>
             <View style={styles.flipRow}>
               {prices.slice(0, 3).map((p) => (
@@ -693,10 +692,9 @@ export default function PrivateMessagesScreen() {
                 <Text style={[styles.flipRechargeT, { color: palette.onTint }]}>{t('充值')}</Text>
               </ScalePressable>
             </View>
-          </View>
+          </GlassSurface>
         ) : null}
-        <View style={[styles.inputBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
-          <GlassBackground radius={20} refract={false} />
+        <GlassSurface radius={20} role="card" style={[styles.inputBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
           {flipType > 0 ? <Text style={[styles.flipLabel, { color: palette.tint }]}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
             <TextInput
@@ -711,7 +709,7 @@ export default function PrivateMessagesScreen() {
               <Text style={[styles.sendT, { color: palette.onTint }]}>{loading ? '..' : flipType ? t('翻牌') : t('发送')}</Text>
             </ScalePressable>
           </View>
-        </View>
+        </GlassSurface>
         </View>
       </KeyboardAvoidingView>
     );
@@ -749,7 +747,7 @@ export default function PrivateMessagesScreen() {
             return (
               <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <View style={styles.convRowWrap}>
-                <TouchableOpacity
+                <GlassSurface radius={20} role="card"
                   style={[
                     styles.convCard,
                     { backgroundColor: 'transparent', borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 },
@@ -757,7 +755,6 @@ export default function PrivateMessagesScreen() {
                   onPress={() => openConv(conv)}
                   activeOpacity={0.88}
                 >
-                  <GlassBackground radius={20} refract={false} />
                   <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
                     {convAvatarUrl ? (
                       <Image source={{ uri: convAvatarUrl }} style={styles.convAvatarImg} resizeMode="cover" />
@@ -781,7 +778,7 @@ export default function PrivateMessagesScreen() {
                       )}
                     </View>
                   </View>
-                </TouchableOpacity>
+                </GlassSurface>
                 <View style={styles.convActions}>
                   {isPinned && pinnedConvs.length > 1 ? (
                     <View style={styles.pinMoveCol}>

@@ -27,7 +27,7 @@ import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { usePalette } from '../theme';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 interface OpenLiveItem {
   key: string;
@@ -322,15 +322,14 @@ export default function OpenLiveScreen() {
             loading ? (
               <View style={styles.skeletonWrap}>
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <View key={i} style={[styles.skeletonCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-                    <GlassBackground radius={20} refract={false} />
+                  <GlassSurface radius={20} role="card" key={i} style={[styles.skeletonCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
                     <Skeleton width={56} height={56} radius={12} />
                     <View style={{ marginLeft: 12, flex: 1 }}>
                       <Skeleton width="70%" height={13} />
                       <Skeleton width="40%" height={10} style={{ marginTop: 8 }} />
                       <Skeleton width="50%" height={10} style={{ marginTop: 8 }} />
                     </View>
-                  </View>
+                  </GlassSurface>
                 ))}
               </View>
             ) : listError ? (
@@ -349,14 +348,13 @@ export default function OpenLiveScreen() {
           ) : null}
           renderItem={({ item, index }) => (
             <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
-              <ScalePressable
+              <GlassSurface radius={20} role="card"
                 style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
                 activeOpacity={0.85}
                 pressedScale={0.97}
                 onPress={() => playItem(item)}
                 onLongPress={() => downloadItem(item)}
               >
-                <GlassBackground radius={20} refract={false} />
                 {item.cover ? (
                   <Image source={{ uri: item.cover }} style={[styles.cover, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
                 ) : (
@@ -376,7 +374,7 @@ export default function OpenLiveScreen() {
                   </View>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} style={styles.chevron} />
-              </ScalePressable>
+              </GlassSurface>
             </FadeInView>
           )}
         />

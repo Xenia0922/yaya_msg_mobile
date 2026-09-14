@@ -108,6 +108,8 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const indX = useRef(new Animated.Value(activeIndex * CELL_W)).current;
   const indXRef = useRef(activeIndex * CELL_W);
   const startXRef = useRef(0);
+  /** 拖动时选中玻璃"液化"：跟随拖动距离横向拉长（苹果/Kyant0 拖动的形变） */
+  const dragStretch = useRef(new Animated.Value(1)).current;
   /** 拖动时选中玻璃放大（对应 Apple「按住拖动时玻璃膨起」） */
   const dragScale = useRef(new Animated.Value(1)).current;
   const scaleTo = useCallback(
@@ -159,12 +161,16 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         hoverRef.current = Math.round(indXRef.current / CELL_W);
         setHoverIndex(hoverRef.current);
         scaleTo(1.12);
+        dragStretch.setValue(1.06);
       },
       onPanResponderMove: (_, g) => {
         const limit = Math.max(0, (itemsRef.current.length - 1) * CELL_W);
         const nx = Math.min(limit, Math.max(0, startXRef.current + g.dx));
         indXRef.current = nx;
         indX.setValue(nx);
+        // 液化：拖得越远，胶囊沿拖动方向拉得越长（iOS 26 拖动的形变）
+        const moved = Math.abs(nx - startXRef.current) / CELL_W;
+        dragStretch.setValue(Math.min(1.9, 1.06 + moved * 0.62));
         const h = Math.round(nx / CELL_W);
         if (h !== hoverRef.current) {
           hoverRef.current = h;
@@ -178,6 +184,8 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         setHoverIndex(null);
         settle(h * CELL_W);
         scaleTo(1);
+        dragStretch.setValue(1);
+        Animated.spring(dragStretch, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: true }).start();
         const target = itemsRef.current[h];
         if (target && target.key !== activeKeyRef.current) onSelectRef.current(target.key);
       },
@@ -186,6 +194,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         setHoverIndex(null);
         settle(activeIndexRef.current * CELL_W);
         scaleTo(1);
+        Animated.spring(dragStretch, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: true }).start();
       },
     }),
   ).current;
@@ -209,7 +218,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               styles.indicator,
               {
                 width: CELL_W,
-                transform: [{ translateX: indX }, { scale: dragScale }],
+                transform: [{ translateX: indX }, { scaleX: dragStretch }, { scaleY: dragScale }],
               },
             ]}
           >
@@ -217,7 +226,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               role="selector"
               radius={999}
               tintColor={isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)'}
-              iridescence={0.45}
+              iridescence={0.6}
             />
           </Animated.View>
           {items.map((item, i) => (

@@ -24,7 +24,7 @@ import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 const ANIM_DURATION = 300;
 
@@ -304,7 +304,7 @@ function FullScreenPlayerInner({
       </Animated.View>
       <Modal visible={showQueue} transparent animationType="slide" onRequestClose={() => setShowQueue(false)}>
         <TouchableOpacity style={styles.queueMask} activeOpacity={1} onPress={() => setShowQueue(false)}>
-          <View
+          <GlassSurface radius={20} role="card"
             style={[
               styles.queueSheet,
               {
@@ -315,7 +315,6 @@ function FullScreenPlayerInner({
             ]}
             onStartShouldSetResponder={() => true}
           >
-            <GlassBackground radius={20} refract={false} />
             <View style={[styles.queueHandle, { backgroundColor: palette.fill3 }]} />
             <View style={styles.queueHeader}>
               <Text style={[typography.headline, { color: palette.label }]}>{t('播放列表（{count}）', { count: queue.length })}</Text>
@@ -363,7 +362,7 @@ function FullScreenPlayerInner({
                 );
               }}
             />
-          </View>
+          </GlassSurface>
         </TouchableOpacity>
       </Modal>
     </View>

@@ -54,7 +54,7 @@ import { enqueueDownload } from '../services/downloads';
 import { memberSearchText } from '../utils/members';
 import { getBgDisplayUri, ensureBgCached } from '../services/roomBgCache';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 type FollowedRoom = {
   memberId: string;
   member?: Member;
@@ -2197,8 +2197,7 @@ export default function FollowedRoomsScreen() {
             />
             <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
               <View style={styles.roomModalShade}>
-                <View style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
-                  <GlassBackground radius={22} />
+                <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
                   {/* 顶部 handle */}
                   <View style={styles.roomRankHandleWrap}>
                     <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
@@ -2235,13 +2234,12 @@ export default function FollowedRoomsScreen() {
                       });
                     })()}
                   </ScrollView>
-                </View>
+                </GlassSurface>
               </View>
             </Modal>
             <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
               <View style={styles.roomModalShade}>
-                <View style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
-                  <GlassBackground radius={22} />
+                <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
                   <View style={styles.roomRankHandleWrap}>
                     <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
                   </View>
@@ -2292,7 +2290,7 @@ export default function FollowedRoomsScreen() {
                       <Text style={styles.liveResolveBtnText}>{t('发送')}</Text>
                     </ScalePressable>
                   </View>
-                </View>
+                </GlassSurface>
               </View>
             </Modal>
           </View>
@@ -2547,7 +2545,7 @@ export default function FollowedRoomsScreen() {
               const name = shortName(member, mid);
               return (
                 <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.memberGridItem}>
-                  <TouchableOpacity
+                  <GlassSurface radius={20} role="card"
                     style={[
                       styles.memberHitCard,
                       { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
@@ -2555,7 +2553,6 @@ export default function FollowedRoomsScreen() {
                     onPress={() => openRoom(member)}
                     activeOpacity={0.88}
                   >
-                    <GlassBackground radius={20} refract={false} />
                     <View style={[styles.memberHitAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
                       {member.avatar ? (
                         <Image source={{ uri: member.avatar }} style={styles.memberHitAvatarImg} />
@@ -2582,7 +2579,7 @@ export default function FollowedRoomsScreen() {
                         </Text>
                       )}
                     </TouchableOpacity>
-                  </TouchableOpacity>
+                  </GlassSurface>
                 </FadeInView>
               );
             }}
@@ -2613,8 +2610,7 @@ export default function FollowedRoomsScreen() {
             const isOnMic = !isLiveNow && !!onMicMap[mid];
             return (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.roomRow}>
-              <View style={[styles.roomRowCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
-                <GlassBackground radius={20} refract={false} />
+              <GlassSurface radius={20} role="card" style={[styles.roomRowCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
                 <ScalePressable
                   style={styles.roomRowMain}
                   onPress={() => item.member && openRoom(item.member)}
@@ -2751,7 +2747,7 @@ export default function FollowedRoomsScreen() {
                     )}
                   </ScalePressable>
                 </View>
-              </View>
+              </GlassSurface>
             </FadeInView>
             );
           }}
