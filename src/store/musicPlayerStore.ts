@@ -104,6 +104,13 @@ interface MusicPlayerState {
    * 不持久化（持久化 seek 位置通过 position 字段实现）。
    */
   seekTarget: number;
+  /**
+   * seek 粘滞守卫（根因修复「进度条回弹」）：
+   * seek 发出瞬间记住「旧位置」与时间戳；守卫窗口内，若播放器仍在上报旧位置
+   * （离目标比出发时更远），就丢弃该上报——否则进度条会先跳到目标、再被旧值拽回去。
+   */
+  seekFrom: number;
+  seekIssuedAt: number;
 
   // Actions
   setQueue: (tracks: Track[]) => void;
@@ -157,6 +164,8 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       error: null,
       favorites: [],
       seekTarget: 0,
+      seekFrom: 0,
+      seekIssuedAt: 0,
 
       setQueue: (tracks) => set({ queue: tracks, currentIndex: tracks.length > 0 ? 0 : -1 }),
 
@@ -200,6 +209,8 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
           lyrics: [],
           error: null,
           seekTarget: resumePos,
+          seekFrom: s.position,
+          seekIssuedAt: resumePos > 0 ? Date.now() : 0,
         };
       }),
 
@@ -215,13 +226,31 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
 
       setDuration: (duration) => set({ duration }),
 
-      setPosition: (position) => set({ position }),
+      /**
+       * 位置上报唯一入口（原生 onProgress / Exo 回调都走这里）。
+       *
+       * seek 粘滞守卫：seek 发出后的守卫窗口内，只接受「离目标不比出发时更远」的上报；
+       * 播放器还没真正跳过去时上报的旧位置一律丢弃 —— 这才是「进度条回弹」的根因修复，
+       * 上层不需要再写 heldRatio 之类的补丁（补丁会在超时后照样弹一次）。
+       */
+      setPosition: (position) => {
+        const s = get();
+        const GUARD_MS = 1500;
+        if (s.seekIssuedAt > 0 && Date.now() - s.seekIssuedAt < GUARD_MS) {
+          const dNow = Math.abs(position - s.seekTarget);
+          const dFrom = Math.abs(s.seekFrom - s.seekTarget) + 0.3;
+          if (dNow > dFrom) return; // 旧位置（还没跳到目标）→ 丢弃，防回弹
+        }
+        set({ position });
+      },
 
       setLyrics: (lyrics) => set({ lyrics }),
 
       setError: (error) => set({ error, playbackState: error ? 'error' : 'idle' }),
 
-      setSeekTarget: (seekTarget) => set({ seekTarget }),
+      /** 下发 seek 指令，并记录「出发位置 + 时间戳」给 setPosition 的粘滞守卫用 */
+      setSeekTarget: (seekTarget) =>
+        set((s) => ({ seekTarget, seekFrom: s.position, seekIssuedAt: Date.now() })),
 
       /**
        * B7 收藏键归一：收藏统一存 `title|artist` 键（旧数据仍为 musicId，双兼容）——

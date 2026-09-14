@@ -1,10 +1,9 @@
 /**
  * AppTabBar · iOS 26 Liquid Glass 底栏
- *  - 玻璃感悬浮胶囊（半透明 + 1px 内描边）
+ *  - 悬浮胶囊底栏，材质走 GlassSurface（floatingTabBar 预设：全厚度 + 活边）
  *  - 5 个 tab：图标 + label，label 常驻显示
- *  - active 项：玻璃 tint 胶囊 + accent 字 + 图标 spring 弹跳
- *  - Spring 按压反馈
- *  - 安全留白底部 inset
+ *  - active 项：中性玻璃灰胶囊 + accent 字 + 图标 spring 弹跳
+ *  - Spring 按压反馈 / 安全留白底部 inset
  *
  * 注：受 React Navigation 限制，render tabBar 由 Tab.Navigator 的 `tabBar` prop 调用此组件。
  *     此组件自管事件 onTabPress(index)、当前 activeIndex。
@@ -18,10 +17,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import { LiquidGlassView, LIQUID_GLASS_FROSTED } from '@uginy/react-native-liquid-glass';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassSurface } from './GlassSurface';
 import { usePalette, motion } from '../theme';
 import { typography } from '../theme/typography';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export interface TabBarItem {
   key: string;
@@ -96,44 +95,12 @@ function TabCell({
 }
 
 export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
-  const palette = usePalette();
-  const isDark = palette.name === 'dark';
-  // 苹果式磨砂玻璃：真模糊(Android 12+ RenderEffect, expo-blur) + 半透 tint + 顶部细高光
-  // 背景图/滚动内容透到胶囊下方被模糊；无内容时柔化的主题色 + 高光依然有玻璃观感
   return (
-    <View
-      pointerEvents="box-none"
-      style={[styles.outer, { paddingBottom: 16 }]}
-    >
-      <View style={[styles.bar, { backgroundColor: 'transparent' }]}>
-        {/* 保底材质：库在部分设备/模拟器不渲染，这层保证底栏始终「实」→ 文字不重影 */}
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              borderRadius: 28,
-              backgroundColor: isDark ? 'rgba(26,26,32,0.38)' : 'rgba(255,255,255,0.32)',
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.7)',
-            },
-          ]}
-        />
-        <LiquidGlassView
-          {...LIQUID_GLASS_FROSTED}
-          cornerRadius={28}
-          blurRadius={26}
-          refractionStrength={0.16}
-          chromaticAberration={0.12}
-          edgeGlowIntensity={0.3}
-          edgeWidth={1.5}
-          glassOpacity={isDark ? 0.3 : 0.2}
-          saturation={0.9}
-          brightness={1.08}
-          tintColor={isDark ? '#1c1c22' : '#ffffff'}
-          glareIntensity={0.5}
-          style={StyleSheet.absoluteFill}
-        />
+    <View pointerEvents="box-none" style={[styles.outer, { paddingBottom: 16 }]}>
+      <View style={styles.bar}>
+        {/* 玻璃底：单一材质出口（floatingTabBar 预设）。旧的「保底白膜 + 手绘高光 + AGSL」
+            三层已被替换——那套叠加会产生硬边界与灰罩。 */}
+        <GlassSurface role="bar" radius={28} asBackground />
         {items.map((item) => {
           const active = item.key === activeKey;
           return (
@@ -157,18 +124,15 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'center',
-    // 居中略加余量：上一版 paddingHorizontal 12 让胶囊贴边感觉偏左
     paddingHorizontal: 16,
   },
   bar: {
     flexDirection: 'row',
-    // 长度自适应内容而非撑满屏宽：定宽 cell → 胶囊收短居中(缩「长度」)
     borderRadius: 28,
     paddingVertical: 6,
     paddingHorizontal: 8,
     minHeight: 64,
     overflow: 'hidden',
-    // 连续柔和悬浮投影（iOS+Android 双端都圆角, 圆角32 跟随 outline）
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -180,32 +144,12 @@ const styles = StyleSheet.create({
       default: null,
     }),
   },
-  // 玻璃顶部受光细线（在胶囊内顶部 1px, inset 跟随圆角）
-  glassHighlight: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    top: 0,
-    height: 1,
-    borderRadius: 1,
-  },
-  // 玻璃底部暗边（1px 内阴影, 玻璃与下方内容的分界, inset 跟随圆角）
-  glassShadowEdge: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 0,
-    height: 1,
-    borderRadius: 1,
-  },
   cell: {
-    // 取消 flex:1 → 改固定宽, 胶囊随内容收短(用户反馈: 缩的是「长度」)
     width: 76,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
     paddingHorizontal: 4,
-    // 完全 pill（半径=一半高）：选中时圆形指示感 iOS 26
     borderRadius: 28,
   },
   cellIcon: { alignItems: 'center', justifyContent: 'center' },

@@ -84,10 +84,6 @@ function FullScreenPlayerInner({
   const [dragRatio, setDragRatio] = useState<number | null>(null);
   const dragRatioRef = useRef<number>(0);
   const gestureActive = useRef(false);
-  // 松手后的保持目标：播放器位置追上之前进度不回落（去「双击回退/回弹」）
-  const [heldRatio, setHeldRatio] = useState<number | null>(null);
-  const heldRatioRef = useRef<number | null>(null);
-  const heldTimeRef = useRef(0);
   const [showQueue, setShowQueue] = useState(false);
 
   // 用 pageX - 条起点换算：locationX 在 Android 上相对「事件目标视图」，
@@ -107,8 +103,6 @@ function FullScreenPlayerInner({
     gestureActive.current = true;
     if (progRaf.current) cancelAnimationFrame(progRaf.current);
     progRaf.current = 0;
-    heldRatioRef.current = null;
-    setHeldRatio(null);
     dragRatioRef.current = r;
     pendingRatio.current = r;
     setDragRatio(r);
@@ -131,26 +125,20 @@ function FullScreenPlayerInner({
     progRaf.current = 0;
     const r = dragRatioRef.current;
     if (gestureActive.current && duration > 0) {
-      useMusicPlayerStore.getState().setSeekTarget(r * duration);
-      // 松手后保持目标进度直到播放器追上，避免进度条回弹
-      heldRatioRef.current = r;
-      heldTimeRef.current = Date.now();
-      setHeldRatio(r);
+      const target = r * duration;
+      const st = useMusicPlayerStore.getState();
+      st.setSeekTarget(target);
+      // 乐观写：进度条立即停在松手位置。
+      // 「回弹」的根因修复在 store.setPosition 的 seek 粘滞守卫里 ——
+      // 播放器还没真正跳过去时上报的旧位置会被丢弃，这里不再需要 heldRatio 补丁。
+      st.setPosition(target);
     }
     gestureActive.current = false;
     dragRatioRef.current = 0;
     pendingRatio.current = 0;
     setDragRatio(null);
   };
-  // 播放器追上目标（或 2.5s 超时）后释放保持
-  useEffect(() => {
-    if (heldRatio == null) return;
-    if (Math.abs(progress - heldRatio) < 0.012 || Date.now() - heldTimeRef.current > 2500) {
-      heldRatioRef.current = null;
-      setHeldRatio(null);
-    }
-  }, [progress, heldRatio]);
-  const shownRatio = dragRatio ?? heldRatio ?? progress;
+  const shownRatio = dragRatio ?? progress;
 
   const [showLyrics, setShowLyrics] = useState(false);
   const [lyricSize, setLyricSize] = useState(17);

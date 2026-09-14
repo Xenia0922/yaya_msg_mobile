@@ -42,7 +42,6 @@ import MemberDynamicScreen from '../screens/MemberDynamicScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { ReactnativelyProvider, BottomNavigation } from 'reactnatively';
 import { ui } from '../theme/ui';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useI18n } from '../i18n';
@@ -256,7 +255,6 @@ export default function AppNavigator() {
 
   return (
     <ErrorBoundary>
-    <ReactnativelyProvider>
     <>
       {hasBackground ? (
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -312,7 +310,6 @@ export default function AppNavigator() {
       </>
       </NavigationContainer>
     </>
-</ReactnativelyProvider>
     </ErrorBoundary>
   );
 }

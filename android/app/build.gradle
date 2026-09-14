@@ -13,7 +13,10 @@ def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 react {
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
     reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    // RN 0.83 起 hermesc 由独立的 hermes-compiler 包提供，会按 PathUtils 的解析顺序自动找到
+    // （node_modules/react-native/sdks/hermesc 已不再随包发布）。
+    // 此处**不要**显式指定 hermesCommand —— Expo 54 模板留下的旧路径会导致
+    // 「Copying asset files → 系统找不到指定的路径」而打包失败。
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
     enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
@@ -201,13 +204,49 @@ android {
     }
 }
 
+/**
+ * 强制剥离 reanimated 的 .so —— 体积红线（分包 ≤50MB）的关键一步。
+ *
+ * 背景：react-native-reanimated/android/build.gradle 里写了 `doNotStrip "** /** /*.so"`，
+ * 使它的 RelWithDebInfo 未剥离库直接进包：libreanimated.so 单文件在 arm64/x86_64 上
+ * 高达 34MB（剥离后仅 1MB 级），直接顶爆分包红线。
+ * AGP 的 stripReleaseDebugSymbols 会尊重 doNotStrip，所以这里在它跑完后补一刀。
+ */
+tasks.matching { it.name == 'stripReleaseDebugSymbols' }.configureEach { t ->
+    t.doLast {
+        def isWin = org.gradle.internal.os.OperatingSystem.current().isWindows()
+        def stripName = isWin ? 'llvm-strip.exe' : 'llvm-strip'
+        def ndk = android.ndkDirectory
+        def stripExe = new File(ndk, "toolchains/llvm/prebuilt/${isWin ? 'windows-x86_64' : 'linux-x86_64'}/bin/${stripName}")
+        if (!stripExe.exists()) {
+            println "WARNING: llvm-strip not found at ${stripExe}; APK may ship unstripped reanimated libs"
+            return
+        }
+        def outRoot = new File(project.buildDir, 'intermediates/stripped_native_libs/release/stripReleaseDebugSymbols/out/lib')
+        if (!outRoot.exists()) return
+        def stripped = 0
+        outRoot.eachDir { abiDir ->
+            abiDir.eachFile { f ->
+                if (f.name.endsWith('.so') && f.length() > 4 * 1024 * 1024) {
+                    try {
+                        exec { commandLine stripExe.absolutePath, '--strip-unneeded', f.absolutePath }
+                        stripped++
+                    } catch (Exception e) {
+                        println "WARNING: strip failed for ${f.name}: ${e.message}"
+                    }
+                }
+            }
+        }
+        if (stripped > 0) println "stripped ${stripped} oversized .so (reanimated doNotStrip workaround)"
+    }
+}
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
     // 与 react-android 同版 okhttp：MainApplication 用其 Interceptor 覆写 bilibili 请求的桌面 UA
     implementation("com.squareup.okhttp3:okhttp:4.9.2")
-    // iOS 26 液态玻璃（真折射/色散，Android 13+；QmDeve/AndroidLiquidGlassView）
-    implementation("com.qmdeve.liquidglass:core:1.0.3")
+    // iOS 26 液态玻璃：由 react-native-liquid-glassmorphism 自带 AGSL 实现（无第三方 AAR）
     implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
     implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
     implementation("com.google.android.exoplayer:extension-rtmp:2.19.1")

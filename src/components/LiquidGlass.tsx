@@ -1,22 +1,16 @@
 /**
  * LiquidGlass · 液态玻璃材质卡
  *
- * 现在使用真·液态玻璃原生库 @uginy/react-native-liquid-glass：
- *  - Android：AGSL GPU shader —— 真折射 / 色散 / 边缘辉光 / 眩光（API 33+；以下自动降级）
- *  - New Architecture（Fabric）· Expo Module 自动链接
+ * 保留原 API（children / strong / padding / radius / style / interactive /
+ * onPressIn / onPressOut），实现改走 GlassSurface（引擎换为
+ * react-native-liquid-glassmorphism：iOS 26 原生 UIGlassEffect / Android AGSL 真折射）。
  *
- * 设计约定（来自库文档的关键约束）：
- *  「玻璃后面必须有细节」——折射弯曲平坦颜色等于没效果，因此全站底衬使用
- *  PageBackdrop 的渐变 + 光斑（提供高频细节），玻璃卡才会真正「液态」。
+ * 结构：外层 Animated.View 负责布局与按压缩放，玻璃只做绝对定位的底层（asBackground）——
+ * 原生玻璃视图不承载 RN 布局，flex/padding 交给外层。
  */
 import React, { useRef } from 'react';
-import { Animated, Easing, Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-import {
-  LiquidGlassView,
-  LIQUID_GLASS_FROSTED,
-  LIQUID_GLASS_CRYSTAL,
-} from '@uginy/react-native-liquid-glass';
-import { usePalette } from '../theme';
+import { Animated, Easing, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { GlassSurface } from './GlassSurface';
 import { spacing } from '../theme/spacing';
 
 export interface LiquidGlassProps {
@@ -32,8 +26,6 @@ export interface LiquidGlassProps {
   onPressOut?: () => void;
 }
 
-const isGlassPlatform = Platform.OS === 'android' || Platform.OS === 'ios';
-
 export function LiquidGlass({
   children,
   strong = false,
@@ -44,9 +36,7 @@ export function LiquidGlass({
   onPressIn,
   onPressOut,
 }: LiquidGlassProps) {
-  const palette = usePalette();
   const pressed = useRef(new Animated.Value(0)).current;
-  const isDark = palette.name === 'dark';
 
   const pressTo = (toValue: number, duration: number) => {
     Animated.timing(pressed, {
@@ -63,9 +53,6 @@ export function LiquidGlass({
     }],
   };
 
-  // 预置材质：常规卡用 FROSTED（磨砂），强卡用更高玻璃不透明度 + 更强边缘辉光
-  const preset = strong ? LIQUID_GLASS_CRYSTAL : LIQUID_GLASS_FROSTED;
-
   return (
     <Animated.View
       style={[styles.wrap, { borderRadius: radius }, animStyle, style]}
@@ -73,26 +60,7 @@ export function LiquidGlass({
       onTouchEnd={() => { if (interactive) { pressTo(0, 150); onPressOut?.(); } }}
       onTouchCancel={() => { if (interactive) { pressTo(0, 150); onPressOut?.(); } }}
     >
-      {isGlassPlatform ? (
-        <LiquidGlassView
-          {...preset}
-          cornerRadius={radius}
-          blurRadius={strong ? 24 : 16}
-          refractionStrength={strong ? 0.16 : 0.2}
-          chromaticAberration={strong ? 0.14 : 0.18}
-          edgeGlowIntensity={strong ? 0.85 : 1.0}
-          edgeWidth={strong ? 2.4 : 2.8}
-          glassOpacity={strong ? 0.14 : 0.07}
-          glareIntensity={strong ? 0.45 : 0.5}
-          tintColor={isDark ? '#15151a' : '#ffffff'}
-          style={StyleSheet.absoluteFill as never}
-        />
-      ) : (
-        <View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: palette.surfaceGlassStrong }]}
-        />
-      )}
+      <GlassSurface role={strong ? 'card' : 'chip'} radius={radius} asBackground />
       <View style={{ padding }}>{children}</View>
     </Animated.View>
   );
@@ -100,12 +68,8 @@ export function LiquidGlass({
 
 const styles = StyleSheet.create({
   wrap: {
-    // 库自带阴影/边缘处理，这里只保证圆角裁剪与浮起
-    borderRadius: 20,
+    // 圆角裁剪与浮起由外层负责，玻璃自己不做阴影
     overflow: 'hidden',
     elevation: 3,
-  },
-  glass: {
-    overflow: 'hidden',
   },
 });

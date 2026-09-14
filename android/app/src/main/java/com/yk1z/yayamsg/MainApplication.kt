@@ -18,7 +18,7 @@ import com.facebook.react.modules.network.OkHttpClientProvider
 import okhttp3.Interceptor
 
 import expo.modules.ApplicationLifecycleDispatcher
-import expo.modules.ReactNativeHostWrapper
+import expo.modules.ExpoReactHostFactory
 
 /** 与 src/api/bilibili.ts biliHeaders 一致的桌面 Chrome UA（B站风控按 UA 分端） */
 private const val BILI_DESKTOP_UA =
@@ -26,16 +26,17 @@ private const val BILI_DESKTOP_UA =
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
-      this,
+  /** 手动注册的包（autolink 覆盖不到的）——reactNativeHost 与 reactHost 共用同一份 */
+  private fun buildPackages(): List<ReactPackage> =
+    PackageList(this).packages.apply {
+      // Packages that cannot be autolinked yet can be added manually here, for example:
+      add(LivePlayerPackage())
+      add(PipPackage())
+    }
+
+  override val reactNativeHost: ReactNativeHost =
       object : DefaultReactNativeHost(this) {
-          override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              add(LivePlayerPackage())
-              add(PipPackage())
-              add(LiquidGlassPackage())
-            }
+          override fun getPackages(): List<ReactPackage> = buildPackages()
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
@@ -43,10 +44,14 @@ class MainApplication : Application(), ReactApplication {
 
           override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
       }
-  )
 
+  /**
+   * Expo SDK 55 已移除 `ReactNativeHostWrapper`（RN 0.83 只支持新架构），改用 `ExpoReactHostFactory`。
+   * 它内部会挂上 ExpoModulesPackage 的 host handlers（网络/生命周期链路），
+   * Expo 各模块本身由 autolink 生成在 PackageList 里，这里整份传进去即可。
+   */
   override val reactHost: ReactHost
-    get() = ReactNativeHostWrapper.createReactHost(applicationContext, reactNativeHost)
+    get() = ExpoReactHostFactory.getDefaultReactHost(applicationContext, buildPackages())
 
   override fun onCreate() {
     // 最先安装：RN 网络模块的 OkHttp 客户端在 JS 首次发请求时才经 createClient(context) 构建，

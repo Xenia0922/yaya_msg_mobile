@@ -1,9 +1,10 @@
-import { useColorScheme } from 'react-native';
+import { useColorScheme, type ColorSchemeName } from 'react-native';
 import { useSettingsStore } from '../store';
 
 export type ResolvedTheme = 'light' | 'dark';
 
-function resolveTheme(theme: 'light' | 'dark' | 'system', system: 'light' | 'dark' | null | undefined): ResolvedTheme {
+// RN 0.83 起 ColorSchemeName 增加 'unspecified'，非 'dark' 一律按浅色处理
+function resolveTheme(theme: 'light' | 'dark' | 'system', system: ColorSchemeName): ResolvedTheme {
   if (theme === 'system') return system === 'dark' ? 'dark' : 'light';
   return theme === 'dark' ? 'dark' : 'light';
 }
