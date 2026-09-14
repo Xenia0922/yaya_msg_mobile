@@ -721,7 +721,7 @@ export default function HomeScreen() {
           ) : (
             <FadeInView delay={0} duration={320}>
               {liveGongyanRooms.map((room, index) => (
-                <FadeInView key={room.roomId} delay={index * 20} duration={300} distance={10}>
+                <FadeInView key={room.roomId} delay={0} duration={160} distance={10}>
                   <ScalePressable
                     onPress={() => (navigation as any).navigate('BilibiliLiveScreen', { roomId: room.roomId, roomName: room.name })}
                     pressedScale={0.97}
@@ -775,7 +775,7 @@ export default function HomeScreen() {
           <SectionHeader title={t('快捷入口')} />
           <View style={styles.quickRow}>
             {quick.map((item, index) => (
-              <FadeInView key={item.title} delay={index * 20} duration={280} distance={8} style={[styles.quickCell, { width: quickCellW }]}>
+              <FadeInView key={item.title} delay={0} duration={160} distance={8} style={[styles.quickCell, { width: quickCellW }]}>
                 <ScalePressable
                   onPress={() => handleNav(item)}
                   pressedScale={0.94}

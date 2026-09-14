@@ -218,6 +218,13 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               styles.indicator,
               {
                 width: CELL_W,
+                // 选中胶囊 = 白底 + 柔和投影（iOS 26 在浅底栏上靠投影显形）
+                backgroundColor: isDark ? 'rgba(30,30,36,0.92)' : 'rgba(255,255,255,0.92)',
+                ...Platform.select({
+                  ios: { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+                  android: { elevation: 8 },
+                  default: null,
+                }),
                 transform: [{ translateX: indX }, { scaleX: dragStretch }, { scaleY: dragScale }],
               },
             ]}
@@ -277,7 +284,6 @@ const styles = StyleSheet.create({
     bottom: 6,
     left: BAR_PAD,
     borderRadius: 28,
-    overflow: 'hidden',
   },
   cell: {
     width: CELL_W,
