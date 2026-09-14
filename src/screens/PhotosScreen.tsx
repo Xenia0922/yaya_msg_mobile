@@ -18,6 +18,7 @@ import { enqueueDownload } from '../services/downloads';
 import { usePalette, spacing, radii } from '../theme';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassBackground } from '../components/GlassBackground';
 
 function normalizeImageUrl(value: any): string {
   const direct = normalizeUrl(value);
@@ -219,7 +220,8 @@ export default function PhotosScreen() {
       />
       <FadeInView delay={60} duration={300} style={{ flex: 1 }}>
         <View style={styles.pickerCard}>
-          <View style={[styles.pickerRow, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+          <View style={[styles.pickerRow, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+            <GlassBackground radius={20} refract={false} />
             <View style={[styles.avatar, { backgroundColor: palette.tintSoft }]}>
               {selectedMember ? (
                 <NetworkImage source={{ uri: selectedMember.avatar }} style={styles.avatarImg} resizeMode="cover" />

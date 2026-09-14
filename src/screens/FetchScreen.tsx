@@ -19,6 +19,7 @@ import { Member } from '../types';
 import { errorMessage, messageText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { usePalette, radii } from '../theme';
+import { GlassBackground } from '../components/GlassBackground';
 
 type MessageMode = 'all' | 'owner';
 type RoomMode = 'big' | 'small';
@@ -127,7 +128,8 @@ export default function FetchScreen() {
       <ScreenHeader title={t('抓取消息')} />
 
       <FadeInView delay={60} duration={300} style={{ flex: 1 }}>
-        <View style={[styles.panel, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+        <View style={[styles.panel, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+          <GlassBackground radius={20} refract={false} />
           <MemberPicker selectedMember={selectedMember} onSelect={setSelectedMember} />
 
           {/* 消息范围分段 */}
@@ -202,7 +204,8 @@ export default function FetchScreen() {
           removeClippedSubviews
           renderItem={({ item, index }) => (
             <FadeInView delay={index < 12 ? 60 + index * 25 : 0} distance={8}>
-              <View style={[styles.msgItem, { backgroundColor: palette.surfaceGlassStrong }]}>
+              <View style={[styles.msgItem, { backgroundColor: 'transparent' }]}>
+                <GlassBackground radius={20} refract={false} />
                 <View style={styles.msgHead}>
                   <Text style={[styles.msgSender, { color: palette.label }]} numberOfLines={1}>
                     {item.senderName || item.senderNickName || item.extInfo?.user?.nickName || t('成员')}

@@ -25,6 +25,7 @@ import { Skeleton } from '../components/Skeleton';
 import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassBackground } from '../components/GlassBackground';
 
 interface DynItem {
   key: string;
@@ -112,7 +113,8 @@ export default function MemberDynamicScreen() {
 
   const renderItem = ({ item, index }: { item: DynItem; index: number }) => (
     <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
-      <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+      <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+        <GlassBackground radius={20} refract={false} />
         {item.ownerName ? (
           <View style={styles.ownerRow}>
             {item.ownerAvatar ? (

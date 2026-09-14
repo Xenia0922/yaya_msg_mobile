@@ -31,6 +31,7 @@ import pocketApi from '../api/pocket48';
 import { usePalette, usePageBackground } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
+import { GlassBackground } from '../components/GlassBackground';
 
 function convTargetId(conv: any): string {
   return String(conv?.targetUserId || conv?.user?.userId || conv?.userId || '');
@@ -661,7 +662,8 @@ export default function PrivateMessagesScreen() {
           ListEmptyComponent={loading ? null : <EmptyState icon="message-text-outline" title={t('暂无消息')} />}
         />
         {member ? (
-          <View style={[styles.flipBar, { backgroundColor: palette.surfaceGlassStrong, borderTopColor: palette.hairline }]}>
+          <View style={[styles.flipBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
+            <GlassBackground radius={20} refract={false} />
             <Text style={[styles.flipName, { color: palette.labelSecondary }]}>{t('{name} 翻牌', { name: member.ownerName || '' })}</Text>
             <View style={styles.flipRow}>
               {prices.slice(0, 3).map((p) => (
@@ -693,7 +695,8 @@ export default function PrivateMessagesScreen() {
             </View>
           </View>
         ) : null}
-        <View style={[styles.inputBar, { backgroundColor: palette.surfaceGlassStrong, borderTopColor: palette.hairline }]}>
+        <View style={[styles.inputBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
+          <GlassBackground radius={20} refract={false} />
           {flipType > 0 ? <Text style={[styles.flipLabel, { color: palette.tint }]}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
             <TextInput
@@ -749,11 +752,12 @@ export default function PrivateMessagesScreen() {
                 <TouchableOpacity
                   style={[
                     styles.convCard,
-                    { backgroundColor: palette.surfaceGlassStrong, borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 },
+                    { backgroundColor: 'transparent', borderColor: isPinned ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 },
                   ]}
                   onPress={() => openConv(conv)}
                   activeOpacity={0.88}
                 >
+                  <GlassBackground radius={20} refract={false} />
                   <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
                     {convAvatarUrl ? (
                       <Image source={{ uri: convAvatarUrl }} style={styles.convAvatarImg} resizeMode="cover" />

@@ -28,6 +28,7 @@ import { logWarn } from '../utils/runtimeLog';
 import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { translate, useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassBackground } from '../components/GlassBackground';
 
 const BILI_COOKIE_KEYS = ['SESSDATA', 'bili_jct', 'DedeUserID', 'DedeUserID__ckMd5', 'sid'];
 
@@ -552,7 +553,8 @@ export default function LoginScreen() {
       <FadeInView delay={80} duration={300} distance={8}>
         {/* 短信验证码登录 */}
         {mode === 'sms' ? (
-          <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+            <GlassBackground radius={20} refract={false} />
             <Text style={[styles.cardTitle, { color: palette.label }]}>{t('口袋48验证码登录')}</Text>
             <View style={styles.phoneRow}>
               <View style={[styles.field, styles.areaWrap, { backgroundColor: palette.fill2 }]}>
@@ -577,12 +579,13 @@ export default function LoginScreen() {
                   {verify.options.map((option) => (
                     <ScalePressable
                       key={option}
-                      style={[styles.verifyOption, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
+                      style={[styles.verifyOption, { backgroundColor: 'transparent', borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
                       onPress={() => handleVerifyAnswer(option)}
                       disabled={loading}
                       pressedScale={0.94}
                       hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
                     >
+                      <GlassBackground radius={20} refract={false} />
                       <Text style={[styles.verifyOptionText, { color: palette.label }]}>{option}</Text>
                     </ScalePressable>
                   ))}
@@ -599,7 +602,8 @@ export default function LoginScreen() {
 
         {/* Token 登录 */}
         {mode === 'token' ? (
-          <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+            <GlassBackground radius={20} refract={false} />
             <Text style={[styles.cardTitle, { color: palette.label }]}>{t('口袋48Token登录')}</Text>
             <TextInput
               style={[styles.field, styles.tokenInput, { backgroundColor: palette.fill2, color: palette.label }]}
@@ -630,7 +634,8 @@ export default function LoginScreen() {
 
         {/* B站二维码 */}
         {mode === 'bilibili' ? (
-          <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+            <GlassBackground radius={20} refract={false} />
             <Text style={[styles.cardTitle, { color: palette.label }]}>{t('B站登录')}</Text>
             {qrHtml ? (
               <View style={styles.qrCard}>
@@ -665,7 +670,8 @@ export default function LoginScreen() {
         ) : null}
 
         {/* 口袋账号切换：账户行卡列表 */}
-        <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+        <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <GlassBackground radius={20} refract={false} />
           <View style={styles.cardHead}>
             <Text style={[styles.cardTitle, { color: palette.label }]}>{t('口袋账号切换')}</Text>
             <Button title={t('刷新账号列表')} variant="tinted" size="sm" onPress={handleCheckToken} disabled={loading} />
@@ -723,7 +729,8 @@ export default function LoginScreen() {
         </View>
 
         {/* 口袋资料 */}
-        <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+        <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <GlassBackground radius={20} refract={false} />
           <Text style={[styles.cardTitle, { color: palette.label }]}>{t('口袋资料')}</Text>
           {renameCountText ? <Text style={[styles.metaLine, { color: palette.labelSecondary }]}>{renameCountText}</Text> : null}
           <TextInput
@@ -752,7 +759,8 @@ export default function LoginScreen() {
         </View>
 
         {/* 鸡腿充值 */}
-        <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+        <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <GlassBackground radius={20} refract={false} />
           <Text style={[styles.cardTitle, { color: palette.label }]}>{t('鸡腿充值')}</Text>
           <Button title={t('打开官方充值页')} variant="filled" size="md" onPress={() => (navigation as any).navigate('RechargeScreen')} fullWidth />
         </View>

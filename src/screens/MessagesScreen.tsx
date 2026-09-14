@@ -26,6 +26,7 @@ import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassBackground } from '../components/GlassBackground';
 
 function msgTime(item: any): number {
   const value = Number(item.msgTime || item.messageTime || item.ctime || item.time || item.createTime || 0);
@@ -98,12 +99,13 @@ export default function MessagesScreen() {
         style={[
           styles.msg,
           {
-            backgroundColor: palette.surfaceGlassStrong,
+            backgroundColor: 'transparent',
             borderColor: palette.hairline,
             borderWidth: StyleSheet.hairlineWidth,
           },
         ]}
       >
+        <GlassBackground radius={20} refract={false} />
         <View style={styles.msgHeader}>
           <Text style={[styles.msgSender, { color: palette.tint }]} numberOfLines={1}>{item.senderName || item.senderNickName || t('成员')}</Text>
           <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
@@ -121,11 +123,12 @@ export default function MessagesScreen() {
       <View style={styles.topBar}>
         {/* 成员选择行卡：48 圆底图标 + 成员名 + 「共 N 位成员」 + chevron */}
         <ScalePressable
-          style={[styles.pickerRow, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+          style={[styles.pickerRow, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
           onPress={() => setPickerOpen(true)}
           pressedScale={0.98}
           activeOpacity={0.9}
         >
+          <GlassBackground radius={20} refract={false} />
           <View style={[styles.pickerAvatar, { backgroundColor: palette.tintSoft }]}>
             <MaterialCommunityIcons name="account-star" color={palette.tint} size={24} />
           </View>
@@ -163,7 +166,8 @@ export default function MessagesScreen() {
       {/* 成员选择底部 sheet */}
       <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
         <View style={[styles.sheetShade, { backgroundColor: usePageBackground() }]}>
-          <View style={[styles.sheetPanel, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
+          <View style={[styles.sheetPanel, { backgroundColor: 'transparent', borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
+            <GlassBackground radius={20} refract={false} />
             {/* 顶部 handle */}
             <View style={styles.sheetHandleWrap}>
               <View style={[styles.sheetHandle, { backgroundColor: palette.fill3 }]} />

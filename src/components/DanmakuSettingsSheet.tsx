@@ -11,6 +11,7 @@ import { usePalette, radii, spacing } from '../theme';
 import { typography } from '../theme/typography';
 import { Pill } from './Pill';
 import { Button } from './Button';
+import { GlassBackground } from '../components/GlassBackground';
 
 interface Props {
   visible: boolean;
@@ -59,13 +60,14 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
           style={[
             styles.sheet,
             {
-              backgroundColor: palette.surface,
+              backgroundColor: 'transparent',
               borderTopLeftRadius: radii.sheet,
               borderTopRightRadius: radii.sheet,
             },
           ]}
           onStartShouldSetResponder={() => true}
         >
+          <GlassBackground radius={20} refract={false} />
           <View style={[styles.handle, { backgroundColor: palette.fill3 }]} />
           <View style={styles.header}>
             <Text style={[typography.headline, { color: palette.label }]}>{t('弹幕设置')}</Text>

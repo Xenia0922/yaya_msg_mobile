@@ -24,6 +24,7 @@ import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
+import { GlassBackground } from '../components/GlassBackground';
 
 const ANIM_DURATION = 300;
 
@@ -319,13 +320,14 @@ function FullScreenPlayerInner({
             style={[
               styles.queueSheet,
               {
-                backgroundColor: palette.surface,
+                backgroundColor: 'transparent',
                 borderTopLeftRadius: radii.sheet,
                 borderTopRightRadius: radii.sheet,
               },
             ]}
             onStartShouldSetResponder={() => true}
           >
+            <GlassBackground radius={20} refract={false} />
             <View style={[styles.queueHandle, { backgroundColor: palette.fill3 }]} />
             <View style={styles.queueHeader}>
               <Text style={[typography.headline, { color: palette.label }]}>{t('播放列表（{count}）', { count: queue.length })}</Text>

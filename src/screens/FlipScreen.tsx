@@ -33,6 +33,7 @@ import { parseDurationSeconds } from '../utils/duration';
 import { usePalette, radii, radiiAlias } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
+import { GlassBackground } from '../components/GlassBackground';
 
 type FlipNavProp = StackNavigationProp<RootStackParamList, 'FlipScreen'>;
 type FlipRouteProp = RouteProp<RootStackParamList, 'FlipScreen'>;
@@ -357,7 +358,8 @@ export default function FlipScreen() {
 
         <FadeInView delay={60} duration={300}>
           {/* 成员选择行 */}
-          <View style={[styles.sendGroup, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+          <View style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+            <GlassBackground radius={20} refract={false} />
             <View style={styles.groupRowTop}>
               <View style={[styles.groupIcon, { backgroundColor: palette.tintSoft }]}>
                 <MaterialCommunityIcons name="account-heart-outline" size={18} color={palette.tint} />
@@ -368,7 +370,8 @@ export default function FlipScreen() {
           </View>
 
           {/* 回复形式 */}
-          <View style={[styles.sendGroup, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+          <View style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+            <GlassBackground radius={20} refract={false} />
             <View style={styles.groupRowTop}>
               <View style={[styles.groupIcon, { backgroundColor: palette.tintSoft }]}>
                 <MaterialCommunityIcons name="message-reply-outline" size={18} color={palette.tint} />
@@ -393,7 +396,8 @@ export default function FlipScreen() {
           </View>
 
           {/* 公开设置 */}
-          <View style={[styles.sendGroup, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+          <View style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+            <GlassBackground radius={20} refract={false} />
             <View style={styles.groupRowTop}>
               <View style={[styles.groupIcon, { backgroundColor: palette.tintSoft }]}>
                 <MaterialCommunityIcons name="eye-outline" size={18} color={palette.tint} />
@@ -419,7 +423,8 @@ export default function FlipScreen() {
           </View>
 
           {/* 输入区 */}
-          <View style={[styles.sendGroup, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+          <View style={[styles.sendGroup, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+            <GlassBackground radius={20} refract={false} />
             <View style={styles.groupRowTop}>
               <View style={[styles.groupIcon, { backgroundColor: palette.tintSoft }]}>
                 <MaterialCommunityIcons name="pencil-outline" size={18} color={palette.tint} />

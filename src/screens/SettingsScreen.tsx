@@ -36,6 +36,7 @@ import { getMemberDataMeta, MemberDataMeta, updateMemberData } from '../services
 import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
+import { GlassBackground } from '../components/GlassBackground';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
@@ -53,12 +54,13 @@ function Section({ title, children, delay = 0 }: { title: string; children: Reac
         style={[
           styles.section,
           {
-            backgroundColor: palette.surfaceGlassStrong,
+            backgroundColor: 'transparent',
             borderColor: palette.hairline,
             borderRadius: radiiAlias.card,
           },
         ]}
       >
+        <GlassBackground radius={20} refract={false} />
         {children}
       </View>
     </FadeInView>

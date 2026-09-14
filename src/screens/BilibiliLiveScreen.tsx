@@ -38,6 +38,7 @@ import { usePalette } from '../theme';
 import type { Palette } from '../theme/colors';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassBackground } from '../components/GlassBackground';
 
 /** 直播状态点：直播中 success 呼吸动画（原生驱动）+ 文字；未开播 labelTertiary */
 function StatusDot({ live, palette, label }: { live: boolean; palette: Palette; label: string }) {
@@ -497,7 +498,8 @@ export default function BilibiliLiveScreen() {
           <HeaderAction label={t('刷新状态')} onPress={() => checkStatuses(false)} />
         )
       } />
-      {status ? <Text style={[styles.status, { color: palette.labelSecondary, backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>{status}</Text> : null}
+      {status ? <Text style={[styles.status, { color: palette.labelSecondary, backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+        <GlassBackground radius={20} refract={false} />{status}</Text> : null}
       {fetchError ? (
         <TouchableOpacity
           activeOpacity={0.7}
@@ -528,9 +530,10 @@ export default function BilibiliLiveScreen() {
               <ScalePressable
                 activeOpacity={0.85}
                 pressedScale={0.97}
-                style={[styles.roomItem, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}
+                style={[styles.roomItem, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
                 onPress={() => startWatch(item)}
               >
+                <GlassBackground radius={20} refract={false} />
                 <View style={[styles.roomIcon, { backgroundColor: live ? palette.tintSoft : palette.fill2 }]}>
                   {info?.cover ? (
                     <NetworkImage source={{ uri: info.cover }} style={styles.roomIcon} resizeMode="cover" />

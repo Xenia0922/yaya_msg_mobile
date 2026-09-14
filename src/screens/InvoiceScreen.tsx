@@ -22,6 +22,7 @@ import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
 import { usePalette, radiiAlias } from '../theme';
 import { useI18n } from '../i18n';
+import { GlassBackground } from '../components/GlassBackground';
 
 interface OrderItem {
   dataId: string;
@@ -112,7 +113,8 @@ export default function InvoiceScreen() {
         : palette.labelTertiary;
     return (
       <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300}>
-        <View style={[styles.orderCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: selected ? palette.tint : palette.hairline }, disabled && styles.cardDisabled]}>
+        <View style={[styles.orderCard, { backgroundColor: 'transparent', borderColor: selected ? palette.tint : palette.hairline }, disabled && styles.cardDisabled]}>
+          <GlassBackground radius={20} refract={false} />
           {/* 订单信息 */}
           <View style={styles.orderInfo}>
             <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>{item.goodsName}</Text>
@@ -174,11 +176,12 @@ export default function InvoiceScreen() {
           style={[
             styles.formCard,
             {
-              backgroundColor: palette.surfaceGlassStrong,
+              backgroundColor: 'transparent',
               borderColor: palette.hairline,
             },
           ]}
         >
+          <GlassBackground radius={20} refract={false} />
           <Text style={[styles.sectionTitle, { color: palette.label }]}>{t('开票信息')}</Text>
 
           <View style={styles.typeRow}>

@@ -28,6 +28,7 @@ import CoverArt from './CoverArt';
 import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
+import { GlassBackground } from '../components/GlassBackground';
 
 interface Props {
   onOpenFullScreen?: () => void;
@@ -172,7 +173,7 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
         styles.bar,
         shadows.md,
         {
-          backgroundColor: palette.surfaceGlassStrong,
+          backgroundColor: 'transparent',
           borderColor: palette.innerStroke,
           transform: [{ translateY }],
           // 音乐页为栈页面（无悬浮 TabBar），贴底悬浮；覆盖 shadows.md 的 elevation（过高会渲染深色边缘）
@@ -184,6 +185,7 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
       ]}
       {...panResponder.panHandlers}
     >
+      <GlassBackground radius={20} refract={false} />
       <View
         ref={progRef}
         style={styles.progressBar}

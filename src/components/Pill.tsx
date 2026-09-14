@@ -1,11 +1,10 @@
 /**
- * Pill / Chip：圆角胶囊小标签 / 可交互切换控件
- * iOS 26 风格：pill (完全圆角)、玻璃底、可选中态
+ * Pill / Chip —— 委托 reactnatively 的 Chip（液态玻璃 UI 系统组件）
+ * 保留原 API（label/selected/onPress/accent/style），全站调用点无需改动。
  */
 import React from 'react';
-import { Pressable, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
-import { usePalette, radii } from '../theme';
-import { typography } from '../theme/typography';
+import { StyleProp, ViewStyle } from 'react-native';
+import { Chip } from 'reactnatively';
 
 export interface PillProps {
   label: string;
@@ -17,51 +16,13 @@ export interface PillProps {
 }
 
 export function Pill({ label, selected, onPress, accent, style }: PillProps) {
-  const palette = usePalette();
-  const filled = accent || selected;
-  const bg = filled ? palette.tint : palette.fill3;
-  const fg = filled ? palette.onTint : palette.label;
-
   return (
-    <Pressable
+    <Chip
+      label={label}
+      isSelected={accent || selected}
       onPress={onPress}
-      hitSlop={{ top: 4, bottom: 4, left: 5, right: 5 }}
-      style={({ pressed }) => [
-        styles.pill,
-        {
-          backgroundColor: bg,
-          borderColor: filled ? 'transparent' : palette.hairline,
-          transform: [{ scale: pressed ? 0.96 : 1 }],
-        },
-        style,
-      ]}
-    >
-      <Text
-        numberOfLines={1}
-        ellipsizeMode="tail"
-        style={[
-          typography.subhead,
-          {
-            color: fg,
-            fontWeight: '600',
-            fontSize: 14,
-            lineHeight: 18,
-            flexShrink: 1,
-          },
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
+      size="sm"
+      style={style as never}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: radii.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignSelf: 'flex-start',
-  },
-});

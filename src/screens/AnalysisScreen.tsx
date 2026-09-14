@@ -24,6 +24,7 @@ import { parseDurationSeconds } from '../utils/duration';
 import { usePalette, radii } from '../theme';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassBackground } from '../components/GlassBackground';
 
 type Nav = StackNavigationProp<RootStackParamList, 'AnalysisScreen'>;
 type TabKey = 'room' | 'flip';
@@ -396,13 +397,15 @@ export default function AnalysisScreen() {
             <View style={styles.content}>
               <View style={styles.statsGrid}>
                 {[0, 1, 2, 3].map((i) => (
-                  <View key={i} style={[styles.statCard, { backgroundColor: palette.surfaceGlassStrong }]}>
+                  <View key={i} style={[styles.statCard, { backgroundColor: 'transparent' }]}>
+                    <GlassBackground radius={20} refract={false} />
                     <Skeleton width={44} height={20} radius={6} />
                     <Skeleton width={40} height={11} radius={5} style={{ marginTop: 8 }} />
                   </View>
                 ))}
               </View>
-              <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong }]}>
+              <View style={[styles.rankCard, { backgroundColor: 'transparent' }]}>
+                <GlassBackground radius={20} refract={false} />
                 <Skeleton width={90} height={15} radius={6} />
                 <Skeleton width={130} height={11} radius={5} style={{ marginTop: 8 }} />
                 {[0, 1, 2, 3].map((i) => (
@@ -418,7 +421,8 @@ export default function AnalysisScreen() {
           <ScrollView contentContainerStyle={styles.content}>
             {/* 成员聚焦 hero（结构升级）：成员发言占比一眼可见，统计不再只是数字陈列 */}
             {member && summary.total > 0 ? (
-              <View style={[styles.heroCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+              <View style={[styles.heroCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                <GlassBackground radius={20} refract={false} />
                 <View style={styles.heroHead}>
                   <View style={[styles.heroAvatar, { backgroundColor: palette.tintSoft }]}>
                     <MaterialCommunityIcons name="account-star" size={22} color={palette.tint} />
@@ -450,7 +454,8 @@ export default function AnalysisScreen() {
             {/* 概览区：2 列统计卡（数值 20/800 + 标签 11） */}
             <View style={styles.statsGrid}>
               {cards.map((item) => (
-                <View key={item.label} style={[styles.statCard, { backgroundColor: palette.surfaceGlassStrong, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                <View key={item.label} style={[styles.statCard, { backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                  <GlassBackground radius={20} refract={false} />
                   <Text style={[styles.statValue, { color: palette.tint }]}>{item.value}</Text>
                   <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t(item.label)}</Text>
                 </View>
@@ -458,7 +463,8 @@ export default function AnalysisScreen() {
             </View>
 
             {/* 成员排行 · 横向条形图（轨道 fill2 + 填充 tint 圆角 3） */}
-            <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+            <View style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+              <GlassBackground radius={20} refract={false} />
               <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('成员排行')}</Text>
               <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('按发言次数 Top {count}', { count: memberRankTop8.length })}</Text>
               {memberRankTop8.map((item, index) => {
@@ -476,7 +482,8 @@ export default function AnalysisScreen() {
             </View>
 
             {recent.map((item, index) => (
-              <View key={`${msgTime(item)}-${index}`} style={[styles.rowCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+              <View key={`${msgTime(item)}-${index}`} style={[styles.rowCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                <GlassBackground radius={20} refract={false} />
                 <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
                   <MaterialCommunityIcons name="message-text-outline" size={20} color={palette.tint} />
                 </View>
@@ -490,7 +497,8 @@ export default function AnalysisScreen() {
 
             {/* 日期分布（并入画像：近 8 天成员/总数双条） */}
             {dateStats.length > 0 ? (
-              <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+              <View style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                <GlassBackground radius={20} refract={false} />
                 <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('日期分布')}</Text>
                 <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('近 {count} 天发言节奏', { count: Math.min(8, dateStats.length) })}</Text>
                 {dateStats.slice(0, 8).map((item: any) => {
@@ -512,7 +520,8 @@ export default function AnalysisScreen() {
 
             {/* 发送者排行（并入画像：Top 8） */}
             {senders.length > 0 ? (
-              <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+              <View style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                <GlassBackground radius={20} refract={false} />
                 <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('发言排行')}</Text>
                 <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('Top {count} 发言者', { count: Math.min(8, senders.length) })}</Text>
                 {senders.slice(0, 8).map((item: any, index: number) => {
@@ -532,7 +541,8 @@ export default function AnalysisScreen() {
 
             {/* 媒体消息（并入画像：最近 10 条，可点击预览/播放） */}
             {mediaMessages.length > 0 ? (
-              <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+              <View style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                <GlassBackground radius={20} refract={false} />
                 <Text style={[styles.rankHeaderTitle, { color: palette.label }]}>{t('媒体消息')}</Text>
                 <Text style={[styles.rankHeaderSub, { color: palette.labelSecondary }]}>{t('图片/语音/视频 最近 {count} 条', { count: Math.min(10, mediaMessages.length) })}</Text>
                 {mediaMessages.slice(0, 10).map((item: any, index: number) => {
@@ -595,21 +605,25 @@ export default function AnalysisScreen() {
               </ScrollView>
               {/* 概览统计：2 列卡 */}
               <View style={styles.statsGrid}>
-                <View style={[styles.statCard, { backgroundColor: palette.surfaceGlassStrong, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                <View style={[styles.statCard, { backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                  <GlassBackground radius={20} refract={false} />
                   <Text style={[styles.statValue, { color: palette.tint }]}>{flipStats.totalCount}</Text>
                   <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总翻牌数')}</Text>
                 </View>
-                <View style={[styles.statCard, { backgroundColor: palette.surfaceGlassStrong, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                <View style={[styles.statCard, { backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                  <GlassBackground radius={20} refract={false} />
                   <Text style={[styles.statValue, { color: palette.tint }]}>{flipStats.totalCost}</Text>
                   <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总消耗(鸡腿)')}</Text>
                 </View>
-                <View style={[styles.statCard, { backgroundColor: palette.surfaceGlassStrong, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                <View style={[styles.statCard, { backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                  <GlassBackground radius={20} refract={false} />
                   <Text style={[styles.statValue, { color: palette.tint }]}>{formatDurationMs(flipStats.avgDur)}</Text>
                   <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('平均耗时')}</Text>
                   {flipStats.minDur > 0 ? <Text style={[styles.flipCardRange, { color: palette.labelTertiary }]}>{formatDurationMs(flipStats.minDur)} ~ {formatDurationMs(flipStats.maxDur)}</Text> : null}
                 </View>
               </View>
-              <View style={[styles.blockCard, { backgroundColor: palette.surfaceGlassStrong, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+              <View style={[styles.blockCard, { backgroundColor: 'transparent', borderWidth: StyleSheet.hairlineWidth, borderColor: palette.hairline }]}>
+                <GlassBackground radius={20} refract={false} />
                 <Text style={[styles.sectionSub, { color: palette.labelSecondary }]}>{t('回复类型分布')}</Text>
                 {[
                   { key: 'text', label: t('文字'), count: flipStats.typeStats.text },
@@ -634,7 +648,8 @@ export default function AnalysisScreen() {
                 const avgPrice = m.count > 0 ? Math.round(m.cost / m.count) : 0;
                 const avgTime = m.answeredCount > 0 ? formatDurationMs(m.durSum / m.answeredCount) : '';
                 return (
-                  <View key={m.name} style={[styles.rowCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+                  <View key={m.name} style={[styles.rowCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                    <GlassBackground radius={20} refract={false} />
                     <View style={[styles.rowIcon, styles.rankIconNo, { backgroundColor: palette.fill2 }]}>
                       <Text style={[styles.rankNo, { color: palette.labelTertiary }]}>{idx + 1}</Text>
                     </View>
@@ -688,7 +703,8 @@ export default function AnalysisScreen() {
               : (!isAnswered && remaining <= 0 ? t('已过期') : '');
             return (
               <FadeInView delay={80 + index * 30} duration={300}>
-                <View style={[styles.rowCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+                <View style={[styles.rowCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                  <GlassBackground radius={20} refract={false} />
                   <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
                     <MaterialCommunityIcons
                       name={isVideo ? 'video-outline' : isVoice ? 'microphone-outline' : 'text-box-outline'}

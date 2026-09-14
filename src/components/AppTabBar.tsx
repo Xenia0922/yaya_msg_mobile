@@ -106,15 +106,30 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
       style={[styles.outer, { paddingBottom: 16 }]}
     >
       <View style={[styles.bar, { backgroundColor: 'transparent' }]}>
+        {/* 保底材质：库在部分设备/模拟器不渲染，这层保证底栏始终「实」→ 文字不重影 */}
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: 28,
+              backgroundColor: isDark ? 'rgba(26,26,32,0.86)' : 'rgba(255,255,255,0.86)',
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.7)',
+            },
+          ]}
+        />
         <LiquidGlassView
           {...LIQUID_GLASS_FROSTED}
           cornerRadius={28}
-          blurRadius={20}
-          refractionStrength={0.22}
-          chromaticAberration={0.18}
-          edgeGlowIntensity={1.0}
-          edgeWidth={3}
-          glassOpacity={isDark ? 0.28 : 0.14}
+          blurRadius={26}
+          refractionStrength={0.16}
+          chromaticAberration={0.12}
+          edgeGlowIntensity={0.3}
+          edgeWidth={1.5}
+          glassOpacity={isDark ? 0.72 : 0.62}
+          saturation={0.85}
+          brightness={1.05}
           tintColor={isDark ? '#1c1c22' : '#ffffff'}
           glareIntensity={0.5}
           style={StyleSheet.absoluteFill}

@@ -47,6 +47,7 @@ import { Button } from '../components/Button';
 import { Skeleton } from '../components/Skeleton';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { translate, useI18n } from '../i18n';
+import { GlassBackground } from '../components/GlassBackground';
 
 /** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
@@ -196,7 +197,8 @@ function CalendarSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.calMask} activeOpacity={1} onPress={onClose}>
-        <View style={[styles.calSheet, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke }]} onStartShouldSetResponder={() => true}>
+        <View style={[styles.calSheet, { backgroundColor: 'transparent', borderColor: palette.innerStroke }]} onStartShouldSetResponder={() => true}>
+          <GlassBackground radius={20} refract={false} />
           <View style={styles.calHeader}>
             <TouchableOpacity onPress={() => setView(new Date(year, month - 1, 1))} hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }} activeOpacity={0.7}>
               <MaterialCommunityIcons name="chevron-left" size={24} color={palette.label} />
@@ -1586,7 +1588,8 @@ export default function MediaScreen() {
 
         <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.modalShade}>
-            <View style={[styles.giftPanel, { backgroundColor: palette.surfaceGlassStrong }]}>
+            <View style={[styles.giftPanel, { backgroundColor: 'transparent' }]}>
+              <GlassBackground radius={20} refract={false} />
               <View style={styles.giftHeader}>
                 <Text style={[styles.giftTitle, { color: palette.label }]}>{t('直播送礼')}</Text>
                 <TouchableOpacity onPress={() => setGiftVisible(false)} activeOpacity={0.8}>
@@ -1648,7 +1651,8 @@ export default function MediaScreen() {
         </Modal>
         <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
           <View style={styles.modalShade}>
-            <View style={[styles.giftPanel, { backgroundColor: palette.surfaceGlassStrong }]}>
+            <View style={[styles.giftPanel, { backgroundColor: 'transparent' }]}>
+              <GlassBackground radius={20} refract={false} />
               <View style={styles.giftHeader}>
                 <Text style={[styles.giftTitle, { color: palette.label }]}>{t('贡献榜')}</Text>
                 <TouchableOpacity onPress={() => setRankVisible(false)} activeOpacity={0.8}>
@@ -1838,10 +1842,11 @@ export default function MediaScreen() {
                 return (
                   <FadeInView duration={300} style={styles.vodGridItem}>
                     <TouchableOpacity
-                      style={[styles.vodGridCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+                      style={[styles.vodGridCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                       onPress={() => startPlay(it)}
                       activeOpacity={0.88}
                     >
+                      <GlassBackground radius={20} refract={false} />
                       <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                         {coverUrl ? (
                           <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
@@ -1901,10 +1906,11 @@ export default function MediaScreen() {
             return (
               <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300} style={styles.vodGridItem}>
                 <TouchableOpacity
-                  style={[styles.vodGridCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+                  style={[styles.vodGridCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                   onPress={() => startPlay(item)}
                   activeOpacity={0.88}
                 >
+                  <GlassBackground radius={20} refract={false} />
                   <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                     {coverUrl ? (
                       <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />

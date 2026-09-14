@@ -39,6 +39,7 @@ import bilibiliApi from '../api/bilibili';
 import { BilibiliLiveRoom } from '../types';
 import { normalizeUrl, pickText, unwrapList } from '../utils/data';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassBackground } from '../components/GlassBackground';
 
 type HomeNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Home'>,
@@ -634,7 +635,8 @@ export default function HomeScreen() {
           />
 
           {!livesOk && !livesError ? null : livesError && !livesOk ? (
-            <View style={[styles.liveStateCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+            <View style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+              <GlassBackground radius={20} refract={false} />
               <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
               <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
                 {t('直播列表加载失败')}
@@ -642,7 +644,8 @@ export default function HomeScreen() {
               <Button title={t('重试')} variant="tinted" size="sm" onPress={fetchLives} />
             </View>
           ) : livesOk && lives.length === 0 ? (
-            <View style={[styles.liveStateCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+            <View style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+              <GlassBackground radius={20} refract={false} />
               <MaterialCommunityIcons name="video-off" size={20} color={palette.labelTertiary} />
               <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('此时段暂无成员直播')}</Text>
             </View>
@@ -686,7 +689,8 @@ export default function HomeScreen() {
           />
           {!gongyanOk && !gongyanError ? null : gongyanError && !gongyanOk ? (
             <FadeInView delay={80} duration={300}>
-              <View style={[styles.liveStateCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+              <View style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                <GlassBackground radius={20} refract={false} />
                 <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
                 <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
                   {t('公演直播加载失败')}
@@ -696,7 +700,8 @@ export default function HomeScreen() {
             </FadeInView>
           ) : liveGongyanRooms.length === 0 ? (
             <FadeInView delay={80} duration={320}>
-              <View style={[styles.liveStateCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+              <View style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+                <GlassBackground radius={20} refract={false} />
                 <MaterialCommunityIcons name="broadcast-off" size={20} color={palette.labelTertiary} />
                 <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('此时段暂无公演直播')}</Text>
               </View>
@@ -708,8 +713,9 @@ export default function HomeScreen() {
                   <ScalePressable
                     onPress={() => (navigation as any).navigate('BilibiliLiveScreen', { roomId: room.roomId, roomName: room.name })}
                     pressedScale={0.97}
-                    style={[styles.liveRow, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, marginBottom: 8 }]}
+                    style={[styles.liveRow, shadows.xs, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, marginBottom: 8 }]}
                   >
+                    <GlassBackground radius={20} refract={false} />
                     <View style={[styles.liveRowThumb, { backgroundColor: palette.tintSoft }]}>
                       {gongyanInfo[room.roomId]?.cover ? (
                         <NetworkImage
@@ -761,11 +767,12 @@ export default function HomeScreen() {
                         styles.chip,
                         shadows.xs,
                         {
-                          backgroundColor: palette.surfaceGlassStrong,
+                          backgroundColor: 'transparent',
                           borderColor: palette.innerStroke,
                         },
                       ]}
                     >
+                      <GlassBackground radius={20} refract={false} />
                       <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
                         <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                       </View>
@@ -846,8 +853,9 @@ export default function HomeScreen() {
                   key={item.title}
                   onPress={() => handleNav(item)}
                   pressedScale={0.94}
-                  style={[styles.toolChip, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke }]}
+                  style={[styles.toolChip, shadows.xs, { backgroundColor: 'transparent', borderColor: palette.innerStroke }]}
                 >
+                  <GlassBackground radius={20} refract={false} />
                   <View style={[styles.toolChipIcon, { backgroundColor: palette.tintSoft }]}>
                     <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                   </View>

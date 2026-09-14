@@ -35,6 +35,7 @@ import { FadeInView, ScalePressable } from '../components/Motion';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useI18n } from '../i18n';
+import { GlassBackground } from '../components/GlassBackground';
 
 /** 播放中均衡器：三根柱子错峰跳动（Animated loop + native driver） */
 function EqualizerBars({ color, size = 13 }: { color: string; size?: number }) {
@@ -708,11 +709,12 @@ export default function MusicLibraryScreen() {
               <TouchableOpacity
                 style={[
                   styles.songItem,
-                  { backgroundColor: palette.surfaceGlassStrong, borderColor: active ? palette.tint : palette.hairline, borderWidth: active ? 2 : StyleSheet.hairlineWidth },
+                  { backgroundColor: 'transparent', borderColor: active ? palette.tint : palette.hairline, borderWidth: active ? 2 : StyleSheet.hairlineWidth },
                 ]}
                 onPress={() => playSong(item)}
                 activeOpacity={0.7}
               >
+                <GlassBackground radius={20} refract={false} />
                 <View style={styles.coverWrap}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
                   {/* 正在播放指示：三根均衡器柱错峰跳动 */}

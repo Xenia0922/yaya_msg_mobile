@@ -23,6 +23,7 @@ import { extractRankList, extractWeeks, WeekItem } from '../utils/meleeParse';
 import { usePalette, radiiAlias } from '../theme';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import { Skeleton } from '../components/Skeleton';
+import { GlassBackground } from '../components/GlassBackground';
 
 // 对齐电脑版鸡腿榜数据源：只有「周榜」（weekRankList + getMeleeWeekRank）可用；
 // 电脑版按钮语义 total=周榜卡片列表、person=成员贡献榜，均基于周榜接口。
@@ -334,7 +335,8 @@ const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
   const tones = [palette.fill2, palette.tintSoft, palette.fill2];
   return (
     <FadeInView delay={60} duration={320} style={{ marginBottom: 12 }}>
-      <View style={[styles.podiumCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+      <View style={[styles.podiumCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+      <GlassBackground radius={22} />
         <Text style={[styles.podiumTitle, { color: palette.label }]}>{t('领奖台')}</Text>
         <View style={styles.podiumRow}>
           {order.map((item: any, idx: number) => {
@@ -375,7 +377,8 @@ function SkeletonRankList() {
   return (
     <View style={styles.list}>
       {[0, 1, 2, 3, 4, 5].map((i) => (
-        <View key={i} style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong }]}>
+        <View key={i} style={[styles.rankCard, { backgroundColor: 'transparent' }]}>
+        <GlassBackground radius={20} refract={false} />
           <Skeleton width={30} height={30} radius={10} style={{ marginRight: 10 }} />
           <Skeleton width={44} height={44} radius={22} style={{ marginRight: 10 }} />
           <View style={[styles.rankInfo, { gap: 6 }]}>
@@ -406,7 +409,8 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
 
   return (
     <FadeInView delay={60 + (index < 12 ? index * 25 : 0)} duration={300}>
-      <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+      <View style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+      <GlassBackground radius={20} refract={false} />
         {/* 名次徽标：前三名 tint 实底白字 16/900，其余 fill2 底 14/800 */}
         <View
           style={[
@@ -465,7 +469,8 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
 
   return (
     <FadeInView delay={60 + (index < 12 ? index * 25 : 0)} duration={300}>
-      <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
+      <View style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+      <GlassBackground radius={20} refract={false} />
         <View style={[styles.rankBadge, { backgroundColor: palette.fill2 }]}>
           <Text style={[styles.rankBadgeText, { color: palette.labelSecondary, fontSize: 14, fontWeight: '800' }]}>{rankNum}</Text>
         </View>

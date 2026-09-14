@@ -24,6 +24,7 @@ import { LiveExoView, startRadioForeground, stopRadioForeground, onRadioStopRequ
 import { ensureNotificationPermission } from '../utils/notifications';
 import { usePalette, makeShadows } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassBackground } from '../components/GlassBackground';
 
 /** 上麦/电台流是否 rtmp（react-native-video 不支持，需原生 LiveExoView） */
 function isRtmpUrl(url: string): boolean {
@@ -308,7 +309,8 @@ export default function RoomRadioScreen() {
 
         <View style={styles.scroll}>
           {/* 播放器大卡 */}
-          <View style={[styles.playerCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }, shadows.sm]}>
+          <View style={[styles.playerCard, { backgroundColor: 'transparent', borderColor: palette.hairline }, shadows.sm]}>
+            <GlassBackground radius={20} refract={false} />
             {/* 封面 120 圆角 20 居中；纯音频播放时环绕旋转细环 + 耳机角标 */}
             {selectedMember ? (
               <View style={styles.coverWrap}>
