@@ -48,7 +48,7 @@ import { Skeleton } from '../components/Skeleton';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { translate, useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
-import { GlassSegmented } from '../components/GlassSegmented';
+import { GlassSegmented, GlassSegmentedScroll } from '../components/GlassSegmented';
 
 /** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
@@ -1702,7 +1702,7 @@ export default function MediaScreen() {
       {/* 单行筛选：分组 = 玻璃滑动选中块（与底栏同一套） + 搜索图标 */}
       <View style={styles.filterRow}>
         <View style={{ flex: 1 }}>
-          <GlassSegmented
+          <GlassSegmentedScroll
             options={groupChips.map((item) => ({ key: String(item.id), label: t(item.label) }))}
             value={String(groupId)}
             onChange={(k) => setGroupId(Number(k))}
