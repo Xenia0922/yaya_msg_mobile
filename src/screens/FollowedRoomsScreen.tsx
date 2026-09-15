@@ -2005,6 +2005,32 @@ export default function FollowedRoomsScreen() {
 
   const _unusedRenderChineseDay = useCallback(({ date }: any) => date, []);
 
+  /** 纯椭圆玻璃气泡（材质 = 全站同一套 GlassSurface）；左右分列由库的 position 决定 */
+  const renderEllipseGlassBubble = useCallback(({ currentMessage, position }: any) => {
+    const msg = currentMessage as any;
+    const mine = position === 'right';
+    const d = msg.createdAt instanceof Date ? msg.createdAt : new Date(msg.createdAt);
+    const hh = Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return (
+      <GlassSurface
+        role="chip"
+        radius={22}
+        tintColor={mine ? palette.tint : undefined}
+        style={styles.ellipseBubble}
+      >
+        {msg.user?.name && !mine ? (
+          <Text style={[styles.ellipseName, { color: palette.tint }]} numberOfLines={1}>{msg.user.name}</Text>
+        ) : null}
+        {msg.text ? (
+          <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>{msg.text}</Text>
+        ) : null}
+        {hh ? (
+          <Text style={[styles.ellipseTime, { color: mine ? 'rgba(255,255,255,0.75)' : palette.labelTertiary }]}>{hh}</Text>
+        ) : null}
+      </GlassSurface>
+    );
+  }, [palette]);
+
   const chatIms = useMemo(() => {
     if (!selectedRoom) return [];
     return chatRows
@@ -2501,6 +2527,7 @@ export default function FollowedRoomsScreen() {
             theme={{ colors: { background: 'transparent' } }}
             locale="zh"
             // 用户要求：不要日期分隔（renderDay 返回空 + 关掉浮动日期胶囊）
+            renderBubble={renderEllipseGlassBubble}
             renderDay={() => null}
             isDayAnimationEnabled={false}
             user={{ _id: 'SELF' }}
@@ -2811,6 +2838,10 @@ export default function FollowedRoomsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   roomBgLayer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  ellipseBubble: { paddingVertical: 9, paddingHorizontal: 14, maxWidth: '78%', marginVertical: 2 },
+  ellipseName: { fontSize: 11, fontWeight: '700', marginBottom: 2 },
+  ellipseText: { fontSize: 15, lineHeight: 21 },
+  ellipseTime: { fontSize: 11, marginTop: 3, alignSelf: 'flex-end' },
   daySepWrap: { alignItems: 'center', marginVertical: 10 },
   daySep: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
   daySepText: { fontSize: 11, fontWeight: '600' },

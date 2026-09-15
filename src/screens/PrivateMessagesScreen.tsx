@@ -627,6 +627,32 @@ export default function PrivateMessagesScreen() {
       return <Text style={[styles.dateSepText, { color: palette.labelTertiary }]}>{label}</Text>;
     };
 
+    /**
+     * 纯椭圆玻璃气泡（材质 = 全站同一套 GlassSurface）。
+     * 只做气泡本身：左右分列仍由库的 position 决定（不再包一层 row，避免阶梯错位）。
+     */
+    const renderEllipseGlassBubble = ({ currentMessage, position }: any) => {
+      const msg = currentMessage as any;
+      const mine = position === 'right';
+      const t0 = msg.createdAt instanceof Date ? msg.createdAt : new Date(msg.createdAt);
+      const hh = Number.isNaN(t0.getTime()) ? '' : `${String(t0.getHours()).padStart(2, '0')}:${String(t0.getMinutes()).padStart(2, '0')}`;
+      return (
+        <GlassSurface
+          role="chip"
+          radius={22}
+          tintColor={mine ? palette.tint : undefined}
+          style={styles.ellipseBubble}
+        >
+          {msg.text ? (
+            <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>{msg.text}</Text>
+          ) : null}
+          {hh ? (
+            <Text style={[styles.ellipseTime, { color: mine ? 'rgba(255,255,255,0.75)' : palette.labelTertiary }]}>{hh}</Text>
+          ) : null}
+        </GlassSurface>
+      );
+    };
+
     /** 玻璃气泡（沿用原实现：媒体内联 + 时间戳，「自己」用 tint 染色玻璃） */
     const renderGlassBubble = ({ currentMessage }: any) => {
       const msg = currentMessage as any;
@@ -702,6 +728,7 @@ export default function PrivateMessagesScreen() {
           theme={{ colors: { background: 'transparent' } }}
           locale="zh"
           // 用户要求：不要日期分隔（renderDay 返回空 + 关掉浮动日期胶囊）
+          renderBubble={renderEllipseGlassBubble}
           renderDay={() => null}
           isDayAnimationEnabled={false}
           user={{ _id: 'SELF' }}
@@ -950,6 +977,9 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   input: { flex: 1, padding: 10, borderRadius: 18, borderWidth: 1, fontSize: 14, maxHeight: 80 },
   sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18 },
+  ellipseBubble: { paddingVertical: 9, paddingHorizontal: 14, maxWidth: '78%', marginVertical: 2 },
+  ellipseText: { fontSize: 15, lineHeight: 21 },
+  ellipseTime: { fontSize: 11, marginTop: 3, alignSelf: 'flex-end' },
   chatAvatarWrap: { width: 40, height: 40, borderRadius: 20, overflow: 'hidden', marginHorizontal: 6 },
   chatAvatar: { width: '100%', height: '100%' },
   sendT: { fontWeight: '800', fontSize: 13 },

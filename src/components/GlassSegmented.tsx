@@ -40,8 +40,8 @@ export function GlassSegmented<T extends string>({
   useEffect(() => {
     Animated.spring(x, {
       toValue: idx * cellW,
-      tension: 240,
-      friction: 26,
+      tension: 220,
+      friction: 30,
       useNativeDriver: true,
     }).start();
   }, [idx, cellW, x]);
@@ -50,7 +50,10 @@ export function GlassSegmented<T extends string>({
     <GlassSurface role="chip" radius={height / 2} style={[styles.track, { height }, style]}>
       <View
         style={styles.row}
-        onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+        onLayout={(e) => {
+          const w = e.nativeEvent.layout.width;
+          setTrackW((prev) => (Math.abs(prev - w) < 0.5 ? prev : w));
+        }}
       >
         {cellW > 0 ? (
           <Animated.View
@@ -129,8 +132,8 @@ export function GlassSegmentedScroll<T extends string>({
 
   useEffect(() => {
     if (!target) return;
-    Animated.spring(x, { toValue: target.x, tension: 240, friction: 26, useNativeDriver: true }).start();
-    Animated.spring(w, { toValue: target.w, tension: 240, friction: 26, useNativeDriver: true }).start();
+    Animated.spring(x, { toValue: target.x, tension: 220, friction: 30, useNativeDriver: true }).start();
+    Animated.spring(w, { toValue: target.w, tension: 220, friction: 30, useNativeDriver: true }).start();
   }, [target, x, w]);
 
   return (
@@ -153,6 +156,9 @@ export function GlassSegmentedScroll<T extends string>({
               onLayout={(e) => {
                 const { x: lx, width: lw } = e.nativeEvent.layout;
                 setLayouts((prev) => {
+                  const cur = prev[i];
+                  // 数值没变就不 setState：否则「量测 → 重渲染 → 再量测」会持续抖动
+                  if (cur && Math.abs(cur.x - lx) < 0.5 && Math.abs(cur.w - lw) < 0.5) return prev;
                   const next = [...prev];
                   next[i] = { x: lx, w: lw };
                   return next;
