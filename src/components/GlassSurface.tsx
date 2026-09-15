@@ -31,6 +31,7 @@ import { LiquidGlassView, useGlassSupport } from 'react-native-liquid-glassmorph
 import { LinearGradient } from 'expo-linear-gradient';
 import { NavigationContext } from '@react-navigation/native';
 import { usePalette } from '../theme';
+import { useBlurTarget } from './BlurTarget';
 import { LiquidGlassNativeView, isLiquidGlassNativeAvailable } from '../../modules/liquid-glass-native';
 
 /** 语义角色 —— 决定用哪组材质 */
@@ -142,6 +143,7 @@ export function GlassSurface({
   const isDark = palette.name === 'dark';
   const { tier } = useGlassSupport();
   const focused = useGlassFocused();
+  const blurTarget = useBlurTarget();
   const m =
     role === 'selector'
       ? isDark
@@ -259,9 +261,8 @@ export function GlassSurface({
     <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
       {/* 底层：硬件模糊（Android 31+ = RenderEffect / Dimezis BlurView） */}
       <BlurView
-        // ⚠️ 不传 blurTarget：expo-blur 的 BlurTarget 捕获在本工程会与内部 BlurView
-        // 互相嵌套，RenderThread prepareTreeImpl 递归爆栈（实测 SIGSEGV）。
-        // 不传则 Android 回退 none（模糊不生效），观感由"白/深纱 + 高光带 + 描边"承担。
+        // blurTarget = 只包背景层的 BlurTargetView（内部无 BlurView → 不会 RenderNode 互相嵌套）
+        blurTarget={blurTarget ?? undefined}
         intensity={intensity ?? m.intensity}
         tint={m.blurTint}
         blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}

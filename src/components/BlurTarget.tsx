@@ -1,27 +1,47 @@
 /**
- * Android 上 expo-blur 的模糊必须绑定一个 BlurTargetView（真背板模糊的来源）。
- * 没配的话 BlurView 会静默回退到 "none"（等于没有模糊，只剩白纱 —— 就是之前"又白又平"的原因）。
+ * Android 上 expo-blur 的真模糊必须绑定一个 BlurTargetView（背板来源）。
+ * 没配的话 BlurView 会静默回退 "none"（等于没有模糊，只剩白纱 —— 就是"又白又平"的原因）。
  *
- * 用法：根节点包一层 <BlurTargetProvider>，玻璃组件从 context 取 ref 传给 BlurView。
+ * 关键约束：**BlurTargetView 里不能包含任何 BlurView**（否则 RenderNode 互相嵌套，
+ * RenderThread 里 prepareTreeImpl 递归爆栈 → SIGSEGV，实测）。
+ * 而 React context 只能向下传、屏幕里的玻璃又必须读到 ref，所以拆成两个：
+ *   <BlurTargetProvider>  只提供 ref（包整个应用，屏幕能读到）
+ *     <BlurTargetSurface> 真正挂 BlurTargetView（只包背景层）
+ *     其余内容（屏幕/玻璃都在这里，但在 Surface 之外）
+ *   </BlurTargetProvider>
  */
 import React, { createContext, useContext, useRef } from 'react';
-import { type View } from 'react-native';
+import { StyleSheet, type View, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurTargetView } from 'expo-blur';
 
-const BlurTargetContext = createContext<React.RefObject<View | null> | null>(null);
+interface Ctx {
+  ref: React.RefObject<View | null>;
+}
+const BlurTargetContext = createContext<Ctx | null>(null);
 
-/** 取模糊背板的 ref（未包 Provider 时返回 null → BlurView 走 iOS/降级路径） */
+/** 取背景背板 ref（未包 Provider 时返回 null → BlurView 走降级路径） */
 export function useBlurTarget(): React.RefObject<View | null> | null {
-  return useContext(BlurTargetContext);
+  return useContext(BlurTargetContext)?.ref ?? null;
 }
 
 export function BlurTargetProvider({ children }: { children: React.ReactNode }) {
   const ref = useRef<View | null>(null);
+  return <BlurTargetContext.Provider value={{ ref }}>{children}</BlurTargetContext.Provider>;
+}
+
+/** 只包背景层；内部不要放任何 BlurView */
+export function BlurTargetSurface({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const ctx = useContext(BlurTargetContext);
+  if (!ctx) return <>{children}</>;
   return (
-    <BlurTargetContext.Provider value={ref}>
-      <BlurTargetView ref={ref} style={{ flex: 1 }}>
-        {children}
-      </BlurTargetView>
-    </BlurTargetContext.Provider>
+    <BlurTargetView ref={ctx.ref} style={[StyleSheet.absoluteFill, style]} pointerEvents="none">
+      {children}
+    </BlurTargetView>
   );
 }

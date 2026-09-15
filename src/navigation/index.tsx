@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { PageBackdrop } from '../components/PageBackdrop';
+import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
 import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -256,18 +257,21 @@ export default function AppNavigator() {
   return (
     <ErrorBoundary>
     <>
-      {hasBackground ? (
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          <ImageBackground
-            source={{ uri: customBg }}
-            resizeMode="cover"
-            style={StyleSheet.absoluteFill}
-          />
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: bgScrim }]} />
-        </View>
-      ) : (
-        <PageBackdrop />
-      )}
+      <BlurTargetProvider>
+      <BlurTargetSurface>
+        {hasBackground ? (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <ImageBackground
+              source={{ uri: customBg }}
+              resizeMode="cover"
+              style={StyleSheet.absoluteFill}
+            />
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: bgScrim }]} />
+          </View>
+        ) : (
+          <PageBackdrop />
+        )}
+      </BlurTargetSurface>
       <NavigationContainer theme={themed}>
       <>
         <Stack.Navigator
@@ -309,6 +313,7 @@ export default function AppNavigator() {
         <PipToggleBridge />
       </>
       </NavigationContainer>
+      </BlurTargetProvider>
     </>
     </ErrorBoundary>
   );
