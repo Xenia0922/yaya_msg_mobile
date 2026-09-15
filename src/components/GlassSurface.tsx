@@ -66,16 +66,16 @@ interface Material {
 const MATERIAL: { light: Material; dark: Material } = {
   light: {
     // Apple Regular(浅色)：强模糊 + 淡白纱 —— 模糊负责可读，纱淡才透得出去
-    intensity: 38,
+    intensity: 64,
     reduction: 4,
     blurTint: 'light',
-    overlay: 'rgba(255,255,255,0.18)',
+    overlay: 'rgba(255,255,255,0.30)',
     stroke: 'rgba(255,255,255,0.66)',
     highlight: 0.24,
   },
   dark: {
     // 官方：深色模式降低通透度、提升对比度
-    intensity: 44,
+    intensity: 70,
     reduction: 4,
     blurTint: 'dark',
     overlay: 'rgba(20,20,26,0.40)',
@@ -185,9 +185,11 @@ export function GlassSurface({
   // ⚠️ 原生视图当前关闭：录制整棵树时会与 expo-blur(Dimezis) 的 RenderNode 互相嵌套，
   // RenderThread 里 prepareTreeImpl 递归爆栈（实测 SIGSEGV）。修法：改成只录制
   // PageBackdrop 这一层（传 tag 指定目标，不含任何玻璃/RenderNode），待下轮接。
-  // 已开启：原生视图只录制「背景层」（GLASS_BACKDROP_ID 指到的 BlurTargetView），
-  // 不含任何 BlurView → 不会有 RenderNode 嵌套爆栈（此前的关闭原因已从根上解决）。
-  const useNativeDock = isLiquidGlassNativeAvailable && isDock;
+  // ⚠️ 暂时关闭：原生视图已能注册（isLiquidGlassNativeAvailable=true），但它的
+  // RenderNode 录制在底栏区域会画出一条深色带（边缘采样/录制偏移问题，非参数问题），
+  // 观感比 expo-blur 更差。等原生渲染修好再打开这个开关。
+  // 注册链路本身是通的（见 modules/liquid-glass-native + settings.gradle 手动链接）。
+  const useNativeDock = false && isLiquidGlassNativeAvailable && isDock;
   // 旧 AGSL 库（软件 Canvas 路线，实测 janky 10%）默认关闭，仅作对照
   const useAgsL = false && isDock && tier !== 'none';
 
@@ -204,11 +206,11 @@ export function GlassSurface({
           style={StyleSheet.absoluteFill}
           cornerRadius={r}
           blurRadius={role === 'selector' ? 18 : 22}
-          lensWidth={0.34}
-          lensStrength={role === 'selector' ? 22 : 16}
-          // 色散 / 边缘反射光：苹果液态玻璃的签名特征，静止几乎看不见，滑动时才明显
-          dispersion={role === 'selector' ? 0.22 : 0.14}
-          rimStrength={role === 'selector' ? 0.34 : 0.24}
+          lensWidth={0.32}
+          lensStrength={role === 'selector' ? 16 : 12}
+          // 色散 / 边缘反射光：苹果液态玻璃的签名特征，滑动时才明显
+          dispersion={role === 'selector' ? 0.10 : 0.07}
+          rimStrength={role === 'selector' ? 0.22 : 0.16}
           tintColor={tintColor ?? (isDark ? '#B314141A' : '#52FFFFFF')}
         />
         <View

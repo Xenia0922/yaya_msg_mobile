@@ -218,11 +218,14 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               styles.indicator,
               {
                 width: CELL_W,
-                // 选中胶囊 = 白底 + 柔和投影（iOS 26 在浅底栏上靠投影显形）
-                backgroundColor: isDark ? 'rgba(30,30,36,0.92)' : 'rgba(255,255,255,0.92)',
+                // 选中胶囊 = 底面 + 柔和投影。
+                // ⚠️ 阴影必须是「灰色」：黑色投影压在浅色玻璃上会显脏（用户明确要求）。
+                // Android 端 RN 会把 shadowColor 映射到 outline shadow 颜色（API 28+），
+                // 所以两边都设成同一个灰。
+                backgroundColor: isDark ? 'rgba(30,30,36,0.86)' : 'rgba(242,242,246,0.80)',
                 ...Platform.select({
-                  ios: { shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
-                  android: { elevation: 8 },
+                  ios: { shadowColor: '#9A9AA2', shadowOpacity: 0.42, shadowRadius: 7, shadowOffset: { width: 0, height: 2 } },
+                  android: { shadowColor: '#9A9AA2', elevation: 4 },
                   default: null,
                 }),
                 transform: [{ translateX: indX }, { scaleX: dragStretch }, { scaleY: dragScale }],
