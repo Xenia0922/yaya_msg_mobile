@@ -29,6 +29,7 @@ import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { translate, useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
+import { GlassSegmented } from '../components/GlassSegmented';
 
 const BILI_COOKIE_KEYS = ['SESSDATA', 'bili_jct', 'DedeUserID', 'DedeUserID__ckMd5', 'sid'];
 
@@ -530,24 +531,14 @@ export default function LoginScreen() {
       <ScreenHeader title={t('账号设置')} />
 
       <FadeInView delay={40} duration={280} distance={8}>
-        {/* 登录方式分段控件 */}
-        <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
-          {SEGMENTS.map((seg) => {
-            const active = mode === seg.key;
-            return (
-              <ScalePressable
-                key={seg.key}
-                style={[styles.segmentItem, active && styles.segmentItemActive, active && { backgroundColor: palette.surfaceElevated }]}
-                onPress={() => setMode(seg.key)}
-                pressedScale={0.96}
-              >
-                <Text style={[styles.segmentText, { color: active ? palette.label : palette.labelSecondary }]}>
-                  {seg.label}
-                </Text>
-              </ScalePressable>
-            );
-          })}
-        </View>
+        {/* 登录方式分段控件：玻璃滑动选中（与全站一致） */}
+        <GlassSegmented
+          options={SEGMENTS.map((seg) => ({ key: String(seg.key), label: seg.label }))}
+          value={String(mode)}
+          onChange={(k) => setMode(k as typeof mode)}
+          height={38}
+          style={{ marginBottom: 12 }}
+        />
       </FadeInView>
 
       <FadeInView delay={80} duration={300} distance={8}>

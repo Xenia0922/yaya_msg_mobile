@@ -1995,10 +1995,9 @@ const styles = StyleSheet.create({
   headerSwitch: { fontSize: 13, fontWeight: '800', minWidth: 34, textAlign: 'right' },
   // 直播/录播分段控件
   segmentWrap: {
-    flexDirection: 'row',
+    // 不要 padding：GlassSegmented 内部已有 3px 内边距，外层再加会让滑动胶囊错位
     marginHorizontal: 12,
     marginBottom: 6,
-    padding: 3,
     borderRadius: radii.pill,
   },
   segmentCell: {

@@ -37,7 +37,7 @@ import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
-import { GlassSegmented } from '../components/GlassSegmented';
+import { GlassSegmented, GlassSegmentedScroll } from '../components/GlassSegmented';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
@@ -114,10 +114,25 @@ function Row({
 }
 
 function ChipRow<T>({ options, value, onChange }: { options: { label: string; value: T }[]; value: T; onChange: (value: T) => void }) {
+  const segs = options.map((o, i) => ({ key: String(i), label: o.label }));
+  const idx = String(options.findIndex((o) => o.value === value));
+  // 选项多或标签长（如语言：跟随系统/简体中文/繁體中文/English/日本語/한국어）用可滚动版，
+  // 等分版会把文字压到看不清
+  const needScroll = options.length > 4 || options.some((o) => o.label.length > 4);
+  if (needScroll) {
+    return (
+      <GlassSegmentedScroll
+        options={segs}
+        value={idx}
+        onChange={(k) => onChange(options[Number(k)].value)}
+        height={34}
+      />
+    );
+  }
   return (
     <GlassSegmented
-      options={options.map((o, i) => ({ key: String(i), label: o.label }))}
-      value={String(options.findIndex((o) => o.value === value))}
+      options={segs}
+      value={idx}
       onChange={(k) => onChange(options[Number(k)].value)}
       height={34}
     />

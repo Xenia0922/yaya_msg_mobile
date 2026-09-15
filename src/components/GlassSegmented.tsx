@@ -91,7 +91,8 @@ export function GlassSegmented<T extends string>({
 
 const styles = StyleSheet.create({
   scrollRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 },
-  scrollPill: { position: 'absolute', left: 3, top: 3, borderRadius: 999, overflow: 'hidden' },
+  // left 必须是 0：cell 的 onLayout.x 已经包含行的 paddingHorizontal(3)
+  scrollPill: { position: 'absolute', left: 0, top: 3, borderRadius: 999, overflow: 'hidden' },
   scrollCell: { paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
   track: { overflow: 'hidden' },
   row: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 },

@@ -525,8 +525,8 @@ export default function PrivateMessagesScreen() {
     finally { setLoading(false); }
   };
 
-  const doSend = async () => {
-    const txt = text.trim();
+  const doSend = async (override?: string) => {
+    const txt = String(override ?? text).trim();
     if (!txt || !sel) return;
     setLoading(true);
     try {
@@ -546,7 +546,7 @@ export default function PrivateMessagesScreen() {
         showToast(t('已发送'));
         await openConv(sel);
       }
-      setText('');
+      if (!override) setText('');
     } catch (e) { showToast(t('发送失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
   };
@@ -602,26 +602,27 @@ export default function PrivateMessagesScreen() {
           text: privateMessageText(row.item) || '',
           createdAt: new Date(t < 1e12 ? t * 1000 : t),
           user: {
-            _id: mine ? String(uid ?? 1) : String(targetId || 'peer'),
+            _id: mine ? 'SELF' : String(targetId || 'peer'),
             ...(mine ? {} : { avatar: peerAvatar, name: convName(sel) }),
           },
           original: row.item,
           groupStart: row.groupStart,
           isMine: mine,
+          // 交给库自带的媒体渲染
+          ...(privateMessageMedia(row.item)?.type === 'image' ? { image: privateMessageMedia(row.item)!.url } : {}),
+          ...(privateMessageMedia(row.item)?.type === 'audio' ? { audio: privateMessageMedia(row.item)!.url } : {}),
+          ...(privateMessageMedia(row.item)?.type === 'video' ? { video: privateMessageMedia(row.item)!.url } : {}),
         };
       });
 
-    /** 中文日期分隔（今天 / 昨天 / 9月14日）—— 库默认输出英文月份 */
-    const renderChineseDay = ({ date }: any) => {
+    /**
+     * 日期分隔：统一纯数字 yyyy/mm/dd（库自带的 zh 输出是「14 9月」这种不符合中文习惯的格式）
+     */
+    const renderDayLabel = ({ date }: any) => {
       const d = new Date(date);
       if (Number.isNaN(d.getTime())) return null;
-      const now = new Date();
-      const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-      const label = sameDay(d, now)
-        ? t('今天')
-        : sameDay(d, new Date(now.getTime() - 86400000))
-          ? t('昨天')
-          : t('{m}月{d}日', { m: d.getMonth() + 1, d: d.getDate() });
+      const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
+      const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
       return (
         <View style={styles.dateSepWrap}>
           <View style={[styles.dateSep, { backgroundColor: palette.fill2 }]}>
@@ -699,32 +700,19 @@ export default function PrivateMessagesScreen() {
       >
         <View style={[styles.screen, { backgroundColor: usePageBackground() }]}>
         <ScreenHeader title={convName(sel)} onBack={() => setSel(null)} />
-        {/* 消息列表交给聊天库，气泡/输入条仍用我们的玻璃件 */}
+        {/* 官方 demo 用法：只给 messages / user / onSend，其余全用库默认（气泡、日期、输入条） */}
         <Chat
           messages={ims}
-          user={{ _id: String(uid ?? 1) }}
-          onSend={() => { void doSend(); }}
-          renderBubble={renderGlassBubble}
-          renderInputToolbar={() => null}
-          locale="zh"
-          renderDay={renderChineseDay}
-          // 背景透明：露出我们的页面渐变背景（否则库的默认灰底盖住，玻璃也无内容可折射）
+          // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
           theme={{ colors: { background: 'transparent' } }}
-          renderAvatar={({ currentMessage }: any) => {
-            const url = (currentMessage as any)?.user?.avatar;
-            if (!url) return null;
-            return (
-              <View style={styles.chatAvatarWrap}>
-                <Image source={{ uri: String(url) }} style={styles.chatAvatar} resizeMode="cover" />
-              </View>
-            );
+          locale="zh"
+          renderDay={renderDayLabel}
+          user={{ _id: 'SELF' }}
+          onSend={(msgs) => {
+            const outgoing = String((msgs as any)?.[0]?.text ?? '').trim();
+            if (outgoing) void doSend(outgoing);
           }}
-          isInverted
-          listProps={{
-            contentContainerStyle: styles.msgList,
-            onEndReached: loadMore,
-            onEndReachedThreshold: 0.3,
-          }}
+          renderInputToolbar={() => null}
         />
         {member ? (
           <GlassSurface radius={20} role="card" style={[styles.flipBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
@@ -770,7 +758,7 @@ export default function PrivateMessagesScreen() {
               onChangeText={setText}
               multiline
             />
-            <ScalePressable style={[styles.sendBtn, { backgroundColor: palette.tint }]} onPress={doSend} disabled={loading || !text.trim()}>
+            <ScalePressable style={[styles.sendBtn, { backgroundColor: palette.tint }]} onPress={() => { void doSend(); }} disabled={loading || !text.trim()}>
               <Text style={[styles.sendT, { color: palette.onTint }]}>{loading ? '..' : flipType ? t('翻牌') : t('发送')}</Text>
             </ScalePressable>
           </View>

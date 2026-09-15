@@ -275,6 +275,8 @@ export function GlassSurface({
     <>
       {/* 底层：硬件模糊（Android 31+ = RenderEffect / Dimezis BlurView） */}
       <BlurView
+        // 不吃触摸：absoluteFill 的模糊层会挡住子元素里的按钮（tap 切换全失效的根因）
+        pointerEvents="none"
         // blurTarget = 只包背景层的 BlurTargetView（内部无 BlurView → 不会 RenderNode 互相嵌套）
         blurTarget={blurTarget ?? undefined}
         intensity={intensity ?? m.intensity}

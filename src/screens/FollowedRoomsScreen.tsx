@@ -1601,7 +1601,9 @@ export default function FollowedRoomsScreen() {
     setRoomMode(nextMode);
     setShowFanMessages(includeFans);
     try {
-      const userInfo = includeFans && !currentUserId
+      // 只要还没拿到自己的 userId 就取（原来被 includeFans 挡住 → 非粉丝模式下认不出自己发的消息，
+      // 气泡全部左对齐）。getNimLoginInfo 与模式无关，取到一次即可复用。
+      const userInfo = !currentUserId
         ? await pocketApi.getNimLoginInfo().catch(() => null)
         : null;
       const nextCurrentUserId = currentUserId || currentUserIdFrom(userInfo);
@@ -1989,17 +1991,14 @@ export default function FollowedRoomsScreen() {
    * renderBubble 直接复用 renderChatItem —— 头像/名字/回复/礼物/媒体全保留。
    * ⚠️ user._id 必须按真实发送者（库按它决定左右），createdAt 必须毫秒。
    */
-  /** 中文日期分隔（今天 / 昨天 / 9月14日）—— 库默认输出英文月份 */
-  const renderChineseDay = useCallback(({ date }: any) => {
+  /**
+   * 日期分隔：统一纯数字 yyyy/mm/dd（库自带的 zh 输出是「14 9月」这种不符合中文习惯的格式）
+   */
+  const renderDayLabel = useCallback(({ date }: any) => {
     const d = new Date(date);
     if (Number.isNaN(d.getTime())) return null;
-    const now = new Date();
-    const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-    const label = sameDay(d, now)
-      ? t('今天')
-      : sameDay(d, new Date(now.getTime() - 86400000))
-        ? t('昨天')
-        : t('{m}月{d}日', { m: d.getMonth() + 1, d: d.getDate() });
+    const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
+    const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
     return (
       <View style={styles.daySepWrap}>
         <View style={[styles.daySep, { backgroundColor: palette.fill2 }]}>
@@ -2007,7 +2006,9 @@ export default function FollowedRoomsScreen() {
         </View>
       </View>
     );
-  }, [palette, t]);
+  }, [palette]);
+
+  const _unusedRenderChineseDay = useCallback(({ date }: any) => date, []);
 
   const chatIms = useMemo(() => {
     if (!selectedRoom) return [];
@@ -2031,7 +2032,8 @@ export default function FollowedRoomsScreen() {
           text: messageText(item) || '',
           createdAt: new Date(ms),
           user: {
-            _id: mine ? String(currentUserId || 'me') : senderId,
+            // 固定常量 SELF：与 <Chat user={{_id:'SELF'}}> 严格相等，库才判成右侧
+            _id: mine ? 'SELF' : senderId,
             ...(mine ? {} : { avatar: (prof as any)?.avatar || (room as any)?.avatar, name: (prof as any)?.name }),
           },
           __row: row,
@@ -2497,42 +2499,20 @@ export default function FollowedRoomsScreen() {
         ) : null}
 
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          {/* 消息列表交给聊天库（滚动/键盘/库能力），气泡/输入条/加载态仍用我们自己的 */}
+          {/* 官方 demo 用法：messages / user / onSend + 官方 loadEarlierMessagesProps */}
           <Chat
             messages={chatIms}
-            user={{ _id: String(currentUserId || 'me') }}
-            onSend={() => {}}
-            renderBubble={({ currentMessage }: any) => renderChatItem({ item: (currentMessage as any).__row })}
-            locale="zh"
-            renderDay={renderChineseDay}
-            renderAvatar={() => null}
-            renderInputToolbar={() => null}
+            // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
             theme={{ colors: { background: 'transparent' } }}
-            isInverted
-            listProps={{
-              onScroll: onMsgScroll,
-              scrollEventThrottle: 120,
-              contentContainerStyle: styles.chatContent,
-              onEndReached: loadMoreRoomMessages,
-              onEndReachedThreshold: 0.5,
-              ListFooterComponent: roomMessages.length ? (
-                <View style={styles.chatFooter}>
-                  {hasMoreMessages ? (
-                    <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('上滑加载更多')}</Text>
-                  ) : (
-                    <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有更多消息')}</Text>
-                  )}
-                </View>
-              ) : null,
-              ListEmptyComponent: !roomLoadedOnce && loading && !roomMsgError ? (
-                <CenterSpinner />
-              ) : !roomLoadedOnce && !roomMsgError ? null : roomSearchQuery.trim() ? (
-                <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有匹配的消息')}</Text>
-              ) : roomMsgError ? (
-                <ErrorState title={t('加载失败')} hint={roomMsgError} onAction={() => selectedRoom && openRoom(selectedRoom, roomMode, showFanMessages)} />
-              ) : (
-                <EmptyState icon="message-text-outline" title={t('暂无消息，切换大/小房间试试')} />
-              ),
+            locale="zh"
+            renderDay={renderDayLabel}
+            user={{ _id: 'SELF' }}
+            onSend={() => {}}
+            renderInputToolbar={() => null}
+            loadEarlierMessagesProps={{
+              isAvailable: hasMoreMessages,
+              onPress: loadMoreRoomMessages,
+              isLoading: loading,
             }}
           />
         </FadeInView>
