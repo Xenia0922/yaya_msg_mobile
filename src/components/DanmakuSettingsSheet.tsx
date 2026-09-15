@@ -12,6 +12,7 @@ import { typography } from '../theme/typography';
 import { Pill } from './Pill';
 import { Button } from './Button';
 import { GlassSurface } from '../components/GlassSurface';
+import { GlassSegmented } from '../components/GlassSegmented';
 
 interface Props {
   visible: boolean;
@@ -45,13 +46,18 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
   const { t } = useI18n();
   const { enabled, area, speed, fontSize, opacity, set, reset } = useDanmakuSettings();
 
-  const chipRow = (items: { key?: string; label: string; active: boolean; onPress: () => void }[]) => (
-    <View style={styles.chipRow}>
-      {items.map((item) => (
-        <Pill key={item.key || item.label} label={item.label} selected={item.active} onPress={item.onPress} />
-      ))}
-    </View>
-  );
+  /** 选项行 = 玻璃滑动选中块（与底栏同一套） */
+  const chipRow = (items: { key?: string; label: string; active: boolean; onPress: () => void }[]) => {
+    const activeIdx = Math.max(0, items.findIndex((i) => i.active));
+    return (
+      <GlassSegmented
+        options={items.map((item, i) => ({ key: String(i), label: item.label }))}
+        value={String(activeIdx)}
+        onChange={(k: string) => items[Number(k)]?.onPress()}
+        height={34}
+      />
+    );
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

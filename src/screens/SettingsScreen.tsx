@@ -37,6 +37,7 @@ import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
+import { GlassSegmented } from '../components/GlassSegmented';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
@@ -113,28 +114,13 @@ function Row({
 }
 
 function ChipRow<T>({ options, value, onChange }: { options: { label: string; value: T }[]; value: T; onChange: (value: T) => void }) {
-  const palette = usePalette();
   return (
-    <View style={styles.chipRow}>
-      {options.map((opt) => {
-        const active = value === opt.value;
-        return (
-          <TouchableOpacity
-            key={String(opt.value)}
-            style={[
-              styles.chip,
-              { backgroundColor: active ? palette.tint : palette.fill2 },
-            ]}
-            onPress={() => onChange(opt.value)}
-            activeOpacity={0.85}
-          >
-            <Text style={[styles.chipText, { color: active ? palette.onTint : palette.labelSecondary }]}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
+    <GlassSegmented
+      options={options.map((o, i) => ({ key: String(i), label: o.label }))}
+      value={String(options.findIndex((o) => o.value === value))}
+      onChange={(k) => onChange(options[Number(k)].value)}
+      height={34}
+    />
   );
 }
 

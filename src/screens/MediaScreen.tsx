@@ -1699,23 +1699,16 @@ export default function MediaScreen() {
         onChange={(k) => switchTab(k as 'live' | 'vod')}
         style={[styles.segmentWrap, { borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
       />
-      {/* 单行筛选：分组 chips + 搜索图标 */}
+      {/* 单行筛选：分组 = 玻璃滑动选中块（与底栏同一套） + 搜索图标 */}
       <View style={styles.filterRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupRowContent}>
-          {groupChips.map((item) => (
-            <TouchableOpacity
-              key={String(item.id)}
-              style={[
-                styles.groupChip,
-                { backgroundColor: groupId === item.id ? palette.tint : palette.fill2 },
-              ]}
-              onPress={() => setGroupId(item.id)}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.groupChipText, { color: groupId === item.id ? palette.onTint : palette.labelSecondary }]}>{t(item.label)}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <View style={{ flex: 1 }}>
+          <GlassSegmented
+            options={groupChips.map((item) => ({ key: String(item.id), label: t(item.label) }))}
+            value={String(groupId)}
+            onChange={(k) => setGroupId(Number(k))}
+            height={34}
+          />
+        </View>
         <TouchableOpacity
           onPress={() => setShowSearch((v) => !v)}
           style={[styles.searchToggle, { backgroundColor: showSearch ? palette.tint : palette.fill2 }]}
