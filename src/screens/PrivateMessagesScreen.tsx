@@ -595,11 +595,16 @@ export default function PrivateMessagesScreen() {
       .map((row) => {
         const mine = isMineMessage(row.item, targetId, uid);
         const t = msgTimeNumber(row.item);
+        /** 对方头像：成员资料里的 avatar（会话页从 members 里按目标 id 取） */
+        const peerAvatar = (member as any)?.avatar || (member as any)?.avatarUrl || '';
         return {
           _id: row.key,
           text: privateMessageText(row.item) || '',
           createdAt: new Date(t < 1e12 ? t * 1000 : t),
-          user: { _id: mine ? String(uid ?? 1) : String(targetId || 'peer') },
+          user: {
+            _id: mine ? String(uid ?? 1) : String(targetId || 'peer'),
+            ...(mine ? {} : { avatar: peerAvatar, name: convName(sel) }),
+          },
           original: row.item,
           groupStart: row.groupStart,
           isMine: mine,
@@ -658,7 +663,9 @@ export default function PrivateMessagesScreen() {
                 persistent
               />
             ) : null}
-            <Text style={[styles.msgTime, mine && { color: 'rgba(255,255,255,0.75)' }, !mine && { color: palette.labelTertiary }]}>{formatTimestamp(msgTimeNumber(item))}</Text>
+            <Text style={[styles.msgTime, mine && { color: 'rgba(255,255,255,0.75)' }, !mine && { color: palette.labelTertiary }]}>
+              {(() => { const t = msgTimeNumber(item); return formatTimestamp(t < 1e12 ? t * 1000 : t).slice(11, 16); })()}
+            </Text>
           </GlassSurface>
         </View>
       );
@@ -679,6 +686,17 @@ export default function PrivateMessagesScreen() {
           onSend={() => { void doSend(); }}
           renderBubble={renderGlassBubble}
           renderInputToolbar={() => null}
+          // 背景透明：露出我们的页面渐变背景（否则库的默认灰底盖住，玻璃也无内容可折射）
+          theme={{ colors: { background: 'transparent' } }}
+          renderAvatar={({ currentMessage }: any) => {
+            const url = (currentMessage as any)?.user?.avatar;
+            if (!url) return null;
+            return (
+              <View style={styles.chatAvatarWrap}>
+                <Image source={{ uri: String(url) }} style={styles.chatAvatar} resizeMode="cover" />
+              </View>
+            );
+          }}
           isInverted
           listProps={{
             contentContainerStyle: styles.msgList,
@@ -925,5 +943,7 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   input: { flex: 1, padding: 10, borderRadius: 18, borderWidth: 1, fontSize: 14, maxHeight: 80 },
   sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18 },
+  chatAvatarWrap: { width: 40, height: 40, borderRadius: 20, overflow: 'hidden', marginHorizontal: 6 },
+  chatAvatar: { width: '100%', height: '100%' },
   sendT: { fontWeight: '800', fontSize: 13 },
 });
