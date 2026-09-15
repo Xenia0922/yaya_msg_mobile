@@ -23,6 +23,16 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
     try {
       const res = await pocketApi.getNimLoginInfo();
       const creds = normalizeCredentials(res);
+      // 诊断（排查云信登录 414）：打印原始响应键路径与归一化结果（token 只留长度/前 4 位）
+      try {
+        const content = (res && (res.content || res.data)) || {};
+        // eslint-disable-next-line no-console
+        console.log('[nim] userinfo keys =', Object.keys(content).join(','), '| status =', (res && (res.status ?? res.code)) ?? '-');
+        // eslint-disable-next-line no-console
+        console.log('[nim] creds =', creds ? `accid=${creds.accid} userId=${creds.userId} tokenLen=${creds.token.length} tokenHead=${creds.token.slice(0, 4)}` : 'null');
+      } catch {
+        /* 诊断失败忽略 */
+      }
       if (creds) cached = creds;
       return creds;
     } catch {

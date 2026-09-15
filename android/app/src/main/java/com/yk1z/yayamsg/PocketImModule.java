@@ -70,14 +70,20 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     return "PocketIm";
   }
 
-  /** 云信错误码 → 官方文案（对齐 com.pocket.snh48.lib.yunxin.model.ChatCodeHelper） */
-  private static String describe(int code) {
+  /**
+   * 云信错误码 → 文案（对齐 com.pocket.snh48.lib.yunxin.model.ChatCodeHelper）。
+   * 414 的文案按上下文区分：登录 414 与服务端 App 标识校验相关，发送 414 才是 roomId/channelId 参数问题。
+   */
+  private static String describe(int code, boolean loginContext) {
     switch (code) {
       case 302: return "帐号或密码错误";
-      case 403: return "无权限";
+      case 403: return "非法操作或没有权限";
       case 404: return "聊天室/频道不存在";
       case 408: return "服务器无响应";
-      case 414: return "参数错误（serverId/channelId 不匹配或缺失）";
+      case 414:
+        return loginContext
+            ? "参数错误（App 标识未通过服务端校验：包名不在云信控制台白名单，或 accid/token 不匹配）"
+            : "参数错误（serverId/channelId 不匹配或缺失）";
       case 415: return "与服务器建立连接失败";
       case 416: return "操作太快了，请稍后再试";
       case 422: return "账号被禁用";
@@ -111,9 +117,17 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     options.asyncInitSDK = false;
     options.reducedIM = true;
     options.enableBackOffReconnectStrategy = true;
-    options.consoleLogEnabled = false;
-    NIMClient.init(getReactApplicationContext().getApplicationContext(), null, options);
-    inited = true;
+    // 诊断期打开 SDK 控制台日志（logcat tag: NIM / nim），排查登录 414 后应关闭
+    options.consoleLogEnabled = true;
+    android.util.Log.i(TAG, "init appKey=" + options.appKey);
+    try {
+      NIMClient.init(getReactApplicationContext().getApplicationContext(), null, options);
+      inited = true;
+      android.util.Log.i(TAG, "init done, status=" + NIMClient.getStatus());
+    } catch (Throwable t) {
+      android.util.Log.e(TAG, "init failed", t);
+      throw t;
+    }
   }
 
   @ReactMethod
@@ -152,6 +166,7 @@ public class PocketImModule extends ReactContextBaseJavaModule {
       public void run() {
         try {
           initOnce(DEFAULT_APP_KEY);
+          android.util.Log.i(TAG, "login accid=" + accid + " tokenLen=" + (token == null ? 0 : token.length()));
           NIMClient.getService(AuthService.class)
               .login(new LoginInfo(accid, token))
               .setCallback(new RequestCallback<LoginInfo>() {
@@ -163,11 +178,13 @@ public class PocketImModule extends ReactContextBaseJavaModule {
 
                 @Override
                 public void onFailed(int code) {
-                  promise.reject("E_LOGIN", "云信登录失败：" + describe(code));
+                  android.util.Log.e(TAG, "login onFailed code=" + code + " (" + describe(code, true) + ")");
+                  promise.reject("E_LOGIN", "云信登录失败：" + describe(code, true));
                 }
 
                 @Override
                 public void onException(Throwable exception) {
+                  android.util.Log.e(TAG, "login onException: " + exception);
                   promise.reject("E_LOGIN", exception);
                 }
               });
@@ -237,6 +254,7 @@ public class PocketImModule extends ReactContextBaseJavaModule {
       public void run() {
         try {
           initOnce(DEFAULT_APP_KEY);
+          android.util.Log.i(TAG, "sendChannelText serverId=" + (long) serverId + " channelId=" + (long) channelId + " len=" + content.length() + " ext=" + (extJson == null ? 0 : extJson.length()));
           QChatSendMessageParam param =
               new QChatSendMessageParam((long) serverId, (long) channelId, MsgTypeEnum.text);
           param.setBody(content);
@@ -257,7 +275,7 @@ public class PocketImModule extends ReactContextBaseJavaModule {
                     promise.resolve(true);
                     return;
                   }
-                  String detail = describe(code);
+                  String detail = describe(code, false);
                   if (result != null && result.getSentMessage() != null
                       && result.getSentMessage().getAntiSpamResult() != null
                       && result.getSentMessage().getAntiSpamResult().isAntiSpam()) {

@@ -110,12 +110,39 @@ android/.../PocketImModule.java             原生：init / login / sendChannelT
 - `:app:compileReleaseJavaWithJavac` 通过（原生模块 API 与 AAR 完全匹配）
 - `assembleRelease` 出包成功；MuMu（x86_64）装机启动无 crash、无 RN 报错
 - 自实现 MD5 对 RFC1321 三个标准向量结果正确
+- **播放器「一直在加载中」已修复并实测生效**：LiveExoView 首帧经 NativeModule 事件
+  （`LivePlayer:size`，首帧 + 600ms + 2000ms 各一次）通知 JS → `state=playing`
+  （根因：bridgeless 下 `UIManagerModule` 取不到，View 事件被静默丢弃）
 
-未验证（需登录态真机）：
-- 聊天室登录/进房/发弹幕（需真实 accid+pwd）
-- 圈组登录 + 房间发言（需真实账号且该圈组允许发言）
+### ⚠️ 服务端拒绝第三方客户端（2026-09-15 实测，外部硬阻塞）
 
-## 7. 体积影响（重要）
+MuMu 真机 + 真实登录态实测（logcat 证据）：
+
+| 通道 | 服务端返回 | 证据 |
+|:--|:--|:--|
+| 原生 IM 登录（房间/圈组 QChat 的前提） | **414 参数错误** | `UILoginEventManager: loginResponse code=414 … operationType='protocol', target='link208-bgp.yunxinfw.com:443', description='login response error'` |
+| Web/RN 聊天室（直播弹幕） | **403 非法操作或没有权限** | `protocol::onMessage:packet error code:403, message:13_2 login error: 非法操作或没有权限`（账号+token 与匿名两种方式都被拒） |
+
+结论：**不是代码问题，是口袋48 的云信 appKey 在服务端对客户端做了校验。**
+对照云信官方文档（登录 414 的常见原因）：「当请求登录的客户端 App 标识（Android 包名）不在
+控制台『App Key 管理 → 标识管理』白名单内时，登录接口会返回 414」——我们包名是
+`com.yk1z.yayamsg`，官方是 `com.pocket.snh48`。同一 appKey、同一账号在官方 App 上可正常登录，
+在我们包名下被拒 → 与「包名白名单」完全吻合。48tools（Windows C++ SDK）不受影响，
+因为官方文档中该校验只针对 iOS Bundle ID / Android Package Name。
+
+App 内的呈现（都已做）：
+- 直播弹幕面板：连接失败时显示「弹幕通道被服务端拒绝…」（自适应尝试：账号+token → 匿名）
+- 房间发言：错误提示区分登录 414 与发送 414 的不同语义
+
+## 7. 出路
+
+| 方案 | 说明 | 评价 |
+|:--|:--|:--|
+| 改包名为 `com.pocket.snh48` | 与官方 App 同包名 | ❌ 会与官方 App 冲突（不能共存），且属冒充，不建议 |
+| 桌面端路线（Windows C++ SDK，48tools 同款） | 不受 Android 包名校验 | 手机上不可行 |
+| 保持现状 | 弹幕/房间发言链路代码保留，服务端放行即可用 | ✅ 推荐：代码已就位，等待/依赖外部条件 |
+
+## 8. 体积影响（重要）
 
 云信原生 SDK 自带 native 库，按 ABI 分包后：
 

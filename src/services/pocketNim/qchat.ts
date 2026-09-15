@@ -51,9 +51,17 @@ async function ensureLogin(): Promise<void> {
   if (loginInFlight) return loginInFlight;
   loginInFlight = (async () => {
     try {
+      // eslint-disable-next-line no-console
+      console.log('[nim] qchat ensureLogin accid =', creds.accid, 'tokenLen =', creds.token.length);
       await pocketImInit();
       await pocketImLogin(creds.accid, creds.token);
       loggedInAccid = creds.accid;
+      // eslint-disable-next-line no-console
+      console.log('[nim] qchat login ok');
+    } catch (err: any) {
+      // eslint-disable-next-line no-console
+      console.log('[nim] qchat login FAILED:', String(err?.message || err));
+      throw err;
     } finally {
       loginInFlight = null;
     }

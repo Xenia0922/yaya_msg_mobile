@@ -6,7 +6,7 @@
  * iOS/其他平台没有该模块，调用方需用 isPocketImAvailable() 判断。
  */
 
-import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 
 interface PocketImNative {
   appKey?: string;
@@ -83,20 +83,23 @@ export interface PocketImMessage {
   extension: string;
 }
 
-const emitter = native ? new NativeEventEmitter(NativeModules.PocketIm) : null;
-
+/**
+ * 事件用 DeviceEventEmitter（原生侧经 RCTDeviceEventEmitter.emit 发送）。
+ * ⚠️ 不要写成 `new NativeEventEmitter(NativeModules.PocketIm)`：原生模块没有
+ * addListener/removeListeners 时 RN 会告警且收不到事件。
+ */
 export function addPocketImMessageListener(
   listener: (messages: PocketImMessage[]) => void
 ): { remove: () => void } {
-  if (!emitter) return { remove: () => undefined };
-  const sub = emitter.addListener('PocketIm:message', listener);
+  if (!native) return { remove: () => undefined };
+  const sub = DeviceEventEmitter.addListener('PocketIm:message', listener);
   return { remove: () => sub.remove() };
 }
 
 export function addPocketImStatusListener(
   listener: (status: string) => void
 ): { remove: () => void } {
-  if (!emitter) return { remove: () => undefined };
-  const sub = emitter.addListener('PocketIm:status', listener);
+  if (!native) return { remove: () => undefined };
+  const sub = DeviceEventEmitter.addListener('PocketIm:status', listener);
   return { remove: () => sub.remove() };
 }

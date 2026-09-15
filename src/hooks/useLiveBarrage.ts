@@ -68,6 +68,9 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
         pocketApi.getLiveChatroom(id).catch(() => null),
       ]);
       if (cancelled || seqRef.current !== seq) return;
+      // 诊断：确认聊天室坐标是否解析成功（成员直播弹幕不显示时先看这条）
+      // eslint-disable-next-line no-console
+      console.log('[nim] live barrage resolve liveId=', id, 'roomId=', chatroom?.roomId || '(none)', 'creds=', credentials ? credentials.accid : '(none)');
       if (!credentials) {
         setStatus('error');
         setError('未取到云信登录凭证，请先登录口袋48账号');
