@@ -27,7 +27,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LiquidGlassView, useGlassSupport } from 'react-native-liquid-glassmorphism';
 import { LinearGradient } from 'expo-linear-gradient';
+import { NavigationContext } from '@react-navigation/native';
 import { usePalette } from '../theme';
 
 /** 语义角色 —— 决定用哪组材质 */
@@ -84,6 +86,26 @@ const SELECTOR: { light: Material; dark: Material } = {
   dark: { ...MATERIAL.dark, overlay: 'rgba(255,255,255,0.16)', intensity: 60 },
 };
 
+/**
+ * 焦点感知：AGSL 分支在非活跃屏要 paused（旧库性能规则：Android 感知不到离屏玻璃）。
+ * 用 NavigationContext 而不是 useIsFocused()：后者在没有导航容器时会抛错。
+ */
+function useGlassFocused(): boolean {
+  const nav = React.useContext(NavigationContext);
+  const [focused, setFocused] = React.useState(true);
+  React.useEffect(() => {
+    if (!nav) return;
+    setFocused(nav.isFocused());
+    const onFocus = nav.addListener('focus', () => setFocused(true));
+    const onBlur = nav.addListener('blur', () => setFocused(false));
+    return () => {
+      onFocus();
+      onBlur();
+    };
+  }, [nav]);
+  return focused;
+}
+
 export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
   /** 语义角色（选材质），默认 card */
   role?: GlassRole;
@@ -117,6 +139,8 @@ export function GlassSurface({
 }: GlassSurfaceProps) {
   const palette = usePalette();
   const isDark = palette.name === 'dark';
+  const { tier } = useGlassSupport();
+  const focused = useGlassFocused();
   const m =
     role === 'selector'
       ? isDark
@@ -126,10 +150,63 @@ export function GlassSurface({
         ? MATERIAL.dark
         : MATERIAL.light;
 
+  // ── 双引擎 ──
+  // dock 类（底栏 + 选中态）用 AGSL：真·边缘透镜折射 + 色散，苹果的核心观感就在这两处，
+  // 且实例极少（≤2），旧库"每帧整屏抓一次背景"的成本可控（全实例共享同一张位图）。
+  // 其余大面积元素（卡片/胶囊）走 expo-blur 的硬件模糊，避免 N 实例 × 整屏重绘。
+  // ⚠️ 实测（MuMu API35）：AGSL dock = janky 10% / p50 25ms；expo-blur = janky 0% / p50 5ms。
+  // 旧库每帧用「软件 Canvas」把整个 root 重绘进 Bitmap，成本 20ms/帧，给不了"真折射 + 满帧"。
+  // 要真边缘折射必须自写原生视图：抓目标进 **RenderNode（硬件录制）** + AGSL 链式 RenderEffect
+  // （blur → lens/dispersion），Dimezis BlurView 走的就是 RenderNode 路线，实测 0% janky。
+  const USE_AGSL_DOCK = false;
+  const useAgsL = USE_AGSL_DOCK && (role === 'bar' || role === 'selector') && tier !== 'none';
+
   const r = radius;
   const boxStyle: StyleProp<ViewStyle> = asBackground
     ? [StyleSheet.absoluteFill, { borderRadius: r, overflow: 'hidden' }, style]
     : [{ borderRadius: r, overflow: 'hidden' }, style];
+
+  if (useAgsL) {
+    return (
+      <LiquidGlassView
+        variant={role === 'selector' ? 'clear' : 'regular'}
+        intensity={role === 'selector' ? 45 : 50}
+        borderRadius={r}
+        tintColor={tintColor ?? (isDark ? 'rgba(20,20,26,0.30)' : 'rgba(255,255,255,0.34)')}
+        iridescence={role === 'selector' ? 0.6 : 0.25}
+        paused={!focused}
+        style={[
+          { borderRadius: r, overflow: 'hidden' },
+          asBackground ? StyleSheet.absoluteFill : null,
+          style,
+        ]}
+        {...rest}
+      >
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: r,
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.60)',
+              overflow: 'hidden',
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={
+              isDark
+                ? [`rgba(255,255,255,${m.highlight})`, 'transparent']
+                : [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.04)', 'transparent']
+            }
+            style={{ height: '42%' }}
+          />
+        </View>
+        {children}
+      </LiquidGlassView>
+    );
+  }
 
   return (
     <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
