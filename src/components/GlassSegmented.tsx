@@ -97,7 +97,9 @@ const styles = StyleSheet.create({
   // left 必须是 0：cell 的 onLayout.x 已经包含行的 paddingHorizontal(3)
   scrollPill: { position: 'absolute', left: 0, top: 3, borderRadius: 999, overflow: 'hidden' },
   scrollCell: { paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
-  track: { overflow: 'hidden' },
+  // alignSelf stretch：轨道宽度必须由父容器决定，不能被文字长短撑开/缩窄
+  // （否则切换 tab 时 trackW 变化 → 等分胶囊重算 → 视觉上被「二次修正」）
+  track: { overflow: 'hidden', alignSelf: 'stretch' },
   row: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 },
   pill: {
     position: 'absolute',
@@ -132,8 +134,10 @@ export function GlassSegmentedScroll<T extends string>({
 
   useEffect(() => {
     if (!target) return;
+    // 宽度瞬时到位：宽度动画与位置动画是两条独立弹簧，收敛节奏不同 → 看起来像被「二次修正」。
+    // 文案长短不一时这一点尤其明显，因此宽度直接落位，只让位置做弹簧。
+    w.setValue(target.w);
     Animated.spring(x, { toValue: target.x, tension: 220, friction: 30, useNativeDriver: true }).start();
-    Animated.spring(w, { toValue: target.w, tension: 220, friction: 30, useNativeDriver: true }).start();
   }, [target, x, w]);
 
   return (

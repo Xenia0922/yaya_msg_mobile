@@ -833,6 +833,10 @@ export default function PrivateMessagesScreen() {
                   activeOpacity={0.88}
                 >
                 <GlassSurface radius={20} role="card">
+                  {/* ⚠️ 行布局必须放在玻璃内部：GlassSurface 的 children 容器是 column，
+                      若把 flexDirection:'row'/padding 留在外层 TouchableOpacity 上，
+                      内容会在玻璃里竖直堆叠、宽度被压到只剩 1 个字符（名字显示不全） */}
+                  <View style={styles.convCardRow}>
                   <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
                     {convAvatarUrl ? (
                       <Image source={{ uri: convAvatarUrl }} style={styles.convAvatarImg} resizeMode="cover" />
@@ -855,6 +859,7 @@ export default function PrivateMessagesScreen() {
                         <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
                       )}
                     </View>
+                  </View>
                   </View>
                 </GlassSurface>
                 </TouchableOpacity>
@@ -922,7 +927,9 @@ const styles = StyleSheet.create({
   screenContainer: { flex: 1 },
   convList: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 },
   groupTitle: { fontSize: 13, fontWeight: '800', marginTop: 12, marginBottom: 2, paddingLeft: 4 },
-  convCard: { padding: 12, flexDirection: 'row', alignItems: 'center', marginVertical: 4, flex: 1 },
+  convCard: { marginVertical: 4, flex: 1 },
+  /** 玻璃内部的行布局（padding + row 必须在这里，见上方注释） */
+  convCardRow: { padding: 12, flexDirection: 'row', alignItems: 'center' },
   convRowWrap: { flexDirection: 'row', alignItems: 'center' },
   convActions: { marginLeft: 8, gap: 8, alignItems: 'center' },
   convPinBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },

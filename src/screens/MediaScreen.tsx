@@ -1999,6 +1999,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 6,
     borderRadius: radii.pill,
+    // 宽度固定满宽：不受「直播/录播」文字长短影响，切换时胶囊一次滑动到位
+    width: 'auto',
+    alignSelf: 'stretch',
   },
   segmentCell: {
     flex: 1,

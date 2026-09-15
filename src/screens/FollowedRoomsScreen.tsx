@@ -2056,6 +2056,8 @@ export default function FollowedRoomsScreen() {
         const prof = senderProfile(item, room);
         return {
           _id: String(row.key),
+          // 带回原始行：renderMessage 整行渲染要用（groupStart 决定是否显示头像/名字）
+          __row: row,
           text: messageText(item) || '',
           createdAt: new Date(ms),
           user: {
@@ -2063,7 +2065,6 @@ export default function FollowedRoomsScreen() {
             _id: mine ? 'SELF' : senderId,
             ...(mine ? {} : { avatar: (prof as any)?.avatar || (room as any)?.avatar, name: (prof as any)?.name }),
           },
-          __row: row,
         };
       });
   }, [chatRows, selectedRoom, showFanMessages, currentUserId]);
@@ -2533,7 +2534,15 @@ export default function FollowedRoomsScreen() {
             theme={{ colors: { background: 'transparent' } }}
             locale="zh"
             // 用户要求：不要日期分隔（renderDay 返回空 + 关掉浮动日期胶囊）
-            renderBubble={renderEllipseGlassBubble}
+            // 整行自定义：用页面既有的 renderChatItem —— 头像、气泡外的发送者名字、
+            // 回复卡片、礼物、媒体全都保留；气泡本身是玻璃（GlassSurface）。
+            // 不再用 renderBubble：它只能改气泡内部，名字被迫塞进气泡里（与设计不符）。
+            renderMessage={({ currentMessage }: any) => {
+              const row = (currentMessage as any)?.__row;
+              // 库要求必须返回元素（null 不合法）
+              if (!row) return <View />;
+              return renderChatItem({ item: row });
+            }}
             renderDay={renderDayLabel}
             isDayAnimationEnabled={false}
             user={{ _id: 'SELF' }}
@@ -3103,7 +3112,8 @@ const styles = StyleSheet.create({
   replyCard: { marginBottom: 6, padding: 8, borderRadius: radii.sm, borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
   replyName: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
   replyText: { fontSize: 13, lineHeight: 18 },
-  msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, paddingHorizontal: 6 },
+  // 名字行不要水平内边距：否则名字比气泡左边缘缩进一截（截图中名字与气泡左对齐）
+  msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   msgMetaLineMine: { justifyContent: 'flex-end' },
   msgSender: { fontSize: 12, fontWeight: '600', maxWidth: 150 },
   msgTime: { fontSize: 10 },
