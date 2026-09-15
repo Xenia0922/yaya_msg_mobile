@@ -517,7 +517,8 @@ export default function FlipScreen() {
             const elapsedStr = elapsed > 0 ? t('耗时 {time}', { time: `${elapsedDays > 0 ? t('{m}天', { m: elapsedDays }) : ''}${elapsedHours > 0 ? t('{m}小时', { m: elapsedHours }) : ''}${t('{m}分', { m: elapsedMinutes })}` }) : '';
             return (
               <FadeInView delay={index < 12 ? 60 + index * 25 : 0} distance={8}>
-                <View style={[styles.card, { backgroundColor: palette.fill2 }]}>
+                {/* 翻牌卡片 = 玻璃（内容进玻璃） */}
+                <GlassSurface radius={20} role="card" style={styles.card}>
                   <View style={styles.cardTop}>
                     <View style={styles.tagRow}>
                       <View style={[styles.typeTag, { backgroundColor: palette.tintSoft }]}>
@@ -588,7 +589,7 @@ export default function FlipScreen() {
                     {elapsedStr ? ` · ${elapsedStr}` : ''}
                     {flip.answerTime ? ` · ${t('回复于 {time}', { time: formatTimestamp(flip.answerTime) })}` : ''}
                   </Text>
-                </View>
+                </GlassSurface>
               </FadeInView>
             );
           }}

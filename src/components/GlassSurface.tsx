@@ -20,7 +20,9 @@
 import React from 'react';
 import {
   Platform,
+  Pressable,
   StyleSheet,
+  TouchableOpacity,
   View,
   type StyleProp,
   type ViewProps,
@@ -123,6 +125,13 @@ export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
   tintColor?: string;
   /** 兼容旧签名（AGSL 时代的色散强度），新引擎忽略 */
   iridescence?: number;
+  /** 可点：给了就在内部渲染 TouchableOpacity/Pressable（玻璃自己就是按压容器） */
+  onPress?: () => void;
+  onLongPress?: () => void;
+  activeOpacity?: number;
+  /** 兼容 ScalePressable 的按下缩放（仅作语义标记，避免类型报错） */
+  pressedScale?: number;
+  disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }
@@ -135,6 +144,11 @@ export function GlassSurface({
   intensity,
   tintColor,
   iridescence: _iridescence,
+  onPress,
+  onLongPress,
+  activeOpacity,
+  pressedScale: _pressedScale,
+  disabled,
   style,
   children,
   ...rest
@@ -257,8 +271,8 @@ export function GlassSurface({
     );
   }
 
-  return (
-    <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
+  const inner = (
+    <>
       {/* 底层：硬件模糊（Android 31+ = RenderEffect / Dimezis BlurView） */}
       <BlurView
         // blurTarget = 只包背景层的 BlurTargetView（内部无 BlurView → 不会 RenderNode 互相嵌套）
@@ -293,6 +307,35 @@ export function GlassSurface({
         />
       </View>
       {children}
+    </>
+  );
+
+  // 可点玻璃：内部渲染 TouableOpacity/Pressable，玻璃本身就是按压容器
+  if ((onPress || onLongPress) && !asBackground) {
+    if (activeOpacity != null) {
+      return (
+        <TouchableOpacity
+          style={boxStyle}
+          onPress={onPress}
+          onLongPress={onLongPress}
+          activeOpacity={activeOpacity}
+          disabled={disabled}
+          {...(rest as any)}
+        >
+          {inner}
+        </TouchableOpacity>
+      );
+    }
+    return (
+      <Pressable style={boxStyle} onPress={onPress} onLongPress={onLongPress} disabled={disabled} {...(rest as any)}>
+        {inner}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
+      {inner}
     </View>
   );
 }

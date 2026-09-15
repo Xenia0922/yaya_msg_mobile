@@ -624,13 +624,17 @@ export default function PrivateMessagesScreen() {
             return (
               <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
                 <View style={[styles.msgRow, mine && styles.msgRowMine]}>
-                  <View
+                  {/* 气泡 = 玻璃（内容进玻璃）；「自己」用 tint 染色玻璃 */}
+                  <GlassSurface
+                    role="chip"
+                    radius={18}
+                    tintColor={mine ? palette.tint : undefined}
                     style={[
                       styles.bubble,
                       mine ? styles.bubbleMine : null,
                       !groupStart && mine && styles.bubbleMineMid,
                       !groupStart && !mine && styles.bubbleOtherMid,
-                      { borderColor: mine ? 'transparent' : palette.hairline, backgroundColor: mine ? palette.tint : palette.surface },
+                      mine ? null : { borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
                     ]}
                   >
                     {hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{txt}</Text> : null}
@@ -654,7 +658,7 @@ export default function PrivateMessagesScreen() {
                       />
                     ) : null}
                     <Text style={[styles.msgTime, mine && { color: 'rgba(255,255,255,0.75)' }, !mine && { color: palette.labelTertiary }]}>{formatTimestamp(msgTimeNumber(item))}</Text>
-                  </View>
+                  </GlassSurface>
                 </View>
               </FadeInView>
             );

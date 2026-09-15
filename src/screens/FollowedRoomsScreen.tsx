@@ -2043,17 +2043,18 @@ export default function FollowedRoomsScreen() {
                 </Text>
               </View>
             ) : null}
-            <View
+            {/* 气泡 = 玻璃（内容进玻璃）。「自己」用 tint 染色玻璃（实心强调），
+                主播/他人走默认白深纱玻璃 —— 与底栏同一套材质 */}
+            <GlassSurface
+              role="chip"
+              radius={18}
+              tintColor={mine ? palette.tint : undefined}
               style={[
                 styles.msgBubble,
                 !row.groupStart && styles.msgBubbleMid,
                 row.groupStart && !mine && styles.msgBubbleTailLeft,
                 row.groupStart && mine && styles.msgBubbleTailRight,
-                {
-                  backgroundColor: mine ? palette.tint : idol ? 'rgba(255,111,145,0.22)' : palette.surfaceGlass,
-                  borderColor: idol ? 'rgba(232,62,140,0.35)' : palette.hairline,
-                  borderWidth: mine ? 0 : StyleSheet.hairlineWidth,
-                },
+                mine ? null : { borderColor: idol ? 'rgba(232,62,140,0.35)' : palette.hairline, borderWidth: StyleSheet.hairlineWidth },
               ]}
             >
               {replyName || replyQuoted ? (
@@ -2146,7 +2147,7 @@ export default function FollowedRoomsScreen() {
                   <Text style={[styles.openLinkText, { color: palette.tint }]} numberOfLines={1}>{media.url}</Text>
                 </TouchableOpacity>
               ) : null}
-            </View>
+            </GlassSurface>
           </View>
         </View>
       );

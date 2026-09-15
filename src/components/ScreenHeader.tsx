@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { usePalette } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ScalePressable } from './Motion';
+import { GlassSurface } from './GlassSurface';
 
 interface Props {
   title: string;
@@ -38,16 +39,11 @@ export default function ScreenHeader({ title, onBack, right, style, overlay, hid
           accessibilityRole="button"
           accessibilityLabel={t('返回')}
           pressedScale={0.9}
-          style={[
-            styles.backBtn,
-            {
-              backgroundColor: overlay ? palette.surfaceGlassStrong : palette.fill2,
-              borderColor: overlay ? palette.innerStroke : 'transparent',
-            },
-          ]}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <MaterialCommunityIcons name="chevron-left" color={palette.label} size={26} />
+          <GlassSurface role="chip" radius={999} style={styles.backBtn}>
+            <MaterialCommunityIcons name="chevron-left" color={palette.label} size={26} />
+          </GlassSurface>
         </ScalePressable>
       ) : null}
       <Text

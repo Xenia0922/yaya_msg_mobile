@@ -48,6 +48,7 @@ import { Skeleton } from '../components/Skeleton';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { translate, useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
+import { GlassSegmented } from '../components/GlassSegmented';
 
 /** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
@@ -1688,24 +1689,16 @@ export default function MediaScreen() {
           </TouchableOpacity>
         }
       />
-      {/* 直播/录播分段控件 */}
-      <GlassSurface radius={999} role="card" style={[styles.segmentWrap, { backgroundColor: 'transparent', borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}>
-        {(['live', 'vod'] as const).map((key) => {
-          const active = tab === key;
-          return (
-            <TouchableOpacity
-              key={key}
-              style={[styles.segmentCell, active && { backgroundColor: palette.tint }]}
-              onPress={() => switchTab(key)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.segmentText, { color: active ? palette.onTint : palette.labelSecondary, fontWeight: active ? '800' : '600' }]}>
-                {key === 'live' ? t('直播') : t('录播')}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </GlassSurface>
+      {/* 直播/录播分段控件：玻璃轨道 + 滑动玻璃选中胶囊（与底栏同一套） */}
+      <GlassSegmented
+        options={[
+          { key: 'live', label: t('直播') },
+          { key: 'vod', label: t('录播') },
+        ]}
+        value={tab}
+        onChange={(k) => switchTab(k as 'live' | 'vod')}
+        style={[styles.segmentWrap, { borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
+      />
       {/* 单行筛选：分组 chips + 搜索图标 */}
       <View style={styles.filterRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupRowContent}>

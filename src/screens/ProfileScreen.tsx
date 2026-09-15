@@ -18,7 +18,7 @@ import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
 import { translate, useI18n } from '../i18n';
 import { usePalette } from '../theme';
-import { GlassBackground } from '../components/GlassBackground';
+import { GlassSurface } from '../components/GlassSurface';
 
 type ArchiveState = {
   data: any;
@@ -103,8 +103,7 @@ export default function ProfileScreen() {
         </View>
 
         {selectedMember ? (
-        <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-        <GlassBackground radius={20} />
+        <GlassSurface radius={20} role="card" style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
           <View style={styles.profileHead}>
             {avatar !== '-' ? <Image source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} /> : <View style={[styles.avatarFallback, { backgroundColor: palette.tintSoft }]} />}
             <View style={styles.profileTitleWrap}>
@@ -182,7 +181,7 @@ export default function ProfileScreen() {
               </ScrollView>
             </View>
           ) : null}
-        </View>
+        </GlassSurface>
       ) : (
         <View style={styles.emptyCard}>
           <EmptyState icon="account-search-outline" title={t('暂无数据')} hint={t('搜索成员查看档案')} />
@@ -190,8 +189,7 @@ export default function ProfileScreen() {
       )}
 
       {fanRanks.length > 0 ? (
-        <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-        <GlassBackground radius={20} />
+        <GlassSurface radius={20} role="card" style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
           <Text style={[styles.sectionTitle, { color: palette.tint }]}>{t('粉丝排行')}</Text>
           {fanRanks.slice(0, 10).map((fan: any, index: number) => (
             <View key={`${fan.userId || fan.nickName || index}`} style={[styles.rankRow, { borderBottomColor: palette.innerStroke }]}>
@@ -202,12 +200,11 @@ export default function ProfileScreen() {
               <Text style={[styles.rankMeta, { color: palette.labelSecondary }]} numberOfLines={1}>{firstText(fan.userId, fan.level, fan.score)}</Text>
             </View>
           ))}
-        </View>
+        </GlassSurface>
       ) : null}
 
       {archive.history.length > 0 ? (
-        <View style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-        <GlassBackground radius={20} />
+        <GlassSurface radius={20} role="card" style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
           <Text style={[styles.sectionTitle, { color: palette.tint }]}>{t('重要经历')}</Text>
           {archive.history.slice(0, 20).map((item: any, index: number) => (
             <View key={`${item.ctime || item.time || index}`} style={[styles.timelineRow, { borderBottomColor: palette.innerStroke }]}>
@@ -217,7 +214,7 @@ export default function ProfileScreen() {
               </Text>
             </View>
           ))}
-        </View>
+        </GlassSurface>
       ) : null}
 
       </FadeInView>

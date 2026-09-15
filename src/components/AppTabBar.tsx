@@ -232,6 +232,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
             <GlassSurface
               role="selector"
               radius={999}
+              asBackground
               tintColor={isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.55)'}
               iridescence={0.6}
             />

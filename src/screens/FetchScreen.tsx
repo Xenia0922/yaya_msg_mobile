@@ -20,6 +20,7 @@ import { errorMessage, messageText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
 import { usePalette, radii } from '../theme';
 import { GlassSurface } from '../components/GlassSurface';
+import { GlassSegmented } from '../components/GlassSegmented';
 
 type MessageMode = 'all' | 'owner';
 type RoomMode = 'big' | 'small';
@@ -152,22 +153,15 @@ export default function FetchScreen() {
 
           {/* 房间分区分段 */}
           <Text style={[styles.groupLabel, { color: palette.label }]}>{t('房间分区')}</Text>
-          <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={[styles.segmentBtn, roomMode === 'big' && { backgroundColor: palette.surfaceGlassStrong }]}
-              onPress={() => setRoomMode('big')}
-            >
-              <Text style={[styles.segmentText, { color: roomMode === 'big' ? palette.label : palette.labelTertiary, fontWeight: roomMode === 'big' ? '700' : '400' }]}>{t('大房间')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={[styles.segmentBtn, roomMode === 'small' && { backgroundColor: palette.surfaceGlassStrong }]}
-              onPress={() => setRoomMode('small')}
-            >
-              <Text style={[styles.segmentText, { color: roomMode === 'small' ? palette.label : palette.labelTertiary, fontWeight: roomMode === 'small' ? '700' : '400' }]}>{t('小房间')}</Text>
-            </TouchableOpacity>
-          </View>
+          <GlassSegmented
+            options={[
+              { key: 'big', label: t('大房间') },
+              { key: 'small', label: t('小房间') },
+            ]}
+            value={roomMode}
+            onChange={setRoomMode}
+            style={styles.segment}
+          />
 
           <View style={styles.fetchBtn}>
             <Button title={t('开始抓取')} variant="filled" size="lg" onPress={startFetch} disabled={loading} loading={loading} fullWidth />
