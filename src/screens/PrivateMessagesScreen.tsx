@@ -611,6 +611,26 @@ export default function PrivateMessagesScreen() {
         };
       });
 
+    /** 中文日期分隔（今天 / 昨天 / 9月14日）—— 库默认输出英文月份 */
+    const renderChineseDay = ({ date }: any) => {
+      const d = new Date(date);
+      if (Number.isNaN(d.getTime())) return null;
+      const now = new Date();
+      const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+      const label = sameDay(d, now)
+        ? t('今天')
+        : sameDay(d, new Date(now.getTime() - 86400000))
+          ? t('昨天')
+          : t('{m}月{d}日', { m: d.getMonth() + 1, d: d.getDate() });
+      return (
+        <View style={styles.dateSepWrap}>
+          <View style={[styles.dateSep, { backgroundColor: palette.fill2 }]}>
+            <Text style={[styles.dateSepText, { color: palette.labelTertiary }]}>{label}</Text>
+          </View>
+        </View>
+      );
+    };
+
     /** 玻璃气泡（沿用原实现：媒体内联 + 时间戳，「自己」用 tint 染色玻璃） */
     const renderGlassBubble = ({ currentMessage }: any) => {
       const msg = currentMessage as any;
@@ -686,6 +706,8 @@ export default function PrivateMessagesScreen() {
           onSend={() => { void doSend(); }}
           renderBubble={renderGlassBubble}
           renderInputToolbar={() => null}
+          locale="zh"
+          renderDay={renderChineseDay}
           // 背景透明：露出我们的页面渐变背景（否则库的默认灰底盖住，玻璃也无内容可折射）
           theme={{ colors: { background: 'transparent' } }}
           renderAvatar={({ currentMessage }: any) => {

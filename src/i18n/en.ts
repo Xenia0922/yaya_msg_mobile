@@ -914,4 +914,5 @@ export const en: Record<string, string> = {
   主题: 'Theme',
   '抓取中…': 'Fetching…',
   最近播放: 'Recently played',
+  '{m}月{d}日': '{m}/{d}',
 };

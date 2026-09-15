@@ -914,4 +914,5 @@ export const ko: Record<string, string> = {
   主题: '테마',
   '抓取中…': '가져오는 중…',
   最近播放: '최근 재생',
+  '{m}月{d}日': '{m}월 {d}일',
 };

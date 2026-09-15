@@ -914,4 +914,5 @@ export const zhHant: Record<string, string> = {
   主题: '主題',
   '抓取中…': '抓取中…',
   最近播放: '最近播放',
+  '{m}月{d}日': '{m}月{d}日',
 };

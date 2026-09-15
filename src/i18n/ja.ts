@@ -914,4 +914,5 @@ export const ja: Record<string, string> = {
   主题: 'テーマ',
   '抓取中…': '取得中…',
   最近播放: '最近再生',
+  '{m}月{d}日': '{m}月{d}日',
 };

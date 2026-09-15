@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, AppState } from 'react-native';
 import { PerfFlatList } from '../components/PerfFlatList';
+import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
@@ -55,6 +56,8 @@ import { memberSearchText } from '../utils/members';
 import { getBgDisplayUri, ensureBgCached } from '../services/roomBgCache';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
+import { useBlurTarget } from '../components/BlurTarget';
+import { GlassSegmented } from '../components/GlassSegmented';
 type FollowedRoom = {
   memberId: string;
   member?: Member;
@@ -1097,6 +1100,8 @@ function avatarInitial(name: string) {
 
 export default function FollowedRoomsScreen() {
   const palette = usePalette();
+  /** 模糊背板（房间工具条的 BlurView 需要它才有真模糊） */
+  const blurTarget = useBlurTarget();
   const resolvedTheme = useResolvedTheme();
   const { t } = useI18n();
   const token = useSettingsStore((state) => state.settings.p48Token);
@@ -1979,6 +1984,61 @@ export default function FollowedRoomsScreen() {
     return rows;
   }, [filteredRoomMessages, selectedRoom]);
 
+  /**
+   * 聊天库接线（A+B）：把 chatRows 映射成 IMessage，`__row` 带回原始行，
+   * renderBubble 直接复用 renderChatItem —— 头像/名字/回复/礼物/媒体全保留。
+   * ⚠️ user._id 必须按真实发送者（库按它决定左右），createdAt 必须毫秒。
+   */
+  /** 中文日期分隔（今天 / 昨天 / 9月14日）—— 库默认输出英文月份 */
+  const renderChineseDay = useCallback(({ date }: any) => {
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return null;
+    const now = new Date();
+    const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    const label = sameDay(d, now)
+      ? t('今天')
+      : sameDay(d, new Date(now.getTime() - 86400000))
+        ? t('昨天')
+        : t('{m}月{d}日', { m: d.getMonth() + 1, d: d.getDate() });
+    return (
+      <View style={styles.daySepWrap}>
+        <View style={[styles.daySep, { backgroundColor: palette.fill2 }]}>
+          <Text style={[styles.daySepText, { color: palette.labelTertiary }]}>{label}</Text>
+        </View>
+      </View>
+    );
+  }, [palette, t]);
+
+  const chatIms = useMemo(() => {
+    if (!selectedRoom) return [];
+    return chatRows
+      .filter((row: any) => row.type === 'msg' && row.item)
+      .map((row: any) => {
+        const item = row.item;
+        const room = selectedRoom as Member;
+        const role = messageRole(item, room, showFanMessages, currentUserId);
+        const mine = role === 'mine';
+        const sec = Number(item?.msgTime || item?.ctime || item?.timestamp || 0);
+        const ms = sec > 1e12 ? sec : sec * 1000;
+        const senderId = String(
+          item?.user?.userId || item?.user?.id || item?.senderUserId || item?.senderId ||
+          item?.fromUserId || item?.userId || senderProfile(item, room)?.id ||
+          (mine ? currentUserId : 'peer'),
+        );
+        const prof = senderProfile(item, room);
+        return {
+          _id: String(row.key),
+          text: messageText(item) || '',
+          createdAt: new Date(ms),
+          user: {
+            _id: mine ? String(currentUserId || 'me') : senderId,
+            ...(mine ? {} : { avatar: (prof as any)?.avatar || (room as any)?.avatar, name: (prof as any)?.name }),
+          },
+          __row: row,
+        };
+      });
+  }, [chatRows, selectedRoom, showFanMessages, currentUserId]);
+
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
   const renderChatItem = useCallback(
     ({ item: row }: { item: any }) => {
@@ -2363,26 +2423,21 @@ export default function FollowedRoomsScreen() {
             <BlurView
               intensity={70}
               tint={resolvedTheme === 'dark' ? 'dark' : 'light'}
-              experimentalBlurMethod="dimezisBlurView"
+              blurTarget={blurTarget ?? undefined}
+              blurMethod="dimezisBlurViewSdk31Plus"
               style={styles.chatTools}
             >
-          {/* 分段切换：大房间 / 小房间 */}
-          <View style={[styles.segment, { backgroundColor: palette.fill2 }]}>
-            <TouchableOpacity
-              style={[styles.segmentItem, roomMode === 'big' && { backgroundColor: palette.tint }]}
-              onPress={() => openRoom(selectedRoom, 'big', showFanMessages, 'internal')}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.segmentText, { color: roomMode === 'big' ? palette.onTint : palette.labelSecondary }]}>{t('大房间')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.segmentItem, roomMode === 'small' && { backgroundColor: palette.tint }]}
-              onPress={() => openRoom(selectedRoom, 'small', showFanMessages, 'internal')}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.segmentText, { color: roomMode === 'small' ? palette.onTint : palette.labelSecondary }]}>{t('小房间')}</Text>
-            </TouchableOpacity>
-          </View>
+          {/* 分段切换：大房间 / 小房间（玻璃滑动选中） */}
+          <GlassSegmented
+            options={[
+              { key: 'big', label: t('大房间') },
+              { key: 'small', label: t('小房间') },
+            ]}
+            value={roomMode}
+            onChange={(k) => selectedRoom && openRoom(selectedRoom, k as 'big' | 'small', showFanMessages, 'internal')}
+            height={34}
+            style={{ width: 168 }}
+          />
           <View style={{ flex: 1 }} />
           <ScalePressable
             style={[styles.chatToolCircle, { backgroundColor: roomSearchOpen ? palette.tint : palette.fill2 }]}
@@ -2442,47 +2497,43 @@ export default function FollowedRoomsScreen() {
         ) : null}
 
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-          <PerfFlatList
-            ref={msgListRef}
-            // 始终用 chatRows：internal 切换保留上一帧（秒切，无割裂）；
-            // enter 跨房间时 roomMessages 已被 openRoom 清空，自然走 ListEmptyComponent 的「加载中」
-            data={chatRows}
-            onScroll={onMsgScroll}
-            scrollEventThrottle={120}
-            keyExtractor={(row: any) => String(row.key)}
-            contentContainerStyle={styles.chatContent}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-            removeClippedSubviews
-            onEndReached={loadMoreRoomMessages}
-            onEndReachedThreshold={0.5}
-            ListFooterComponent={
-            roomMessages.length ? (
-              <View style={styles.chatFooter}>
-                {hasMoreMessages ? (
-                  <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('上滑加载更多')}</Text>
-                ) : (
-                  <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有更多消息')}</Text>
-                )}
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            // 进入房间（enter，跨成员）：roomMessages 已清空，显示「加载中」转圈 —— 用户认可的进房间 loading，
-            // 不再用骨架屏（骨架会造成消息区从上一帧突跳到骨架再跳回的割裂感）。
-            // internal 同房间切换：保留上一帧消息，不会进入此分支。
-            !roomLoadedOnce && loading && !roomMsgError ? (
-              <CenterSpinner />
-            ) : !roomLoadedOnce && !roomMsgError ? null : roomSearchQuery.trim() ? (
-              <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有匹配的消息')}</Text>
-            ) : roomMsgError ? (
-              <ErrorState title={t('加载失败')} hint={roomMsgError} onAction={() => selectedRoom && openRoom(selectedRoom, roomMode, showFanMessages)} />
-            ) : (
-              <EmptyState icon="message-text-outline" title={t('暂无消息，切换大/小房间试试')} />
-            )
-          }
-          renderItem={renderChatItem}
+          {/* 消息列表交给聊天库（滚动/键盘/库能力），气泡/输入条/加载态仍用我们自己的 */}
+          <Chat
+            messages={chatIms}
+            user={{ _id: String(currentUserId || 'me') }}
+            onSend={() => {}}
+            renderBubble={({ currentMessage }: any) => renderChatItem({ item: (currentMessage as any).__row })}
+            locale="zh"
+            renderDay={renderChineseDay}
+            renderAvatar={() => null}
+            renderInputToolbar={() => null}
+            theme={{ colors: { background: 'transparent' } }}
+            isInverted
+            listProps={{
+              onScroll: onMsgScroll,
+              scrollEventThrottle: 120,
+              contentContainerStyle: styles.chatContent,
+              onEndReached: loadMoreRoomMessages,
+              onEndReachedThreshold: 0.5,
+              ListFooterComponent: roomMessages.length ? (
+                <View style={styles.chatFooter}>
+                  {hasMoreMessages ? (
+                    <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('上滑加载更多')}</Text>
+                  ) : (
+                    <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有更多消息')}</Text>
+                  )}
+                </View>
+              ) : null,
+              ListEmptyComponent: !roomLoadedOnce && loading && !roomMsgError ? (
+                <CenterSpinner />
+              ) : !roomLoadedOnce && !roomMsgError ? null : roomSearchQuery.trim() ? (
+                <Text style={[styles.empty, { color: palette.labelTertiary }]}>{t('没有匹配的消息')}</Text>
+              ) : roomMsgError ? (
+                <ErrorState title={t('加载失败')} hint={roomMsgError} onAction={() => selectedRoom && openRoom(selectedRoom, roomMode, showFanMessages)} />
+              ) : (
+                <EmptyState icon="message-text-outline" title={t('暂无消息，切换大/小房间试试')} />
+              ),
+            }}
           />
         </FadeInView>
       </View>
@@ -2783,6 +2834,9 @@ export default function FollowedRoomsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   roomBgLayer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  daySepWrap: { alignItems: 'center', marginVertical: 10 },
+  daySep: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
+  daySepText: { fontSize: 11, fontWeight: '600' },
   chatToolsClip: { marginHorizontal: 12, marginBottom: 8, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, borderRadius: 18 },
   segment: {
