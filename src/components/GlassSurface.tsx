@@ -31,6 +31,7 @@ import { LiquidGlassView, useGlassSupport } from 'react-native-liquid-glassmorph
 import { LinearGradient } from 'expo-linear-gradient';
 import { NavigationContext } from '@react-navigation/native';
 import { usePalette } from '../theme';
+import { LiquidGlassNativeView, isLiquidGlassNativeAvailable } from '../../modules/liquid-glass-native';
 
 /** 语义角色 —— 决定用哪组材质 */
 export type GlassRole =
@@ -158,13 +159,59 @@ export function GlassSurface({
   // 旧库每帧用「软件 Canvas」把整个 root 重绘进 Bitmap，成本 20ms/帧，给不了"真折射 + 满帧"。
   // 要真边缘折射必须自写原生视图：抓目标进 **RenderNode（硬件录制）** + AGSL 链式 RenderEffect
   // （blur → lens/dispersion），Dimezis BlurView 走的就是 RenderNode 路线，实测 0% janky。
-  const USE_AGSL_DOCK = false;
-  const useAgsL = USE_AGSL_DOCK && (role === 'bar' || role === 'selector') && tier !== 'none';
+  // 自写原生 AGSL 视图（RenderNode 硬件录制 + 链式 RenderEffect）—— 真边缘折射/色散，
+  // 且不用软件 Canvas，成本可控。仅 dock 类角色（实例 ≤2）使用。
+  const isDock = role === 'bar' || role === 'selector';
+  // ⚠️ 原生视图当前关闭：录制整棵树时会与 expo-blur(Dimezis) 的 RenderNode 互相嵌套，
+  // RenderThread 里 prepareTreeImpl 递归爆栈（实测 SIGSEGV）。修法：改成只录制
+  // PageBackdrop 这一层（传 tag 指定目标，不含任何玻璃/RenderNode），待下轮接。
+  const useNativeDock = false && isLiquidGlassNativeAvailable && isDock;
+  // 旧 AGSL 库（软件 Canvas 路线，实测 janky 10%）默认关闭，仅作对照
+  const useAgsL = false && isDock && tier !== 'none';
 
   const r = radius;
   const boxStyle: StyleProp<ViewStyle> = asBackground
     ? [StyleSheet.absoluteFill, { borderRadius: r, overflow: 'hidden' }, style]
     : [{ borderRadius: r, overflow: 'hidden' }, style];
+
+  if (useNativeDock) {
+    return (
+      <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
+        <LiquidGlassNativeView
+          style={StyleSheet.absoluteFill}
+          cornerRadius={r}
+          blurRadius={role === 'selector' ? 18 : 22}
+          lensWidth={0.32}
+          lensStrength={role === 'selector' ? 16 : 12}
+          dispersion={role === 'selector' ? 0.09 : 0.06}
+          rimStrength={role === 'selector' ? 0.20 : 0.14}
+          tintColor={tintColor ?? (isDark ? '#B314141A' : '#52FFFFFF')}
+        />
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: r,
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.60)',
+              overflow: 'hidden',
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={
+              isDark
+                ? [`rgba(255,255,255,${m.highlight})`, 'transparent']
+                : [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.04)', 'transparent']
+            }
+            style={{ height: '42%' }}
+          />
+        </View>
+        {children}
+      </View>
+    );
+  }
 
   if (useAgsL) {
     return (
@@ -212,6 +259,9 @@ export function GlassSurface({
     <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
       {/* 底层：硬件模糊（Android 31+ = RenderEffect / Dimezis BlurView） */}
       <BlurView
+        // ⚠️ 不传 blurTarget：expo-blur 的 BlurTarget 捕获在本工程会与内部 BlurView
+        // 互相嵌套，RenderThread prepareTreeImpl 递归爆栈（实测 SIGSEGV）。
+        // 不传则 Android 回退 none（模糊不生效），观感由"白/深纱 + 高光带 + 描边"承担。
         intensity={intensity ?? m.intensity}
         tint={m.blurTint}
         blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
