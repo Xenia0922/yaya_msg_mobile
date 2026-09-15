@@ -38,6 +38,8 @@ import { setLiveImmersiveMode } from '../native/LivePlayer';
 import PlayerScreen from '../player';
 import { usePlayerStore } from '../player/store/playerStore';
 import { DanmakuOverlay } from '../components/DanmakuOverlay';
+import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
+import { useLiveBarrage } from '../hooks/useLiveBarrage';
 import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
 import { parseDanmaku, DanmakuItem } from '../utils/danmaku';
 import { memberSearchText } from '../utils/members';
@@ -566,6 +568,18 @@ export default function MediaScreen() {
   // 用户是否手动切过方向：手动后 onLoad 不再自动覆盖（尊重用户选择）
   const manualOrientRef = useRef(false);
   const [playing, setPlaying] = useState<{ url: string; urls: string[]; title: string; cover?: string; item: any; isLive: boolean; needsVlc: boolean; resolving?: boolean; position?: number } | null>(null);
+  /**
+   * 直播弹幕（云信聊天室）—— 全页唯一一条连接：
+   *   - 接收：推给 DanmakuOverlay 的 liveItems，直接飘在画面上
+   *   - 发送：播放器底部的弹幕输入条（同一 source，不重复建连）
+   * 录播不受影响（走 danmaku + currentTime 时间轴）。
+   */
+  const liveBarrageId = playing?.isLive ? String(playing.item?.liveId || playing.item?.id || '') : '';
+  const liveBarrage = useLiveBarrage({ liveId: liveBarrageId, enabled: !!liveBarrageId, module: 'live' });
+  const liveDanmakuItems = useMemo(
+    () => liveBarrage.items.map((item) => ({ key: item.id, text: item.nick ? `${item.nick}：${item.text}` : item.text })),
+    [liveBarrage.items]
+  );
   // 续播位置：打开回放时读取上次进度，播放中由 WebView 回传进度落盘
   const [webResumeTime, setWebResumeTime] = useState(0);
   const [giftVisible, setGiftVisible] = useState(false);
@@ -1582,7 +1596,20 @@ export default function MediaScreen() {
               currentTime={danmakuClock}
               visible={playerDanmakuOn && showDanmaku && !!playing}
               live={!!playing?.isLive}
+              liveItems={playing?.isLive ? liveDanmakuItems : undefined}
             />
+            {/* 直播弹幕输入条：叠在播放器上（弹幕本体由上面的滚动层展示） */}
+            {playing?.isLive ? (
+              <View style={styles.liveBarrageInputWrap} pointerEvents="box-none">
+                <LiveBarrageBoard
+                  source={liveBarrage}
+                  liveId={String(playing.item?.liveId || playing.item?.id || '')}
+                  variant="plain"
+                  inputOnly
+                  style={styles.liveBarrageInput}
+                />
+              </View>
+            ) : null}
           </PlayerScreen>
         )}
 
@@ -1989,6 +2016,9 @@ export default function MediaScreen() {
 }
 
 const styles = StyleSheet.create({
+  // 直播弹幕输入条：叠在播放器底部（避开底部控制坞）
+  liveBarrageInputWrap: { position: 'absolute', left: 10, right: 10, bottom: 62, zIndex: 20 },
+  liveBarrageInput: {},
   container: { flex: 1, backgroundColor: 'transparent' },
   tabRow: { flexDirection: 'row', gap: 8 },
   toolbarRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 8, alignItems: 'center' },

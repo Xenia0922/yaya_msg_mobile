@@ -3,8 +3,8 @@ import { Animated, AppState } from 'react-native';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
-import { sendRoomTextMessage } from '../services/pocketNim/qchat';
-import LiveBarrageBoard from '../components/LiveBarrageBoard';
+import { observeRoomMessages, sendRoomTextMessage, type RoomLiveMessage } from '../services/pocketNim/qchat';
+import { LiveBarragePanel } from '../components/LiveBarrageBoard';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 
@@ -431,6 +431,46 @@ function mergeMessages(prev: RoomMessage[], next: RoomMessage[]) {
 
 function sortMessagesNewestFirst<T>(list: T[]): T[] {
   return list.slice().sort((a: any, b: any) => getMessageTime(b) - getMessageTime(a));
+}
+
+/**
+ * 云信圈组实时消息 → 房间列表可渲染结构。
+ *
+ * 房间消息的「历史」来自 HTTP（im/api/v1/team/message/list/*），「实时」只有云信圈组
+ * 一条通道（HTTP 无发送/无推送）。这里把原生桥回来的消息对齐成 HTTP 历史消息的字段形态，
+ * 让既有的 renderChatItem / messageKey / mergeMessages 原样复用。
+ */
+function qchatToRoomMessage(msg: RoomLiveMessage): any {
+  const user = (msg.ext?.user && typeof msg.ext.user === 'object' ? msg.ext.user : {}) as Record<string, any>;
+  const nickName = String(user.nickName || user.nickname || msg.fromNick || '');
+  return {
+    uuid: msg.uuid,
+    msgId: msg.uuid,
+    msgTime: msg.time,
+    time: msg.time,
+    msgType: msg.messageType,
+    // bodys 沿用 HTTP 消息的「JSON 体」形态：正文 + 类型 + 发送者
+    bodys: {
+      text: msg.text,
+      messageType: msg.messageType,
+      user: {
+        userId: Number(user.userId || 0),
+        nickName,
+        avatar: String(user.avatar || ''),
+        roleId: Number(user.roleId || 0),
+      },
+    },
+    extInfo: msg.ext,
+    fromUserId: Number(user.userId || 0),
+    senderUserId: Number(user.userId || 0),
+    senderName: nickName,
+    nickName,
+    userAvatar: String(user.avatar || ''),
+    channelId: msg.channelId,
+    serverId: msg.serverId,
+    /** 标记来源：实时（用于排查），不影响渲染 */
+    __live: true,
+  };
 }
 
 /**
@@ -1339,7 +1379,6 @@ export default function FollowedRoomsScreen() {
     const text = roomDraft.trim();
     if (!text || roomSending) return;
     const channelId = activeChannelRef.current;
-    const serverId = String((selectedRoom as any)?.serverId || '');
     if (!channelId) {
       setRoomSendHint(t('房间未就绪'));
       return;
@@ -1347,6 +1386,14 @@ export default function FollowedRoomsScreen() {
     setRoomSending(true);
     setRoomSendHint('');
     try {
+      // 圈组发送必须带 serverId：成员库缺失时先按 channelId 解析（否则云信返回 414 参数错误）
+      let serverId = String((selectedRoom as any)?.serverId || '');
+      if (!serverId || serverId === '0') {
+        serverId = await pocketApi.resolveRoomServerId(channelId).catch(() => '');
+      }
+      if (!serverId || serverId === '0') {
+        throw new Error(t('缺少房间 serverId，无法发言'));
+      }
       await sendRoomTextMessage({ serverId, channelId }, text);
       setRoomDraft('');
     } catch (err) {
@@ -1803,6 +1850,42 @@ export default function FollowedRoomsScreen() {
       stopPoll();
     };
   }, [selectedRoom, refreshRoomMessages]);
+
+  /**
+   * 房间消息「实时」接收：云信圈组（QChat）推送。
+   *
+   * 上面的 15s 轮询只是 HTTP 兜底；圈组才有真正的实时推送（官方同款通道）。
+   * 原生桥不可用 / 未登录 / 非 Android 时 observeRoomMessages 内部静默降级，
+   * 房间仍按轮询工作，不影响既有行为。
+   */
+  useEffect(() => {
+    if (!selectedRoom) return undefined;
+    let disposed = false;
+    let unsubscribe: (() => void) | null = null;
+    observeRoomMessages((messages) => {
+      if (disposed) return;
+      const cid = activeChannelRef.current;
+      if (!cid) return;
+      const fresh = messages
+        .filter((m) => String(m.channelId) === String(cid))
+        .map(qchatToRoomMessage);
+      if (!fresh.length) return;
+      setRoomMessages((prev) => {
+        const merged = mergeMessages(prev, fresh);
+        diagnoseUndefined(merged, 'QCHAT');
+        return merged;
+      });
+    })
+      .then((unsub) => {
+        if (disposed) unsub();
+        else unsubscribe = unsub;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [selectedRoom]);
 
   /** 直播解析并开播（占位式）：点击即反馈，出地址后无缝换正式播放器 */
   const resolveLiveAndOpen = useCallback(async (media: RoomMedia) => {
@@ -2592,7 +2675,7 @@ export default function FollowedRoomsScreen() {
 
         {/* 直播中的实时弹幕（云信聊天室）：与录播弹幕（LRC）是两条独立链路 */}
         {roomPlayer?.isLive && roomPlayer.liveId ? (
-          <LiveBarrageBoard
+          <LiveBarragePanel
             liveId={String(roomPlayer.liveId)}
             enabled
             module="live"

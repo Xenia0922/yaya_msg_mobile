@@ -63,9 +63,15 @@ export interface DanmakuOverlayProps {
   /** 直播模式：实时弹幕立即上屏，不做子秒级错峰（录播才按发送时刻错峰） */
   live?: boolean;
   opacity?: number;
+  /**
+   * 实时弹幕（直播专用）：外部推来的弹幕，出现即上屏，不走 currentTime 时间窗。
+   * 与 danmaku（录播按时间轴）互不影响；直播时传这个、danmaku 传空数组即可。
+   * key 必须稳定（同一条消息重复推不会重复上屏）。
+   */
+  liveItems?: Array<{ key: string; text: string }>;
 }
 
-export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, opacity: opacityProp }: DanmakuOverlayProps) {
+export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, opacity: opacityProp, liveItems }: DanmakuOverlayProps) {
   const { enabled, opacity: sOpacity, speed, area, fontSize } = useDanmakuSettings();
   const [active, setActive] = useState<ActiveDanmaku[]>([]);
   const lastTime = useRef(0);
@@ -142,6 +148,43 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
     });
     setActive((prev) => [...prev, ...newOnes].slice(-MAX_ACTIVE));
   }, [currentTime, visible, enabled, danmaku, laneCount, speed, live]);
+
+  /**
+   * 直播实时弹幕：新到的消息立即上屏（不走时间窗）。
+   * 泳道复用逻辑与录播一致，保证同屏不重叠。
+   */
+  const seenLive = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!visible || !enabled || !liveItems || !liveItems.length) return;
+    const fresh = liveItems.filter((i) => i.key && !seenLive.current.has(i.key));
+    if (!fresh.length) return;
+    fresh.forEach((i) => seenLive.current.add(i.key));
+    // 防止集合无限增长（直播挂很久时）
+    if (seenLive.current.size > 600) {
+      seenLive.current = new Set(liveItems.map((i) => i.key));
+    }
+
+    const duration = BASE_DURATION / (speed > 0 ? speed : 1);
+    const now = Date.now() / 1000;
+    const newOnes: ActiveDanmaku[] = fresh.map((d) => {
+      let lane = 0;
+      for (let i = 1; i < laneCount; i++) {
+        if (laneFreeAt.current[i] < laneFreeAt.current[lane]) lane = i;
+      }
+      const laneDelay = Math.max(0, (laneFreeAt.current[lane] - now) * 1000);
+      laneFreeAt.current[lane] = now + (laneDelay + duration + SAFE_GAP) / 1000;
+
+      const anim = new Animated.Value(0);
+      Animated.sequence([
+        Animated.delay(laneDelay),
+        Animated.timing(anim, { toValue: 1, duration, easing: (t) => t, useNativeDriver: true }),
+      ]).start(() => {
+        setActive((prev) => prev.filter((a) => a.anim !== anim));
+      });
+      return { key: `L${counter.current++}`, text: d.text, lane, anim };
+    });
+    setActive((prev) => [...prev, ...newOnes].slice(-MAX_ACTIVE));
+  }, [liveItems, visible, enabled, laneCount, speed]);
 
   if (!visible || !enabled) return null;
   const opacity = opacityProp ?? sOpacity;

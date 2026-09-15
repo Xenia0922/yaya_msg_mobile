@@ -56,6 +56,39 @@ export const LiveExoView = Platform.OS === 'android'
     }>('LiveExoView')
   : null;
 
+/**
+ * 直播首帧尺寸（NativeModule 事件通道）。
+ *
+ * 为什么与 onSize 双通道：only-new-architecture（bridgeless）下 LiveExoView 的
+ * View 事件经 UIManagerModule 派发，而该模块在新架构不存在 → 事件被静默丢弃，
+ * 「画面已经在播但一直显示加载中」就是这么来的。原生侧现在同时走
+ * NativeModule 的 RCTDeviceEventEmitter（bridgeless 可用）且首帧后补发两次。
+ */
+export function onLiveFirstFrame(
+  cb: (payload: { url: string; width: number; height: number }) => void
+): () => void {
+  if (Platform.OS !== 'android') return () => {};
+  const sub = DeviceEventEmitter.addListener('LivePlayer:size', (e: any) => {
+    cb({
+      url: String(e?.url || ''),
+      width: Number(e?.width) || 0,
+      height: Number(e?.height) || 0,
+    });
+  });
+  return () => sub.remove();
+}
+
+/** 直播内核重试耗尽（NativeModule 事件通道，与 onError 互为兜底） */
+export function onLiveNativeError(
+  cb: (payload: { url: string; message: string }) => void
+): () => void {
+  if (Platform.OS !== 'android') return () => {};
+  const sub = DeviceEventEmitter.addListener('LivePlayer:error', (e: any) => {
+    cb({ url: String(e?.url || ''), message: String(e?.message || '') });
+  });
+  return () => sub.remove();
+}
+
 /** 媒体通知数据（MediaStyle：标题/封面/歌手/专辑/歌词/播放态/进度） */
 export interface RadioMediaInfo {
   title: string;

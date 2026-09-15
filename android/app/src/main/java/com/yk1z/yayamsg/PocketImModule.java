@@ -70,6 +70,28 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     return "PocketIm";
   }
 
+  /** 云信错误码 → 官方文案（对齐 com.pocket.snh48.lib.yunxin.model.ChatCodeHelper） */
+  private static String describe(int code) {
+    switch (code) {
+      case 302: return "帐号或密码错误";
+      case 403: return "无权限";
+      case 404: return "聊天室/频道不存在";
+      case 408: return "服务器无响应";
+      case 414: return "参数错误（serverId/channelId 不匹配或缺失）";
+      case 415: return "与服务器建立连接失败";
+      case 416: return "操作太快了，请稍后再试";
+      case 422: return "账号被禁用";
+      case 500: return "服务器内部错误";
+      case 802: return "没有权限";
+      case 804: return "用户不在群";
+      case 809: return "已经在群内";
+      case 1000: return "登录失败";
+      case 13001: return "IM 主连接状态异常";
+      case 13002: return "聊天室状态异常";
+      default: return "code=" + code;
+    }
+  }
+
   private void emit(String event, Object payload) {
     try {
       ReactApplicationContext ctx = getReactApplicationContext();
@@ -141,7 +163,7 @@ public class PocketImModule extends ReactContextBaseJavaModule {
 
                 @Override
                 public void onFailed(int code) {
-                  promise.reject("E_LOGIN", "云信登录失败 code=" + code);
+                  promise.reject("E_LOGIN", "云信登录失败：" + describe(code));
                 }
 
                 @Override
@@ -235,13 +257,15 @@ public class PocketImModule extends ReactContextBaseJavaModule {
                     promise.resolve(true);
                     return;
                   }
-                  String detail = e != null && e.getMessage() != null ? e.getMessage() : ("code=" + code);
+                  String detail = describe(code);
                   if (result != null && result.getSentMessage() != null
                       && result.getSentMessage().getAntiSpamResult() != null
                       && result.getSentMessage().getAntiSpamResult().isAntiSpam()) {
                     detail = "内容违规";
+                  } else if (e != null && e.getMessage() != null && !e.getMessage().isEmpty()) {
+                    detail = detail + "（" + e.getMessage() + "）";
                   }
-                  promise.reject("E_SEND", detail);
+                  promise.reject("E_SEND", "圈组发送失败：" + detail);
                 }
               });
         } catch (Throwable t) {

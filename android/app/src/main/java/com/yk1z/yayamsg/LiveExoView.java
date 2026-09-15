@@ -185,6 +185,15 @@ public class LiveExoView extends FrameLayout {
               }
             } catch (Throwable ignored) {
             }
+            // 关键兜底：新架构（bridgeless）下取不到 UIManagerModule，上面的 View 事件会被静默丢弃
+            // → 画面在播但 JS 永远停在「加载中…」。改走 NativeModule 事件（bridgeless 可用），
+            // 并在首帧后再补发两次，避免 JS 侧监听器尚未订阅就丢事件。
+            final String sizeUrl = url;
+            final int w = videoWidth;
+            final int h = videoHeight;
+            handler.post(() -> LivePlayerModule.emitLiveSize(sizeUrl, w, h));
+            handler.postDelayed(() -> LivePlayerModule.emitLiveSize(sizeUrl, w, h), 600L);
+            handler.postDelayed(() -> LivePlayerModule.emitLiveSize(sizeUrl, w, h), 2000L);
           }
         }
       });
@@ -209,6 +218,8 @@ public class LiveExoView extends FrameLayout {
 
   /** 重试耗尽后把失败原因发给 JS（LiveExoViewManager 注册的 onError） */
   private void emitErrorToJs(String reason) {
+    // 新架构下 UIManagerModule 事件会丢 → 同时走 NativeModule 事件（JS 侧两者都听）
+    LivePlayerModule.emitLiveError(url, reason);
     if (reactContext == null) return;
     try {
       com.facebook.react.uimanager.UIManagerModule uiManager =

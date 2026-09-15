@@ -765,8 +765,29 @@ export const pocketApi = {
     return tryPocketPost(attempts, 'get room messages failed');
   },
 
-  async getRoomInfo(channelId: string) {
-    return pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) }, { tokenRequired: false, fallback: '获取房间信息失败' });
+  /**
+   * 解析房间的圈组 serverId（房间消息通道必需）。
+   *
+   * 房间消息历史接口在 serverId 为空时会内部兜底解析并写回成员库，但**发送**必须显式拿到
+   * serverId —— 为空会直接变成 0，云信圈组返回 414「参数错误」。这里把兜底逻辑暴露出来，
+   * 供发送前调用。
+   */
+  async resolveRoomServerId(channelId: string | number): Promise<string> {
+    const cid = String(channelId || '');
+    if (!cid) return '';
+    try {
+      const sid = await resolveServerId(cid);
+      if (sid && sid !== '0') {
+        rememberServerId(cid, sid);
+        return sid;
+      }
+    } catch {
+      /* 解析失败返回空串，由调用方提示 */
+    }
+    return '';
+  },
+
+  async getRoomInfo(channelId: string) {    return pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) }, { tokenRequired: false, fallback: '获取房间信息失败' });
   },
 
   /** 解析房间信息（大/小房间通用）：

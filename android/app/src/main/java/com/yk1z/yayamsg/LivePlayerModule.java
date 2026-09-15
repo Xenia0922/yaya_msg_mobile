@@ -48,6 +48,46 @@ public class LivePlayerModule extends ReactContextBaseJavaModule {
         .emit("LivePlayerGiftRequested", payload);
   }
 
+  /**
+   * 直播首帧尺寸 → JS（事件名 LivePlayer:size，payload = {url,width,height}）。
+   *
+   * 为什么绕到 NativeModule 发事件：LiveExoView 原来经 UIManagerModule 发 View 事件，
+   * 而 RN 0.83 只有新架构（bridgeless）时 UIManagerModule 取不到（返回 null）→ 事件静默丢弃，
+   * 表现就是「画面已经在播、却一直停在『加载中…』」。
+   * NativeModule 的 RCTDeviceEventEmitter 在 bridgeless 下依然可用。
+   */
+  public static void emitLiveSize(String url, int width, int height) {
+    ReactApplicationContext context = contextRef == null ? null : contextRef.get();
+    if (context == null) return;
+    try {
+      if (!context.hasActiveCatalystInstance()) return;
+      WritableMap payload = Arguments.createMap();
+      payload.putString("url", url == null ? "" : url);
+      payload.putInt("width", width);
+      payload.putInt("height", height);
+      context
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+          .emit("LivePlayer:size", payload);
+    } catch (Throwable ignored) {
+    }
+  }
+
+  /** 直播内核重试耗尽 → JS（事件名 LivePlayer:error，payload = {url,message}） */
+  public static void emitLiveError(String url, String message) {
+    ReactApplicationContext context = contextRef == null ? null : contextRef.get();
+    if (context == null) return;
+    try {
+      if (!context.hasActiveCatalystInstance()) return;
+      WritableMap payload = Arguments.createMap();
+      payload.putString("url", url == null ? "" : url);
+      payload.putString("message", message == null ? "" : message);
+      context
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+          .emit("LivePlayer:error", payload);
+    } catch (Throwable ignored) {
+    }
+  }
+
   @ReactMethod
   public void open(String url, String title, ReadableMap options) {
     long now = android.os.SystemClock.elapsedRealtime();

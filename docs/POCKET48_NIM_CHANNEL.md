@@ -96,7 +96,12 @@ src/api/pocket48.ts#getLiveChatroom         liveId → { roomId, sourceId }
 android/.../PocketImModule.java             原生：init / login / sendChannelText / observeMessages
 ```
 
-接入点：`src/screens/FollowedRoomsScreen.tsx` —— 房间页直播中挂弹幕面板；底部房间发言输入条。
+接入点：`src/screens/FollowedRoomsScreen.tsx`
+
+- 房间内直播时挂 `LiveBarrageBoard`（实时弹幕，收 + 发）
+- 底部「房间发言」输入条 → `sendRoomTextMessage`（圈组发送）
+- 打开房间时订阅 `observeRoomMessages` → **圈组实时推送**（`qchatToRoomMessage` 对齐 HTTP 历史字段后走既有
+  `mergeMessages` 合并）；原 15s HTTP 轮询保留为降级兜底（原生桥不可用 / 未登录 / 非 Android 时自动静默）
 
 ## 6. 已验证 / 未验证
 

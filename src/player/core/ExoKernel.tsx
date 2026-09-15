@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet } from 'react-native';
-import { LiveExoView } from '../../native/LivePlayer';
+import { LiveExoView, onLiveFirstFrame, onLiveNativeError } from '../../native/LivePlayer';
 import { usePlayerStore } from '../store/playerStore';
 import { PlayerSource } from '../types';
 import { logInfo } from '../../utils/runtimeLog';
@@ -24,6 +24,34 @@ export function ExoKernel({ source, onError }: Props) {
     try { logInfo(`[live] ExoKernel open url=${String(source.url).slice(0, 90)} audioOnly=${!!source.audioOnly}`, 'player.exo'); } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source.url]);
+
+  /**
+   * 首帧兜底通道：新架构（bridgeless）下 LiveExoView 的 onSize View 事件会丢，
+   * 原生侧同时经 NativeModule 发 LivePlayer:size（首帧 + 600ms + 2000ms 各一次）。
+   * 这里按 url 过滤（同一时刻可能还有小窗的另一个 live 实例）。
+   */
+  useEffect(() => {
+    const url = String(source.url || '');
+    if (!url) return () => {};
+    const offSize = onLiveFirstFrame((p) => {
+      if (p.url && p.url !== url) return;
+      if (p.width <= 0 || p.height <= 0) return;
+      try { logInfo('[live] ExoKernel first frame (native event) → playing', 'player.exo'); } catch {}
+      usePlayerStore.getState().setState('playing');
+      setPipAspect(p.width, p.height);
+    });
+    const offError = onLiveNativeError((p) => {
+      if (p.url && p.url !== url) return;
+      if (!p.message) return;
+      onError(String(p.message).slice(0, 160));
+    });
+    return () => {
+      offSize();
+      offError();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source.url]);
+
   // ⚠️ 只在「用户显式暂停」(state==='paused') 时置原生暂停。
   // 此前写成 state!=='playing'：loading（首帧前）阶段 paused=true → 原生 playWhenReady=false
   // → 流根本不启动 → onSize 永不触发 → 永远 loading ——「大概率进不去、一进直播卡一帧」根因。
