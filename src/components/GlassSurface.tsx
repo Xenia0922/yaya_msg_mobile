@@ -59,18 +59,20 @@ interface Material {
 /** Apple Regular 材质：浅色白系磨砂 / 深色深系磨砂 */
 const MATERIAL: { light: Material; dark: Material } = {
   light: {
-    intensity: 54,
+    // Apple Regular(浅色)：强模糊 + 淡白纱 —— 模糊负责可读，纱淡才透得出去
+    intensity: 64,
     reduction: 4,
     blurTint: 'light',
-    overlay: 'rgba(255,255,255,0.40)',
-    stroke: 'rgba(255,255,255,0.72)',
-    highlight: 0.34,
+    overlay: 'rgba(255,255,255,0.30)',
+    stroke: 'rgba(255,255,255,0.66)',
+    highlight: 0.24,
   },
   dark: {
-    intensity: 62,
+    // 官方：深色模式降低通透度、提升对比度
+    intensity: 70,
     reduction: 4,
     blurTint: 'dark',
-    overlay: 'rgba(20,20,26,0.46)',
+    overlay: 'rgba(20,20,26,0.40)',
     stroke: 'rgba(255,255,255,0.10)',
     highlight: 0.10,
   },
@@ -78,8 +80,8 @@ const MATERIAL: { light: Material; dark: Material } = {
 
 /** 选中态（压在底栏玻璃上那块）：比底栏更实一点 */
 const SELECTOR: { light: Material; dark: Material } = {
-  light: { ...MATERIAL.light, overlay: 'rgba(255,255,255,0.72)', intensity: 46 },
-  dark: { ...MATERIAL.dark, overlay: 'rgba(255,255,255,0.14)', intensity: 56 },
+  light: { ...MATERIAL.light, overlay: 'rgba(255,255,255,0.88)', intensity: 52 },
+  dark: { ...MATERIAL.dark, overlay: 'rgba(255,255,255,0.16)', intensity: 60 },
 };
 
 export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
