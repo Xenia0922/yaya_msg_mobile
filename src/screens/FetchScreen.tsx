@@ -160,7 +160,7 @@ export default function FetchScreen() {
             ]}
             value={roomMode}
             onChange={setRoomMode}
-            style={styles.segment}
+            style={{ width: '100%' }}
           />
 
           <View style={styles.fetchBtn}>
