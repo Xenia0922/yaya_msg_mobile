@@ -1,148 +1,102 @@
 /**
- * GlassSurface · 全局液态玻璃基元（全站唯一玻璃出口）
+ * GlassSurface · 全站液态玻璃基元（唯一玻璃出口）
  *
- * 引擎 = react-native-liquid-glassmorphism（iOS26 UIGlassEffect / Android13+ AGSL 真折射）
+ * ══ 引擎换成 expo-blur（Android = Dimezis BlurView + 硬件 RenderEffect）══
+ * 弃用 react-native-liquid-glassmorphism 的原因：
+ *   它的 Android 实现每帧对整个 root 做一次 `rootView.draw(canvas)` 软件重绘抓背景位图，
+ *   N 块玻璃 = N 份全屏 ARGB 位图 + N 遍 AGSL，实例一多必然掉帧（实测"非常卡"），
+ *   而且它只排除"玻璃视图自己"、把兄弟内容折射进来（正是"折射卡片自己的内容"根因）。
+ *   expo-blur 走 SurfaceFlinger/RenderEffect 硬件模糊管线，没有每帧整屏软件抓图。
  *
- * ⚠️ 参数原则：**照抄库作者自己的配方，不自创调参**。
- * 作者 example app 的 recipes（6 个 copy-paste 片段）里，可调参数**只有**：
- *   variant / borderRadius / tintColor(仅强调按钮) / interactive / shape
- * 完全没有碰 intensity / thickness / iridescence / legibilityFloor / brightness / saturation ——
- * 之前那套自创参数表就是在跟库的调音打架，越调越灰。
+ * ══ 材质（按 Apple Liquid Glass 的 Regular 变体）══
+ *   浅色 = 白系磨砂（blur + 约 40% 白纱 + 顶部高光带 + 1px 描边）→ 深色文字可读
+ *   深色 = 深系磨砂（blur + 约 46% 深纱）→ 官方"深色模式降低通透度、提升对比度"
+ *   强调控件 = tintColor 染色
  *
- * 作者的两条材质规则（recipes 里反复出现）：
- *  - 压在照片/视频上 → `variant="clear"`（媒体控件条、底部 dock、FAB）
- *  - 需要文字可读的内容层 → `variant="regular"`（导航栏、照片上的卡片）
- * 预设（GlassPresets）本身就是 6 组「作者调好的材质」，所以这里只给「角色 → 预设 + 圆角」，
- * 其余全交给库。
+ * ══ 使用铁律 ══
+ *   内容作为 children 放进玻璃里（玻璃负责底、内容在上层清晰渲染）。
+ *   可调参数只有 role/radius/intensity/tintColor，不要自创。
  */
 import React from 'react';
 import {
+  Platform,
   StyleSheet,
   View,
   type StyleProp,
   type ViewProps,
   type ViewStyle,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { NavigationContext } from '@react-navigation/native';
-import {
-  LiquidGlassView,
-  getGlassCapabilities,
-  useGlassSupport,
-  type GlassPresetName,
-} from 'react-native-liquid-glassmorphism';
 import { usePalette } from '../theme';
 
-/** 语义角色 —— 决定用哪组作者预设 */
+/** 语义角色 —— 决定用哪组材质 */
 export type GlassRole =
   | 'card' // 内容卡
   | 'chip' // 胶囊 / 小控件
-  | 'bar' // 悬浮底栏（压在内容上 → clear）
-  | 'header' // 页头 / 导航栏（文字可读优先 → regular）
+  | 'bar' // 悬浮底栏
+  | 'header' // 页头 / 导航栏
   | 'selector' // 底栏选中态
   | 'toast' // 短提示
   | 'modal' // 弹层 / 面板
   | 'hero'; // 装饰性主视觉
 
-/**
- * 角色 → 作者预设。
- * 预设已含 variant/intensity/thickness/edgeReflection/legibilityFloor/borderRadius 的调音，
- * 我们只覆盖圆角（轮廓是我们自己的）。
- */
-const ROLE_PRESET: Record<GlassRole, GlassPresetName | undefined> = {
-  card: undefined, // 照片上的卡片：作者 recipe 用 variant="regular"，不用预设
-  chip: undefined, // 玻璃按钮：作者 recipe 用默认（regular），强调时给 tintColor
-  bar: undefined, // 底栏：与卡片同材质。floatingTabBar 预设自带 legibilityFloor 0.2 +
-  // edgeReflectionStrength 1（镜像回声），压在浅色底上会把整条底栏压成深灰，
-  // 和内容卡的浅白玻璃不一致（实拍对比确认）
-  header: 'navigationBar', // 页头：浅镜片
-  selector: undefined, // 底栏选中态：dock 上的控件 → clear（媒体控件 recipe）
-  toast: 'toast', // 可读性优先的短提示
-  modal: 'frosted', // 重磨砂（设置页/模态背板）
-  hero: 'crystal', // 装饰性主视觉：薄、硬、深折射
-};
-
-/** 角色 → variant（作者 recipes 的原始用法；与预设冲突时以 recipe 为准） */
-const ROLE_VARIANT: Partial<Record<GlassRole, 'regular' | 'clear'>> = {
-  card: 'regular', // 照片上的卡片 recipe
-  chip: 'regular', // 玻璃按钮 recipe（默认 regular）
-  bar: 'regular', // 与内容卡同材质，浅色主题下整条底栏才是浅玻璃
-  selector: 'clear', // 媒体控件/dock 上的控件 recipe
-};
-
-/**
- * 角色 → 模糊强度。iOS 26 实拍参考的玻璃是「轻模糊、高透」——
- * 背后内容清晰可辨只是被柔化，而不是糊成一团。预设里 45~70 的强度在
- * 浅色底上就是"超级磨砂"，这里统一压到 26~40。
- */
-const ROLE_INTENSITY: Record<GlassRole, number> = {
-  card: 48,
-  chip: 48,
-  bar: 50,
-  header: 50,
-  selector: 45,
-  toast: 52,
-  modal: 58,
-  hero: 44,
-};
-
-/**
- * 焦点感知的暂停：作者性能规则 ——「导航栈里还活着但非活跃的屏幕，Android 感知不到，
- * 必须手动 paused」，否则那些离屏玻璃仍在每帧抓 backdrop。
- * 用 NavigationContext 而不是 useIsFocused()：后者在没有导航容器时会抛错，
- * 而玻璃可能被用在弹层/全局挂载组件里。
- */
-function useGlassPaused(): boolean {
-  const nav = React.useContext(NavigationContext);
-  const [focused, setFocused] = React.useState(true);
-  React.useEffect(() => {
-    if (!nav) return;
-    setFocused(nav.isFocused());
-    const onFocus = nav.addListener('focus', () => setFocused(true));
-    const onBlur = nav.addListener('blur', () => setFocused(false));
-    return () => {
-      onFocus();
-      onBlur();
-    };
-  }, [nav]);
-  return nav ? !focused : false;
+interface Material {
+  /** BlurView 强度（1–100） */
+  intensity: number;
+  /** 模糊半径压缩（Android 感知强度与 iOS 不同，用它对齐） */
+  reduction: number;
+  /** expo-blur 的 tint（决定模糊结果的底色走向） */
+  blurTint: 'light' | 'dark';
+  /** 叠在模糊之上的一层纱（底色） */
+  overlay: string;
+  /** 1px 描边 */
+  stroke: string;
+  /** 顶部高光带起始不透明度 */
+  highlight: number;
 }
 
-// 诊断：报告设备能力与实际渲染 tier（一次性）。
-// AGSL 在部分模拟器上会编译失败 → 库静默降级到 blur/tint（视觉=一张灰膜），不看日志根本发现不了。
-let __glassDiagLogged = false;
-function logGlassDiag() {
-  if (__glassDiagLogged) return;
-  __glassDiagLogged = true;
-  try {
-    const cap = getGlassCapabilities();
-    console.log('[GlassDiag] capabilities:', JSON.stringify(cap));
-  } catch (e) {
-    console.log('[GlassDiag] capabilities failed:', String(e));
-  }
-}
+/** Apple Regular 材质：浅色白系磨砂 / 深色深系磨砂 */
+const MATERIAL: { light: Material; dark: Material } = {
+  light: {
+    intensity: 54,
+    reduction: 4,
+    blurTint: 'light',
+    overlay: 'rgba(255,255,255,0.40)',
+    stroke: 'rgba(255,255,255,0.72)',
+    highlight: 0.34,
+  },
+  dark: {
+    intensity: 62,
+    reduction: 4,
+    blurTint: 'dark',
+    overlay: 'rgba(20,20,26,0.46)',
+    stroke: 'rgba(255,255,255,0.10)',
+    highlight: 0.10,
+  },
+};
+
+/** 选中态（压在底栏玻璃上那块）：比底栏更实一点 */
+const SELECTOR: { light: Material; dark: Material } = {
+  light: { ...MATERIAL.light, overlay: 'rgba(255,255,255,0.72)', intensity: 46 },
+  dark: { ...MATERIAL.dark, overlay: 'rgba(255,255,255,0.14)', intensity: 56 },
+};
 
 export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
   /** 语义角色（选材质），默认 card */
   role?: GlassRole;
   /** 圆角（dp） */
   radius?: number;
-  /**
-   * 纯背景层模式：铺满父容器、不吃触摸。
-   * 用于「父容器负责布局、玻璃只做底」的场景（胶囊/卡片/分段控件）。
-   */
+  /** 纯背景层模式：铺满父容器、不吃触摸 */
   asBackground?: boolean;
-  /** 触摸交互（按下的高光/放大）。父层已是 Pressable 时用 false，避免抢手势 */
+  /** 触摸交互（预留给按压高光；当前仅作语义标记） */
   interactive?: boolean;
-  /**
-   * 强调染色。**仅在需要强调的按钮上给**（作者示例统一用 rgba(10,132,255,0.55)）。
-   * 不给就不染 —— 染色会把浅色底洗成中性灰，是「整片发灰」的主因。
-   */
-  tintColor?: string;
-  /** 边缘虹彩/色散强度 0–1（Android，对应 Kyant0 的 chromaticAberration） */
-  iridescence?: number;
-  /** 覆盖角色模糊强度（官方：轻模糊高透，26–40） */
+  /** 覆盖模糊强度 1–100 */
   intensity?: number;
+  /** 强调染色（叠在模糊上的颜色） */
+  tintColor?: string;
+  /** 兼容旧签名（AGSL 时代的色散强度），新引擎忽略 */
+  iridescence?: number;
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }
@@ -151,107 +105,64 @@ export function GlassSurface({
   role = 'card',
   radius = 20,
   asBackground = false,
-  interactive = false,
+  interactive: _interactive,
   intensity,
   tintColor,
-  iridescence,
+  iridescence: _iridescence,
   style,
   children,
   ...rest
 }: GlassSurfaceProps) {
   const palette = usePalette();
   const isDark = palette.name === 'dark';
-  const { tier } = useGlassSupport();
-  const paused = useGlassPaused();
-  React.useEffect(() => {
-    logGlassDiag();
-  }, []);
+  const m =
+    role === 'selector'
+      ? isDark
+        ? SELECTOR.dark
+        : SELECTOR.light
+      : isDark
+        ? MATERIAL.dark
+        : MATERIAL.light;
 
+  const r = radius;
   const boxStyle: StyleProp<ViewStyle> = asBackground
-    ? [StyleSheet.absoluteFill, { borderRadius: radius }, style]
-    : [{ borderRadius: radius }, style];
+    ? [StyleSheet.absoluteFill, { borderRadius: r, overflow: 'hidden' }, style]
+    : [{ borderRadius: r, overflow: 'hidden' }, style];
 
-  /**
-   * 不支持玻璃的设备（`tier === 'none'`，含鸿蒙 2/3 的 Android 8~10 基座）：
-   * 给半透明白 + 发丝边的兜底材质，保证「有形」。
-   */
-  if (tier === 'none') {
-    return (
-      <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle}>
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              borderRadius: radius,
-              backgroundColor: isDark ? 'rgba(26,26,32,0.70)' : 'rgba(255,255,255,0.60)',
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.85)',
-            },
-          ]}
-        />
-        {children}
-      </View>
-    );
-  }
-
-  /**
-   * 作者文档的标准用法（ Minimal example / 全部 recipes 一致）：
-   *   <LiquidGlassView variant=... borderRadius=... style={{...}}>
-   *     {children}     ← 内容作为 children 放进玻璃里，"renders crisply on top of the glass"
-   *   </LiquidGlassView>
-   * 且所有片段都在 style 上加了 `overflow: 'hidden'`。
-   * 之前自创的「玻璃 absoluteFill 铺底 + 内容当兄弟节点」会让玻璃盖在内容上 —— 本末倒置。
-   */
   return (
-    <LiquidGlassView
-      preset={ROLE_PRESET[role]}
-      legibilityFloor={role === 'bar' ? 0 : undefined}
-      variant={ROLE_VARIANT[role]}
-      intensity={intensity ?? ROLE_INTENSITY[role]}
-      borderRadius={radius}
-      interactive={interactive}
-      // Kyant0 LiquidBottomTabs 的底栏表面色（onDrawSurface 画的那层）：
-      // 浅色 #FAFAFA@40% / 深色 #121212@40% —— 这层浅纱才是"浅色玻璃"的正确实现。
-      // 仅在调用方没有明确给 tint 时按主题取默认。
-      tintColor={tintColor ?? (isDark ? 'rgba(20,20,26,0.62)' : 'rgba(255,255,255,0.58)')}
-      iridescence={iridescence}
-      paused={paused}
-      onPipelineReady={(e) => {
-        const info = (e as any)?.nativeEvent ?? {};
-        console.log('[GlassDiag] pipeline:', JSON.stringify(info));
-      }}
-      style={[
-        { borderRadius: radius, overflow: 'hidden' },
-        asBackground ? StyleSheet.absoluteFill : null,
-        style,
-      ]}
-      {...rest}
-    >
-      {/* 官方三层结构的顶层：顶部连续高光带 + 极细半透明描边。
-          放在玻璃材质之上、内容之下；pointerEvents none 不吃触摸。 */}
+    <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
+      {/* 底层：硬件模糊（Android 31+ = RenderEffect / Dimezis BlurView） */}
+      <BlurView
+        intensity={intensity ?? m.intensity}
+        tint={m.blurTint}
+        blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
+        blurReductionFactor={m.reduction}
+        style={[StyleSheet.absoluteFill, { borderRadius: r }]}
+      />
+      {/* 中层：底色纱 + 1px 描边；顶层：顶部连续高光带（Apple 三层结构） */}
       <View
         pointerEvents="none"
         style={[
           StyleSheet.absoluteFill,
           {
-            borderRadius: radius,
+            borderRadius: r,
+            backgroundColor: tintColor ?? m.overlay,
             borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)',
+            borderColor: m.stroke,
             overflow: 'hidden',
           },
         ]}
       >
         <LinearGradient
-          colors={[
-            isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.28)',
-            isDark ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)',
-            'transparent',
-          ]}
-          style={{ height: '40%' }}
+          colors={
+            isDark
+              ? [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.02)', 'transparent']
+              : [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.06)', 'transparent']
+          }
+          style={{ height: '42%' }}
         />
       </View>
       {children}
-    </LiquidGlassView>
+    </View>
   );
 }

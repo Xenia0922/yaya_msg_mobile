@@ -24,6 +24,54 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
+    requestMaxRefreshRate()
+  }
+
+  /**
+   * 软件层强制最高刷新率（用户要求"直接定到满帧 120"）。
+   *
+   * Android 的刷新率是系统按内容/功耗动态切换的，应用侧只能在窗口层"请求"：
+   *   1) 老的 preferredDisplayModeId：把窗口绑到该屏刷新率最高的 display mode（API 23+）
+   *   2) API 30+ 再叠一层 setFrameRate(FIXED_SOURCE + ALWAYS)，告诉 SurfaceFlinger
+   *      这个窗口的内容按该帧率生产，别为了省电降到 60。
+   * 真机 120Hz 屏（如 OPPO PJZ110）生效；60Hz 屏/模拟器无副作用（取到的就是 60）。
+   */
+  private fun requestMaxRefreshRate() {
+    try {
+      val wm = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
+      val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        display
+      } else {
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay
+      } ?: return
+      val best = display.supportedModes.maxByOrNull { it.refreshRate } ?: return
+
+      val attrs = window.attributes
+      attrs.preferredDisplayModeId = best.modeId
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        attrs.preferredRefreshRate = best.refreshRate
+      }
+      window.attributes = attrs
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        // 用反射调 Window.setFrameRate（避免依赖 compileSdk 的 API 30 符号）：
+        // FRAME_RATE_COMPATIBILITY_FIXED_SOURCE = 1, CHANGE_FRAME_RATE_ALWAYS = 2
+        try {
+          val m = window.javaClass.getMethod(
+            "setFrameRate",
+            Float::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+          )
+          m.invoke(window, best.refreshRate, 1, 2)
+        } catch (_: Throwable) {
+          // 个别 ROM 未实现该 API：上面的 preferredDisplayModeId 已经足够
+        }
+      }
+    } catch (t: Throwable) {
+      // 不支持则沿用系统默认，不影响启动
+    }
   }
 
   override fun onPause() {
