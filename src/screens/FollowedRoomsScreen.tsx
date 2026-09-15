@@ -3,6 +3,8 @@ import { Animated, AppState } from 'react-native';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
+import { sendRoomTextMessage } from '../services/pocketNim/qchat';
+import LiveBarrageBoard from '../components/LiveBarrageBoard';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 
@@ -1177,6 +1179,10 @@ export default function FollowedRoomsScreen() {
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
   const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
+  // 房间发言（云信圈组）：草稿 + 发送中 + 错误提示
+  const [roomDraft, setRoomDraft] = useState('');
+  const [roomSending, setRoomSending] = useState(false);
+  const [roomSendHint, setRoomSendHint] = useState('');
   /** 直播解析占位：点击无流地址的直播卡 → 立即弹全屏「解析中」，不再干等无反馈（连击才加载进去的元凶） */
   const [liveResolve, setLiveResolve] = useState<null | { key: string; error: string; media: RoomMedia }>(null);
   const liveResolveToken = useRef(0);
@@ -1321,6 +1327,34 @@ export default function FollowedRoomsScreen() {
       setGiftStatus(t('送礼失败：{error}', { error: errorMessage(err) }));
     }
   }, [roomPlayer, selectedRoom, giftSel, giftNum, t]);
+
+  /**
+   * 房间发言（云信圈组 QChat）。
+   *
+   * 口袋48 的「房间消息」= 云信圈组频道消息：HTTP 侧只有历史列表，没有发送接口
+   * （已实测 /im/api/v1/team/message/send 等候选全部 404），发送只能走云信。
+   * 圈组仅官方 Android/iOS SDK 支持 → 走原生桥 PocketIm（PocketImModule.java）。
+   */
+  const handleSendRoomMessage = useCallback(async () => {
+    const text = roomDraft.trim();
+    if (!text || roomSending) return;
+    const channelId = activeChannelRef.current;
+    const serverId = String((selectedRoom as any)?.serverId || '');
+    if (!channelId) {
+      setRoomSendHint(t('房间未就绪'));
+      return;
+    }
+    setRoomSending(true);
+    setRoomSendHint('');
+    try {
+      await sendRoomTextMessage({ serverId, channelId }, text);
+      setRoomDraft('');
+    } catch (err) {
+      setRoomSendHint(errorMessage(err));
+    } finally {
+      setRoomSending(false);
+    }
+  }, [roomDraft, roomSending, selectedRoom, t]);
 
   const handleRoomMiniPlayer = useCallback(() => {
     const cur = roomPlayer;
@@ -2141,10 +2175,10 @@ export default function FollowedRoomsScreen() {
               tintColor={mine ? palette.tint : undefined}
               style={[
                 styles.msgBubble,
-                !row.groupStart && styles.msgBubbleMid,
-                row.groupStart && !mine && styles.msgBubbleTailLeft,
-                row.groupStart && mine && styles.msgBubbleTailRight,
-                mine ? null : { borderColor: idol ? 'rgba(232,62,140,0.35)' : palette.hairline, borderWidth: StyleSheet.hairlineWidth },
+                // 用户要求：气泡统一纯椭圆，不做「贴头像侧方角」的尾巴变体。
+                // 也不再叠自己的 hairline 描边 —— 全部交给 GlassSurface 的材质描边，
+                // 这样气泡与底栏/卡片是同一套玻璃（描边不会双重叠、不会显得“另一个材质”）。
+
               ]}
             >
               {replyName || replyQuoted ? (
@@ -2555,6 +2589,52 @@ export default function FollowedRoomsScreen() {
             }}
           />
         </FadeInView>
+
+        {/* 直播中的实时弹幕（云信聊天室）：与录播弹幕（LRC）是两条独立链路 */}
+        {roomPlayer?.isLive && roomPlayer.liveId ? (
+          <LiveBarrageBoard
+            liveId={String(roomPlayer.liveId)}
+            enabled
+            module="live"
+            height={128}
+            style={styles.roomBarrageBoard}
+          />
+        ) : null}
+
+        {/* 房间发言（云信圈组）：HTTP 侧只有历史，发送必须走云信 */}
+        {roomSendHint ? (
+          <Text style={[styles.roomSendHint, { color: palette.tint }]} numberOfLines={2}>
+            {roomSendHint}
+          </Text>
+        ) : null}
+        <View style={[styles.roomInputBar, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+          <TextInput
+            style={[styles.roomInput, { color: palette.label }]}
+            value={roomDraft}
+            onChangeText={(next) => {
+              setRoomDraft(next);
+              if (roomSendHint) setRoomSendHint('');
+            }}
+            placeholder={t('在房间里说点什么...')}
+            placeholderTextColor={palette.labelTertiary}
+            maxLength={200}
+            returnKeyType="send"
+            onSubmitEditing={handleSendRoomMessage}
+          />
+          <TouchableOpacity
+            onPress={handleSendRoomMessage}
+            disabled={roomSending || !roomDraft.trim()}
+            activeOpacity={0.85}
+            style={[
+              styles.roomSendBtn,
+              { backgroundColor: roomDraft.trim() ? palette.tint : palette.fill3 },
+            ]}
+          >
+            <Text style={[styles.roomSendBtnText, { color: roomDraft.trim() ? palette.onTint : palette.labelTertiary }]}>
+              {roomSending ? '··' : t('发送')}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -2851,6 +2931,24 @@ export default function FollowedRoomsScreen() {
 }
 
 const styles = StyleSheet.create({
+  // 直播弹幕面板（房间页内嵌直播时挂载）
+  roomBarrageBoard: { marginHorizontal: 12, marginBottom: 6 },
+  // 房间发言条（云信圈组）
+  roomInputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  roomInput: { flex: 1, height: 34, borderRadius: 14, paddingHorizontal: 10, fontSize: 14 },
+  roomSendBtn: { height: 34, borderRadius: 18, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
+  roomSendBtnText: { fontSize: 13, fontWeight: '700' },
+  roomSendHint: { fontSize: 11, marginHorizontal: 16, marginBottom: 4 },
   container: { flex: 1, backgroundColor: 'transparent' },
   roomBgLayer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   ellipseBubble: { paddingVertical: 9, paddingHorizontal: 14, maxWidth: '78%', marginVertical: 2 },
@@ -3117,10 +3215,7 @@ const styles = StyleSheet.create({
   msgMetaLineMine: { justifyContent: 'flex-end' },
   msgSender: { fontSize: 12, fontWeight: '600', maxWidth: 150 },
   msgTime: { fontSize: 10 },
-  msgBubble: { paddingVertical: 9, paddingHorizontal: 13, borderRadius: 18 },
-  msgBubbleMid: { borderTopLeftRadius: 6, borderTopRightRadius: 6 },
-  msgBubbleTailLeft: { borderBottomLeftRadius: 6 },
-  msgBubbleTailRight: { borderBottomRightRadius: 6 },
+  msgBubble: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 20 },
   msgBody: { fontSize: 15, lineHeight: 22 },
   msgBodyHighlight: {},
   giftCard: { marginTop: 8, minWidth: 210, padding: 10, borderRadius: radiiAlias.cardCompact, backgroundColor: 'rgba(255,240,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,111,145,0.24)', flexDirection: 'row', alignItems: 'center', gap: 10 },

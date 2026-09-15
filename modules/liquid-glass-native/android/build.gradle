@@ -4,11 +4,6 @@ apply plugin: 'kotlin-android'
 group = 'com.yayamsg.liquidglass'
 version = '0.1.0'
 
-def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
-apply from: expoModulesCorePlugin
-applyKotlinExpoModulesCorePlugin()
-useCoreDependencies()
-
 android {
   namespace "com.yayamsg.liquidglass"
   compileSdk rootProject.ext.compileSdkVersion
@@ -21,4 +16,10 @@ android {
   lintOptions {
     abortOnError false
   }
+}
+
+dependencies {
+  // 标准 react-native 视图机制（不再依赖 Expo Module —— 本工程的 Expo Modules
+  // autolinking 没在 app 构建里生效，ExpoModulesPackageList 从未生成）
+  implementation 'com.facebook.react:react-android'
 }

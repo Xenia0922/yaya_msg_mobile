@@ -1012,6 +1012,31 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   /**
+   * 直播弹幕（实时）用的云信聊天室坐标。
+   *
+   * 官方 7.1.39 直播弹幕走云信聊天室，房间号 = getLiveOne 的 content.roomId
+   * （LivePlayActivity 里 `m58828(live.getRoomId(), liveId)`），sourceId = liveId。
+   * 这里一次取齐，避免调用方再解析一遍返回结构。
+   */
+  async getLiveChatroom(liveId: string): Promise<{ roomId: string; sourceId: string; title: string } | null> {
+    const id = String(liveId || '');
+    if (!id) return null;
+    try {
+      const res = await pocketApi.getLiveOne(id);
+      const content = (res && (res.content || res.data)) || {};
+      const roomId = String(content.roomId || content.chatroomId || content.chatRoomId || '');
+      if (!roomId) return null;
+      return {
+        roomId,
+        sourceId: id,
+        title: String(content.title || content.liveTitle || ''),
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  /**
    * 获取直播间弹幕（录播回放）。接口失败/无数据返回空数组，绝不抛错，
    * 保证弹幕只是「锦上添花」，不会拖垮播放。
    */

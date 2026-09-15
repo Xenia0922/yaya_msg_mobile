@@ -36,6 +36,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
+import { MarqueeText } from '../components/MarqueeText';
 
 /** 播放中均衡器：三根柱子错峰跳动（Animated loop + native driver） */
 function EqualizerBars({ color, size = 13 }: { color: string; size?: number }) {
@@ -490,19 +491,18 @@ export default function MusicLibraryScreen() {
     const cur = st.queue[st.currentIndex];
     const sameAsCurrent = !!cur && (cur.musicId || cur.id) === (item.musicId || item.id);
     if (sameAsCurrent && st.playbackState === 'playing') {
-      setShowFullScreen(true);
+      // 用户要求：点一下只启动/停在 minibar，不自动进全屏（进全屏靠 minibar 里的展开按钮）
       return;
     }
     // 同一首（记忆恢复/暂停中）：走 resume 保留进度续播，而不是 playTrack 从 0 开始
     if (sameAsCurrent && st.position > 0) {
       MusicEngine.resume();
-      setShowFullScreen(true);
       return;
     }
     // 克隆队列：播放器 store 与列表 songs 解耦（避免引用共享反噬渲染）。
     // queueSource 由 useMemo 缓存——仅在 filteredSongs 变化时克隆一次，点歌零克隆开销
     MusicEngine.playTrack(item, queueSource);
-    setShowFullScreen(true);
+    // 不 setShowFullScreen(true)：只出 minibar
   };
 
   return (
@@ -742,7 +742,7 @@ export default function MusicLibraryScreen() {
                   </ScalePressable>
                 </View>
                 <View style={styles.songInfo}>
-                  <Text style={[styles.songTitle, { color: palette.label }]} numberOfLines={2}>{item.title || t('无标题')}</Text>
+                  <MarqueeText text={item.title || t('无标题')} style={[styles.songTitle, { color: palette.label }]} />
                   <View style={styles.songMetaLine}>
                     <Text style={[styles.songArtist, { color: palette.labelSecondary }]} numberOfLines={1}>
                       {/* 团体名优先（用户要求：R2 公演曲显示团体而非专辑），不加来源标记 */}

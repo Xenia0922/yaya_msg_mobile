@@ -80,7 +80,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
+    // 不要 borderWidth：RN 里 borderWidth 不给 borderColor 会画默认黑边，
+    // 而描边本来就由 GlassSurface 的材质描边负责（白 0.66），叠黑边会显脏。
   },
   title: {
     flex: 1,

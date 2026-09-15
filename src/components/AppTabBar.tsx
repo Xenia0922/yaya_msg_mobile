@@ -233,7 +233,18 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               role="selector"
               radius={999}
               asBackground
-              tintColor={isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.55)'}
+              // 静止：低调浅灰（不是亮白，避免像一块贴纸）
+              // 拖动：更透但仍保留材质 —— 完全透明等于把玻璃删了，不是液态玻璃；
+              //       拖动要的是「玻璃流过」：白纱变薄 + AGSL 边缘折射/色散更明显。
+              tintColor={
+                hoverIndex !== null
+                  ? isDark
+                    ? 'rgba(255,255,255,0.04)'
+                    : 'rgba(255,255,255,0.20)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.10)'
+                    : 'rgba(232,232,238,0.40)'
+              }
               iridescence={0.6}
             />
           </Animated.View>

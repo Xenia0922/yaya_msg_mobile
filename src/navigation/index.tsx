@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { PageBackdrop } from '../components/PageBackdrop';
 import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
 import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -12,6 +11,7 @@ import { Palettes } from '../theme/colors';
 import { ensureMemberData } from '../services/memberData';
 import { RootStackParamList, TabParamList } from './types';
 import { AppTabBar, MCI } from '../components/AppTabBar';
+import { PageBackdrop } from '../components/PageBackdrop';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
@@ -67,8 +67,21 @@ function withPageMotion<T extends object>(
   Screen: React.ComponentType<T>,
   _duration = ui.motion.tabDuration,
   _distance = 8,
+  /** 二级屏（root stack 里 Main 之外的屏）传 true：进入即隐藏 dock，离开恢复。
+   *  必须用 focus 副作用驱动 —— root stack 的卡片是透明的、Main 仍挂在树上，
+   *  单靠 tabBar 自己的状态判断不到「被二级屏盖住」。 */
+  hideTabBar = false,
 ) {
   return function PageMotionScreen(props: T) {
+    const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
+    // dock 显隐只由「当前获得焦点的屏」决定：
+    // 二级屏 true（隐藏），tab 屏 false（显示）。不做 cleanup，
+    // 否则下一屏 focus 之后旧屏的 cleanup 会把状态又拨回去（竞态 → dock 时隐时现）。
+    useFocusEffect(
+      React.useCallback(() => {
+        setTabBarHidden(hideTabBar);
+      }, [hideTabBar, setTabBarHidden]),
+    );
     return (
       <ErrorBoundary>
         <Screen {...props} />
@@ -83,26 +96,26 @@ const HomeTabScreen = withPageMotion(HomeScreen);
 const MediaTabScreen = withPageMotion(MediaScreen);
 const RoomsTabScreen = withPageMotion(FollowedRoomsScreen);
 const SettingsTabScreen = withPageMotion(SettingsScreen);
-const MessagesStackScreen = withPageMotion(MessagesScreen, ui.motion.stackDuration, 10);
-const LoginStackScreen = withPageMotion(LoginScreen, ui.motion.stackDuration, 10);
-const RechargeStackScreen = withPageMotion(RechargeScreen, ui.motion.stackDuration, 10);
-const FetchStackScreen = withPageMotion(FetchScreen, ui.motion.stackDuration, 10);
-const FlipStackScreen = withPageMotion(FlipScreen, ui.motion.stackDuration, 10);
-const ProfileStackScreen = withPageMotion(ProfileScreen, ui.motion.stackDuration, 10);
-const PhotosStackScreen = withPageMotion(PhotosScreen, ui.motion.stackDuration, 10);
-const RoomRadioStackScreen = withPageMotion(RoomRadioScreen, ui.motion.stackDuration, 10);
-const OpenLiveStackScreen = withPageMotion(OpenLiveScreen, ui.motion.stackDuration, 10);
-const PrivateMessagesStackScreen = withPageMotion(PrivateMessagesScreen, ui.motion.stackDuration, 10);
-const BilibiliLiveStackScreen = withPageMotion(BilibiliLiveScreen, ui.motion.stackDuration, 10);
-const VideoLibraryStackScreen = withPageMotion(VideoLibraryScreen, ui.motion.stackDuration, 10);
-const MusicLibraryStackScreen = withPageMotion(MusicLibraryScreen, ui.motion.stackDuration, 10);
-const AudioProgramsStackScreen = withPageMotion(AudioProgramsScreen, ui.motion.stackDuration, 10);
-const AnalysisStackScreen = withPageMotion(AnalysisScreen, ui.motion.stackDuration, 10);
-const DownloadStackScreen = withPageMotion(DownloadScreen, ui.motion.stackDuration, 10);
-const DatabaseStackScreen = withPageMotion(DatabaseScreen, ui.motion.stackDuration, 10);
-const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDuration, 10);
-const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10);
-const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10);
+const MessagesStackScreen = withPageMotion(MessagesScreen, ui.motion.stackDuration, 10, true);
+const LoginStackScreen = withPageMotion(LoginScreen, ui.motion.stackDuration, 10, true);
+const RechargeStackScreen = withPageMotion(RechargeScreen, ui.motion.stackDuration, 10, true);
+const FetchStackScreen = withPageMotion(FetchScreen, ui.motion.stackDuration, 10, true);
+const FlipStackScreen = withPageMotion(FlipScreen, ui.motion.stackDuration, 10, true);
+const ProfileStackScreen = withPageMotion(ProfileScreen, ui.motion.stackDuration, 10, true);
+const PhotosStackScreen = withPageMotion(PhotosScreen, ui.motion.stackDuration, 10, true);
+const RoomRadioStackScreen = withPageMotion(RoomRadioScreen, ui.motion.stackDuration, 10, true);
+const OpenLiveStackScreen = withPageMotion(OpenLiveScreen, ui.motion.stackDuration, 10, true);
+const PrivateMessagesStackScreen = withPageMotion(PrivateMessagesScreen, ui.motion.stackDuration, 10, true);
+const BilibiliLiveStackScreen = withPageMotion(BilibiliLiveScreen, ui.motion.stackDuration, 10, true);
+const VideoLibraryStackScreen = withPageMotion(VideoLibraryScreen, ui.motion.stackDuration, 10, true);
+const MusicLibraryStackScreen = withPageMotion(MusicLibraryScreen, ui.motion.stackDuration, 10, true);
+const AudioProgramsStackScreen = withPageMotion(AudioProgramsScreen, ui.motion.stackDuration, 10, true);
+const AnalysisStackScreen = withPageMotion(AnalysisScreen, ui.motion.stackDuration, 10, true);
+const DownloadStackScreen = withPageMotion(DownloadScreen, ui.motion.stackDuration, 10, true);
+const DatabaseStackScreen = withPageMotion(DatabaseScreen, ui.motion.stackDuration, 10, true);
+const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDuration, 10, true);
+const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10, true);
+const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10, true);
 
 function MainTabBar({
   state,
@@ -154,7 +167,11 @@ function MainTabs() {
 
   return (
     <Tab.Navigator
-      tabBar={(props) => <MainTabBar {...props} hidden={tabBarHidden} />}
+      tabBar={(props) => (
+        // hidden 由 NavigationContainer.onStateChange 统一驱动：
+        // 二级屏（root stack 里 Main 之外的屏）打开时隐藏 dock
+        <MainTabBar {...props} hidden={tabBarHidden} />
+      )}
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: 'transparent' },
@@ -293,7 +310,7 @@ export default function AppNavigator() {
           <Stack.Screen name="PhotosScreen" component={PhotosStackScreen} />
           <Stack.Screen name="RoomRadioScreen" component={RoomRadioStackScreen} />
           <Stack.Screen name="OpenLiveScreen" component={OpenLiveStackScreen} />
-          <Stack.Screen name="OnMicScreen" component={withPageMotion(OnMicScreen, ui.motion.stackDuration, 10)} />
+          <Stack.Screen name="OnMicScreen" component={withPageMotion(OnMicScreen, ui.motion.stackDuration, 10, true)} />
           <Stack.Screen name="PrivateMessagesScreen" component={PrivateMessagesStackScreen} />
           <Stack.Screen name="BilibiliLiveScreen" component={BilibiliLiveStackScreen} />
           <Stack.Screen name="VideoLibraryScreen" component={VideoLibraryStackScreen} />

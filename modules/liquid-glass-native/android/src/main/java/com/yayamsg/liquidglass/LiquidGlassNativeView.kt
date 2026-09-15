@@ -11,9 +11,8 @@ import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewOutlineProvider
-import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.views.ExpoView
 
 /**
  * 液态玻璃原生视图：RenderNode 硬件录制 + 链式 RenderEffect（blur → AGSL 透镜/色散）。
@@ -26,7 +25,7 @@ import expo.modules.kotlin.views.ExpoView
  * AGSL 只做苹果的签名动作：**边缘 30% 带内透镜折射 + RGB 色散 + 边缘高光**，
  * 中心区保持纯模糊（这也让着色器开销可控）。
  */
-class LiquidGlassNativeView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
+class LiquidGlassNativeView(context: Context) : View(context) {
 
   var blurRadius: Float = 22f
   /** 边缘透镜带宽（占半径比例 0~1） */
@@ -73,9 +72,20 @@ class LiquidGlassNativeView(context: Context, appContext: AppContext) : ExpoView
     }
   }
 
-  /** 录制内容的目标视图：整窗 content（玻璃背后的一切） */
+  /** 背景层 id（RN nativeID）。设置后只录制该层 —— 避免把页面里的 BlurView 录进来造成 RenderNode 嵌套爆栈 */
+  var targetId: String? = null
+
+  /** 录制内容的目标视图：优先 targetId 指定的背景层；未设置时回退整窗 content */
   private val target: View?
-    get() = (context as? Activity)?.window?.decorView?.findViewById(android.R.id.content)
+    get() {
+      val root = (context as? Activity)?.window?.decorView?.findViewById<View>(android.R.id.content) as? ViewGroup
+      val id = targetId
+      if (!id.isNullOrEmpty() && root != null) {
+        val found = root.findViewWithTag<View>(id)
+        if (found != null) return found
+      }
+      return root
+    }
 
   override fun onDraw(canvas: Canvas) {
     // 防自引用递归：录制期间本视图（以及所有同类视图）必须跳过绘制，

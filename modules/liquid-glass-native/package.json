@@ -1,0 +1,12 @@
+{
+  "name": "liquid-glass-native",
+  "version": "1.0.0",
+  "description": "原生液态玻璃视图：RenderNode 硬件录制 + AGSL 边缘透镜/色散（Android 33+）",
+  "main": "index.ts",
+  "private": true,
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

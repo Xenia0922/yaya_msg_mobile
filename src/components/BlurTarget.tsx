@@ -14,6 +14,9 @@ import React, { createContext, useContext, useRef } from 'react';
 import { StyleSheet, type View, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurTargetView } from 'expo-blur';
 
+/** 背景层 id：原生 AGSL 只录这一层（避免录到页面里的 BlurView → RenderNode 嵌套爆栈） */
+export const GLASS_BACKDROP_ID = 'glass-backdrop-surface';
+
 interface Ctx {
   ref: React.RefObject<View | null>;
 }
@@ -40,7 +43,13 @@ export function BlurTargetSurface({
   const ctx = useContext(BlurTargetContext);
   if (!ctx) return <>{children}</>;
   return (
-    <BlurTargetView ref={ctx.ref} style={[StyleSheet.absoluteFill, style]} pointerEvents="none">
+    <BlurTargetView
+      ref={ctx.ref}
+      // nativeID → Android View tag：原生 AGSL 视图用它找到「只该录制的那一层背景」
+      nativeID={GLASS_BACKDROP_ID}
+      style={[StyleSheet.absoluteFill, style]}
+      pointerEvents="none"
+    >
       {children}
     </BlurTargetView>
   );

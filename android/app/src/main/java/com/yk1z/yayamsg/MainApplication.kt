@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.res.Configuration
 
 import com.facebook.react.PackageList
+import com.yayamsg.liquidglass.LiquidGlassPackage
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.ReactNativeHost
@@ -29,9 +30,12 @@ class MainApplication : Application(), ReactApplication {
   /** 手动注册的包（autolink 覆盖不到的）——reactNativeHost 与 reactHost 共用同一份 */
   private fun buildPackages(): List<ReactPackage> =
     PackageList(this).packages.apply {
+      add(LiquidGlassPackage())
       // Packages that cannot be autolinked yet can be added manually here, for example:
       add(LivePlayerPackage())
       add(PipPackage())
+      // 口袋48 云信消息通道（房间消息 = 云信圈组 QChat，仅原生 SDK 支持）
+      add(PocketImPackage())
       // 自动链接漏掉 react-native-safe-area-context，这里补上（聊天库依赖其原生 Provider）
       add(com.th3rdwave.safeareacontext.SafeAreaContextPackage())
     }

@@ -246,8 +246,14 @@ dependencies {
     implementation("com.facebook.react:react-android")
     // 手动链接（自动链接漏掉）：聊天库内部要用它的原生 SafeAreaProvider
     implementation project(':react-native-safe-area-context')
+    implementation project(':liquid-glass-native')
     // 与 react-android 同版 okhttp：MainApplication 用其 Interceptor 覆写 bilibili 请求的桌面 UA
     implementation("com.squareup.okhttp3:okhttp:4.9.2")
+    // 口袋48 消息通道：云信官方 Android SDK（basesdk 负责登录/基础消息，qchat 负责圈组房间消息）。
+    // 官方 App 用的就是同一套（appKey 632feff1f4c838541ab75195d1ceb3fa）。
+    // 圈组只有 Android/iOS 官方 SDK 支持，Web/RN 版 SDK 没有收发命令 → 房间消息必须走原生。
+    implementation("com.netease.nimlib:basesdk:10.9.11")
+    implementation("com.netease.nimlib:qchat:10.9.11")
     // iOS 26 液态玻璃：由 react-native-liquid-glassmorphism 自带 AGSL 实现（无第三方 AAR）
     implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
     implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
