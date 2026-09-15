@@ -31,6 +31,7 @@ export function GlassSegmented<T extends string>({
   height = 36,
 }: Props<T>) {
   const palette = usePalette();
+  const isDark = palette.name === 'dark';
   const [trackW, setTrackW] = useState(0);
   const idx = Math.max(0, options.findIndex((o) => o.key === value));
   const pad = 3;
@@ -60,8 +61,15 @@ export function GlassSegmented<T extends string>({
             pointerEvents="none"
             style={[styles.pill, { width: cellW, height: height - pad * 2, transform: [{ translateX: x }] }]}
           >
-            {/* 无子元素的玻璃必须 asBackground 铺满，否则高度塌成 0（不可见） */}
-            <GlassSurface role="selector" radius={(height - pad * 2) / 2} asBackground />
+            {/* 选中态用干净实底填充：轨道已是玻璃，胶囊再叠一层玻璃会出现
+                双重描边/光晕（用户反馈的「二次修正」）。这里只用单色填充。 */}
+            <View
+              style={{
+                flex: 1,
+                borderRadius: (height - pad * 2) / 2,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.92)',
+              }}
+            />
           </Animated.View>
         ) : null}
         {options.map((o) => {
@@ -144,7 +152,13 @@ export function GlassSegmentedScroll<T extends string>({
             pointerEvents="none"
             style={[styles.scrollPill, { height: height - 6, width: w, transform: [{ translateX: x }] }]}
           >
-            <GlassSurface role="selector" radius={(height - 6) / 2} asBackground />
+            <View
+              style={{
+                flex: 1,
+                borderRadius: (height - 6) / 2,
+                backgroundColor: palette.name === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.92)',
+              }}
+            />
           </Animated.View>
         ) : null}
         {options.map((o, i) => {

@@ -1998,8 +1998,14 @@ export default function FollowedRoomsScreen() {
     const d = new Date(date);
     if (Number.isNaN(d.getTime())) return null;
     const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
-    const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
-    // 只返回文字：外层胶囊由库自己渲染（自己再套白胶囊会看起来像消息气泡）
+    const dayStr = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}/${p2(now.getMonth() + 1)}/${p2(now.getDate())}`;
+    const yest = new Date(now.getTime() - 86400000);
+    const yestStr = `${yest.getFullYear()}/${p2(yest.getMonth() + 1)}/${p2(yest.getDate())}`;
+    const label =
+      dayStr === todayStr ? '今天' : dayStr === yestStr ? '昨天' : `${d.getMonth() + 1}月${d.getDate()}日`;
+    // 只返回文字：外层由库渲染
     return <Text style={[styles.daySepText, { color: palette.labelTertiary }]}>{label}</Text>;
   }, [palette]);
 
@@ -2528,7 +2534,7 @@ export default function FollowedRoomsScreen() {
             locale="zh"
             // 用户要求：不要日期分隔（renderDay 返回空 + 关掉浮动日期胶囊）
             renderBubble={renderEllipseGlassBubble}
-            renderDay={() => null}
+            renderDay={renderDayLabel}
             isDayAnimationEnabled={false}
             user={{ _id: 'SELF' }}
             onSend={() => {}}
