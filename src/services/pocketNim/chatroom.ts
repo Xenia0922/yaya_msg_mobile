@@ -18,8 +18,65 @@ import { BarrageItem, NimModule } from './types';
 
 export type ChatroomStatus = 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
 
+/**
+ * 聊天室接入点解析（关键）。
+ *
+ * 口袋48 的云信已迁到新集群：LBS(webconf.jsp) 返回的聊天室链路是
+ * `chatwl02.yunxinfw.com:443` / `weblink-bgp.netease.im:443` 等；
+ * 旧地址 `chatweblink01.netease.im:443` 对该 appKey 会静默超时或直接
+ * 「403 非法操作或没有权限」（48tools 就是因为写死旧地址而失效的）。
+ * 因此这里启动时向 LBS 动态解析，把返回的 link 列表交给 SDK（chatwl 优先）。
+ */
+let lbsAddresses: string[] | null = null;
+let lbsInflight: Promise<string[]> | null = null;
+
+async function resolveChatroomAddresses(): Promise<string[]> {
+  if (lbsAddresses && lbsAddresses.length) return lbsAddresses;
+  if (!lbsInflight) {
+    lbsInflight = (async () => {
+      // 云信新集群聊天室接入点（LBS 实测返回，作解析失败/空结果的兜底）
+      const FALLBACK_LBS = [
+        'chatwl02.yunxinfw.com:443',
+        'weblink-bgp.netease.im:443',
+        'weblink03.yunxinfw.com:443',
+        'weblink02.yunxinfw.com:443',
+      ];
+      try {
+        const res = await fetch(`https://lbs.netease.im/lbs/webconf.jsp?appkey=${NIM_APP_KEY}`);
+        const text = await res.text();
+        let json: any = {};
+        try {
+          json = JSON.parse(text);
+        } catch {
+          // eslint-disable-next-line no-console
+          console.log('[nim] LBS raw =', text.slice(0, 300));
+        }
+        // eslint-disable-next-line no-console
+        console.log('[nim] LBS keys =', Object.keys(json || {}).join(','));
+        const list: string[] = Array.isArray(json?.link)
+          ? json.link.filter((x: any) => typeof x === 'string' && x.includes(':'))
+          : [];
+        const chat = list.filter((x) => x.startsWith('chatwl'));
+        const web = list.filter((x) => x.startsWith('weblink'));
+        const rest = list.filter((x) => !x.startsWith('chatwl') && !x.startsWith('weblink'));
+        const merged = (chat.length || web.length ? [...chat, ...web, ...rest] : FALLBACK_LBS).slice(0, 5);
+        // eslint-disable-next-line no-console
+        console.log('[nim] LBS chatroom addresses =', merged.join(' , ') || '(empty)');
+        if (merged.length) {
+          lbsAddresses = merged;
+          return merged;
+        }
+      } catch {
+        /* LBS 失败落到旧默认地址 */
+      }
+      return NIM_CHATROOM_ADDRESSES;
+    })();
+  }
+  return lbsInflight;
+}
+
 /** 云信 SDK 内部日志开关（排障时临时改 true；日志经 console → logcat ReactNativeJS） */
-const NIM_DEBUG = false;
+const NIM_DEBUG = true;
 
 export interface LiveChatroomOptions {
   /** 聊天室 id（live 详情 content.roomId） */
@@ -51,14 +108,54 @@ function friendlyAuthError(reason: string): string {
   return reason || '弹幕连接失败';
 }
 
-/** 单个直播间弹幕连接。dispose() 一定要在离开直播间时调用。 */export class LiveChatroom {
+
+/**
+ * Web/RN 侧 IM 登录探针。
+ *
+ * 官方 App 进聊天室是「非独立模式」：先完成 IM 登录，聊天室鉴权依赖 IM 会话；
+ * 我们此前聊天室裸登（account+token 直连聊天室服务）被 403，可能就是缺这个前置。
+ */
+export async function webImLoginProbe(credentials: NimCredentials): Promise<{ ok: boolean; detail: string }> {
+  const SDK = loadNimSdk();
+  return new Promise((resolve) => {
+    let settled = false;
+    let inst: any = null;
+    const finish = (ok: boolean, detail: string) => {
+      if (settled) return;
+      settled = true;
+      try { inst && inst.destroy && inst.destroy(); } catch { /* 忽略 */ }
+      resolve({ ok, detail });
+    };
+    try {
+      inst = SDK.NIM.getInstance({
+        appKey: NIM_APP_KEY,
+        account: credentials.accid,
+        token: credentials.token,
+        debug: NIM_DEBUG,
+        db: false,
+        dbLog: false,
+        onconnect: () => finish(true, 'connected'),
+        onerror: (err: any) => finish(false, String(err?.message || err?.code || err || 'error')),
+        ondisconnect: (err: any) => finish(false, `disconnect:${String(err?.message || err?.code || '')}`),
+      });
+      setTimeout(() => finish(false, 'timeout'), 12000);
+    } catch (e: any) {
+      finish(false, String(e?.message || e));
+    }
+  });
+}
+
+/** 单个直播间弹幕连接。dispose() 一定要在离开直播间时调用。 */
+export class LiveChatroom {
   private readonly options: LiveChatroomOptions;
   private instance: any = null;
   private disposed = false;
   private status: ChatroomStatus = 'connecting';
-  /** 连接尝试序号：0 = 账号+token，1 = 匿名（只读） */
+  /** 连接尝试序号：0 = 账号+token，1 = 匿名（只读），2 = 先 IM 登录再进聊天室 */
   private attempt = 0;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 是否以匿名（只读）方式连上：匿名通道不能发送弹幕 */
+  private anonymous = false;
 
   constructor(options: LiveChatroomOptions) {
     this.options = options;
@@ -87,13 +184,24 @@ function friendlyAuthError(reason: string): string {
    * 之前的问题：只用 0，而这一路在这台机器/这个 appKey 下**静默不连接**
    * （既无 onconnect 也无 onerror），表现为「弹幕一条不来」。
    */
+  /** 当前使用的接入点（LBS 解析结果；解析完成前为旧默认） */
+  private addresses: string[] = NIM_CHATROOM_ADDRESSES;
+
   connect(): void {
     if (this.disposed) return;
     this.attempt = 0;
-    this.open(this.attempt);
+    resolveChatroomAddresses()
+      .then((addrs) => {
+        this.addresses = addrs;
+        if (!this.disposed) this.open(0);
+      })
+      .catch(() => {
+        this.addresses = NIM_CHATROOM_ADDRESSES;
+        if (!this.disposed) this.open(0);
+      });
   }
 
-  private open(attempt: number): void {
+  private async open(attempt: number): Promise<void> {
     if (this.disposed) return;
     const { credentials, roomId } = this.options;
     this.attempt = attempt;
@@ -103,8 +211,23 @@ function friendlyAuthError(reason: string): string {
       const SDK = loadNimSdk();
       const profile = credentialsToProfile(credentials);
       const anonymous = attempt === 1;
+      // 匿名模式下昵称必须用随机串（48tools 同款 randomUUID）：
+      // 若把真实 accid 当昵称带上，聊天室登录会被服务端判「非法操作」直接 403。
+      const anonNick = `yaya-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+      if (attempt === 2) {
+        // 先完成一次 IM 登录（官方「非独立模式」同款前置：聊天室鉴权依赖 IM 会话）
+        // eslint-disable-next-line no-console
+        console.log('[nim] web IM login probe...');
+        const probeResult = await webImLoginProbe(credentials);
+        // eslint-disable-next-line no-console
+        console.log('[nim] web IM login probe result =', probeResult.ok, probeResult.detail);
+        if (!probeResult.ok) {
+          this.fallback(`IM登录失败:${probeResult.detail}`);
+          return;
+        }
+      }
       const auth = anonymous
-        ? { isAnonymous: true, chatroomNick: `yaya${Date.now()}`, chatroomAvatar: '' }
+        ? { isAnonymous: true, chatroomNick: anonNick, chatroomAvatar: '' }
         : { account: credentials.accid, token: credentials.token };
       // eslint-disable-next-line no-console
       console.log('[nim] chatroom connect attempt =', attempt, 'anonymous =', anonymous, 'roomId =', roomId);
@@ -112,7 +235,7 @@ function friendlyAuthError(reason: string): string {
         appKey: NIM_APP_KEY,
         chatroomId: roomId,
         ...auth,
-        chatroomAddresses: NIM_CHATROOM_ADDRESSES,
+        chatroomAddresses: this.addresses,
         chatroomNick: profile.nickName || credentials.accid,
         chatroomAvatar: profile.avatar || '',
         // SDK 内部日志开关：排障时改 true（日志经 console → logcat ReactNativeJS）
@@ -123,6 +246,7 @@ function friendlyAuthError(reason: string): string {
           // eslint-disable-next-line no-console
           console.log('[nim] chatroom CONNECTED attempt =', attempt, 'anonymous =', anonymous);
           this.clearTimer();
+          this.anonymous = anonymous;
           this.setStatus('connected');
         },
         onmsgs: (msgs: any[]) => {
@@ -167,14 +291,14 @@ function friendlyAuthError(reason: string): string {
   }
 
   /** 当前连法失败 → 试下一种；都失败才置 error */
-  private fallback(reason: string) {
+  private async fallback(reason: string): Promise<void> {
     if (this.disposed) return;
     this.clearTimer();
-    if (this.attempt < 1) {
+    if (this.attempt < 2) {
       const next = this.attempt + 1;
       // eslint-disable-next-line no-console
       console.log('[nim] chatroom fallback -> attempt', next, 'reason =', reason);
-      this.open(next);
+      await this.open(next);
       return;
     }
     this.setStatus('error', friendlyAuthError(reason));
@@ -205,6 +329,7 @@ function friendlyAuthError(reason: string): string {
     const content = String(text || '').trim();
     if (!content) return Promise.resolve();
     if (!this.instance) return Promise.reject(new Error('弹幕通道尚未连接'));
+    if (this.anonymous) return Promise.reject(new Error('当前为匿名只读通道，无法发送弹幕'));
 
     const ext = buildLiveBarrageExt({
       roomId: this.options.roomId,
