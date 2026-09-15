@@ -1999,13 +1999,8 @@ export default function FollowedRoomsScreen() {
     if (Number.isNaN(d.getTime())) return null;
     const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
     const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
-    return (
-      <View style={styles.daySepWrap}>
-        <View style={[styles.daySep, { backgroundColor: palette.fill2 }]}>
-          <Text style={[styles.daySepText, { color: palette.labelTertiary }]}>{label}</Text>
-        </View>
-      </View>
-    );
+    // 只返回文字：外层胶囊由库自己渲染（自己再套白胶囊会看起来像消息气泡）
+    return <Text style={[styles.daySepText, { color: palette.labelTertiary }]}>{label}</Text>;
   }, [palette]);
 
   const _unusedRenderChineseDay = useCallback(({ date }: any) => date, []);
@@ -2505,7 +2500,9 @@ export default function FollowedRoomsScreen() {
             // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
             theme={{ colors: { background: 'transparent' } }}
             locale="zh"
-            renderDay={renderDayLabel}
+            // 用户要求：不要日期分隔（renderDay 返回空 + 关掉浮动日期胶囊）
+            renderDay={() => null}
+            isDayAnimationEnabled={false}
             user={{ _id: 'SELF' }}
             onSend={() => {}}
             renderInputToolbar={() => null}

@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
   scrollRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 },
   // left 必须是 0：cell 的 onLayout.x 已经包含行的 paddingHorizontal(3)
   scrollPill: { position: 'absolute', left: 0, top: 3, borderRadius: 999, overflow: 'hidden' },
-  scrollCell: { paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  scrollCell: { paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   track: { overflow: 'hidden' },
   row: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 },
   pill: {
@@ -104,7 +104,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  label: { fontSize: 13 },
+  labelLg: { fontSize: 14 },
+  label: { fontSize: 14 },
   labelActive: { fontWeight: '800' },
 });
 
