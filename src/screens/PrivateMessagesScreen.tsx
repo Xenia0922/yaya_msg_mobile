@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
+import { Chat } from '@kesha-antonov/react-native-chat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
@@ -585,6 +586,84 @@ export default function PrivateMessagesScreen() {
       prevMine = mine;
       prevTs = ts;
     });
+    // ── 聊天库接线（A+B）：行 → IMessage（original/groupStart 透传） ──
+    // 日期分隔交给聊天库自带（renderDay），这里只喂真实消息。
+    // ⚠️ 两个必须：① user._id 按真实发送者（库按它决定左右）② createdAt 归一化到毫秒
+    //（接口给的是秒，直接 new Date(秒) 会变成 1970）
+    const ims: any[] = chatRows
+      .filter((row) => row.type === 'msg')
+      .map((row) => {
+        const mine = isMineMessage(row.item, targetId, uid);
+        const t = msgTimeNumber(row.item);
+        return {
+          _id: row.key,
+          text: privateMessageText(row.item) || '',
+          createdAt: new Date(t < 1e12 ? t * 1000 : t),
+          user: { _id: mine ? String(uid ?? 1) : String(targetId || 'peer') },
+          original: row.item,
+          groupStart: row.groupStart,
+          isMine: mine,
+        };
+      });
+
+    /** 玻璃气泡（沿用原实现：媒体内联 + 时间戳，「自己」用 tint 染色玻璃） */
+    const renderGlassBubble = ({ currentMessage }: any) => {
+      const msg = currentMessage as any;
+      if (msg.system) {
+        return (
+          <View style={styles.dateSepWrap}>
+            <View style={[styles.dateSep, { backgroundColor: palette.fill2 }]}>
+              <Text style={[styles.dateSepText, { color: palette.labelTertiary }]}>{msg.text}</Text>
+            </View>
+          </View>
+        );
+      }
+      const item = msg.original;
+      const mine = !!msg.isMine;
+      const groupStart = !!msg.groupStart;
+      const media = privateMessageMedia(item);
+      const txt = privateMessageText(item);
+      const hasText = txt && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(txt) && txt !== '[空消息]';
+      const mediaLabel = media ? (formatDur(media.duration || 0) || (media.type === 'audio' ? t('语音') : t('视频'))) : '';
+      return (
+        <View style={[styles.msgRow, mine && styles.msgRowMine]}>
+          <GlassSurface
+            role="chip"
+            radius={18}
+            tintColor={mine ? palette.tint : undefined}
+            style={[
+              styles.bubble,
+              mine ? styles.bubbleMine : null,
+              !groupStart && mine && styles.bubbleMineMid,
+              !groupStart && !mine && styles.bubbleOtherMid,
+              mine ? null : { borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
+            ]}
+          >
+            {hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{txt}</Text> : null}
+            {media ? (
+              media.type === 'image' ? (
+                <Image source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
+              ) : (
+                <ScalePressable style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
+                  <Text style={[styles.mediaBtnText, mine && { color: palette.onTint }, !mine && { color: palette.tint }]}>{playUrl === media.url ? t('收起') : `${mediaLabel}`}</Text>
+                  {playUrl !== media.url ? <MaterialCommunityIcons name="play" size={14} color={mine ? palette.onTint : palette.tint} style={{ marginLeft: 4 }} /> : null}
+                </ScalePressable>
+              )
+            ) : !hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{t('[空消息]')}</Text> : null}
+            {playUrl === media?.url ? (
+              <PlayerScreen
+                inline
+                source={{ kind: media!.type === 'audio' ? 'audio' : 'vod', url: media!.url }}
+                meta={{ title: t('消息媒体') }}
+                persistent
+              />
+            ) : null}
+            <Text style={[styles.msgTime, mine && { color: 'rgba(255,255,255,0.75)' }, !mine && { color: palette.labelTertiary }]}>{formatTimestamp(msgTimeNumber(item))}</Text>
+          </GlassSurface>
+        </View>
+      );
+    };
+
     return (
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -593,77 +672,19 @@ export default function PrivateMessagesScreen() {
       >
         <View style={[styles.screen, { backgroundColor: usePageBackground() }]}>
         <ScreenHeader title={convName(sel)} onBack={() => setSel(null)} />
-        <PerfFlatList
-          ref={flatRef}
-          data={chatRows}
-          keyExtractor={(row) => row.key}
-          contentContainerStyle={styles.msgList}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
-          removeClippedSubviews
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.3}
-          renderItem={({ item: row, index }) => {
-            if (row.type === 'date') {
-              return (
-                <View style={styles.dateSepWrap}>
-                  <View style={[styles.dateSep, { backgroundColor: palette.fill2 }]}>
-                    <Text style={[styles.dateSepText, { color: palette.labelTertiary }]}>{row.label}</Text>
-                  </View>
-                </View>
-              );
-            }
-            const item = row.item;
-            const mine = isMineMessage(item, targetId, uid);
-            const groupStart = !!row.groupStart;
-            const media = privateMessageMedia(item);
-            const txt = privateMessageText(item);
-            const hasText = txt && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(txt) && txt !== '[空消息]';
-            const mediaLabel = media ? (formatDur(media.duration || 0) || (media.type === 'audio' ? t('语音') : t('视频'))) : '';
-            return (
-              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-                <View style={[styles.msgRow, mine && styles.msgRowMine]}>
-                  {/* 气泡 = 玻璃（内容进玻璃）；「自己」用 tint 染色玻璃 */}
-                  <GlassSurface
-                    role="chip"
-                    radius={18}
-                    tintColor={mine ? palette.tint : undefined}
-                    style={[
-                      styles.bubble,
-                      mine ? styles.bubbleMine : null,
-                      !groupStart && mine && styles.bubbleMineMid,
-                      !groupStart && !mine && styles.bubbleOtherMid,
-                      mine ? null : { borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
-                    ]}
-                  >
-                    {hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{txt}</Text> : null}
-                    {media ? (
-                      media.type === 'image' ? (
-                        <Image source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
-                      ) : (
-                        <ScalePressable style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
-                          <Text style={[styles.mediaBtnText, mine && { color: palette.onTint }, !mine && { color: palette.tint }]}>{playUrl === media.url ? t('收起') : `${mediaLabel}`}</Text>
-                          {playUrl !== media.url ? <MaterialCommunityIcons name="play" size={14} color={mine ? palette.onTint : palette.tint} style={{ marginLeft: 4 }} /> : null}
-                        </ScalePressable>
-                      )
-                    ) : !hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{t('[空消息]')}</Text> : null}
-                    {playUrl === media?.url ? (
-                      /* 统一播放器（重写）：私信音视频 → 内嵌 PlayerScreen */
-                      <PlayerScreen
-                        inline
-                        source={{ kind: media!.type === 'audio' ? 'audio' : 'vod', url: media!.url }}
-                        meta={{ title: t('消息媒体') }}
-                        persistent
-                      />
-                    ) : null}
-                    <Text style={[styles.msgTime, mine && { color: 'rgba(255,255,255,0.75)' }, !mine && { color: palette.labelTertiary }]}>{formatTimestamp(msgTimeNumber(item))}</Text>
-                  </GlassSurface>
-                </View>
-              </FadeInView>
-            );
+        {/* 消息列表交给聊天库，气泡/输入条仍用我们的玻璃件 */}
+        <Chat
+          messages={ims}
+          user={{ _id: String(uid ?? 1) }}
+          onSend={() => { void doSend(); }}
+          renderBubble={renderGlassBubble}
+          renderInputToolbar={() => null}
+          isInverted
+          listProps={{
+            contentContainerStyle: styles.msgList,
+            onEndReached: loadMore,
+            onEndReachedThreshold: 0.3,
           }}
-          ListEmptyComponent={loading ? null : <EmptyState icon="message-text-outline" title={t('暂无消息')} />}
         />
         {member ? (
           <GlassSurface radius={20} role="card" style={[styles.flipBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>

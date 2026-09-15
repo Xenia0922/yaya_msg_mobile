@@ -35,5 +35,10 @@ rootProject.name = '牙牙消息'
 
 expoAutolinking.useExpoVersionCatalog()
 
+// 手动链接：Expo/RN 自动链接漏掉了 react-native-safe-area-context
+//（生成的 PackageList 里没有它，原生 SafeAreaProvider 未注册 → 聊天库一渲染就 FATAL）
+include ':react-native-safe-area-context'
+project(':react-native-safe-area-context').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-safe-area-context/android')
+
 include ':app'
 includeBuild(expoAutolinking.reactNativeGradlePlugin)

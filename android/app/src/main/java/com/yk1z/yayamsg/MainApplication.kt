@@ -32,6 +32,8 @@ class MainApplication : Application(), ReactApplication {
       // Packages that cannot be autolinked yet can be added manually here, for example:
       add(LivePlayerPackage())
       add(PipPackage())
+      // 自动链接漏掉 react-native-safe-area-context，这里补上（聊天库依赖其原生 Provider）
+      add(com.th3rdwave.safeareacontext.SafeAreaContextPackage())
     }
 
   override val reactNativeHost: ReactNativeHost =

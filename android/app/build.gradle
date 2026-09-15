@@ -244,6 +244,8 @@ tasks.matching { it.name == 'stripReleaseDebugSymbols' }.configureEach { t ->
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    // 手动链接（自动链接漏掉）：聊天库内部要用它的原生 SafeAreaProvider
+    implementation project(':react-native-safe-area-context')
     // 与 react-android 同版 okhttp：MainApplication 用其 Interceptor 覆写 bilibili 请求的桌面 UA
     implementation("com.squareup.okhttp3:okhttp:4.9.2")
     // iOS 26 液态玻璃：由 react-native-liquid-glassmorphism 自带 AGSL 实现（无第三方 AAR）
