@@ -50,15 +50,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: '11076708'
-
-      - name: Accept licenses & preinstall NDK / build-tools
+      # GitHub 托管 runner 自带 Android SDK（ANDROID_HOME 已设好），
+      # 不再用 android-actions/setup-android（v3 的 cmdline-tools-version 在 runner 上会
+      # 报 "Failed to find package 'tools'" 直接挂掉）。
+      - name: Accept licenses & preinstall SDK / NDK
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" > /dev/null 2>&1 || true
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDKMGR="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" > /dev/null 2>&1 || true
+          echo "ANDROID_HOME=$SDK"
 
       - name: Install deps
         run: npm ci --no-audit --no-fund --legacy-peer-deps || npm install --no-audit --no-fund --legacy-peer-deps
