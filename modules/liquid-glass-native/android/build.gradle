@@ -1,5 +1,7 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+// Kotlin 2.x 起 Compose 编译器是独立 Gradle 插件，版本必须与 Kotlin 一致（本工程 2.1.20）
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 group = 'com.yayamsg.liquidglass'
 version = '0.1.0'
@@ -13,6 +15,19 @@ android {
     targetSdkVersion rootProject.ext.targetSdkVersion
   }
 
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+
+  buildFeatures {
+    compose true
+  }
+
   lintOptions {
     abortOnError false
   }
@@ -22,4 +37,12 @@ dependencies {
   // 标准 react-native 视图机制（不再依赖 Expo Module —— 本工程的 Expo Modules
   // autolinking 没在 app 构建里生效，ExpoModulesPackageList 从未生成）
   implementation 'com.facebook.react:react-android'
+
+  // LiquidGlass（shufajiaok/LiquidGlass）以源码形式集成在本模块的 com.jiale.liquidglass 包下。
+  // 它的公开签名到处是 Compose 类型（Modifier/Shape/@Composable），所以这些依赖用 api 暴露。
+  api platform('androidx.compose:compose-bom:2024.12.01')
+  api 'androidx.compose.ui:ui'
+  api 'androidx.compose.ui:ui-graphics'
+  api 'androidx.compose.foundation:foundation'
+  api 'androidx.compose.material3:material3'
 }

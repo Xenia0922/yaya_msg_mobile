@@ -93,6 +93,12 @@ def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// 本地快速验证：-Pyaya.abis=x86_64（只出一个 ABI，约 1-2 分钟而不是 15 分钟）。
+// 注意必须同时收紧 ndk.abiFilters —— AGP 会在"splits 与 abiFilters 不一致"时直接报错。
+def yayaAbiOverride = (findProperty('yaya.abis') ?: '').toString()
+  .split(',').collect { it.trim() }.findAll { it }
+def yayaAbis = yayaAbiOverride ?: ['armeabi-v7a', 'arm64-v8a', 'x86_64']
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -116,7 +122,12 @@ android {
         // 真机架构 + 模拟器架构。MuMu 等安卓模拟器为 x86_64，缺此 ABI 会导致 libhermes 等原生库
         // 无法加载（UnsatisfiedLinkError），表现为「启动即闪退进不去」。为兼容模拟器测试必须保留。
         ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            // ⚠️ 用 splits 指定 ABI 时 **不能再设 abiFilters**（AGP 直接报
+            // "Conflicting configuration ... cannot be present when splits abi filters are set"）。
+            // 所以快速模式（-Pyaya.abis=…）下交给 splits 决定；常规模式保留原 4 ABI 过滤。
+            if (!yayaAbiOverride) {
+                abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            }
         }
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
@@ -178,8 +189,11 @@ android {
         abi {
             enable true
             reset()
-            include 'armeabi-v7a', 'arm64-v8a', 'x86_64'
-            universalApk true
+            // 本地快速验证只打一个 ABI：gradlew assembleRelease -Pyaya.abis=x86_64
+            // （全 4 包 + Compose dexing 约 15 分钟；单 ABI 约 1-2 分钟）
+            // 注意：AGP 的 include 只吃 varargs，不能直接传 List
+            yayaAbis.each { abiName -> include(abiName) }
+            universalApk((findProperty('yaya.universal') ?: 'true').toString().toBoolean())
         }
     }
 }

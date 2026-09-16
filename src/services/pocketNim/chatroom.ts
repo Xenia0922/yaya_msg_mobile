@@ -13,6 +13,14 @@
  */
 
 import { buildLiveBarrageExt, parseChatroomMessage } from './codec';
+import {
+  isPocketNimChatroomAvailable,
+  chatroomConnect,
+  chatroomSend,
+  chatroomDisconnect,
+  onChatroomMessage,
+  onChatroomStatus,
+} from '../../native/PocketNimChatroom';
 import { credentialsToProfile, loadNimSdk, NimCredentials, NIM_CHATROOM_ADDRESSES, NIM_APP_KEY } from './runtime';
 import { BarrageItem, NimModule } from './types';
 
@@ -156,6 +164,9 @@ export class LiveChatroom {
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   /** 是否以匿名（只读）方式连上：匿名通道不能发送弹幕 */
   private anonymous = false;
+  /** 走原生 commonlink 通道（可过服务端标识校验）；否则退到 JS Web SDK */
+  private useNative = false;
+  private nativeUnsubs: Array<() => void> = [];
 
   constructor(options: LiveChatroomOptions) {
     this.options = options;
@@ -189,6 +200,12 @@ export class LiveChatroom {
 
   connect(): void {
     if (this.disposed) return;
+    // 首选原生 commonlink 通道：登录包里包名由自己填，能过口袋48 的客户端标识校验；
+    // JS Web SDK 会带浏览器/RN 标识 → 实测 403。原生不可用时才走 JS 那三条 fallback。
+    if (isPocketNimChatroomAvailable()) {
+      this.connectNative();
+      return;
+    }
     this.attempt = 0;
     resolveChatroomAddresses()
       .then((addrs) => {
@@ -199,6 +216,53 @@ export class LiveChatroom {
         this.addresses = NIM_CHATROOM_ADDRESSES;
         if (!this.disposed) this.open(0);
       });
+  }
+
+  /** 原生 commonlink 通道：连接 + 收消息（消息体复用 parseChatroomMessage 归一化） */
+  private async connectNative(): Promise<void> {
+    const { credentials, roomId } = this.options;
+    this.useNative = true;
+    this.setStatus('connecting');
+    this.nativeUnsubs.push(
+      onChatroomStatus((status) => {
+        if (this.disposed) return;
+        if (status.state === 'connected') this.setStatus('connected');
+        else if (status.state === 'connecting') this.setStatus('connecting');
+        else if (status.state === 'reconnecting') this.setStatus('reconnecting');
+        else if (status.state === 'disconnected') this.setStatus('closed');
+        else if (status.state === 'error') this.setStatus('error', status.detail);
+      })
+    );
+    this.nativeUnsubs.push(
+      onChatroomMessage((message) => {
+        if (this.disposed) return;
+        // 组装成 Web SDK 的消息形态，复用同一套解析（readExt / parseChatroomMessage）
+        const shaped = {
+          type: message.msgType === 0 ? 'text' : 'custom',
+          text: message.text,
+          fromNick: message.fromNick,
+          fromAvatar: message.fromAvatar,
+          from: message.fromAccount,
+          time: message.time,
+          idClient: message.uuid,
+          custom: message.ext,
+        };
+        const item = parseChatroomMessage(shaped);
+        if (item) this.options.onMessages([item]);
+      })
+    );
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[nim] native chatroom connect roomId =', roomId, 'account =', credentials.accid);
+      await chatroomConnect(NIM_APP_KEY, credentials.accid, credentials.token, roomId);
+      // eslint-disable-next-line no-console
+      console.log('[nim] native chatroom CONNECTED');
+    } catch (error: any) {
+      const detail = String(error?.message || error);
+      // eslint-disable-next-line no-console
+      console.log('[nim] native chatroom FAILED:', detail);
+      this.setStatus('error', friendlyAuthError(detail));
+    }
   }
 
   private async open(attempt: number): Promise<void> {
@@ -328,6 +392,16 @@ export class LiveChatroom {
   send(text: string, messageType?: string): Promise<void> {
     const content = String(text || '').trim();
     if (!content) return Promise.resolve();
+    if (this.useNative) {
+      const ext = buildLiveBarrageExt({
+        roomId: this.options.roomId,
+        sourceId: this.options.liveId || this.options.roomId,
+        text: content,
+        self: credentialsToProfile(this.options.credentials),
+        module: this.options.module || NimModule.LIVE,
+      });
+      return chatroomSend(content, JSON.stringify(ext)).then(() => undefined);
+    }
     if (!this.instance) return Promise.reject(new Error('弹幕通道尚未连接'));
     if (this.anonymous) return Promise.reject(new Error('当前为匿名只读通道，无法发送弹幕'));
 
@@ -368,6 +442,13 @@ export class LiveChatroom {
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
+    if (this.useNative) {
+      this.nativeUnsubs.forEach((off) => {
+        try { off(); } catch { /* 忽略 */ }
+      });
+      this.nativeUnsubs = [];
+      try { chatroomDisconnect(); } catch { /* 忽略 */ }
+    }
     this.destroyInstance();
     this.setStatus('closed');
   }

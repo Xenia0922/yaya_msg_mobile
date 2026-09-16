@@ -36,6 +36,8 @@ class MainApplication : Application(), ReactApplication {
       add(PipPackage())
       // 口袋48 云信消息通道（房间消息 = 云信圈组 QChat，仅原生 SDK 支持）
       add(PocketImPackage())
+      // 云信聊天室 commonlink 协议（直播弹幕）：包名由自己填 → 过服务端标识校验
+      add(com.yk1z.yayamsg.nim.PocketNimChatroomPackage())
       // 自动链接漏掉 react-native-safe-area-context，这里补上（聊天库依赖其原生 Provider）
       add(com.th3rdwave.safeareacontext.SafeAreaContextPackage())
     }

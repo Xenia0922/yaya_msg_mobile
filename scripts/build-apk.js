@@ -13,7 +13,17 @@ const pkg = require(path.join(projectRoot, 'package.json'));
 console.log('🔨 Building Android release APK...');
 const gradleCmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 // 出包铁律：必须 parallel=false（沙箱/部分机器上并行会触发 node_modules 库中间文件锁竞争，随机 AccessDenied）
-const gradleArgs = ['assembleRelease', '-Dorg.gradle.daemon=true', '-Dorg.gradle.parallel=false'].join(' ');
+// 快速验证（只出一个 ABI + 不打包 universal）：
+//   YAYA_ABIS=x86_64 YAYA_UNIVERSAL=false node scripts/build-apk.js
+//   全量 4 包 + Compose dexing 约 15 分钟；单 ABI 约 1-2 分钟
+const extraProps = [
+  process.env.YAYA_ABIS ? `-Pyaya.abis=${process.env.YAYA_ABIS}` : '',
+  process.env.YAYA_UNIVERSAL ? `-Pyaya.universal=${process.env.YAYA_UNIVERSAL}` : '',
+].filter(Boolean).join(' ');
+const gradleArgs = ['assembleRelease', '-Dorg.gradle.daemon=true', '-Dorg.gradle.parallel=false', extraProps]
+  .filter(Boolean)
+  .join(' ');
+if (extraProps) console.log(`   （附加 gradle 参数：${extraProps}）`);
 try {
   execSync(`${gradleCmd} ${gradleArgs}`, { cwd: androidDir, stdio: 'inherit' });
 } catch (e) {
