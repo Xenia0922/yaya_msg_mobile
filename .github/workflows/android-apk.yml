@@ -64,6 +64,31 @@ jobs:
       - name: Install deps
         run: npm ci --no-audit --no-fund --legacy-peer-deps || npm install --no-audit --no-fund --legacy-peer-deps
 
+      # Gradle 缓存：首次约 18 分钟，之后能省掉大部分依赖下载/编译
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle', 'android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # debug.keystore 不在仓库里（.gitignore），而没给 RELEASE_* 密钥时
+      # build.gradle 会退回 debug 签名 → 缺 keystore 直接 validateSigningRelease 失败。
+      # 这里就地生成一个标准 debug keystore（仅用于测试装机，非发布签名）。
+      - name: Ensure debug keystore
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore android/app/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA -keysize 2048 -validity 10000
+          fi
+          ls -la android/app/debug.keystore
+
       - name: Assemble release APK
         working-directory: android
         env:
