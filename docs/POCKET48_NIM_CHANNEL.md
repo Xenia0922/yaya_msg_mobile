@@ -159,3 +159,31 @@ App 内的呈现（都已做）：
 
 若不需要「房间消息发送」，可整体回退原生部分（删两处 gradle 依赖 + PocketImPackage 注册 + 4 个文件），
 弹幕（纯 JS）不受影响，体积回到原值。
+
+## 9. 终局对照：gnz.hk 网页版为什么能发消息（2026-09-16 实证）
+
+用户提供的可复现样本 `https://gnz.hk/room/1164784`（= 牙牙消息的 web 构建）能正常收发，
+拆解其前端产物后结论明确：**它根本不在客户端连云信，全部走服务端中转。**
+
+`src/web/browser-shim.js`（把 Electron IPC 映射成 HTTP）：
+
+| 通道 | 服务端接口 | 说明 |
+|:--|:--|:--|
+| 直播弹幕 | `POST /api/danmaku/session`、`POST /api/danmaku/send/` | session 入参 `{liveId, roomId, token}`，返回还带 `streamUrl`（连流都代理） |
+| 房间消息 | `POST /api/member-room/connect`、`/api/member-room/` | 未登录直接返回「请先登录口袋48账号」——服务端持有 Pocket48 会话 |
+| 其它 | `/api/pocket`、`/api/ipc`、`/api/live-relay` | 云信工作全在服务端 |
+
+前端 `createNimChatroomFeature` 里那些 `NIM_Web_Chatroom.js` + `chatweblink01.netease.im` +
+`isAnonymous` 只有在 **Electron 桌面壳**里才生效（web 下 `ee=!0` 但 `X.invoke` 走 HTTP 代理）；
+网页版的实际调用是 `X.invoke('connect-live-danmaku' | 'send-live-danmaku')` → HTTP。
+
+**结论**：能收发的样本都运行在「PC/服务端」客户端上（桌面 Electron 主进程、或 gnz.hk 的服务器），
+客户端类型不是 Android/Browser，因此不受云信对 Android 包名的标识校验。
+手机端直连（原生 SDK / Web SDK）无论如何都会撞 414 / 403，**唯一可行路径是自建同款服务端中转**。
+
+### 手机端可行方案
+1. **自建 bridge**（推荐）：在自有服务器（如 010push 那台 Lighthouse）跑一个 Node 服务，
+   用 Pocket48 账号做云信客户端（PC clienttype 不受校验），对外暴露
+   `POST /api/danmaku/session|send` + `POST /api/member-room/connect|send`，
+   手机端只发 HTTP/WS。（亦可直接对接对端 gnz.hk 的该类接口，但会把功能依赖挂在别人的服务上）
+2. 保持现状：客户端链路代码已就位（含 LBS 解析、crm 解密、三级连接策略），一旦有合规通道即可切换。
