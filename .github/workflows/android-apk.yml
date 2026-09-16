@@ -4,6 +4,10 @@ name: Android APK
 # 手动触发：Actions → Android APK → Run workflow（可选 ABI）。
 # 也可以在 push 到下面这些分支时自动出包。
 on:
+  # 推 ci-build 分支即自动出包（专用出包分支，不干扰日常开发分支）
+  push:
+    branches:
+      - ci-build
   workflow_dispatch:
     inputs:
       abis:
@@ -27,6 +31,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # push 触发时没有 inputs，用默认值（x86_64 单 ABI，最快）
+      ABIS: ${{ github.event.inputs.abis || 'x86_64' }}
+      UNIVERSAL: ${{ github.event.inputs.universal || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -67,8 +75,8 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease \
-            -Pyaya.abis="${{ github.event.inputs.abis }}" \
-            -Pyaya.universal="${{ github.event.inputs.universal }}" \
+            -Pyaya.abis="$ABIS" \
+            -Pyaya.universal="$UNIVERSAL" \
             -Dorg.gradle.parallel=false \
             --no-daemon
 
