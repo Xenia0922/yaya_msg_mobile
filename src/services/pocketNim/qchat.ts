@@ -21,6 +21,14 @@ import {
   pocketImSendChannelText,
   type PocketImMessage,
 } from '../../native/PocketIm';
+import {
+  isPocketNimQChatAvailable,
+  qchatConnect,
+  qchatDisconnect,
+  qchatSend,
+  onQChatMessage,
+  onQChatStatus,
+} from '../../native/PocketNimQChat';
 import { loadNimCredentials } from './credentials';
 import { credentialsToProfile } from './runtime';
 import { NimModule, NimMsgType } from './types';
@@ -39,6 +47,38 @@ export { isPocketImAvailable };
 
 let loginInFlight: Promise<void> | null = null;
 let loggedInAccid = '';
+
+/** 原生 commonlink QChat 登录（幂等） */
+let qchatNativeLogins = new Map<string, Promise<void>>();
+let qchatNativeAccid = '';
+
+async function ensureQChatNativeLogin(): Promise<void> {
+  const creds = await loadNimCredentials();
+  if (!creds) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
+  if (qchatNativeAccid === creds.accid) return;
+  const existing = qchatNativeLogins.get(creds.accid);
+  if (existing) return existing;
+  const task: Promise<void> = (async () => {
+    // eslint-disable-next-line no-console
+    console.log('[nim] native qchat connect account =', creds.accid);
+    await qchatConnect(pocketImAppKeyCompat(), creds.accid, creds.token);
+    qchatNativeAccid = creds.accid;
+    // eslint-disable-next-line no-console
+    console.log('[nim] native qchat CONNECTED');
+  })();
+  qchatNativeLogins.set(creds.accid, task);
+  try {
+    await task;
+  } finally {
+    qchatNativeLogins.delete(creds.accid);
+  }
+  return task;
+}
+
+/** appKey 兜底（原生侧同样是这个常量） */
+function pocketImAppKeyCompat(): string {
+  return '632feff1f4c838541ab75195d1ceb3fa';
+}
 
 /** 幂等登录：init + login 只做一次（切换账号时自动重登） */
 async function ensureLogin(): Promise<void> {
@@ -97,6 +137,15 @@ export async function sendRoomTextMessage(target: RoomMessageTarget, text: strin
   if (!Number.isFinite(serverId) || !Number.isFinite(channelId) || channelId <= 0) {
     throw new Error('缺少房间 serverId / channelId');
   }
+  // 优先走原生 commonlink QChat 通道：官方 SDK 只能带真实包名 → 被服务端拒（实测 414）
+  if (isPocketNimQChatAvailable()) {
+    await ensureQChatNativeLogin();
+    const creds = await loadNimCredentials();
+    if (!creds) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
+    const ext = buildChannelExt(target, credentialsToProfile(creds));
+    await qchatSend(String(serverId), String(channelId), content, ext);
+    return;
+  }
   await ensureLogin();
   const creds = await loadNimCredentials();
   if (!creds) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
@@ -144,6 +193,40 @@ function normalizeLiveMessage(msg: PocketImMessage): RoomLiveMessage | null {
 export async function observeRoomMessages(
   handler: (messages: RoomLiveMessage[]) => void
 ): Promise<() => void> {
+  // 原生 commonlink QChat 通道（推荐路径）
+  if (isPocketNimQChatAvailable()) {
+    try {
+      await ensureQChatNativeLogin();
+    } catch {
+      return () => undefined;
+    }
+    const off = onQChatMessage((message) => {
+      let ext: Record<string, any> = {};
+      try {
+        ext = message.ext ? JSON.parse(message.ext) : {};
+      } catch {
+        ext = {};
+      }
+      const user = (ext.user && typeof ext.user === 'object' ? ext.user : {}) as Record<string, any>;
+      handler([
+        {
+          uuid: message.msgIdClient || message.msgIdServer || `${message.time}`,
+          serverId: Number(message.serverId) || 0,
+          channelId: Number(message.channelId) || 0,
+          fromAccount: message.fromAccount,
+          fromNick: message.fromNick || String(user.nickName || ''),
+          time: message.time || Date.now(),
+          text: message.body || String(ext.text || ''),
+          messageType: String(ext.messageType || 'TEXT'),
+          ext,
+        },
+      ]);
+    });
+    return () => {
+      off();
+      try { qchatDisconnect(); } catch { /* 忽略 */ }
+    };
+  }
   if (!isPocketImAvailable()) return () => undefined;
   try {
     await ensureLogin();
