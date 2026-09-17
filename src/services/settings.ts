@@ -28,8 +28,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   customBackgroundUpdatedAt: 0,
   meet48Auth: null,
   pip_auto: false,
-  // 液态玻璃（原生折射引擎）默认开；设置页可关，关掉即回退系统模糊
-  yaya_liquid_glass: true,
+  // 液态玻璃（原生折射引擎）默认**关**：真机实测折射引擎掉帧明显，
+  // 想用的在设置页手动开（开启后也只有静态背板走折射，底栏/选中态仍走系统模糊）
+  yaya_liquid_glass: false,
 };
 
 export async function loadSettings(): Promise<AppSettings> {

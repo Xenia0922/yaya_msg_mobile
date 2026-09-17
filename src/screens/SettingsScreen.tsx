@@ -345,11 +345,11 @@ export default function SettingsScreen() {
           <View style={styles.innerPad}>
             <ChipRow
               options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]}
-              value={settings.yaya_liquid_glass !== false}
+              value={settings.yaya_liquid_glass === true}
               onChange={(v) => update('yaya_liquid_glass', !!v)}
             />
             <Text style={[styles.note, { color: palette.labelTertiary }]}>
-              {t('开启：原生折射玻璃，观感更接近 Apple（需抓取背景并做折射计算，低端机可能掉帧）；关闭：立即改回系统模糊，不用重启')}
+              {t('默认关：折射引擎在真机上掉帧明显（底栏/选中态始终走系统模糊）。开启后仅静态卡片/胶囊用折射玻璃，立即生效不用重启')}
             </Text>
           </View>
         </Section>

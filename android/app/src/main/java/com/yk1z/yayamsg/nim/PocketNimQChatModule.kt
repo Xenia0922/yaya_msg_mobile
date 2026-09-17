@@ -91,12 +91,15 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
       promise.reject("E_STATE", "成员房间尚未连接")
       return
     }
-    try {
-      val msgIdClient = active.sendText(serverId, channelId, text, extJson)
-      promise.resolve(msgIdClient)
-    } catch (t: Throwable) {
-      promise.reject("E_SEND", t)
-    }
+    // 24/10 是阻塞请求（最长 12s）：放工作线程，别占住 native-modules 队列
+    Thread({
+      try {
+        val msgIdClient = active.sendText(serverId, channelId, text, extJson)
+        promise.resolve(msgIdClient)
+      } catch (t: Throwable) {
+        promise.reject("E_SEND", t)
+      }
+    }, "nim-qchat-send").also { it.isDaemon = true; it.start() }
   }
 
   @ReactMethod

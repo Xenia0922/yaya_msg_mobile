@@ -97,8 +97,19 @@ class NimQChatClient(
     }
   }
 
-  /** NIM 登录完成后：24/1 取 QChat 地址 → 连 QChat */
+  /**
+   * NIM 登录完成后：24/1 取 QChat 地址 → 连 QChat。
+   *
+   * ⚠️ 必须切到工作线程：[NimCommonlinkSession] 的回调（含 onConnected）都 post 到**主线程**，
+   * 而 24/1 是阻塞 socket 请求 —— 直接在回调里跑就是 NetworkOnMainThreadException
+   * （真机首测实锤：房间页报 `QChat: NetworkOnMainThreadException`，收发全断）。
+   */
   private fun startQChat() {
+    if (stopped) return
+    Thread({ startQChatBlocking() }, "nim-qchat-link").also { it.isDaemon = true; it.start() }
+  }
+
+  private fun startQChatBlocking() {
     if (stopped) return
     try {
       val session = nimSession ?: return

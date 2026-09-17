@@ -189,7 +189,7 @@ export function GlassSurface({
    * 低端机可能掉帧；这是用户自己的退路，不用等发版、不用重启。
    * 默认开：字段缺失（老版本升级上来的存档）也按开处理。
    */
-  const liquidGlassEnabled = useSettingsStore((s) => s.settings.yaya_liquid_glass !== false);
+  const liquidGlassEnabled = useSettingsStore((s) => s.settings.yaya_liquid_glass === true);
   const m =
     role === 'selector'
       ? isDark
@@ -321,11 +321,15 @@ export function GlassSurface({
   const composeRole: keyof typeof GLASS_TUNING =
     role === 'bar' || role === 'selector' || role === 'header' || role === 'card' || role === 'chip' ? role : 'card';
   const tuning: GlassTuning = { ...GLASS_TUNING[composeRole], ...(GLASS_TUNING_OVERRIDE[composeRole] ?? {}) };
+  // ⚠️ 真机实测（2026-09-17）：bar/selector 的整窗重抓循环（150ms/次，UI 线程 draw）在真机上明显掉帧。
+  // 所以 Compose 引擎只给**静态背板**（captureRefreshMs === 0，抓一次用到底）的角色用；
+  // 带刷新循环的角色一律走 expo-blur 硬件模糊。
   const useComposeGlass =
     isLiquidGlassComposeAvailable &&
     GLASS_ENGINE !== 'blur' &&
     liquidGlassEnabled &&
-    (engineProp ?? 'auto') !== 'blur';
+    (engineProp ?? 'auto') !== 'blur' &&
+    tuning.captureRefreshMs === 0;
 
   if (useComposeGlass) {
     return (
