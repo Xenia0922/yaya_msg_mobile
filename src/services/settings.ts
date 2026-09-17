@@ -31,6 +31,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // 自定义发言身份（弹幕/房间消息的昵称与头像），留空 = 用登录账号资料
   yaya_send_nickname: '',
   yaya_send_avatar: '',
+  // 以下留空 = 用登录账号资料；语义见设置页说明（官方 UserInfo 常量）
+  yaya_send_level: '',
+  yaya_send_roleid: '',
+  yaya_send_session_role: '',
+  yaya_send_vip: '',
 };
 
 export async function loadSettings(): Promise<AppSettings> {

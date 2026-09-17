@@ -322,4 +322,12 @@ export interface AppSettings {
   yaya_send_nickname: string;
   /** 弹幕/房间消息自定义头像 URL（留空用登录账号头像） */
   yaya_send_avatar: string;
+  /** 自定义等级（留空用登录账号） */
+  yaya_send_level: string;
+  /** 自定义账号身份 roleId（留空用登录账号；1=普通用户 2/3/4/5=成员 999=超管） */
+  yaya_send_roleid: string;
+  /** 自定义房间身份 sessionRole（留空=0 普通观众；1=房管 2=房主 3=成员本人 99=超管） */
+  yaya_send_session_role: string;
+  /** 自定义 VIP（''=跟随账号 'on'/'off'） */
+  yaya_send_vip: string;
 }

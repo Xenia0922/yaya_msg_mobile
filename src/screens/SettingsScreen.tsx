@@ -200,6 +200,9 @@ export default function SettingsScreen() {
 
   const [sendNick, setSendNick] = useState(settings.yaya_send_nickname || '');
   const [sendAvatar, setSendAvatar] = useState(settings.yaya_send_avatar || '');
+  const [sendLevel, setSendLevel] = useState(settings.yaya_send_level || '');
+  const [sendRoleId, setSendRoleId] = useState(settings.yaya_send_roleid || '');
+  const [sendSessionRole, setSendSessionRole] = useState(settings.yaya_send_session_role || '');
 
   const update = async (key: string, value: any, extra: any = {}) => {
     const patch = { [key]: value, ...extra };
@@ -367,6 +370,52 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
+            />
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary, marginTop: 12 }]}>{t('等级（留空用登录账号）')}</Text>
+            <TextInput
+              style={[styles.textInput, { borderColor: palette.hairline, color: palette.label }]}
+              value={sendLevel}
+              onChangeText={setSendLevel}
+              onEndEditing={() => update('yaya_send_level', sendLevel.trim())}
+              placeholder={t('如 30')}
+              placeholderTextColor={palette.labelTertiary}
+              keyboardType="number-pad"
+            />
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary, marginTop: 12 }]}>{t('账号身份 roleId（留空用登录账号）')}</Text>
+            <TextInput
+              style={[styles.textInput, { borderColor: palette.hairline, color: palette.label }]}
+              value={sendRoleId}
+              onChangeText={setSendRoleId}
+              onEndEditing={() => update('yaya_send_roleid', sendRoleId.trim())}
+              placeholder="1"
+              placeholderTextColor={palette.labelTertiary}
+              keyboardType="number-pad"
+            />
+            <Text style={[styles.note, { color: palette.labelTertiary }]}>
+              {t('1=普通用户，2/3/4/5=成员（本人/成员/离线成员），999=超管 —— 官方客户端按它识别「成员消息」')}
+            </Text>
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary, marginTop: 12 }]}>{t('房间身份 sessionRole（留空=0 普通观众）')}</Text>
+            <TextInput
+              style={[styles.textInput, { borderColor: palette.hairline, color: palette.label }]}
+              value={sendSessionRole}
+              onChangeText={setSendSessionRole}
+              onEndEditing={() => update('yaya_send_session_role', sendSessionRole.trim())}
+              placeholder="0"
+              placeholderTextColor={palette.labelTertiary}
+              keyboardType="number-pad"
+            />
+            <Text style={[styles.note, { color: palette.labelTertiary }]}>
+              {t('0=普通观众，1=房管，2=房主，3=成员本人，99=超管 —— 官方 ext 里叫 channelRole')}
+            </Text>
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary, marginTop: 12 }]}>{t('VIP 标识')}</Text>
+            <ChipRow
+              options={[
+                { label: t('跟随账号'), value: '' as any },
+                { label: t('开'), value: 'on' as any },
+                { label: t('关'), value: 'off' as any },
+              ]}
+              value={settings.yaya_send_vip || ''}
+              onChange={(v) => update('yaya_send_vip', v)}
             />
             <Text style={[styles.note, { color: palette.labelTertiary }]}>
               {t('改完点输入框外即保存，下一条弹幕/房间消息生效')}

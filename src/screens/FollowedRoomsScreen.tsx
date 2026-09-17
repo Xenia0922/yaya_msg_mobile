@@ -3,7 +3,7 @@ import { Animated, AppState } from 'react-native';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
-import { observeRoomMessages, sendRoomTextMessage, type RoomLiveMessage } from '../services/pocketNim/qchat';
+import { deleteRoomMessage, observeRoomMessages, sendRoomTextMessage, type RoomLiveMessage } from '../services/pocketNim/qchat';
 import { LiveBarragePanel } from '../components/LiveBarrageBoard';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
@@ -2187,6 +2187,35 @@ export default function FollowedRoomsScreen() {
   }, [chatRows, selectedRoom, showFanMessages, currentUserId]);
 
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
+  /** 长按自己的消息 → 撤回删除（官方 im/api/v1/team/msg/delete，服务端校验只能删本人的） */
+  const confirmDeleteMessage = useCallback(
+    (item: any) => {
+      const msgIdClient = String(item?.msgIdClient || item?.uuid || item?.msgId || '');
+      const msgTime = getMessageTime(item);
+      const channelId = Number(item?.channelId || activeChannelRef.current || 0);
+      if (!msgIdClient || !msgTime || !channelId) {
+        showToast(t('该消息不支持撤回'));
+        return;
+      }
+      Alert.alert(t('删除消息'), t('撤回并删除这条你发送的消息？'), [
+        { text: t('取消'), style: 'cancel' },
+        {
+          text: t('删除'),
+          style: 'destructive',
+          onPress: () => {
+            deleteRoomMessage({ channelId, msgIdClient, msgTime })
+              .then(() => {
+                setRoomMessages((prev) => prev.filter((m) => messageKey(m) !== messageKey(item)));
+                showToast(t('已删除'));
+              })
+              .catch((err) => showToast(errorMessage(err)));
+          },
+        },
+      ]);
+    },
+    [currentUserId],
+  );
+
   const renderChatItem = useCallback(
     ({ item: row }: { item: any }) => {
       const item = row.item;
@@ -2255,6 +2284,7 @@ export default function FollowedRoomsScreen() {
             <GlassSurface
               role="chip"
               radius={18}
+              onLongPress={mine ? () => confirmDeleteMessage(item) : undefined}
               tintColor={mine ? palette.tint : undefined}
               style={[
                 styles.msgBubble,

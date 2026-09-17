@@ -511,6 +511,20 @@ export const pocketApi = {
     return pocketPost(`${BASE}/user/api/v1/user/info/reload`, { from: 'appstart' }, { fallback: 'Token 无效' });
   },
 
+  /** 删除（撤回）自己在成员房间大/小房间发送的消息（官方 im/api/v1/team/msg/delete） */
+  async deleteTeamMsg(params: { accId: string; msgIdClient: string; channelId: string; msgTime: number }) {
+    return pocketPost(
+      `${BASE}/im/api/v1/team/msg/delete`,
+      {
+        accId: String(params.accId || ''),
+        msgIdClient: String(params.msgIdClient || ''),
+        channelId: String(params.channelId || ''),
+        msgTime: Number(params.msgTime) || 0,
+      },
+      { fallback: '删除消息失败' },
+    );
+  },
+
   async editUserInfo(params: { key?: string; value?: string; nickName?: string; avatar?: string }) {
     const changes: Array<{ key: string; value: string }> = [];
     if (params.key) {

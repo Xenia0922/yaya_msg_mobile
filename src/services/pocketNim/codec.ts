@@ -215,8 +215,8 @@ export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<st
     messageType: options.messageType || NimMsgType.BARRAGE_NORMAL,
     module: options.module || NimModule.LIVE,
     inTop: options.inTop === true,
-    // 官方 UserInfo 字段叫 sessionRole（桌面版 custom 里也是它）；原有 `session` 保留，两个都带
-    sessionRole: 0,
+    // 官方 getBaseParams 放的是 int（0=普通观众 1=房管 2=房主 3=成员本人 99=超管）
+    sessionRole: self.sessionRole ?? 0,
   };
   if (options.imKey) {
     // 官方 IMChatRoom#sendMsg 会把 md5 塞进 remoteExtension，供其他客户端校验消息真伪

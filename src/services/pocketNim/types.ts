@@ -119,4 +119,6 @@ export interface NimSelfProfile {
   pfUrl?: string;
   teamLogo?: string | null;
   badge?: unknown[];
+  /** 房间内身份（ext 的 channelRole/sessionRole 字段）：0=普通观众 1=房管 2=房主 3=成员本人 99=超管 */
+  sessionRole?: number;
 }

@@ -12,6 +12,7 @@
  *     extension = { channelRole, bubbleId, module: 'QCHAT', user: {...} }
  */
 
+import pocketApi from '../../api/pocket48';
 import {
   addPocketImMessageListener,
   isPocketImAvailable,
@@ -117,9 +118,10 @@ async function ensureLogin(): Promise<void> {
  */
 export function buildChannelExt(target: RoomMessageTarget, self: NimSelfProfile): string {
   // 字段与桌面版 member-room-message.buildExtension 一致（vip/pfUrl/teamLogo 缺了别人那端渲染就缺东西）
+  // 官方 getChannelBaseParams：channelRole 是 **Integer**（我们此前发字符串，gson 解析异常时身份就乱了）
   return JSON.stringify({
     module: NimModule.QCHAT,
-    channelRole: String(target.channelRole ?? 0),
+    channelRole: Math.trunc(Number(self.sessionRole ?? target.channelRole ?? 0)) || 0,
     user: {
       userId: self.userId,
       nickName: self.nickName,
@@ -156,6 +158,27 @@ export async function sendRoomTextMessage(target: RoomMessageTarget, text: strin
   }
   await ensureLogin();
   await pocketImSendChannelText(serverId, channelId, content, ext);
+}
+
+/**
+ * 删除（撤回）自己在房间发送的消息。官方仅允许删除本人消息（服务端校验 accId）。
+ * payload 取自消息项：channelId / msgIdClient / msgTime。
+ */
+export async function deleteRoomMessage(params: {
+  channelId: number | string;
+  msgIdClient: string;
+  msgTime: number;
+}): Promise<void> {
+  const creds = await loadNimCredentials();
+  if (!creds) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
+  if (!params.msgIdClient) throw new Error('缺少消息 ID');
+  if (!params.msgTime || params.msgTime <= 0) throw new Error('缺少消息时间');
+  await pocketApi.deleteTeamMsg({
+    accId: creds.accid,
+    msgIdClient: String(params.msgIdClient),
+    channelId: String(params.channelId || ''),
+    msgTime: Number(params.msgTime),
+  });
 }
 
 /** 归一化后的房间消息（与 HTTP 历史消息字段对齐，便于直接拼进列表） */
