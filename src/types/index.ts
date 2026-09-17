@@ -318,4 +318,9 @@ export interface AppSettings {
   meet48Auth?: Meet48Auth | null;
   /** 画中画（系统小窗）：视频播放中切后台自动弹系统悬浮窗。默认关——不主动调用不弹 App 外小窗 */
   pip_auto: boolean;
+  /**
+   * 液态玻璃（原生折射引擎 shufajiaok/LiquidGlass）总开关。默认开。
+   * 关掉后全站玻璃立即回退到系统模糊（expo-blur），无需重启——低端机掉帧时的退路。
+   */
+  yaya_liquid_glass: boolean;
 }

@@ -34,6 +34,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NavigationContext } from '@react-navigation/native';
 import { usePalette } from '../theme';
 import { GLASS_BACKDROP_ID, useBlurTarget } from './BlurTarget';
+import { useSettingsStore } from '../store';
 import { LiquidGlassNativeView, isLiquidGlassNativeAvailable } from '../../modules/liquid-glass-native';
 import {
   LiquidGlassComposeView,
@@ -91,9 +92,9 @@ const MATERIAL: { light: Material; dark: Material } = {
 };
 
 /**
- * 玻璃引擎总开关。
+ * 玻璃引擎的**开发期**总开关（用户开关见设置页「液态玻璃」/ settings.yaya_liquid_glass）。
  *   - 'auto'（默认）：能用 Compose 引擎就用它（真折射 + 色散 + 边缘光），不可用自动降级 expo-blur
- *   - 'blur'：全站退回 expo-blur（对照/排障用）
+ *   - 'blur'：全站强制退回 expo-blur（发版排障用，优先级高于用户设置）
  * 单实例可用 `engine` prop 单独覆盖。
  */
 export const GLASS_ENGINE: 'auto' | 'blur' = 'auto';
@@ -182,6 +183,13 @@ export function GlassSurface({
   const { tier } = useGlassSupport();
   const focused = useGlassFocused();
   const blurTarget = useBlurTarget();
+  /**
+   * 液态玻璃总开关（设置页可关，持久化）。
+   * 关掉后**所有**玻璃实例立即走 expo-blur 硬件模糊——原生引擎要抓背板位图 + 折射 shader，
+   * 低端机可能掉帧；这是用户自己的退路，不用等发版、不用重启。
+   * 默认开：字段缺失（老版本升级上来的存档）也按开处理。
+   */
+  const liquidGlassEnabled = useSettingsStore((s) => s.settings.yaya_liquid_glass !== false);
   const m =
     role === 'selector'
       ? isDark
@@ -313,7 +321,11 @@ export function GlassSurface({
   const composeRole: keyof typeof GLASS_TUNING =
     role === 'bar' || role === 'selector' || role === 'header' || role === 'card' || role === 'chip' ? role : 'card';
   const tuning: GlassTuning = { ...GLASS_TUNING[composeRole], ...(GLASS_TUNING_OVERRIDE[composeRole] ?? {}) };
-  const useComposeGlass = isLiquidGlassComposeAvailable && (engineProp ?? GLASS_ENGINE) !== 'blur';
+  const useComposeGlass =
+    isLiquidGlassComposeAvailable &&
+    GLASS_ENGINE !== 'blur' &&
+    liquidGlassEnabled &&
+    (engineProp ?? 'auto') !== 'blur';
 
   if (useComposeGlass) {
     return (

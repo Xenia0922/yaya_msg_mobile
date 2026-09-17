@@ -340,6 +340,20 @@ export default function SettingsScreen() {
           ) : null}
         </Section>
 
+        {/* 液态玻璃（原生折射引擎，会抓屏 + 折射计算）——掉帧时的退路 */}
+        <Section title={t('液态玻璃')} delay={160}>
+          <View style={styles.innerPad}>
+            <ChipRow
+              options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]}
+              value={settings.yaya_liquid_glass !== false}
+              onChange={(v) => update('yaya_liquid_glass', !!v)}
+            />
+            <Text style={[styles.note, { color: palette.labelTertiary }]}>
+              {t('开启：原生折射玻璃，观感更接近 Apple（需抓取背景并做折射计算，低端机可能掉帧）；关闭：立即改回系统模糊，不用重启')}
+            </Text>
+          </View>
+        </Section>
+
         {/* 语言 */}
         <Section title={t('语言')} delay={180}>
           <View style={styles.innerPad}>
