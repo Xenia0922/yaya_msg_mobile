@@ -33,7 +33,8 @@ jobs:
     timeout-minutes: 60
     env:
       # push 触发时没有 inputs，用默认值（x86_64 单 ABI，最快）
-      ABIS: ${{ github.event.inputs.abis || 'x86_64' }}
+      # push 触发默认同时出 x86_64（MuMu）+ arm64-v8a（真机）两个包，一次构建代价几乎不变
+      ABIS: ${{ github.event.inputs.abis || 'x86_64,arm64-v8a' }}
       UNIVERSAL: ${{ github.event.inputs.universal || 'false' }}
     steps:
       - uses: actions/checkout@v4
