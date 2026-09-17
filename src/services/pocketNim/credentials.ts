@@ -72,15 +72,17 @@ export async function loadSelfProfile(force = false): Promise<NimSelfProfile | n
         const res = await pocketApi.loginCheckToken();
         const content = (res && (res.content || res.data)) || {};
         const u = (content.userInfo || content.user || content) as Record<string, any>;
-        if (base) {
+        if (base && u && typeof u === 'object') {
           const nick = String(u.nickName || u.nickname || '').trim();
           if (nick) base.nickName = nick;
           if (u.avatar) base.avatar = absAvatar(String(u.avatar));
-          if (u.level != null) base.level = Number(u.level) || 0;
-          if (u.roleId != null) base.roleId = Number(u.roleId) || 0;
-          if (u.vip != null) base.vip = u.vip === true || u.vip === 1;
-          if (u.pfUrl != null) base.pfUrl = String(u.pfUrl || '');
-          if (u.teamLogo != null) base.teamLogo = String(u.teamLogo || '');
+          // level/roleId 以 user/info/reload 为准（覆盖 getNimLoginInfo 的值）：
+          // 真机实测 roleId 被污染后，普通粉丝发房间消息会被当成员处理（出红点提示）
+          base.level = Number(u.level) || 0;
+          base.roleId = Number(u.roleId) || 0;
+          base.vip = u.vip === true || u.vip === 1;
+          base.pfUrl = String(u.pfUrl || '');
+          base.teamLogo = String(u.teamLogo || '');
         }
         selfProfileCache = base;
         return base;
