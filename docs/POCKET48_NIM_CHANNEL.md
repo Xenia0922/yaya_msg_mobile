@@ -187,3 +187,36 @@ App 内的呈现（都已做）：
    `POST /api/danmaku/session|send` + `POST /api/member-room/connect|send`，
    手机端只发 HTTP/WS。（亦可直接对接对端 gnz.hk 的该类接口，但会把功能依赖挂在别人的服务上）
 2. 保持现状：客户端链路代码已就位（含 LBS 解析、crm 解密、三级连接策略），一旦有合规通道即可切换。
+
+
+## 10. 三方实现逐字段对照（2026-09-17）
+
+对照对象：桌面 `yk1z/yaya_msg`、Go bot `sjsj1849/pocket48-bot`（`sidecar/nim-bridge/android-qchat.mjs`）、我方 Kotlin 移植。
+
+| 项 | 桌面（9.17.1） | Go bot（9.21.10） | 我方 |
+|:--|:--|:--|:--|
+| 弹幕 LBS | `lbs/chat.jsp` | — | `lbs/chat.jsp` |
+| 圈组 NIM 链接入 | `lbs/conf.jsp` | **直连 `link.netease.im:8080`** | `lbs/conf.jsp` |
+| 聊天室 SDK 版本 | 92110 | 92110 | 92110 |
+| 圈组链 SDK 版本 | **91701** | **92110** | 91701（照抄桌面） |
+| 包名伪装 | 2/2 属性 25 = `com.seine48.app`；**24/2 不带包名** | 2/2 属性 25 + **24/2 属性 32** | 同桌面 |
+| 圈组订阅 | **无** | **`25/7` 订阅 serverIds** | 无 |
+| 发弹幕 / 发房间消息 | 13/6 · 24/10 | 13/6 · 24/10 | 13/6 · 24/10 |
+| 收消息 | 24/11 · 13/* | 24/11 | 24/11 |
+
+结论：三家都是「自实现 NIM 二进制协议 + 伪装白名单包名」。桌面圈组链的版本号比 Go 版旧一档且缺订阅步骤，是唯一实质差异；真机若收不到 `24/11`，优先补 `25/7`。
+
+## 11. pa 签名：MD5 能否替代 WASM（实测否）
+
+实跑桌面 `rust-wasm.js` + `2.wasm` 的 `__x6c2adf8__()`，base64 解码后 87 字符：
+
+```
+1789609503917 | 6882ed27da944c4aabffd862637aa1e2 | 489306987b7235d45965e308034fdc87 | 2021060901
+  ts(13位ms)  |            32 hex               |             32 hex               | 固定后缀
+```
+
+Go bot 的 pa = `base64("ts,rand,md5hex(ts+rand+secret),")`，secret `40F1065D8E71F2A2A2BBE3F6F3D8B8C9`（`internal/pocket48/client.go`）。
+两者结构完全不同（一个带逗号三字段、一个 87 字符双摘要），且 12 种常见候选输入（`md5(ts+secret)` 等）全部不匹配。
+⇒ 「将 Go 的纯 MD5 移植过来即可去掉 WASM/WebView 签名器」**不成立**。
+
+补充事实：桌面/我方只在 `login-send-sms` / `login-by-code` 带 pa；Go bot 是**所有**请求带 pa + `P-Sign-Type: V0`。
