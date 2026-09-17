@@ -4,6 +4,7 @@ import { Chat } from '@kesha-antonov/react-native-chat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   FlatList,
@@ -713,15 +714,20 @@ export default function PrivateMessagesScreen() {
       );
     };
 
+    // 键盘高度：edge-to-edge 下 adjustResize 不生效（窗口不缩），手动把底部抬上去
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    useEffect(() => {
+      const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+      const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+      return () => { show.remove(); hide.remove(); };
+    }, []);
+
     return (
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.screenContainer}
-        keyboardVerticalOffset={0}
-      >
-        <View style={[styles.screen, { backgroundColor: usePageBackground() }]}>
+      <View style={styles.screenContainer}>
+        <View style={[styles.screen, { backgroundColor: usePageBackground(), paddingBottom: keyboardHeight }]}>
         <ScreenHeader title={convName(sel)} onBack={() => setSel(null)} />
         {/* 官方 demo 用法：只给 messages / user / onSend，其余全用库默认（气泡、日期、输入条） */}
+        <View style={{ flex: 1 }}>
         <Chat
           messages={ims}
           // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
@@ -738,6 +744,7 @@ export default function PrivateMessagesScreen() {
           }}
           renderInputToolbar={() => null}
         />
+        </View>
         {member ? (
           <GlassSurface radius={20} role="card" style={[styles.flipBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
             <Text style={[styles.flipName, { color: palette.labelSecondary }]}>{t('{name} 翻牌', { name: member.ownerName || '' })}</Text>
@@ -788,7 +795,7 @@ export default function PrivateMessagesScreen() {
           </View>
         </GlassSurface>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 
