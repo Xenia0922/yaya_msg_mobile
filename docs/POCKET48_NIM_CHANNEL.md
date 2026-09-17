@@ -220,3 +220,24 @@ Go bot 的 pa = `base64("ts,rand,md5hex(ts+rand+secret),")`，secret `40F1065D8E
 ⇒ 「将 Go 的纯 MD5 移植过来即可去掉 WASM/WebView 签名器」**不成立**。
 
 补充事实：桌面/我方只在 `login-send-sms` / `login-by-code` 带 pa；Go bot 是**所有**请求带 pa + `P-Sign-Type: V0`。
+
+
+### 10.1 本轮三方对齐结果（2026-09-17 二轮逐字段核对）
+
+逐字段核对桌面 `nim-commonlink-chatroom.js` / `nim-commonlink-qchat.js` 与 Go bot `android-chatroom.mjs` / `android-qchat.mjs` 后修掉：
+
+| # | 问题 | 修法 |
+|:--|:--|:--|
+| 1 | 版本三件套混搭：6=92110 但 40="8.0.0"、42="Native/9.17.1.13231"（风控明显异常特征） | `NimProtocol` 统一为 92110 / "9.21.10" / "Native/9.21.10.14184"（Go bot 实测组合） |
+| 2 | 聊天室登录属性 4 误用 SDK 人类版本 | 独立成 `APP_VERSION_FIELD="8.0.0"`（三家在此字段都固定 8.0.0，与 SDK 版本无关） |
+| 3 | QChat(24/2) 登录不带包名 | 补属性 32 = `com.seine48.app`（Go bot 同款；官方 SDK 死于 414 就是因为带不了这个） |
+| 4 | QChat 链 SDK 版本 91701 / LBS v=91701，与聊天室不一致 | 统一 92110 |
+| 5 | 在线人数：只解析 13/13 响应但从不发请求（桌面每 10s 发一次 `getChatroomInfo`） | 连上后立即 + 每 10s 发 13/13，响应 → `handleOnlineCount` → `onOnlineCount` |
+| 6 | 弹幕 remoteExtension.user 缺 vip/pfUrl/teamLogo/badge，且缺 `sessionRole` | 按桌面版补齐（`session`/`sessionRole` 两个都带） |
+
+核对一致、无需改的：聊天室进房包（13/2 = `[2]+login{1,2,3,5,8}+auth{3,4,6,9,13,18,19,25,1000}`）、
+弹幕发送（13/6，属性 1/2/3/4/5/13/20/21/22/23，**属性 3 与 13 都填正文**——桌面 `sendText` 就是 `attachment: content`）、
+收消息归一化（属性 1/2/3/4/7/8/13/20/21/22/23，type==0 时正文取属性 3）、13/35 ack（属性 38=="1" 时回）、
+心跳 1/2、QChat 发送（24/10 属性 1/2/3/9/10/12/13/20/21/100..105）、QChat 取址解析 `common.link`。
+
+仍未做（有意）：QChat `25/7` 订阅 —— 只有 Go bot 有，桌面版没有也能收发，真机收不到 24/11 时再加。

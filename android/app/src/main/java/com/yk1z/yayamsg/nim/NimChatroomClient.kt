@@ -185,6 +185,8 @@ class NimChatroomClient(
     val chunk = ByteArray(8192)
     reconnectAt = System.currentTimeMillis()
     var lastHeartbeat = System.currentTimeMillis()
+    // 进房后立刻取一次在线人数，之后每 ONLINE_REFRESH_MS 一次（桌面 danmaku-service 同节奏）
+    var lastOnlineRequest = 0L
 
     while (!stopped) {
       // 心跳（15s）：serviceId=1, commandId=2
@@ -196,6 +198,15 @@ class NimChatroomClient(
           out.flush()
         }
       }
+      // 在线人数：13/13 取聊天室信息（响应经 13/13 分支 → handleOnlineCount → onOnlineCount）
+      if (connected && now - lastOnlineRequest >= ONLINE_REFRESH_MS) {
+        lastOnlineRequest = now
+        synchronized(lock) {
+          out.write(encryptor!!.apply(NimProtocol.makePacket(13, 13, nextSerial())))
+          out.flush()
+        }
+      }
+
       // 发送超时清理
       synchronized(lock) {
         val iterator = pending.entries.iterator()
@@ -273,7 +284,7 @@ class NimChatroomClient(
     val authentication = NimProtocol.encodeProperties(
       mapOf(
         3 to 1,
-        4 to NimProtocol.ANDROID_SDK_HUMAN_VERSION,
+        4 to NimProtocol.APP_VERSION_FIELD,
         6 to NimProtocol.ANDROID_SDK_VERSION,
         9 to 1,
         13 to deviceId,
@@ -410,3 +421,5 @@ fun extractOnlineMemberNum(buffer: ByteArray, depth: Int = 0): Int? {
   }
   return null
 }
+
+private const val ONLINE_REFRESH_MS = 10_000L

@@ -227,12 +227,12 @@ class NimCommonlinkSession(
             }
           }
           else -> {
-            synchronized(lock) {
-              val waiting = pending.remove(packet.serial)
-              if (waiting != null) {
-                waiting.resolve(packet)
-                continue
-              }
+            // 注意：`synchronized` 是 inline，里面的 break/continue 需要 Kotlin 2.2（本项目 2.1.20 编译不过），
+            // 所以同步块只做取值，跳转放到外面。
+            val waiting = synchronized(lock) { pending.remove(packet.serial) }
+            if (waiting != null) {
+              waiting.resolve(packet)
+              continue
             }
             post { onPacket(packet) }
           }

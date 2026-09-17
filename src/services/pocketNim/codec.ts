@@ -204,12 +204,19 @@ export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<st
       avatar: self.avatar,
       level: self.level ?? 0,
       roleId: self.roleId ?? 0,
+      // 桌面版同款：其他客户端渲染徽章/VIP 标时会读这几个字段
+      vip: self.vip === true,
+      pfUrl: self.pfUrl || '',
+      teamLogo: self.teamLogo ?? null,
+      badge: Array.isArray(self.badge) ? self.badge : [],
     },
     config: buildConfig(),
     text,
     messageType: options.messageType || NimMsgType.BARRAGE_NORMAL,
     module: options.module || NimModule.LIVE,
     inTop: options.inTop === true,
+    // 官方 UserInfo 字段叫 sessionRole（桌面版 custom 里也是它）；原有 `session` 保留，两个都带
+    sessionRole: 0,
   };
   if (options.imKey) {
     // 官方 IMChatRoom#sendMsg 会把 md5 塞进 remoteExtension，供其他客户端校验消息真伪

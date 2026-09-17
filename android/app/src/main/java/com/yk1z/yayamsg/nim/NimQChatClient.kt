@@ -175,7 +175,7 @@ class NimQChatClient(
     NimProtocol.encodeProperties(
       mapOf(
         3 to 1,
-        4 to "8.0.0",
+        4 to NimProtocol.APP_VERSION_FIELD,
         6 to NimProtocol.ANDROID_SDK_VERSION,
         8 to 1,
         9 to 1,
@@ -184,7 +184,7 @@ class NimQChatClient(
         19 to account,
         25 to NimProtocol.ANDROID_PACKAGE_NAME,
         40 to NimProtocol.ANDROID_SDK_HUMAN_VERSION,
-        42 to "Native/9.17.1.13231",
+        42 to NimProtocol.ANDROID_USER_AGENT,
         1000 to token,
       )
     )
@@ -200,16 +200,19 @@ class NimQChatClient(
         4 to token,
         6 to 1,
         8 to deviceId,
-        9 to 91701,
+        9 to NimProtocol.ANDROID_SDK_VERSION,
         10 to 1,
-        11 to "Native/9.17.1.13231",
-        14 to "9.17.1",
+        11 to NimProtocol.ANDROID_USER_AGENT,
+        14 to NimProtocol.ANDROID_SDK_HUMAN_VERSION,
+        // Go bot 的 QChat 登录包里带包名（属性 32）：与 2/2 的属性 25 同一作用，
+        // 用来过服务端「客户端 App 标识」校验（官方 SDK 就死在 414/403）
+        32 to NimProtocol.ANDROID_PACKAGE_NAME,
       )
     )
   )
 
   private fun requestNimAddress(): Pair<String, Int> {
-    val url = URL("$lbsUrl?k=$appKey&id=$account&v=91701&tp=1&dt=0")
+    val url = URL("$lbsUrl?k=$appKey&id=$account&v=${NimProtocol.ANDROID_SDK_VERSION}&tp=1&dt=0")
     val connection = (url.openConnection() as HttpURLConnection).apply {
       connectTimeout = 15_000
       readTimeout = 15_000

@@ -23,10 +23,21 @@ import javax.crypto.Cipher
  */
 object NimProtocol {
 
-  /** 与桌面版一致：SDK 版本 / 伪装的官方包名（服务端白名单内） */
+  /**
+   * SDK 版本（数字 + 人类可读 + UA）——这三个必须**成对同步**：
+   * 桌面版是 91701 / 9.17.1 / Native/9.17.1.13231，Go bot（更新、实测可用）是
+   * 92110 / 9.21.10 / Native/9.21.10.14184，这里统一取后者。
+   * （曾出现 6=92110 但 40="8.0.0"、42="Native/9.17.1.13231" 的混搭，服务端做客户端风控时是明显异常特征。）
+   */
   const val ANDROID_SDK_VERSION = 92110
+  const val ANDROID_SDK_HUMAN_VERSION = "9.21.10"
+  const val ANDROID_USER_AGENT = "Native/9.21.10.14184"
+  /**
+   * 聊天室登录属性 4 的固定值 —— 官方 / 桌面 / Go bot 三家都写 "8.0.0"，
+   * 与 SDK 版本无关，**不要**和 ANDROID_SDK_HUMAN_VERSION 混用。
+   */
+  const val APP_VERSION_FIELD = "8.0.0"
   const val ANDROID_PACKAGE_NAME = "com.seine48.app"
-  const val ANDROID_SDK_HUMAN_VERSION = "8.0.0"
 
   private const val RSA_KEY_VERSION = 0
 
