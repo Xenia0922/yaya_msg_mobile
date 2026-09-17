@@ -67,7 +67,7 @@ export async function loadSelfProfile(force = false): Promise<NimSelfProfile | n
   const profile = await resolveSelfProfile(force);
   if (!profile) return null;
   // 用户自定义发言身份（设置页「发言身份」）优先于登录账号资料
-  // roleId 语义：0=普通用户（真机实测；官方常量 USER_ROLE_NORMAL=1 与实际数据不符） 2/3/4/5=成员 999=超管
+  // roleId 语义（官方 UserInfo 常量）：1=普通用户 2/3/4/5=成员 999=超管
   // sessionRole 语义：0=普通观众 1=房管 2=房主 3=成员本人 99=超管
   try {
     const [nick, avatar, level, roleId, sessionRole, vip] = await Promise.all([
