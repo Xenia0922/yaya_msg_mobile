@@ -2720,7 +2720,11 @@ export default function FollowedRoomsScreen() {
             {roomSendHint}
           </Text>
         ) : null}
-        <View style={[styles.roomInputBar, { backgroundColor: palette.surface, borderColor: palette.hairline }]}>
+        <GlassSurface
+          role="chip"
+          radius={16}
+          style={[styles.roomInputBar, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+        >
           <TextInput
             style={[styles.roomInput, { color: palette.label }]}
             value={roomDraft}
@@ -2728,7 +2732,7 @@ export default function FollowedRoomsScreen() {
               setRoomDraft(next);
               if (roomSendHint) setRoomSendHint('');
             }}
-            placeholder={t('在房间里说点什么...')}
+            placeholder={t('说点什么…')}
             placeholderTextColor={palette.labelTertiary}
             maxLength={200}
             returnKeyType="send"
@@ -2747,7 +2751,7 @@ export default function FollowedRoomsScreen() {
               {roomSending ? '··' : t('发送')}
             </Text>
           </TouchableOpacity>
-        </View>
+        </GlassSurface>
       </View>
     );
   }

@@ -580,6 +580,13 @@ export default function MediaScreen() {
     () => liveBarrage.items.map((item) => ({ key: item.id, text: item.nick ? `${item.nick}：${item.text}` : item.text })),
     [liveBarrage.items]
   );
+  // 修复「直播弹幕不飘屏」：showDanmaku 此前只由 HTTP 轮询打开，
+  // 原生云信通道有弹幕也不会飘 —— 云信一到货就自动打开飘屏。
+  useEffect(() => {
+    if (liveBarrage.items.length) setShowDanmaku(true);
+  }, [liveBarrage.items.length]);
+  // 直播输入条可收起：默认展开，收起后只剩一个小圆钮，不挡画面
+  const [liveInputCollapsed, setLiveInputCollapsed] = useState(false);
   // 续播位置：打开回放时读取上次进度，播放中由 WebView 回传进度落盘
   const [webResumeTime, setWebResumeTime] = useState(0);
   const [giftVisible, setGiftVisible] = useState(false);
@@ -1600,14 +1607,25 @@ export default function MediaScreen() {
             />
             {/* 直播弹幕输入条：叠在播放器上（弹幕本体由上面的滚动层展示） */}
             {playing?.isLive ? (
-              <View style={styles.liveBarrageInputWrap} pointerEvents="box-none">
-                <LiveBarrageBoard
-                  source={liveBarrage}
-                  liveId={String(playing.item?.liveId || playing.item?.id || '')}
-                  variant="plain"
-                  inputOnly
-                  style={styles.liveBarrageInput}
-                />
+              <View style={[styles.liveBarrageInputWrap, { flexDirection: 'row', alignItems: 'flex-end', gap: 6 }]} pointerEvents="box-none">
+                {liveInputCollapsed ? (
+                  <TouchableOpacity style={styles.liveInputFab} onPress={() => setLiveInputCollapsed(false)} activeOpacity={0.85}>
+                    <MaterialCommunityIcons name="message-outline" size={18} color="#fff" />
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TouchableOpacity style={styles.liveInputFab} onPress={() => setLiveInputCollapsed(true)} activeOpacity={0.85}>
+                      <MaterialCommunityIcons name="chevron-down" size={18} color="#fff" />
+                    </TouchableOpacity>
+                    <LiveBarrageBoard
+                      source={liveBarrage}
+                      liveId={String(playing.item?.liveId || playing.item?.id || '')}
+                      variant="plain"
+                      inputOnly
+                      style={[styles.liveBarrageInput, { flex: 1 }]}
+                    />
+                  </>
+                )}
               </View>
             ) : null}
           </PlayerScreen>
@@ -2018,6 +2036,14 @@ export default function MediaScreen() {
 const styles = StyleSheet.create({
   // 直播弹幕输入条：叠在播放器底部（避开底部控制坞）
   liveBarrageInputWrap: { position: 'absolute', left: 10, right: 10, bottom: 62, zIndex: 20 },
+  liveInputFab: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   liveBarrageInput: {},
   container: { flex: 1, backgroundColor: 'transparent' },
   tabRow: { flexDirection: 'row', gap: 8 },
