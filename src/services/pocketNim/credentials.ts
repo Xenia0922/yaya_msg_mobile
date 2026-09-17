@@ -6,8 +6,8 @@
  */
 
 import pocketApi from '../../api/pocket48';
-import { normalizeCredentials } from './runtime';
-import { NimCredentials } from './types';
+import { credentialsToProfile, normalizeCredentials } from './runtime';
+import { NimCredentials, NimSelfProfile } from './types';
 
 let cached: NimCredentials | null = null;
 let inflight: Promise<NimCredentials | null> | null = null;
@@ -42,6 +42,56 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
     }
   })();
   return inflight;
+}
+
+let selfProfileCache: NimSelfProfile | null = null;
+let selfProfileInflight: Promise<NimSelfProfile | null> | null = null;
+
+/** 相对路径头像 → source.48.cn 绝对地址（App 内同款惯例） */
+function absAvatar(a: string): string {
+  const v = String(a || '').trim();
+  if (!v) return '';
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://source.48.cn${v.startsWith('/') ? v : `/${v}`}`;
+}
+
+/**
+ * 发送身份（弹幕/房间消息 remoteExtension.user）。
+ *
+ * getNimLoginInfo 只保证 accid/token/userId —— 昵称/头像/等级经常缺失，
+ * 直接发出去别人看到的就是「无名字无头像」（真机实测实锤）。
+ * 这里补一手 user/info/reload（登录态校验同款接口，返回完整用户资料），结果缓存。
+ */
+export async function loadSelfProfile(force = false): Promise<NimSelfProfile | null> {
+  const base = await loadNimCredentials(force).then((c) => (c ? credentialsToProfile(c) : null));
+  if (base && base.nickName && base.avatar) return base;
+  if (!force && selfProfileCache) return selfProfileCache;
+  if (!selfProfileInflight) {
+    selfProfileInflight = (async () => {
+      try {
+        const res = await pocketApi.loginCheckToken();
+        const content = (res && (res.content || res.data)) || {};
+        const u = (content.userInfo || content.user || content) as Record<string, any>;
+        if (base) {
+          const nick = String(u.nickName || u.nickname || '').trim();
+          if (nick) base.nickName = nick;
+          if (u.avatar) base.avatar = absAvatar(String(u.avatar));
+          if (u.level != null) base.level = Number(u.level) || 0;
+          if (u.roleId != null) base.roleId = Number(u.roleId) || 0;
+          if (u.vip != null) base.vip = u.vip === true || u.vip === 1;
+          if (u.pfUrl != null) base.pfUrl = String(u.pfUrl || '');
+          if (u.teamLogo != null) base.teamLogo = String(u.teamLogo || '');
+        }
+        selfProfileCache = base;
+        return base;
+      } catch {
+        return base;
+      } finally {
+        selfProfileInflight = null;
+      }
+    })();
+  }
+  return selfProfileInflight;
 }
 
 export function clearNimCredentials(): void {

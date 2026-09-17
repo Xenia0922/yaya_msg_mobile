@@ -22,6 +22,7 @@ import {
   onChatroomStatus,
 } from '../../native/PocketNimChatroom';
 import { credentialsToProfile, loadNimSdk, NimCredentials, NIM_CHATROOM_ADDRESSES, NIM_APP_KEY } from './runtime';
+import { loadSelfProfile } from './credentials';
 import { BarrageItem, NimModule } from './types';
 
 export type ChatroomStatus = 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
@@ -389,18 +390,21 @@ export class LiveChatroom {
    * 官方对普通用户用 BARRAGE_NORMAL，成员本人 BARRAGE_MEMBER，超管 BARRAGE_SUPERMAN；
    * 牙牙账号通常是普通粉丝，因此默认 BARRAGE_NORMAL。
    */
-  send(text: string, messageType?: string): Promise<void> {
+  async send(text: string, messageType?: string): Promise<void> {
     const content = String(text || '').trim();
-    if (!content) return Promise.resolve();
+    if (!content) return;
     if (this.useNative) {
+      // 发送身份用完整资料（昵称/头像缺失时别人看到的就是无名无像）
+      const self = (await loadSelfProfile()) || credentialsToProfile(this.options.credentials);
       const ext = buildLiveBarrageExt({
         roomId: this.options.roomId,
         sourceId: this.options.liveId || this.options.roomId,
         text: content,
-        self: credentialsToProfile(this.options.credentials),
+        self,
         module: this.options.module || NimModule.LIVE,
       });
-      return chatroomSend(content, JSON.stringify(ext)).then(() => undefined);
+      await chatroomSend(content, JSON.stringify(ext));
+      return;
     }
     if (!this.instance) return Promise.reject(new Error('弹幕通道尚未连接'));
     if (this.anonymous) return Promise.reject(new Error('当前为匿名只读通道，无法发送弹幕'));

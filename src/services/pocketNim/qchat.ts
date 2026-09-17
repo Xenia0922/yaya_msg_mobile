@@ -29,9 +29,11 @@ import {
   onQChatMessage,
   onQChatStatus,
 } from '../../native/PocketNimQChat';
+import { loadSelfProfile } from './credentials';
 import { loadNimCredentials } from './credentials';
 import { credentialsToProfile } from './runtime';
 import { NimModule, NimMsgType } from './types';
+import type { NimSelfProfile } from './types';
 
 export interface RoomMessageTarget {
   serverId: string | number;
@@ -113,18 +115,22 @@ async function ensureLogin(): Promise<void> {
  * 构造圈组消息扩展段（对齐 ChatMsgUtil.getChannelBaseParams）。
  * 服务端会用 user 段渲染昵称/头像，缺失时消息可能显示异常。
  */
-export function buildChannelExt(target: RoomMessageTarget, self: { userId: number; nickName: string; avatar: string; level?: number; roleId?: number }): string {
+export function buildChannelExt(target: RoomMessageTarget, self: NimSelfProfile): string {
+  // 字段与桌面版 member-room-message.buildExtension 一致（vip/pfUrl/teamLogo 缺了别人那端渲染就缺东西）
   return JSON.stringify({
-    channelRole: target.channelRole ?? 0,
-    bubbleId: target.bubbleId || '0',
     module: NimModule.QCHAT,
+    channelRole: String(target.channelRole ?? 0),
     user: {
       userId: self.userId,
       nickName: self.nickName,
+      teamLogo: self.teamLogo || '',
       avatar: self.avatar,
       level: self.level ?? 0,
       roleId: self.roleId ?? 0,
+      vip: self.vip === true,
+      pfUrl: self.pfUrl || '',
     },
+    bubbleId: String(target.bubbleId || '0'),
   });
 }
 
@@ -138,18 +144,17 @@ export async function sendRoomTextMessage(target: RoomMessageTarget, text: strin
     throw new Error('缺少房间 serverId / channelId');
   }
   // 优先走原生 commonlink QChat 通道：官方 SDK 只能带真实包名 → 被服务端拒（实测 414）
+  const self = await loadSelfProfile();
+  if (!self) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
+  const ext = buildChannelExt(target, self);
+  // eslint-disable-next-line no-console
+  console.log('[nim] qchat send ext =', ext.slice(0, 400));
   if (isPocketNimQChatAvailable()) {
     await ensureQChatNativeLogin();
-    const creds = await loadNimCredentials();
-    if (!creds) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
-    const ext = buildChannelExt(target, credentialsToProfile(creds));
     await qchatSend(String(serverId), String(channelId), content, ext);
     return;
   }
   await ensureLogin();
-  const creds = await loadNimCredentials();
-  if (!creds) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
-  const ext = buildChannelExt(target, credentialsToProfile(creds));
   await pocketImSendChannelText(serverId, channelId, content, ext);
 }
 
