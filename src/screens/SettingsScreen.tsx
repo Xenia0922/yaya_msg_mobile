@@ -20,7 +20,7 @@ import {
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Image } from 'react-native';
+import { Image, TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore, useUpdateStore } from '../store';
@@ -198,6 +198,9 @@ export default function SettingsScreen() {
     { label: t('深色'), value: 'dark' },
   ];
 
+  const [sendNick, setSendNick] = useState(settings.yaya_send_nickname || '');
+  const [sendAvatar, setSendAvatar] = useState(settings.yaya_send_avatar || '');
+
   const update = async (key: string, value: any, extra: any = {}) => {
     const patch = { [key]: value, ...extra };
     setSettings(patch);
@@ -340,16 +343,33 @@ export default function SettingsScreen() {
           ) : null}
         </Section>
 
-        {/* 液态玻璃（原生折射引擎，会抓屏 + 折射计算）——掉帧时的退路 */}
-        <Section title={t('液态玻璃')} delay={160}>
+        {/* 发言身份：弹幕/房间消息的昵称与头像（自定义优先于登录账号） */}
+        <Section title={t('发言身份')} delay={160}>
           <View style={styles.innerPad}>
-            <ChipRow
-              options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]}
-              value={settings.yaya_liquid_glass === true}
-              onChange={(v) => update('yaya_liquid_glass', !!v)}
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('弹幕/房间消息显示的昵称（留空用登录账号）')}</Text>
+            <TextInput
+              style={[styles.textInput, { borderColor: palette.hairline, color: palette.label }]}
+              value={sendNick}
+              onChangeText={setSendNick}
+              onEndEditing={() => update('yaya_send_nickname', sendNick.trim())}
+              placeholder={t('留空使用登录账号昵称')}
+              placeholderTextColor={palette.labelTertiary}
+              maxLength={30}
+            />
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary, marginTop: 12 }]}>{t('头像图片 URL（留空用登录账号）')}</Text>
+            <TextInput
+              style={[styles.textInput, { borderColor: palette.hairline, color: palette.label }]}
+              value={sendAvatar}
+              onChangeText={setSendAvatar}
+              onEndEditing={() => update('yaya_send_avatar', sendAvatar.trim())}
+              placeholder="https://..."
+              placeholderTextColor={palette.labelTertiary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
             />
             <Text style={[styles.note, { color: palette.labelTertiary }]}>
-              {t('默认关：折射引擎在真机上掉帧明显（底栏/选中态始终走系统模糊）。开启后仅静态卡片/胶囊用折射玻璃，立即生效不用重启')}
+              {t('改完点输入框外即保存，下一条弹幕/房间消息生效')}
             </Text>
           </View>
         </Section>
@@ -509,5 +529,13 @@ const styles = StyleSheet.create({
   },
   autoSyncText: { fontSize: 12, marginLeft: 8, fontWeight: '600' },
   note: { marginHorizontal: 14, marginTop: 10, fontSize: 11, lineHeight: 16 },
+  textInput: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+  },
   footer: { textAlign: 'center', fontSize: 12, marginTop: 24 },
 });

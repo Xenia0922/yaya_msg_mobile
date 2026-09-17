@@ -34,14 +34,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NavigationContext } from '@react-navigation/native';
 import { usePalette } from '../theme';
 import { GLASS_BACKDROP_ID, useBlurTarget } from './BlurTarget';
-import { useSettingsStore } from '../store';
 import { LiquidGlassNativeView, isLiquidGlassNativeAvailable } from '../../modules/liquid-glass-native';
-import {
-  LiquidGlassComposeView,
-  isLiquidGlassComposeAvailable,
-  GLASS_TUNING,
-  type GlassTuning,
-} from '../native/LiquidGlassCompose';
 
 /** 语义角色 —— 决定用哪组材质 */
 export type GlassRole =
@@ -90,17 +83,6 @@ const MATERIAL: { light: Material; dark: Material } = {
     highlight: 0.10,
   },
 };
-
-/**
- * 玻璃引擎的**开发期**总开关（用户开关见设置页「液态玻璃」/ settings.yaya_liquid_glass）。
- *   - 'auto'（默认）：能用 Compose 引擎就用它（真折射 + 色散 + 边缘光），不可用自动降级 expo-blur
- *   - 'blur'：全站强制退回 expo-blur（发版排障用，优先级高于用户设置）
- * 单实例可用 `engine` prop 单独覆盖。
- */
-export const GLASS_ENGINE: 'auto' | 'blur' = 'auto';
-
-/** 按角色微调 Compose 引擎参数（不改就用 GLASS_TUNING 的默认档） */
-export const GLASS_TUNING_OVERRIDE: Partial<Record<GlassRole, Partial<GlassTuning>>> = {};
 
 /**
  * 选中态（压在底栏玻璃上那块）。
@@ -154,8 +136,6 @@ export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
   /** 兼容 ScalePressable 的按下缩放（仅作语义标记，避免类型报错） */
   pressedScale?: number;
   disabled?: boolean;
-  /** 单实例引擎覆盖：'auto' 用 Compose 引擎（默认）/ 'blur' 退回 expo-blur（滚动内容穿过玻璃时用它） */
-  engine?: 'auto' | 'blur';
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
 }
@@ -173,7 +153,6 @@ export function GlassSurface({
   activeOpacity,
   pressedScale: _pressedScale,
   disabled,
-  engine: engineProp,
   style,
   children,
   ...rest
@@ -183,13 +162,6 @@ export function GlassSurface({
   const { tier } = useGlassSupport();
   const focused = useGlassFocused();
   const blurTarget = useBlurTarget();
-  /**
-   * 液态玻璃总开关（设置页可关，持久化）。
-   * 关掉后**所有**玻璃实例立即走 expo-blur 硬件模糊——原生引擎要抓背板位图 + 折射 shader，
-   * 低端机可能掉帧；这是用户自己的退路，不用等发版、不用重启。
-   * 默认开：字段缺失（老版本升级上来的存档）也按开处理。
-   */
-  const liquidGlassEnabled = useSettingsStore((s) => s.settings.yaya_liquid_glass === true);
   const m =
     role === 'selector'
       ? isDark
@@ -306,54 +278,6 @@ export function GlassSurface({
         </View>
         {children}
       </LiquidGlassView>
-    );
-  }
-
-  /**
-   * 引擎：shufajiaok/LiquidGlass（Compose）—— 真折射 + 色散 + 边缘光。
-   *
-   * 与 expo-blur 分支的关键差异：
-   *   - 背板是**抓下来的位图**（原生侧从 GLASS_BACKDROP_ID 那一层抓，全局共享一张），
-   *     所以静态背景下比"模糊身后"更接近 Apple 那块玻璃；滚动内容穿过玻璃时需要
-   *     captureRefreshMs 低频重抓；
-   *   - 材质/描边/顶部高光全部由引擎自己画，这里**不能再叠一层**，否则双重描边。
-   */
-  const composeRole: keyof typeof GLASS_TUNING =
-    role === 'bar' || role === 'selector' || role === 'header' || role === 'card' || role === 'chip' ? role : 'card';
-  const tuning: GlassTuning = { ...GLASS_TUNING[composeRole], ...(GLASS_TUNING_OVERRIDE[composeRole] ?? {}) };
-  // ⚠️ 真机实测（2026-09-17）：bar/selector 的整窗重抓循环（150ms/次，UI 线程 draw）在真机上明显掉帧。
-  // 所以 Compose 引擎只给**静态背板**（captureRefreshMs === 0，抓一次用到底）的角色用；
-  // 带刷新循环的角色一律走 expo-blur 硬件模糊。
-  const useComposeGlass =
-    isLiquidGlassComposeAvailable &&
-    GLASS_ENGINE !== 'blur' &&
-    liquidGlassEnabled &&
-    (engineProp ?? 'auto') !== 'blur' &&
-    tuning.captureRefreshMs === 0;
-
-  if (useComposeGlass) {
-    return (
-      <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
-        {/* 玻璃底层：不吃触摸，内容（children）叠在上面 */}
-        <LiquidGlassComposeView
-          pointerEvents="none"
-          targetId={GLASS_BACKDROP_ID}
-          style={StyleSheet.absoluteFill}
-          cornerRadius={r}
-          blurRadius={tuning.blurRadius}
-          edgeWidth={tuning.edgeWidth}
-          transparency={tuning.transparency}
-          refractDp={tuning.refractDp}
-          refractMode={tuning.refractMode}
-          dispersion={tuning.dispersion}
-          edgeGlow={tuning.edgeGlow}
-          captureRefreshMs={tuning.captureRefreshMs}
-          bitmapScale={tuning.bitmapScale ?? 2}
-          backdropMode={tuning.backdropMode ?? 0}
-          filmColor={tuning.filmColor}
-        />
-        {children}
-      </View>
     );
   }
 

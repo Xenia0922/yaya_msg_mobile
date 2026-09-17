@@ -11,7 +11,6 @@ buildscript {
     classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
     // Compose 编译器插件（Kotlin 2.x 起独立）。版本必须与 kotlin-gradle-plugin 一致：
     // 本工程 Kotlin = 2.1.20（见 node_modules/react-native/gradle/libs.versions.toml）
-    classpath('org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:2.1.20')
   }
 }
 

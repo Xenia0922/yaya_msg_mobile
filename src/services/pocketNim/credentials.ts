@@ -6,6 +6,7 @@
  */
 
 import pocketApi from '../../api/pocket48';
+import { getSetting } from '../settings';
 import { credentialsToProfile, normalizeCredentials } from './runtime';
 import { NimCredentials, NimSelfProfile } from './types';
 
@@ -63,6 +64,23 @@ function absAvatar(a: string): string {
  * 这里补一手 user/info/reload（登录态校验同款接口，返回完整用户资料），结果缓存。
  */
 export async function loadSelfProfile(force = false): Promise<NimSelfProfile | null> {
+  const profile = await resolveSelfProfile(force);
+  if (!profile) return null;
+  // 用户自定义发言身份（设置页「发言身份」）优先于登录账号资料
+  try {
+    const [nick, avatar] = await Promise.all([
+      getSetting('yaya_send_nickname'),
+      getSetting('yaya_send_avatar'),
+    ]);
+    if (nick && nick.trim()) profile.nickName = nick.trim();
+    if (avatar && avatar.trim()) profile.avatar = absAvatar(avatar.trim());
+  } catch {
+    /* 设置读取失败不影响发送 */
+  }
+  return profile;
+}
+
+async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null> {
   const base = await loadNimCredentials(force).then((c) => (c ? credentialsToProfile(c) : null));
   if (base && base.nickName && base.avatar) return base;
   if (!force && selfProfileCache) return selfProfileCache;
