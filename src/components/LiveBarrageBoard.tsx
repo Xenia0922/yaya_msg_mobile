@@ -15,7 +15,7 @@
  *       这里沿用播放器覆盖层的既有做法使用半透明底）
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Keyboard,
@@ -67,6 +67,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
   const palette = usePalette();
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const lastFailedRef = useRef('');
   const [hint, setHint] = useState('');
 
   const plain = variant === 'plain';
@@ -145,26 +146,37 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
 
   const inputRow = (
     <View style={styles.inputRow}>
-      <TextInput
-        style={[styles.input, { color: tone.primary, backgroundColor: tone.fieldBg, borderColor: tone.fieldBorder }]}
-        value={draft}
-        onChangeText={setDraft}
-        placeholder={ready ? t('发条弹幕...') : t('弹幕连接中...')}
-        placeholderTextColor={tone.tertiary}
-        editable={ready && !sending}
-        maxLength={60}
-        returnKeyType="send"
-        onSubmitEditing={handleSend}
-      />
+      <View style={{ flex: 1 }}>
+        <TextInput
+          style={[styles.input, { color: tone.primary, backgroundColor: tone.fieldBg, borderColor: tone.fieldBorder }]}
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={ready ? t('发条弹幕...') : t('弹幕连接中...')}
+          placeholderTextColor={tone.tertiary}
+          editable={ready && !sending}
+          maxLength={60}
+          returnKeyType="send"
+          onSubmitEditing={handleSend}
+        />
+        {draft ? (
+          <Text style={[styles.counter, { color: tone.tertiary }]}>{draft.length}/60</Text>
+        ) : null}
+      </View>
       <TouchableOpacity
         onPress={handleSend}
         disabled={!ready || sending || !draft.trim()}
         activeOpacity={0.85}
-        style={[styles.sendBtn, { backgroundColor: ready && draft.trim() ? palette.tint : tone.fieldBg }]}
+        style={[styles.sendBtn, { backgroundColor: ready && draft.trim() && !sending ? palette.tint : tone.fieldBg }]}
       >
-        <Text style={[styles.sendText, { color: ready && draft.trim() ? palette.onTint : tone.tertiary }]}>
-          {sending ? '··' : t('发送')}
-        </Text>
+        {sending ? (
+          <Text style={[styles.sendText, { color: tone.tertiary }]}>··</Text>
+        ) : (
+          <MaterialCommunityIcons
+            name="send"
+            size={16}
+            color={ready && draft.trim() ? palette.onTint : tone.tertiary}
+          />
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -186,7 +198,18 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
 
   const inner = inputOnly ? (
     <>
-      {hint ? <Text style={[styles.hint, { color: palette.tint }]}>{hint}</Text> : null}
+      {hint ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={[styles.hint, { color: palette.tint, flex: 1 }]} numberOfLines={1}>{hint}</Text>
+          <TouchableOpacity
+            onPress={() => { setHint(''); handleSend(); }}
+            hitSlop={styles.hit}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: palette.tint, fontSize: 12, fontWeight: '700' }}>{t('重试')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       {ready ? null : (
         <Text style={[styles.empty, { color: tone.tertiary, paddingVertical: 2 }]} numberOfLines={1}>
           {statusText}
@@ -267,7 +290,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 13,
   },
-  sendBtn: { height: 34, borderRadius: 18, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  sendBtn: { height: 34, width: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  counter: { position: 'absolute', right: 8, bottom: -14, fontSize: 10 },
   sendText: { fontSize: 13, fontWeight: '700' },
   hit: { top: 6, bottom: 6, left: 6, right: 6 },
 });

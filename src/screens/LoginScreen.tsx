@@ -213,6 +213,18 @@ export default function LoginScreen() {
   // 短信发送触发风控安全验证（status=2001）：展示问题与选项，选对后带 answer 重发
   const [verify, setVerify] = useState<{ question: string; options: string[]; phone: string; area: string } | null>(null);
 
+  // 发言身份（弹幕/房间消息的自定义昵称与头像；留空 = 用登录账号真实资料）
+  const [sendNick, setSendNick] = useState(settings.yaya_send_nickname || '');
+  const [sendAvatar, setSendAvatar] = useState(settings.yaya_send_avatar || '');
+  const [sendLevel, setSendLevel] = useState(settings.yaya_send_level || '');
+  const [sendRoleId, setSendRoleId] = useState(settings.yaya_send_roleid || '');
+  const [sendSessionRole, setSendSessionRole] = useState(settings.yaya_send_session_role || '');
+  const [sendVip, setSendVip] = useState(settings.yaya_send_vip || '');
+  const saveSendIdentity = (patch: Record<string, string>) => {
+    setSettings(patch);
+    saveSettings(patch).catch(() => {});
+  };
+
   const savePocketToken = async (token: string, message: string) => {
     const clean = token.trim();
     try {
@@ -748,6 +760,81 @@ export default function LoginScreen() {
           </View>
         </GlassSurface>
 
+        {/* 发言身份：弹幕/房间消息的自定义昵称与头像（隐藏在账号设置页） */}
+        <GlassSurface radius={20} role="card" style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+          <Text style={[styles.cardTitle, { color: palette.label }]}>{t('发言身份')}</Text>
+          <Text style={[styles.sendIdHint, { color: palette.labelTertiary }]}>{t('弹幕/房间消息显示的昵称与头像，留空则使用登录账号的真实资料')}</Text>
+          <Text style={[styles.sendIdLabel, { color: palette.labelSecondary }]}>{t('昵称')}</Text>
+          <TextInput
+            style={[styles.sendIdInput, { borderColor: palette.hairline, color: palette.label }]}
+            value={sendNick}
+            onChangeText={setSendNick}
+            onEndEditing={() => saveSendIdentity({ yaya_send_nickname: sendNick.trim() })}
+            placeholder={t('留空使用登录账号昵称')}
+            placeholderTextColor={palette.labelTertiary}
+            maxLength={30}
+          />
+          <Text style={[styles.sendIdLabel, { color: palette.labelSecondary, marginTop: 10 }]}>{t('头像 URL')}</Text>
+          <TextInput
+            style={[styles.sendIdInput, { borderColor: palette.hairline, color: palette.label }]}
+            value={sendAvatar}
+            onChangeText={setSendAvatar}
+            onEndEditing={() => saveSendIdentity({ yaya_send_avatar: sendAvatar.trim() })}
+            placeholder="https://..."
+            placeholderTextColor={palette.labelTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={[styles.sendIdLabel, { color: palette.labelSecondary, marginTop: 10 }]}>{t('等级 / 账号身份 roleId / 房间身份 sessionRole（留空 = 跟随账号）')}</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TextInput
+              style={[styles.sendIdInput, { flex: 1, borderColor: palette.hairline, color: palette.label }]}
+              value={sendLevel}
+              onChangeText={setSendLevel}
+              onEndEditing={() => saveSendIdentity({ yaya_send_level: sendLevel.trim() })}
+              placeholder={t('等级')}
+              placeholderTextColor={palette.labelTertiary}
+              keyboardType="number-pad"
+            />
+            <TextInput
+              style={[styles.sendIdInput, { flex: 1, borderColor: palette.hairline, color: palette.label }]}
+              value={sendRoleId}
+              onChangeText={setSendRoleId}
+              onEndEditing={() => saveSendIdentity({ yaya_send_roleid: sendRoleId.trim() })}
+              placeholder={t('roleId')}
+              placeholderTextColor={palette.labelTertiary}
+              keyboardType="number-pad"
+            />
+            <TextInput
+              style={[styles.sendIdInput, { flex: 1, borderColor: palette.hairline, color: palette.label }]}
+              value={sendSessionRole}
+              onChangeText={setSendSessionRole}
+              onEndEditing={() => saveSendIdentity({ yaya_send_session_role: sendSessionRole.trim() })}
+              placeholder={t('sessionRole')}
+              placeholderTextColor={palette.labelTertiary}
+              keyboardType="number-pad"
+            />
+          </View>
+          <Text style={[styles.sendIdHint, { color: palette.labelTertiary, marginTop: 8 }]}>
+            {t('roleId：1=普通用户 2/3/4/5=成员 999=超管；sessionRole：0=普通观众 1=房管 2=房主 3=成员本人 99=超管')}
+          </Text>
+          <Text style={[styles.sendIdLabel, { color: palette.labelSecondary, marginTop: 10 }]}>{t('VIP 标识')}</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+            {([['', t('跟随账号')], ['on', t('开')], ['off', t('关')]] as const).map(([value, label]) => {
+              const active = sendVip === value;
+              return (
+                <ScalePressable
+                  key={value || 'follow'}
+                  onPress={() => { setSendVip(value); saveSendIdentity({ yaya_send_vip: value }); }}
+                  style={[styles.sendIdChip, { backgroundColor: active ? palette.tint : palette.fill2 }]}
+                >
+                  <Text style={{ color: active ? palette.onTint : palette.labelSecondary, fontSize: 12, fontWeight: '600' }}>{label}</Text>
+                </ScalePressable>
+              );
+            })}
+          </View>
+        </GlassSurface>
+
         {/* 鸡腿充值 */}
         <GlassSurface radius={20} role="card" style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
           <Text style={[styles.cardTitle, { color: palette.label }]}>{t('鸡腿充值')}</Text>
@@ -760,6 +847,21 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  sendIdHint: { fontSize: 11, lineHeight: 16, marginTop: 4 },
+  sendIdLabel: { fontSize: 12, fontWeight: '600' },
+  sendIdInput: {
+    marginTop: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+  },
+  sendIdChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
   container: { flex: 1 },
   content: { paddingBottom: 32, paddingHorizontal: 16 },
   cardMargin: { marginHorizontal: 16, marginTop: 16 },
