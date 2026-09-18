@@ -342,16 +342,17 @@ export default function MusicLibraryScreen() {
       if (type === 'progress') {
         lastProgressTsRef.current = Date.now();
         const playingN = !!p?.playing;
-        // 播放态镜像（边沿触发）：系统控件/通知栏/锁屏点恢复后，原生 exo.play() 推的
-        // 第一次 progress.playing=true 会把 store 切到 playing → 转盘恢复转动；
-        // 反之点暂停把 store 切 paused。这是 MusicForegroundBridge 注释承诺但从未实现的回写。
-        if (st.url && lastMirroredPlayingRef.current !== playingN) {
-          st.setPlaybackState(playingN ? 'playing' : 'paused');
-          lastMirroredPlayingRef.current = playingN;
-        }
-        // 切歌竞态防护：旧曲心跳不写位置/时长（进度条回跳根因候选）
+        // 切歌竞态防护：旧曲心跳不写位置/时长，**也不得改写播放态**
+        //（旧曲末尾那条 playing=false 心跳曾把新歌打成 paused → 用户看到「点卡片变暂停、不放」）
         const staleUrl = !!p?.url && !!st.url && String(p.url) !== String(st.url);
         if (!staleUrl) {
+          // 播放态镜像（边沿触发）：系统控件/通知栏/锁屏点恢复后，原生 exo.play() 推的
+          // 第一次 progress.playing=true 会把 store 切到 playing → 转盘恢复转动；
+          // 反之点暂停把 store 切 paused。
+          if (st.url && lastMirroredPlayingRef.current !== playingN) {
+            st.setPlaybackState(playingN ? 'playing' : 'paused');
+            lastMirroredPlayingRef.current = playingN;
+          }
           if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
           if (typeof p?.position === 'number') st.setPosition(p.position);
         }

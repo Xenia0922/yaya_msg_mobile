@@ -197,6 +197,7 @@ export default function FlipScreen() {
   const [cost, setCost] = useState('');
   const [content, setContent] = useState('');
   const [balance, setBalance] = useState('');
+  const [memberFilter, setMemberFilter] = useState('');
   const [playingAnswerUrl, setPlayingAnswerUrl] = useState('');
 
   const selectedPrice = useMemo(
@@ -324,6 +325,17 @@ export default function FlipScreen() {
   // 翻牌记录按提问月份分组（倒序）
   // 注意：必须在所有条件 return 之前调用（hooks 规则），否则 view↔send 切换时
   // 「Rendered fewer hooks than expected」崩溃，发送页打不开。
+  // 成员筛选（原「数据统计」页的翻牌成员筛选，搬到本页）
+  const flipMemberNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of flips) set.add(memberName(f as any, t('成员')));
+    return ['全部成员', ...Array.from(set).sort()];
+  }, [flips, t]);
+  const filteredFlips = useMemo(
+    () => (!memberFilter || memberFilter === '全部成员' ? flips : flips.filter((f: any) => memberName(f, t('成员')) === memberFilter)),
+    [flips, memberFilter, t],
+  );
+
   const flipRows = useMemo(() => {
     const monthOf = (ts: number): string => {
       if (!ts) return t('未知时间');
@@ -332,7 +344,7 @@ export default function FlipScreen() {
     };
     const order: string[] = [];
     const map = new Map<string, any[]>();
-    for (const f of flips) {
+    for (const f of filteredFlips) {
       const key = monthOf(Number(f.qtime || f.createTime || 0));
       if (!map.has(key)) { map.set(key, []); order.push(key); }
       map.get(key)!.push(f);
@@ -345,7 +357,7 @@ export default function FlipScreen() {
       map.get(k)!.forEach((it, idx) => flat.push({ type: 'item', key: `i-${String(it.questionId || it.id || 'x')}-${idx}`, item: it }));
     }
     return flat;
-  }, [flips, t]);
+  }, [filteredFlips, t]);
 
   /** 翻牌统计：原「数据统计」页的翻牌统计已删除，改为本页整页呈现（任务 #5） */
   const flipStatsView = useMemo(() => {
@@ -354,7 +366,7 @@ export default function FlipScreen() {
     let answered = 0;
     const typeStats = { text: 0, audio: 0, video: 0 };
     const memberMap = new Map<string, { name: string; count: number; cost: number }>();
-    for (const f of flips) {
+    for (const f of filteredFlips) {
       const rec = f as any;
       const cost = Number(rec.cost) || 0;
       totalCost += cost;
@@ -376,8 +388,8 @@ export default function FlipScreen() {
       const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), mm = Math.floor((s % 3600) / 60);
       return d > 0 ? `${d}天${h}时` : h > 0 ? `${h}时${mm}分` : `${mm}分`;
     };
-    return { totalCount: flips.length, totalCost, typeStats, typeMax, memberRank, avgStr: fmtDur(answered > 0 ? durSum / answered : 0) };
-  }, [flips, t]);
+    return { totalCount: filteredFlips.length, totalCost, typeStats, typeMax, memberRank, avgStr: fmtDur(answered > 0 ? durSum / answered : 0) };
+  }, [filteredFlips, t]);
 
   const statsHeader = (
     <View style={styles.statsWrap}>
@@ -425,6 +437,17 @@ export default function FlipScreen() {
           ))}
         </GlassSurface>
       ) : null}
+      {/* 成员筛选（原数据统计页的翻牌成员筛选） */}
+      <View style={styles.filterWrap}>
+        {flipMemberNames.map((name) => (
+          <Pill
+            key={name}
+            label={name === '全部成员' ? t(name) : name}
+            selected={memberFilter === name || (name === '全部成员' && !memberFilter)}
+            onPress={() => setMemberFilter(name === '全部成员' ? '' : name)}
+          />
+        ))}
+      </View>
       <Text style={[styles.sectionTitle, { color: palette.labelSecondary }]}>{t('翻牌明细 · 共 {count} 条', { count: flipStatsView.totalCount })}</Text>
     </View>
   );
@@ -629,11 +652,11 @@ export default function FlipScreen() {
                   </View>
 
                   <Text style={[styles.memberName, { color: palette.label }]}>{memberName(flip, t('成员'))}</Text>
-                  <Text style={[styles.cardQ, { color: palette.label }]} numberOfLines={3}>{t('问：{text}', { text: questionText(flip) || t('未返回问题内容') })}</Text>
+                  <Text style={[styles.cardQ, { color: palette.label }]}>{t('问：{text}', { text: questionText(flip) || t('未返回问题内容') })}</Text>
 
                   {answer ? (
                     <View style={styles.answerRow}>
-                      <Text style={[styles.cardA, { color: palette.labelSecondary }]} numberOfLines={2}>{t('答：{text}', { text: answer })}</Text>
+                      <Text style={[styles.cardA, { color: palette.labelSecondary }]}>{t('答：{text}', { text: answer })}</Text>
                       {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
                         <ScalePressable
                           style={[styles.answerBtn, { backgroundColor: palette.tintSoft }]}
@@ -743,6 +766,7 @@ const styles = StyleSheet.create({
   rankName: { flex: 1, fontSize: 13 },
   rankVal: { fontSize: 12, marginLeft: 8 },
   sectionTitle: { fontSize: 12, marginHorizontal: 16, marginTop: 12, marginBottom: 4 },
+  filterWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginHorizontal: 16, marginTop: 10 },
   statusText: { margin: 12, textAlign: 'center', fontSize: 13 },
   // 历史记录行卡
   card: {
