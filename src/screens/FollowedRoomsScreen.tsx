@@ -2446,38 +2446,44 @@ export default function FollowedRoomsScreen() {
   );
 
   /**
-   * 房间卡片长按 → 快捷操作菜单（对齐桌面 followed-rooms-feature.executeQuickAction）：
-   * 进大/小房间、置顶与排序、关注/取关、未读提醒开关。
+   * 房间卡片长按 → 快捷操作菜单（对齐桌面 followed-rooms-feature.executeQuickAction）。
+   * ⚠️ 用自研 Modal 而不是 Alert：**Android 的 Alert 只渲染前 3 个按钮**，
+   * 放不下「大/小房间 + 置顶 + 上移下移 + 关注 + 未读提醒」这么多操作。
    */
-  const openRoomQuickActions = useCallback(
-    (item: any) => {
-      const member = item?.member;
-      if (!member) return;
-      const name = shortName(member, item.memberId);
-      const isPinned = pinned.includes(item.memberId);
-      const pIdx = pinned.indexOf(item.memberId);
-      const fid = String(member.id || item.memberId);
-      const isFollowing = followedIds.has(fid);
-      Alert.alert(t('房间操作'), name, [
-        { text: t('进入大房间'), onPress: () => openRoom(member, 'big', showFanMessages) },
-        { text: t('进入小房间'), onPress: () => openRoom(member, 'small', showFanMessages) },
-        {
-          text: isPinned ? t('取消置顶') : t('置顶'),
-          onPress: () => togglePin(item.memberId),
-        },
-        ...(isPinned && pIdx > 0 ? [{ text: t('置顶上移'), onPress: () => movePin(item.memberId, -1) }] : []),
-        ...(isPinned && pIdx >= 0 && pIdx < pinned.length - 1 ? [{ text: t('置顶下移'), onPress: () => movePin(item.memberId, 1) }] : []),
-        {
-          text: isFollowing ? t('取消关注') : t('关注'),
-          style: isFollowing ? ('destructive' as const) : ('default' as const),
-          onPress: () => toggleFollow(member),
-        },
-        { text: unreadNotify ? t('关闭未读提醒') : t('开启未读提醒'), onPress: toggleUnreadNotify },
-        { text: t('取消'), style: 'cancel' as const },
-      ]);
-    },
-    [followedIds, movePin, openRoom, pinned, showFanMessages, t, toggleFollow, togglePin, toggleUnreadNotify, unreadNotify],
-  );
+  const [roomMenu, setRoomMenu] = useState<any | null>(null);
+  const closeRoomMenu = useCallback(() => setRoomMenu(null), []);
+  const roomMenuActions = useMemo(() => {
+    const item = roomMenu;
+    if (!item) return [] as { key: string; icon: string; label: string; danger?: boolean; onPress: () => void }[];
+    const member = item.member;
+    const name = shortName(member, item.memberId);
+    const isPinned = pinned.includes(item.memberId);
+    const pIdx = pinned.indexOf(item.memberId);
+    const fid = String(member?.id || item.memberId);
+    const isFollowing = followedIds.has(fid);
+    const run = (fn: () => void) => () => { setRoomMenu(null); fn(); };
+    const rows: { key: string; icon: string; label: string; danger?: boolean; onPress: () => void }[] = [
+      { key: 'big', icon: 'home-city-outline', label: t('进入大房间'), onPress: run(() => member && openRoom(member, 'big', showFanMessages)) },
+      { key: 'small', icon: 'home-outline', label: t('进入小房间'), onPress: run(() => member && openRoom(member, 'small', showFanMessages)) },
+      { key: 'pin', icon: isPinned ? 'pin-off-outline' : 'pin-outline', label: isPinned ? t('取消置顶') : t('置顶'), onPress: run(() => togglePin(item.memberId)) },
+    ];
+    if (isPinned && pIdx > 0) rows.push({ key: 'up', icon: 'arrow-up', label: t('置顶上移'), onPress: run(() => movePin(item.memberId, -1)) });
+    if (isPinned && pIdx >= 0 && pIdx < pinned.length - 1) rows.push({ key: 'down', icon: 'arrow-down', label: t('置顶下移'), onPress: run(() => movePin(item.memberId, 1)) });
+    rows.push({
+      key: 'follow',
+      icon: isFollowing ? 'account-remove-outline' : 'account-plus-outline',
+      label: isFollowing ? t('取消关注') : t('关注'),
+      danger: isFollowing,
+      onPress: run(() => member && toggleFollow(member)),
+    });
+    rows.push({
+      key: 'unread',
+      icon: unreadNotify ? 'bell-off-outline' : 'bell-ring-outline',
+      label: unreadNotify ? t('关闭未读提醒') : t('开启未读提醒'),
+      onPress: run(toggleUnreadNotify),
+    });
+    return rows;
+  }, [roomMenu, pinned, followedIds, openRoom, showFanMessages, t, togglePin, movePin, toggleFollow, toggleUnreadNotify, unreadNotify]);
 
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
   /** 长按自己的消息 → 撤回删除（官方 im/api/v1/team/msg/delete，服务端校验只能删本人的） */
@@ -2738,7 +2744,7 @@ export default function FollowedRoomsScreen() {
         </View>
       );
     },
-    [selectedRoom, showFanMessages, currentUserId, memberIdSet, members, openSenderProfile, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
+    [selectedRoom, showFanMessages, currentUserId, memberIdSet, members, openSenderProfile, confirmDeleteMessage, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
   );
 
   if (selectedRoom) {
@@ -2955,7 +2961,8 @@ export default function FollowedRoomsScreen() {
                         <View style={styles.userCardTitleWrap}>
                           <Text style={[styles.userCardName, { color: palette.label }]} numberOfLines={1}>{cardName}</Text>
                           <Text style={[styles.userCardMeta, { color: palette.labelSecondary }]} numberOfLines={1}>
-                            {`${t('用户 ID')}：${userCard?.id || '-'}`}
+                            {/* 只在拿到「数字 userId」时展示 ID 行：云信 accid 等内部 id 不露给用户看 */}
+                            {userCard?.id && /^\d+$/.test(userCard.id) ? `${t('用户 ID')}：${userCard.id}` : ''}
                             {userCard?.detail?.level ? ` · ${t('等级 {level}', { level: userCard.detail.level })}` : ''}
                           </Text>
                           {userCard?.isMember || userCard?.detail?.team || userCard?.detail?.period ? (
@@ -3233,6 +3240,35 @@ export default function FollowedRoomsScreen() {
         </View>
       } />
 
+      {/* 房间长按快捷菜单（自研 Modal：Android 的 Alert 只显示前 3 个按钮） */}
+      <Modal visible={!!roomMenu} transparent animationType="fade" onRequestClose={closeRoomMenu}>
+        <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={closeRoomMenu}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.roomMenuWrap}>
+            <GlassSurface radius={22} role="card" style={[styles.roomMenuPanel, { backgroundColor: 'transparent' }]}>
+              <View style={styles.roomRankHandleWrap}>
+                <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
+              </View>
+              <Text style={[styles.roomMenuTitle, { color: palette.label }]} numberOfLines={1}>
+                {roomMenu?.member ? shortName(roomMenu.member, roomMenu.memberId) : ''}
+              </Text>
+              <ScrollView style={styles.roomMenuList} showsVerticalScrollIndicator={false}>
+                {roomMenuActions.map((act) => (
+                  <TouchableOpacity
+                    key={act.key}
+                    style={[styles.roomMenuItem, { borderTopColor: palette.hairline }]}
+                    onPress={act.onPress}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons name={act.icon as any} size={18} color={act.danger ? palette.danger : palette.label} />
+                    <Text style={[styles.roomMenuItemText, { color: act.danger ? palette.danger : palette.label }]}>{act.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </GlassSurface>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {searchOpen ? (
         <View style={[styles.searchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
           <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
@@ -3351,7 +3387,7 @@ export default function FollowedRoomsScreen() {
                 <ScalePressable
                   style={styles.roomRowMain}
                   onPress={() => item.member && openRoom(item.member)}
-                  onLongPress={() => openRoomQuickActions(item)}
+                  onLongPress={() => setRoomMenu(item)}
                   delayLongPress={400}
                   pressedScale={0.98}
                   activeOpacity={0.9}
@@ -3856,6 +3892,12 @@ const styles = StyleSheet.create({
   liveResolveBtnGhost: { paddingHorizontal: 26, paddingVertical: 10, borderRadius: 22, borderWidth: 1 },
   liveResolveBtnGhostText: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: '800' },
   roomModalShade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  roomMenuWrap: { width: '100%' },
+  roomMenuPanel: { padding: 10, paddingBottom: 16, borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet },
+  roomMenuTitle: { fontSize: 16, fontWeight: '800', paddingHorizontal: 12, paddingBottom: 8 },
+  roomMenuList: { maxHeight: 360 },
+  roomMenuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 13, borderTopWidth: StyleSheet.hairlineWidth },
+  roomMenuItemText: { fontSize: 15, fontWeight: '600' },
   roomRankPanel: { maxHeight: '82%', padding: 14, paddingBottom: 24, borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet },
   // 用户资料卡（房间内点非成员头像）
   userCardWrap: { width: '100%' },
