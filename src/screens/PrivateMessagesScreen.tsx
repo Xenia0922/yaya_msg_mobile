@@ -575,7 +575,9 @@ export default function PrivateMessagesScreen() {
     let prevDay = '';
     let prevMine: boolean | null = null;
     let prevTs = 0;
-    msgs.forEach((item, i) => {
+    // 统一按时间正序（旧→新）喂给聊天库：接口返回可能是「新→旧」，
+    // 不排序会让最新一条回复跑到列表最上面（用户反馈「最新回复消息是反过来的」）
+    oldestFirst(msgs, msgTimeNumber).forEach((item, i) => {
       const ts = msgTimeNumber(item);
       const mine = isMineMessage(item, targetId, uid);
       const dk = dayKeyOf(ts);

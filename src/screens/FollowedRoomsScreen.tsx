@@ -2092,19 +2092,26 @@ export default function FollowedRoomsScreen() {
         const label = day === todayStr ? t('今天') : day === yestStr ? t('昨天') : `${Number(day.slice(5, 7))}月${Number(day.slice(8, 10))}日`;
         rows.push({ type: 'date', key: `d-${day}`, label });
       }
-      // 同一发送者、间隔 < 3 分钟的消息合并为一组（组首带头像+名字，后续连排）
+      // 归组键 = 角色 + 真实发送者。关键修复（用户反馈）：切到「所有人发言」时，
+      // 粉丝消息绝不能并进成员组沿用成员头像名字 —— 用 role 前缀强制断开；
+      // 无 sender id 的粉丝以本条消息 key 兜底，做到「每条各自成组」，谁也冒充不了谁。
       const t0 = getMessageTime(item);
-      // 用 senderProfile 的 id 做分组键（覆盖 senderUserId/senderId/fromUserId/user.userId 等全部来源）
-      const sender = senderProfile(item, selectedRoom!).id || String((item as any)?.fromAccount || '');
-      const sameSender = sender && sender === lastGroupKey;
+      const role = messageRole(item, selectedRoom!, showFanMessages, currentUserId);
+      const rawSender = senderProfile(item, selectedRoom!).id || String((item as any)?.fromAccount || '');
+      const senderKey = role === 'idol'
+        ? `idol:${String((selectedRoom as any)?.id || '')}`
+        : role === 'mine'
+          ? 'me'
+          : `fan:${rawSender || messageKey(item)}`;
+      const sameSender = senderKey === lastGroupKey;
       const withinGap = t0 > 0 && lastMsgTime > 0 && (lastMsgTime - t0) < 3 * 60000;
       const groupStart = !sameSender || !withinGap;
-      if (groupStart) lastGroupKey = sender;
+      if (groupStart) lastGroupKey = senderKey;
       if (t0 > 0) lastMsgTime = t0;
       rows.push({ type: 'msg', key: messageKey(item), item, index, groupStart });
     });
     return rows;
-  }, [filteredRoomMessages, selectedRoom]);
+  }, [filteredRoomMessages, selectedRoom, showFanMessages, currentUserId]);
 
   /**
    * 聊天库接线（A+B）：把 chatRows 映射成 IMessage，`__row` 带回原始行，
@@ -3065,7 +3072,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  roomInput: { flex: 1, height: 36, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 0, fontSize: 13, textAlignVertical: 'center', includeFontPadding: false },
+  roomInput: { flex: 1, minHeight: 36, maxHeight: 96, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, textAlignVertical: 'center', includeFontPadding: false },
   roomSendBtn: { height: 34, borderRadius: 18, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
   roomSendBtnText: { fontSize: 13, fontWeight: '700' },
   roomSendHint: { fontSize: 11, marginHorizontal: 16, marginBottom: 4 },
