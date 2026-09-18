@@ -640,8 +640,9 @@ export default function PrivateMessagesScreen() {
       if (Number.isNaN(d.getTime())) return null;
       const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
       const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
-      // 只返回文字：外层胶囊由库自己渲染（自己再套白胶囊会看起来像消息气泡）
-      return <Text style={[styles.dateSepText, { color: palette.labelTertiary }]}>{label}</Text>;
+      // 用户要求：日期分隔**居中**（库的 Day 容器居中，但自定义 renderDay 的返回被塞进
+      // 无 alignItems 的普通 View → 被拉伸满宽、默认左对齐）→ 用 alignSelf 居中。
+      return <Text style={[styles.dateSepText, { color: palette.labelTertiary, alignSelf: 'center' }]}>{label}</Text>;
     };
 
     /**
