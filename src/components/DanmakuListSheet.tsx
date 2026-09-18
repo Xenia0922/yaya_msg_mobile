@@ -40,6 +40,10 @@ export interface DanmakuListEntry {
   text: string;
   /** 类别（直播弹幕用：member/gift/enter/...），用于高亮与配色 */
   kind?: string;
+  /** 发送者口袋 userId（直播弹幕有；录播 LRC 无） */
+  userId?: number | string;
+  /** 发送者头像（直播弹幕有；录播 LRC 无） */
+  avatar?: string;
 }
 
 export interface DanmakuListSheetProps {
@@ -57,6 +61,8 @@ export interface DanmakuListSheetProps {
   loading?: boolean;
   /** 面板标题（默认「弹幕列表」） */
   title?: string;
+  /** 点发送者昵称 → 打开个人资料（不传则退回「只看 TA」筛选行为） */
+  onOpenProfile?: (entry: DanmakuListEntry) => void;
 }
 
 /** 固定行高（getItemLayout 精确滚动依赖它） */
@@ -100,6 +106,7 @@ export function DanmakuListSheet({
   live = false,
   loading = false,
   title,
+  onOpenProfile,
 }: DanmakuListSheetProps) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
@@ -151,14 +158,17 @@ export function DanmakuListSheet({
     });
   }, [entries, query, nickFilter]);
 
-  /** 发送者榜：条数降序（桌面端弹幕分析的等价物） */
+  /** 发送者榜：条数降序（桌面端弹幕分析的等价物）。顺带记住该发送者的 userId 供资料卡使用 */
   const users = useMemo(() => {
-    const map = new Map<string, { nick: string; count: number; first: number }>();
+    const map = new Map<string, { nick: string; count: number; first: number; userId?: number | string; avatar?: string }>();
     for (const item of entries) {
       const nick = item.nick || t('匿名');
       const cur = map.get(nick);
-      if (cur) cur.count += 1;
-      else map.set(nick, { nick, count: 1, first: item.time });
+      if (cur) {
+        cur.count += 1;
+        if (cur.userId == null && item.userId != null) cur.userId = item.userId;
+        if (!cur.avatar && item.avatar) cur.avatar = item.avatar;
+      } else map.set(nick, { nick, count: 1, first: item.time, userId: item.userId, avatar: item.avatar });
     }
     return Array.from(map.values())
       .sort((a, b) => b.count - a.count || a.first - b.first)
@@ -250,9 +260,12 @@ export function DanmakuListSheet({
             <Text
               style={[styles.nick, accent ? { color: accent } : null]}
               onPress={(e) => {
-                // 点昵称 = 只看 TA；必须阻止冒泡，否则同一手势还会触发外层「跳转到该时间」
+                // 点昵称：有 onOpenProfile → 打开个人资料；否则退回「只看 TA」筛选。
+                // 必须阻止冒泡，否则同一手势还会触发外层「跳转到该时间」
                 e?.stopPropagation?.();
-                if (item.nick) filterByUser(item.nick);
+                if (!item.nick) return;
+                if (onOpenProfile) onOpenProfile(item);
+                else filterByUser(item.nick);
               }}
               suppressHighlighting
             >
@@ -263,21 +276,34 @@ export function DanmakuListSheet({
         </Pressable>
       );
     },
-    [activeIndex, filterByUser, jumpTo, live],
+    [activeIndex, filterByUser, jumpTo, live, onOpenProfile],
   );
 
   const renderUserRow = useCallback(
-    ({ item }: { item: { nick: string; count: number; first: number } }) => (
-      <TouchableOpacity style={styles.row} activeOpacity={0.75} onPress={() => filterByUser(item.nick)}>
+    ({ item }: { item: { nick: string; count: number; first: number; userId?: number | string; avatar?: string } }) => (
+      <TouchableOpacity
+        style={styles.row}
+        activeOpacity={0.75}
+        // 整行 = 只看 TA（原行为）；右侧漏斗是显式入口，头像/昵称区在有 onOpenProfile 时改为看资料
+        onPress={() => filterByUser(item.nick)}
+      >
         <MaterialCommunityIcons name="account-outline" size={15} color="rgba(255,255,255,0.6)" style={{ marginRight: 8 }} />
-        <Text style={[styles.rowText, { flex: 1 }]} numberOfLines={1}>
+        <Text
+          style={[styles.rowText, { flex: 1 }]}
+          numberOfLines={1}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            if (onOpenProfile) onOpenProfile({ id: '', time: item.first, nick: item.nick, text: '', userId: item.userId, avatar: item.avatar });
+          }}
+          suppressHighlighting
+        >
           <Text style={styles.nick}>{item.nick}</Text>
         </Text>
         <Text style={styles.count}>{t('{n} 条', { n: item.count })}</Text>
         <MaterialCommunityIcons name="filter-variant" size={15} color="rgba(255,255,255,0.5)" style={{ marginLeft: 6 }} />
       </TouchableOpacity>
     ),
-    [filterByUser, t],
+    [filterByUser, onOpenProfile, t],
   );
 
   const body = (
