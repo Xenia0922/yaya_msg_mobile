@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useRoute } from '@react-navigation/native';
 import { toMs } from '../utils/format';
 import {
   View,
@@ -18,6 +19,7 @@ import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
 import { translate, useI18n } from '../i18n';
 import { usePalette } from '../theme';
+import { useMemberStore } from '../store';
 import { GlassSurface } from '../components/GlassSurface';
 
 type ArchiveState = {
@@ -86,6 +88,34 @@ export default function ProfileScreen() {
       if (requestId === profileReqRef.current) setLoading(false);
     }
   };
+
+  /**
+   * 从房间/消息点头像进来：路由带 memberId（或 member 对象）→ 直接加载该成员档案，
+   * 不需要用户再在 MemberPicker 里搜一遍（用户需求：房间内点头像加载对方个人资料）。
+   */
+  const route = useRoute<any>();
+  const members = useMemberStore((s) => s.members);
+  const autoLoadedRef = useRef('');
+  const routeParams = route?.params || {};
+  const routeMemberId = String(routeParams.memberId || routeParams.member?.id || '').trim();
+  const routeNonce = Number(routeParams.nonce) || 0;
+  useEffect(() => {
+    if (!routeMemberId) return;
+    const key = `${routeMemberId}:${routeNonce}`;
+    if (autoLoadedRef.current === key) return; // 同一参数只自动加载一次（避免每次重渲染重打接口）
+    autoLoadedRef.current = key;
+    const found = (members as any[]).find((m) =>
+      [m?.id, m?.userId, m?.memberId].some((v) => String(v ?? '').trim() === routeMemberId),
+    );
+    // 成员库还没加载完时用路由带来的对象兜底；都没有就用最小对象（档案接口只需要 id）
+    const target = (found || routeParams.member || {
+      id: routeMemberId,
+      ownerName: String(routeParams.memberName || routeMemberId),
+      avatar: String(routeParams.memberAvatar || ''),
+    }) as Member;
+    void loadProfile(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeMemberId, routeNonce, members]);
 
   const starInfo = archive.data?.starInfo || archive.data?.star || archive.data || {};
   const fanRanks = normalizeList(archive.data?.fansRank || archive.data?.rankList);
