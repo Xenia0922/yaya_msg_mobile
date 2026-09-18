@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { logWarn } from '../../utils/runtimeLog';
 import { NativeKernel, NativeKernelHandle } from './NativeKernel';
@@ -26,6 +26,12 @@ export function PlayerCore({ onVideoSize, resumeAt: externalResumeAt }: { onVide
   // 公演默认网页失败→原生 的自动回退标记（按源复位）
   const webFallbackDone = useRef(false);
   const sourceChangedRef = useRef('');
+  /**
+   * 直播断流自动重连（对齐桌面 player-core.installArtLiveRecovery 的目的）：
+   * 候选线路全部失败后仍按 1.5s/3s/6s 退避重试，最多 3 次；`retryNonce` 递增 → 内核 key 变化 → 重新拉流。
+   */
+  const [retryNonce, setRetryNonce] = useState(0);
+  const liveRetry = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null });
 
   const setState = usePlayerStore((s) => s.setState);
   const setPosition = usePlayerStore((s) => s.setPosition);
@@ -133,13 +139,40 @@ export function PlayerCore({ onVideoSize, resumeAt: externalResumeAt }: { onVide
       try { logWarn(`[player] kernel fail ${msg}`, 'player.kernelError'); } catch {}
       // 有候选线路 → 自动切换下一线路（B站多线路/官方多备用地址）；全部失败才进 error 态
       const switched = usePlayerStore.getState().nextCandidate();
-      if (!switched) {
-        setError(msg);
-        setState('error');
+      if (switched) return;
+      // 直播断流：候选线路耗尽后仍自动重连（1.5s/3s/6s 退避，最多 3 次），期间保持加载态；
+      // 重连 = 递增 retryNonce → 内核 key 变化 → 重新拉流。录播不动（断流多为文件问题，重试无益）。
+      const uNow = String(source?.url || '').toLowerCase();
+      const isLive = source?.kind === 'live' || uNow.startsWith('rtmp') || uNow.includes('.flv');
+      if (isLive && liveRetry.current.count < 3) {
+        liveRetry.current.count += 1;
+        const n = liveRetry.current.count;
+        const delay = 1500 * Math.pow(2, n - 1);
+        try { logWarn(`[player] live reconnect ${n}/3 in ${delay}ms`, 'player.reconnect'); } catch {}
+        setError('');
+        setState('loading');
+        if (liveRetry.current.timer) clearTimeout(liveRetry.current.timer);
+        liveRetry.current.timer = setTimeout(() => {
+          liveRetry.current.timer = null;
+          setRetryNonce((v) => v + 1);
+        }, delay);
+        return;
       }
+      setError(msg);
+      setState('error');
     },
-    [setError, setState],
+    [setError, setState, source?.kind, source?.url],
   );
+
+  // 开播成功（playing）= 本次重连成功 → 复位计数；换源也要复位
+  useEffect(() => {
+    if (state === 'playing') liveRetry.current.count = 0;
+  }, [state]);
+  useEffect(() => {
+    liveRetry.current.count = 0;
+    if (liveRetry.current.timer) { clearTimeout(liveRetry.current.timer); liveRetry.current.timer = null; }
+  }, [source?.url]);
+  useEffect(() => () => { if (liveRetry.current.timer) clearTimeout(liveRetry.current.timer); }, []);
 
   // 内核选择（仅依赖 store，不依赖 source，须在条件 return 前算出）
   const kernel = useWebKernel ? 'web' : activeKernel;
@@ -161,6 +194,7 @@ export function PlayerCore({ onVideoSize, resumeAt: externalResumeAt }: { onVide
   if (kernel === 'web') {
     return (
       <WebKernel
+        key={`web-${source.url}-${retryNonce}`}
         ref={webRef}
         source={source}
         resumeAt={position > 1 ? position : 0}
@@ -186,6 +220,7 @@ export function PlayerCore({ onVideoSize, resumeAt: externalResumeAt }: { onVide
   if (kernel === 'exo') {
     return (
       <ExoKernel
+        key={`exo-${source.url}-${retryNonce}`}
         source={source}
         onError={(msg) => {
           kernelError(msg);
@@ -203,6 +238,7 @@ export function PlayerCore({ onVideoSize, resumeAt: externalResumeAt }: { onVide
   }
   return (
     <NativeKernel
+      key={`native-${source.url}-${retryNonce}`}
       ref={nativeRef}
       source={source}
       paused={paused}
