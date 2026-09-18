@@ -740,9 +740,9 @@ export default function PrivateMessagesScreen() {
           // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
           theme={{ colors: { background: 'transparent' } }}
           locale="zh"
-          // 用户要求：不要日期分隔（renderDay 返回空 + 关掉浮动日期胶囊）
           renderBubble={renderEllipseGlassBubble}
-          renderDay={() => null}
+          // 日期分隔（用户要求加回）：跨天消息只显示 HH:mm 会看反顺序，加 yyyy/mm/dd 分隔
+          renderDay={renderDayLabel}
           isDayAnimationEnabled={false}
           user={{ _id: 'SELF' }}
           onSend={(msgs) => {
