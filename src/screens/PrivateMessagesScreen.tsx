@@ -577,7 +577,10 @@ export default function PrivateMessagesScreen() {
     let prevTs = 0;
     // 统一按时间正序（旧→新）喂给聊天库：接口返回可能是「新→旧」，
     // 不排序会让最新一条回复跑到列表最上面（用户反馈「最新回复消息是反过来的」）
-    oldestFirst(msgs, msgTimeNumber).forEach((item, i) => {
+    // 排序键必须与 createdAt 用同一套「秒→毫秒」归一化：接口里混着秒/毫秒时，
+    // 直接比原始值会让顺序跟气泡上显示的时间对不上
+    //（用户反馈：她的 00:17 排在我 21:35 上面）
+    oldestFirst(msgs, (m: any) => { const v = msgTimeNumber(m); return v > 0 && v < 1e12 ? v * 1000 : v; }).forEach((item, i) => {
       const ts = msgTimeNumber(item);
       const mine = isMineMessage(item, targetId, uid);
       const dk = dayKeyOf(ts);

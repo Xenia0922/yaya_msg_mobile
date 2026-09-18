@@ -354,10 +354,9 @@ export default function OpenLiveScreen() {
                 onPress={() => playItem(item)}
                 onLongPress={() => downloadItem(item)}
               >
-              <GlassSurface
-                radius={20}
-                role="card"
-                style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
+              {/* 列表卡不用玻璃：每卡一个 BlurView 滚动会逐帧重算模糊（用户反馈卡顿）——半透明实底卡 */}
+              <View
+                style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, overflow: 'hidden' }]}
               >
                 {item.cover ? (
                   <Image source={{ uri: item.cover }} style={[styles.cover, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
@@ -378,7 +377,7 @@ export default function OpenLiveScreen() {
                   </View>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} style={styles.chevron} />
-              </GlassSurface>
+              </View>
               </ScalePressable>
             </FadeInView>
           )}
