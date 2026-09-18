@@ -585,8 +585,7 @@ export default function MediaScreen() {
   useEffect(() => {
     if (liveBarrage.items.length) setShowDanmaku(true);
   }, [liveBarrage.items.length]);
-  // 直播输入条可收起：默认展开，收起后只剩一个小圆钮，不挡画面
-  const [liveInputCollapsed, setLiveInputCollapsed] = useState(false);
+  // 直播输入条已并入播放器底坞（随控制条自动隐藏），不再需要单独的收起状态
   // 续播位置：打开回放时读取上次进度，播放中由 WebView 回传进度落盘
   const [webResumeTime, setWebResumeTime] = useState(0);
   const [giftVisible, setGiftVisible] = useState(false);
@@ -1593,6 +1592,16 @@ export default function MediaScreen() {
               { key: 'danmaku', icon: 'cog', label: t('弹幕设置'), onPress: () => setShowDanmakuSettings(true) },
               { key: 'pip', icon: 'picture-in-picture-bottom-right-outline', label: t('小窗'), onPress: handleMiniPlayer },
             ]}
+            // 直播弹幕输入条：进播放器底坞（随控制条自动隐藏/呼出），不再单独叠一层 + 收起按钮
+            barrageInput={playing.isLive ? (
+              <LiveBarrageBoard
+                source={liveBarrage}
+                liveId={String(playing.item?.liveId || playing.item?.id || '')}
+                module="live"
+                variant="plain"
+                inputOnly
+              />
+            ) : undefined}
             onClose={() => { setPipPlaying(false); closePlayer(); }}
             // 直播流地址有时效（wsSecret）：失败重试 = 重新解析（startPlay），而非重播同 URL
             onRetry={() => startPlay(playing.item)}
@@ -1605,29 +1614,7 @@ export default function MediaScreen() {
               live={!!playing?.isLive}
               liveItems={playing?.isLive ? liveDanmakuItems : undefined}
             />
-            {/* 直播弹幕输入条：叠在播放器上（弹幕本体由上面的滚动层展示） */}
-            {playing?.isLive ? (
-              <View style={[styles.liveBarrageInputWrap, { flexDirection: 'row', alignItems: 'flex-end', gap: 6 }]} pointerEvents="box-none">
-                {liveInputCollapsed ? (
-                  <TouchableOpacity style={styles.liveInputFab} onPress={() => setLiveInputCollapsed(false)} activeOpacity={0.85}>
-                    <MaterialCommunityIcons name="message-outline" size={18} color="#fff" />
-                  </TouchableOpacity>
-                ) : (
-                  <>
-                    <TouchableOpacity style={styles.liveInputFab} onPress={() => setLiveInputCollapsed(true)} activeOpacity={0.85}>
-                      <MaterialCommunityIcons name="chevron-down" size={18} color="#fff" />
-                    </TouchableOpacity>
-                    <LiveBarrageBoard
-                      source={liveBarrage}
-                      liveId={String(playing.item?.liveId || playing.item?.id || '')}
-                      variant="plain"
-                      inputOnly
-                      style={[styles.liveBarrageInput, { flex: 1 }]}
-                    />
-                  </>
-                )}
-              </View>
-            ) : null}
+            {/* 直播弹幕输入条已并入播放器底坞（barrageInput），不再单独叠一层，也没有单独的收起按钮 */}
           </PlayerScreen>
         )}
 
