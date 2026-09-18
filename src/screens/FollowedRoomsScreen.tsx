@@ -565,16 +565,6 @@ function findSmallLastMessage(messages: any[], member?: Member) {
     || null;
 }
 
-/** 房间未读提醒开关的本地持久化键 */
-const UNREAD_NOTIFY_KEY = 'yaya_room_unread_notify_v1';
-/**
- * 房间「已读时间戳」本地持久化键：{ [memberId]: 进入房间的时刻(ms) }。
- * ⚠️ 口袋48 **没有**房间未读数接口（实测 last/message/get 只返回 serverId/channelId/msgContent/starName，
- * team/message/list 只返回 message/nextTime）→ 桌面端那个 unreadCount 字段其实恒为空。
- * 因此移动端用「本地已读游标 vs 最新消息时间」判断有没有新消息（红点，不给假数字）。
- */
-const ROOM_READ_TS_KEY = 'yaya_room_read_ts_v1';
-
 function roomChannelId(member: Member, mode: RoomMode) {
   return String(mode === 'small' ? (member.yklzId || '') : (member.channelId || ''));
 }
@@ -1238,11 +1228,6 @@ export default function FollowedRoomsScreen() {
   const followedRef = useRef<FollowedRoom[]>([]);
   followedRef.current = followed;
   const [followedLoading, setFollowedLoading] = useState(false);
-  /**
-   * 房间未读提醒开关（用户要求）：关闭后不显示未读角标与预览高亮，持久化在本地。
-   * 未读数来自 im/api/v1/team/classic/last/message/get 返回的 unreadCount（与桌面端同源）。
-   */
-  const [unreadNotify, setUnreadNotify] = useState(true);
   // 直播状态：ids=直播中主播 id 集合，names=直播中昵称集合（接口字段不一，昵称兜底）
   const [liveNow, setLiveNow] = useState<{ ids: Set<string>; names: Set<string> }>({ ids: new Set(), names: new Set() });
   const [pinned, setPinned] = useState<string[]>([]);
@@ -1360,37 +1345,6 @@ export default function FollowedRoomsScreen() {
   // loadFollowed 定义在 toggleFollow 之后，用 ref 持有以避免前向引用报错
   const loadFollowedRef = useRef<(silent?: boolean) => void>(() => {});
 
-  // 未读提醒开关：读本地持久化 + 切换写入
-  useEffect(() => {
-    AsyncStorage.getItem(UNREAD_NOTIFY_KEY)
-      .then((v) => { if (v !== null) setUnreadNotify(v === '1'); })
-      .catch(() => {});
-  }, []);
-  const toggleUnreadNotify = useCallback(() => {
-    setUnreadNotify((prev) => {
-      const next = !prev;
-      AsyncStorage.setItem(UNREAD_NOTIFY_KEY, next ? '1' : '0').catch(() => {});
-      showToast(next ? t('已开启房间未读提醒') : t('已关闭房间未读提醒'));
-      return next;
-    });
-  }, [showToast, t]);
-
-  // 房间已读时间戳（本地游标）：进房间即刷新该成员的时间戳 → 列表红点消失
-  const [roomReadTs, setRoomReadTs] = useState<Record<string, number>>({});
-  useEffect(() => {
-    AsyncStorage.getItem(ROOM_READ_TS_KEY)
-      .then((raw) => { if (raw) setRoomReadTs(JSON.parse(raw) || {}); })
-      .catch(() => {});
-  }, []);
-  const markRoomRead = useCallback((memberId: string) => {
-    const key = String(memberId || '').trim();
-    if (!key) return;
-    setRoomReadTs((prev) => {
-      const next = { ...prev, [key]: Date.now() };
-      AsyncStorage.setItem(ROOM_READ_TS_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
-  }, []);
 
   useFocusEffect(useCallback(() => {
     setTabBarHidden(!!selectedRoom || !!roomPlayer);
@@ -1799,8 +1753,6 @@ export default function FollowedRoomsScreen() {
       return;
     }
     setSelectedRoom(room);
-    // 进房间 = 已读：记录本地游标，房间列表红点随之消失
-    markRoomRead(String(room.id || (room as any).userId || ''));
     const openSeq = ++roomSeqRef.current;
     const channelChanged = activeChannelRef.current !== channelId;
     activeChannelRef.current = channelId;
@@ -2502,14 +2454,8 @@ export default function FollowedRoomsScreen() {
       danger: isFollowing,
       onPress: run(() => member && toggleFollow(member)),
     });
-    rows.push({
-      key: 'unread',
-      icon: unreadNotify ? 'bell-off-outline' : 'bell-ring-outline',
-      label: unreadNotify ? t('关闭未读提醒') : t('开启未读提醒'),
-      onPress: run(toggleUnreadNotify),
-    });
     return rows;
-  }, [roomMenu, pinned, followedIds, openRoom, showFanMessages, t, togglePin, movePin, toggleFollow, toggleUnreadNotify, unreadNotify]);
+  }, [roomMenu, pinned, followedIds, openRoom, showFanMessages, t, togglePin, movePin, toggleFollow]);
 
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
   /** 长按自己的消息 → 撤回删除（官方 im/api/v1/team/msg/delete，服务端校验只能删本人的） */
@@ -3255,14 +3201,6 @@ export default function FollowedRoomsScreen() {
           <TouchableOpacity onPress={() => loadFollowed()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
             <MaterialCommunityIcons name="refresh" size={22} color={palette.label} />
           </TouchableOpacity>
-          {/* 未读提醒开关（用户要求）：关掉就不显示未读角标与最新消息高亮 */}
-          <TouchableOpacity onPress={toggleUnreadNotify} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
-            <MaterialCommunityIcons
-              name={unreadNotify ? 'bell-ring-outline' : 'bell-off-outline'}
-              size={22}
-              color={unreadNotify ? palette.tint : palette.label}
-            />
-          </TouchableOpacity>
         </View>
       } />
 
@@ -3394,12 +3332,6 @@ export default function FollowedRoomsScreen() {
             const team = item.member?.team || item.member?.groupName || '';
             const lastTime = Number(item.lastMessage?.msgTime || item.lastMessage?.ctime || 0);
             const lastText = item.lastMessage ? messageText(item.lastMessage) : '';
-            // 有没有新消息：本地已读时间戳 vs 最新消息时间（口袋无未读条数接口，不给假数字只给红点）
-            const roomLastTime = Math.max(
-              getMessageTime(item.lastMessage),
-              getMessageTime(item.lastSmallMessage),
-            );
-            const hasUnread = unreadNotify && roomLastTime > 0 && roomLastTime > Number(roomReadTs[item.memberId] || 0);
             // 直播中判定：以直播列表接口为准（id / liveRoomId / account / 昵称命中关注成员）
             const mid = String(item.member?.id || item.memberId);
             const mroom = String((item.member as any)?.liveRoomId || '');
@@ -3449,8 +3381,6 @@ export default function FollowedRoomsScreen() {
                           <Text style={[styles.pinTagChipText, { color: palette.tint }]}>{t('置顶')}</Text>
                         </View>
                       ) : null}
-                      {/* 新消息红点（本地已读游标判定，受未读提醒开关控制） */}
-                      {hasUnread ? <View style={[styles.unreadDot, { backgroundColor: palette.danger }]} /> : null}
                     </View>
                     {/* 房间列表信息区恢复原版布局：team 独立行 + 大房间预览 + 小房间预览（各一行）。
                         卡片总高用 minHeight 拉齐：行少成员内容靠底部留白补足 */}
@@ -3814,9 +3744,6 @@ const styles = StyleSheet.create({
     marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
   },
   pinTagChipText: { fontSize: 9, fontWeight: '800' },
-  unreadBadge: { minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
-  unreadBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, marginLeft: 5 },
   roomActions: { marginLeft: 6, gap: 6, alignItems: 'center', paddingRight: 12, paddingVertical: 10 },
   /* 排序胶囊：单个圆角方块内竖向排列 ↑ / ↓ */
   sortCapsule: {

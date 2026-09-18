@@ -138,7 +138,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
   const renderItem = useCallback(
     ({ item }: { item: BarrageItem }) => (
       <View style={styles.row}>
-        <Text style={[styles.rowText, { color: itemColor(item.kind) }]} numberOfLines={2}>
+        <Text style={[styles.rowText, { color: itemColor(item.kind) }]} numberOfLines={1}>
           {item.nick ? <Text style={styles.nick}>{`${item.nick}：`}</Text> : null}
           {item.text}
         </Text>
@@ -280,6 +280,7 @@ const styles = StyleSheet.create({
   list: { width: '100%' },
   listContent: { paddingVertical: 2 },
   row: { paddingVertical: 2 },
+  // 单行显示：一条弹幕占一行，不换行（超出省略），避免一条弹幕撑成两三行
   rowText: { fontSize: 12, lineHeight: 17 },
   nick: { fontWeight: '700' },
   empty: { fontSize: 11, textAlign: 'center', paddingVertical: 12 },
