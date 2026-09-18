@@ -1433,6 +1433,8 @@ export default function FollowedRoomsScreen() {
       title: cur.title,
       cover: cur.cover,
       isLive: !!cur.isLive,
+      // 上麦/电台：小窗渲染为紧凑音频胶囊（不显示视频框）
+      audioOnly: cur.type === 'audio',
       position: pos,
       backTo: { mode: 'vod', playUrl: cur.url, playTitle: cur.title, playCover: cur.cover, playPosition: pos },
     });
@@ -2218,7 +2220,7 @@ export default function FollowedRoomsScreen() {
     }
     if (!url) { showToast(t('该房间当前没有开启语音电台')); return; }
     setRoomPlayer({
-      type: 'live',
+      type: 'audio',
       url,
       title: `${shortName(room, key)} · ${t('上麦')}`,
       cover: (room as any).avatar,
@@ -2474,6 +2476,8 @@ export default function FollowedRoomsScreen() {
                 url: roomPlayer.url,
                 liveId: roomPlayer.liveId,
                 needsNativeExo: roomPlayer.needsVlc,
+                // 上麦/电台（type='audio'）走纯音频：不渲染画面，省一层黑屏
+                audioOnly: roomPlayer.type === 'audio',
                 headers: { 'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)', Referer: 'https://h5.48.cn/' },
               }}
               meta={{ title: roomPlayer.title, cover: roomPlayer.cover }}
