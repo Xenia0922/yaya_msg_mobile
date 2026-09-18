@@ -1863,7 +1863,7 @@ export default function MediaScreen() {
                       onPress={() => startPlay(it)}
                       activeOpacity={0.88}
                     >
-                      <GlassSurface radius={20} role="card">
+                      <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: palette.fill3 }}>
                         <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                           {coverUrl ? (
                             <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
@@ -1906,7 +1906,7 @@ export default function MediaScreen() {
                           ) : null}
                         </View>
                       </View>
-                    </GlassSurface>
+                    </View>
                     </TouchableOpacity>
                   </FadeInView>
                 );
@@ -1928,7 +1928,9 @@ export default function MediaScreen() {
                   onPress={() => startPlay(item)}
                   activeOpacity={0.88}
                 >
-                  <GlassSurface radius={20} role="card">
+                  {/* 卡片不套玻璃：网格里每卡一个 BlurView 会逐帧重算模糊（用户反馈滑动掉帧），
+                      且封面铺满、玻璃观感等于没有 —— 按设计系统「列表卡不用玻璃」用实底圆角 */}
+                  <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: palette.fill3 }}>
                   <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                     {coverUrl ? (
                       <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
@@ -1977,7 +1979,7 @@ export default function MediaScreen() {
                       ) : null}
                     </View>
                   </View>
-                </GlassSurface>
+                </View>
                 </TouchableOpacity>
               </FadeInView>
             );
