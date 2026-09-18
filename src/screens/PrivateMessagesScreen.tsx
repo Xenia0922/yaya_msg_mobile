@@ -577,10 +577,16 @@ export default function PrivateMessagesScreen() {
     let prevTs = 0;
     // 统一按时间正序（旧→新）喂给聊天库：接口返回可能是「新→旧」，
     // 不排序会让最新一条回复跑到列表最上面（用户反馈「最新回复消息是反过来的」）
-    // 排序键必须与 createdAt 用同一套「秒→毫秒」归一化：接口里混着秒/毫秒时，
-    // 直接比原始值会让顺序跟气泡上显示的时间对不上
-    //（用户反馈：她的 00:17 排在我 21:35 上面）
-    oldestFirst(msgs, (m: any) => { const v = msgTimeNumber(m); return v > 0 && v < 1e12 ? v * 1000 : v; }).forEach((item, i) => {
+    // ⚠️ 聊天库默认 inverted=true：FlatList 反转渲染，**数组第 0 项显示在最下面**。
+    // 所以 messages 必须是「新的在前（倒序）」——第十批我误改成 oldestFirst(正序)，
+    // 结果最旧的沉底、最新的跑到最上面（用户反馈「她的消息在我的消息上面」就是这个）。
+    // 排序键与 createdAt 用同一套「秒→毫秒」归一化，避免顺序与气泡显示的时间对不上。
+    [...msgs].sort((a: any, b: any) => {
+      const va = msgTimeNumber(a); const vb = msgTimeNumber(b);
+      const ka = va > 0 && va < 1e12 ? va * 1000 : va;
+      const kb = vb > 0 && vb < 1e12 ? vb * 1000 : vb;
+      return kb - ka;
+    }).forEach((item, i) => {
       const ts = msgTimeNumber(item);
       const mine = isMineMessage(item, targetId, uid);
       const dk = dayKeyOf(ts);
