@@ -633,8 +633,10 @@ export default function PrivateMessagesScreen() {
     /**
      * 日期分隔：统一纯数字 yyyy/mm/dd（库自带的 zh 输出是「14 9月」这种不符合中文习惯的格式）
      */
-    const renderDayLabel = ({ date }: any) => {
-      const d = new Date(date);
+    const renderDayLabel = ({ createdAt, date }: any) => {
+      // ⚠️ 库回调传的是 createdAt（DayAnimated/index.js: renderDay({...rest, createdAt, isAnimated})），
+      // 不是 date —— 只读 date 会得到 undefined → NaN → 返回 null → 日期分隔根本不显示。
+      const d = new Date(createdAt ?? date);
       if (Number.isNaN(d.getTime())) return null;
       const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
       const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
@@ -648,9 +650,15 @@ export default function PrivateMessagesScreen() {
      */
     const renderEllipseGlassBubble = ({ currentMessage, position }: any) => {
       const msg = currentMessage as any;
+      const item = msg.original;
       const mine = position === 'right';
       const t0 = msg.createdAt instanceof Date ? msg.createdAt : new Date(msg.createdAt);
       const hh = Number.isNaN(t0.getTime()) ? '' : `${String(t0.getHours()).padStart(2, '0')}:${String(t0.getMinutes()).padStart(2, '0')}`;
+      // 语音/视频/图片消息：这个气泡原来只渲染 msg.text → 媒体消息只剩「[语音消息]」文字、点不动。
+      // 补上内联媒体：图片直显；语音/视频给播放键 + 内联 PlayerScreen。
+      const media = item ? privateMessageMedia(item) : null;
+      const hasText = !!msg.text && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(String(msg.text)) && msg.text !== '[空消息]';
+      const mediaLabel = media ? (formatDur(media.duration || 0) || (media.type === 'audio' ? t('语音') : t('视频'))) : '';
       return (
         <GlassSurface
           role="chip"
@@ -658,8 +666,31 @@ export default function PrivateMessagesScreen() {
           tintColor={mine ? palette.tint : undefined}
           style={styles.ellipseBubble}
         >
-          {msg.text ? (
+          {hasText ? (
             <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>{msg.text}</Text>
+          ) : null}
+          {media ? (
+            media.type === 'image' ? (
+              <Image source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
+            ) : (
+              <ScalePressable
+                style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]}
+                onPress={() => setPlayUrl((p) => (p === media.url ? '' : media.url))}
+              >
+                <Text style={[styles.mediaBtnText, mine && { color: palette.onTint }, !mine && { color: palette.tint }]}>
+                  {playUrl === media.url ? t('收起') : mediaLabel}
+                </Text>
+                {playUrl !== media.url ? <MaterialCommunityIcons name="play" size={14} color={mine ? palette.onTint : palette.tint} style={{ marginLeft: 4 }} /> : null}
+              </ScalePressable>
+            )
+          ) : null}
+          {media && playUrl === media.url ? (
+            <PlayerScreen
+              inline
+              source={{ kind: media.type === 'audio' ? 'audio' : 'vod', url: media.url }}
+              meta={{ title: t('消息媒体') }}
+              persistent
+            />
           ) : null}
           {hh ? (
             <Text style={[styles.ellipseTime, { color: mine ? 'rgba(255,255,255,0.75)' : palette.labelTertiary }]}>{hh}</Text>

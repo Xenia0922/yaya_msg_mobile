@@ -35,8 +35,8 @@ const W = 180;
 /** 高度按内容比例计算（竖屏内容窄条 -> 高条；横屏内容 16:9） */
 const H_MIN = 104;
 /** 纯音频（上麦/电台）小胶囊尺寸：扁 pill */
-const CAPSULE_W = 248;
-const CAPSULE_H = 48;
+const CAPSULE_W = 204;
+const CAPSULE_H = 40;
 /** 小窗缩放档位：1 = 默认，1.18 = 放大，0.74 = 缩小（循环切换） */
 const SCALE_SMALL = 0.74;
 const SCALE_LARGE = 1.18;
@@ -195,7 +195,7 @@ export function MiniPlayer() {
   // return 若夹在 hooks 中间，每次小窗开/关(visible 翻转) hooks 数量变化 → "Rendered more hooks" 崩溃
   const lowerUrl = String(info?.url || '').toLowerCase();
   const isNativeLive = !!info?.isLive && !!info?.url && (lowerUrl.startsWith('rtmp://') || lowerUrl.includes('.flv')) && !!LiveExoView;
-  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{ style?: any; url: string; onSize?: (e: any) => void }> | null;
+  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{ style?: any; url: string; onSize?: (e: any) => void; audioOnly?: boolean }> | null;
   // 公演/B站直播小窗：网页内核（无 LIVE 标、带 WebAudio 增益与防盗链 headers，音量与大屏一致）
   const useWebMini = !!info?.web && !!info?.isLive && /^https?:\/\//i.test(lowerUrl);
   const webMiniRef = useRef<WebView>(null);
@@ -268,6 +268,8 @@ export function MiniPlayer() {
             key={info.url}
             style={StyleSheet.absoluteFill}
             url={info.url}
+            // 纯音频（上麦/电台）：原生不渲染画面，露出胶囊自己的主题底色（否则是一块黑）
+            audioOnly={!!info.audioOnly}
             onSize={(e) => {
               // 原生 onVideoSizeChanged 回调：按视频实际宽高自适应小窗容器（横屏 16:9 / 竖屏 9:16）
               const w = e.nativeEvent?.width;
@@ -380,16 +382,16 @@ export function MiniPlayer() {
       >
         {!pipCover && info.audioOnly ? (
           <View style={styles.capsuleRow}>
-            <MaterialCommunityIcons name="microphone" size={16} color={palette.tint} />
+            <MaterialCommunityIcons name="microphone" size={14} color={palette.tint} />
             <Text style={[styles.capsuleTitle, { color: palette.label }]} numberOfLines={1}>{info.title}</Text>
             <TouchableOpacity onPress={handlePlayToggle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={18} color={palette.label} />
+              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={16} color={palette.label} />
             </TouchableOpacity>
             <TouchableOpacity onPress={backToFull} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name="arrow-expand" size={16} color={palette.label} />
+              <MaterialCommunityIcons name="arrow-expand" size={13} color={palette.label} />
             </TouchableOpacity>
             <TouchableOpacity onPress={close} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name="close" size={16} color={palette.labelSecondary} />
+              <MaterialCommunityIcons name="close" size={13} color={palette.labelSecondary} />
             </TouchableOpacity>
           </View>
         ) : null}
@@ -435,8 +437,8 @@ export function MiniPlayer() {
 }
 
 const styles = StyleSheet.create({
-  capsuleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14 },
-  capsuleTitle: { flex: 1, fontSize: 13, fontWeight: '700' },
+  capsuleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12 },
+  capsuleTitle: { flex: 1, fontSize: 12, fontWeight: '600' },
   wrap: {
     position: 'absolute',
     borderRadius: 14,

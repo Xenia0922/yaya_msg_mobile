@@ -2142,8 +2142,10 @@ export default function FollowedRoomsScreen() {
   /**
    * 日期分隔：统一纯数字 yyyy/mm/dd（库自带的 zh 输出是「14 9月」这种不符合中文习惯的格式）
    */
-  const renderDayLabel = useCallback(({ date }: any) => {
-    const d = new Date(date);
+  const renderDayLabel = useCallback(({ date, createdAt }: any) => {
+    // ⚠️ 库回调传的是 createdAt（不是 date）——只读 date 会 undefined → NaN → null，
+    // 于是「日期分隔根本不显示」（私信页同一个 bug）。
+    const d = new Date(createdAt ?? date);
     if (Number.isNaN(d.getTime())) return null;
     const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
     const dayStr = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
@@ -2233,15 +2235,17 @@ export default function FollowedRoomsScreen() {
       try { url = (await fetchMemberRadioUrl(room as Member, mode)) || ''; } catch { url = ''; }
     }
     if (!url) { showToast(t('该房间当前没有开启语音电台')); return; }
-    setRoomPlayer({
-      type: 'audio',
+    // 用户要求：点「上麦」按钮**直接以小胶囊（纯音频）播放**，
+    // 不要走房间内联那个「直播播放器」（视频播放器样式，观感不对）。
+    const title = `${shortName(room, key)} · ${t('上麦')}`;
+    useMiniPlayerStore.getState().open({
       url,
-      title: `${shortName(room, key)} · ${t('上麦')}`,
+      title,
       cover: (room as any).avatar,
       isLive: true,
-      needsVlc: isRtmpRadioUrl(url) || streamNeedsProxy(url),
-    } as any);
-    setRoomPlayerFullscreen(false);
+      audioOnly: true,
+      backTo: { mode: 'live', playUrl: url, playTitle: title, playCover: (room as any).avatar },
+    });
   }, [selectedRoom, onMicMap, showToast, t]);
 
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
