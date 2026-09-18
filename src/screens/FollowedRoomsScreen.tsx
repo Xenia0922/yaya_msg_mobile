@@ -7,6 +7,7 @@ import { deleteRoomMessage, observeRoomMessages, sendRoomTextMessage, type RoomL
 import { LiveBarragePanel } from '../components/LiveBarrageBoard';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 import {
   ActivityIndicator,
@@ -1164,6 +1165,8 @@ export default function FollowedRoomsScreen() {
   // 持有一份最新 roomMessages 引用，供 refreshRoomMessages 预判「是否有新消息」而无需把 roomMessages 列入 deps（避免定时器频繁重建）
   const roomMessagesRef = useRef<RoomMessage[]>([]);
   roomMessagesRef.current = roomMessages;
+  // 键盘高度：edge-to-edge 下 adjustResize 失效，手动抬升房间容器 —— 消息列表 + 输入框整体上移
+  const roomKeyboardHeight = useKeyboardHeight();
   const [loading, setLoading] = useState(false);
   // 标记「房间消息已成功加载过一次」。仅用它来压制进房/切房间切换瞬间的「暂无消息」空态——
   // 比单纯依赖 loading 更可靠（不依赖 React 批处理时序）。切换/进房期间恒为 false，绝不闪空态；
@@ -2401,7 +2404,7 @@ export default function FollowedRoomsScreen() {
     const roomBgUri = roomMeta.bg || '';
     const roomScrim = resolvedTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)';
     return (
-      <View style={[styles.container]}>
+      <View style={[styles.container, { paddingBottom: roomPlayer ? 0 : roomKeyboardHeight }]}>
         {roomBgUri ? (
           <>
             <Animated.View style={[styles.roomBgLayer, { opacity: bgOpacity }]}>
@@ -3062,7 +3065,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  roomInput: { flex: 1, height: 34, borderRadius: 14, paddingHorizontal: 10, fontSize: 14 },
+  roomInput: { flex: 1, height: 36, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 0, fontSize: 13, textAlignVertical: 'center', includeFontPadding: false },
   roomSendBtn: { height: 34, borderRadius: 18, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
   roomSendBtnText: { fontSize: 13, fontWeight: '700' },
   roomSendHint: { fontSize: 11, marginHorizontal: 16, marginBottom: 4 },
