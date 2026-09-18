@@ -4,7 +4,8 @@ import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
 import { deleteRoomMessage, observeRoomMessages, sendRoomTextMessage, type RoomLiveMessage } from '../services/pocketNim/qchat';
-import { LiveBarragePanel } from '../components/LiveBarrageBoard';
+import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
+import { useLiveBarrage } from '../hooks/useLiveBarrage';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
@@ -1222,6 +1223,9 @@ export default function FollowedRoomsScreen() {
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
   const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
+  // 直播弹幕：页面浮层 + 播放器底坞输入条共用同一条云信连接（避免重复建连）
+  const roomBarrageLiveId = roomPlayer?.isLive && roomPlayer.liveId ? String(roomPlayer.liveId) : '';
+  const roomBarrage = useLiveBarrage({ liveId: roomBarrageLiveId, enabled: !!roomBarrageLiveId, module: 'live' });
   // 房间发言（云信圈组）：草稿 + 发送中 + 错误提示
   const [roomDraft, setRoomDraft] = useState('');
   const [roomSending, setRoomSending] = useState(false);
@@ -2453,6 +2457,9 @@ export default function FollowedRoomsScreen() {
                 { key: 'pip', icon: 'picture-in-picture-bottom-right-outline', label: t('小窗'), onPress: handleRoomMiniPlayer },
                 { key: 'rank', icon: 'trophy', label: t('贡献榜'), onPress: openRoomRankPanel },
               ]}
+              barrageInput={roomPlayer.isLive ? (
+                <LiveBarrageBoard source={roomBarrage} liveId={roomBarrageLiveId} module="live" inputOnly variant="plain" />
+              ) : undefined}
               onClose={closeRoomPlayer}
               persistent
             />
@@ -2728,9 +2735,9 @@ export default function FollowedRoomsScreen() {
 
         {/* 直播中的实时弹幕（云信聊天室）：与录播弹幕（LRC）是两条独立链路 */}
         {roomPlayer?.isLive && roomPlayer.liveId ? (
-          <LiveBarragePanel
-            liveId={String(roomPlayer.liveId)}
-            enabled
+          <LiveBarrageBoard
+            source={roomBarrage}
+            liveId={roomBarrageLiveId}
             module="live"
             height={128}
             style={styles.roomBarrageBoard}

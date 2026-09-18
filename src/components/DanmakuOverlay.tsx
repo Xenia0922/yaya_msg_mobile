@@ -13,6 +13,7 @@ import React, { memo, useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { DanmakuItem } from '../utils/danmaku';
 import { useDanmakuSettings } from '../store/danmakuSettings';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 
 const BASE_DURATION = 7000; // 基础横穿时长（ms），speed 越大越快
 const SAFE_GAP = 600; // 同泳道两条之间的安全间隔（ms），杜绝重叠
@@ -78,12 +79,16 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
   const laneFreeAt = useRef<number[]>([]);
   const counter = useRef(0);
   const { width, height: screenH } = useWindowDimensions();
+  // 顶部安全区：edge-to-edge 下 overlay 顶到屏幕最上沿，弹幕会压进系统通知栏。
+  // 第一条泳道从「状态栏下方 + 8」开始，泳道数也按可用高度重算。
+  const insets = useSafeAreaInsets();
+  const topOffset = (insets?.top || 0) + 8;
 
   // 显示区域 → 泳道数（顶部少、全屏多）
   const rowH = fontSize + 10;
-  let laneCount = Math.max(8, Math.floor((screenH * 0.92) / rowH));
-  if (area === 'top') laneCount = Math.max(4, Math.min(6, Math.floor((screenH * 0.4) / rowH)));
-  else if (area === 'half') laneCount = Math.max(6, Math.floor((screenH * 0.55) / rowH));
+  let laneCount = Math.max(8, Math.floor(((screenH - topOffset) * 0.92) / rowH));
+  if (area === 'top') laneCount = Math.max(4, Math.min(6, Math.floor(((screenH - topOffset) * 0.4) / rowH)));
+  else if (area === 'half') laneCount = Math.max(6, Math.floor(((screenH - topOffset) * 0.55) / rowH));
   // 区域 / 字号变化时同步泳道数组长度
   useEffect(() => {
     if (laneFreeAt.current.length !== laneCount) laneFreeAt.current = new Array(laneCount).fill(0);
@@ -195,7 +200,7 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
         <Bullet
           key={a.key}
           text={a.text}
-          top={8 + a.lane * (fontSize + 10)}
+          top={topOffset + a.lane * (fontSize + 10)}
           fontSize={fontSize}
           anim={a.anim}
           width={width}
