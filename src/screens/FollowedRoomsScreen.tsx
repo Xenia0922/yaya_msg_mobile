@@ -567,6 +567,13 @@ function findSmallLastMessage(messages: any[], member?: Member) {
 
 /** 房间未读提醒开关的本地持久化键 */
 const UNREAD_NOTIFY_KEY = 'yaya_room_unread_notify_v1';
+/**
+ * 房间「已读时间戳」本地持久化键：{ [memberId]: 进入房间的时刻(ms) }。
+ * ⚠️ 口袋48 **没有**房间未读数接口（实测 last/message/get 只返回 serverId/channelId/msgContent/starName，
+ * team/message/list 只返回 message/nextTime）→ 桌面端那个 unreadCount 字段其实恒为空。
+ * 因此移动端用「本地已读游标 vs 最新消息时间」判断有没有新消息（红点，不给假数字）。
+ */
+const ROOM_READ_TS_KEY = 'yaya_room_read_ts_v1';
 
 function roomChannelId(member: Member, mode: RoomMode) {
   return String(mode === 'small' ? (member.yklzId || '') : (member.channelId || ''));
@@ -1368,6 +1375,23 @@ export default function FollowedRoomsScreen() {
     });
   }, [showToast, t]);
 
+  // 房间已读时间戳（本地游标）：进房间即刷新该成员的时间戳 → 列表红点消失
+  const [roomReadTs, setRoomReadTs] = useState<Record<string, number>>({});
+  useEffect(() => {
+    AsyncStorage.getItem(ROOM_READ_TS_KEY)
+      .then((raw) => { if (raw) setRoomReadTs(JSON.parse(raw) || {}); })
+      .catch(() => {});
+  }, []);
+  const markRoomRead = useCallback((memberId: string) => {
+    const key = String(memberId || '').trim();
+    if (!key) return;
+    setRoomReadTs((prev) => {
+      const next = { ...prev, [key]: Date.now() };
+      AsyncStorage.setItem(ROOM_READ_TS_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   useFocusEffect(useCallback(() => {
     setTabBarHidden(!!selectedRoom || !!roomPlayer);
     return () => {
@@ -1775,6 +1799,8 @@ export default function FollowedRoomsScreen() {
       return;
     }
     setSelectedRoom(room);
+    // 进房间 = 已读：记录本地游标，房间列表红点随之消失
+    markRoomRead(String(room.id || (room as any).userId || ''));
     const openSeq = ++roomSeqRef.current;
     const channelChanged = activeChannelRef.current !== channelId;
     activeChannelRef.current = channelId;
@@ -3368,11 +3394,12 @@ export default function FollowedRoomsScreen() {
             const team = item.member?.team || item.member?.groupName || '';
             const lastTime = Number(item.lastMessage?.msgTime || item.lastMessage?.ctime || 0);
             const lastText = item.lastMessage ? messageText(item.lastMessage) : '';
-            // 未读数：接口 last/message/get 的 unreadCount（大小房间取较大者）——受「未读提醒」开关控制显示
-            const unreadCount = Math.max(
-              Number(item.lastMessage?.unreadCount || 0) || 0,
-              Number(item.lastSmallMessage?.unreadCount || 0) || 0,
+            // 有没有新消息：本地已读时间戳 vs 最新消息时间（口袋无未读条数接口，不给假数字只给红点）
+            const roomLastTime = Math.max(
+              getMessageTime(item.lastMessage),
+              getMessageTime(item.lastSmallMessage),
             );
+            const hasUnread = unreadNotify && roomLastTime > 0 && roomLastTime > Number(roomReadTs[item.memberId] || 0);
             // 直播中判定：以直播列表接口为准（id / liveRoomId / account / 昵称命中关注成员）
             const mid = String(item.member?.id || item.memberId);
             const mroom = String((item.member as any)?.liveRoomId || '');
@@ -3422,12 +3449,8 @@ export default function FollowedRoomsScreen() {
                           <Text style={[styles.pinTagChipText, { color: palette.tint }]}>{t('置顶')}</Text>
                         </View>
                       ) : null}
-                      {/* 未读角标（受未读提醒开关控制） */}
-                      {unreadNotify && unreadCount > 0 ? (
-                        <View style={[styles.unreadBadge, { backgroundColor: palette.danger }]}>
-                          <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? '99+' : String(unreadCount)}</Text>
-                        </View>
-                      ) : null}
+                      {/* 新消息红点（本地已读游标判定，受未读提醒开关控制） */}
+                      {hasUnread ? <View style={[styles.unreadDot, { backgroundColor: palette.danger }]} /> : null}
                     </View>
                     {/* 房间列表信息区恢复原版布局：team 独立行 + 大房间预览 + 小房间预览（各一行）。
                         卡片总高用 minHeight 拉齐：行少成员内容靠底部留白补足 */}
@@ -3793,6 +3816,7 @@ const styles = StyleSheet.create({
   pinTagChipText: { fontSize: 9, fontWeight: '800' },
   unreadBadge: { minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   unreadBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, marginLeft: 5 },
   roomActions: { marginLeft: 6, gap: 6, alignItems: 'center', paddingRight: 12, paddingVertical: 10 },
   /* 排序胶囊：单个圆角方块内竖向排列 ↑ / ↓ */
   sortCapsule: {
