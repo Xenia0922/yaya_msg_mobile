@@ -970,6 +970,27 @@ export default function MediaScreen() {
         let detail: any = await pocketApi.getLiveOne(lid).catch(() => null);
         if (!detail) detail = await pocketApi.getOpenLiveOne(lid).catch(() => null);
         const item = (detail?.content || detail?.data || detail || {}) as any;
+        // ⚠️【公告修复】这条链路（首页/房间卡片直进播放器）以前只解析播放地址，
+        // 从不读 announcement → 只有「在列表里点」才看得到公告。
+        // 这里补一次设置（与 startPlay 同判定，含 getOpenLiveOne 兜底）。
+        const annText = String(item?.announcement || '').trim();
+        if (annText) {
+          setAnnouncement(annText);
+          setAnnounceVisible(true);
+          setAnnounceExpanded(true);
+          announceAutoShownRef.current = true;
+        } else {
+          // getLiveOne 没拿到 → 用公开详情兜底再试一次（上面 detail 可能是 getLiveOne 的结果）
+          const detail2 = await pocketApi.getOpenLiveOne(lid).catch(() => null);
+          const d2 = (detail2?.content || detail2?.data || detail2 || {}) as any;
+          const annText2 = String(d2?.announcement || '').trim();
+          if (annText2) {
+            setAnnouncement(annText2);
+            setAnnounceVisible(true);
+            setAnnounceExpanded(true);
+            announceAutoShownRef.current = true;
+          }
+        }
         let urls = pickPlayableUrls(item, isLive);
         if (!urls.length) {
           const found = await findLiveItemInLists(lid, isLive).catch(() => null);
@@ -1554,8 +1575,17 @@ export default function MediaScreen() {
   // 万一 key 随 winW 没翻也没法触发 FlatList 重挂载 → 直接 bump 这个 nonce 强制 remount。
   // 注意：这只是已知 MediaScreen 直播网格的局部兜底；其他类似 FlatList 屏按需补。
   const [pipRemount, setPipRemount] = useState(0);
+  /**
+   * 是否处于系统小窗（PiP）。
+   * ⚠️ 系统 PiP 的画面 = **整个 Activity 窗口的快照**，不是单独抓媒体层。
+   * 所以播放器页上任何浮层（公告面板、弹幕列表抽屉…）都会一起被拍进小窗里
+   * —— 用户反馈「小窗会带着直播公告」就是这个原因。
+   * 进 PiP 时把播放器浮层全部隐藏，保证小窗里只有画面。
+   */
+  const [inSystemPip, setInSystemPip] = useState(false);
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('PipEnteredChanged', (entered: boolean) => {
+      setInSystemPip(!!entered);
       if (!entered) setPipRemount((n) => n + 1);
     });
     return () => sub.remove();
@@ -1579,10 +1609,13 @@ export default function MediaScreen() {
   if (playing) {
     return (
       <View style={[styles.playerPage, isFullscreen && styles.playerPageFullscreen]}>
-        {announceExpanded && announceVisible && announcement ? (
+        {announceExpanded && announceVisible && announcement && !inSystemPip ? (
           <Animated.View style={[styles.announcePanel, { transform: [{ translateY: announceTopAnim }] }]}>
             <View style={styles.announcePanelTop}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {/* ⚠️ 标题组必须 flex:1 + minWidth:0，否则内层 title 的 flex:1 失效
+                  （它撑的是这个 wrapper，而 wrapper 默认按内容宽）→ wrapper 撑满整行，
+                  把右侧「刷新/收起」两个按钮顶出屏幕（用户截图：收起按钮跑到屏幕外）。 */}
+              <View style={styles.announcePanelTitleRow}>
                 <MaterialCommunityIcons name="bullhorn" size={15} color="#FFFFFF" style={{ marginRight: 5 }} />
                 <Text style={styles.announcePanelTitle} numberOfLines={1}>{t('公告')}</Text>
               </View>
@@ -1672,7 +1705,7 @@ export default function MediaScreen() {
             />
             {/* 弹幕列表抽屉（直播/录播通用）：列表 + 搜索 + 按发送者筛选 + 点击跳转 + 跟随播放 */}
             <DanmakuListSheet
-              visible={showDanmakuList}
+              visible={showDanmakuList && !inSystemPip}
               onClose={() => setShowDanmakuList(false)}
               entries={danmakuListEntries}
               currentTime={danmakuClock}
@@ -2174,8 +2207,11 @@ const styles = StyleSheet.create({
   announcePillText: { color: '#fb7299', fontSize: 11, fontWeight: '700' },
   announcePanel: { position: 'absolute', top: 0, left: 10, right: 10, zIndex: 29, borderRadius: radiiAlias.card, backgroundColor: 'rgba(18,18,20,0.92)', borderWidth: 1, borderColor: 'rgba(251,114,153,0.32)', marginHorizontal: 0, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6 },
   announcePanelTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(251,114,153,0.18)' },
-  announcePanelTitle: { color: '#fff', fontSize: 13, fontWeight: '800', flex: 1 },
-  announcePanelBtns: { flexDirection: 'row', gap: 8 },
+  /** 标题组：占据剩余宽度并允许收缩（配合 title 的 numberOfLines=1 出省略号），按钮永远留在屏内 */
+  announcePanelTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: 8 },
+  announcePanelTitle: { color: '#fff', fontSize: 13, fontWeight: '800', flexShrink: 1 },
+  /** 按钮组：不参与收缩，保证「刷新/收起」始终完整可见 */
+  announcePanelBtns: { flexDirection: 'row', gap: 8, flexShrink: 0 },
   announceSmallBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(251,114,153,0.16)' },
   announceSmallBtnText: { color: '#fb7299', fontSize: 11, fontWeight: '700' },
   announcePanelBody: { paddingHorizontal: 14, paddingVertical: 10, maxHeight: 150 },

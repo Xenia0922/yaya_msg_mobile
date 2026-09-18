@@ -60,13 +60,28 @@ interface OnMicState {
 const SCAN_INTERVAL = 60 * 1000;
 /** 单轮扫描的看门狗上限：超过视为卡死（异常路径漏复位），下次扫描前强制复位 */
 const SCAN_STUCK_MS = 90 * 1000;
-/** 当前轮扫描的「最后进展时间」（开始时刻 + 每完成一个任务刷新；看门狗用，不走 state） */
-let scanStartedAt = 0;
 /**
- * 中止标志：看门狗判定上一轮卡死后置位，让那轮的 worker 自行退出。
- * 否则新旧两轮会同时跑（请求翻倍、done 双计数）。
+ * 扫描轮次令牌（修复「新旧两轮并发」竞态）。
+ *
+ * ⚠️ 旧实现用两个模块级全局量 `scanStartedAt` / `scanAborted` 表示「当前轮」，
+ * 但新一轮启动时会无条件把它们重置（`scanAborted = false` / `scanStartedAt = now`）
+ * —— 于是被看门狗中止的**上一轮** worker 会被复活，继续跟新一轮抢 cursor、
+ * 把两轮的进度混在一起（`done` 双计数）。
+ *
+ * 现在每轮拿一个独立的 round 对象，worker 闭包捕获**自己那一轮**的对象：
+ *   - 心跳只刷自己轮的 lastProgress（不会替别的轮续命）
+ *   - 看门狗只置自己轮的 aborted（只中止该死的那一轮，不误伤新一轮）
+ *   - 进度 set / 结果 set 前都先校验 `isCurrent(round)`，旧轮一律作废不写 state
  */
-let scanAborted = false;
+interface ScanRound {
+  id: number;
+  aborted: boolean;
+  /** 本轮的「最后进展时间」（开始时刻 + 每完成一个任务刷新；看门狗用，不走 state） */
+  lastProgress: number;
+}
+let roundSeq = 0;
+/** 当前活跃轮次（null = 没有在跑的轮） */
+let currentRound: ScanRound | null = null;
 /** 非强制扫描每轮预算：最多探测 1/3 成员（至少 40 位），最久未探测的优先，约 3 轮全量覆盖 */
 const BUDGET_MIN = 40;
 /** 并发探测数 + 每请求间隔：对齐桌面端 room-radio-feature.js（ROOM_RADIO_SCAN_CONCURRENCY=24 / GAP=20ms） */
@@ -150,19 +165,24 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
     // 极易命中该窗口 → 表现为「有概率扫不出来 / 偶尔一直转圈」。
     const last = get().lastScan;
     if (!opts.force && last && Date.now() - last < SCAN_INTERVAL) return;
-    // 看门狗：旧版本可能已把 scanning 卡在 true（进程内状态），超时后强制复位，避免永久卡死
+    // 看门狗：判定**上一次**轮次是否卡死（异常路径漏复位 / 请求全 hang 无心跳）。
+    // 只中止那一轮自己（round.aborted），不碰新轮；新轮拿到全新 round 对象，二者互不干扰。
     if (get().scanning) {
-      if (Date.now() - scanStartedAt > SCAN_STUCK_MS) {
-        logWarn(`[onMic] 上次扫描疑似卡死（${Math.round((Date.now() - scanStartedAt) / 1000)}s），强制复位后重扫`, 'onMic');
-        scanAborted = true; // 让上一轮的 worker 退出，避免新旧两轮同时探测
+      const prev = currentRound;
+      const prevStuck = !prev || Date.now() - prev.lastProgress > SCAN_STUCK_MS;
+      if (prevStuck) {
+        if (prev) {
+          logWarn(`[onMic] 上次扫描疑似卡死（${Math.round((Date.now() - prev.lastProgress) / 1000)}s 无进展），中止该轮后重扫`, 'onMic');
+          prev.aborted = true;
+        }
         set({ scanning: false });
       } else {
         return;
       }
     }
-    // 立即置位防重入：下方 await 读快照期间若仍为 false，两个并发调用都能通过检查 → 双扫描
-    scanAborted = false;
-    scanStartedAt = Date.now();
+    // 开新轮：新建独立令牌（**不覆盖**别轮的 aborted —— 那正是旧实现的竞态根因）
+    const round: ScanRound = { id: ++roundSeq, aborted: false, lastProgress: Date.now() };
+    currentRound = round;
     set({ scanning: true });
     // 冷启动：先恢复上麦快照（仅首次），页面秒显旧数据
     if (!snapshotHydrated) {
@@ -242,17 +262,21 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
        */
       let pendingDone = 0;
       let lastFlush = Date.now();
+      /** 本轮是否仍是活跃轮（旧轮被中止/被新轮取代后一律不写 state） */
+      const isCurrent = () => currentRound === round && !round.aborted;
       const flushDone = (force = false) => {
         if (!pendingDone) return;
         if (!force && pendingDone < 8 && Date.now() - lastFlush < 250) return;
         const step = pendingDone;
         pendingDone = 0;
         lastFlush = Date.now();
+        // 已不是活跃轮：丢弃待写进度，避免污染新一轮的 done（旧实现这里会双计数）
+        if (!isCurrent()) return;
         set((snap) => ({ done: snap.done + step }));
       };
       const worker = async () => {
         while (cursor < queue.length) {
-          if (scanAborted) return; // 被看门狗判定卡死 → 本轮立即收工
+          if (!isCurrent()) return; // 本轮被看门狗中止 / 已被新轮取代 → 立即收工
           const t = queue[cursor++];
           const st = stat.get(t.memberId)!;
           try {
@@ -300,7 +324,7 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
             probedAt[t.memberId] = Date.now();
             // 心跳：只要有任务在完成，就不算卡死（看门狗只针对「长时间毫无进展」，
             // 慢网下 500+ 成员的完整扫描耗时长也不会被误判成卡死）
-            scanStartedAt = Date.now();
+            round.lastProgress = Date.now();
             pendingDone += 1;
             flushDone();
             if (cursor < queue.length) await sleep(REQUEST_GAP_MS);
@@ -316,8 +340,8 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
       });
       logInfo(`[onMic] 扫描完成：任务 ${queue.length} 个 / ${uniq.length} 位成员，上麦 ${Object.keys(updates).length} 位，确认无声 ${removable.size} 位${opts.force ? '（全量）' : '（增量）'}`, 'onMic');
       set((snap) => {
-        // 本轮已被看门狗中止：结果作废，不要覆盖新轮的状态与进度
-        if (scanAborted) return snap;
+        // 本轮已被看门狗中止 / 已被新轮取代：结果作废，不要覆盖新轮的状态与进度
+        if (!isCurrent()) return snap;
         const next: Record<string, OnMicEntry> = { ...snap.onMic };
         removable.forEach((id) => { if (!(id in updates)) delete next[id]; });
         Object.assign(next, updates);
@@ -332,8 +356,9 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
       });
     } catch (e: any) {
       logWarn(`[onMic] 扫描异常：${e?.message || String(e)}`, 'onMic');
-      // 异常路径必须复位 scanning，否则页面永远停留「扫描中」且后续扫描被防重入拦死
-      if (!scanAborted) set({ scanning: false });
+      // 异常路径必须复位 scanning，否则页面永远停留「扫描中」且后续扫描被防重入拦死。
+      // 仅当仍是活跃轮才复位 —— 否则新轮刚开始就被旧轮的异常路径把 scanning 清掉了。
+      if (currentRound === round && !round.aborted) set({ scanning: false });
     }
     // 无论成功失败都持久化当前结果（含快照恢复后的首次空结果）
     try {

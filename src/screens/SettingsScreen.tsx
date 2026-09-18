@@ -51,16 +51,15 @@ function Section({ title, children, delay = 0 }: { title: string; children: Reac
       {title ? (
         <Text style={[styles.sectionTitle, { color: palette.label }]}>{title}</Text>
       ) : null}
-      <GlassSurface radius={20} role="card"
-        style={[
-          styles.section,
-          {
-            backgroundColor: 'transparent',
-            borderColor: palette.hairline,
-            borderRadius: radiiAlias.card,
-          },
-        ]}
-      >
+      {/*
+        ⚠️【描边修复】不要在这里再传 borderWidth / borderColor。
+        GlassSurface 内部已有一层随主题走的描边（MATERIAL.stroke：浅色 rgba(255,255,255,0.66)
+        / 深色 rgba(255,255,255,0.10)），且渲染在 children 之前；
+        外层再叠一道 palette.hairline 会形成「双层描边」——两条线错位、颜色互搏，
+        观感就是用户反馈的「描边没描好」（深浅色主题下都明显）。
+        玻璃的唯一出口是 GlassSurface，描边交给它统一出。
+      */}
+      <GlassSurface radius={20} role="card" style={styles.section}>
         {children}
       </GlassSurface>
     </FadeInView>
@@ -431,7 +430,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingBottom: 112, paddingHorizontal: 16 },
   sectionTitle: { fontSize: 14, fontWeight: '700', marginTop: 20, marginBottom: 8, paddingHorizontal: 4 },
-  section: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  // 描边由 GlassSurface 内部统一出（见 Section 注释），此处不再叠 borderWidth/borderColor
+  section: { overflow: 'hidden' },
   innerPad: { padding: 14 },
   row: {
     flexDirection: 'row',

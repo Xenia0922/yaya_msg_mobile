@@ -194,13 +194,34 @@ export function GlassSurface({
   const useAgsL = false && isDock && tier !== 'none';
 
   const r = radius;
-  const boxStyle: StyleProp<ViewStyle> = asBackground
-    ? [StyleSheet.absoluteFill, { borderRadius: r, overflow: 'hidden' }, style]
-    : [{ borderRadius: r, overflow: 'hidden' }, style];
+
+  /**
+   * ⚠️【描边唯一出口】调用方若在 style 里传了 borderWidth / borderColor，
+   * 把它们**接管**到内部描边层渲染，而不是让外层盒子再画一道。
+   *
+   * 旧行为：外层 View 的 style 直接带 borderWidth+borderColor → 内层 absoluteFill 也画一道
+   * → 两条线叠加、圆角处错位、深浅色主题下颜色互搏，观感就是「描边没描好」。
+   * 全站曾有 10+ 处 GlassSurface 调用这样写（SettingsScreen / LoginScreen / DownloadScreen …）。
+   *
+   * 这样改的好处：调用方写法完全不用动、观感自动统一；不传时仍用材质自带描边。
+   */
+  const incoming = StyleSheet.flatten(style) as ViewStyle | undefined;
+  const strokeWidth = incoming?.borderWidth ?? 1;
+  const strokeColor = (incoming?.borderColor as string) ?? m.stroke;
+  /** 外层盒子：剥离 borderWidth / borderColor（改由内层描边层统一画） */
+  const outerStyle: StyleProp<ViewStyle> = incoming
+    ? (() => {
+        const { borderWidth: _bw, borderColor: _bc, ...restStyles } = incoming;
+        return restStyles as StyleProp<ViewStyle>;
+      })()
+    : style;
+  const outerBoxStyle: StyleProp<ViewStyle> = asBackground
+    ? [StyleSheet.absoluteFill, { borderRadius: r, overflow: 'hidden' }, outerStyle]
+    : [{ borderRadius: r, overflow: 'hidden' }, outerStyle];
 
   if (useNativeDock) {
     return (
-      <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
+      <View pointerEvents={asBackground ? 'none' : 'auto'} style={outerBoxStyle} {...rest}>
         <LiquidGlassNativeView
           targetId={GLASS_BACKDROP_ID}
           style={StyleSheet.absoluteFill}
@@ -219,8 +240,8 @@ export function GlassSurface({
             StyleSheet.absoluteFill,
             {
               borderRadius: r,
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.60)',
+              borderWidth: strokeWidth,
+              borderColor: strokeColor,
               overflow: 'hidden',
             },
           ]}
@@ -261,8 +282,8 @@ export function GlassSurface({
             StyleSheet.absoluteFill,
             {
               borderRadius: r,
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.60)',
+              borderWidth: strokeWidth,
+              borderColor: strokeColor,
               overflow: 'hidden',
             },
           ]}
@@ -295,7 +316,7 @@ export function GlassSurface({
         blurReductionFactor={m.reduction}
         style={[StyleSheet.absoluteFill, { borderRadius: r }]}
       />
-      {/* 中层：底色纱 + 1px 描边；顶层：顶部连续高光带（Apple 三层结构） */}
+      {/* 中层：底色纱 + 描边（调用方传的 borderWidth/borderColor 在此渲染，外层不再重复画） */}
       <View
         pointerEvents="none"
         style={[
@@ -303,8 +324,8 @@ export function GlassSurface({
           {
             borderRadius: r,
             backgroundColor: tintColor ?? m.overlay,
-            borderWidth: 1,
-            borderColor: m.stroke,
+            borderWidth: strokeWidth,
+            borderColor: strokeColor,
             overflow: 'hidden',
           },
         ]}
@@ -327,7 +348,7 @@ export function GlassSurface({
     if (activeOpacity != null) {
       return (
         <TouchableOpacity
-          style={boxStyle}
+          style={outerBoxStyle}
           onPress={onPress}
           onLongPress={onLongPress}
           activeOpacity={activeOpacity}
@@ -339,14 +360,14 @@ export function GlassSurface({
       );
     }
     return (
-      <Pressable style={boxStyle} onPress={onPress} onLongPress={onLongPress} disabled={disabled} {...(rest as any)}>
+      <Pressable style={outerBoxStyle} onPress={onPress} onLongPress={onLongPress} disabled={disabled} {...(rest as any)}>
         {inner}
       </Pressable>
     );
   }
 
   return (
-    <View pointerEvents={asBackground ? 'none' : 'auto'} style={boxStyle} {...rest}>
+    <View pointerEvents={asBackground ? 'none' : 'auto'} style={outerBoxStyle} {...rest}>
       {inner}
     </View>
   );
