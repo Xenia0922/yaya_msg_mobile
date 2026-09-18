@@ -3,9 +3,28 @@
  *
  * 结构照搬底栏：玻璃轨道 + 一块会滑动的玻璃选中胶囊（跟手/跟值），
  * 选中文字用主题色强调。用于「直播/录播」「大房间/小房间」这类切换。
+ *
+ * 交互（对齐底栏 AppTabBar）：
+ *  - 点击某格 → 胶囊 spring 过去并回调 onChange
+ *  - **按住横向拖动 → 胶囊跟手指走**，松手吸附到最近一格并回调 onChange
+ *
+ * ⚠️ driver 必须用 JS（`useNativeDriver: false`）：
+ *  native driver 会把 Animated.Value 迁移到原生节点，之后从 JS 侧 `setValue()`
+ *  会被原生节点静默丢弃（不报错、不生效）→ 症状是「点了变胶囊，但拖不动/不跟手」。
+ *  这里只有 1 个胶囊 View 在动，JS driver 成本可忽略。
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Animated,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { GlassSurface } from './GlassSurface';
 import { usePalette } from '../theme';
 
@@ -36,20 +55,75 @@ export function GlassSegmented<T extends string>({
   const pad = 3;
   const cellW = trackW > 0 ? (trackW - pad * 2) / options.length : 0;
   const x = useRef(new Animated.Value(0)).current;
+  const xRef = useRef(0);
+  const startXRef = useRef(0);
+  const draggingRef = useRef(false);
+
+  // ref 化最新值：PanResponder 只创建一次，闭包会捕到过期的 options/value
+  const cellWRef = useRef(cellW);
+  cellWRef.current = cellW;
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const idxRef = useRef(idx);
+  idxRef.current = idx;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const settle = (target: number) => {
+    xRef.current = target;
+    Animated.spring(x, { toValue: target, tension: 220, friction: 30, useNativeDriver: false }).start();
+  };
 
   useEffect(() => {
-    Animated.spring(x, {
-      toValue: idx * cellW,
-      tension: 220,
-      friction: 30,
-      useNativeDriver: true,
-    }).start();
-  }, [idx, cellW, x]);
+    // 拖动中不要被外部 value 变化拽走（与底栏同一处理）
+    if (draggingRef.current) return;
+    settle(idx * cellW);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, cellW]);
+
+  const pan = useRef(
+    PanResponder.create({
+      // 点击不抢：只有横向拖动才接管，保证各格 Pressable 的点击照常触发
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderGrant: () => {
+        draggingRef.current = true;
+        x.stopAnimation((v: number) => {
+          xRef.current = v;
+          startXRef.current = v;
+        });
+      },
+      onPanResponderMove: (_, g) => {
+        const n = optionsRef.current.length;
+        const cw = cellWRef.current;
+        if (!cw) return;
+        const limit = Math.max(0, (n - 1) * cw);
+        const nx = Math.min(limit, Math.max(0, startXRef.current + g.dx));
+        xRef.current = nx;
+        x.setValue(nx);
+      },
+      onPanResponderRelease: () => {
+        draggingRef.current = false;
+        const n = optionsRef.current.length;
+        const cw = cellWRef.current;
+        if (!cw) return;
+        const h = Math.min(n - 1, Math.max(0, Math.round(xRef.current / cw)));
+        settle(h * cw);
+        const target = optionsRef.current[h];
+        if (target && target.key !== optionsRef.current[idxRef.current]?.key) onChangeRef.current(target.key);
+      },
+      onPanResponderTerminate: () => {
+        draggingRef.current = false;
+        settle(idxRef.current * cellWRef.current);
+      },
+    }),
+  ).current;
 
   return (
     <GlassSurface role="chip" radius={height / 2} style={[styles.track, { height }, style]}>
       <View
         style={styles.row}
+        {...pan.panHandlers}
         onLayout={(e) => {
           const w = e.nativeEvent.layout.width;
           setTrackW((prev) => (Math.abs(prev - w) < 0.5 ? prev : w));
@@ -136,8 +210,9 @@ export function GlassSegmentedScroll<T extends string>({
     if (!target) return;
     // 宽度瞬时到位：宽度动画与位置动画是两条独立弹簧，收敛节奏不同 → 看起来像被「二次修正」。
     // 文案长短不一时这一点尤其明显，因此宽度直接落位，只让位置做弹簧。
+    // ⚠️ JS driver：`w.setValue()` 必须能在 JS 侧生效（见文件头 driver 说明）。
     w.setValue(target.w);
-    Animated.spring(x, { toValue: target.x, tension: 220, friction: 30, useNativeDriver: true }).start();
+    Animated.spring(x, { toValue: target.x, tension: 220, friction: 30, useNativeDriver: false }).start();
   }, [target, x, w]);
 
   return (
