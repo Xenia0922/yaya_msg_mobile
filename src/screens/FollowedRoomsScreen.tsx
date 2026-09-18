@@ -284,24 +284,30 @@ function collectUrls(value: any, result: string[] = [], depth = 0) {
 function senderProfile(item: any, room: Member): SenderProfile {
   if (!item) return { id: '', name: t('未知用户'), avatar: '' };
   const body = messageBody(item);
-  const ext = extraInfo(item);
-  const objects = [item, ext, body];
-  const id = firstTextFrom(objects, [
-    'senderUserId',
-    'senderId',
-    'fromUserId',
-    'fromAccount',
-    'userId',
-    'uid',
-    'account',
-    'sender.userId',
-    'sender.id',
-    'user.userId',
-    'user.id',
-    'message.userId',
-    'message.senderId',
-  ]) || deepFindText(objects, ['senderUserId', 'fromUserId', 'userId', 'uid']);
-  const name = firstTextFrom(objects, [
+  // ⚠️ 只把 extraInfo 的 **user 段**当发送者资料（官方 getChannelBaseParams / 我们 buildChannelExt
+  // 写入的都是发送者），不要把整个 ext 混进下面的字段查找 —— ext 里还有 replyInfo（被回复者）。
+  // 桌面端 v2.13 followed-chat-feature.js:4082 同款：ext.user.roleId / userId / nickName / avatar。
+  const extUser: any = ((extraInfo(item) as any)?.user) || {};
+  const objects = [item, body];
+  const id =
+    firstTextFrom(objects, [
+      'senderUserId',
+      'senderId',
+      'fromUserId',
+      'fromAccount',
+      'userId',
+      'uid',
+      'account',
+      'sender.userId',
+      'sender.id',
+      'user.userId',
+      'user.id',
+      'message.userId',
+      'message.senderId',
+    ])
+    || String(extUser.userId ?? extUser.id ?? '').trim()
+    || deepFindText(objects, ['senderUserId', 'fromUserId', 'userId', 'uid']);
+  const topName = firstTextFrom(objects, [
     'senderName',
     'senderNickName',
     'nickName',
@@ -318,7 +324,9 @@ function senderProfile(item: any, room: Member): SenderProfile {
     'message.nickName',
     'message.nickname',
   ]) || deepFindText(objects, ['nickName', 'nickname', 'senderName', 'userName', 'name']);
-  const avatar = normalizeUrl(firstTextFrom(objects, [
+  // 名字/头像：ext.user 优先（桌面端就是用它覆盖顶层 senderName）——消息里带的最新昵称/头像比兜底更准
+  const name = String(extUser.nickName || extUser.nickname || '').trim() || topName;
+  const topAvatar = firstTextFrom(objects, [
     'avatar',
     'senderAvatar',
     'headImg',
@@ -331,7 +339,8 @@ function senderProfile(item: any, room: Member): SenderProfile {
     'userInfo.headImg',
     'message.avatar',
     'message.headImg',
-  ]) || deepFindText(objects, ['senderAvatar', 'avatar', 'headImg', 'headUrl'])); // 仅小头像字段，勿深扫 picPath 大图
+  ]) || deepFindText(objects, ['senderAvatar', 'avatar', 'headImg', 'headUrl']); // 仅小头像字段，勿深扫 picPath 大图
+  const avatar = normalizeUrl(String(extUser.avatar || '').trim() || topAvatar);
 
   return {
     id,
@@ -411,12 +420,14 @@ function userCardFromUserRes(res: any) {
   const star = content?.starInfo || content?.memberInfo || userInfo?.starInfo || {};
   const objs = [base, userInfo, star, content];
   const pick = (keys: string[]) => firstTextFrom(objs, keys);
-  // 关注态：home 返回 isFriend / relationship / friend（实测查自己 = false/0）
-  const relRaw = [base, content]
-    .map((o: any) => (o ? (o.relationship ?? o.relationType ?? o.relation) : undefined))
-    .find((v: any) => v !== undefined);
-  const isFriend = [base, content].some((o: any) => o?.isFriend === true || o?.friend === true || o?.following === true);
-  const following = isFriend || (Number(relRaw) || 0) > 0;
+  // 关注态：对齐桌面端 followed-chat-feature.js 的取值口径
+  //   relation / relationType / followStatus / friendStatus / isFollow / followed / isFriend
+  //     mutual|both|friend|friends|2|3 → 互相关注；true|followed|following|1 → 已关注
+  const relationValue = String(
+    pick(['relation', 'relationType', 'followStatus', 'friendStatus', 'isFollow', 'followed', 'isFriend', 'relationship']) || '',
+  ).trim().toLowerCase();
+  const mutual = ['mutual', 'both', 'friend', 'friends', '2', '3'].includes(relationValue);
+  const following = mutual || ['true', 'followed', 'following', '1'].includes(relationValue);
   return {
     name: pick(['nickName', 'nickname', 'userName', 'name', 'starName', 'realNickName', 'baseUserInfo.nickName']),
     avatar: normalizeUrl(pick(['avatar', 'avatarUrl', 'faceImage', 'headImg', 'headUrl', 'starAvatar'])),
@@ -426,6 +437,7 @@ function userCardFromUserRes(res: any) {
     period: pick(['periodName', 'period']),
     isStar: !!(star && (star.starName || star.starId)) || base?.isStar === true || base?.star === true,
     following,
+    mutual,
   };
 }
 
@@ -1313,6 +1325,8 @@ export default function FollowedRoomsScreen() {
     error: string;
     /** 关注态（口袋48 用户间可互相关注：friendships/friends/add|remove, toType=1） */
     following: boolean;
+    /** 互相关注（桌面端文案口径：mutual/both/friend/2/3） */
+    mutual: boolean;
     followBusy: boolean;
     /** 成员（含房主）走同一个资料卡界面，只是多加身份/队伍行 */
     isMember: boolean;
@@ -2331,6 +2345,7 @@ export default function FollowedRoomsScreen() {
         loading: candidates.length > 0,
         error: '',
         following: false,
+        mutual: false,
         followBusy: false,
         isMember: !!m,
         detail: {
@@ -2357,7 +2372,7 @@ export default function FollowedRoomsScreen() {
             // 合并而非覆盖：成员先用成员库填了队伍/成员标记，线上资料只补能拿到的字段
             setUserCard((c) =>
               c && userCardSeqRef.current === seq
-                ? { ...c, id, loading: false, error: '', following: detail.following, detail: { ...c.detail, ...detail } }
+                ? { ...c, id, loading: false, error: '', following: detail.following, mutual: detail.mutual, detail: { ...c.detail, ...detail } }
                 : c,
             );
             return;
@@ -2385,7 +2400,7 @@ export default function FollowedRoomsScreen() {
       try {
         if (next) await pocketApi.followMember(id);
         else await pocketApi.unfollowMember(id);
-        setUserCard((c) => (c && c.id === id ? { ...c, following: next, followBusy: false } : c));
+        setUserCard((c) => (c && c.id === id ? { ...c, following: next, mutual: next ? c.mutual : false, followBusy: false } : c));
         showToast(next ? t('已关注') : t('已取消关注'));
       } catch (err) {
         setUserCard((c) => (c && c.id === id ? { ...c, followBusy: false } : c));
@@ -2457,7 +2472,9 @@ export default function FollowedRoomsScreen() {
       const senderMember = senderId
         ? (members.find((m: any) => [m.id, m.userId, m.memberId].some((v) => String(v ?? '').trim() === senderId)) as Member | undefined)
         : undefined;
-      const isMemberSender = !!senderMember;
+      const isMemberSender = !!senderMember
+        // 兜底（桌面端语义 followed-chat-feature.js:4087）：ext.user.roleId > 1 即成员
+        || (Number((extraInfo(item) as any)?.user?.roleId ?? 0) || 0) > 1;
       // 成员发言头像：优先用 API（消息携带）的真实头像；成员库 avatar 多为公式照，仅兜底
       const profile = senderMember
         ? { id: senderMember.id, name: (msgProfile.name || '').trim() || senderMember.ownerName, avatar: msgProfile.avatar || senderMember.avatar }
@@ -2927,7 +2944,7 @@ export default function FollowedRoomsScreen() {
                       color={userCard?.following ? palette.labelSecondary : palette.onTint}
                     />
                     <Text style={[styles.userCardBtnText, { color: userCard?.following ? palette.labelSecondary : palette.onTint }]}>
-                      {userCard?.following ? t('已关注') : t('关注')}
+                      {userCard?.mutual ? t('互相关注') : userCard?.following ? t('已关注') : t('关注')}
                     </Text>
                   </ScalePressable>
                   <ScalePressable
