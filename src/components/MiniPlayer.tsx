@@ -249,6 +249,8 @@ export function MiniPlayer() {
           },
         ]}
       >
+        {/* 纯音频（上麦/电台）：媒体层全透明，只出声 —— 否则是一块黑，且不跟随深浅色主题 */}
+        <View pointerEvents="none" style={info.audioOnly ? [StyleSheet.absoluteFill, { opacity: 0 }] : StyleSheet.absoluteFill}>
         {useWebMini ? (
           <WebView
             ref={webMiniRef}
@@ -351,6 +353,7 @@ export function MiniPlayer() {
           }}
         />
         )}
+        </View>
         {errorMsg ? (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 8 }]} pointerEvents="none">
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#ff6b6b" />
