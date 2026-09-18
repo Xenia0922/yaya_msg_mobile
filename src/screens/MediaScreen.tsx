@@ -42,6 +42,7 @@ import { DanmakuOverlay } from '../components/DanmakuOverlay';
 import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
 import { useLiveBarrage } from '../hooks/useLiveBarrage';
 import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
+import DanmakuListSheet, { type DanmakuListEntry } from '../components/DanmakuListSheet';
 import { parseDanmaku, DanmakuItem } from '../utils/danmaku';
 import { memberSearchText } from '../utils/members';
 import { EmptyState } from '../components/StateViews';
@@ -753,6 +754,30 @@ export default function MediaScreen() {
   const [dateFilter, setDateFilter] = useState<Date | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showDanmakuSettings, setShowDanmakuSettings] = useState(false);
+  /**
+   * 弹幕列表抽屉（对齐桌面端弹幕时间轴面板）。
+   * 录播 = LRC 弹幕按时间升序（可点击跳转 + 跟随播放）；
+   * 直播 = 实时弹幕按最新在前（无时间轴，只做列表/搜索/按人筛选）。
+   */
+  const [showDanmakuList, setShowDanmakuList] = useState(false);
+  const danmakuListEntries = useMemo<DanmakuListEntry[]>(() => {
+    if (playing?.isLive) {
+      return liveBarrage.items.map((item) => ({
+        id: item.id,
+        time: 0,
+        nick: item.nick || '',
+        text: item.text || '',
+        kind: item.kind,
+      }));
+    }
+    // 录播：danmaku 由 parseDanmaku 保证按时间升序
+    return danmaku.map((item, index) => ({
+      id: `dm-${index}-${item.time}`,
+      time: item.time,
+      nick: item.nick || '',
+      text: item.text,
+    }));
+  }, [playing?.isLive, liveBarrage.items, danmaku]);
   const [moreVisible, setMoreVisible] = useState(false);
   // 播放器控制条（B站式沉浸：点击视频区显隐，播放中自动隐藏）
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -1591,6 +1616,7 @@ export default function MediaScreen() {
               { key: 'rank', icon: 'trophy', label: t('贡献榜'), onPress: () => openRankPanel() },
               ...((announceVisible && announcement) ? [{ key: 'announce', icon: 'bullhorn', label: t('公告'), active: announceExpanded, onPress: () => setAnnounceExpanded((v) => !v) }] : []),
               { key: 'danmaku', icon: 'cog', label: t('弹幕设置'), onPress: () => setShowDanmakuSettings(true) },
+              { key: 'danmakuList', icon: 'format-list-bulleted', label: t('弹幕列表'), active: showDanmakuList, onPress: () => setShowDanmakuList((v) => !v) },
               { key: 'pip', icon: 'picture-in-picture-bottom-right-outline', label: t('小窗'), onPress: handleMiniPlayer },
             ]}
             // 直播弹幕输入条：进播放器底坞（随控制条自动隐藏/呼出），不再单独叠一层 + 收起按钮
@@ -1614,6 +1640,20 @@ export default function MediaScreen() {
               visible={playerDanmakuOn && showDanmaku && !!playing}
               live={!!playing?.isLive}
               liveItems={playing?.isLive ? liveDanmakuItems : undefined}
+            />
+            {/* 弹幕列表抽屉（直播/录播通用）：列表 + 搜索 + 按发送者筛选 + 点击跳转 + 跟随播放 */}
+            <DanmakuListSheet
+              visible={showDanmakuList}
+              onClose={() => setShowDanmakuList(false)}
+              entries={danmakuListEntries}
+              currentTime={danmakuClock}
+              onSeek={playing?.isLive ? undefined : (sec) => usePlayerStore.getState().setSeekTarget(sec)}
+              live={!!playing?.isLive}
+              loading={
+                playing?.isLive
+                  ? liveBarrage.status === 'connecting' || liveBarrage.status === 'resolving'
+                  : false
+              }
             />
             {/* 直播弹幕输入条已并入播放器底坞（barrageInput），不再单独叠一层，也没有单独的收起按钮 */}
           </PlayerScreen>

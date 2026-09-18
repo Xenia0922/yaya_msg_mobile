@@ -563,6 +563,8 @@ export default function PrivateMessagesScreen() {
   /** 私信发图片（对齐桌面 handlePrivateMessageImageSelected）：选图 → 上传 pfile → 发 IMAGE 私信 */
   const pickAndSendImage = async () => {
     if (!sel) return;
+    // 对方是成员（成员库命中）→ 不支持发图（与 UI 隐藏图片按钮同一判定，双保险）
+    if (member) { showToast(t('成员私信不支持发送图片')); return; }
     if (flipType > 0) { showToast(t('翻牌模式不能发送图片')); return; }
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -933,18 +935,21 @@ export default function PrivateMessagesScreen() {
         <GlassSurface radius={20} role="card" style={[styles.inputBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
           {flipType > 0 ? <Text style={[styles.flipLabel, { color: palette.tint }]}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
-            {/* 发图片（翻牌模式下禁用 —— 桌面端同语义） */}
-            <ScalePressable
-              style={[styles.imgPickerBtn, { backgroundColor: palette.fill2 }]}
-              onPress={() => { void pickAndSendImage(); }}
-              disabled={loading || flipType > 0}
-            >
-              <MaterialCommunityIcons
-                name="image-plus"
-                size={19}
-                color={flipType > 0 ? palette.labelTertiary : palette.tint}
-              />
-            </ScalePressable>
+            {/* 发图片：对方是成员（成员库命中）时**隐藏** —— 成员私信只走翻牌/文字；
+                翻牌模式下禁用（桌面端同语义） */}
+            {member ? null : (
+              <ScalePressable
+                style={[styles.imgPickerBtn, { backgroundColor: palette.fill2 }]}
+                onPress={() => { void pickAndSendImage(); }}
+                disabled={loading || flipType > 0}
+              >
+                <MaterialCommunityIcons
+                  name="image-plus"
+                  size={19}
+                  color={flipType > 0 ? palette.labelTertiary : palette.tint}
+                />
+              </ScalePressable>
+            )}
             <TextInput
               style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, color: palette.label }]}
               placeholder={t('输入内容...')}

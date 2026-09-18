@@ -4,8 +4,10 @@ import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
 import { deleteRoomMessage, observeRoomMessages, sendRoomTextMessage, type RoomLiveMessage } from '../services/pocketNim/qchat';
+import { getNimSessionEpoch, subscribeNimSession } from '../services/pocketNim/session';
 import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
 import { useLiveBarrage } from '../hooks/useLiveBarrage';
+import DanmakuListSheet, { type DanmakuListEntry } from '../components/DanmakuListSheet';
 import { fetchMemberRadioUrl, isRtmpRadioUrl } from '../services/radio';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
@@ -1266,6 +1268,17 @@ export default function FollowedRoomsScreen() {
     bgOpacity.setValue(0);
   }, [roomMeta.bg, bgOpacity]);
   const activeChannelRef = useRef('');
+  /**
+   * 当前房间的「发言坐标」配对（channelId + serverId + 房主 id）。
+   * ⚠️ 发言必须整体取自这里，不能 activeChannelRef（新房间）配 selectedRoom（旧房间）：
+   * 切房那一瞬间两者不同步，拼出来的 serverId(旧)+channelId(新) 会把消息发到**错误的房间**
+   * ——用户反馈的「有概率发送错误信息」。
+   */
+  const activeRoomRef = useRef<{ channelId: string; serverId: string; memberId: string }>({
+    channelId: '',
+    serverId: '',
+    memberId: '',
+  });
   const roomSeqRef = useRef(0); // Y22: 进房序号（快速切房丢弃慢响应）
   const msgListRef = useRef<any>(null);
   // 大/小房间滑动位置【各自分开记忆】：key = channelId（大小房间 channelId 不同 → 天然分离），
@@ -1290,12 +1303,56 @@ export default function FollowedRoomsScreen() {
   // 实时刷新进行中标志：与 loadMore 互斥，避免两者同时 setRoomMessages 造成列表重排/滚动弹回
   const refreshingRef = useRef(false);
   const [currentUserId, setCurrentUserId] = useState('');
+  /**
+   * 云信会话世代：切号 / 换号后 +1。
+   * 换号后「我是谁」也变了 —— 旧的 currentUserId 会让自己的消息被判成别人
+   * （气泡左右、身份徽标全错），同时实时通道要按新账号重连。
+   */
+  const [nimEpoch, setNimEpoch] = useState(getNimSessionEpoch);
+  useEffect(
+    () =>
+      subscribeNimSession((epoch) => {
+        setNimEpoch(epoch);
+        setCurrentUserId('');
+      }),
+    [],
+  );
+  // 会话重置（切号）清空 currentUserId 后补拉一次：否则「自己的消息」判定没有 id，
+  // 房间里自己发的消息会被排到左侧（气泡方向/身份徽标全错）
+  useEffect(() => {
+    if (!selectedRoom || currentUserId) return;
+    let alive = true;
+    pocketApi
+      .getNimLoginInfo()
+      .then((res: any) => {
+        if (!alive) return;
+        const id = currentUserIdFrom(res);
+        if (id) setCurrentUserId(id);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [selectedRoom, currentUserId, nimEpoch]);
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
   const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
   // 直播弹幕：页面浮层 + 播放器底坞输入条共用同一条云信连接（避免重复建连）
   const roomBarrageLiveId = roomPlayer?.isLive && roomPlayer.liveId ? String(roomPlayer.liveId) : '';
   const roomBarrage = useLiveBarrage({ liveId: roomBarrageLiveId, enabled: !!roomBarrageLiveId, module: 'live' });
+  /** 弹幕列表抽屉（房间内直播弹幕）：与飘屏/输入条共用同一条云信连接的数据 */
+  const [showRoomDanmakuList, setShowRoomDanmakuList] = useState(false);
+  const roomDanmakuEntries = useMemo<DanmakuListEntry[]>(
+    () =>
+      roomBarrage.items.map((item) => ({
+        id: item.id,
+        time: 0,
+        nick: item.nick || '',
+        text: item.text || '',
+        kind: item.kind,
+      })),
+    [roomBarrage.items],
+  );
   // 房间发言（云信圈组）：草稿 + 发送中 + 错误提示
   const [roomDraft, setRoomDraft] = useState('');
   const [roomSending, setRoomSending] = useState(false);
@@ -1477,7 +1534,9 @@ export default function FollowedRoomsScreen() {
   const handleSendRoomMessage = useCallback(async () => {
     const text = roomDraft.trim();
     if (!text || roomSending) return;
-    const channelId = activeChannelRef.current;
+    // 发送坐标整体取自 activeRoomRef（channelId 与 serverId 配对的唯一来源）
+    const target = activeRoomRef.current;
+    const channelId = target.channelId;
     if (!channelId) {
       setRoomSendHint(t('房间未就绪'));
       return;
@@ -1486,7 +1545,7 @@ export default function FollowedRoomsScreen() {
     setRoomSendHint('');
     try {
       // 圈组发送必须带 serverId：成员库缺失时先按 channelId 解析（否则云信返回 414 参数错误）
-      let serverId = String((selectedRoom as any)?.serverId || '');
+      let serverId = target.serverId;
       if (!serverId || serverId === '0') {
         serverId = await pocketApi.resolveRoomServerId(channelId).catch(() => '');
       }
@@ -1500,7 +1559,7 @@ export default function FollowedRoomsScreen() {
     } finally {
       setRoomSending(false);
     }
-  }, [roomDraft, roomSending, selectedRoom, t]);
+  }, [roomDraft, roomSending, t]);
 
   const handleRoomMiniPlayer = useCallback(() => {
     const cur = roomPlayer;
@@ -1539,6 +1598,9 @@ export default function FollowedRoomsScreen() {
     setSelectedRoom(null);
     setRoomMeta({ name: '', bg: '' });
     activeChannelRef.current = '';
+    activeRoomRef.current = { channelId: '', serverId: '', memberId: '' };
+    setRoomDraft('');
+    setRoomSendHint('');
     setLiveImmersiveMode(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     setTabBarHidden(false);
@@ -1756,13 +1818,25 @@ export default function FollowedRoomsScreen() {
     const openSeq = ++roomSeqRef.current;
     const channelChanged = activeChannelRef.current !== channelId;
     activeChannelRef.current = channelId;
+    // 发送坐标同步刷新（与 channelId 同一事务，保证 serverId 与 channelId 永远配对）
+    activeRoomRef.current = {
+      channelId,
+      serverId: String((room as any).serverId || ''),
+      memberId: String(room.id || ''),
+    };
     // internal：同房间内切换大/小房间或成员/粉丝发言（同一成员、同一背景）。
     // 不清 meta、不进骨架，上一帧消息直接被新数据覆盖 → 标题/背景秒切、无割裂（fix7 回归修复点）。
     // enter：从列表点成员进入房间（跨成员/跨房间），保留骨架隔离旧房间残留 + 清 meta 让本地缓存瞬时显示。
     if (mode === 'internal') {
       // 同房间内切换：不清 meta、不进骨架 —— 标题/背景秒切、无割裂（fix7 回归修复点）
     } else {
-      if (channelChanged) setRoomMeta({ name: '', bg: '' });
+      if (channelChanged) {
+        setRoomMeta({ name: '', bg: '' });
+        // 跨房间：清掉上一房间的草稿与错误提示 —— 否则草稿会跟着进新房间，
+        // 一点发送就把给 A 房间的话发到了 B 房间（「发送错误信息」的另一条路径）
+        setRoomDraft('');
+        setRoomSendHint('');
+      }
     }
     setRoomSearchQuery('');
     setPlayingMedia(null);
@@ -1986,7 +2060,7 @@ export default function FollowedRoomsScreen() {
       disposed = true;
       if (unsubscribe) unsubscribe();
     };
-  }, [selectedRoom]);
+  }, [selectedRoom, nimEpoch]);
 
   /** 直播解析并开播（占位式）：点击即反馈，出地址后无缝换正式播放器 */
   const resolveLiveAndOpen = useCallback(async (media: RoomMedia) => {
@@ -2756,6 +2830,9 @@ export default function FollowedRoomsScreen() {
                 ...(roomPlayer.isLive
                   ? [{ key: 'gift', icon: 'gift', label: t('礼物'), onPress: () => openRoomGiftPanel() }]
                   : []),
+                ...(roomPlayer.isLive
+                  ? [{ key: 'danmakuList', icon: 'format-list-bulleted', label: t('弹幕列表'), active: showRoomDanmakuList, onPress: () => setShowRoomDanmakuList((v) => !v) }]
+                  : []),
                 { key: 'pip', icon: 'picture-in-picture-bottom-right-outline', label: t('小窗'), onPress: handleRoomMiniPlayer },
                 { key: 'rank', icon: 'trophy', label: t('贡献榜'), onPress: openRoomRankPanel },
               ]}
@@ -2764,7 +2841,16 @@ export default function FollowedRoomsScreen() {
               ) : undefined}
               onClose={closeRoomPlayer}
               persistent
-            />
+            >
+              {/* 弹幕列表抽屉：房间直播弹幕（列表 + 搜索 + 按发送者筛选） */}
+              <DanmakuListSheet
+                visible={showRoomDanmakuList}
+                onClose={() => setShowRoomDanmakuList(false)}
+                entries={roomDanmakuEntries}
+                live
+                loading={roomBarrage.status === 'connecting' || roomBarrage.status === 'resolving'}
+              />
+            </PlayerScreen>
             <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
               <View style={styles.roomModalShade}>
                 <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>

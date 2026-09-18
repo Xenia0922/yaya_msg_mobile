@@ -7,17 +7,47 @@
 
 import pocketApi from '../../api/pocket48';
 import { getSetting } from '../settings';
+import { useSettingsStore } from '../../store';
+import { logInfo } from '../../utils/runtimeLog';
 import { credentialsToProfile, normalizeCredentials } from './runtime';
 import { NimCredentials, NimSelfProfile } from './types';
 
 let cached: NimCredentials | null = null;
 let inflight: Promise<NimCredentials | null> | null = null;
+/**
+ * 缓存凭证对应的口袋 token。
+ * 切号（switchBigSmall）/ 重新登录后 token 变了，但缓存里的 accid/token 还是旧号的
+ * —— 若不清掉，接下来所有云信操作（弹幕 / 房间消息）都会用**旧身份**发出，
+ * 且新旧 accid 不匹配还可能连不上房间（用户反馈的核心问题）。
+ * 这里做一层自愈：token 变化即视为凭证过期。
+ */
+let cachedToken = '';
+
+/** 自身资料（发送身份）缓存：与凭证同源，换号必须一起作废 */
+let selfProfileCache: NimSelfProfile | null = null;
+let selfProfileInflight: Promise<NimSelfProfile | null> | null = null;
+
+/** 当前口袋 token（切号的唯一权威源与其一致） */
+function currentPocketToken(): string {
+  try {
+    return String(useSettingsStore.getState().settings.p48Token || '');
+  } catch {
+    return '';
+  }
+}
 
 export function peekNimCredentials(): NimCredentials | null {
   return cached;
 }
 
 export async function loadNimCredentials(force = false): Promise<NimCredentials | null> {
+  const tokenNow = currentPocketToken();
+  // token 变了（切号/换号/重新登录）→ 缓存凭证与自身资料一律作废，重取
+  if (cached && tokenNow && cachedToken !== tokenNow) {
+    logInfo('[nim] 检测到口袋 token 变化，云信凭证缓存作废并重取', 'nim');
+    cached = null;
+    selfProfileCache = null;
+  }
   if (!force && cached) return cached;
   if (!force && inflight) return inflight;
   inflight = (async () => {
@@ -34,7 +64,10 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
       } catch {
         /* 诊断失败忽略 */
       }
-      if (creds) cached = creds;
+      if (creds) {
+        cached = creds;
+        cachedToken = currentPocketToken();
+      }
       return creds;
     } catch {
       return null;
@@ -45,11 +78,7 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
   return inflight;
 }
 
-let selfProfileCache: NimSelfProfile | null = null;
-let selfProfileInflight: Promise<NimSelfProfile | null> | null = null;
-
-/** 相对路径头像 → source.48.cn 绝对地址（App 内同款惯例） */
-function absAvatar(a: string): string {
+/** 相对路径头像 → source.48.cn 绝对地址（App 内同款惯例） */function absAvatar(a: string): string {
   const v = String(a || '').trim();
   if (!v) return '';
   if (/^https?:\/\//i.test(v)) return v;
@@ -127,6 +156,15 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
   return selfProfileInflight;
 }
 
+/**
+ * 清空云信会话缓存（切号/登出）。
+ * ⚠️ 必须连自身资料缓存一起清：只清 cached 的话，新号资料字段缺失时
+ *    resolveSelfProfile 会回落到旧号的 selfProfileCache → 用旧号的昵称/头像/等级发言。
+ */
 export function clearNimCredentials(): void {
   cached = null;
+  cachedToken = '';
+  selfProfileCache = null;
+  selfProfileInflight = null;
+  inflight = null;
 }

@@ -58,6 +58,10 @@ interface OnMicState {
 
 /** 两次扫描周期之间的最小间隔（毫秒） */
 const SCAN_INTERVAL = 60 * 1000;
+/** 单轮扫描的看门狗上限：超过视为卡死（异常路径漏复位），下次扫描前强制复位 */
+const SCAN_STUCK_MS = 90 * 1000;
+/** 当前轮扫描开始时间（看门狗用；不走 state，避免多余的渲染） */
+let scanStartedAt = 0;
 /** 非强制扫描每轮预算：最多探测 1/3 成员（至少 40 位），最久未探测的优先，约 3 轮全量覆盖 */
 const BUDGET_MIN = 40;
 /** 并发探测数 + 每请求间隔：对齐桌面端 room-radio-feature.js（ROOM_RADIO_SCAN_CONCURRENCY=24 / GAP=20ms） */
@@ -134,14 +138,25 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
   snapshotAgeMs: undefined,
   scan: async (allMembers, opts = {}) => {
     if (!allMembers || allMembers.length === 0) return;
-    if (get().scanning) return;
-    // 立即置位防重入：下方 await 读快照期间若仍为 false，两个并发调用都能通过检查 → 双扫描
-    set({ scanning: true });
-    // 节流：距上次扫描不足 SCAN_INTERVAL 时跳过（除非 force 强制刷新）
+    // ⚠️【扫描死锁修复】节流必须在 set({scanning:true}) 之前判断并返回。
+    // 旧写法先置 scanning 再判节流，节流 return 时 scanning 留在 true 且无人复位 →
+    // 之后的每次扫描（含头部「刷新」以外的自动刷新）都被 if (get().scanning) return 拦死，
+    // 页面永久停「扫描中…」、一位成员都扫不出来。上麦页 60s 定时器与 SCAN_INTERVAL 同为 60s，
+    // 极易命中该窗口 → 表现为「有概率扫不出来 / 偶尔一直转圈」。
     const last = get().lastScan;
-    if (!opts.force && last && Date.now() - last < SCAN_INTERVAL) {
-      return;
+    if (!opts.force && last && Date.now() - last < SCAN_INTERVAL) return;
+    // 看门狗：旧版本可能已把 scanning 卡在 true（进程内状态），超时后强制复位，避免永久卡死
+    if (get().scanning) {
+      if (Date.now() - scanStartedAt > SCAN_STUCK_MS) {
+        logWarn(`[onMic] 上次扫描疑似卡死（${Math.round((Date.now() - scanStartedAt) / 1000)}s），强制复位后重扫`, 'onMic');
+        set({ scanning: false });
+      } else {
+        return;
+      }
     }
+    // 立即置位防重入：下方 await 读快照期间若仍为 false，两个并发调用都能通过检查 → 双扫描
+    scanStartedAt = Date.now();
+    set({ scanning: true });
     // 冷启动：先恢复上麦快照（仅首次），页面秒显旧数据
     if (!snapshotHydrated) {
       snapshotHydrated = true;
@@ -213,6 +228,21 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
 
       let cursor = 0;
       let sampleLogged = false;
+      /**
+       * 进度节流：扫描一轮可达上千个任务，若每个任务都 setState，
+       * 上麦页会以每秒上百次重渲染（滚动卡顿、看起来像「卡死转圈」）。
+       * 这里只在跨过 8 个任务或 250ms 时更新一次进度。
+       */
+      let pendingDone = 0;
+      let lastFlush = Date.now();
+      const flushDone = (force = false) => {
+        if (!pendingDone) return;
+        if (!force && pendingDone < 8 && Date.now() - lastFlush < 250) return;
+        const step = pendingDone;
+        pendingDone = 0;
+        lastFlush = Date.now();
+        set((snap) => ({ done: snap.done + step }));
+      };
       const worker = async () => {
         while (cursor < queue.length) {
           const t = queue[cursor++];
@@ -260,13 +290,15 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
             st.failed += 1;
           } finally {
             probedAt[t.memberId] = Date.now();
-            set((snap) => ({ done: snap.done + 1 }));
+            pendingDone += 1;
+            flushDone();
             if (cursor < queue.length) await sleep(REQUEST_GAP_MS);
           }
         }
       };
       const workers = Array.from({ length: Math.min(SCAN_CONCURRENCY, queue.length) }, () => worker());
       await Promise.all(workers);
+      flushDone(true);
       // 仅移除「全部任务成功且都没有流」的成员；失败/部分成功的保留旧状态
       stat.forEach((v, id) => {
         if (v.failed === 0 && v.done >= v.total && !v.onAir) removable.add(id);
