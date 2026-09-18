@@ -16,7 +16,7 @@ import {
   View,
 } from 'react-native';
 import PlayerScreen from '../player';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
@@ -411,11 +411,23 @@ export default function PrivateMessagesScreen() {
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current); }, []);
 
+  /**
+   * 对方是不是「成员」：**只有命中成员库才算**（房主/其他成员）。
+   * ⚠️ id 为空必须直接 null —— 否则 `String(m.userId) === ''` 会匹配到 userId 为空的成员记录，
+   *    粉丝会话被误判成成员 → 错误地显示翻牌条（用户要求：非成员不显示翻牌）。
+   */
+  const selTargetId = String(sel ? convTargetId(sel) : '').trim();
   const member = useMemo(() => {
-    if (!sel) return null;
-    const id = convTargetId(sel);
-    return members.find((m: any) => String(m.id) === id || String(m.userId) === id || String(m.memberId) === id) || null;
-  }, [members, sel]);
+    if (!selTargetId) return null;
+    return (
+      members.find((m: any) =>
+        [m?.id, m?.userId, m?.memberId].some((v) => {
+          const s = String(v ?? '').trim();
+          return !!s && s === selTargetId;
+        }),
+      ) || null
+    );
+  }, [members, selTargetId]);
 
   useEffect(() => { loadConvs(); }, []);
 
@@ -528,6 +540,22 @@ export default function PrivateMessagesScreen() {
     } catch (e) { showToast(t('历史加载失败：{msg}', { msg: errorMessage(e) })); }
     finally { setLoading(false); }
   };
+
+  /**
+   * 带 targetUserId 直接进会话（房间点粉丝头像 → 用户资料卡「私信」）。
+   * 不依赖会话列表里已存在该会话：直接构造最小会话打开。
+   * 对方不在成员库 → member 为 null → 不显示翻牌条（纯私信会话）。
+   */
+  const route = useRoute<any>();
+  const initialRouteTargetRef = useRef('');
+  const routeTargetId = String(route?.params?.targetUserId || '').trim();
+  const routeTargetName = String(route?.params?.targetName || '');
+  useEffect(() => {
+    if (!routeTargetId || initialRouteTargetRef.current === routeTargetId) return;
+    initialRouteTargetRef.current = routeTargetId;
+    void openConv({ targetUserId: routeTargetId, user: { userId: routeTargetId, nickname: routeTargetName } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeTargetId]);
 
   const doSend = async (override?: string) => {
     const txt = String(override ?? text).trim();
