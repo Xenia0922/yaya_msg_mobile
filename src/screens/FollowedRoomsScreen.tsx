@@ -2740,6 +2740,7 @@ export default function FollowedRoomsScreen() {
             liveId={roomBarrageLiveId}
             module="live"
             height={128}
+            hideInput
             style={styles.roomBarrageBoard}
           />
         ) : null}
