@@ -445,7 +445,7 @@ function rememberServerId(channelId: string, serverId: string) {
 }
 
 async function tryPocketPost(
-  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; signed?: boolean; label: string }>,
+  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; signed?: boolean; headers?: HeadersMap; label: string }>,
   fallback: string,
 ) {
   const errors: string[] = [];
@@ -455,6 +455,7 @@ async function tryPocketPost(
         modern: attempt.modern,
         tokenRequired: attempt.tokenRequired,
         signed: attempt.signed,
+        headers: attempt.headers,
         fallback: `${fallback}: ${attempt.label}`,
       });
       return {
@@ -657,31 +658,29 @@ export const pocketApi = {
   },
 
   async getUserProfile(userId: string) {
-    const id = String(userId || '');
-    if (!id) throw new Error('missing userId');
+    const id = Number(String(userId || '').trim());
+    if (!Number.isFinite(id) || id <= 0) throw new Error('missing userId');
+    // 桌面端（pocket-service.fetchUserHomeInfo）已验证可用的写法：
+    //   POST /user/api/v1/user/info/home  body { userId: <number> }  + **Android 头**
+    // 之前移动端用 iOS/modern 头 + 字符串 userId 依次试 info/detail/home，服务端全部
+    // 返回「No message available」（404）→ 资料卡只显示出错文本（用户反馈加载不出来）。
     return tryPocketPost([
       {
-        url: `${BASE}/user/api/v1/user/info`,
+        url: `${BASE}/user/api/v1/user/info/home`,
+        payload: { userId: id },
+        headers: createPocketAndroidHeaders(),
+        label: 'user home',
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/home`,
         payload: { userId: id },
         modern: true,
-        label: 'user info userId',
+        label: 'user home(ios)',
       },
       {
         url: `${BASE}/user/api/v1/user/info`,
-        payload: { id },
-        label: 'user info id',
-      },
-      {
-        url: `${BASE}/user/api/v1/user/detail`,
         payload: { userId: id },
-        modern: true,
-        label: 'user detail userId',
-      },
-      {
-        url: `${BASE}/user/api/v1/user/home`,
-        payload: { userId: id },
-        modern: true,
-        label: 'user home userId',
+        label: 'user info',
       },
     ], 'get user profile failed');
   },

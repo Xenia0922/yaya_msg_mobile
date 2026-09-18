@@ -34,9 +34,9 @@ import { getPlayerHtml } from './media/player';
 const W = 180;
 /** 高度按内容比例计算（竖屏内容窄条 -> 高条；横屏内容 16:9） */
 const H_MIN = 104;
-/** 纯音频（上麦/电台）小胶囊尺寸：宽而扁的 pill（用户要求「加宽缩短」） */
-const CAPSULE_W = 236;
-const CAPSULE_H = 30;
+/** 纯音频（上麦/电台）小胶囊尺寸：**更窄更高**的圆角 pill（用户要求「缩短加高」） */
+const CAPSULE_W = 180;
+const CAPSULE_H = 44;
 /** 小窗缩放档位：1 = 默认，1.18 = 放大，0.74 = 缩小（循环切换） */
 const SCALE_SMALL = 0.74;
 const SCALE_LARGE = 1.18;
@@ -383,9 +383,13 @@ export function MiniPlayer() {
             <Text style={{ color: '#fff', fontSize: 10, marginTop: 4, textAlign: 'center' }}>{errorMsg}</Text>
           </View>
         ) : null}
-        {/* 透明拖动/点击层：elevation 让此 JS 层盖过 Android SurfaceView 接收触摸（否则 Video 消费触摸无法拖动） */}
+        {/* 透明拖动/点击层：elevation 让此 JS 层盖过 Android SurfaceView 接收触摸（否则 Video 消费触摸无法拖动）。
+            ⚠️ 胶囊（audioOnly）把它设为 pointerEvents="none" 且**不挂 panHandlers** ——
+            拖动交给下方按钮层（见按钮层的 pan.panHandlers），否则触摸被这层截住、
+            而按钮行里的文字又挡住胶囊内的触摸，就会出现「拖动判定区域不对应」。 */}
         <Animated.View
-          {...pan.panHandlers}
+          {...(!info.audioOnly ? pan.panHandlers : {})}
+          pointerEvents={info.audioOnly ? 'none' : 'auto'}
           style={styles.dragLayer}
         />
         {/* 底部标题（随控件显隐；PiP 盖层时隐藏，保证悬浮窗纯画面） */}
@@ -399,6 +403,10 @@ export function MiniPlayer() {
       {/* 按钮层：返回全屏/关闭/缩小/暂停 全部随控件显隐（3s 自动隐藏，点画面唤出） */}
       <Animated.View
         pointerEvents={pipCover ? 'none' : 'box-none'}
+        /* 胶囊的拖动/点按由这一层承担（它铺满整颗胶囊且是胶囊 UI 的父链，
+           文字/按钮之外的地方触摸都会冒泡到这里 → PanResponder 能收到；
+           子级 TouchableOpacity 优先响应，所以按钮照常可点）。 */
+        {...(!pipCover && info.audioOnly ? pan.panHandlers : {})}
         style={[
           StyleSheet.absoluteFill,
           pipCover
