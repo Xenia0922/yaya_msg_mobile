@@ -713,11 +713,13 @@ export const pocketApi = {
   },
 
   async followMember(memberId: string) {
-    return pocketPost(`${BASE}/user/api/v2/friendships/friends/add`, { toSourceId: safeNumber(memberId), toType: 1 }, { fallback: '关注失败' });
+    // 对齐桌面端 pocket-runtime.followMember：v2/friendships/friends/add + { toSourceId:<number>, toType:1 }
+    // + **P-Sign-Type: V0** 头（createFriendshipHeaders 同款），否则可能被判签名类型不符
+    return pocketPost(`${BASE}/user/api/v2/friendships/friends/add`, { toSourceId: safeNumber(memberId), toType: 1 }, { headers: createCheckinHeaders(), fallback: '关注失败' });
   },
 
   async unfollowMember(memberId: string) {
-    return pocketPost(`${BASE}/user/api/v2/friendships/friends/remove`, { toSourceId: safeNumber(memberId), toType: 1 }, { fallback: '取消关注失败' });
+    return pocketPost(`${BASE}/user/api/v2/friendships/friends/remove`, { toSourceId: safeNumber(memberId), toType: 1 }, { headers: createCheckinHeaders(), fallback: '取消关注失败' });
   },
 
   async getLastMessages(serverIdList: number[]) {
