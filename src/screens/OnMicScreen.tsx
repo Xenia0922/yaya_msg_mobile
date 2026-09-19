@@ -106,10 +106,17 @@ export default function OnMicScreen() {
           })}
           activeOpacity={0.9}
         >
-          <GlassSurface
-            radius={20}
-            role="card"
-            style={[styles.row, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+          {/* 列表逐卡不用玻璃：滚动时每帧都要重算模糊 → 掉帧（全站铁律）。
+              与直播/录播网格、房间列表同款做法：实底圆角 + hairline 描边 */}
+          <View
+            style={[
+              styles.row,
+              {
+                backgroundColor: palette.surfaceGlassStrong,
+                borderColor: palette.hairline,
+                borderWidth: StyleSheet.hairlineWidth,
+              },
+            ]}
           >
           {member?.avatar ? (
             <Image source={{ uri: member.avatar }} style={styles.avatar} />
@@ -135,14 +142,17 @@ export default function OnMicScreen() {
             </View>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
-          </GlassSurface>
+          </View>
         </TouchableOpacity>
       </FadeInView>
     );
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    // 背景：与全站其它页面一致走「透明容器 + 根层 PageBackdrop 渐变」——
+    // 此前这里画了不透明 palette.background，成为全项目唯一一个盖住全局底衬的页面，
+    // 导致上麦页背景与其它页不一致、且页内玻璃卡失去透光来源（用户反馈的「上麦页背景」问题）
+    <View style={[styles.container, { backgroundColor: 'transparent' }]}>
       <ScreenHeader
         title={t('上麦')}
         // 手动强制重扫（绕过 store 的 60s 节流 + 预算制增量）：解决「有概率扫不出来」
@@ -195,7 +205,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: 20,
     padding: 12,
   },
   avatar: {

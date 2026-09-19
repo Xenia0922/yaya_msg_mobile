@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import pocketApi from '../api/pocket48';
 import { LiveChatroom, type ChatroomStatus } from '../services/pocketNim/chatroom';
 import { loadNimCredentials, loadSelfProfile } from '../services/pocketNim/credentials';
+import { getNimSessionEpoch, subscribeNimSession } from '../services/pocketNim/session';
 import { BarrageItem } from '../services/pocketNim/types';
 
 /** 弹幕列表上限（超出丢弃最旧的，避免长时间挂直播间内存膨胀） */
@@ -42,6 +43,13 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
   const [status, setStatus] = useState<ChatroomStatus | 'idle' | 'resolving'>('idle');
   const [error, setError] = useState('');
   const [retryToken, setRetryToken] = useState(0);
+  /**
+   * 云信会话世代：切号 / 换号后 +1。
+   * 连接是用「当时的账号凭证」建立的，换代后必须整条重连
+   * （否则新号身份发弹幕会被告知无权限，或仍以旧号身份发出）。
+   */
+  const [sessionEpoch, setSessionEpoch] = useState(getNimSessionEpoch);
+  useEffect(() => subscribeNimSession(setSessionEpoch), []);
 
   const chatroomRef = useRef<LiveChatroom | null>(null);
   const seqRef = useRef(0);
@@ -128,7 +136,7 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
       chatroomRef.current = null;
       instance?.dispose();
     };
-  }, [liveId, enabled, module, retryToken]);
+  }, [liveId, enabled, module, retryToken, sessionEpoch]);
 
   const send = useCallback(async (text: string) => {
     const instance = chatroomRef.current;

@@ -33,6 +33,7 @@ import {
 import { loadSelfProfile } from './credentials';
 import { loadNimCredentials } from './credentials';
 import { credentialsToProfile } from './runtime';
+import { logWarn } from '../../utils/runtimeLog';
 import { NimModule, NimMsgType } from './types';
 import type { NimSelfProfile } from './types';
 
@@ -54,11 +55,59 @@ let loggedInAccid = '';
 /** 原生 commonlink QChat 登录（幂等） */
 let qchatNativeLogins = new Map<string, Promise<void>>();
 let qchatNativeAccid = '';
+/**
+ * 原生连接实时状态（来自 PocketNimQChat:status）。
+ * ⚠️ 只比对 accid 不足以判断「还连着」：网络切换 / 被服务端踢 / 进程内 TCP 半开时
+ * accid 不变，旧逻辑会直接 return 而**不重连** → 用户反馈的「有概率连不上房间」+ 发送失败。
+ */
+let qchatLiveState = 'idle';
+let qchatStatusWatched = false;
+/** 房间消息订阅引用计数：多个组件共用同一条原生连接，最后一个退订才允许断开 */
+let observeRefCount = 0;
 
-async function ensureQChatNativeLogin(): Promise<void> {
+function watchQChatStatus(): void {
+  if (qchatStatusWatched) return;
+  qchatStatusWatched = true;
+  try {
+    onQChatStatus((status) => {
+      qchatLiveState = status.state || 'idle';
+      if (qchatLiveState === 'disconnected' || qchatLiveState === 'error') {
+        // 连接已死 → 复位登录态，下次发送/进房重新连接
+        qchatNativeAccid = '';
+      }
+    });
+  } catch {
+    /* 事件不可用：退化为纯 accid 判定 */
+  }
+}
+
+/**
+ * 重置圈组会话（切号 / 登出）。断开原生连接并清掉登录态与在途登录，
+ * 使下一次发送/订阅按**新账号**重新连接。
+ */
+export function resetQChatSession(reason = ''): void {
+  loggedInAccid = '';
+  qchatNativeAccid = '';
+  qchatLiveState = 'idle';
+  qchatNativeLogins = new Map();
+  observeRefCount = 0;
+  try {
+    qchatDisconnect();
+  } catch {
+    /* 忽略 */
+  }
+  // eslint-disable-next-line no-console
+  console.log('[nim] qchat session reset', reason ? `(${reason})` : '');
+}
+
+async function ensureQChatNativeLogin(force = false): Promise<void> {
+  watchQChatStatus();
   const creds = await loadNimCredentials();
   if (!creds) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
-  if (qchatNativeAccid === creds.accid) return;
+  // 已连接（accid 一致且原生未报断连）→ 复用；force = 发送失败后的强制重连
+  if (!force && qchatNativeAccid === creds.accid && qchatLiveState !== 'disconnected' && qchatLiveState !== 'error') {
+    return;
+  }
   const existing = qchatNativeLogins.get(creds.accid);
   if (existing) return existing;
   const task: Promise<void> = (async () => {
@@ -66,6 +115,7 @@ async function ensureQChatNativeLogin(): Promise<void> {
     console.log('[nim] native qchat connect account =', creds.accid);
     await qchatConnect(pocketImAppKeyCompat(), creds.accid, creds.token);
     qchatNativeAccid = creds.accid;
+    qchatLiveState = 'connected';
     // eslint-disable-next-line no-console
     console.log('[nim] native qchat CONNECTED');
   })();
@@ -153,7 +203,16 @@ export async function sendRoomTextMessage(target: RoomMessageTarget, text: strin
   console.log('[nim] qchat send ext =', ext.slice(0, 400));
   if (isPocketNimQChatAvailable()) {
     await ensureQChatNativeLogin();
-    await qchatSend(String(serverId), String(channelId), content, ext);
+    try {
+      await qchatSend(String(serverId), String(channelId), content, ext);
+    } catch (error: any) {
+      // 发送失败最常见的原因是连接已死（TCP 半开 / 被服务端踢 / 刚切过号）：
+      // 强制重连一次再发，避免用户看到「发送失败」而其实只是连接需要重建
+      // （即用户反馈的「有概率连不上房间 / 发送出错」）。
+      logWarn(`[nim] qchat 发送失败，重连后重试：${String(error?.message || error || '')}`, 'nim');
+      await ensureQChatNativeLogin(true);
+      await qchatSend(String(serverId), String(channelId), content, ext);
+    }
     return;
   }
   await ensureLogin();
@@ -228,6 +287,7 @@ export async function observeRoomMessages(
     } catch {
       return () => undefined;
     }
+    observeRefCount += 1;
     const off = onQChatMessage((message) => {
       let ext: Record<string, any> = {};
       try {
@@ -252,10 +312,17 @@ export async function observeRoomMessages(
     });
     return () => {
       off();
-      try { qchatDisconnect(); } catch { /* 忽略 */ }
-      // ⚠️ 断开后必须复位登录态：否则下次 ensureQChatNativeLogin 见 accid 相同会直接 return，
-      // 不会真正重连 → 房间消息通道「只能连接/发送一次」（用户反馈）。点进房间/点输入框即触发重连。
-      qchatNativeAccid = '';
+      // ⚠️ 引用计数：房间页与其它调用方共用同一条原生连接，
+      // 任一方退订就 disconnect 会把另一方的连接一起掐掉
+      // （症状：切页/退出再进后收不到实时消息、发送失败）。
+      observeRefCount = Math.max(0, observeRefCount - 1);
+      if (observeRefCount === 0) {
+        try { qchatDisconnect(); } catch { /* 忽略 */ }
+        // 断开后必须复位登录态：否则下次 ensureQChatNativeLogin 见 accid 相同会直接 return，
+        // 不会真正重连 → 房间消息通道「只能连接/发送一次」。点进房间/点输入框即触发重连。
+        qchatNativeAccid = '';
+        qchatLiveState = 'idle';
+      }
     };
   }
   if (!isPocketImAvailable()) return () => undefined;

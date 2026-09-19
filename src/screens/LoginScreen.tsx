@@ -21,6 +21,7 @@ import { ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
 import { saveSettings } from '../services/settings';
+import { resetNimSession } from '../services/pocketNim';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, pickText } from '../utils/data';
@@ -230,6 +231,9 @@ export default function LoginScreen() {
     try {
       setSettings({ p48Token: clean });
       await saveSettings({ p48Token: clean });
+      // 账号变了 → 立即重置云信会话（凭证/自身资料/QChat·聊天室登录态 + 原生连接）。
+      // 否则切号后短时间内：弹幕与房间消息仍带旧号身份、且新旧 accid 不匹配导致连不上房间。
+      resetNimSession('切换/保存口袋账号');
       setManualToken(clean);
       setStatus(message);
     } catch (error: any) {

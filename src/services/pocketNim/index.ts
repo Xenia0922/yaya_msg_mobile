@@ -15,3 +15,4 @@ export * from './runtime';
 export * from './chatroom';
 export * from './credentials';
 export * from './qchat';
+export * from './session';
