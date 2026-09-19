@@ -65,8 +65,16 @@ export interface DanmakuListSheetProps {
   onOpenProfile?: (entry: DanmakuListEntry) => void;
 }
 
-/** 固定行高（getItemLayout 精确滚动依赖它） */
-const ROW_H = 44;
+/**
+ * 固定行高（getItemLayout 精确滚动依赖它）。
+ *
+ * ⚠️ 历史坑：两行文本时行高 44 = 18×2 + padding 4×2，**刚好顶满、零余量**，
+ * 系统字体缩放稍大就溢出 44 → getItemLayout 仍按 44 步进 → 文字看着被切掉。
+ * 现按用户要求改**单行**（超出省略号），行高回到紧凑档并留出余量。
+ */
+const ROW_H = 40;
+/** 行内文本最多显示行数：单行 + 省略号（列表保持紧凑、不易错位） */
+const ROW_LINES = 1;
 /** 发送者榜最多展示的发送者数 */
 const USER_TOP = 60;
 const FOLLOW_KEY = 'yaya_danmu_list_follow_v1';
@@ -256,7 +264,7 @@ export function DanmakuListSheet({
           {live ? null : (
             <Text style={[styles.time, isActive && { color: '#FF6FA5' }]}>{fmtTime(item.time)}</Text>
           )}
-          <Text style={styles.rowText} numberOfLines={2}>
+          <Text style={styles.rowText} numberOfLines={ROW_LINES}>
             <Text
               style={[styles.nick, accent ? { color: accent } : null]}
               onPress={(e) => {
@@ -489,7 +497,9 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: ROW_H,
+    // 固定高度（不用 minHeight）：getItemLayout 按 ROW_H 预测，实际行高必须严格等于它，
+    // 否则滚动条位置与内容会逐渐错位（minHeight 在字体放大时会突破 ROW_H）
+    height: ROW_H,
     paddingHorizontal: 14,
     paddingVertical: 4,
   },

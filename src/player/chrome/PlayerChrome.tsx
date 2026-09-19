@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, GestureResponderEvent, Modal, PanResponder, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, GestureResponderEvent, Keyboard, Modal, PanResponder, Platform, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { usePlayerStore } from '../store/playerStore';
@@ -62,6 +62,26 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   const { width: screenW } = useWindowDimensions();
   // 安全区：顶栏保留「系统通知栏」冗余（避免弹幕/标题压到状态栏），底坞避开手势导航条
   const insets = useSafeAreaInsets();
+  /**
+   * 软键盘高度（仅 Android 用）。
+   *
+   * ⚠️ 播放器页是 `position:absolute` 的全屏浮层，`adjustResize` 缩的是 Activity 根 View
+   * 的高度，而这个 absolute 浮层的高度是「相对父容器」算的 —— 父容器被缩了、浮层不一定跟着缩，
+   * 于是底坞的弹幕输入条会被输入法整个盖住（用户反馈「输入框不顶输入法」）。
+   * 这里直接量键盘高度，把底坞顶上去，行为与窗口模式无关，最稳。
+   */
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKbHeight(Number(e?.endCoordinates?.height) || 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const tapRef = useRef<{ t: number; side: 'l' | 'r' } | null>(null);
   const [seekFlash, setSeekFlash] = useState<number | null>(null);
   const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -390,7 +410,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
             style={styles.bottomShade}
           />
         </Animated.View>
-        <Animated.View style={[styles.dockWrap, { opacity: controlsOpacity, paddingBottom: Math.max(insets.bottom, 12) + 4 }]} pointerEvents="box-none">
+        <Animated.View style={[styles.dockWrap, { opacity: controlsOpacity, paddingBottom: Math.max(insets.bottom, 12) + 4 + kbHeight }]} pointerEvents="box-none">
           {/* 进度行：当前时间 —— 可拖进度 —— 总时间（直播仅显示 直播） */}
           {!isLive ? (
           <View style={styles.progressRow}>
