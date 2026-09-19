@@ -34,9 +34,9 @@ import { getPlayerHtml } from './media/player';
 const W = 180;
 /** 高度按内容比例计算（竖屏内容窄条 -> 高条；横屏内容 16:9） */
 const H_MIN = 104;
-/** 纯音频（上麦/电台）小胶囊尺寸：扁 pill */
-const CAPSULE_W = 204;
-const CAPSULE_H = 40;
+/** 纯音频（上麦/电台）小胶囊尺寸：扁 pill（用户要求再缩小一档） */
+const CAPSULE_W = 176;
+const CAPSULE_H = 34;
 /** 小窗缩放档位：1 = 默认，1.18 = 放大，0.74 = 缩小（循环切换） */
 const SCALE_SMALL = 0.74;
 const SCALE_LARGE = 1.18;
@@ -133,6 +133,15 @@ export function MiniPlayer() {
           const h = boxHNowRef.current;
           const nx = Math.max(6, Math.min(winW - w - 6, basePos.current.x + g.dx));
           const ny = Math.max(6, Math.min(winH - h - 6, basePos.current.y + g.dy));
+          // 纯音频胶囊（上麦/电台）：用户要求**不吸附**边缘 —— 松手停在手指处
+          if (info?.audioOnly) {
+            const cw = CAPSULE_W;
+            const cx = Math.max(6, Math.min(winW - cw - 6, basePos.current.x + g.dx));
+            basePos.current = { x: cx, y: ny };
+            pos.setValue({ x: cx, y: ny });
+            showControls();
+            return;
+          }
           // 吸附最近左右边缘 + 弹簧过渡（成熟小窗标准行为；原来松手停在原地不贴边）
           const targetX = nx + w / 2 < winW / 2 ? 6 : Math.max(6, winW - w - 6);
           basePos.current = { x: targetX, y: ny };
@@ -385,16 +394,14 @@ export function MiniPlayer() {
       >
         {!pipCover && info.audioOnly ? (
           <View style={styles.capsuleRow}>
-            <MaterialCommunityIcons name="microphone" size={14} color={palette.tint} />
+            <MaterialCommunityIcons name="microphone" size={12} color={palette.tint} />
             <Text style={[styles.capsuleTitle, { color: palette.label }]} numberOfLines={1}>{info.title}</Text>
             <TouchableOpacity onPress={handlePlayToggle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={16} color={palette.label} />
+              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={14} color={palette.label} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={backToFull} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name="arrow-expand" size={13} color={palette.label} />
-            </TouchableOpacity>
+            {/* 用户要求：上麦只留胶囊 —— 不再提供「放大到大直播播放器」入口 */}
             <TouchableOpacity onPress={close} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name="close" size={13} color={palette.labelSecondary} />
+              <MaterialCommunityIcons name="close" size={12} color={palette.labelSecondary} />
             </TouchableOpacity>
           </View>
         ) : null}
@@ -440,8 +447,8 @@ export function MiniPlayer() {
 }
 
 const styles = StyleSheet.create({
-  capsuleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12 },
-  capsuleTitle: { flex: 1, fontSize: 12, fontWeight: '600' },
+  capsuleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 },
+  capsuleTitle: { flex: 1, fontSize: 11, fontWeight: '600' },
   wrap: {
     position: 'absolute',
     borderRadius: 14,

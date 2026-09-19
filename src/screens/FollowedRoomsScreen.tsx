@@ -369,12 +369,33 @@ function currentUserIdFrom(res: any): string {
   ]);
 }
 
-function messageRole(item: any, room: Member, includeFans: boolean, currentUserId: string): MessageRole {
+function messageRole(
+  item: any,
+  room: Member,
+  includeFans: boolean,
+  currentUserId: string,
+  memberIds?: Set<string>,
+): MessageRole {
   if (!item) return 'fan';
   const profile = senderProfile(item, room);
   if (includeFans && currentUserId && profile.id && String(profile.id) === String(currentUserId)) return 'mine';
   if (isIdolMessage(item, room, includeFans)) return 'idol';
+  // 其他成员（成员库里的成员，但不是本房房主）在别人房间发言 → 也算「成员消息」。
+  // 用户要求：切到「成员消息」时，别的成员的消息不能被当成粉丝消息过滤掉。
+  if (profile.id && memberIds && memberIds.has(String(profile.id))) return 'idol';
   return 'fan';
+}
+
+/** 成员库 id 集合（成员 id / userId / memberId 都可能出现在消息里） */
+function buildMemberIdSet(members: any[]): Set<string> {
+  const set = new Set<string>();
+  (members || []).forEach((m: any) => {
+    [m?.id, m?.userId, m?.memberId].forEach((v) => {
+      const s = String(v ?? '').trim();
+      if (s) set.add(s);
+    });
+  });
+  return set;
 }
 
 function messageKey(item: any) {
@@ -1156,6 +1177,8 @@ export default function FollowedRoomsScreen() {
   const showToast = useUiStore((state) => state.showToast);
   const navigation = useNavigation<any>();
   const members = useMemberStore((state) => state.members);
+  // 成员库 id 集合：「成员消息」视图要把别的成员（非房主）也算成员消息（用户要求）
+  const memberIdSet = useMemo(() => buildMemberIdSet(members), [members]);
   const onMicMap = useOnMicStore((state) => state.onMic);
   const [followed, setFollowed] = useState<FollowedRoom[]>([]);
   const followedRef = useRef<FollowedRoom[]>([]);
@@ -2069,7 +2092,7 @@ export default function FollowedRoomsScreen() {
     //    既会被显示出来，又会把同一位成员的连续发言「隔开」（用户反馈的老问题）。
     const base = showFanMessages
       ? roomMessages
-      : roomMessages.filter((item) => messageRole(item, selectedRoom, false, currentUserId) !== 'fan');
+      : roomMessages.filter((item) => messageRole(item, selectedRoom, false, currentUserId, memberIdSet) !== 'fan');
     const q = roomSearchQuery.trim().toLowerCase();
     if (!q) return base;
     return base.filter((item) => {
@@ -2084,7 +2107,7 @@ export default function FollowedRoomsScreen() {
         selectedRoom.groupName,
       ].some((value) => String(value || '').toLowerCase().includes(q));
     });
-  }, [roomMessages, roomSearchQuery, selectedRoom, showFanMessages, currentUserId]);
+  }, [roomMessages, roomSearchQuery, selectedRoom, showFanMessages, currentUserId, memberIdSet]);
 
   // 消息流按日期分组：今天/昨天/月日 分隔条（消息是新→旧排序，分隔条插在换日处）
   const chatRows = useMemo(() => {
@@ -2114,7 +2137,7 @@ export default function FollowedRoomsScreen() {
       // 粉丝消息绝不能并进成员组沿用成员头像名字 —— 用 role 前缀强制断开；
       // 无 sender id 的粉丝以本条消息 key 兜底，做到「每条各自成组」，谁也冒充不了谁。
       const t0 = getMessageTime(item);
-      const role = messageRole(item, selectedRoom!, showFanMessages, currentUserId);
+      const role = messageRole(item, selectedRoom!, showFanMessages, currentUserId, memberIdSet);
       // 发送者 id：**只认明确表示「发送者」的字段**，且只看消息自身与其 payload（不查 ext——
       // 回复类消息的 ext 里是被回复者，会把粉丝判成房主）。
       // ⚠️ 绝不要用泛化的 userId/uid：房间消息里它常是「房间/目标」的 id（常量）→
@@ -2162,7 +2185,8 @@ export default function FollowedRoomsScreen() {
     const yestStr = `${yest.getFullYear()}/${p2(yest.getMonth() + 1)}/${p2(yest.getDate())}`;
     const label =
       dayStr === todayStr ? '今天' : dayStr === yestStr ? '昨天' : `${d.getMonth() + 1}月${d.getDate()}日`;
-    // 只返回文字：外层由库渲染
+    // 用户要求：日期分隔**居中**显示（库的 Day 容器是居中的，但自定义 renderDay 会被塞进
+    // 一个无 alignItems 的普通 View → 文字被拉伸满宽、默认左对齐）→ 靠 alignSelf 居中。
     return <Text style={[styles.daySepText, { color: palette.labelTertiary }]}>{label}</Text>;
   }, [palette]);
 
@@ -2201,7 +2225,7 @@ export default function FollowedRoomsScreen() {
       .map((row: any) => {
         const item = row.item;
         const room = selectedRoom as Member;
-        const role = messageRole(item, room, showFanMessages, currentUserId);
+        const role = messageRole(item, room, showFanMessages, currentUserId, memberIdSet);
         const mine = role === 'mine';
         const sec = Number(item?.msgTime || item?.ctime || item?.timestamp || 0);
         const ms = sec > 1e12 ? sec : sec * 1000;
@@ -2224,7 +2248,7 @@ export default function FollowedRoomsScreen() {
           },
         };
       });
-  }, [chatRows, selectedRoom, showFanMessages, currentUserId]);
+  }, [chatRows, selectedRoom, showFanMessages, currentUserId, memberIdSet]);
 
   /**
    * 房间内「上麦」直接收听（用户要求：不跳转，当前页直接播放）。
@@ -2292,29 +2316,33 @@ export default function FollowedRoomsScreen() {
       // 最后一道防线：服务端偶发脏数据（undefined/null 元素）直接渲染空行，不崩
       if (!item) return <View />;
       const room = selectedRoom as Member;
-      const role = messageRole(item, room, showFanMessages, currentUserId);
+      const role = messageRole(item, room, showFanMessages, currentUserId, memberIdSet);
       const mine = role === 'mine';
       const idol = role === 'idol';
       const msgProfile = senderProfile(item, room);
+      // 发送者是否是「本房房主」：皇冠（房主标）只给房主（用户要求：别的成员不带皇冠）
+      const isRoomOwner = isIdolMessage(item, room, showFanMessages);
       // 发送者若是「成员库里的成员」（**不一定是房主**），就用他自己的档案 + 他自己的队伍标签。
       // 此前非房主成员在别人房间发言，被 isIdolMessage 直接判成 fan
       //（只要 profile.id 存在且 ≠ 房主就 return false）→ 没名字/没头像/没队标。
+      // ⚠️ senderMember 必须优先于「房主房间档案」：否则其他成员发言会套用房主的名字/头像。
       const senderId = String(msgProfile.id || '').trim();
       const senderMember = senderId
-        ? (members.find((m: any) => String(m.id || m.userId || '') === senderId) as Member | undefined)
+        ? (members.find((m: any) => [m.id, m.userId, m.memberId].some((v) => String(v ?? '').trim() === senderId)) as Member | undefined)
         : undefined;
       const isMemberSender = !!senderMember;
       // 成员发言头像：优先用 API（消息携带）的真实头像；成员库 avatar 多为公式照，仅兜底
-      const profile = idol
-        ? { id: room.id, name: (msgProfile.name || '').trim() || shortName(room), avatar: msgProfile.avatar || room.avatar }
-        : (senderMember
-          ? { id: senderMember.id, name: (msgProfile.name || '').trim() || senderMember.ownerName, avatar: msgProfile.avatar || senderMember.avatar }
+      const profile = senderMember
+        ? { id: senderMember.id, name: (msgProfile.name || '').trim() || senderMember.ownerName, avatar: msgProfile.avatar || senderMember.avatar }
+        : (isRoomOwner
+          ? { id: room.id, name: (msgProfile.name || '').trim() || shortName(room), avatar: msgProfile.avatar || room.avatar }
           : msgProfile);
-      // 队伍标签：房主用房间档案，其他成员用他自己的（用户要求：放每条消息名字后面）
-      const tagSource: any = idol ? room : senderMember;
+      // 队伍标签：其他成员用他自己的档案，房主用房间档案（用户要求：放每条消息名字后面）
+      const tagSource: any = senderMember || (isRoomOwner ? room : undefined);
       const teamGroup = String(tagSource?.groupName || '').trim();
       const teamName = String(tagSource?.team || '').trim();
-      const teamText = teamName && teamGroup && !teamName.includes(teamGroup) ? `${teamGroup} ${teamName}` : (teamName || teamGroup);
+      // 用户要求：队标「分团区分去掉」—— 只显示队伍（Team X），不再拼团名前缀
+      const teamText = teamName || '';
       const teamLogo = String(tagSource?.teamLogo || '').trim();
       const media = roomMedia(item);
       const gift = roomGiftInfo(item);
@@ -2367,12 +2395,13 @@ export default function FollowedRoomsScreen() {
             {row.groupStart ? (
               <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  {(idol || isMemberSender) ? <MaterialCommunityIcons name="crown" size={11} color={palette.tint} /> : null}
-                  <Text style={[styles.msgSender, { color: (idol || isMemberSender) ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
+                  {/* 皇冠 = 房主标：只给本房房主（用户要求：别的成员不带皇冠） */}
+                  {isRoomOwner ? <MaterialCommunityIcons name="crown" size={11} color={palette.tint} /> : null}
+                  <Text style={[styles.msgSender, { color: (isRoomOwner || isMemberSender) ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
                     {profile.name}
                   </Text>
                   {/* 队伍标签：紧跟发送者名字（成员消息，**含其他成员在别人房间发言**）；有官方队标显示图，否则文字 */}
-                  {(idol || isMemberSender) && (teamText || teamLogo) ? (
+                  {(isRoomOwner || isMemberSender) && (teamText || teamLogo) ? (
                     <View style={[styles.msgTeamChip, { backgroundColor: palette.tintSoft }]}>
                       {teamLogo ? <Image source={{ uri: teamLogo }} style={styles.msgTeamLogo} resizeMode="contain" /> : null}
                       {teamText ? <Text style={[styles.msgTeamText, { color: palette.tint }]} numberOfLines={1}>{teamText}</Text> : null}
@@ -2414,7 +2443,7 @@ export default function FollowedRoomsScreen() {
                 <View style={[styles.giftCard, { backgroundColor: palette.fill2, borderColor: palette.tintSoft }, giftReplyText ? styles.giftCardCompact : null]}>
                   {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={[styles.giftImage, { backgroundColor: palette.surfaceGlassStrong }]} /> : <View style={[styles.giftImageFallback, { backgroundColor: palette.tint }]}><MaterialCommunityIcons name="gift" size={16} color={palette.onTint} /></View>) : null}
                   <View style={styles.giftTextWrap}>
-                    <Text style={[styles.giftName, { color: palette.label }]} numberOfLines={1}>{idol ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
+                    <Text style={[styles.giftName, { color: palette.label }]} numberOfLines={1}>{isRoomOwner ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
                     <Text style={[styles.giftMeta, { color: palette.labelSecondary }]}>{t('数量')} x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
                   </View>
                 </View>
@@ -2494,7 +2523,7 @@ export default function FollowedRoomsScreen() {
         </View>
       );
     },
-    [selectedRoom, showFanMessages, currentUserId, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
+    [selectedRoom, showFanMessages, currentUserId, memberIdSet, members, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
   );
 
   if (selectedRoom) {
@@ -2790,7 +2819,7 @@ export default function FollowedRoomsScreen() {
             // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
             theme={{ colors: { background: 'transparent' } }}
             locale="zh"
-            // 用户要求：不要日期分隔（renderDay 返回空 + 关掉浮动日期胶囊）
+            // 日期分隔：纯数字「今天/昨天/x月x日」，居中显示（renderDayLabel）
             // 整行自定义：用页面既有的 renderChatItem —— 头像、气泡外的发送者名字、
             // 回复卡片、礼物、媒体全都保留；气泡本身是玻璃（GlassSurface）。
             // 不再用 renderBubble：它只能改气泡内部，名字被迫塞进气泡里（与设计不符）。
@@ -3185,7 +3214,7 @@ const styles = StyleSheet.create({
   ellipseTime: { fontSize: 11, marginTop: 3, alignSelf: 'flex-end' },
   daySepWrap: { alignItems: 'center', marginVertical: 10 },
   daySep: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
-  daySepText: { fontSize: 11, fontWeight: '600' },
+  daySepText: { fontSize: 11, fontWeight: '600', alignSelf: 'center' },
   chatToolsClip: { marginHorizontal: 12, marginBottom: 8, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, borderRadius: 18 },
   segment: {
