@@ -21,7 +21,7 @@ import { ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
 import { saveSettings } from '../services/settings';
-import { resetNimSession } from '../services/pocketNim';
+import { resetNimSession } from '../services/pocketNim/session';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, pickText } from '../utils/data';
@@ -324,8 +324,9 @@ export default function LoginScreen() {
   const handleCheckToken = async () => {
     const token = manualToken.trim() || settings.p48Token;
     if (token && token !== settings.p48Token) {
-      setSettings({ p48Token: token });
-      await saveSettings({ p48Token: token });
+      // 与登录/切号走同一条路径：改 token 必须同时重置云信会话
+      // （否则弹幕与房间消息仍用旧号身份、且新旧 accid 不匹配会连不上房间）
+      await savePocketToken(token, t('Token已保存'));
     }
     setLoading(true);
     setStatus(t('正在检查Token'));

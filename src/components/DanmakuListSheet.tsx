@@ -249,7 +249,11 @@ export function DanmakuListSheet({
           <Text style={styles.rowText} numberOfLines={2}>
             <Text
               style={[styles.nick, accent ? { color: accent } : null]}
-              onPress={() => item.nick && filterByUser(item.nick)}
+              onPress={(e) => {
+                // 点昵称 = 只看 TA；必须阻止冒泡，否则同一手势还会触发外层「跳转到该时间」
+                e?.stopPropagation?.();
+                if (item.nick) filterByUser(item.nick);
+              }}
               suppressHighlighting
             >
               {item.nick ? `${item.nick}：` : ''}

@@ -64,6 +64,12 @@ let qchatLiveState = 'idle';
 let qchatStatusWatched = false;
 /** 房间消息订阅引用计数：多个组件共用同一条原生连接，最后一个退订才允许断开 */
 let observeRefCount = 0;
+/**
+ * 连接世代：每次 reset（切号）递增。
+ * 用于丢弃「reset 之后才完成的旧账号 connect」——否则旧任务会写回 qchatNativeAccid，
+ * 让后续发送/订阅误以为已用新账号连上（重置与进行中连接赛跑）。
+ */
+let qchatGeneration = 0;
 
 function watchQChatStatus(): void {
   if (qchatStatusWatched) return;
@@ -86,10 +92,13 @@ function watchQChatStatus(): void {
  * 使下一次发送/订阅按**新账号**重新连接。
  */
 export function resetQChatSession(reason = ''): void {
+  qchatGeneration += 1;
   loggedInAccid = '';
   qchatNativeAccid = '';
   qchatLiveState = 'idle';
   qchatNativeLogins = new Map();
+  // 旧订阅者的 unsub 仍会调用（refcount 已清零 → max(0,-1)=0 不会误断新连接），
+  // 这里归零是为了让新订阅从 1 重新计数。
   observeRefCount = 0;
   try {
     qchatDisconnect();
@@ -110,10 +119,23 @@ async function ensureQChatNativeLogin(force = false): Promise<void> {
   }
   const existing = qchatNativeLogins.get(creds.accid);
   if (existing) return existing;
+  const generation = qchatGeneration;
   const task: Promise<void> = (async () => {
     // eslint-disable-next-line no-console
     console.log('[nim] native qchat connect account =', creds.accid);
     await qchatConnect(pocketImAppKeyCompat(), creds.accid, creds.token);
+    // reset（切号）发生在本次连接过程中 → 这条连接属于旧账号，丢弃并立刻断开，
+    // 否则会把旧账号写进登录态，之后发送会以旧身份出去
+    if (generation !== qchatGeneration) {
+      // eslint-disable-next-line no-console
+      console.log('[nim] native qchat connect finished after session reset → discard');
+      try {
+        qchatDisconnect();
+      } catch {
+        /* 忽略 */
+      }
+      return;
+    }
     qchatNativeAccid = creds.accid;
     qchatLiveState = 'connected';
     // eslint-disable-next-line no-console
@@ -209,9 +231,15 @@ export async function sendRoomTextMessage(target: RoomMessageTarget, text: strin
       // 发送失败最常见的原因是连接已死（TCP 半开 / 被服务端踢 / 刚切过号）：
       // 强制重连一次再发，避免用户看到「发送失败」而其实只是连接需要重建
       // （即用户反馈的「有概率连不上房间 / 发送出错」）。
-      logWarn(`[nim] qchat 发送失败，重连后重试：${String(error?.message || error || '')}`, 'nim');
+      const detail = String(error?.message || error || '');
+      logWarn(`[nim] qchat 发送失败，重连后重试：${detail}`, 'nim');
       await ensureQChatNativeLogin(true);
-      await qchatSend(String(serverId), String(channelId), content, ext);
+      try {
+        await qchatSend(String(serverId), String(channelId), content, ext);
+      } catch (retryError: any) {
+        // 重连后仍失败：给出可读原因（多为凭证过期 / 房间 serverId 与 channelId 不匹配）
+        throw new Error(`房间消息发送失败（已重连重试）：${String(retryError?.message || retryError || detail)}`);
+      }
     }
     return;
   }
