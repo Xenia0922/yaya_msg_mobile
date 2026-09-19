@@ -31,7 +31,7 @@
 | `loginByCode` | `/user/api/v1/login/app/mobile/code` | 验证码登录换取 token | mobile, code | 否 |
 | `loginCheckToken` | `/user/api/v1/user/info/reload` | 校验 token 有效性（启动时） | from:'appstart' | 是 |
 | `getNimLoginInfo` | `/user/api/v1/user/info/reload` + `/home` | 取当前用户信息（多路尝试） | from | 是 |
-| `getUserProfile` | `/user/api/v1/user/info` + `/detail` + `/home` | 任意用户资料（多路尝试） | userId | 是（保守） |
+| `getUserProfile` | `/user/api/v1/user/info/home`（**Android 头**） | 任意用户资料（昵称/头像/等级/签名；成员另含 starInfo）。⚠️ `/user/info`、`/user/detail`、`/user/home` 均 **404（No message available）**，2026-09-18 探针实测；必须带 `{userId:<number>}` | userId（数字） | 是 |
 | `editUserInfo` | `/user/api/v1/user/info/edit` | 改昵称/头像 | {key,value} 或 nickName/avatar | 是 |
 | `getUserRenameCount` | `/user/api/v1/user/rename/count` | 剩余改名次数 | — | 是 |
 | `uploadUserAvatar` | pfile.48.cn | 上传头像图 → 返回 path | 表单 file | 是 |

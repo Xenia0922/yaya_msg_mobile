@@ -399,17 +399,26 @@ function buildMemberIdSet(members: any[]): Set<string> {
 }
 
 /**
- * 「非成员」用户资料解析（口袋48 user/api/v1/user/info 等多路返回）：
- * 昵称 / 头像 / 等级 / 个性签名 —— 都做多路径兜底，取不到就留空。
+ * 「用户资料卡」信息解析。数据源 = `user/api/v1/user/info/home`（桌面端 fetchUserHomeInfo 同款：
+ * Android 头 + `{ userId }` 数字）。结构（对齐桌面 getFollowedProfileContent）：
+ *   content.userInfo.baseUserInfo = 头像/昵称…，content.starInfo = 成员信息（若是成员）。
+ * 全部多路径兜底，取不到就留空（UI 只显示拿到的行，不再把原始报错文本糊上去）。
  */
 function userCardFromUserRes(res: any) {
-  const info = res?.content?.userInfo || res?.content?.user || res?.content || res?.data?.userInfo || res?.data?.user || res?.data || res || {};
-  const objs = [info];
+  const content = res?.content || res?.data?.content || res?.data || res || {};
+  const userInfo = content?.userInfo || content?.user || content?.profile || content || {};
+  const base = userInfo?.baseUserInfo || userInfo?.baseInfo || userInfo || {};
+  const star = content?.starInfo || content?.memberInfo || userInfo?.starInfo || {};
+  const objs = [base, userInfo, star, content];
+  const pick = (keys: string[]) => firstTextFrom(objs, keys);
   return {
-    name: firstTextFrom(objs, ['nickName', 'nickname', 'userName', 'name', 'profile.nickName', 'user.nickName', 'user.nickname', 'user.userName']),
-    avatar: normalizeUrl(firstTextFrom(objs, ['avatar', 'headImg', 'headUrl', 'userAvatar', 'user.avatar', 'user.headImg'])),
-    level: firstTextFrom(objs, ['level', 'userLevel', 'grade', 'vipLevel']),
-    signature: firstTextFrom(objs, ['signature', 'sign', 'intro', 'description', 'user.signature', 'user.sign']),
+    name: pick(['nickName', 'nickname', 'userName', 'name', 'starName', 'realNickName', 'baseUserInfo.nickName']),
+    avatar: normalizeUrl(pick(['avatar', 'avatarUrl', 'faceImage', 'headImg', 'headUrl', 'starAvatar'])),
+    level: pick(['level', 'userLevel', 'grade', 'vipLevel', 'userLevelName']),
+    signature: pick(['signature', 'sign', 'intro', 'description', 'userSignature']),
+    team: pick(['starTeamName', 'teamName', 'team']),
+    period: pick(['periodName', 'period']),
+    isStar: !!(star && (star.starName || star.starId)) || !!base?.isStar,
   };
 }
 
@@ -1298,7 +1307,9 @@ export default function FollowedRoomsScreen() {
     /** 关注态（口袋48 用户间可互相关注：friendships/friends/add|remove, toType=1） */
     following: boolean;
     followBusy: boolean;
-    detail: { name: string; avatar: string; level: string; signature: string };
+    /** 成员（含房主）走同一个资料卡界面，只是多加身份/队伍行 */
+    isMember: boolean;
+    detail: { name: string; avatar: string; level: string; signature: string; team: string; period: string; isStar: boolean };
   }>(null);
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [followBusy, setFollowBusy] = useState<Set<string>>(new Set());
@@ -2284,47 +2295,52 @@ export default function FollowedRoomsScreen() {
   }, [selectedRoom, onMicMap, showToast, t]);
 
   /**
-   * 房间内点消息头像 → 加载对方个人资料（用户需求）：
-   *  - 成员（房主 或 成员库里的其他成员）→ 打开「成员档案」页（带 memberId 自动加载档案）
-   *  - 非成员（粉丝）→ 弹「用户资料卡」（口袋48 user/info 拉取昵称/头像/等级/签名）
+   * 房间内点消息头像 → 弹「用户资料卡」（用户要求：成员/非成员**都用这一个界面**，不再跳成员档案）。
+   *  - 资料源：`user/api/v1/user/info/home`（桌面端同款写法，Android 头 + userId 数字）
+   *  - 成员先用成员库信息立即渲染（队伍/名字），线上资料回来后再补等级/签名等
    */
   const openSenderProfile = useCallback(
     (opts: { id: string; name: string; avatar: string; member?: Member | null }) => {
-      if (opts.member) {
-        navigation.navigate('ProfileScreen', {
-          memberId: String(opts.member.id || opts.id || ''),
-          member: opts.member,
-          nonce: Date.now(),
-        });
-        return;
-      }
-      const id = String(opts.id || '').trim();
+      const m = opts.member || null;
+      // 成员在口袋48 的 userId 与成员库 id 可能不同：优先用 userId，其次 id
+      const queryId = String((m as any)?.userId || m?.id || opts.id || '').trim();
+      const cardId = queryId || String(opts.id || '').trim();
       setUserCard({
-        id,
-        name: opts.name,
-        avatar: opts.avatar,
-        loading: /^\d+$/.test(id),
+        id: cardId,
+        name: opts.name || m?.ownerName || '',
+        avatar: opts.avatar || (m as any)?.avatar || '',
+        loading: /^\d+$/.test(cardId),
         error: '',
         following: false,
         followBusy: false,
-        detail: { name: '', avatar: '', level: '', signature: '' },
+        isMember: !!m,
+        detail: {
+          name: '',
+          avatar: '',
+          level: '',
+          signature: '',
+          team: m ? String((m as any).groupName || (m as any).team || '') : '',
+          period: '',
+          isStar: !!m,
+        },
       });
-      // 云信 accid / 非数字 id 查不到口袋48 用户资料：直接给本地信息 + 说明
-      if (!/^\d+$/.test(id)) {
-        setUserCard((c) => (c && c.id === id ? { ...c, loading: false, error: t('该用户没有可加载的口袋48资料') } : c));
+      // 云信 accid / 非数字 id 查不到口袋用户资料：直接给本地信息 + 说明
+      if (!/^\d+$/.test(cardId)) {
+        setUserCard((c) => (c && c.id === cardId ? { ...c, loading: false, error: t('该用户没有可加载的口袋48资料') } : c));
         return;
       }
       pocketApi
-        .getUserProfile(id)
+        .getUserProfile(cardId)
         .then((res) => {
           const detail = userCardFromUserRes(res);
-          setUserCard((c) => (c && c.id === id ? { ...c, loading: false, error: '', detail } : c));
+          setUserCard((c) => (c && c.id === cardId ? { ...c, loading: false, error: '', detail: { ...c.detail, ...detail } } : c));
         })
-        .catch((err) => {
-          setUserCard((c) => (c && c.id === id ? { ...c, loading: false, error: errorMessage(err) } : c));
+        .catch(() => {
+          // 不把原始报错（「No message available」等）糊到卡片上，只给一句人话
+          setUserCard((c) => (c && c.id === cardId ? { ...c, loading: false, error: t('未获取到更多资料') } : c));
         });
     },
-    [navigation, t],
+    [t],
   );
 
   /** 资料卡「关注 / 取消关注」：口袋48 用户间可互关（v2/friendships/friends/add|remove，toType=1） */
@@ -2835,6 +2851,15 @@ export default function FollowedRoomsScreen() {
                             {`${t('用户 ID')}：${userCard?.id || '-'}`}
                             {userCard?.detail?.level ? ` · ${t('等级 {level}', { level: userCard.detail.level })}` : ''}
                           </Text>
+                          {userCard?.isMember || userCard?.detail?.team || userCard?.detail?.period ? (
+                            <Text style={[styles.userCardMeta, { color: palette.tint }]} numberOfLines={1}>
+                              {[
+                                userCard?.isMember ? t('成员') : '',
+                                userCard?.detail?.team || '',
+                                userCard?.detail?.period || '',
+                              ].filter(Boolean).join(' · ')}
+                            </Text>
+                          ) : null}
                         </View>
                       </>
                     );
