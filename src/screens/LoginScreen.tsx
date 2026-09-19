@@ -816,7 +816,7 @@ export default function LoginScreen() {
             />
           </View>
           <Text style={[styles.sendIdHint, { color: palette.labelTertiary, marginTop: 8 }]}>
-            {t('roleId：1=普通用户 2/3/4/5=成员 999=超管；sessionRole：0=普通观众 1=房管 2=房主 3=成员本人 99=超管')}
+            {t('roleId：0=普通用户（实测） 2/3/4/5=成员 999=超管；sessionRole：0=普通观众 1=房管 2=房主 3=成员本人 99=超管')}
           </Text>
           <Text style={[styles.sendIdLabel, { color: palette.labelSecondary, marginTop: 10 }]}>{t('VIP 标识')}</Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
