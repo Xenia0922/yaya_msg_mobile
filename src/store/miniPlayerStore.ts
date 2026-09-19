@@ -6,6 +6,8 @@ export interface MiniPlayerInfo {
   title: string;
   cover?: string;
   isLive: boolean;
+  /** 纯音频源（上麦/电台）：小窗渲染为紧凑胶囊（扁 pill）而非视频框 */
+  audioOnly?: boolean;
   /** 交棒给小窗时的播放位置（秒），小窗 onLoad 后 seek 续播 */
   position?: number;
   /** 公演/B站直播走网页内核播放（去 LIVE 标 + WebAudio 增益） */

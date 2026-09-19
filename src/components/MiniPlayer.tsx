@@ -34,6 +34,9 @@ import { getPlayerHtml } from './media/player';
 const W = 180;
 /** 高度按内容比例计算（竖屏内容窄条 -> 高条；横屏内容 16:9） */
 const H_MIN = 104;
+/** 纯音频（上麦/电台）小胶囊尺寸：扁 pill */
+const CAPSULE_W = 248;
+const CAPSULE_H = 48;
 /** 小窗缩放档位：1 = 默认，1.18 = 放大，0.74 = 缩小（循环切换） */
 const SCALE_SMALL = 0.74;
 const SCALE_LARGE = 1.18;
@@ -237,9 +240,10 @@ export function MiniPlayer() {
             // 位置改用 transform 承载（不再用 left/top）：不触发布局重排，拖动/滚动更顺
             left: 0,
             top: 0,
-            width: pipCover ? winW : boxW,
-            height: pipCover ? winH : boxHNow,
-            backgroundColor: '#000',
+            width: pipCover ? winW : (info.audioOnly ? CAPSULE_W : boxW),
+            height: pipCover ? winH : (info.audioOnly ? CAPSULE_H : boxHNow),
+            borderRadius: info.audioOnly ? CAPSULE_H / 2 : undefined,
+            backgroundColor: info.audioOnly ? palette.surfaceGlassStrong : '#000',
             borderColor: palette.hairline,
             transform: pipCover ? undefined : pos.getTranslateTransform(),
           },
@@ -357,7 +361,7 @@ export function MiniPlayer() {
           style={styles.dragLayer}
         />
         {/* 底部标题（随控件显隐；PiP 盖层时隐藏，保证悬浮窗纯画面） */}
-        {controlsVisible && !pipCover ? (
+        {controlsVisible && !pipCover && !info.audioOnly ? (
           <View style={styles.titleBar} pointerEvents="none">
             <Text style={styles.title} numberOfLines={1}>{info.title}</Text>
           </View>
@@ -371,10 +375,25 @@ export function MiniPlayer() {
           StyleSheet.absoluteFill,
           pipCover
             ? { left: 0, top: 0, width: winW, height: winH, zIndex: 9999, elevation: 9999 }
-            : { left: 0, top: 0, width: boxW, height: boxHNow, zIndex: 1002, elevation: 24, transform: pos.getTranslateTransform() },
+            : { left: 0, top: 0, width: info.audioOnly ? CAPSULE_W : boxW, height: info.audioOnly ? CAPSULE_H : boxHNow, zIndex: 1002, elevation: 24, transform: pos.getTranslateTransform() },
         ]}
       >
-        {controlsVisible && !pipCover ? (
+        {!pipCover && info.audioOnly ? (
+          <View style={styles.capsuleRow}>
+            <MaterialCommunityIcons name="microphone" size={16} color={palette.tint} />
+            <Text style={[styles.capsuleTitle, { color: palette.label }]} numberOfLines={1}>{info.title}</Text>
+            <TouchableOpacity onPress={handlePlayToggle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={18} color={palette.label} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={backToFull} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialCommunityIcons name="arrow-expand" size={16} color={palette.label} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={close} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialCommunityIcons name="close" size={16} color={palette.labelSecondary} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        {controlsVisible && !pipCover && !info.audioOnly ? (
           <>
             {/* 返回全屏（右上角） */}
             <TouchableOpacity
@@ -416,6 +435,8 @@ export function MiniPlayer() {
 }
 
 const styles = StyleSheet.create({
+  capsuleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14 },
+  capsuleTitle: { flex: 1, fontSize: 13, fontWeight: '700' },
   wrap: {
     position: 'absolute',
     borderRadius: 14,
