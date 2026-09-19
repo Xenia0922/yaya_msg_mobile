@@ -95,30 +95,6 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
 export async function loadSelfProfile(force = false): Promise<NimSelfProfile | null> {
   const profile = await resolveSelfProfile(force);
   if (!profile) return null;
-  // 用户自定义发言身份（设置页「发言身份」）优先于登录账号资料
-  // roleId 语义（官方 UserInfo 常量）：1=普通用户 2/3/4/5=成员 999=超管
-  // sessionRole 语义：0=普通观众 1=房管 2=房主 3=成员本人 99=超管
-  try {
-    const [nick, avatar, level, roleId, sessionRole, vip] = await Promise.all([
-      getSetting('yaya_send_nickname'),
-      getSetting('yaya_send_avatar'),
-      getSetting('yaya_send_level'),
-      getSetting('yaya_send_roleid'),
-      getSetting('yaya_send_session_role'),
-      getSetting('yaya_send_vip'),
-    ]);
-    if (nick && nick.trim()) profile.nickName = nick.trim();
-    if (avatar && avatar.trim()) profile.avatar = absAvatar(avatar.trim());
-    if (level && level.trim() && Number.isFinite(Number(level))) profile.level = Number(level);
-    if (roleId && roleId.trim() && Number.isFinite(Number(roleId))) profile.roleId = Number(roleId);
-    if (sessionRole && sessionRole.trim() && Number.isFinite(Number(sessionRole))) {
-      profile.sessionRole = Math.trunc(Number(sessionRole));
-    }
-    if (vip === 'on') profile.vip = true;
-    else if (vip === 'off') profile.vip = false;
-  } catch {
-    /* 设置读取失败不影响发送 */
-  }
   return profile;
 }
 
