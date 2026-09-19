@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
@@ -552,6 +553,9 @@ function MediaGridSkeleton() {
   );
 }
 
+/** 播放器公告是否收起（'1'=收起）：跨直播间/跨启动记忆（用户要求） */
+const PLAYER_ANNOUNCE_COLLAPSED_KEY = 'yaya_player_announce_collapsed_v1';
+
 export default function MediaScreen() {
   const route = useRoute<MediaRouteProp>();
   const navigation = useNavigation<any>();
@@ -734,7 +738,23 @@ export default function MediaScreen() {
   const [announcement, setAnnouncement] = useState('');
   const [announceVisible, setAnnounceVisible] = useState(false);
   /** 进入直播间默认展开公告（用户要求）。关闭后停留本次会话，不再自动弹回 */
+  /**
+   * 公告展开态：**记住收起状态**（用户要求）。挂载时从 AsyncStorage 读一次；
+   * 收起/展开即时写回；新开播不再强制展开（否则记住的收起被打回）。
+   */
   const [announceExpanded, setAnnounceExpanded] = useState(true);
+  const announcePrefLoadedRef = useRef(false);
+  useEffect(() => {
+    if (announcePrefLoadedRef.current) return;
+    announcePrefLoadedRef.current = true;
+    AsyncStorage.getItem(PLAYER_ANNOUNCE_COLLAPSED_KEY)
+      .then((v: string | null) => setAnnounceExpanded(v !== '1'))
+      .catch(() => {});
+  }, []);
+  const setAnnounceExpandedPersisted = (v: boolean) => {
+    setAnnounceExpanded(v);
+    AsyncStorage.setItem(PLAYER_ANNOUNCE_COLLAPSED_KEY, v ? '0' : '1').catch(() => {});
+  };
   /** 本次进入是否已自动展开过（避免用户手动收起后被自动展开逻辑again弹开） */
   const announceAutoShownRef = useRef(false);
   const loadingRef = useRef(false);
@@ -986,7 +1006,7 @@ export default function MediaScreen() {
         if (annText) {
           setAnnouncement(annText);
           setAnnounceVisible(true);
-          setAnnounceExpanded(true);
+          setAnnounceExpandedPersisted(true);
           announceAutoShownRef.current = true;
         } else {
           // getLiveOne 没拿到 → 用公开详情兜底再试一次（上面 detail 可能是 getLiveOne 的结果）
@@ -996,7 +1016,7 @@ export default function MediaScreen() {
           if (annText2) {
             setAnnouncement(annText2);
             setAnnounceVisible(true);
-            setAnnounceExpanded(true);
+            setAnnounceExpandedPersisted(true);
             announceAutoShownRef.current = true;
           }
         }
@@ -1292,7 +1312,7 @@ export default function MediaScreen() {
     setAnnouncement('');
     setAnnounceVisible(false);
     // 复位为「默认展开」：下次进入直播间仍是默认打开公告
-    setAnnounceExpanded(true);
+    setAnnounceExpandedPersisted(true);
     announceAutoShownRef.current = false;
     // fromRoom 直达（房间点开）：关闭播放器 = 返回房间
     if (route.params?.fromRoom) navigation.goBack();
@@ -1341,11 +1361,11 @@ export default function MediaScreen() {
       const annText = d?.content?.announcement || d?.announcement || d?.data?.announcement || '';
       setAnnouncement(annText || t('暂无公告'));
       setAnnounceVisible(true);
-      setAnnounceExpanded(true);
+      setAnnounceExpandedPersisted(true);
     } catch {
       setAnnouncement(t('公告加载失败'));
       setAnnounceVisible(true);
-      setAnnounceExpanded(true);
+      setAnnounceExpandedPersisted(true);
     }
   };
 
@@ -1430,7 +1450,7 @@ export default function MediaScreen() {
           setAnnouncement(annText);
           setAnnounceVisible(true);
           // 进入直播间默认展开公告（用户要求）；只有用户手动收起后才保持收起
-          setAnnounceExpanded(true);
+          setAnnounceExpandedPersisted(true);
           announceAutoShownRef.current = true;
         }
         else {
@@ -1441,7 +1461,7 @@ export default function MediaScreen() {
             if (annText2) {
               setAnnouncement(annText2);
               setAnnounceVisible(true);
-              setAnnounceExpanded(true);
+              setAnnounceExpandedPersisted(true);
               announceAutoShownRef.current = true;
             }
           }
