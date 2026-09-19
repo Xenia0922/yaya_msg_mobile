@@ -1266,32 +1266,67 @@ export default function FollowedRoomsScreen() {
   const [roomMeta, setRoomMeta] = useState<{ name: string; bg: string }>({ name: '', bg: '' });
   const roomMetaCache = useRef<Record<string, { name: string; bg: string }>>({});
   // 背景图渐显：新背景 uri 变化时重置为 0，ImageBackground onLoad 后淡入到 1，消除「从无到有硬跳变」
-  const bgOpacity = useRef(new Animated.Value(0)).current;
   /**
-   * 背景图 crossfade：切到**另一个也有背景图**的房间时，旧图先垫在底下、
-   * 新图 onLoad 后 280ms 淡入覆盖 —— 消除「先闪一下底色再出现」的不连贯
-   * （旧实现每次 uri 变化都把 opacity 归零，两房都有背景时切换必然闪底色）。
-   * 新图淡入完成后清掉 prev，避免多驻留一张大图。
+   * 背景图 **双层常驻 crossfade**（用户反馈：大小房间切换底图会闪一下）。
+   *
+   * 旧做法「新图新挂载一层 + 旧图垫底」的问题是：新挂载的 Image 首帧必然空白
+   * （哪怕图在磁盘缓存，解码也要 1-2 帧），垫底层反而来不及兜 → 还是闪。
+   *
+   * 标准做法：A/B 两层**永远挂载**，换图时把新 uri 写进**当前隐藏的那一层**
+   * （隐藏层保留着旧帧，不会白屏），等它 onLoad（解码完成）后两层交叉淡入淡出。
+   * 同一张图则什么都不做 —— 对同一 uri 归零 opacity 就是「闪一下」的直接来源。
    */
-  const [roomBgPrev, setRoomBgPrev] = useState('');
-  const roomBgPrevRef = useRef('');
+  const bgOpacityA = useRef(new Animated.Value(0)).current;
+  const bgOpacityB = useRef(new Animated.Value(0)).current;
+  const [bgLayerA, setBgLayerA] = useState('');
+  const [bgLayerB, setBgLayerB] = useState('');
+  const bgTopIsARef = useRef(true);
+  const bgLastUriRef = useRef('');
+  /** 待淡入的槽位（该槽 onLoad 后执行交叉淡入淡出） */
+  const bgPendingFadeRef = useRef<'A' | 'B' | null>(null);
+
+  /** 交叉淡入淡出：target 槽 0→1（280ms），另一槽延迟归 0；翻转顶层标记 */
+  const crossfadeTo = useCallback((slot: 'A' | 'B') => {
+    const inVal = slot === 'A' ? bgOpacityA : bgOpacityB;
+    const outVal = slot === 'A' ? bgOpacityB : bgOpacityA;
+    Animated.timing(inVal, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+    Animated.timing(outVal, { toValue: 0, duration: 280, delay: 120, useNativeDriver: true }).start();
+    bgTopIsARef.current = slot === 'A';
+  }, []);
+
   useEffect(() => {
     const next = roomMeta.bg;
-    const prev = roomBgPrevRef.current;
-    if (prev && next && prev !== next) {
-      // 两房都有背景图且不同：crossfade（旧图垫底，新图 onLoad 淡入）
-      setRoomBgPrev(prev);
-      bgOpacity.setValue(0);
-    } else if (!next) {
-      // 切到无背景房间：清掉整层（露出全局底衬）
-      bgOpacity.setValue(0);
-      setRoomBgPrev('');
-    } else {
-      // 首次进房 / 同一张图：从底色淡入
-      bgOpacity.setValue(0);
+    const last = bgLastUriRef.current;
+    bgLastUriRef.current = next;
+    if (next === last) return; // 同一张图：绝不能动 opacity（归零 = 闪）
+
+    if (!next) {
+      // 切到无背景房间：两层一起淡出，露出全局底衬
+      Animated.parallel([
+        Animated.timing(bgOpacityA, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(bgOpacityB, { toValue: 0, duration: 200, useNativeDriver: true }),
+      ]).start();
+      bgPendingFadeRef.current = null;
+      return;
     }
-    roomBgPrevRef.current = next;
-  }, [roomMeta.bg, bgOpacity]);
+
+    // 换图：写进「非顶层」槽（它保留旧帧不会白屏），onLoad 后交叉淡入
+    if (bgTopIsARef.current) {
+      setBgLayerB(next);
+      bgPendingFadeRef.current = 'B';
+    } else {
+      setBgLayerA(next);
+      bgPendingFadeRef.current = 'A';
+    }
+  }, [roomMeta.bg, bgOpacityA, bgOpacityB, crossfadeTo]);
+
+  /** 槽位 onLoad：若它是待淡入槽 → 交叉淡入淡出 */
+  const onBgSlotLoad = useCallback((slot: 'A' | 'B') => {
+    if (bgPendingFadeRef.current === slot) {
+      bgPendingFadeRef.current = null;
+      crossfadeTo(slot);
+    }
+  }, [crossfadeTo]);
   const activeChannelRef = useRef('');
   /**
    * 当前房间的「发言坐标」配对（channelId + serverId + 房主 id）。
@@ -1599,6 +1634,10 @@ export default function FollowedRoomsScreen() {
       }
       await sendRoomTextMessage({ serverId, channelId }, text);
       setRoomDraft('');
+      // ⚠️ 自己发的消息立即上屏：QChat 回显链路不稳定，等 15s 轮询太久（用户反馈）。
+      // 发送成功即静默拉最新页合并（mergeMessages 按 msgId 去重，与轮询同路径、不会重复）。
+      setTimeout(() => refreshRoomMessagesRef.current?.(), 500);
+      setTimeout(() => refreshRoomMessagesRef.current?.(), 1500);
     } catch (err) {
       setRoomSendHint(errorMessage(err));
     } finally {
@@ -1978,6 +2017,8 @@ export default function FollowedRoomsScreen() {
     }
   }, [currentUserId, roomMode, showFanMessages, showToast, t]);
 
+  /** 供声明顺序在前的发送逻辑调用（发送成功后立即刷新，不再等 15s 轮询） */
+  const refreshRoomMessagesRef = useRef<(() => void) | null>(null);
   const loadMoreRoomMessages = useCallback(async () => {
     if (!selectedRoom || loading || loadingMoreMessages || loadingMoreMessagesRef.current || refreshingRef.current || !hasMoreMessages || !roomNextTime) return;
     const channelId = roomChannelId(selectedRoom, roomMode);
@@ -2049,6 +2090,8 @@ export default function FollowedRoomsScreen() {
       refreshingRef.current = false;
     }
   }, [roomMode, selectedRoom, showFanMessages]);
+  refreshRoomMessagesRef.current = refreshRoomMessages;
+
 
   // 房间内实时刷新：打开房间后每 15s 静默拉取一次最新消息（成员 + 粉丝）
   // B 优化：App 退到后台/锁屏时暂停轮询（避免后台空转耗电耗流量），回前台恢复。
@@ -2868,20 +2911,29 @@ export default function FollowedRoomsScreen() {
        * 现在背景铺在整屏外层，padding 只影响内容，背景永远满幅。
        */
       <View style={styles.roomRoot}>
-        {roomBgUri ? (
+        {/* 背景双层常驻 crossfade（两层永不卸载，换图写隐藏槽 → onLoad 交叉淡入淡出，不闪底） */}
+        {(bgLayerA || bgLayerB) && !roomPlayerFullscreen ? (
           <>
-            {roomBgPrev ? (
-              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            {bgLayerA ? (
+              <Animated.View pointerEvents="none" style={[styles.roomBgLayer, { opacity: bgOpacityA }]}>
                 <ImageBackground
-                  source={{ uri: roomBgPrev }}
+                  source={{ uri: bgLayerA }}
                   resizeMode="cover"
                   style={StyleSheet.absoluteFill}
+                  onLoad={() => onBgSlotLoad('A')}
                 />
-              </View>
+              </Animated.View>
             ) : null}
-            <Animated.View style={[styles.roomBgLayer, { opacity: bgOpacity }]}>
-              <ImageBackground source={{ uri: roomBgUri }} resizeMode="cover" style={StyleSheet.absoluteFill} onLoad={() => { Animated.timing(bgOpacity, { toValue: 1, duration: 280, useNativeDriver: true }).start(); setTimeout(() => setRoomBgPrev(''), 340); }} onError={(e) => { setRoomMeta((m) => ({ ...m, bg: '' })); }} />
-            </Animated.View>
+            {bgLayerB ? (
+              <Animated.View pointerEvents="none" style={[styles.roomBgLayer, { opacity: bgOpacityB }]}>
+                <ImageBackground
+                  source={{ uri: bgLayerB }}
+                  resizeMode="cover"
+                  style={StyleSheet.absoluteFill}
+                  onLoad={() => onBgSlotLoad('B')}
+                />
+              </Animated.View>
+            ) : null}
             <View pointerEvents="none" style={[styles.roomBgLayer, { backgroundColor: roomScrim }]} />
           </>
         ) : null}
