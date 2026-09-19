@@ -671,7 +671,7 @@ export default function MusicLibraryScreen() {
               >
                 <View style={[styles.albumCover, { backgroundColor: palette.fill2 }]}>
                   {item.cover ? (
-                    <NetworkImage source={{ uri: item.cover }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    <NetworkImage source={{ uri: item.cover }} style={{ width: '100%', height: '100%' }} resizeMode="cover" thumbnail={600} />
                   ) : (
                     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                       <MaterialCommunityIcons name="album" size={40} color={palette.labelTertiary} />

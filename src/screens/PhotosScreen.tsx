@@ -183,7 +183,7 @@ export default function PhotosScreen() {
           onLongPress={() => downloadPhoto(url)}
         >
           {url ? (
-            <NetworkImage source={{ uri: url }} style={[styles.photo, { backgroundColor: palette.fill3 }]} resizeMode="cover" />
+            <NetworkImage source={{ uri: url }} style={[styles.photo, { backgroundColor: palette.fill3 }]} resizeMode="cover" thumbnail={600} />
           ) : (
             <View style={[styles.photo, styles.photoFallback, { backgroundColor: palette.fill3 }]}>
               <MaterialCommunityIcons name="image-off-outline" size={20} color={palette.labelTertiary} />

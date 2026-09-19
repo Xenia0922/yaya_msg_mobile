@@ -59,6 +59,15 @@ import { UserProfileSheet, type UserProfileTarget } from '../components/UserProf
 /** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
 
+/**
+ * 网格封面缩略图请求边长（px）。
+ *
+ * 双列网格每卡宽度 ≈ (360dp - 16) / 2 - 8 ≈ 164dp；480dpi 机型上约 492 物理像素，
+ * 取 700 留出余量（服务端按原图比例 contain，`resizeMode="cover"` 再裁切，
+ * 不会变形也不会糊）。对比原图（828×1104 / 783KB）体积降到约 1/17。
+ */
+const GRID_COVER_THUMB = 700;
+
 const PLAY_URL_FIELDS = [
   'playStreamPath',
   'playUrlPath',
@@ -1982,7 +1991,7 @@ export default function MediaScreen() {
                       <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: palette.fill3 }}>
                         <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                           {coverUrl ? (
-                            <Image source={{ uri: thumbUrl(coverUrl, 500) }} style={styles.vodGridCoverImg} resizeMode="cover" />
+                            <Image source={{ uri: thumbUrl(coverUrl, GRID_COVER_THUMB) }} style={styles.vodGridCoverImg} resizeMode="cover" />
                           ) : (
                             <View style={styles.vodGridFallback}>
                             <MaterialCommunityIcons name="video" size={30} color={palette.labelTertiary} />
@@ -2049,7 +2058,7 @@ export default function MediaScreen() {
                   <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: palette.fill3 }}>
                   <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                     {coverUrl ? (
-                      <Image source={{ uri: thumbUrl(coverUrl, 500) }} style={styles.vodGridCoverImg} resizeMode="cover" />
+                      <Image source={{ uri: thumbUrl(coverUrl, GRID_COVER_THUMB) }} style={styles.vodGridCoverImg} resizeMode="cover" />
                     ) : (
                       <View style={styles.vodGridFallback}>
                         <MaterialCommunityIcons name="video" size={30} color={palette.labelTertiary} />
