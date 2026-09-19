@@ -77,6 +77,9 @@ type FollowedRoom = {
 type RoomMode = 'big' | 'small';
 type MediaType = 'audio' | 'video' | 'live' | 'image' | 'link';
 
+/** 房间公告是否收起（'1'=收起）：跨房间/跨启动记忆 */
+const ROOM_ANNOUNCE_COLLAPSED_KEY = 'yaya_room_announce_collapsed_v1';
+
 type RoomMedia = {
   type: MediaType;
   url: string;
@@ -88,6 +91,8 @@ type RoomMedia = {
   cover?: string;
   /** 消息/卡片已明示「回放/录播」：播放时应走可拖进度条的录播播放器，而非直播播放器 */
   replayHint?: boolean;
+  /** 直播/房间公告（getLiveOne/getOpenLiveOne 的 content.announcement）：房间页顶部展示 */
+  announcement?: string;
 };
 
 type SenderProfile = {
@@ -798,6 +803,9 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
           cover,
           isLive,
           needsVlc: streamNeedsProxy(urls[0]),
+          // 公告：与播放器页同源（getLiveOne/getOpenLiveOne 的 content.announcement）。
+          // 用户反馈房间页此前完全不显示公告、也没有开关按钮。
+          announcement: String(d.announcement || d.notice || '').trim() || undefined,
         };
       }
     }
@@ -1263,9 +1271,30 @@ export default function FollowedRoomsScreen() {
   const roomMetaCache = useRef<Record<string, { name: string; bg: string }>>({});
   // 背景图渐显：新背景 uri 变化时重置为 0，ImageBackground onLoad 后淡入到 1，消除「从无到有硬跳变」
   const bgOpacity = useRef(new Animated.Value(0)).current;
+  /**
+   * 背景图 crossfade：切到**另一个也有背景图**的房间时，旧图先垫在底下、
+   * 新图 onLoad 后 280ms 淡入覆盖 —— 消除「先闪一下底色再出现」的不连贯
+   * （旧实现每次 uri 变化都把 opacity 归零，两房都有背景时切换必然闪底色）。
+   * 新图淡入完成后清掉 prev，避免多驻留一张大图。
+   */
+  const [roomBgPrev, setRoomBgPrev] = useState('');
+  const roomBgPrevRef = useRef('');
   useEffect(() => {
-    // 背景 uri 变化（进房/切房/更新）时先归零，等新图 onLoad 再淡入
-    bgOpacity.setValue(0);
+    const next = roomMeta.bg;
+    const prev = roomBgPrevRef.current;
+    if (prev && next && prev !== next) {
+      // 两房都有背景图且不同：crossfade（旧图垫底，新图 onLoad 淡入）
+      setRoomBgPrev(prev);
+      bgOpacity.setValue(0);
+    } else if (!next) {
+      // 切到无背景房间：清掉整层（露出全局底衬）
+      bgOpacity.setValue(0);
+      setRoomBgPrev('');
+    } else {
+      // 首次进房 / 同一张图：从底色淡入
+      bgOpacity.setValue(0);
+    }
+    roomBgPrevRef.current = next;
   }, [roomMeta.bg, bgOpacity]);
   const activeChannelRef = useRef('');
   /**
@@ -1337,6 +1366,23 @@ export default function FollowedRoomsScreen() {
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
   const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
+  /**
+   * 房间公告展开态。用户要求**记住收起状态**（跨房间/跨启动），持久化到 AsyncStorage。
+   * 注意：这里不再「进房复位为展开」—— 那会让收起状态每次进房都被打回。
+   */
+  const [roomAnnounceExpanded, setRoomAnnounceExpanded] = useState(true);
+  const roomAnnounceLoadedRef = useRef(false);
+  useEffect(() => {
+    if (roomAnnounceLoadedRef.current) return;
+    roomAnnounceLoadedRef.current = true;
+    AsyncStorage.getItem(ROOM_ANNOUNCE_COLLAPSED_KEY)
+      .then((v) => setRoomAnnounceExpanded(v !== '1'))
+      .catch(() => {});
+  }, []);
+  const setRoomAnnouncePersisted = (v: boolean) => {
+    setRoomAnnounceExpanded(v);
+    AsyncStorage.setItem(ROOM_ANNOUNCE_COLLAPSED_KEY, v ? '0' : '1').catch(() => {});
+  };
   // 直播弹幕：页面浮层 + 播放器底坞输入条共用同一条云信连接（避免重复建连）
   const roomBarrageLiveId = roomPlayer?.isLive && roomPlayer.liveId ? String(roomPlayer.liveId) : '';
   const roomBarrage = useLiveBarrage({ liveId: roomBarrageLiveId, enabled: !!roomBarrageLiveId, module: 'live' });
@@ -2814,8 +2860,17 @@ export default function FollowedRoomsScreen() {
       <View style={styles.roomRoot}>
         {roomBgUri ? (
           <>
+            {roomBgPrev ? (
+              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                <ImageBackground
+                  source={{ uri: roomBgPrev }}
+                  resizeMode="cover"
+                  style={StyleSheet.absoluteFill}
+                />
+              </View>
+            ) : null}
             <Animated.View style={[styles.roomBgLayer, { opacity: bgOpacity }]}>
-              <ImageBackground source={{ uri: roomBgUri }} resizeMode="cover" style={StyleSheet.absoluteFill} onLoad={() => { Animated.timing(bgOpacity, { toValue: 1, duration: 280, useNativeDriver: true }).start(); }} onError={(e) => { setRoomMeta((m) => ({ ...m, bg: '' })); }} />
+              <ImageBackground source={{ uri: roomBgUri }} resizeMode="cover" style={StyleSheet.absoluteFill} onLoad={() => { Animated.timing(bgOpacity, { toValue: 1, duration: 280, useNativeDriver: true }).start(); setTimeout(() => setRoomBgPrev(''), 340); }} onError={(e) => { setRoomMeta((m) => ({ ...m, bg: '' })); }} />
             </Animated.View>
             <View pointerEvents="none" style={[styles.roomBgLayer, { backgroundColor: roomScrim }]} />
           </>
@@ -3183,6 +3238,51 @@ export default function FollowedRoomsScreen() {
             </BlurView>
           </View>
 
+        {/* 房间公告：与播放器页公告同语义（可收起/展开；进房默认展开）。
+            数据来自 getLiveOne/getOpenLiveOne 的 content.announcement（见 resolveRoomLiveMedia）。
+            悬浮在聊天列表上方，不挤压列表高度（绝对定位），收起后只剩一颗胶囊按钮。 */}
+        {roomPlayer?.announcement && !roomPlayerFullscreen ? (
+          roomAnnounceExpanded ? (
+            <View
+              style={[styles.roomAnnouncePanel, { backgroundColor: palette.fill2, borderColor: palette.innerStroke }]}
+            >
+              <View style={styles.roomAnnounceTop}>
+                <View style={styles.roomAnnounceTitleRow}>
+                  <MaterialCommunityIcons name="bullhorn" size={15} color={palette.tint} style={{ marginRight: 5 }} />
+                  <Text style={[styles.roomAnnounceTitle, { color: palette.label }]} numberOfLines={1}>{t('公告')}</Text>
+                </View>
+                <View style={styles.roomAnnounceBtns}>
+                  <TouchableOpacity
+                    onPress={() => setRoomAnnouncePersisted(false)}
+                    style={[styles.roomAnnounceBtn, { borderColor: palette.innerStroke }]}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.roomAnnounceBtnText, { color: palette.labelSecondary }]}>{t('收起')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <ScrollView style={styles.roomAnnounceBody} nestedScrollEnabled>
+                <Text style={[styles.roomAnnounceText, { color: palette.labelSecondary }]} selectable>
+                  {roomPlayer.announcement}
+                </Text>
+              </ScrollView>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => setRoomAnnouncePersisted(true)}
+              style={[styles.roomAnnouncePill, { backgroundColor: palette.fill2, borderColor: palette.innerStroke }]}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              activeOpacity={0.75}
+            >
+              <MaterialCommunityIcons name="bullhorn" size={13} color={palette.tint} style={{ marginRight: 4 }} />
+              <Text style={[styles.roomAnnouncePillText, { color: palette.labelSecondary }]} numberOfLines={1}>
+                {t('公告')}
+              </Text>
+            </TouchableOpacity>
+          )
+        ) : null}
+
         {roomSearchOpen ? (
           <View style={[styles.roomSearchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
             <MaterialCommunityIcons name="magnify" size={17} color={palette.labelTertiary} />
@@ -3229,6 +3329,14 @@ export default function FollowedRoomsScreen() {
               isAvailable: hasMoreMessages,
               onPress: loadMoreRoomMessages,
               isLoading: loading,
+              /**
+               * ⚠️ 上划到顶自动加载（用户反馈：到顶只出现按钮、还要再点一下，太别扭）。
+               * 库的 FlatList 已挂 onEndReached（threshold 0.1），inverted 列表的数据末端
+               * 正好是视觉顶部（最旧消息）—— 打开这个开关后，上划接近顶部就会自动调
+               * onPress（即 loadMoreRoomMessages），按钮保留作为兜底。
+               * 防重入/去重由 loadMoreRoomMessages 自己的护栏保证，可安全重复触发。
+               */
+              isInfiniteScrollEnabled: true,
             }}
           />
         </FadeInView>
@@ -3626,6 +3734,18 @@ const styles = StyleSheet.create({
   daySep: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
   daySepText: { fontSize: 11, fontWeight: '600', alignSelf: 'center' },
   chatToolsClip: { marginHorizontal: 12, marginBottom: 8, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  /** 房间公告（与播放器页公告同语义，但为普通流式布局——悬浮会遮聊天内容） */
+  roomAnnouncePanel: { marginHorizontal: 12, marginBottom: 8, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  roomAnnounceTop: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 4 },
+  roomAnnounceTitleRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
+  roomAnnounceTitle: { fontSize: 13, fontWeight: '700' },
+  roomAnnounceBtns: { flexDirection: 'row', flexShrink: 0 },
+  roomAnnounceBtn: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+  roomAnnounceBtnText: { fontSize: 12 },
+  roomAnnounceBody: { maxHeight: 132, paddingHorizontal: 10, paddingBottom: 10 },
+  roomAnnounceText: { fontSize: 13, lineHeight: 19 },
+  roomAnnouncePill: { alignSelf: 'flex-start', marginHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, maxWidth: '70%' },
+  roomAnnouncePillText: { fontSize: 12 },
   chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, borderRadius: 18 },
   segment: {
     flexDirection: 'row',
