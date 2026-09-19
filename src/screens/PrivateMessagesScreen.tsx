@@ -386,6 +386,14 @@ export default function PrivateMessagesScreen() {
     return flat;
   }, [convs, todayStr, t, pinnedConvs]);
   const [sel, setSel] = useState<any>(null);
+  // 键盘高度：edge-to-edge 下 adjustResize 不生效（窗口不缩），手动把底部抬上去。
+  // ⚠️ 必须挂在组件顶层 —— 之前误放进条件分支（列表/会话两个 return），钩子数量随分支变化直接崩
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [msgs, setMsgs] = useState<any[]>([]);
   const [text, setText] = useState('');
   const [uid, setUid] = useState('');
@@ -714,13 +722,6 @@ export default function PrivateMessagesScreen() {
       );
     };
 
-    // 键盘高度：edge-to-edge 下 adjustResize 不生效（窗口不缩），手动把底部抬上去
-    const [keyboardHeight, setKeyboardHeight] = useState(0);
-    useEffect(() => {
-      const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
-      const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
-      return () => { show.remove(); hide.remove(); };
-    }, []);
 
     return (
       <View style={styles.screenContainer}>
