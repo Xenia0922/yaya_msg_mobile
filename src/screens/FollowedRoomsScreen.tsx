@@ -1280,6 +1280,13 @@ export default function FollowedRoomsScreen() {
   const bgOpacityB = useRef(new Animated.Value(0)).current;
   const [bgLayerA, setBgLayerA] = useState('');
   const [bgLayerB, setBgLayerB] = useState('');
+  /** 槽位 uri 镜像 ref：setState 同值不会重渲染/onLoad，必须用 ref 判断「槽里已是什么」 */
+  const bgLayerARef = useRef('');
+  const bgLayerBRef = useRef('');
+  const setBgLayer = (slot: 'A' | 'B', uri: string) => {
+    if (slot === 'A') { bgLayerARef.current = uri; setBgLayerA(uri); }
+    else { bgLayerBRef.current = uri; setBgLayerB(uri); }
+  };
   const bgTopIsARef = useRef(true);
   const bgLastUriRef = useRef('');
   /** 待淡入的槽位（该槽 onLoad 后执行交叉淡入淡出） */
@@ -1310,14 +1317,18 @@ export default function FollowedRoomsScreen() {
       return;
     }
 
-    // 换图：写进「非顶层」槽（它保留旧帧不会白屏），onLoad 后交叉淡入
-    if (bgTopIsARef.current) {
-      setBgLayerB(next);
-      bgPendingFadeRef.current = 'B';
-    } else {
-      setBgLayerA(next);
-      bgPendingFadeRef.current = 'A';
+    // 换图：写进「非顶层」槽。⚠️ 状态机死角修复：若目标槽**已经装着同一张图**
+    //（A→B→A 来回切时必现），setState 同值不触发重渲染/onLoad → 交叉淡入永远不执行，
+    // 背景停在旧房间的图（用户反馈「大小切换不过来」）—— 此时该图早已解码完成，直接交叉淡入。
+    const targetSlot: 'A' | 'B' = bgTopIsARef.current ? 'B' : 'A';
+    const targetUri = targetSlot === 'A' ? bgLayerARef.current : bgLayerBRef.current;
+    if (targetUri === next) {
+      bgPendingFadeRef.current = null;
+      crossfadeTo(targetSlot);
+      return;
     }
+    setBgLayer(targetSlot, next);
+    bgPendingFadeRef.current = targetSlot;
   }, [roomMeta.bg, bgOpacityA, bgOpacityB, crossfadeTo]);
 
   /** 槽位 onLoad：若它是待淡入槽 → 交叉淡入淡出 */
@@ -1327,6 +1338,11 @@ export default function FollowedRoomsScreen() {
       crossfadeTo(slot);
     }
   }, [crossfadeTo]);
+
+  /** 槽位加载失败：放弃本次待淡入（保留当前可见背景，不闪不黑） */
+  const onBgSlotError = useCallback((slot: 'A' | 'B') => {
+    if (bgPendingFadeRef.current === slot) bgPendingFadeRef.current = null;
+  }, []);
   const activeChannelRef = useRef('');
   /**
    * 当前房间的「发言坐标」配对（channelId + serverId + 房主 id）。
@@ -2921,6 +2937,7 @@ export default function FollowedRoomsScreen() {
                   resizeMode="cover"
                   style={StyleSheet.absoluteFill}
                   onLoad={() => onBgSlotLoad('A')}
+                  onError={() => onBgSlotError('A')}
                 />
               </Animated.View>
             ) : null}
@@ -2931,6 +2948,7 @@ export default function FollowedRoomsScreen() {
                   resizeMode="cover"
                   style={StyleSheet.absoluteFill}
                   onLoad={() => onBgSlotLoad('B')}
+                  onError={() => onBgSlotError('B')}
                 />
               </Animated.View>
             ) : null}
