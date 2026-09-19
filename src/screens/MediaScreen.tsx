@@ -1301,6 +1301,8 @@ export default function MediaScreen() {
   // 应用内小窗：当前播放交棒给悬浮小窗（小窗独立 Video/LiveExoView 实例续播），关掉大播放器。
   // RTMP/FLV 直播也放行：MiniPlayer 对 rtmp/.flv + isLive 渲染原生 LiveExoView（与大播放器同内核），
   // 录播/HLS 走 RNV Video —— 不再全屏拦截（此前拦截导致成员直播「小窗点了没用」）。
+  /** 大窗视频真实宽高（PlayerCore onVideoSize 上报）：交棒小窗时带上，小窗立即按比例适配 */
+  const videoSizeRef = useRef<{ w: number; h: number } | null>(null);
   const handleMiniPlayer = useCallback(() => {
     const cur = playing;
     if (!cur?.url) return;
@@ -1310,6 +1312,8 @@ export default function MediaScreen() {
       cover: cur.cover,
       isLive: !!cur.isLive,
       position: playbackTime,
+      aspectW: videoSizeRef.current?.w,
+      aspectH: videoSizeRef.current?.h,
       backTo: {
         mode: cur.isLive ? 'live' : 'vod',
         playUrl: cur.url,
@@ -1679,6 +1683,7 @@ export default function MediaScreen() {
               headers: { 'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)', Referer: 'https://h5.48.cn/', Origin: 'https://h5.48.cn' },
             }}
             meta={{ title: playing.title, cover: playing.cover }}
+            onVideoSize={(w, h) => { if (w > 0 && h > 0) videoSizeRef.current = { w, h }; }}
             danmaku={playing.isLive ? { type: 'poll', liveId: String(playing.item?.liveId || playing.item?.id || '') } : { type: 'lrc', lrcUrl: '' }}
             features={{ rate: !playing.isLive, danmaku: true, kernelSwitch: true, resume: !playing.isLive }}
             resumeAt={webResumeTime || (playing?.position || 0)}
