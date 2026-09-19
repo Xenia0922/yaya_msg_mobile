@@ -49,6 +49,8 @@ export interface LiveBarrageBoardProps {
   compact?: boolean;
   /** 只渲染输入条（弹幕本体已由视频上的滚动层展示） */
   inputOnly?: boolean;
+  /** 隐藏输入条（输入已移到播放器底坞时，页面只留弹幕列表，避免两个输入框） */
+  hideInput?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -60,6 +62,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
     variant = 'glass',
     compact = false,
     inputOnly = false,
+    hideInput = false,
     style,
   } = props;
   const { items, status, error, ready, send, retry } = source;
@@ -234,7 +237,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
         }
       />
       {hint ? <Text style={[styles.hint, { color: palette.tint }]}>{hint}</Text> : null}
-      {inputRow}
+      {hideInput ? null : inputRow}
     </>
   );
 
