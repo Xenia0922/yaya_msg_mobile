@@ -411,6 +411,12 @@ function userCardFromUserRes(res: any) {
   const star = content?.starInfo || content?.memberInfo || userInfo?.starInfo || {};
   const objs = [base, userInfo, star, content];
   const pick = (keys: string[]) => firstTextFrom(objs, keys);
+  // 关注态：home 返回 isFriend / relationship / friend（实测查自己 = false/0）
+  const relRaw = [base, content]
+    .map((o: any) => (o ? (o.relationship ?? o.relationType ?? o.relation) : undefined))
+    .find((v: any) => v !== undefined);
+  const isFriend = [base, content].some((o: any) => o?.isFriend === true || o?.friend === true || o?.following === true);
+  const following = isFriend || (Number(relRaw) || 0) > 0;
   return {
     name: pick(['nickName', 'nickname', 'userName', 'name', 'starName', 'realNickName', 'baseUserInfo.nickName']),
     avatar: normalizeUrl(pick(['avatar', 'avatarUrl', 'faceImage', 'headImg', 'headUrl', 'starAvatar'])),
@@ -418,7 +424,8 @@ function userCardFromUserRes(res: any) {
     signature: pick(['signature', 'sign', 'intro', 'description', 'userSignature']),
     team: pick(['starTeamName', 'teamName', 'team']),
     period: pick(['periodName', 'period']),
-    isStar: !!(star && (star.starName || star.starId)) || !!base?.isStar,
+    isStar: !!(star && (star.starName || star.starId)) || base?.isStar === true || base?.star === true,
+    following,
   };
 }
 
@@ -1311,6 +1318,8 @@ export default function FollowedRoomsScreen() {
     isMember: boolean;
     detail: { name: string; avatar: string; level: string; signature: string; team: string; period: string; isStar: boolean };
   }>(null);
+  /** 资料卡请求序号：连点不同头像时丢弃旧响应（避免慢响应覆盖新卡） */
+  const userCardSeqRef = useRef(0);
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [followBusy, setFollowBusy] = useState<Set<string>>(new Set());
   // 用 ref 持有最新值，避免 toggleFollow 的 useCallback 闭包捕获到过期的 followedIds/followBusy
@@ -2300,16 +2309,26 @@ export default function FollowedRoomsScreen() {
    *  - 成员先用成员库信息立即渲染（队伍/名字），线上资料回来后再补等级/签名等
    */
   const openSenderProfile = useCallback(
-    (opts: { id: string; name: string; avatar: string; member?: Member | null }) => {
+    (opts: { id: string; name: string; avatar: string; member?: Member | null; userIds?: string[] }) => {
       const m = opts.member || null;
-      // 成员在口袋48 的 userId 与成员库 id 可能不同：优先用 userId，其次 id
-      const queryId = String((m as any)?.userId || m?.id || opts.id || '').trim();
-      const cardId = queryId || String(opts.id || '').trim();
+      // 候选 id：**消息 ext.user.userId 优先**（官方 getChannelBaseParams / 我们自己 buildChannelExt 都写的是发送者的口袋 userId），
+      // 再退成员库的 userId / id，最后退消息里取到的发送者字段（可能是云信 accid，查不到就会自动换下一个）。
+      const candidates = Array.from(
+        new Set(
+          [...(opts.userIds || []), m ? String((m as any).userId || '') : '', m?.id, opts.id]
+            .map((v) => String(v ?? '').trim())
+            .filter((v) => /^\d+$/.test(v) && v !== '0'),
+        ),
+      );
+      const cardId = candidates[0] || String(opts.id || '').trim();
+      const seq = ++userCardSeqRef.current;
+      const apply = (patch: any) =>
+        setUserCard((c) => (c && userCardSeqRef.current === seq ? { ...c, ...patch } : c));
       setUserCard({
         id: cardId,
         name: opts.name || m?.ownerName || '',
         avatar: opts.avatar || (m as any)?.avatar || '',
-        loading: /^\d+$/.test(cardId),
+        loading: candidates.length > 0,
         error: '',
         following: false,
         followBusy: false,
@@ -2324,21 +2343,31 @@ export default function FollowedRoomsScreen() {
           isStar: !!m,
         },
       });
-      // 云信 accid / 非数字 id 查不到口袋用户资料：直接给本地信息 + 说明
-      if (!/^\d+$/.test(cardId)) {
-        setUserCard((c) => (c && c.id === cardId ? { ...c, loading: false, error: t('该用户没有可加载的口袋48资料') } : c));
+      if (!candidates.length) {
+        apply({ loading: false, error: t('该用户没有可加载的口袋48资料') });
         return;
       }
-      pocketApi
-        .getUserProfile(cardId)
-        .then((res) => {
-          const detail = userCardFromUserRes(res);
-          setUserCard((c) => (c && c.id === cardId ? { ...c, loading: false, error: '', detail: { ...c.detail, ...detail } } : c));
-        })
-        .catch(() => {
-          // 不把原始报错（「No message available」等）糊到卡片上，只给一句人话
-          setUserCard((c) => (c && c.id === cardId ? { ...c, loading: false, error: t('未获取到更多资料') } : c));
-        });
+      // 依次尝试候选 id：命中第一个能查到资料的即用（查不到再换下一个）
+      void (async () => {
+        for (const id of candidates) {
+          try {
+            const res = await pocketApi.getUserProfile(id);
+            if (userCardSeqRef.current !== seq) return;
+            const detail = userCardFromUserRes(res);
+            // 合并而非覆盖：成员先用成员库填了队伍/成员标记，线上资料只补能拿到的字段
+            setUserCard((c) =>
+              c && userCardSeqRef.current === seq
+                ? { ...c, id, loading: false, error: '', following: detail.following, detail: { ...c.detail, ...detail } }
+                : c,
+            );
+            return;
+          } catch {
+            // 该 id 查不到（如非口袋 userId）→ 试下一个
+          }
+        }
+        if (userCardSeqRef.current !== seq) return;
+        apply({ loading: false, error: t('未获取到更多资料') });
+      })();
     },
     [t],
   );
@@ -2473,9 +2502,12 @@ export default function FollowedRoomsScreen() {
       const looksLikeFile = !media && /^https?:\/\//i.test(String(baseText || '')) || /\.(amr|mp3|m4a|aac|mp4|mov|jpg|jpeg|png|gif|webp)(\?|$)/i.test(String(baseText || ''));
       const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? baseText : '') : (looksLikeFile ? '' : baseText));
       const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
-      // 点头像能打开什么：成员（房主 / 成员库里的其他成员）→ 成员档案；否则按发送者 id 试用户资料
+      // 点头像能打开什么：成员（房主 / 成员库里的其他成员）→ 资料卡（带成员信息）；否则按发送者 id 试用户资料
       const avatarMember: Member | null = senderMember || (isRoomOwner ? room : null);
-      const canOpenProfile = !!avatarMember || !!senderId;
+      // 消息 ext.user.userId = 发送者的口袋 userId（官方 getChannelBaseParams 结构）→ 查资料最靠谱的 id
+      const extUser: any = (extraInfo(item) as any)?.user || {};
+      const extUserId = String(extUser?.userId ?? extUser?.user_id ?? extUser?.id ?? '').trim();
+      const canOpenProfile = !!avatarMember || !!senderId || !!extUserId;
 
       return (
         <View style={[styles.chatRow, mine && styles.chatRowMine, !row.groupStart && styles.chatRowTight]}>
@@ -2485,7 +2517,7 @@ export default function FollowedRoomsScreen() {
               <TouchableOpacity
                 activeOpacity={0.8}
                 disabled={!canOpenProfile}
-                onPress={() => openSenderProfile({ id: senderId, name: profile.name, avatar: profile.avatar, member: avatarMember })}
+                onPress={() => openSenderProfile({ id: senderId, name: profile.name, avatar: profile.avatar, member: avatarMember, userIds: [extUserId] })}
               >
                 {profile.avatar ? (
                   <Image source={{ uri: profile.avatar }} style={styles.avatar} />
