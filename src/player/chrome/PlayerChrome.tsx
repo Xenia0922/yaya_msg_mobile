@@ -7,6 +7,7 @@ import { PlayerFeatures } from '../types';
 import { useI18n } from '../../i18n';
 import { usePalette } from '../../theme';
 import { formatPlayTime } from './FullscreenManager';
+import { useSafeAreaInsets } from '../../hooks/useSafeAreaInsets';
 import { enqueueDownload } from '../../services/downloads';
 import { useUiStore } from '../../store';
 import { errorMessage } from '../../utils/data';
@@ -25,6 +26,8 @@ interface Props {
   inline?: boolean;
   /** 错误重试回调：页面可传「重新解析地址」而非仅重播同 URL（直播流地址有时效） */
   onRetry?: () => void;
+  /** 直播弹幕输入条：渲染进底部控制坞，随控制条一起自动隐藏/呼出 */
+  barrageInput?: React.ReactNode;
 }
 
 /** 控制条自动隐藏间隔 */
@@ -38,7 +41,7 @@ const TINT = '#ff6f91';
  * 唯一播放器控制层（重写核心）：渐变遮罩顶栏 + 悬浮底坞（可拖进度/倍速/弹幕/全屏）+ 更多面板。
  * 所有页面共用；能力按 features 声明渲染。
  */
-export function PlayerChrome({ features = {}, extraActions = [], onClose, inline = false, onRetry }: Props) {
+export function PlayerChrome({ features = {}, extraActions = [], onClose, inline = false, onRetry, barrageInput }: Props) {
   const { t } = useI18n();
   const palette = usePalette();
   const meta = usePlayerStore((s) => s.meta);
@@ -57,6 +60,8 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   const [moreVisible, setMoreVisible] = useState(false);
   const [rateSheetVisible, setRateSheetVisible] = useState(false);
   const { width: screenW } = useWindowDimensions();
+  // 安全区：顶栏保留「系统通知栏」冗余（避免弹幕/标题压到状态栏），底坞避开手势导航条
+  const insets = useSafeAreaInsets();
   const tapRef = useRef<{ t: number; side: 'l' | 'r' } | null>(null);
   const [seekFlash, setSeekFlash] = useState<number | null>(null);
   const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -280,7 +285,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
     <>
       {/* 顶栏：常规/卡片全屏均显示（卡片全屏必须有返回钮，否则无法退出） */}
       {!inline || fullscreen ? (
-        <Animated.View style={[styles.topWrap, { opacity: controlsOpacity }]} pointerEvents={controlsVisible ? 'auto' : 'none'}>
+        <Animated.View style={[styles.topWrap, { opacity: controlsOpacity, paddingTop: insets.top + 6 }]} pointerEvents={controlsVisible ? 'auto' : 'none'}>
           <LinearGradient colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']} style={StyleSheet.absoluteFill} />
           <TouchableOpacity
             style={styles.topBtn}
@@ -385,7 +390,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
             style={styles.bottomShade}
           />
         </Animated.View>
-        <Animated.View style={[styles.dockWrap, { opacity: controlsOpacity }]} pointerEvents="box-none">
+        <Animated.View style={[styles.dockWrap, { opacity: controlsOpacity, paddingBottom: Math.max(insets.bottom, 12) + 4 }]} pointerEvents="box-none">
           {/* 进度行：当前时间 —— 可拖进度 —— 总时间（直播仅显示 直播） */}
           {!isLive ? (
           <View style={styles.progressRow}>
@@ -407,6 +412,8 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
             <Text style={styles.timeText}>{formatPlayTime(duration)}</Text>
           </View>
           ) : null}
+          {/* 直播弹幕输入条：与控制条同一个底坞容器 → 一起自动隐藏/呼出 */}
+          {barrageInput ? <View style={styles.dockBarrageRow}>{barrageInput}</View> : null}
           {/* 控制行：播放/暂停（主按钮）+ 右侧功能 */}
           <View style={styles.ctrlRow}>
             <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.85}>
@@ -568,12 +575,13 @@ const styles = StyleSheet.create({
   topWrap: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
     flexDirection: 'row', alignItems: 'center',
-    paddingTop: 44, paddingBottom: 26, paddingHorizontal: 6,
+    paddingBottom: 24, paddingHorizontal: 8,
   },
   topBtn: {
     width: 40, height: 40, borderRadius: 20,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(20,20,24,0.35)',
+    backgroundColor: 'rgba(20,20,24,0.34)',
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 5, shadowOffset: { width: 0, height: 1 },
   },
   titleWrap: { flex: 1, marginHorizontal: 10, flexDirection: 'row', alignItems: 'center', minWidth: 0 },
   titleText: {
@@ -587,25 +595,27 @@ const styles = StyleSheet.create({
     position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 31,
     paddingHorizontal: 16, paddingBottom: 16,
   },
+  dockBarrageRow: { marginBottom: 10 },
   progressRow: { flexDirection: 'row', alignItems: 'center' },
   timeText: { color: 'rgba(255,255,255,0.92)', fontSize: 11, fontVariant: ['tabular-nums'], marginHorizontal: 8, minWidth: 34, textAlign: 'center' },
   progressTouch: {
     flex: 1, height: 30, justifyContent: 'center',
   },
   progressTrackBg: {
-    height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.28)',
+    height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.26)',
   },
-  progressFill: { height: 2, backgroundColor: '#fff' },
+  progressFill: { height: 3, borderRadius: 2, backgroundColor: '#fff' },
   progressThumb: {
-    position: 'absolute', top: 11, width: 6, height: 6, borderRadius: 3,
-    marginLeft: -3, backgroundColor: '#fff',
+    position: 'absolute', top: 9.5, width: 11, height: 11, borderRadius: 6,
+    marginLeft: -5.5, backgroundColor: '#fff',
+    shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
   },
   ctrlRow: { flexDirection: 'row', alignItems: 'center', marginTop: 0 },
   playBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 46, height: 46, borderRadius: 23,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 7, shadowOffset: { width: 0, height: 2 },
   },
   ctrlHintText: { color: 'rgba(255,255,255,0.6)', fontSize: 11, marginLeft: 8, flexShrink: 1 },
   ctrlBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },

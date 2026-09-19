@@ -21,6 +21,8 @@ interface Props extends PlayerScreenProps {
   resumeAt?: number;
   /** 错误重试回调（直播流地址时效：页面重新解析而非重播同 URL） */
   onRetry?: () => void;
+  /** 直播弹幕输入条：渲染进播放器底部控制坞（随控制条自动隐藏/呼出） */
+  barrageInput?: ReactNode;
 }
 
 /**
@@ -37,7 +39,7 @@ interface Props extends PlayerScreenProps {
  *   onClose={() => ...}
  * />
  */
-export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, features = {}, extraActions = [], onClose, children, persistent = false, inline = false, onVideoSize, resumeAt, onRetry }: Props) {
+export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, features = {}, extraActions = [], onClose, children, persistent = false, inline = false, onVideoSize, resumeAt, onRetry, barrageInput }: Props) {
   // 播放错误自动重解析（假死/URL 失效场景）：RTMP 流 URL 带 wsSecret 且多为单次有效，
   // 原生重连同 URL 只会再拿一帧；有 onRetry（页面重新解析新地址）时自动触发，同源最多 2 次。
   const dbgState = usePlayerStore((s) => s.state);
@@ -121,7 +123,7 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
         </View>
       </View>
       {children}
-      <PlayerChrome features={features} extraActions={extraActions} onClose={onClose} inline={inline} onRetry={onRetry} />
+      <PlayerChrome features={features} extraActions={extraActions} onClose={onClose} inline={inline} onRetry={onRetry} barrageInput={barrageInput} />
       <FullscreenManager />
     </View>
   );
