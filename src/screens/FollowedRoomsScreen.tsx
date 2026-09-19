@@ -3341,7 +3341,8 @@ export default function FollowedRoomsScreen() {
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         {searchOpen && searchQuery.trim() ? (
-          /* 搜索态：成员库结果直接走 FlatList（可滚动、虚拟化） */
+          /* 搜索态：成员库结果直接走 FlatList（可滚动、虚拟化）。
+             单列整行卡（原来是 2 列竖排大卡，一屏只容 3 行、信息密度太低） */
           memberHits.length === 0 ? (
             <Text style={[styles.memberHitsEmpty, { color: palette.labelTertiary }]}>{t('没有匹配的成员')}</Text>
           ) : (
@@ -3349,25 +3350,25 @@ export default function FollowedRoomsScreen() {
             data={memberHits}
             keyExtractor={(member: any) => String((member as any).id || (member as any).userId || member.ownerName)}
             contentContainerStyle={styles.memberHitsListContent}
-            numColumns={2}
-            columnWrapperStyle={styles.memberGridRow}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item: member, index }) => {
               const mid = String((member as any).id || (member as any).userId || '');
               const isFollowing = followedIds.has(mid);
               const busy = followBusy.has(mid);
               const name = shortName(member, mid);
+              const team = member.team || member.groupName || t('成员');
               return (
                 <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.memberGridItem}>
+                  {/* ⚠️ 列表/网格逐卡禁止 GlassSurface（滚动逐帧重算模糊 → 掉帧）。
+                      这里用实底卡 + hairline 描边，观感与玻璃卡一致但不参与模糊管线。 */}
                   <TouchableOpacity
                     style={[
                       styles.memberHitCard,
-                      { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth },
+                      { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline },
                     ]}
                     onPress={() => openRoom(member)}
                     activeOpacity={0.88}
                   >
-                  <GlassSurface radius={20} role="card">
                     <View style={[styles.memberHitAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
                       {member.avatar ? (
                         <Image source={{ uri: member.avatar }} style={styles.memberHitAvatarImg} />
@@ -3375,12 +3376,14 @@ export default function FollowedRoomsScreen() {
                         <Text style={[styles.memberHitAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
                       )}
                     </View>
-                    <Text style={[styles.memberHitName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
-                    <Text style={[styles.memberHitTeam, { color: palette.labelTertiary }]} numberOfLines={1}>
-                      {member.team || member.groupName || t('成员')}
-                    </Text>
+                    <View style={styles.memberHitMeta}>
+                      {/* 名字与团队分行但左对齐成一组：横向排版比居中竖排更省高度、信息密度更高。
+                          团队色用 labelSecondary（不是 labelTertiary）—— 深色卡上 tertiary 灰会糊掉。 */}
+                      <Text style={[styles.memberHitName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
+                      <Text style={[styles.memberHitTeam, { color: palette.labelSecondary }]} numberOfLines={1}>{team}</Text>
+                    </View>
                     <TouchableOpacity
-                      style={[styles.memberHitBtn, { backgroundColor: isFollowing ? palette.tintSoft : palette.tint }]}
+                      style={[styles.memberHitBtn, { backgroundColor: isFollowing ? 'transparent' : palette.tint, borderColor: isFollowing ? palette.tint : 'transparent' }]}
                       disabled={busy}
                       onPress={() => toggleFollow(member)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -3394,7 +3397,6 @@ export default function FollowedRoomsScreen() {
                         </Text>
                       )}
                     </TouchableOpacity>
-                  </GlassSurface>
                   </TouchableOpacity>
                 </FadeInView>
               );
@@ -3428,7 +3430,9 @@ export default function FollowedRoomsScreen() {
             const isOnMic = !isLiveNow && !!onMicMap[mid];
             return (
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.roomRow}>
-              <GlassSurface radius={20} role="card" style={[styles.roomRowCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+              {/* ⚠️ 逐卡禁止 GlassSurface（长列表滚动逐帧重算模糊 → 掉帧）。
+                  实底 surfaceGlassStrong + hairline，观感与玻璃卡一致但不进模糊管线。 */}
+              <View style={[styles.roomRowCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
                 <ScalePressable
                   style={styles.roomRowMain}
                   onPress={() => item.member && openRoom(item.member)}
@@ -3546,7 +3550,7 @@ export default function FollowedRoomsScreen() {
                     )}
                   </ScalePressable>
                 </View>
-              </GlassSurface>
+              </View>
             </FadeInView>
             );
           }}
@@ -3666,45 +3670,47 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   searchInput: { flex: 1, fontSize: 15, padding: 0 },
-  memberHitsListContent: { paddingHorizontal: 8, paddingBottom: 112 },
+  memberHitsListContent: { paddingHorizontal: 0, paddingBottom: 112 },
+  memberHitBtnText: { fontSize: 13, fontWeight: '800' },
+  memberHitsEmpty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
+  memberGridRow: { paddingHorizontal: 12 },
+  memberGridItem: { paddingVertical: 5 },
+  // 搜索结果卡：横向一行（头像 + 名字/团队 + 关注按钮），左对齐。
+  // 原竖排居中版把 2 列卡片撑到 ~210dp 高，一屏只能看到 3 行；横排后约 84dp。
   memberHitCard: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 18,
+    flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
-    marginBottom: 8,
+    gap: 12,
+    paddingVertical: 10,
+    paddingLeft: 10,
+    paddingRight: 12,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   memberHitAvatar: {
-    width: 68,
-    height: 68,
-    borderRadius: 36,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
-  memberHitAvatarImg: { width: 68, height: 68, borderRadius: 36 },
-  memberHitAvatarText: { fontSize: 22, fontWeight: '800' },
-  memberHitName: { fontSize: 16, fontWeight: '800', marginTop: 10, maxWidth: '90%' },
+  memberHitAvatarImg: { width: 56, height: 56, borderRadius: 28 },
+  memberHitAvatarText: { fontSize: 20, fontWeight: '800' },
+  // flex:1 + minWidth:0 → 长名字/长队名正常省略，不会把关注按钮挤出卡外
+  memberHitMeta: { flex: 1, minWidth: 0 },
+  memberHitName: { fontSize: 15, fontWeight: '700' },
   memberHitTeam: { fontSize: 12, marginTop: 3 },
   memberHitBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 7,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 64,
-    marginTop: 10,
+    minWidth: 62,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  memberHitBtnText: { fontSize: 13, fontWeight: '800' },
-  memberHitsEmpty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
-  memberGridRow: { paddingHorizontal: 8 },
-  memberGridItem: { width: '50%', padding: 4 },
   memberCard: {
     flex: 1,
     padding: 14,
