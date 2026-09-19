@@ -31,6 +31,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { VODItem, Member } from '../types';
 import { formatTimestamp, formatDuration } from '../utils/format';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
+import { thumbUrl } from '../utils/imageThumb';
 import { getResumePosition } from '../utils/resumePosition';
 import { logWarn } from '../utils/runtimeLog';
 import pocketApi from '../api/pocket48';
@@ -1866,7 +1867,7 @@ export default function MediaScreen() {
                       <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: palette.fill3 }}>
                         <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                           {coverUrl ? (
-                            <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
+                            <Image source={{ uri: thumbUrl(coverUrl, 500) }} style={styles.vodGridCoverImg} resizeMode="cover" />
                           ) : (
                             <View style={styles.vodGridFallback}>
                             <MaterialCommunityIcons name="video" size={30} color={palette.labelTertiary} />
@@ -1933,7 +1934,7 @@ export default function MediaScreen() {
                   <View style={{ borderRadius: 20, overflow: 'hidden', backgroundColor: palette.fill3 }}>
                   <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
                     {coverUrl ? (
-                      <Image source={{ uri: coverUrl }} style={styles.vodGridCoverImg} resizeMode="cover" />
+                      <Image source={{ uri: thumbUrl(coverUrl, 500) }} style={styles.vodGridCoverImg} resizeMode="cover" />
                     ) : (
                       <View style={styles.vodGridFallback}>
                         <MaterialCommunityIcons name="video" size={30} color={palette.labelTertiary} />

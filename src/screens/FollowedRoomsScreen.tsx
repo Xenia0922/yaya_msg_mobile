@@ -59,6 +59,7 @@ import ZoomImageModal from '../components/ZoomImageModal';
 import { enqueueDownload } from '../services/downloads';
 import { memberSearchText } from '../utils/members';
 import { getBgDisplayUri, ensureBgCached } from '../services/roomBgCache';
+import { thumbUrl, AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
 import { useBlurTarget } from '../components/BlurTarget';
@@ -563,6 +564,9 @@ function findSmallLastMessage(messages: any[], member?: Member) {
   return messages.find((msg) => String(msg.channelId || '') === ykid)
     || null;
 }
+
+/** 房间未读提醒开关的本地持久化键 */
+const UNREAD_NOTIFY_KEY = 'yaya_room_unread_notify_v1';
 
 function roomChannelId(member: Member, mode: RoomMode) {
   return String(mode === 'small' ? (member.yklzId || '') : (member.channelId || ''));
@@ -1227,6 +1231,11 @@ export default function FollowedRoomsScreen() {
   const followedRef = useRef<FollowedRoom[]>([]);
   followedRef.current = followed;
   const [followedLoading, setFollowedLoading] = useState(false);
+  /**
+   * 房间未读提醒开关（用户要求）：关闭后不显示未读角标与预览高亮，持久化在本地。
+   * 未读数来自 im/api/v1/team/classic/last/message/get 返回的 unreadCount（与桌面端同源）。
+   */
+  const [unreadNotify, setUnreadNotify] = useState(true);
   // 直播状态：ids=直播中主播 id 集合，names=直播中昵称集合（接口字段不一，昵称兜底）
   const [liveNow, setLiveNow] = useState<{ ids: Set<string>; names: Set<string> }>({ ids: new Set(), names: new Set() });
   const [pinned, setPinned] = useState<string[]>([]);
@@ -1343,6 +1352,21 @@ export default function FollowedRoomsScreen() {
   followBusyRef.current = followBusy;
   // loadFollowed 定义在 toggleFollow 之后，用 ref 持有以避免前向引用报错
   const loadFollowedRef = useRef<(silent?: boolean) => void>(() => {});
+
+  // 未读提醒开关：读本地持久化 + 切换写入
+  useEffect(() => {
+    AsyncStorage.getItem(UNREAD_NOTIFY_KEY)
+      .then((v) => { if (v !== null) setUnreadNotify(v === '1'); })
+      .catch(() => {});
+  }, []);
+  const toggleUnreadNotify = useCallback(() => {
+    setUnreadNotify((prev) => {
+      const next = !prev;
+      AsyncStorage.setItem(UNREAD_NOTIFY_KEY, next ? '1' : '0').catch(() => {});
+      showToast(next ? t('已开启房间未读提醒') : t('已关闭房间未读提醒'));
+      return next;
+    });
+  }, [showToast, t]);
 
   useFocusEffect(useCallback(() => {
     setTabBarHidden(!!selectedRoom || !!roomPlayer);
@@ -2421,6 +2445,40 @@ export default function FollowedRoomsScreen() {
     [navigation],
   );
 
+  /**
+   * 房间卡片长按 → 快捷操作菜单（对齐桌面 followed-rooms-feature.executeQuickAction）：
+   * 进大/小房间、置顶与排序、关注/取关、未读提醒开关。
+   */
+  const openRoomQuickActions = useCallback(
+    (item: any) => {
+      const member = item?.member;
+      if (!member) return;
+      const name = shortName(member, item.memberId);
+      const isPinned = pinned.includes(item.memberId);
+      const pIdx = pinned.indexOf(item.memberId);
+      const fid = String(member.id || item.memberId);
+      const isFollowing = followedIds.has(fid);
+      Alert.alert(t('房间操作'), name, [
+        { text: t('进入大房间'), onPress: () => openRoom(member, 'big', showFanMessages) },
+        { text: t('进入小房间'), onPress: () => openRoom(member, 'small', showFanMessages) },
+        {
+          text: isPinned ? t('取消置顶') : t('置顶'),
+          onPress: () => togglePin(item.memberId),
+        },
+        ...(isPinned && pIdx > 0 ? [{ text: t('置顶上移'), onPress: () => movePin(item.memberId, -1) }] : []),
+        ...(isPinned && pIdx >= 0 && pIdx < pinned.length - 1 ? [{ text: t('置顶下移'), onPress: () => movePin(item.memberId, 1) }] : []),
+        {
+          text: isFollowing ? t('取消关注') : t('关注'),
+          style: isFollowing ? ('destructive' as const) : ('default' as const),
+          onPress: () => toggleFollow(member),
+        },
+        { text: unreadNotify ? t('关闭未读提醒') : t('开启未读提醒'), onPress: toggleUnreadNotify },
+        { text: t('取消'), style: 'cancel' as const },
+      ]);
+    },
+    [followedIds, movePin, openRoom, pinned, showFanMessages, t, toggleFollow, togglePin, toggleUnreadNotify, unreadNotify],
+  );
+
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
   /** 长按自己的消息 → 撤回删除（官方 im/api/v1/team/msg/delete，服务端校验只能删本人的） */
   const confirmDeleteMessage = useCallback(
@@ -2537,7 +2595,7 @@ export default function FollowedRoomsScreen() {
                 onPress={() => openSenderProfile({ id: senderId, name: profile.name, avatar: profile.avatar, member: avatarMember, userIds: [extUserId] })}
               >
                 {profile.avatar ? (
-                  <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+                  <Image source={{ uri: thumbUrl(profile.avatar, AVATAR_THUMB_WIDTH) }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
                 )}
@@ -3164,6 +3222,14 @@ export default function FollowedRoomsScreen() {
           <TouchableOpacity onPress={() => loadFollowed()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
             <MaterialCommunityIcons name="refresh" size={22} color={palette.label} />
           </TouchableOpacity>
+          {/* 未读提醒开关（用户要求）：关掉就不显示未读角标与最新消息高亮 */}
+          <TouchableOpacity onPress={toggleUnreadNotify} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.85}>
+            <MaterialCommunityIcons
+              name={unreadNotify ? 'bell-ring-outline' : 'bell-off-outline'}
+              size={22}
+              color={unreadNotify ? palette.tint : palette.label}
+            />
+          </TouchableOpacity>
         </View>
       } />
 
@@ -3253,6 +3319,8 @@ export default function FollowedRoomsScreen() {
         <PerfFlatList
           key="rooms-list"
           data={filtered}
+          // 滚动锚点（B6）：30s 静默刷新替换数据 / 置顶重排时保持用户当前可见位置，不被弹回顶部
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyExtractor={(item: any, index) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
           renderItem={({ item, index }) => {
@@ -3264,6 +3332,11 @@ export default function FollowedRoomsScreen() {
             const team = item.member?.team || item.member?.groupName || '';
             const lastTime = Number(item.lastMessage?.msgTime || item.lastMessage?.ctime || 0);
             const lastText = item.lastMessage ? messageText(item.lastMessage) : '';
+            // 未读数：接口 last/message/get 的 unreadCount（大小房间取较大者）——受「未读提醒」开关控制显示
+            const unreadCount = Math.max(
+              Number(item.lastMessage?.unreadCount || 0) || 0,
+              Number(item.lastSmallMessage?.unreadCount || 0) || 0,
+            );
             // 直播中判定：以直播列表接口为准（id / liveRoomId / account / 昵称命中关注成员）
             const mid = String(item.member?.id || item.memberId);
             const mroom = String((item.member as any)?.liveRoomId || '');
@@ -3278,26 +3351,7 @@ export default function FollowedRoomsScreen() {
                 <ScalePressable
                   style={styles.roomRowMain}
                   onPress={() => item.member && openRoom(item.member)}
-                  onLongPress={() => {
-                    // 长按卡片整行 = 置顶排序（上移/下移/取消置顶）；短按仍是进房间
-                    const i = pinned.indexOf(item.memberId);
-                    if (i === -1) {
-                      // 未置顶：长按直接置顶（第一个置顶常用操作）
-                      togglePin(item.memberId);
-                      return;
-                    }
-                    if (pinned.length <= 1) return;
-                    Alert.alert(
-                      t('置顶排序'),
-                      shortName(item.member, item.memberId),
-                      [
-                        { text: t('上移'), onPress: () => i > 0 && movePin(item.memberId, -1) },
-                        { text: t('下移'), onPress: () => i < pinned.length - 1 && movePin(item.memberId, 1) },
-                        { text: t('取消置顶'), style: 'destructive', onPress: () => togglePin(item.memberId) },
-                        { text: t('取消'), style: 'cancel' },
-                      ],
-                    );
-                  }}
+                  onLongPress={() => openRoomQuickActions(item)}
                   delayLongPress={400}
                   pressedScale={0.98}
                   activeOpacity={0.9}
@@ -3305,7 +3359,7 @@ export default function FollowedRoomsScreen() {
                   {/* 封面 56 圆角 12 */}
                   <View style={[styles.roomCover, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
                     {item.member?.avatar ? (
-                      <Image source={{ uri: item.member.avatar }} style={styles.roomCoverImg} />
+                      <Image source={{ uri: thumbUrl(item.member.avatar, AVATAR_THUMB_WIDTH) }} style={styles.roomCoverImg} />
                     ) : (
                       <Text style={[styles.roomCoverText, { color: palette.tint }]} numberOfLines={1}>{avatarInitial(name)}</Text>
                     )}
@@ -3330,6 +3384,12 @@ export default function FollowedRoomsScreen() {
                         <View style={[styles.pinTagChip, { backgroundColor: palette.tintSoft }]}>
                           <MaterialCommunityIcons name="pin" size={10} color={palette.tint} />
                           <Text style={[styles.pinTagChipText, { color: palette.tint }]}>{t('置顶')}</Text>
+                        </View>
+                      ) : null}
+                      {/* 未读角标（受未读提醒开关控制） */}
+                      {unreadNotify && unreadCount > 0 ? (
+                        <View style={[styles.unreadBadge, { backgroundColor: palette.danger }]}>
+                          <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? '99+' : String(unreadCount)}</Text>
                         </View>
                       ) : null}
                     </View>
@@ -3695,6 +3755,8 @@ const styles = StyleSheet.create({
     marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
   },
   pinTagChipText: { fontSize: 9, fontWeight: '800' },
+  unreadBadge: { minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  unreadBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   roomActions: { marginLeft: 6, gap: 6, alignItems: 'center', paddingRight: 12, paddingVertical: 10 },
   /* 排序胶囊：单个圆角方块内竖向排列 ↑ / ↓ */
   sortCapsule: {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -6,6 +6,7 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 import {
   Platform,
+  Alert,
   FlatList,
   Image,
   Linking,
@@ -15,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import PlayerScreen from '../player';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -33,6 +35,7 @@ import { usePalette, usePageBackground } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
+import { thumbUrl, AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 
 function convTargetId(conv: any): string {
   return String(conv?.targetUserId || conv?.user?.userId || conv?.userId || '');
@@ -557,14 +560,89 @@ export default function PrivateMessagesScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeTargetId]);
 
-  const doSend = async (override?: string) => {
-    const txt = String(override ?? text).trim();
+  /** 私信发图片（对齐桌面 handlePrivateMessageImageSelected）：选图 → 上传 pfile → 发 IMAGE 私信 */
+  const pickAndSendImage = async () => {
+    if (!sel) return;
+    if (flipType > 0) { showToast(t('翻牌模式不能发送图片')); return; }
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { showToast(t('需要相册权限才能发图片')); return; }
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+      });
+      if (picked.canceled || !picked.assets?.length) return;
+      const asset = picked.assets[0];
+      const mime = String(asset.mimeType || 'image/jpeg').toLowerCase();
+      if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
+        showToast(t('请选择 JPG、PNG、WEBP 或 GIF 图片'));
+        return;
+      }
+      if (Number(asset.fileSize || 0) > 20 * 1024 * 1024) { showToast(t('图片不能超过 20MB')); return; }
+      const targetId = convTargetId(sel);
+      if (!targetId) return;
+      setLoading(true);
+      // 复用已有上传通道（uploadPocketImage 不传 fromType → 私信图片不带 fromType，与桌面端一致）
+      const uploaded: any = await pocketApi.uploadPocketImage({
+        uri: asset.uri,
+        fileName: asset.fileName || `private-message-${Date.now()}.jpg`,
+        mimeType: mime,
+      });
+      const uploadedItem = uploaded?.content || {};
+      // 图片尺寸：接口没给就用本地图尺寸补（桌面端也是这个兜底顺序）
+      const localSize = await new Promise<{ width: number; height: number }>((resolve) => {
+        Image.getSize(asset.uri, (width, height) => resolve({ width, height }), () => resolve({ width: 0, height: 0 }));
+      });
+      await pocketApi.sendPrivateImageMessage(targetId, {
+        imgUrl: uploaded.path,
+        imgWidth: Number(uploadedItem.width) || localSize.width || 0,
+        imgHeight: Number(uploadedItem.height) || localSize.height || 0,
+        imgSize: Number(uploadedItem.size) || Number(asset.fileSize || 0) || 0,
+      });
+      showToast(t('已发送'));
+      await openConv(sel);
+    } catch (e) {
+      showToast(t('发送图片失败：{msg}', { msg: errorMessage(e) }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** 长按自己的私信 → 删除（桌面 deletePrivateMessageFromContext 同款） */
+  const confirmDeletePrivateMessage = useCallback((item: any) => {
+    const id = msgId(item);
+    if (!id) { showToast(t('该消息不支持删除')); return; }
+    Alert.alert(t('删除消息'), t('删除这条私信？'), [
+      { text: t('取消'), style: 'cancel' },
+      {
+        text: t('删除'),
+        style: 'destructive',
+        onPress: () => {
+          void pocketApi
+            .deletePrivateMessage(id)
+            .then(() => {
+              setMsgs((prev) => prev.filter((m) => msgId(m) !== id));
+              showToast(t('已删除'));
+            })
+            .catch((e) => showToast(t('删除失败：{msg}', { msg: errorMessage(e) })));
+        },
+      },
+    ]);
+  }, [showToast, t]);
+
+  const doSend = async (override?: string) => {    const txt = String(override ?? text).trim();
     if (!txt || !sel) return;
     setLoading(true);
     try {
       if (flipType && member) {
         const p = prices.find((x) => x.answerType === flipType);
         const cost = p ? (p.privateCost || p.normalCost || lowestPrice(p)) : 0;
+        // 桌面 checkPrivateMessageFlipCostMin 同款：价格缺失或为 0 = 该类型未启用 → 拦下不发
+        if (!p || cost <= 0) {
+          showToast(t('该类型翻牌未启用，请换一种类型'));
+          setLoading(false);
+          return;
+        }
         await pocketApi.sendFlipQuestion({
           memberId: parseInt(String(member.id), 10) || 0,
           content: txt,
@@ -693,6 +771,8 @@ export default function PrivateMessagesScreen() {
           role="chip"
           radius={22}
           tintColor={mine ? palette.tint : undefined}
+          // 长按自己的消息 → 删除（桌面端右键删除同款）
+          onLongPress={mine && item ? () => confirmDeletePrivateMessage(item) : undefined}
           style={styles.ellipseBubble}
         >
           {hasText ? (
@@ -848,6 +928,18 @@ export default function PrivateMessagesScreen() {
         <GlassSurface radius={20} role="card" style={[styles.inputBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
           {flipType > 0 ? <Text style={[styles.flipLabel, { color: palette.tint }]}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
+            {/* 发图片（翻牌模式下禁用 —— 桌面端同语义） */}
+            <ScalePressable
+              style={[styles.imgPickerBtn, { backgroundColor: palette.fill2 }]}
+              onPress={() => { void pickAndSendImage(); }}
+              disabled={loading || flipType > 0}
+            >
+              <MaterialCommunityIcons
+                name="image-plus"
+                size={19}
+                color={flipType > 0 ? palette.labelTertiary : palette.tint}
+              />
+            </ScalePressable>
             <TextInput
               style={[styles.input, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, color: palette.label }]}
               placeholder={t('输入内容...')}
@@ -874,6 +966,8 @@ export default function PrivateMessagesScreen() {
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={convRows}
+          // 滚动锚点（B6）：刷新/置顶重排后保持可见位置
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyExtractor={(item) => item.key}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
@@ -913,7 +1007,7 @@ export default function PrivateMessagesScreen() {
                   <View style={styles.convCardRow}>
                   <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
                     {convAvatarUrl ? (
-                      <Image source={{ uri: convAvatarUrl }} style={styles.convAvatarImg} resizeMode="cover" />
+                      <Image source={{ uri: thumbUrl(convAvatarUrl, AVATAR_THUMB_WIDTH) }} style={styles.convAvatarImg} resizeMode="cover" />
                     ) : (
                       <Text style={[styles.convAvatarText, { color: palette.tint }]}>{name.trim().slice(0, 1).toUpperCase()}</Text>
                     )}
@@ -1056,6 +1150,7 @@ const styles = StyleSheet.create({
   flipLabel: { fontSize: 10, fontWeight: '800', marginBottom: 2 },
   inputBar: { paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  imgPickerBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   input: { flex: 1, padding: 10, borderRadius: 18, borderWidth: 1, fontSize: 14, maxHeight: 80 },
   sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18 },
   ellipseBubble: { paddingVertical: 9, paddingHorizontal: 14, maxWidth: '78%', marginVertical: 2 },
