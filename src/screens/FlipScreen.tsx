@@ -347,6 +347,88 @@ export default function FlipScreen() {
     return flat;
   }, [flips, t]);
 
+  /** 翻牌统计：原「数据统计」页的翻牌统计已删除，改为本页整页呈现（任务 #5） */
+  const flipStatsView = useMemo(() => {
+    let totalCost = 0;
+    let durSum = 0;
+    let answered = 0;
+    const typeStats = { text: 0, audio: 0, video: 0 };
+    const memberMap = new Map<string, { name: string; count: number; cost: number }>();
+    for (const f of flips) {
+      const rec = f as any;
+      const cost = Number(rec.cost) || 0;
+      totalCost += cost;
+      const at = Number(rec.answerType);
+      if (at === 1) typeStats.text += 1; else if (at === 2) typeStats.audio += 1; else if (at === 3) typeStats.video += 1;
+      const mn = memberName(rec, t('成员'));
+      const m = memberMap.get(mn) || { name: mn, count: 0, cost: 0 };
+      m.count += 1; m.cost += cost; memberMap.set(mn, m);
+      if (Number(rec.status) === 2 && rec.qtime && rec.answerTime) {
+        const diff = Number(rec.answerTime) - Number(rec.qtime);
+        if (diff > 0) { durSum += diff; answered += 1; }
+      }
+    }
+    const memberRank = [...memberMap.values()].sort((a, b) => b.cost - a.cost);
+    const typeMax = Math.max(1, typeStats.text, typeStats.audio, typeStats.video);
+    const fmtDur = (ms: number) => {
+      if (ms <= 0) return '-';
+      const s = Math.floor(ms / 1000);
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), mm = Math.floor((s % 3600) / 60);
+      return d > 0 ? `${d}天${h}时` : h > 0 ? `${h}时${mm}分` : `${mm}分`;
+    };
+    return { totalCount: flips.length, totalCost, typeStats, typeMax, memberRank, avgStr: fmtDur(answered > 0 ? durSum / answered : 0) };
+  }, [flips, t]);
+
+  const statsHeader = (
+    <View style={styles.statsWrap}>
+      <GlassSurface radius={20} role="card" style={styles.statsOverview}>
+        <View style={styles.statCell}>
+          <Text style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.totalCount}</Text>
+          <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总翻牌数')}</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.totalCost}</Text>
+          <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总鸡腿')}</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.avgStr}</Text>
+          <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('平均回复')}</Text>
+        </View>
+      </GlassSurface>
+
+      <GlassSurface radius={20} role="card" style={styles.statsGroup}>
+        <Text style={[styles.groupLabel, { color: palette.label }]}>{t('类型分布')}</Text>
+        {([
+          { key: 'text', label: t('文字'), count: flipStatsView.typeStats.text },
+          { key: 'audio', label: t('语音'), count: flipStatsView.typeStats.audio },
+          { key: 'video', label: t('视频'), count: flipStatsView.typeStats.video },
+        ]).map((row) => (
+          <View key={row.key} style={styles.typeRow}>
+            <Text style={[styles.typeRowLabel, { color: palette.labelSecondary }]}>{row.label}</Text>
+            <View style={[styles.typeTrack, { backgroundColor: palette.fill2 }]}>
+              <View style={[styles.typeFill, { width: `${(row.count / flipStatsView.typeMax) * 100}%`, backgroundColor: palette.tint }]} />
+            </View>
+            <Text style={[styles.typeCount, { color: palette.labelTertiary }]}>{row.count}</Text>
+          </View>
+        ))}
+      </GlassSurface>
+
+      {flipStatsView.memberRank.length > 1 ? (
+        <GlassSurface radius={20} role="card" style={styles.statsGroup}>
+          <Text style={[styles.groupLabel, { color: palette.label }]}>{t('成员排名')}</Text>
+          {flipStatsView.memberRank.slice(0, 10).map((m, idx) => (
+            <View key={`${m.name}-${idx}`} style={styles.rankRow}>
+              <Text style={[styles.rankNo, { color: palette.tint }]}>{idx + 1}</Text>
+              <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>{m.name}</Text>
+              <Text style={[styles.rankVal, { color: palette.labelSecondary }]}>{m.cost} · {m.count}</Text>
+            </View>
+          ))}
+        </GlassSurface>
+      ) : null}
+      <Text style={[styles.sectionTitle, { color: palette.labelSecondary }]}>{t('翻牌明细 · 共 {count} 条', { count: flipStatsView.totalCount })}</Text>
+    </View>
+  );
+
   if (mode === 'send') {
     return (
       <KeyboardAvoidingView
@@ -473,7 +555,7 @@ export default function FlipScreen() {
 
   return (
       <View style={pageStyle}>
-      <ScreenHeader title={t('翻牌记录')} right={
+      <ScreenHeader title={t('翻牌统计')} right={
         <HeaderAction label={t('发送翻牌')} onPress={() => navigation.navigate('FlipScreen', { mode: 'send' })} />
       } />
       {status ? <Text style={[styles.statusText, { color: /失败|错误/.test(status) ? palette.danger : palette.tint }]}>{status}</Text> : null}
@@ -486,6 +568,7 @@ export default function FlipScreen() {
         <PerfFlatList
           data={flipRows}
           keyExtractor={(row) => row.key}
+          ListHeaderComponent={statsHeader}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
@@ -643,6 +726,23 @@ const styles = StyleSheet.create({
   hint: { marginTop: 8, fontSize: 12 },
   balanceText: { fontSize: 13, fontWeight: '600' },
   sendFooter: { marginTop: 16, marginHorizontal: 16 },
+  // 翻牌统计（本页整页呈现）
+  statsWrap: { paddingBottom: 8 },
+  statsOverview: { flexDirection: 'row', padding: 14, marginHorizontal: 16, marginVertical: 6, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
+  statCell: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 18, fontWeight: '900' },
+  statLabel: { fontSize: 11, marginTop: 2 },
+  statsGroup: { padding: 14, marginHorizontal: 16, marginVertical: 6, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
+  typeRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
+  typeRowLabel: { width: 34, fontSize: 12 },
+  typeTrack: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', marginHorizontal: 8 },
+  typeFill: { height: 8, borderRadius: 4 },
+  typeCount: { width: 30, fontSize: 11, textAlign: 'right' },
+  rankRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
+  rankNo: { width: 22, fontSize: 12, fontWeight: '900' },
+  rankName: { flex: 1, fontSize: 13 },
+  rankVal: { fontSize: 12, marginLeft: 8 },
+  sectionTitle: { fontSize: 12, marginHorizontal: 16, marginTop: 12, marginBottom: 4 },
   statusText: { margin: 12, textAlign: 'center', fontSize: 13 },
   // 历史记录行卡
   card: {

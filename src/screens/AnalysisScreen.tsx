@@ -30,10 +30,10 @@ type Nav = StackNavigationProp<RootStackParamList, 'AnalysisScreen'>;
 type TabKey = 'room' | 'flip';
 
 // 报告式收敛（结构升级）：不再用 6 个平级 tab 拆散画像——
-// 「消息画像」一页呈现（概览/日期/排行/媒体全部并入），翻牌统计独立成页。
+// 「消息画像」一页呈现（概览/日期/排行/媒体全部并入）。
+// 翻牌统计已按用户要求并入「翻牌」页，数据统计不再单独保留入口。
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'room', label: '消息画像' },
-  { key: 'flip', label: '翻牌统计' },
 ];
 
 function msgTime(item: any) {
