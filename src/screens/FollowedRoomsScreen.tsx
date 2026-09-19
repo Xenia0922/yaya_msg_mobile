@@ -6,6 +6,7 @@ import { setLiveImmersiveMode } from '../native/LivePlayer';
 import { deleteRoomMessage, observeRoomMessages, sendRoomTextMessage, type RoomLiveMessage } from '../services/pocketNim/qchat';
 import { getNimSessionEpoch, subscribeNimSession } from '../services/pocketNim/session';
 import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
+import { NetworkImage } from '../components/NetworkImage';
 import { useLiveBarrage } from '../hooks/useLiveBarrage';
 import DanmakuListSheet, { type DanmakuListEntry } from '../components/DanmakuListSheet';
 import { fetchMemberRadioUrl, isRtmpRadioUrl } from '../services/radio';
@@ -1076,11 +1077,12 @@ function LiveCoverImage({ uri, palette }: { uri: string; palette: any }) {
     );
   }
   return (
-    <Image
+    <NetworkImage
       source={{ uri }}
       style={styles.liveCardImg}
       resizeMode="cover"
       onError={() => setErr(true)}
+      thumbnail={700}
     />
   );
 }
@@ -1101,7 +1103,7 @@ function AudioMediaCard({
       onLongPress={onLongPress}
     >
       {media.cover ? (
-        <Image source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" />
+        <NetworkImage source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" thumbnail={700} />
       ) : null}
       <View style={styles.mediaMeta}>
         <Text style={[styles.mediaIcon, (idol || mine) ? { color: palette.onTint } : { color: palette.tint }]}>{t(mediaLabel(media.type))}</Text>
@@ -2716,7 +2718,7 @@ export default function FollowedRoomsScreen() {
                   {/* 队伍标签：紧跟发送者名字（成员消息，**含其他成员在别人房间发言**）；有官方队标显示图，否则文字 */}
                   {(isRoomOwner || isMemberSender) && (teamText || teamLogo) ? (
                     <View style={[styles.msgTeamChip, { backgroundColor: palette.tintSoft }]}>
-                      {teamLogo ? <Image source={{ uri: teamLogo }} style={styles.msgTeamLogo} resizeMode="contain" /> : null}
+                      {teamLogo ? <NetworkImage source={{ uri: teamLogo }} style={styles.msgTeamLogo} resizeMode="contain" thumbnail={120} /> : null}
                       {teamText ? <Text style={[styles.msgTeamText, { color: palette.tint }]} numberOfLines={1}>{teamText}</Text> : null}
                     </View>
                   ) : null}
@@ -2754,7 +2756,7 @@ export default function FollowedRoomsScreen() {
               ) : null}
               {gift && !giftReplyText ? (
                 <View style={[styles.giftCard, { backgroundColor: palette.fill2, borderColor: palette.tintSoft }, giftReplyText ? styles.giftCardCompact : null]}>
-                  {!giftReplyText ? (gift.image ? <Image source={{ uri: gift.image }} style={[styles.giftImage, { backgroundColor: palette.surfaceGlassStrong }]} /> : <View style={[styles.giftImageFallback, { backgroundColor: palette.tint }]}><MaterialCommunityIcons name="gift" size={16} color={palette.onTint} /></View>) : null}
+                  {!giftReplyText ? (gift.image ? <NetworkImage source={{ uri: gift.image }} style={[styles.giftImage, { backgroundColor: palette.surfaceGlassStrong }]} thumbnail={180} /> : <View style={[styles.giftImageFallback, { backgroundColor: palette.tint }]}><MaterialCommunityIcons name="gift" size={16} color={palette.onTint} /></View>) : null}
                   <View style={styles.giftTextWrap}>
                     <Text style={[styles.giftName, { color: palette.label }]} numberOfLines={1}>{isRoomOwner ? t('感谢礼物') : t('送出礼物')}：{gift.name}</Text>
                     <Text style={[styles.giftMeta, { color: palette.labelSecondary }]}>{t('数量')} x{gift.num}{gift.total ? ` · ${gift.total}` : ''}</Text>
@@ -2765,7 +2767,14 @@ export default function FollowedRoomsScreen() {
                 media.type === 'image' && media.url ? (
                 <>
                   <TouchableOpacity onPress={() => setFullImageUrl(media.url)} onLongPress={() => downloadMedia(media)} activeOpacity={0.9}>
-                    <Image source={{ uri: media.url }} style={media.title === t('表情') ? styles.inlineSticker : styles.inlineImage} resizeMode="cover" />
+                    {/* ⚠️ 房间图片消息走缩略图：原图动辄 1-3MB/张（1080-3000px），显示仅 228dp。
+                        缩略图失败自动退回原图（NetworkImage 两段兜底）；点开大图仍是原图。 */}
+                    <NetworkImage
+                      source={{ uri: media.url }}
+                      style={media.title === t('表情') ? styles.inlineSticker : styles.inlineImage}
+                      resizeMode="cover"
+                      thumbnail={media.title === t('表情') ? 400 : 700}
+                    />
                   </TouchableOpacity>
                 </>
               ) : media.type === 'live' && media.cover ? (
@@ -2799,7 +2808,7 @@ export default function FollowedRoomsScreen() {
               ) : (
                 <TouchableOpacity style={[styles.mediaCard, { backgroundColor: (idol || mine) ? palette.tint : palette.surfaceGlass, borderColor: (idol || mine) ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)}>
                   {media.cover ? (
-                    <Image source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" />
+                    <NetworkImage source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" thumbnail={700} />
                   ) : null}
                   <View style={styles.mediaMeta}>
                     <Text style={[styles.mediaIcon, (idol || mine) ? { color: palette.onTint } : { color: palette.tint }]}>{t(mediaLabel(media.type))}</Text>
@@ -2942,7 +2951,7 @@ export default function FollowedRoomsScreen() {
                         return (
                           <View key={String(row.userId || row.id || index)} style={[styles.roomRankRow, { borderBottomColor: palette.hairline }]}>
                             <Text style={[styles.roomRankNo, { color: palette.tint }]}>{row.rank || index + 1}</Text>
-                            {row.avatar ? <Image source={{ uri: row.avatar }} style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} /> : <View style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} />}
+                            {row.avatar ? <NetworkImage source={{ uri: row.avatar }} style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} thumbnail={180} /> : <View style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} />}
                             <View style={styles.roomRankInfo}>
                               <Text style={[styles.roomRankName, { color: palette.label }]} numberOfLines={1}>{row.name}</Text>
                               <View style={[styles.roomRankProgressTrack, { backgroundColor: palette.fill3 }]}>
@@ -3075,7 +3084,7 @@ export default function FollowedRoomsScreen() {
                     return (
                       <>
                         {cardAvatar ? (
-                          <Image source={{ uri: cardAvatar }} style={[styles.userCardAvatar, { backgroundColor: palette.fill2 }]} />
+                          <NetworkImage source={{ uri: cardAvatar }} style={[styles.userCardAvatar, { backgroundColor: palette.fill2 }]} thumbnail={180} />
                         ) : (
                           <View style={[styles.userCardAvatar, { backgroundColor: palette.fill2, alignItems: 'center', justifyContent: 'center' }]}>
                             <MaterialCommunityIcons name="account" size={30} color={palette.labelTertiary} />
@@ -3494,7 +3503,7 @@ export default function FollowedRoomsScreen() {
                   >
                     <View style={[styles.memberHitAvatar, { backgroundColor: palette.tintSoft, borderColor: palette.hairline }]}>
                       {member.avatar ? (
-                        <Image source={{ uri: member.avatar }} style={styles.memberHitAvatarImg} />
+                        <NetworkImage source={{ uri: member.avatar }} style={styles.memberHitAvatarImg} thumbnail={180} />
                       ) : (
                         <Text style={[styles.memberHitAvatarText, { color: palette.tint }]}>{avatarInitial(name)}</Text>
                       )}
