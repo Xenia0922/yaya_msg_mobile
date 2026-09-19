@@ -247,7 +247,33 @@ export function MiniPlayer() {
     basePos.current = { x: bx, y: by };
     pos.setValue({ x: bx, y: by });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scale]);
+    // ⚠️ 依赖必须含 boxW/boxHNow/winW/winH：boxH 按内容自适应变高后，位置若不重新夹紧，
+    // 高的小窗会直接戳出屏幕下方/盖住 dock（用户反馈「小窗空间有问题」）。
+  }, [scale, boxW, boxHNow, winW, winH]);
+
+  /**
+   * 交棒时带上大窗已知的视频宽高 → **立刻**按比例适配容器（不等 onLoad）。
+   * 部分流（rtmp/flv 原生视图、部分录播）onLoad/onVideoSizeChanged 拿不到尺寸，
+   * 此前一直停在默认 180×104，竖屏内容被 cover 裁得只剩中间（用户反馈「没自适应/空间不对」）。
+   */
+  useEffect(() => {
+    const w = Number(info?.aspectW || 0);
+    const h = Number(info?.aspectH || 0);
+    if (!(w > 0 && h > 0)) { setHasNatural(false); return; }
+    const rawH = Math.round((W * h) / w);
+    if (rawH > 420) {
+      boxHRef.current = H_MIN;
+      setBoxH(H_MIN);
+      setHasNatural(false);
+    } else {
+      const hh = Math.max(H_MIN, rawH);
+      boxHRef.current = hh;
+      setBoxH(hh);
+      setHasNatural(true);
+    }
+    setPipAspect(w, h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [info?.url, info?.aspectW, info?.aspectH]);
 
   // 最后一个 hooks 结束于此；其后不允许再出现任何 hook（早退点）
   if (!visible || !info) return null;

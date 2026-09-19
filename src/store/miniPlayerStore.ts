@@ -10,6 +10,11 @@ export interface MiniPlayerInfo {
   audioOnly?: boolean;
   /** 交棒给小窗时的播放位置（秒），小窗 onLoad 后 seek 续播 */
   position?: number;
+  /** ⚠️ 大窗已知的视频宽高（PlayerCore onVideoSize 上报）：小窗用它**立刻**按比例适配容器。
+   *  部分流（rtmp/flv 原生视图、部分录播）onLoad/onVideoSizeChanged 拿不到尺寸，
+   *  此前小窗一直停在默认 180×104，竖屏内容被 cover 裁得只剩中间（用户反馈「没自适应/空间不对」）。 */
+  aspectW?: number;
+  aspectH?: number;
   /** 公演/B站直播走网页内核播放（去 LIVE 标 + WebAudio 增益） */
   web?: { headers?: Record<string, string>; volumeBoost?: number };
   /** 点击小窗回放（全屏）参数：直接传回 MediaScreen 路由参数 */
