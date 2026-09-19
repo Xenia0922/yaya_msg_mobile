@@ -54,9 +54,17 @@ export function GlassSegmented<T extends string>({
   const idx = Math.max(0, options.findIndex((o) => o.key === value));
   const pad = 3;
   const cellW = trackW > 0 ? (trackW - pad * 2) / options.length : 0;
-  const x = useRef(new Animated.Value(0)).current;
-  const xRef = useRef(0);
-  const startXRef = useRef(0);
+  /**
+   * ⚠️ 双层位移结构（用户反馈：大小房间切换完成后胶囊抖动）：
+   *  - xTap（外层，native driver）：点击/外部 value 变化的 spring —— 原生线程驱动，
+   *    切换完成后的重渲染（聊天列表 N 个玻璃气泡）再忙也**不会卡住胶囊动画**；
+   *  - xDrag（内层，JS driver）：仅拖动时承载手指偏移（drag 需要 JS setValue，
+   *    单值无法既 native 又可 setValue —— 铁律见文件头）。
+   *  视觉位置 = xTap + xDrag（两层嵌套 transform 相加）。非拖动时 xDrag 恒 0。
+   */
+  const xTap = useRef(new Animated.Value(0)).current;
+  const xDrag = useRef(new Animated.Value(0)).current;
+  const xTapRef = useRef(0);
   const draggingRef = useRef(false);
 
   // ref 化最新值：PanResponder 只创建一次，闭包会捕到过期的 options/value
@@ -69,9 +77,11 @@ export function GlassSegmented<T extends string>({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
+  /** 点击/外部变更吸附：原生 spring（重渲染再忙也不抖），并清掉拖动偏移 */
   const settle = (target: number) => {
-    xRef.current = target;
-    Animated.spring(x, { toValue: target, tension: 220, friction: 30, useNativeDriver: false }).start();
+    xTapRef.current = target;
+    Animated.spring(xTap, { toValue: target, tension: 220, friction: 30, useNativeDriver: true }).start();
+    xDrag.setValue(0);
   };
 
   useEffect(() => {
@@ -88,26 +98,26 @@ export function GlassSegmented<T extends string>({
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
       onPanResponderGrant: () => {
         draggingRef.current = true;
-        x.stopAnimation((v: number) => {
-          xRef.current = v;
-          startXRef.current = v;
-        });
+        // 拖动基准 = 逻辑吸附位（xTapRef 在 settle 时同步）。native 值无法从 JS 读取，
+        // 若在 spring 飞行中抓住会先吸附到逻辑位再跟手 —— 两格分段可接受的取舍。
+        xDrag.setValue(0);
       },
       onPanResponderMove: (_, g) => {
         const n = optionsRef.current.length;
         const cw = cellWRef.current;
         if (!cw) return;
         const limit = Math.max(0, (n - 1) * cw);
-        const nx = Math.min(limit, Math.max(0, startXRef.current + g.dx));
-        xRef.current = nx;
-        x.setValue(nx);
+        const nx = Math.min(limit, Math.max(0, xTapRef.current + g.dx));
+        xDrag.setValue(nx - xTapRef.current);
       },
       onPanResponderRelease: () => {
         draggingRef.current = false;
         const n = optionsRef.current.length;
         const cw = cellWRef.current;
         if (!cw) return;
-        const h = Math.min(n - 1, Math.max(0, Math.round(xRef.current / cw)));
+        const dragOff = Number((xDrag as any)._value || 0);
+        const pos = xTapRef.current + dragOff;
+        const h = Math.min(n - 1, Math.max(0, Math.round(pos / cw)));
         settle(h * cw);
         const target = optionsRef.current[h];
         if (target && target.key !== optionsRef.current[idxRef.current]?.key) onChangeRef.current(target.key);
@@ -130,12 +140,17 @@ export function GlassSegmented<T extends string>({
         }}
       >
         {cellW > 0 ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.pill, { width: cellW, height: height - pad * 2, transform: [{ translateX: x }] }]}
-          >
-            {/* 无子元素的玻璃必须 asBackground 铺满，否则高度塌成 0（不可见） */}
-            <GlassSurface role="selector" radius={(height - pad * 2) / 2} asBackground />
+          /* 外层：原生 spring（点击吸附，重渲染不抖）；内层：JS 拖动偏移 */
+          <Animated.View pointerEvents="none" style={{ transform: [{ translateX: xTap }] }}>
+            <Animated.View
+              style={[
+                styles.pill,
+                { width: cellW, height: height - pad * 2, transform: [{ translateX: xDrag }] },
+              ]}
+            >
+              {/* 无子元素的玻璃必须 asBackground 铺满，否则高度塌成 0（不可见） */}
+              <GlassSurface role="selector" radius={(height - pad * 2) / 2} asBackground />
+            </Animated.View>
           </Animated.View>
         ) : null}
         {options.map((o) => {
