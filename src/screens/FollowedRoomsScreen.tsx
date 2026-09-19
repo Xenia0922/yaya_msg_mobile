@@ -1295,6 +1295,9 @@ export default function FollowedRoomsScreen() {
     avatar: string;
     loading: boolean;
     error: string;
+    /** 关注态（口袋48 用户间可互相关注：friendships/friends/add|remove, toType=1） */
+    following: boolean;
+    followBusy: boolean;
     detail: { name: string; avatar: string; level: string; signature: string };
   }>(null);
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
@@ -2150,46 +2153,20 @@ export default function FollowedRoomsScreen() {
     const yestStr = fmt(now.getTime() - 86400000);
     const rows: { type: 'date' | 'msg'; key: string; label?: string; item?: any; index?: number; groupStart?: boolean }[] = [];
     let lastDay = '';
-    let lastGroupKey = '';
-    let lastMsgTime = 0;
     filteredRoomMessages.filter(Boolean).forEach((item, index) => {
       const day = fmt(Number((item as any)?.msgTime || (item as any)?.ctime || 0) * (Number((item as any)?.msgTime) > 1e12 ? 1 : 1000));
       if (day !== lastDay) {
         lastDay = day;
-        lastGroupKey = '';
         const label = day === todayStr ? t('今天') : day === yestStr ? t('昨天') : `${Number(day.slice(5, 7))}月${Number(day.slice(8, 10))}日`;
         rows.push({ type: 'date', key: `d-${day}`, label });
       }
-      // 归组键 = 角色 + 真实发送者。关键修复（用户反馈）：切到「所有人发言」时，
-      // 粉丝消息绝不能并进成员组沿用成员头像名字 —— 用 role 前缀强制断开；
-      // 无 sender id 的粉丝以本条消息 key 兜底，做到「每条各自成组」，谁也冒充不了谁。
-      const t0 = getMessageTime(item);
-      const role = messageRole(item, selectedRoom!, showFanMessages, currentUserId, memberIdSet);
-      // 发送者 id：**只认明确表示「发送者」的字段**，且只看消息自身与其 payload（不查 ext——
-      // 回复类消息的 ext 里是被回复者，会把粉丝判成房主）。
-      // ⚠️ 绝不要用泛化的 userId/uid：房间消息里它常是「房间/目标」的 id（常量）→
-      // 所有人被并成一组、沿用一个头像名字（用户反馈「会混成别人发的」就是这个）。
-      const ownerIds = [String((selectedRoom as any)?.id || ''), String((selectedRoom as any)?.userId || '')].filter(Boolean);
-      let rawSender = firstTextFrom([item, messageBody(item)], [
-        'fromAccount', 'senderUserId', 'senderId', 'fromUserId',
-        'user.accid', 'user.userId', 'sender.accid', 'sender.userId',
-      ]);
-      // 兜底 senderProfile：只有拿到「非房主」的 id 才可用（粉丝消息上出现房主 id = 误取被回复者）
-      if (!rawSender) {
-        const p = senderProfile(item, selectedRoom!).id;
-        if (p && !ownerIds.includes(String(p))) rawSender = String(p);
-      }
-      // 仍拿不到发送者 → 用本条唯一 key 强制断开分组（宁可每条都带头像，也绝不混成别人）
-      const senderKey = rawSender ? `${role}:${rawSender}` : `uniq:${messageKey(item)}`;
-      const sameSender = senderKey === lastGroupKey;
-      const withinGap = t0 > 0 && lastMsgTime > 0 && (lastMsgTime - t0) < 3 * 60000;
-      const groupStart = !sameSender || !withinGap;
-      if (groupStart) lastGroupKey = senderKey;
-      if (t0 > 0) lastMsgTime = t0;
-      rows.push({ type: 'msg', key: messageKey(item), item, index, groupStart });
+      // 用户要求（A）：**取消「同发送者 + 3 分钟」的时间叠加合并**——
+      // 每条消息都独立成组：都带头像、名字（含队伍标签）和时间。
+      // （此前 groupStart = !sameSender || !withinGap，会把连续发言并成一组只显一次身份。）
+      rows.push({ type: 'msg', key: messageKey(item), item, index, groupStart: true });
     });
     return rows;
-  }, [filteredRoomMessages, selectedRoom, showFanMessages, currentUserId]);
+  }, [filteredRoomMessages, selectedRoom, t]);
 
   /**
    * 聊天库接线（A+B）：把 chatRows 映射成 IMessage，`__row` 带回原始行，
@@ -2328,6 +2305,8 @@ export default function FollowedRoomsScreen() {
         avatar: opts.avatar,
         loading: /^\d+$/.test(id),
         error: '',
+        following: false,
+        followBusy: false,
         detail: { name: '', avatar: '', level: '', signature: '' },
       });
       // 云信 accid / 非数字 id 查不到口袋48 用户资料：直接给本地信息 + 说明
@@ -2346,6 +2325,40 @@ export default function FollowedRoomsScreen() {
         });
     },
     [navigation, t],
+  );
+
+  /** 资料卡「关注 / 取消关注」：口袋48 用户间可互关（v2/friendships/friends/add|remove，toType=1） */
+  const toggleFollowUser = useCallback(
+    async (card: { id: string; following: boolean }) => {
+      const id = String(card?.id || '').trim();
+      if (!/^\d+$/.test(id)) {
+        showToast(t('该用户不支持关注'));
+        return;
+      }
+      const next = !card.following;
+      setUserCard((c) => (c && c.id === id ? { ...c, followBusy: true } : c));
+      try {
+        if (next) await pocketApi.followMember(id);
+        else await pocketApi.unfollowMember(id);
+        setUserCard((c) => (c && c.id === id ? { ...c, following: next, followBusy: false } : c));
+        showToast(next ? t('已关注') : t('已取消关注'));
+      } catch (err) {
+        setUserCard((c) => (c && c.id === id ? { ...c, followBusy: false } : c));
+        showToast(t('操作失败：{msg}', { msg: errorMessage(err) }));
+      }
+    },
+    [showToast, t],
+  );
+
+  /** 资料卡「私信」：带 targetUserId 进私信页（对方不是成员 → 无翻牌，纯私信会话） */
+  const openUserPrivateMessage = useCallback(
+    (card: { id: string; name: string }) => {
+      const id = String(card?.id || '').trim();
+      if (!id) return;
+      setUserCard(null);
+      navigation.navigate('PrivateMessagesScreen', { targetUserId: id, targetName: card.name || '' });
+    },
+    [navigation],
   );
 
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
@@ -2844,6 +2857,32 @@ export default function FollowedRoomsScreen() {
                   </View>
                 ) : null}
                 <View style={styles.userCardActions}>
+                  <ScalePressable
+                    style={[styles.userCardBtn, { backgroundColor: userCard?.following ? palette.fill2 : palette.tint }]}
+                    pressedScale={0.95}
+                    activeOpacity={0.85}
+                    disabled={!userCard || userCard.followBusy}
+                    onPress={() => userCard && void toggleFollowUser(userCard)}
+                  >
+                    <MaterialCommunityIcons
+                      name={userCard?.following ? 'account-check' : 'account-plus'}
+                      size={14}
+                      color={userCard?.following ? palette.labelSecondary : palette.onTint}
+                    />
+                    <Text style={[styles.userCardBtnText, { color: userCard?.following ? palette.labelSecondary : palette.onTint }]}>
+                      {userCard?.following ? t('已关注') : t('关注')}
+                    </Text>
+                  </ScalePressable>
+                  <ScalePressable
+                    style={[styles.userCardBtn, { backgroundColor: palette.fill2 }]}
+                    pressedScale={0.95}
+                    activeOpacity={0.85}
+                    disabled={!userCard}
+                    onPress={() => userCard && openUserPrivateMessage(userCard)}
+                  >
+                    <MaterialCommunityIcons name="message-text-outline" size={14} color={palette.tint} />
+                    <Text style={[styles.userCardBtnText, { color: palette.tint }]}>{t('私信')}</Text>
+                  </ScalePressable>
                   <ScalePressable
                     style={[styles.liveResolveBtnGhost, { paddingHorizontal: 16, paddingVertical: 8, borderColor: palette.hairline }]}
                     pressedScale={0.95}
@@ -3693,7 +3732,9 @@ const styles = StyleSheet.create({
   userCardStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
   userCardNotice: { marginTop: 12, padding: 10, borderRadius: 12 },
   userCardTip: { fontSize: 13, lineHeight: 19 },
-  userCardActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 14 },
+  userCardActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 14 },
+  userCardBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
+  userCardBtnText: { fontSize: 13, fontWeight: '700' },
   roomRankHandleWrap: { alignItems: 'center', paddingTop: 2, paddingBottom: 10 },
   roomRankHandle: { width: 40, height: 5, borderRadius: 3 },
   roomRankHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
