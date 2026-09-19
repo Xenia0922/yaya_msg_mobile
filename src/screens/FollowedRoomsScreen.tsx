@@ -1231,6 +1231,7 @@ export default function FollowedRoomsScreen() {
   const token = useSettingsStore((state) => state.settings.p48Token);
   const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
   const showToast = useUiStore((state) => state.showToast);
+  const setScreenBackdrop = useUiStore((state) => state.setScreenBackdrop);
   const navigation = useNavigation<any>();
   const members = useMemberStore((state) => state.members);
   // 成员库 id 集合：「成员消息」视图要把别的成员（非房主）也算成员消息（用户要求）
@@ -1374,6 +1375,13 @@ export default function FollowedRoomsScreen() {
    */
   const [roomAnnounceExpanded, setRoomAnnounceExpanded] = useState(true);
   const roomAnnounceLoadedRef = useRef(false);
+  /**
+   * ⚠️ 房间公告文本（独立于播放器）。
+   * 此前公告挂在 roomPlayer 上，而 roomPlayer 只有点开房间里的视频/直播才会有值 ——
+   * **直接进房间不点任何媒体时它永远是 null → 公告永远不显示**（用户实测）。
+   * 现在进房就从直播列表里查该成员的公告（成员正在直播且填了公告才有内容）。
+   */
+  const [roomAnnouncementText, setRoomAnnouncementText] = useState('');
   useEffect(() => {
     if (roomAnnounceLoadedRef.current) return;
     roomAnnounceLoadedRef.current = true;
@@ -1385,6 +1393,24 @@ export default function FollowedRoomsScreen() {
     setRoomAnnounceExpanded(v);
     AsyncStorage.setItem(ROOM_ANNOUNCE_COLLAPSED_KEY, v ? '0' : '1').catch(() => {});
   };
+
+  /**
+   * ⚠️【玻璃折射】把房间背景图挂进 blur 目标层。
+   * 玻璃（BlurView）只折射 BlurTargetSurface 那一层（全局软件背景），
+   * 而房间自己的背景图渲染在页面里、在那层之外 —— 不挂的话房间里的玻璃
+   * 折射的是全局背景图而不是房间背景（用户反馈）。
+   * 失焦（切 tab）/ 关房间时清 null，还原全局背景。
+   */
+  useFocusEffect(
+    useCallback(() => {
+      setScreenBackdrop(
+        selectedRoom && roomMeta.bg
+          ? { uri: roomMeta.bg, scrim: resolvedTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)' }
+          : null,
+      );
+      return () => setScreenBackdrop(null);
+    }, [selectedRoom, roomMeta.bg, resolvedTheme]),
+  );
   // 直播弹幕：页面浮层 + 播放器底坞输入条共用同一条云信连接（避免重复建连）
   const roomBarrageLiveId = roomPlayer?.isLive && roomPlayer.liveId ? String(roomPlayer.liveId) : '';
   const roomBarrage = useLiveBarrage({ liveId: roomBarrageLiveId, enabled: !!roomBarrageLiveId, module: 'live' });
@@ -1644,6 +1670,8 @@ export default function FollowedRoomsScreen() {
     setRoomPlayerFullscreen(false);
     setPlayingMedia(null);
     setSelectedRoom(null);
+    setRoomAnnouncementText('');
+    setScreenBackdrop(null); // 玻璃折射背景还原全局
     setRoomMeta({ name: '', bg: '' });
     activeChannelRef.current = '';
     activeRoomRef.current = { channelId: '', serverId: '', memberId: '' };
@@ -1863,6 +1891,18 @@ export default function FollowedRoomsScreen() {
       return;
     }
     setSelectedRoom(room);
+    // 房间公告：独立于播放器 —— 进房就从（缓存的）直播列表里按房主 userId 找公告。
+    // 只有成员正在直播且填了公告才有内容；离线/未填则清空不显示。
+    setRoomAnnouncementText('');
+    cachedLiveList(false, 0, 0)
+      .then((list) => {
+        const ownerId = String(room.id || '');
+        const hit = (Array.isArray(list) ? list : []).find(
+          (it: any) => String(it?.userInfo?.userId || '') === ownerId,
+        );
+        setRoomAnnouncementText(String(hit?.announcement || '').trim());
+      })
+      .catch(() => {});
     const openSeq = ++roomSeqRef.current;
     const channelChanged = activeChannelRef.current !== channelId;
     activeChannelRef.current = channelId;
@@ -3250,7 +3290,7 @@ export default function FollowedRoomsScreen() {
         {/* 房间公告：与播放器页公告同语义（可收起/展开；进房默认展开）。
             数据来自 getLiveOne/getOpenLiveOne 的 content.announcement（见 resolveRoomLiveMedia）。
             悬浮在聊天列表上方，不挤压列表高度（绝对定位），收起后只剩一颗胶囊按钮。 */}
-        {roomPlayer?.announcement && !roomPlayerFullscreen ? (
+        {(roomAnnouncementText || roomPlayer?.announcement) && !roomPlayerFullscreen ? (
           roomAnnounceExpanded ? (
             <View
               style={[styles.roomAnnouncePanel, { backgroundColor: palette.fill2, borderColor: palette.innerStroke }]}
@@ -3273,7 +3313,7 @@ export default function FollowedRoomsScreen() {
               </View>
               <ScrollView style={styles.roomAnnounceBody} nestedScrollEnabled>
                 <Text style={[styles.roomAnnounceText, { color: palette.labelSecondary }]} selectable>
-                  {roomPlayer.announcement}
+                  {roomAnnouncementText || roomPlayer?.announcement}
                 </Text>
               </ScrollView>
             </View>

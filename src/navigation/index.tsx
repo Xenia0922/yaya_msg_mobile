@@ -279,6 +279,7 @@ function PipToggleBridge() {
 export default function AppNavigator() {
   const theme = useResolvedTheme();
   const palette = usePalette();
+  const screenBackdrop = useUiStore((state) => state.screenBackdrop);
   const customBgRaw = useSettingsStore((state) => state.settings.customBackgroundFile?.trim() || '');
   /**
    * 渲染前修正 data URI 的 mime：历史数据里存在「声明 image/png、实际是 JPEG」的脏值，
@@ -310,7 +311,18 @@ export default function AppNavigator() {
     <>
       <BlurTargetProvider>
       <BlurTargetSurface>
-        {hasBackground ? (
+        {/* 房间页打开时：blur 目标层挂房间背景图（+遮罩），让房间里的玻璃折射房间背景。
+            玻璃只录这一层 —— 房间背景若只渲染在页面里，玻璃折射到的仍是全局背景。 */}
+        {screenBackdrop?.uri ? (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <ImageBackground
+              source={{ uri: screenBackdrop.uri }}
+              resizeMode="cover"
+              style={StyleSheet.absoluteFill}
+            />
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: screenBackdrop.scrim }]} />
+          </View>
+        ) : hasBackground ? (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <ImageBackground
               source={{ uri: customBg }}
