@@ -232,6 +232,8 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
       if (!m.groupName) m.groupName = String(off.groupName || '');
       if (!m.team) m.team = String(off.teamName || '');
       if (!m.teamId) m.teamId = String(off.teamId || '');
+      // 队伍 Logo（官方 field 名有 teamLogo / teamLogoUrl 两种）
+      if (!m.teamLogo) m.teamLogo = String(off.teamLogo || off.teamLogoUrl || '');
       if (!m.liveRoomId) m.liveRoomId = String(off.liveRoomId || '');
       if (!m.periodName) m.periodName = off.periodName ? String(off.periodName) : m.periodName;
       if (!m.fullPhoto1) m.fullPhoto1 = off.fullPhoto1 ? String(off.fullPhoto1) : m.fullPhoto1;

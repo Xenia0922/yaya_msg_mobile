@@ -12,6 +12,8 @@ export interface Member {
   avatar: string;
   groupName: string;
   teamId: string;
+  /** 官方队伍 Logo（房间头部队伍标签用图；缺失时回退文字） */
+  teamLogo?: string;
   /** 成员状态分类（官方源优先）：active 在团 / left 退团 / graduated 毕业 / paused 暂休 / unknown 未知 */
   state?: string;
 }

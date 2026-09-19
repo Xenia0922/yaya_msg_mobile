@@ -2293,6 +2293,11 @@ export default function FollowedRoomsScreen() {
       const profile = idol
         ? { id: room.id, name: (msgProfile.name || '').trim() || shortName(room), avatar: msgProfile.avatar || room.avatar }
         : msgProfile;
+      // 成员队伍标签（用户要求：每条消息「发送者名字后面」显示队伍）
+      const teamGroup = String((room as any)?.groupName || '').trim();
+      const teamName = String((room as any)?.team || '').trim();
+      const teamText = teamName && teamGroup && !teamName.includes(teamGroup) ? `${teamGroup} ${teamName}` : (teamName || teamGroup);
+      const teamLogo = String((room as any)?.teamLogo || '').trim();
       const media = roomMedia(item);
       const gift = roomGiftInfo(item);
       const payload = messagePayload(item) as any;
@@ -2343,11 +2348,18 @@ export default function FollowedRoomsScreen() {
             {/* 组首显示名字 + HH:mm；组内不重复 */}
             {row.groupStart ? (
               <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   {idol ? <MaterialCommunityIcons name="crown" size={11} color={palette.tint} /> : null}
                   <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
                     {profile.name}
                   </Text>
+                  {/* 队伍标签：紧跟发送者名字（成员消息）；有官方队标就显示图，否则纯文字 */}
+                  {idol && (teamText || teamLogo) ? (
+                    <View style={[styles.msgTeamChip, { backgroundColor: palette.tintSoft }]}>
+                      {teamLogo ? <Image source={{ uri: teamLogo }} style={styles.msgTeamLogo} resizeMode="contain" /> : null}
+                      {teamText ? <Text style={[styles.msgTeamText, { color: palette.tint }]} numberOfLines={1}>{teamText}</Text> : null}
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>
                   {formatTimestamp(item.msgTime).slice(11, 16)}
@@ -3395,6 +3407,10 @@ const styles = StyleSheet.create({
   chatContent: { paddingBottom: 132, paddingTop: 4 },
   followBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: radiiAlias.button, alignItems: 'center', justifyContent: 'center', minWidth: 52, height: 26 },
   followBtnText: { fontSize: 11, fontWeight: '800' },
+  // 消息发送者名字后面的队伍标签
+  msgTeamChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, maxWidth: 128 },
+  msgTeamLogo: { width: 11, height: 11, marginRight: 3 },
+  msgTeamText: { fontSize: 10, fontWeight: '700' },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },
   chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginTop: 7, marginBottom: 2 },
   chatRowTight: { marginTop: 2, marginBottom: 1 },
