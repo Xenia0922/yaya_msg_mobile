@@ -398,6 +398,21 @@ function buildMemberIdSet(members: any[]): Set<string> {
   return set;
 }
 
+/**
+ * 「非成员」用户资料解析（口袋48 user/api/v1/user/info 等多路返回）：
+ * 昵称 / 头像 / 等级 / 个性签名 —— 都做多路径兜底，取不到就留空。
+ */
+function userCardFromUserRes(res: any) {
+  const info = res?.content?.userInfo || res?.content?.user || res?.content || res?.data?.userInfo || res?.data?.user || res?.data || res || {};
+  const objs = [info];
+  return {
+    name: firstTextFrom(objs, ['nickName', 'nickname', 'userName', 'name', 'profile.nickName', 'user.nickName', 'user.nickname', 'user.userName']),
+    avatar: normalizeUrl(firstTextFrom(objs, ['avatar', 'headImg', 'headUrl', 'userAvatar', 'user.avatar', 'user.headImg'])),
+    level: firstTextFrom(objs, ['level', 'userLevel', 'grade', 'vipLevel']),
+    signature: firstTextFrom(objs, ['signature', 'sign', 'intro', 'description', 'user.signature', 'user.sign']),
+  };
+}
+
 function messageKey(item: any) {
   if (!item) return `empty-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const direct = item.id || item.msgId || item.messageId || item.clientMsgId || item.uuid || item.msgUuid;
@@ -1270,6 +1285,18 @@ export default function FollowedRoomsScreen() {
   const [giftNum, setGiftNum] = useState(1);
   const [rankRows, setRankRows] = useState<any[]>([]);
   const [rankStatus, setRankStatus] = useState('');
+  /**
+   * 用户资料卡：房间内点「非成员」头像（粉丝）时弹出。
+   * 成员（含房主）直接跳「成员档案」页 —— 见 openSenderProfile。
+   */
+  const [userCard, setUserCard] = useState<null | {
+    id: string;
+    name: string;
+    avatar: string;
+    loading: boolean;
+    error: string;
+    detail: { name: string; avatar: string; level: string; signature: string };
+  }>(null);
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [followBusy, setFollowBusy] = useState<Set<string>>(new Set());
   // 用 ref 持有最新值，避免 toggleFollow 的 useCallback 闭包捕获到过期的 followedIds/followBusy
@@ -2279,6 +2306,48 @@ export default function FollowedRoomsScreen() {
     });
   }, [selectedRoom, onMicMap, showToast, t]);
 
+  /**
+   * 房间内点消息头像 → 加载对方个人资料（用户需求）：
+   *  - 成员（房主 或 成员库里的其他成员）→ 打开「成员档案」页（带 memberId 自动加载档案）
+   *  - 非成员（粉丝）→ 弹「用户资料卡」（口袋48 user/info 拉取昵称/头像/等级/签名）
+   */
+  const openSenderProfile = useCallback(
+    (opts: { id: string; name: string; avatar: string; member?: Member | null }) => {
+      if (opts.member) {
+        navigation.navigate('ProfileScreen', {
+          memberId: String(opts.member.id || opts.id || ''),
+          member: opts.member,
+          nonce: Date.now(),
+        });
+        return;
+      }
+      const id = String(opts.id || '').trim();
+      setUserCard({
+        id,
+        name: opts.name,
+        avatar: opts.avatar,
+        loading: /^\d+$/.test(id),
+        error: '',
+        detail: { name: '', avatar: '', level: '', signature: '' },
+      });
+      // 云信 accid / 非数字 id 查不到口袋48 用户资料：直接给本地信息 + 说明
+      if (!/^\d+$/.test(id)) {
+        setUserCard((c) => (c && c.id === id ? { ...c, loading: false, error: t('该用户没有可加载的口袋48资料') } : c));
+        return;
+      }
+      pocketApi
+        .getUserProfile(id)
+        .then((res) => {
+          const detail = userCardFromUserRes(res);
+          setUserCard((c) => (c && c.id === id ? { ...c, loading: false, error: '', detail } : c));
+        })
+        .catch((err) => {
+          setUserCard((c) => (c && c.id === id ? { ...c, loading: false, error: errorMessage(err) } : c));
+        });
+    },
+    [navigation, t],
+  );
+
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
   /** 长按自己的消息 → 撤回删除（官方 im/api/v1/team/msg/delete，服务端校验只能删本人的） */
   const confirmDeleteMessage = useCallback(
@@ -2375,16 +2444,26 @@ export default function FollowedRoomsScreen() {
       const looksLikeFile = !media && /^https?:\/\//i.test(String(baseText || '')) || /\.(amr|mp3|m4a|aac|mp4|mov|jpg|jpeg|png|gif|webp)(\?|$)/i.test(String(baseText || ''));
       const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? baseText : '') : (looksLikeFile ? '' : baseText));
       const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
+      // 点头像能打开什么：成员（房主 / 成员库里的其他成员）→ 成员档案；否则按发送者 id 试用户资料
+      const avatarMember: Member | null = senderMember || (isRoomOwner ? room : null);
+      const canOpenProfile = !!avatarMember || !!senderId;
 
       return (
         <View style={[styles.chatRow, mine && styles.chatRowMine, !row.groupStart && styles.chatRowTight]}>
           {!mine ? (
             row.groupStart ? (
-              profile.avatar ? (
-                <Image source={{ uri: profile.avatar }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
-              )
+              /* 点头像 → 加载对方个人资料：成员进「成员档案」，非成员弹「用户资料卡」 */
+              <TouchableOpacity
+                activeOpacity={0.8}
+                disabled={!canOpenProfile}
+                onPress={() => openSenderProfile({ id: senderId, name: profile.name, avatar: profile.avatar, member: avatarMember })}
+              >
+                {profile.avatar ? (
+                  <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
+                )}
+              </TouchableOpacity>
             ) : (
               /* 组内连排：占位保持气泡左对齐 */
               <View style={styles.avatarPlaceholder} />
@@ -2523,7 +2602,7 @@ export default function FollowedRoomsScreen() {
         </View>
       );
     },
-    [selectedRoom, showFanMessages, currentUserId, memberIdSet, members, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
+    [selectedRoom, showFanMessages, currentUserId, memberIdSet, members, openSenderProfile, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
   );
 
   if (selectedRoom) {
@@ -2716,6 +2795,68 @@ export default function FollowedRoomsScreen() {
           />
         ) : null}
         <ZoomImageModal url={fullImageUrl} onClose={() => setFullImageUrl('')} />
+        {/* 用户资料卡（房间内点非成员头像）：口袋48 user/info 拉昵称/头像/等级/签名 */}
+        <Modal visible={!!userCard} transparent animationType="slide" onRequestClose={() => setUserCard(null)}>
+          <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setUserCard(null)}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.userCardWrap}>
+              <GlassSurface radius={22} role="card" style={[styles.userCardPanel, { backgroundColor: 'transparent' }]}>
+                <View style={styles.roomRankHandleWrap}>
+                  <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
+                </View>
+                <View style={styles.userCardHead}>
+                  {(() => {
+                    const cardAvatar = userCard?.detail?.avatar || userCard?.avatar || '';
+                    const cardName = userCard?.detail?.name || userCard?.name || t('未知用户');
+                    return (
+                      <>
+                        {cardAvatar ? (
+                          <Image source={{ uri: cardAvatar }} style={[styles.userCardAvatar, { backgroundColor: palette.fill2 }]} />
+                        ) : (
+                          <View style={[styles.userCardAvatar, { backgroundColor: palette.fill2, alignItems: 'center', justifyContent: 'center' }]}>
+                            <MaterialCommunityIcons name="account" size={30} color={palette.labelTertiary} />
+                          </View>
+                        )}
+                        <View style={styles.userCardTitleWrap}>
+                          <Text style={[styles.userCardName, { color: palette.label }]} numberOfLines={1}>{cardName}</Text>
+                          <Text style={[styles.userCardMeta, { color: palette.labelSecondary }]} numberOfLines={1}>
+                            {`${t('用户 ID')}：${userCard?.id || '-'}`}
+                            {userCard?.detail?.level ? ` · ${t('等级 {level}', { level: userCard.detail.level })}` : ''}
+                          </Text>
+                        </View>
+                      </>
+                    );
+                  })()}
+                </View>
+                {userCard?.loading ? (
+                  <View style={styles.userCardStatus}>
+                    <ActivityIndicator color={palette.tint} />
+                    <Text style={[styles.userCardTip, { color: palette.labelSecondary }]}>{t('正在加载用户资料…')}</Text>
+                  </View>
+                ) : null}
+                {userCard?.error ? (
+                  <View style={[styles.userCardNotice, { backgroundColor: palette.fill2 }]}>
+                    <Text style={[styles.userCardTip, { color: palette.labelSecondary }]}>{userCard.error}</Text>
+                  </View>
+                ) : null}
+                {userCard?.detail?.signature ? (
+                  <View style={[styles.userCardNotice, { backgroundColor: palette.fill2 }]}>
+                    <Text style={[styles.userCardTip, { color: palette.labelSecondary }]}>{userCard.detail.signature}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.userCardActions}>
+                  <ScalePressable
+                    style={[styles.liveResolveBtnGhost, { paddingHorizontal: 16, paddingVertical: 8, borderColor: palette.hairline }]}
+                    pressedScale={0.95}
+                    activeOpacity={0.85}
+                    onPress={() => setUserCard(null)}
+                  >
+                    <Text style={[styles.liveResolveBtnGhostText, { color: palette.labelSecondary }]}>{t('关闭')}</Text>
+                  </ScalePressable>
+                </View>
+              </GlassSurface>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
         <ScreenHeader title={headerTitle} onBack={closeRoom} overlay={!!roomBgUri} right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
@@ -3541,6 +3682,18 @@ const styles = StyleSheet.create({
   liveResolveBtnGhostText: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: '800' },
   roomModalShade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   roomRankPanel: { maxHeight: '82%', padding: 14, paddingBottom: 24, borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet },
+  // 用户资料卡（房间内点非成员头像）
+  userCardWrap: { width: '100%' },
+  userCardPanel: { padding: 14, paddingBottom: 18, borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet },
+  userCardHead: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  userCardAvatar: { width: 64, height: 64, borderRadius: 32 },
+  userCardTitleWrap: { flex: 1, marginLeft: 14 },
+  userCardName: { fontSize: 19, fontWeight: '800' },
+  userCardMeta: { marginTop: 5, fontSize: 12 },
+  userCardStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
+  userCardNotice: { marginTop: 12, padding: 10, borderRadius: 12 },
+  userCardTip: { fontSize: 13, lineHeight: 19 },
+  userCardActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 14 },
   roomRankHandleWrap: { alignItems: 'center', paddingTop: 2, paddingBottom: 10 },
   roomRankHandle: { width: 40, height: 5, borderRadius: 3 },
   roomRankHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
