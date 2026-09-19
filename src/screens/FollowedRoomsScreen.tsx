@@ -6,6 +6,7 @@ import { setLiveImmersiveMode } from '../native/LivePlayer';
 import { deleteRoomMessage, observeRoomMessages, sendRoomTextMessage, type RoomLiveMessage } from '../services/pocketNim/qchat';
 import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
 import { useLiveBarrage } from '../hooks/useLiveBarrage';
+import { fetchMemberRadioUrl, isRtmpRadioUrl } from '../services/radio';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
@@ -2200,6 +2201,33 @@ export default function FollowedRoomsScreen() {
       });
   }, [chatRows, selectedRoom, showFanMessages, currentUserId]);
 
+  /**
+   * 房间内「上麦」直接收听（用户要求：不跳转，当前页直接播放）。
+   * 秒开：上麦扫描已拿到 streamUrl 就直接播；否则现取一次。
+   * 复用房间内联播放器（roomPlayer → PlayerScreen）。
+   */
+  const playRoomRadioInline = useCallback(async () => {
+    const room = selectedRoom;
+    if (!room) return;
+    const key = String((room as any).id || (room as any).userId || '');
+    const entry: any = onMicMap[key];
+    const mode: 'big' | 'small' = entry?.smallVoice ? 'small' : 'big';
+    let url = String(entry?.streamUrl || '');
+    if (!url) {
+      try { url = (await fetchMemberRadioUrl(room as Member, mode)) || ''; } catch { url = ''; }
+    }
+    if (!url) { showToast(t('该房间当前没有开启语音电台')); return; }
+    setRoomPlayer({
+      type: 'live',
+      url,
+      title: `${shortName(room, key)} · ${t('上麦')}`,
+      cover: (room as any).avatar,
+      isLive: true,
+      needsVlc: isRtmpRadioUrl(url) || streamNeedsProxy(url),
+    } as any);
+    setRoomPlayerFullscreen(false);
+  }, [selectedRoom, onMicMap, showToast, t]);
+
   // 列表项渲染提取为 useCallback：避免每次 render 重建内联函数，配合 PerfFlatList 的 memo 提升长列表滚动性能
   /** 长按自己的消息 → 撤回删除（官方 im/api/v1/team/msg/delete，服务端校验只能删本人的） */
   const confirmDeleteMessage = useCallback(
@@ -2673,7 +2701,7 @@ export default function FollowedRoomsScreen() {
           {!!onMicMap[String(selectedRoom.id || (selectedRoom as any).userId || '')] ? (
             <ScalePressable
               style={[styles.chatToolCircle, { backgroundColor: palette.tint }]}
-              onPress={() => (navigation as any).navigate('RoomRadioScreen', { member: selectedRoom })}
+              onPress={() => { void playRoomRadioInline(); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               pressedScale={0.9}
             >
