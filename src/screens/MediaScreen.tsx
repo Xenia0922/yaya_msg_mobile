@@ -1855,6 +1855,12 @@ export default function MediaScreen() {
           // 关 removeClippedSubviews(grid 仅几行无虚拟化必要,且 Android PiP 后裁剪会留顶部残影)。
           extraData={screen.width}
           removeClippedSubviews={false}
+          // 性能（用户反馈「全部」网格滑动严重掉帧）：显式虚拟化参数，限制同屏挂载的玻璃卡数量。
+          // 之前全用默认值（windowSize 21 + 不裁剪）→ 大量 GlassSurface(BlurView) 常驻，滚动逐帧重算模糊。
+          initialNumToRender={tab === 'vod' ? 6 : 8}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={40}
+          windowSize={7}
           renderItem={({ item, index }) => {
             // 录播：组头 / 双卡行
             if (tab === 'vod') {
