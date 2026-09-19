@@ -314,6 +314,23 @@ export default function MusicLibraryScreen() {
   const [nativeOk, setNativeOk] = useState(false);
   const nativeOkRef = useRef(false);
   const nativeDisabledRef = useRef(false);
+  /**
+   * ⚠️ 渲染层可用的「降级」标志（nativeDisabledRef 的镜像）。
+   *
+   * 实测踩坑：Video 的 paused/volume 此前只看 nativeOk，而 nativeOk 在**下发时就被乐观置 true**
+   * （387 行 setNativeState(true)），且 effect 在渲染之后才跑 —— 于是点歌后首帧里
+   * Video 以 `paused=false + volume=正常音量` 真的起播，并向系统**请求音频焦点**，
+   * 把刚下发的原生 Exo 服务判为失焦直接暂停（logcat 实测：PLAYING → requestAudioFocus
+   * 来自 ReactExoplayerView → PAUSED，间隔仅 29ms）→ 表现为「点一次歌 1 秒后自动暂停」。
+   *
+   * 规则改为：**只有降级后（nativeDisabled）Video 才允许出声**；原生候选期内一律
+   * `paused=true + volume=0` —— Video 从未起播，自然不会抢焦点。
+   */
+  const [nativeDisabled, setNativeDisabled] = useState(false);
+  const setNativeDisabledBoth = (v: boolean) => {
+    nativeDisabledRef.current = v;
+    setNativeDisabled(v);
+  };
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const armSeqRef = useRef(0);
   const setNativeState = (v: boolean) => { nativeOkRef.current = v; setNativeOk(v); };
@@ -362,7 +379,7 @@ export default function MusicLibraryScreen() {
       } else if (type === 'error') {
         // 原生播放失败 → 本次会话降级 RNV（Video volume/paused 由 nativeOk=false 自动接管）
         if (!nativeDisabledRef.current) {
-          nativeDisabledRef.current = true;
+          setNativeDisabledBoth(true);
           setNativeExoDisabled(true); // 全局同步：App watch/全局 push 也停止尝试原生
           cancelArmTimer();
           armSeqRef.current += 1;
@@ -419,7 +436,7 @@ export default function MusicLibraryScreen() {
       cancelArmTimer();
       armTimer.current = setTimeout(() => {
         if (!nativeOkRef.current && !nativeDisabledRef.current) {
-          nativeDisabledRef.current = true;
+          setNativeDisabledBoth(true);
           setNativeExoDisabled(true);
           setNativeState(false);
           try { exoControl('stop'); } catch {}
@@ -484,7 +501,7 @@ export default function MusicLibraryScreen() {
       armSeqRef.current += 1;
       armedUrlRef.current = '';
       lastProgressTsRef.current = 0;
-      nativeDisabledRef.current = false;
+      setNativeDisabledBoth(false);
       try { exoControl('stop'); } catch {}
     }
   }, [playbackState]);
@@ -798,8 +815,10 @@ export default function MusicLibraryScreen() {
           },
         }}
         style={styles.tinyPlayer}
-        volume={nativeOk ? 0 : playVolume}
-        paused={nativeOk ? true : playbackState !== 'playing'}
+        // ⚠️ 只有降级后（nativeDisabled）Video 才是真正的播放器；原生候选期必须
+        // paused=true + volume=0，否则它会起播并抢音频焦点（详见上方 nativeDisabled 注释）
+        volume={nativeDisabled ? playVolume : 0}
+        paused={nativeDisabled ? playbackState !== 'playing' : true}
         // 单曲循环用原生 repeat（无缝、无 seek(0) 重新缓冲的卡顿）；onEnd 仅处理顺序/随机切歌
         repeat={playMode === 'single'}
         ignoreSilentSwitch="ignore" playInBackground playWhenInactive
