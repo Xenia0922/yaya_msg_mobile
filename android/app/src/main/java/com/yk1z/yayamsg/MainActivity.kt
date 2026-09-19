@@ -103,6 +103,10 @@ class MainActivity : ReactActivity() {
     // 回前台：停掉后台补发窗口，然后立即重声明一次（覆盖回前台瞬间的会话刷新）
     reassertHandler.removeCallbacks(delayedReassert)
     reassertExoSession()
+    // ⚠️ 补发 PiP 模式状态：用户从小窗展开回 App 时若 exit 事件丢失，
+    // JS 侧「PiP 全屏盖层」(pipCover) 会卡在 true —— 主页被全屏视频盖住（用户实测截图）。
+    // onResume 时 PiP 模式必已确定：在 PiP 中补 true，已展开补 false（盖层随之复位）。
+    PipModule.emitPipChanged(isInPictureInPictureMode)
   }
 
   override fun onStop() {
