@@ -130,8 +130,15 @@ export function MiniPlayer() {
           const h = boxHNowRef.current;
           const nx = Math.max(6, Math.min(winW - w - 6, basePos.current.x + g.dx));
           const ny = Math.max(6, Math.min(winH - h - 6, basePos.current.y + g.dy));
-          basePos.current = { x: nx, y: ny };
-          pos.setValue({ x: nx, y: ny });
+          // 吸附最近左右边缘 + 弹簧过渡（成熟小窗标准行为；原来松手停在原地不贴边）
+          const targetX = nx + w / 2 < winW / 2 ? 6 : Math.max(6, winW - w - 6);
+          basePos.current = { x: targetX, y: ny };
+          Animated.spring(pos, {
+            toValue: { x: targetX, y: ny },
+            useNativeDriver: false,
+            friction: 7,
+            tension: 90,
+          }).start();
           showControls();
         },
       }),
