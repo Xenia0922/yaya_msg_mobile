@@ -2108,14 +2108,21 @@ export default function FollowedRoomsScreen() {
       // 无 sender id 的粉丝以本条消息 key 兜底，做到「每条各自成组」，谁也冒充不了谁。
       const t0 = getMessageTime(item);
       const role = messageRole(item, selectedRoom!, showFanMessages, currentUserId);
-      // 发送者 id：**优先取消息自身的顶层发送者字段**（fromAccount/senderUserId/user.accid…），
-      // 不先查 ext —— 回复类消息的 ext 里带的是「被回复者」，会把粉丝消息误判成房主，
-      // 于是被并进房主的分组、沿用房主头像名字（用户反馈「混成别人发的」）。
-      const rawSender = firstTextFrom([item, messageBody(item)], [
-        'fromAccount', 'senderUserId', 'senderId', 'fromUserId', 'userId', 'uid',
-        'user.accid', 'user.userId', 'user.id', 'sender.userId', 'sender.id',
-      ]) || senderProfile(item, selectedRoom!).id;
-      // 拿不到发送者 → 用本条唯一 key 强制断开分组（宁可每条都带头像，也不混成别人）
+      // 发送者 id：**只认明确表示「发送者」的字段**，且只看消息自身与其 payload（不查 ext——
+      // 回复类消息的 ext 里是被回复者，会把粉丝判成房主）。
+      // ⚠️ 绝不要用泛化的 userId/uid：房间消息里它常是「房间/目标」的 id（常量）→
+      // 所有人被并成一组、沿用一个头像名字（用户反馈「会混成别人发的」就是这个）。
+      const ownerIds = [String((selectedRoom as any)?.id || ''), String((selectedRoom as any)?.userId || '')].filter(Boolean);
+      let rawSender = firstTextFrom([item, messageBody(item)], [
+        'fromAccount', 'senderUserId', 'senderId', 'fromUserId',
+        'user.accid', 'user.userId', 'sender.accid', 'sender.userId',
+      ]);
+      // 兜底 senderProfile：只有拿到「非房主」的 id 才可用（粉丝消息上出现房主 id = 误取被回复者）
+      if (!rawSender) {
+        const p = senderProfile(item, selectedRoom!).id;
+        if (p && !ownerIds.includes(String(p))) rawSender = String(p);
+      }
+      // 仍拿不到发送者 → 用本条唯一 key 强制断开分组（宁可每条都带头像，也绝不混成别人）
       const senderKey = rawSender ? `${role}:${rawSender}` : `uniq:${messageKey(item)}`;
       const sameSender = senderKey === lastGroupKey;
       const withinGap = t0 > 0 && lastMsgTime > 0 && (lastMsgTime - t0) < 3 * 60000;
