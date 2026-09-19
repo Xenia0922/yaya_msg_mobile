@@ -259,7 +259,19 @@ export function MiniPlayer() {
   useEffect(() => {
     const w = Number(info?.aspectW || 0);
     const h = Number(info?.aspectH || 0);
-    if (!(w > 0 && h > 0)) { setHasNatural(false); return; }
+    if (!(w > 0 && h > 0)) {
+      // 兜底：成员直播（手机摄像头）默认竖屏 9:16 —— 横条窗会把竖屏内容裁得只剩中间一条
+      if (info?.isLive && !info?.audioOnly) {
+        const ph = Math.round(W * 16 / 9);
+        boxHRef.current = ph;
+        setBoxH(ph);
+        setHasNatural(true);
+        setPipAspect(9, 16);
+      } else {
+        setHasNatural(false);
+      }
+      return;
+    }
     const rawH = Math.round((W * h) / w);
     if (rawH > 420) {
       boxHRef.current = H_MIN;

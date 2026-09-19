@@ -1361,6 +1361,8 @@ export default function FollowedRoomsScreen() {
   }, [selectedRoom, currentUserId, nimEpoch]);
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
+  /** 房间播放器视频真实宽高（PlayerScreen onVideoSize）：交棒小窗时带上，小窗立即按比例适配 */
+  const roomVideoAspectRef = useRef<{ w: number; h: number } | null>(null);
   const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
 
   /**
@@ -1629,6 +1631,9 @@ export default function FollowedRoomsScreen() {
       // 上麦/电台：小窗渲染为紧凑音频胶囊（不显示视频框）
       audioOnly: cur.type === 'audio',
       position: pos,
+      // ⚠️ 带上大窗已知的视频宽高：小窗挂载即按比例适配，不再等 onLoad（拿不到就停在默认条）
+      aspectW: roomVideoAspectRef.current?.w,
+      aspectH: roomVideoAspectRef.current?.h,
       backTo: { mode: 'vod', playUrl: cur.url, playTitle: cur.title, playCover: cur.cover, playPosition: pos },
     });
     closeRoomPlayer();
@@ -2895,6 +2900,7 @@ export default function FollowedRoomsScreen() {
                 headers: { 'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)', Referer: 'https://h5.48.cn/' },
               }}
               meta={{ title: roomPlayer.title, cover: roomPlayer.cover }}
+              onVideoSize={(w, h) => { if (w > 0 && h > 0) roomVideoAspectRef.current = { w, h }; }}
               features={{ kernelSwitch: true, rate: !roomPlayer.isLive }}
               extraActions={[
                 ...(roomPlayer.isLive
