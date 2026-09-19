@@ -2255,9 +2255,22 @@ export default function FollowedRoomsScreen() {
         if (typeof giftReplyText === 'string') giftReplyText = giftReplyText.trim();
         else giftReplyText = '';
       }
-      const isMediaLabel = /^\[(语音|图片|视频|链接|直播)\]/.test(body);
-      const looksLikeFile = !media && /^https?:\/\//i.test(String(body || '')) || /\.(amr|mp3|m4a|aac|mp4|mov|jpg|jpeg|png|gif|webp)(\?|$)/i.test(String(body || ''));
-      const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? body : '') : (looksLikeFile ? '' : body));
+      // 成员公开翻牌回复：正文应是「回答」，提问放在 replyInfo 引用卡里。
+      // 历史 bug（#10）：正文只取到 content（=提问）→ 房间内看不到成员回复内容。
+      const flipAnswerRaw = firstTextFrom([payload, item, body], ['answerContent', 'answer', 'answerText', 'replyContent']);
+      let flipAnswer = '';
+      if (flipAnswerRaw) {
+        try {
+          const j = typeof flipAnswerRaw === 'string' ? JSON.parse(flipAnswerRaw) : flipAnswerRaw;
+          flipAnswer = j && typeof j === 'object' ? String((j as any).text || (j as any).content || '') : String(flipAnswerRaw);
+        } catch {
+          flipAnswer = String(flipAnswerRaw);
+        }
+      }
+      const baseText = flipAnswer || body;
+      const isMediaLabel = /^\[(语音|图片|视频|链接|直播)\]/.test(baseText);
+      const looksLikeFile = !media && /^https?:\/\//i.test(String(baseText || '')) || /\.(amr|mp3|m4a|aac|mp4|mov|jpg|jpeg|png|gif|webp)(\?|$)/i.test(String(baseText || ''));
+      const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? baseText : '') : (looksLikeFile ? '' : baseText));
       const canInlinePlay = media?.type === 'audio' || media?.type === 'video' || media?.type === 'live';
 
       return (
