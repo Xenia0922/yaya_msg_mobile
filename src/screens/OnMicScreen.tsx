@@ -38,16 +38,23 @@ export default function OnMicScreen() {
   //  - isInGroup 透传下去由 buildScanTasks 排除退团/毕业成员（桌面语义）
   const buildInputs = useCallback(() => {
     return members
-      .map((item: any) => ({
-        memberId: String(item.id || item.userId || ''),
-        name: String(item.ownerName || item.realName || item.id || ''),
-        channelId: String(item.channelId || ''),
-        serverId: String(item.serverId || ''),
-        smallChannelId: String(item.yklzId || ''),
-        state: String(item.state || ''),
-        isInGroup: item.isInGroup !== false,
-      }))
-      .filter((m: any) => m.memberId && (m.channelId || m.serverId || m.smallChannelId));
+      .map((item: any) => {
+        const st = String(item.state || '');
+        // 「在团」判定（用户要求：上麦只扫在团成员）：
+        // 库里 isInGroup 未标 false，且状态不是 退团(left)/毕业(graduated)/暂休(paused)。
+        // state 由 memberData 用官方+库重算（官方优先），未知(unknown)仍保留，避免漏扫。
+        const inGroup = item.isInGroup !== false && st !== 'left' && st !== 'graduated' && st !== 'paused';
+        return {
+          memberId: String(item.id || item.userId || ''),
+          name: String(item.ownerName || item.realName || item.id || ''),
+          channelId: String(item.channelId || ''),
+          serverId: String(item.serverId || ''),
+          smallChannelId: String(item.yklzId || ''),
+          state: st,
+          isInGroup: inGroup,
+        };
+      })
+      .filter((m: any) => m.memberId && m.isInGroup && (m.channelId || m.serverId || m.smallChannelId));
   }, [members]);
 
   const scan = useCallback((opts?: { force?: boolean }) => {
