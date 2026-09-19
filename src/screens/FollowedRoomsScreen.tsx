@@ -341,6 +341,8 @@ function senderProfile(item: any, room: Member): SenderProfile {
 }
 
 function isIdolMessage(item: any, room: Member, includeFans: boolean) {
+  // room 可能为空（房间切走/关闭时 chatRows 的 memo 仍可能重算）：不能直接读 room.id，否则整屏 CRASH
+  if (!room) return false;
   const body = messageBody(item);
   const ext = extraInfo(item);
   const profile = senderProfile(item, room);
@@ -2079,6 +2081,8 @@ export default function FollowedRoomsScreen() {
 
   // 消息流按日期分组：今天/昨天/月日 分隔条（消息是新→旧排序，分隔条插在换日处）
   const chatRows = useMemo(() => {
+    // 房间已切走/关闭时不能算：messageRole → isIdolMessage 会读 room.id（null 崩）
+    if (!selectedRoom) return [];
     const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
     const fmt = (ms: number) => {
       const d = new Date(ms);
@@ -2104,12 +2108,15 @@ export default function FollowedRoomsScreen() {
       // 无 sender id 的粉丝以本条消息 key 兜底，做到「每条各自成组」，谁也冒充不了谁。
       const t0 = getMessageTime(item);
       const role = messageRole(item, selectedRoom!, showFanMessages, currentUserId);
-      const rawSender = senderProfile(item, selectedRoom!).id || String((item as any)?.fromAccount || '');
-      const senderKey = role === 'idol'
-        ? `idol:${String((selectedRoom as any)?.id || '')}`
-        : role === 'mine'
-          ? 'me'
-          : `fan:${rawSender || messageKey(item)}`;
+      // 发送者 id：**优先取消息自身的顶层发送者字段**（fromAccount/senderUserId/user.accid…），
+      // 不先查 ext —— 回复类消息的 ext 里带的是「被回复者」，会把粉丝消息误判成房主，
+      // 于是被并进房主的分组、沿用房主头像名字（用户反馈「混成别人发的」）。
+      const rawSender = firstTextFrom([item, messageBody(item)], [
+        'fromAccount', 'senderUserId', 'senderId', 'fromUserId', 'userId', 'uid',
+        'user.accid', 'user.userId', 'user.id', 'sender.userId', 'sender.id',
+      ]) || senderProfile(item, selectedRoom!).id;
+      // 拿不到发送者 → 用本条唯一 key 强制断开分组（宁可每条都带头像，也不混成别人）
+      const senderKey = rawSender ? `${role}:${rawSender}` : `uniq:${messageKey(item)}`;
       const sameSender = senderKey === lastGroupKey;
       const withinGap = t0 > 0 && lastMsgTime > 0 && (lastMsgTime - t0) < 3 * 60000;
       const groupStart = !sameSender || !withinGap;
