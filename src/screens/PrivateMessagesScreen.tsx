@@ -589,10 +589,15 @@ export default function PrivateMessagesScreen() {
         mimeType: mime,
       });
       const uploadedItem = uploaded?.content || {};
-      // 图片尺寸：接口没给就用本地图尺寸补（桌面端也是这个兜底顺序）
-      const localSize = await new Promise<{ width: number; height: number }>((resolve) => {
-        Image.getSize(asset.uri, (width, height) => resolve({ width, height }), () => resolve({ width: 0, height: 0 }));
-      });
+      // 图片尺寸：优先用 picker 直接给的 width/height（最可靠），再用接口返回，最后才用 Image.getSize
+      //（getSize 对部分 Android content:// URI 不会回调，只能拿到 0）
+      const pickerW = Number((asset as any).width) || 0;
+      const pickerH = Number((asset as any).height) || 0;
+      const localSize = pickerW > 0 && pickerH > 0
+        ? { width: pickerW, height: pickerH }
+        : await new Promise<{ width: number; height: number }>((resolve) => {
+            Image.getSize(asset.uri, (width, height) => resolve({ width, height }), () => resolve({ width: 0, height: 0 }));
+          });
       await pocketApi.sendPrivateImageMessage(targetId, {
         imgUrl: uploaded.path,
         imgWidth: Number(uploadedItem.width) || localSize.width || 0,

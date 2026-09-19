@@ -402,7 +402,7 @@ export function MiniPlayer() {
 
       {/* 按钮层：返回全屏/关闭/缩小/暂停 全部随控件显隐（3s 自动隐藏，点画面唤出） */}
       <Animated.View
-        pointerEvents={pipCover ? 'none' : 'box-none'}
+        pointerEvents={pipCover ? 'none' : info.audioOnly ? 'auto' : 'box-none'}
         /* 胶囊的拖动/点按由这一层承担（它铺满整颗胶囊且是胶囊 UI 的父链，
            文字/按钮之外的地方触摸都会冒泡到这里 → PanResponder 能收到；
            子级 TouchableOpacity 优先响应，所以按钮照常可点）。 */
