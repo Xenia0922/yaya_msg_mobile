@@ -53,6 +53,8 @@ import { usePalette, radii, radiiAlias } from '../theme';
 import { translate, useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
 import { GlassSegmented, GlassSegmentedScroll } from '../components/GlassSegmented';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { UserProfileSheet, type UserProfileTarget } from '../components/UserProfileSheet';
 
 /** 回放列表加载占位：居中低调研度指示，无微光闪烁，避免「转圈 + 文字」混排打架 */
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
@@ -722,7 +724,10 @@ export default function MediaScreen() {
   const [rankStatus, setRankStatus] = useState('');
   const [announcement, setAnnouncement] = useState('');
   const [announceVisible, setAnnounceVisible] = useState(false);
-  const [announceExpanded, setAnnounceExpanded] = useState(false);
+  /** 进入直播间默认展开公告（用户要求）。关闭后停留本次会话，不再自动弹回 */
+  const [announceExpanded, setAnnounceExpanded] = useState(true);
+  /** 本次进入是否已自动展开过（避免用户手动收起后被自动展开逻辑again弹开） */
+  const announceAutoShownRef = useRef(false);
   const loadingRef = useRef(false);
   const playingRef = useRef<typeof playing>(null);
   // v2.6: group filter + search
@@ -760,6 +765,8 @@ export default function MediaScreen() {
    * 直播 = 实时弹幕按最新在前（无时间轴，只做列表/搜索/按人筛选）。
    */
   const [showDanmakuList, setShowDanmakuList] = useState(false);
+  /** 弹幕列表点发送者 → 用户资料卡（成员/粉丝同一个界面） */
+  const [danmakuProfile, setDanmakuProfile] = useState<UserProfileTarget | null>(null);
   const danmakuListEntries = useMemo<DanmakuListEntry[]>(() => {
     if (playing?.isLive) {
       return liveBarrage.items.map((item) => ({
@@ -768,6 +775,9 @@ export default function MediaScreen() {
         nick: item.nick || '',
         text: item.text || '',
         kind: item.kind,
+        // 直播弹幕带发送者口袋 userId → 弹幕列表点昵称可直接查资料
+        userId: item.userId || undefined,
+        avatar: item.avatar || undefined,
       }));
     }
     // 录播：danmaku 由 parseDanmaku 保证按时间升序
@@ -784,6 +794,15 @@ export default function MediaScreen() {
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   // 公告面板 top 偏移：顶栏可见时位于顶栏之下（不重叠），顶/底栏自动隐藏后平滑上滑贴近顶部
   const announceTopAnim = useRef(new Animated.Value(96)).current;
+  /**
+   * 公告面板与顶栏的避让距离。
+   * ⚠️ 以前硬编码 96：没算安全区（刘海/挖孔屏 insets.top 可达 30~60），
+   * 面板正好压在顶栏的关闭按钮上 → 用户反馈「关闭按钮被挡住了」。
+   * 顶栏本身 paddingTop = insets.top + 6，按钮高约 40 → 避让值 = insets.top + 顶栏高。
+   */
+  const insets = useSafeAreaInsets();
+  const ANNOUNCE_TOP_WITH_BAR = insets.top + 56;
+  const ANNOUNCE_TOP_NO_BAR = Math.max(insets.top, 10) + 4;
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pausedRef = useRef(paused);
   const seekLockRef = useRef(0);
@@ -791,27 +810,27 @@ export default function MediaScreen() {
   const showControls = useCallback((autoHide = true) => {
     setControlsVisible(true);
     Animated.timing(controlsOpacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
-    // 顶栏可见 → 公告面板停在顶栏之下（top≈96）
-    Animated.timing(announceTopAnim, { toValue: 96, duration: 180, useNativeDriver: true }).start();
+    // 顶栏可见 → 公告面板停在顶栏之下（避开关闭按钮）
+    Animated.timing(announceTopAnim, { toValue: ANNOUNCE_TOP_WITH_BAR, duration: 180, useNativeDriver: true }).start();
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
     if (autoHide && !pausedRef.current) {
       hideControlsTimer.current = setTimeout(() => {
         setControlsVisible(false);
         Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
-        // 顶/底栏自动隐藏 → 公告面板上滑贴近顶部（top≈12）
-        Animated.timing(announceTopAnim, { toValue: 12, duration: 180, useNativeDriver: true }).start();
+        // 顶/底栏自动隐藏 → 公告面板上滑贴近顶部（仍避开状态栏/刘海）
+        Animated.timing(announceTopAnim, { toValue: ANNOUNCE_TOP_NO_BAR, duration: 180, useNativeDriver: true }).start();
       }, 3000);
     }
-  }, [controlsOpacity]);
+  }, [controlsOpacity, ANNOUNCE_TOP_WITH_BAR, ANNOUNCE_TOP_NO_BAR]);
   const toggleControls = useCallback(() => {
     if (controlsVisible) {
       setControlsVisible(false);
       Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
-      Animated.timing(announceTopAnim, { toValue: 12, duration: 180, useNativeDriver: true }).start();
+      Animated.timing(announceTopAnim, { toValue: ANNOUNCE_TOP_NO_BAR, duration: 180, useNativeDriver: true }).start();
     } else {
       showControls();
     }
-  }, [controlsVisible, showControls]);
+  }, [controlsVisible, showControls, ANNOUNCE_TOP_NO_BAR]);
   // 新视频载入即显示控制条，播放中 3 秒无操作自动隐藏（B站式沉浸）
   useEffect(() => { if (playing?.url) showControls(true); }, [playing?.url, showControls]);
 
@@ -1242,7 +1261,9 @@ export default function MediaScreen() {
     setPlaying(null);
     setAnnouncement('');
     setAnnounceVisible(false);
-    setAnnounceExpanded(false);
+    // 复位为「默认展开」：下次进入直播间仍是默认打开公告
+    setAnnounceExpanded(true);
+    announceAutoShownRef.current = false;
     // fromRoom 直达（房间点开）：关闭播放器 = 返回房间
     if (route.params?.fromRoom) navigation.goBack();
   };
@@ -1374,13 +1395,21 @@ export default function MediaScreen() {
         if (annText) {
           setAnnouncement(annText);
           setAnnounceVisible(true);
+          // 进入直播间默认展开公告（用户要求）；只有用户手动收起后才保持收起
+          setAnnounceExpanded(true);
+          announceAutoShownRef.current = true;
         }
         else {
           const detail2 = await pocketApi.getOpenLiveOne(item.liveId).catch(() => null);
           if (detail2) {
             const d2 = detail2 as any;
             const annText2 = d2?.content?.announcement || d2?.announcement || d2?.data?.announcement || '';
-            if (annText2) { setAnnouncement(annText2); setAnnounceVisible(true); setAnnounceExpanded(false); }
+            if (annText2) {
+              setAnnouncement(annText2);
+              setAnnounceVisible(true);
+              setAnnounceExpanded(true);
+              announceAutoShownRef.current = true;
+            }
           }
         }
         if (!urls.filter(Boolean).length) {
@@ -1654,10 +1683,23 @@ export default function MediaScreen() {
                   ? liveBarrage.status === 'connecting' || liveBarrage.status === 'resolving'
                   : false
               }
+              // 点发送者昵称 → 用户资料卡（成员/粉丝同一界面）
+              onOpenProfile={(entry) => setDanmakuProfile({ nick: entry.nick, avatar: entry.avatar, userId: entry.userId != null ? String(entry.userId) : undefined })}
             />
             {/* 直播弹幕输入条已并入播放器底坞（barrageInput），不再单独叠一层，也没有单独的收起按钮 */}
           </PlayerScreen>
         )}
+
+        {/* 弹幕列表点发送者 → 用户资料卡（含关注/取消关注 + 私信） */}
+        <UserProfileSheet
+          visible={!!danmakuProfile}
+          target={danmakuProfile}
+          onClose={() => setDanmakuProfile(null)}
+          onOpenChat={({ id, name }) => {
+            setDanmakuProfile(null);
+            navigation.navigate('PrivateMessagesScreen', { targetUserId: id, targetName: name });
+          }}
+        />
 
         <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.modalShade}>
