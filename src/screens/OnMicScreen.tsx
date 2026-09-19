@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { useI18n } from '../i18n';
 import { useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { EmptyState } from '../components/StateViews';
+import { CenterSpinner } from '../components/Loaders';
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -67,6 +68,14 @@ export default function OnMicScreen() {
     scan({ force: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 成员库是异步加载的：挂载时若还没就绪，buildInputs 为空 → 扫不出任何东西且页面一片空。
+  // 首次拿到成员后补扫一次（仅当此前从未扫描过），避免「进页面就是暂无成员上麦」的假空态。
+  const scannedWithMembersRef = useRef(false);
+  useEffect(() => {
+    if (scannedWithMembersRef.current || !members.length) return;
+    scannedWithMembersRef.current = true;
+    if (!useOnMicStore.getState().lastScan) scan({ force: true });
+  }, [members.length, scan]);
   // Y17: members 异步加载完成后重算错误态（此前仅挂载算一次 → 长期误显示「暂无成员数据」）
   useEffect(() => {
     setError('');
@@ -143,12 +152,18 @@ export default function OnMicScreen() {
         <GlassSurface radius={20} role="card" style={[styles.scanBar, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
           <ActivityIndicator size="small" color={palette.tint} style={{ marginRight: 8 }} />
           <Text style={[styles.scanBarText, { color: palette.labelSecondary }]}>
-            {t('正在扫描全部成员上麦状态 {done}/{total}...', { done: Math.min(scanDone, scanTotal), total: scanMemberTotal || scanTotal })}
+            {/* ⚠️ 分子分母必须同一口径：done 是「探测任务数」（大/小房间各一个任务），
+                以前分母用成员数（memberTotal）→ 数字会涨到 2 倍成员数，看起来像出错 */}
+            {t('正在扫描全部成员上麦状态 {done}/{total}...', { done: Math.min(scanDone, scanTotal), total: scanTotal || scanMemberTotal })}
           </Text>
         </GlassSurface>
       ) : null}
       {error && entries.length === 0 ? (
         <EmptyState icon="alert-circle-outline" title={t('加载失败')} hint={error} onAction={() => scan({ force: true })} />
+      ) : entries.length === 0 && scanning ? (
+        /* 扫描中且尚无结果：显示加载态 —— 以前这里直接落进「暂无成员上麦」空态，
+           看起来像扫完了没结果（用户反馈的「加载显示有问题」） */
+        <CenterSpinner text={t('正在扫描上麦状态…')} />
       ) : entries.length === 0 ? (
         <EmptyState icon="microphone-off" title={t('暂无成员上麦')} hint={t('当前没有成员在语音麦上，可点下方重新扫描')} onAction={() => scan({ force: true })} actionLabel={t('重新扫描')} />
       ) : (

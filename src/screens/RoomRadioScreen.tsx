@@ -7,8 +7,9 @@ import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
 import { useI18n } from '../i18n';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
+import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
 import { EmptyState, ErrorState } from '../components/StateViews';
@@ -36,6 +37,7 @@ export default function RoomRadioScreen() {
   const shadows = makeShadows(palette.name === 'dark');
   const { t } = useI18n();
   const route = useRoute<RouteProp<RootStackParamList, 'RoomRadioScreen'>>();
+  const navigation = useNavigation<any>();
   const [selectedMember, setSelectedMember] = useState<Member | null>(route.params?.member || null);
   const [radioUrl, setRadioUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -213,6 +215,27 @@ export default function RoomRadioScreen() {
     setRadioUrl('');
     setStatus(t('已停止'));
     stopRadioForeground();
+  };
+
+  /**
+   * 「切换上麦胶囊」（用户要求）：把当前流交给全局音频胶囊跨页续播，
+   * 停掉本页播放（含前台服务）并返回上一页 —— 播放由胶囊接管。
+   */
+  const toCapsule = () => {
+    const m = selectedMember;
+    const url = radioUrl;
+    if (!m || !url) return;
+    const title = `${m.ownerName || ''} · ${t('上麦')}`;
+    useMiniPlayerStore.getState().open({
+      url,
+      title,
+      cover: m.avatar,
+      isLive: true,
+      audioOnly: true,
+      backTo: { mode: 'live', playUrl: url, playTitle: title, playCover: m.avatar },
+    });
+    stopRadio();
+    navigation.goBack();
   };
 
   const subtitle = audioOnly && playing
@@ -418,6 +441,16 @@ export default function RoomRadioScreen() {
                     <MaterialCommunityIcons name="stop" size={20} color={palette.label} />
                     <Text style={[styles.secondaryCtrlText, { color: palette.label }]}>{t('停止')}</Text>
                   </ScalePressable>
+                  {/* 切换上麦胶囊：交给全局音频胶囊跨页续播（用户要求） */}
+                  <ScalePressable
+                    onPress={toCapsule}
+                    pressedScale={0.9}
+                    style={[styles.secondaryCtrl, { backgroundColor: palette.tintSoft }]}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons name="microphone" size={20} color={palette.tint} />
+                    <Text style={[styles.secondaryCtrlText, { color: palette.tint }]}>{t('胶囊')}</Text>
+                  </ScalePressable>
                 </View>
                 {playing ? (
                   // v2.7.4：上麦流多为 rtmp（48tools 类型定义 VoiceOperate.streamUrl = rtmp://），
@@ -516,7 +549,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    // 5 个按钮（播放/重播/静音/停止/胶囊）在窄屏放不下 → 允许换行，居中排布
+    flexWrap: 'wrap',
+    gap: 10,
     marginTop: 22,
   },
   primaryCtrl: {
@@ -531,7 +566,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    width: 60,
+    width: 56,
     height: 40,
     borderRadius: 20,
   },

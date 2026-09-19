@@ -34,9 +34,9 @@ import { getPlayerHtml } from './media/player';
 const W = 180;
 /** 高度按内容比例计算（竖屏内容窄条 -> 高条；横屏内容 16:9） */
 const H_MIN = 104;
-/** 纯音频（上麦/电台）小胶囊尺寸：扁 pill（用户要求再缩小一档） */
-const CAPSULE_W = 176;
-const CAPSULE_H = 34;
+/** 纯音频（上麦/电台）小胶囊尺寸：宽而扁的 pill（用户要求「加宽缩短」） */
+const CAPSULE_W = 236;
+const CAPSULE_H = 30;
 /** 小窗缩放档位：1 = 默认，1.18 = 放大，0.74 = 缩小（循环切换） */
 const SCALE_SMALL = 0.74;
 const SCALE_LARGE = 1.18;
@@ -116,6 +116,14 @@ export function MiniPlayer() {
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4,
         onPanResponderMove: (_e, g) => {
+          // 胶囊（audioOnly）用胶囊自身尺寸实时夹紧 —— 否则移动过程中能拖出屏幕，
+          // 且松手时的夹紧高度会按视频高度算（判定区域与视觉不一致）。
+          if (info?.audioOnly) {
+            const cx = Math.max(6, Math.min(winW - CAPSULE_W - 6, basePos.current.x + g.dx));
+            const cy = Math.max(0, Math.min(winH - CAPSULE_H - 6, basePos.current.y + g.dy));
+            pos.setValue({ x: cx, y: cy });
+            return;
+          }
           pos.setValue({ x: basePos.current.x + g.dx, y: basePos.current.y + g.dy });
         },
         onPanResponderRelease: (_e, g) => {
@@ -128,20 +136,26 @@ export function MiniPlayer() {
             });
             return;
           }
+          // 纯音频胶囊（上麦/电台）：用户要求**不吸附**边缘 —— 松手停在手指处
+          //（用胶囊自身宽高夹紧，之前误用视频高度 → 底部拖不到位/判定错位）
+          if (info?.audioOnly) {
+            const cx = Math.max(6, Math.min(winW - CAPSULE_W - 6, basePos.current.x + g.dx));
+            const cy = Math.max(0, Math.min(winH - CAPSULE_H - 6, basePos.current.y + g.dy));
+            basePos.current = { x: cx, y: cy };
+            Animated.spring(pos, {
+              toValue: { x: cx, y: cy },
+              useNativeDriver: false,
+              friction: 8,
+              tension: 110,
+            }).start();
+            showControls();
+            return;
+          }
           // 拖动：夹紧在屏幕内（用当前小窗实际尺寸，含缩放）
           const w = boxW;
           const h = boxHNowRef.current;
           const nx = Math.max(6, Math.min(winW - w - 6, basePos.current.x + g.dx));
           const ny = Math.max(6, Math.min(winH - h - 6, basePos.current.y + g.dy));
-          // 纯音频胶囊（上麦/电台）：用户要求**不吸附**边缘 —— 松手停在手指处
-          if (info?.audioOnly) {
-            const cw = CAPSULE_W;
-            const cx = Math.max(6, Math.min(winW - cw - 6, basePos.current.x + g.dx));
-            basePos.current = { x: cx, y: ny };
-            pos.setValue({ x: cx, y: ny });
-            showControls();
-            return;
-          }
           // 吸附最近左右边缘 + 弹簧过渡（成熟小窗标准行为；原来松手停在原地不贴边）
           const targetX = nx + w / 2 < winW / 2 ? 6 : Math.max(6, winW - w - 6);
           basePos.current = { x: targetX, y: ny };
@@ -393,14 +407,16 @@ export function MiniPlayer() {
         ]}
       >
         {!pipCover && info.audioOnly ? (
-          <View style={styles.capsuleRow}>
+          /* ⚠️ pointerEvents="box-none" 必须保留：这一行铺满整颗胶囊，若默认 auto 会吃掉
+             空白处的触摸 → 胶囊只有按钮能点、拖不动（用户反馈「拖动判定区域不对应」） */
+          <View style={styles.capsuleRow} pointerEvents="box-none">
             <MaterialCommunityIcons name="microphone" size={12} color={palette.tint} />
             <Text style={[styles.capsuleTitle, { color: palette.label }]} numberOfLines={1}>{info.title}</Text>
-            <TouchableOpacity onPress={handlePlayToggle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={handlePlayToggle} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}>
               <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={14} color={palette.label} />
             </TouchableOpacity>
             {/* 用户要求：上麦只留胶囊 —— 不再提供「放大到大直播播放器」入口 */}
-            <TouchableOpacity onPress={close} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={close} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}>
               <MaterialCommunityIcons name="close" size={12} color={palette.labelSecondary} />
             </TouchableOpacity>
           </View>
