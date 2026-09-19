@@ -2063,9 +2063,16 @@ export default function FollowedRoomsScreen() {
   }, [members, searchQuery, followedIds]);
 
   const filteredRoomMessages = useMemo(() => {
+    if (!selectedRoom) return roomMessages;
+    // ① 关闭「所有人发言」时，粉丝消息必须从列表里剔除。
+    //    —— 服务端 fetchAll 只影响「新拉的」数据，之前拉过的粉丝消息会留在本地：
+    //    既会被显示出来，又会把同一位成员的连续发言「隔开」（用户反馈的老问题）。
+    const base = showFanMessages
+      ? roomMessages
+      : roomMessages.filter((item) => messageRole(item, selectedRoom, false, currentUserId) !== 'fan');
     const q = roomSearchQuery.trim().toLowerCase();
-    if (!q || !selectedRoom) return roomMessages;
-    return roomMessages.filter((item) => {
+    if (!q) return base;
+    return base.filter((item) => {
       const profile = senderProfile(item, selectedRoom);
       const text = messageText(item);
       return [
@@ -2077,7 +2084,7 @@ export default function FollowedRoomsScreen() {
         selectedRoom.groupName,
       ].some((value) => String(value || '').toLowerCase().includes(q));
     });
-  }, [roomMessages, roomSearchQuery, selectedRoom]);
+  }, [roomMessages, roomSearchQuery, selectedRoom, showFanMessages, currentUserId]);
 
   // 消息流按日期分组：今天/昨天/月日 分隔条（消息是新→旧排序，分隔条插在换日处）
   const chatRows = useMemo(() => {
