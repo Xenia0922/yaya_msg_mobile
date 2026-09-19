@@ -140,15 +140,14 @@ export function GlassSegmented<T extends string>({
         }}
       >
         {cellW > 0 ? (
-          /* 外层：原生 spring（点击吸附，重渲染不抖）；内层：JS 拖动偏移 */
-          <Animated.View pointerEvents="none" style={{ transform: [{ translateX: xTap }] }}>
-            <Animated.View
-              style={[
-                styles.pill,
-                { width: cellW, height: height - pad * 2, transform: [{ translateX: xDrag }] },
-              ]}
-            >
-              {/* 无子元素的玻璃必须 asBackground 铺满，否则高度塌成 0（不可见） */}
+          /* 外层：定位 + 原生 spring（点击吸附，重渲染不抖）；
+             内层：填充外层 + JS 拖动偏移。⚠️ 定位样式（absolute/left/top）必须在外层：
+             若留在内层，外层会变成普通 flex 子节点被 row 的 padding 挤偏（胶囊错位，实测截图）。 */
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.pillPos, { width: cellW, height: height - pad * 2, transform: [{ translateX: xTap }] }]}
+          >
+            <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: xDrag }] }]}>
               <GlassSurface role="selector" radius={(height - pad * 2) / 2} asBackground />
             </Animated.View>
           </Animated.View>
@@ -190,13 +189,8 @@ const styles = StyleSheet.create({
   // （否则切换 tab 时 trackW 变化 → 等分胶囊重算 → 视觉上被「二次修正」）
   track: { overflow: 'hidden', alignSelf: 'stretch' },
   row: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 },
-  pill: {
-    position: 'absolute',
-    left: 3,
-    top: 3,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
+  /** 胶囊外层定位（不含 overflow hidden —— 圆角裁剪由内层 GlassSurface 自己负责） */
+  pillPos: { position: 'absolute', left: 3, top: 3 },
   cell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   labelLg: { fontSize: 14 },
   label: { fontSize: 14 },
