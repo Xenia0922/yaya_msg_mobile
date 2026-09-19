@@ -104,6 +104,12 @@ export function normalizeR2Tracks(tracks: R2MusicTrack[]): any[] {
 }
 
 let inflight: Promise<any[]> | null = null;
+/** 后台刷新去重标志（见 refreshR2MusicInBackground 注释，防无限递归） */
+let refreshing = false;
+/** 上次后台刷新**尝试**时间：失败也记，避免网络长期不可用时每次调用都重试 */
+let lastRefreshAttempt = 0;
+/** 后台刷新最小重试间隔 */
+const REFRESH_RETRY_MIN_MS = 10 * 60 * 1000;
 
 /** 读缓存（无论是否过期） */
 async function readR2Cache(): Promise<any[] | null> {
@@ -119,26 +125,20 @@ async function readR2Cache(): Promise<any[] | null> {
   return null;
 }
 
-/** 加载 R2 音乐列表。force=true 绕过缓存强制重拉（页面「刷新」按钮）。 */
-export async function loadR2Music(force = false): Promise<any[]> {
-  if (!force) {
-    const raw = await AsyncStorage.getItem(CACHE_KEY).catch(() => null);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.list) && parsed.list.length) {
-          // stale-while-revalidate：缓存（含过期）先返回秒开；过期时后台刷新不阻塞
-          if (parsed.t && Date.now() - parsed.t >= CACHE_TTL) {
-            prefetchR2Music().catch(() => {});
-          }
-          return parsed.list;
-        }
-      } catch {
-        /* fallthrough to network */
-      }
-    }
-  }
-
+/**
+ * 真正拉取 + 写缓存（模块级 in-flight 去重；网络失败回退旧缓存）。
+ *
+ * ⚠️【必须与 loadR2Music 分开】旧实现里「过期 → 后台刷新」直接调
+ * `prefetchR2Music()` → `loadR2Music(false)`，而后者又会命中**同一份过期缓存**、
+ * 直接 `return parsed.list` —— 于是：
+ *   ① 刷新链每次都在「读缓存 + JSON.parse(1MB)」后就返回，**从不真正发网络请求**，
+ *      缓存永远保持过期；
+ *   ② 每次命中过期缓存都会再起一次刷新 → **无限递归**。
+ * 实测后果（Hermes CPU Profile）：`[Native] jsonParse` 占 21.6%、`[GC Young Gen]` 占 34.4%，
+ * App 空闲即吃 **129% CPU（1.3 核）**，且切后台不停、无网络、无日志、不渲染。
+ * 所以后台刷新必须走这条**只负责真正拉取**的路径。
+ */
+async function fetchR2MusicAndCache(): Promise<any[]> {
   if (inflight) return inflight;
 
   inflight = (async () => {
@@ -163,6 +163,41 @@ export async function loadR2Music(force = false): Promise<any[]> {
   } finally {
     inflight = null;
   }
+}
+
+/** 后台刷新（去重 + 最小重试间隔 + 真正走网络） */
+function refreshR2MusicInBackground(): void {
+  if (refreshing || inflight) return;
+  if (Date.now() - lastRefreshAttempt < REFRESH_RETRY_MIN_MS) return;
+  lastRefreshAttempt = Date.now();
+  refreshing = true;
+  fetchR2MusicAndCache()
+    .catch(() => {
+      /* 静默：预取/刷新失败不影响使用，下次命中过期缓存时再试 */
+    })
+    .finally(() => {
+      refreshing = false;
+    });
+}
+
+/** 加载 R2 音乐列表。force=true 绕过缓存强制重拉（页面「刷新」按钮）。 */
+export async function loadR2Music(force = false): Promise<any[]> {
+  if (!force) {
+    const raw = await AsyncStorage.getItem(CACHE_KEY).catch(() => null);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.list) && parsed.list.length) {
+          // stale-while-revalidate：缓存（含过期）先返回秒开；过期时后台刷新不阻塞
+          if (parsed.t && Date.now() - parsed.t >= CACHE_TTL) refreshR2MusicInBackground();
+          return parsed.list;
+        }
+      } catch {
+        /* fallthrough to network */
+      }
+    }
+  }
+  return fetchR2MusicAndCache();
 }
 
 /**
