@@ -271,16 +271,14 @@ export default function SettingsScreen() {
           <Row
             icon="github"
             title={t('本项目仓库')}
-            value="github.com/Xenia0922/yaya_msg_mobile"
-            wrapValue
+            value="Xenia0922/yaya_msg_mobile"
             onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile').catch(() => {})}
           />
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
           <Row
             icon="github"
             title={t('桌面端项目')}
-            value="github.com/yk1z/yaya_msg"
-            wrapValue
+            value="yk1z/yaya_msg"
             onPress={() => Linking.openURL('https://github.com/yk1z/yaya_msg').catch(() => {})}
           />
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />

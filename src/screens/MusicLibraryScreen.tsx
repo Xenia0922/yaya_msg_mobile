@@ -349,7 +349,9 @@ export default function MusicLibraryScreen() {
           // 播放态镜像（边沿触发）：系统控件/通知栏/锁屏点恢复后，原生 exo.play() 推的
           // 第一次 progress.playing=true 会把 store 切到 playing → 转盘恢复转动；
           // 反之点暂停把 store 切 paused。
-          if (st.url && lastMirroredPlayingRef.current !== playingN) {
+          // ⚠️ loading 期间不镜像：首次起播时原生还没出声，第一条 playing=false 心跳
+          // 会把 store 直接打成 paused（用户反馈「进音乐后第一次点卡片变暂停」）。
+          if (st.url && st.playbackState !== 'loading' && lastMirroredPlayingRef.current !== playingN) {
             st.setPlaybackState(playingN ? 'playing' : 'paused');
             lastMirroredPlayingRef.current = playingN;
           }
