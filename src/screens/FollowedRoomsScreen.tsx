@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState } from 'react-native';
+import { Animated, AppState, Platform } from 'react-native';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
@@ -2802,7 +2802,16 @@ export default function FollowedRoomsScreen() {
     const roomBgUri = roomMeta.bg || '';
     const roomScrim = resolvedTheme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.42)';
     return (
-      <View style={[styles.container, { paddingBottom: roomPlayer ? 0 : roomKeyboardHeight }]}>
+      /*
+       * ⚠️【背景图修复】背景层必须放在**键盘 padding 容器之外**。
+       * 原结构：<容器 style={{paddingBottom: 键盘高度}}> 里放 absolute 背景层 ——
+       * React Native（Yoga）会把父容器的 padding 也作用到 absolute 子节点上，
+       * 于是键盘高度一旦非 0（含「手势返回没触发 keyboardDidHide」导致卡住的旧值），
+       * 背景层 bottom 就被抬高，屏幕下方露出一条没有背景的黑边
+       * —— 用户反馈的「房间背景图显示不完全」。
+       * 现在背景铺在整屏外层，padding 只影响内容，背景永远满幅。
+       */
+      <View style={styles.roomRoot}>
         {roomBgUri ? (
           <>
             <Animated.View style={[styles.roomBgLayer, { opacity: bgOpacity }]}>
@@ -2811,6 +2820,7 @@ export default function FollowedRoomsScreen() {
             <View pointerEvents="none" style={[styles.roomBgLayer, { backgroundColor: roomScrim }]} />
           </>
         ) : null}
+        <View style={[styles.container, { paddingBottom: roomPlayer ? 0 : roomKeyboardHeight }]}>
         {roomPlayer ? (
           /* 统一播放器（重写）：房间直播/录播 → PlayerScreen（控制条/全屏/内核路由/小窗/贡献榜） */
           <View style={[styles.roomPlayerPage, { backgroundColor: '#000' }]}>
@@ -3118,6 +3128,10 @@ export default function FollowedRoomsScreen() {
               tint={resolvedTheme === 'dark' ? 'dark' : 'light'}
               blurTarget={blurTarget ?? undefined}
               blurMethod="dimezisBlurViewSdk31Plus"
+              /* ⚠️【功耗/卡顿】必须给降采样系数：不传 = 全分辨率模糊，
+                 这条工具条常驻且叠在滚动消息列表上方，逐帧按原分辨率算 RenderEffect
+                 是房间页掉帧/发热的大头（尤其三星）。6 与 GlassSurface 保持同一档。 */
+              blurReductionFactor={Platform.OS === 'android' ? 6 : 4}
               style={styles.chatTools}
             >
           {/* 分段切换：大房间 / 小房间（玻璃滑动选中） */}
@@ -3269,6 +3283,7 @@ export default function FollowedRoomsScreen() {
             </Text>
           </TouchableOpacity>
         </GlassSurface>
+        </View>
       </View>
     );
   }
@@ -3600,6 +3615,8 @@ const styles = StyleSheet.create({
   roomSendBtnText: { fontSize: 13, fontWeight: '700' },
   roomSendHint: { fontSize: 11, marginHorizontal: 16, marginBottom: 4 },
   container: { flex: 1, backgroundColor: 'transparent' },
+  /** 房间详情根容器：背景层与 padding 容器分离，保证背景满幅（见 return 处注释） */
+  roomRoot: { flex: 1 },
   roomBgLayer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   ellipseBubble: { paddingVertical: 9, paddingHorizontal: 14, maxWidth: '78%', marginVertical: 2 },
   ellipseName: { fontSize: 11, fontWeight: '700', marginBottom: 2 },

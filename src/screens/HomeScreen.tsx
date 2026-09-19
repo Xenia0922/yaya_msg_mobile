@@ -727,12 +727,11 @@ export default function HomeScreen() {
                     pressedScale={0.97}
                     style={{ marginBottom: 8 }}
                   >
-                    {/* 作者结构：内容作为玻璃的 children —— 内容会被排除在 backdrop 捕获之外，
-                        玻璃只折射它背后的背景，不会再把卡片自己的内容折射一遍 */}
-                    <GlassSurface
-                      radius={20}
-                      role="card"
-                      style={[styles.liveRow, shadows.xs, { borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+                    {/* ⚠️【性能】列表逐卡不要用 GlassSurface —— 每张卡一个 BlurView，
+                        滚动时逐帧重算 RenderEffect 模糊，三星等模糊较慢的机型直接掉帧。
+                        项目铁律：列表/网格用实底圆角 + 细描边（surfaceGlassStrong）。 */}
+                    <View
+                      style={[styles.liveRow, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                     >
                       <View style={[styles.liveRowThumb, { backgroundColor: palette.tintSoft }]}>
                         {gongyanInfo[room.roomId]?.cover ? (
@@ -762,7 +761,7 @@ export default function HomeScreen() {
                         </View>
                       </View>
                       <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={18} />
-                    </GlassSurface>
+                    </View>
                   </ScalePressable>
                 </FadeInView>
               ))}
@@ -781,16 +780,15 @@ export default function HomeScreen() {
                   pressedScale={0.94}
                   style={styles.quickCellInner}
                 >
-                    <GlassSurface
-                      radius={20}
-                      role="chip"
-                      style={[styles.chip, shadows.xs, { borderColor: palette.innerStroke }]}
+                    {/* ⚠️【性能】4 个快捷入口逐格玻璃 = 4 个 BlurView 常驻首页，改实底圆角 */}
+                    <View
+                      style={[styles.chip, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth }]}
                     >
                       <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
                         <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                       </View>
                       <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>{item.title}</Text>
-                    </GlassSurface>
+                    </View>
                   </ScalePressable>
                 </FadeInView>
               ))}
@@ -867,16 +865,15 @@ export default function HomeScreen() {
                   onPress={() => handleNav(item)}
                   pressedScale={0.94}
                 >
-                  <GlassSurface
-                    radius={20}
-                    role="chip"
-                    style={[styles.toolChip, shadows.xs, { borderColor: palette.innerStroke }]}
+                  {/* ⚠️【性能】横向工具条逐格玻璃 = N 个 BlurView，改实底圆角 */}
+                  <View
+                    style={[styles.toolChip, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth }]}
                   >
                     <View style={[styles.toolChipIcon, { backgroundColor: palette.tintSoft }]}>
                       <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                     </View>
                     <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>{item.title}</Text>
-                  </GlassSurface>
+                  </View>
                 </ScalePressable>
               ))}
             </ScrollView>

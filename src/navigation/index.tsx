@@ -4,7 +4,7 @@ import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@r
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Animated, Easing, ImageBackground, StyleSheet, View } from 'react-native';
+import { Animated, BackHandler, Easing, ImageBackground, Keyboard, StyleSheet, View } from 'react-native';
 import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
 import { setPipEnabled, listenPipToggle } from '../utils/pip';
 import { Palettes } from '../theme/colors';
@@ -218,6 +218,33 @@ const AppDarkTheme = {
 };
 
 /**
+ * 全局「返回先收键盘」桥（Android）。
+ *
+ * 问题：edge-to-edge + 手势导航下，系统不一定先收起输入法就直接把页面退了 →
+ *   ① 用户想关键盘却退出了页面；
+ *   ② 更隐蔽的连带伤害：页面已切走、输入法还开着，`keyboardDidHide` 可能不触发，
+ *      靠键盘高度做布局的页面（聊天/房间 `paddingBottom: kb`）会**卡在非 0 高度**，
+ *      背景图被顶掉一条（「房间背景图显示不完全」就是这么来的）。
+ *
+ * 这里统一接管：键盘可见时，本次返回只收键盘并消费事件，不进下一步；再返回一次才走页面返回。
+ * 注意 BackHandler 是「后注册先执行」，本桥在导航根注册（最早），因此页面自己的返回
+ * 处理优先 —— 页面若自行消费返回，建议也先调一次 Keyboard.dismiss()。
+ */
+function KeyboardBackBridge() {
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (Keyboard.isVisible()) {
+        Keyboard.dismiss();
+        return true; // 消费本次返回：只收键盘
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, []);
+  return null;
+}
+
+/**
  * 系统 PiP（小窗）⏯ 点击 → 切换"当前正在小窗里播的媒体"的播放/暂停。
  * 优先级：应用内小窗接管中 → 切小窗；否则统一播放器 source 在播 → 切它（store.state
  * 变化驱动 native/exo paused prop 与 web postMessage，PlayerCore 已接 web 指令）。
@@ -289,7 +316,15 @@ export default function AppNavigator() {
           <PageBackdrop />
         )}
       </BlurTargetSurface>
-      <NavigationContainer theme={themed}>
+      {/*
+        onStateChange：任何一次导航（含手势返回被 navigator 自己处理掉、不经过
+        BackHandler 的情况）都兜底收起输入法 —— 否则键盘可能跟着旧页面留着，
+        而靠键盘高度做布局的页面会卡在非 0 高度（背景被顶掉一条）。
+      */}
+      <NavigationContainer
+        theme={themed}
+        onStateChange={() => { if (Keyboard.isVisible()) Keyboard.dismiss(); }}
+      >
       <>
         <Stack.Navigator
           screenOptions={{
@@ -328,6 +363,8 @@ export default function AppNavigator() {
         <MiniPlayer />
         {/* 系统 PiP ⏯ → 当前媒体切换（全局单次监听） */}
         <PipToggleBridge />
+        {/* 返回键/手势返回 → 先收输入法（避免「退页了键盘还在」及其连带的布局卡死） */}
+        <KeyboardBackBridge />
       </>
       </NavigationContainer>
       </BlurTargetProvider>

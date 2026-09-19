@@ -62,12 +62,26 @@ interface Material {
   highlight: number;
 }
 
+/**
+ * 模糊「降采样系数」：模糊在 1/N 分辨率上计算，再放大铺回。
+ *
+ * ⚠️【功耗/卡顿】这是全站模糊开销的唯一总闸门（96 处 GlassSurface 共用）。
+ *   系数 4 → 6：模糊像素数降到约 44%（(4/6)²），RenderEffect 负载与功耗同比例下降，
+ *   而玻璃是**大半径柔和模糊**，降采样到 1/6 后肉眼几乎无差别（不是锐利投影）。
+ *
+ * 为什么专门为 Android 调：Android 走 `dimezisBlurViewSdk31Plus`（RenderEffect 路线），
+ *   而三星 One UI 的 RenderEffect 实现明显慢于同代高通/联发科机型 ——
+ *   同一份代码在别家满帧、在三星就掉帧，瓶颈就是这个系数。
+ *   iOS 走系统 `UIVisualEffectView`，成本不在 JS/GPU 这一侧，保持原值即可。
+ */
+const BLUR_REDUCTION = Platform.OS === 'android' ? 6 : 4;
+
 /** Apple Regular 材质：浅色白系磨砂 / 深色深系磨砂 */
 const MATERIAL: { light: Material; dark: Material } = {
   light: {
     // Apple Regular(浅色)：强模糊 + 淡白纱 —— 模糊负责可读，纱淡才透得出去
     intensity: 64,
-    reduction: 4,
+    reduction: BLUR_REDUCTION,
     blurTint: 'light',
     overlay: 'rgba(255,255,255,0.30)',
     stroke: 'rgba(255,255,255,0.66)',
@@ -76,7 +90,7 @@ const MATERIAL: { light: Material; dark: Material } = {
   dark: {
     // 官方：深色模式降低通透度、提升对比度
     intensity: 70,
-    reduction: 4,
+    reduction: BLUR_REDUCTION,
     blurTint: 'dark',
     overlay: 'rgba(20,20,26,0.40)',
     stroke: 'rgba(255,255,255,0.10)',

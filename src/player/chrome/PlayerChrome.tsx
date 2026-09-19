@@ -71,17 +71,14 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
    * 这里直接量键盘高度，把底坞顶上去，行为与窗口模式无关，最稳。
    */
   const [kbHeight, setKbHeight] = useState(0);
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
-      setKbHeight(Number(e?.endCoordinates?.height) || 0);
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+  /**
+   * 输入法是否可见。
+   * 用 ref 而不是 state：自动隐藏计时器回调里要读它，但不该因为键盘开合重建
+   * `showControls`（useCallback([]) 锁首帧，改依赖会连带重建整串回调）。
+   */
+  const kbVisibleRef = useRef(false);
+  /** showControls 的 ref（键盘收起后要重启自动隐藏计时，而 effect 定义在 showControls 之前） */
+  const showControlsRef = useRef<(() => void) | null>(null);
   const tapRef = useRef<{ t: number; side: 'l' | 'r' } | null>(null);
   const [seekFlash, setSeekFlash] = useState<number | null>(null);
   const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -146,6 +143,12 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
     usePlayerStore.getState().toggleControls(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => {
+      // 打字中（输入法可见）绝不自动隐藏：底坞里的弹幕输入条会被一起淡走，
+      // 用户正在输入却看不到输入框与已输入内容（需求明确要求「有输入法时不自动隐藏」）
+      if (kbVisibleRef.current) {
+        showControls();
+        return;
+      }
       // 播放中才自动隐藏（全屏同样隐藏）；暂停/缓冲保持显示（用户在操作/看画面）
       // 拖动中绝不离场：hide 会把正在被触摸的 responder 视图卸载 → 原生触控分发崩
       if (dragLockRef.current) {
@@ -155,6 +158,31 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
       const s = usePlayerStore.getState();
       if (s.state === 'playing') s.toggleControls(false);
     }, CONTROLS_HIDE_MS);
+  }, []);
+  showControlsRef.current = showControls;
+
+  /**
+   * 输入法开合 → 控制条显隐。
+   *  - 弹出：取消待执行的自动隐藏并保持控制条可见（否则刚点输入框，输入条就淡走了）
+   *  - 收起：重启一次自动隐藏计时，恢复「播放中 3s 后隐藏」的既有行为
+   */
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      kbVisibleRef.current = true;
+      setKbHeight(Number(e?.endCoordinates?.height) || 0);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      usePlayerStore.getState().toggleControls(true);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      kbVisibleRef.current = false;
+      setKbHeight(0);
+      showControlsRef.current?.();
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
   }, []);
 
   useEffect(() => {
