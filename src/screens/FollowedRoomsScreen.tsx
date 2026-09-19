@@ -78,8 +78,6 @@ type FollowedRoom = {
 type RoomMode = 'big' | 'small';
 type MediaType = 'audio' | 'video' | 'live' | 'image' | 'link';
 
-/** 房间公告是否收起（'1'=收起）：跨房间/跨启动记忆 */
-const ROOM_ANNOUNCE_COLLAPSED_KEY = 'yaya_room_announce_collapsed_v1';
 
 type RoomMedia = {
   type: MediaType;
@@ -92,8 +90,6 @@ type RoomMedia = {
   cover?: string;
   /** 消息/卡片已明示「回放/录播」：播放时应走可拖进度条的录播播放器，而非直播播放器 */
   replayHint?: boolean;
-  /** 直播/房间公告（getLiveOne/getOpenLiveOne 的 content.announcement）：房间页顶部展示 */
-  announcement?: string;
 };
 
 type SenderProfile = {
@@ -804,9 +800,6 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
           cover,
           isLive,
           needsVlc: streamNeedsProxy(urls[0]),
-          // 公告：与播放器页同源（getLiveOne/getOpenLiveOne 的 content.announcement）。
-          // 用户反馈房间页此前完全不显示公告、也没有开关按钮。
-          announcement: String(d.announcement || d.notice || '').trim() || undefined,
         };
       }
     }
@@ -1369,30 +1362,6 @@ export default function FollowedRoomsScreen() {
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
   const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
-  /**
-   * 房间公告展开态。用户要求**记住收起状态**（跨房间/跨启动），持久化到 AsyncStorage。
-   * 注意：这里不再「进房复位为展开」—— 那会让收起状态每次进房都被打回。
-   */
-  const [roomAnnounceExpanded, setRoomAnnounceExpanded] = useState(true);
-  const roomAnnounceLoadedRef = useRef(false);
-  /**
-   * ⚠️ 房间公告文本（独立于播放器）。
-   * 此前公告挂在 roomPlayer 上，而 roomPlayer 只有点开房间里的视频/直播才会有值 ——
-   * **直接进房间不点任何媒体时它永远是 null → 公告永远不显示**（用户实测）。
-   * 现在进房就从直播列表里查该成员的公告（成员正在直播且填了公告才有内容）。
-   */
-  const [roomAnnouncementText, setRoomAnnouncementText] = useState('');
-  useEffect(() => {
-    if (roomAnnounceLoadedRef.current) return;
-    roomAnnounceLoadedRef.current = true;
-    AsyncStorage.getItem(ROOM_ANNOUNCE_COLLAPSED_KEY)
-      .then((v) => setRoomAnnounceExpanded(v !== '1'))
-      .catch(() => {});
-  }, []);
-  const setRoomAnnouncePersisted = (v: boolean) => {
-    setRoomAnnounceExpanded(v);
-    AsyncStorage.setItem(ROOM_ANNOUNCE_COLLAPSED_KEY, v ? '0' : '1').catch(() => {});
-  };
 
   /**
    * ⚠️【玻璃折射】把房间背景图挂进 blur 目标层。
@@ -1670,7 +1639,6 @@ export default function FollowedRoomsScreen() {
     setRoomPlayerFullscreen(false);
     setPlayingMedia(null);
     setSelectedRoom(null);
-    setRoomAnnouncementText('');
     setScreenBackdrop(null); // 玻璃折射背景还原全局
     setRoomMeta({ name: '', bg: '' });
     activeChannelRef.current = '';
@@ -1891,18 +1859,6 @@ export default function FollowedRoomsScreen() {
       return;
     }
     setSelectedRoom(room);
-    // 房间公告：独立于播放器 —— 进房就从（缓存的）直播列表里按房主 userId 找公告。
-    // 只有成员正在直播且填了公告才有内容；离线/未填则清空不显示。
-    setRoomAnnouncementText('');
-    cachedLiveList(false, 0, 0)
-      .then((list) => {
-        const ownerId = String(room.id || '');
-        const hit = (Array.isArray(list) ? list : []).find(
-          (it: any) => String(it?.userInfo?.userId || '') === ownerId,
-        );
-        setRoomAnnouncementText(String(hit?.announcement || '').trim());
-      })
-      .catch(() => {});
     const openSeq = ++roomSeqRef.current;
     const channelChanged = activeChannelRef.current !== channelId;
     activeChannelRef.current = channelId;
@@ -3287,70 +3243,6 @@ export default function FollowedRoomsScreen() {
             </BlurView>
           </View>
 
-        {/* 房间公告：与播放器页公告同语义（可收起/展开；进房默认展开）。
-            数据来自 getLiveOne/getOpenLiveOne 的 content.announcement（见 resolveRoomLiveMedia）。
-            悬浮在聊天列表上方，不挤压列表高度（绝对定位），收起后只剩一颗胶囊按钮。 */}
-        {(roomAnnouncementText || roomPlayer?.announcement) && !roomPlayerFullscreen ? (
-          roomAnnounceExpanded ? (
-            <View
-              style={[styles.roomAnnouncePanel, { backgroundColor: palette.fill2, borderColor: palette.innerStroke }]}
-            >
-              <View style={styles.roomAnnounceTop}>
-                <View style={styles.roomAnnounceTitleRow}>
-                  <MaterialCommunityIcons name="bullhorn" size={15} color={palette.tint} style={{ marginRight: 5 }} />
-                  <Text style={[styles.roomAnnounceTitle, { color: palette.label }]} numberOfLines={1}>{t('公告')}</Text>
-                </View>
-                <View style={styles.roomAnnounceBtns}>
-                  <TouchableOpacity
-                    onPress={() => setRoomAnnouncePersisted(false)}
-                    style={[styles.roomAnnounceBtn, { borderColor: palette.innerStroke }]}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.roomAnnounceBtnText, { color: palette.labelSecondary }]}>{t('收起')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <ScrollView style={styles.roomAnnounceBody} nestedScrollEnabled>
-                <Text style={[styles.roomAnnounceText, { color: palette.labelSecondary }]} selectable>
-                  {roomAnnouncementText || roomPlayer?.announcement}
-                </Text>
-              </ScrollView>
-            </View>
-          ) : (
-            <TouchableOpacity
-              onPress={() => setRoomAnnouncePersisted(true)}
-              style={[styles.roomAnnouncePill, { backgroundColor: palette.fill2, borderColor: palette.innerStroke }]}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              activeOpacity={0.75}
-            >
-              <MaterialCommunityIcons name="bullhorn" size={13} color={palette.tint} style={{ marginRight: 4 }} />
-              <Text style={[styles.roomAnnouncePillText, { color: palette.labelSecondary }]} numberOfLines={1}>
-                {t('公告')}
-              </Text>
-            </TouchableOpacity>
-          )
-        ) : null}
-
-        {roomSearchOpen ? (
-          <View style={[styles.roomSearchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
-            <MaterialCommunityIcons name="magnify" size={17} color={palette.labelTertiary} />
-            <TextInput
-              style={[styles.roomSearchInput, { color: palette.label }]}
-              placeholder={t('搜索聊天记录、成员名、粉丝名...')}
-              placeholderTextColor={palette.labelTertiary}
-              value={roomSearchQuery}
-              onChangeText={setRoomSearchQuery}
-              autoFocus
-              returnKeyType="search"
-            />
-            {roomSearchQuery ? (
-              <TouchableOpacity onPress={() => setRoomSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
-                <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : null}
 
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
           {/* 官方 demo 用法：messages / user / onSend + 官方 loadEarlierMessagesProps */}
@@ -3783,18 +3675,6 @@ const styles = StyleSheet.create({
   daySep: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
   daySepText: { fontSize: 11, fontWeight: '600', alignSelf: 'center' },
   chatToolsClip: { marginHorizontal: 12, marginBottom: 8, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  /** 房间公告（与播放器页公告同语义，但为普通流式布局——悬浮会遮聊天内容） */
-  roomAnnouncePanel: { marginHorizontal: 12, marginBottom: 8, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  roomAnnounceTop: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingTop: 8, paddingBottom: 4 },
-  roomAnnounceTitleRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
-  roomAnnounceTitle: { fontSize: 13, fontWeight: '700' },
-  roomAnnounceBtns: { flexDirection: 'row', flexShrink: 0 },
-  roomAnnounceBtn: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
-  roomAnnounceBtnText: { fontSize: 12 },
-  roomAnnounceBody: { maxHeight: 132, paddingHorizontal: 10, paddingBottom: 10 },
-  roomAnnounceText: { fontSize: 13, lineHeight: 19 },
-  roomAnnouncePill: { alignSelf: 'flex-start', marginHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, maxWidth: '70%' },
-  roomAnnouncePillText: { fontSize: 12 },
   chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, borderRadius: 18 },
   segment: {
     flexDirection: 'row',
