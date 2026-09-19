@@ -2289,15 +2289,26 @@ export default function FollowedRoomsScreen() {
       const mine = role === 'mine';
       const idol = role === 'idol';
       const msgProfile = senderProfile(item, room);
-      // 成员(idol)发言头像：优先用 API（消息携带）的真实头像；成员库 room.avatar 多为公式照，仅兜底
+      // 发送者若是「成员库里的成员」（**不一定是房主**），就用他自己的档案 + 他自己的队伍标签。
+      // 此前非房主成员在别人房间发言，被 isIdolMessage 直接判成 fan
+      //（只要 profile.id 存在且 ≠ 房主就 return false）→ 没名字/没头像/没队标。
+      const senderId = String(msgProfile.id || '').trim();
+      const senderMember = senderId
+        ? (members.find((m: any) => String(m.id || m.userId || '') === senderId) as Member | undefined)
+        : undefined;
+      const isMemberSender = !!senderMember;
+      // 成员发言头像：优先用 API（消息携带）的真实头像；成员库 avatar 多为公式照，仅兜底
       const profile = idol
         ? { id: room.id, name: (msgProfile.name || '').trim() || shortName(room), avatar: msgProfile.avatar || room.avatar }
-        : msgProfile;
-      // 成员队伍标签（用户要求：每条消息「发送者名字后面」显示队伍）
-      const teamGroup = String((room as any)?.groupName || '').trim();
-      const teamName = String((room as any)?.team || '').trim();
+        : (senderMember
+          ? { id: senderMember.id, name: (msgProfile.name || '').trim() || senderMember.ownerName, avatar: msgProfile.avatar || senderMember.avatar }
+          : msgProfile);
+      // 队伍标签：房主用房间档案，其他成员用他自己的（用户要求：放每条消息名字后面）
+      const tagSource: any = idol ? room : senderMember;
+      const teamGroup = String(tagSource?.groupName || '').trim();
+      const teamName = String(tagSource?.team || '').trim();
       const teamText = teamName && teamGroup && !teamName.includes(teamGroup) ? `${teamGroup} ${teamName}` : (teamName || teamGroup);
-      const teamLogo = String((room as any)?.teamLogo || '').trim();
+      const teamLogo = String(tagSource?.teamLogo || '').trim();
       const media = roomMedia(item);
       const gift = roomGiftInfo(item);
       const payload = messagePayload(item) as any;
@@ -2349,12 +2360,12 @@ export default function FollowedRoomsScreen() {
             {row.groupStart ? (
               <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  {idol ? <MaterialCommunityIcons name="crown" size={11} color={palette.tint} /> : null}
-                  <Text style={[styles.msgSender, { color: idol ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
+                  {(idol || isMemberSender) ? <MaterialCommunityIcons name="crown" size={11} color={palette.tint} /> : null}
+                  <Text style={[styles.msgSender, { color: (idol || isMemberSender) ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
                     {profile.name}
                   </Text>
-                  {/* 队伍标签：紧跟发送者名字（成员消息）；有官方队标就显示图，否则纯文字 */}
-                  {idol && (teamText || teamLogo) ? (
+                  {/* 队伍标签：紧跟发送者名字（成员消息，**含其他成员在别人房间发言**）；有官方队标显示图，否则文字 */}
+                  {(idol || isMemberSender) && (teamText || teamLogo) ? (
                     <View style={[styles.msgTeamChip, { backgroundColor: palette.tintSoft }]}>
                       {teamLogo ? <Image source={{ uri: teamLogo }} style={styles.msgTeamLogo} resizeMode="contain" /> : null}
                       {teamText ? <Text style={[styles.msgTeamText, { color: palette.tint }]} numberOfLines={1}>{teamText}</Text> : null}
