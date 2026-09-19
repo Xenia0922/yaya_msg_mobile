@@ -530,7 +530,9 @@ export default function MusicLibraryScreen() {
       <ScreenHeader title={t('音乐')} right={
         <HeaderAction label={t('刷新')} onPress={() => loadAll()} loading={loading} disabled={loading} />
       } />
-      <View style={[styles.searchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>
+      {/* 搜索框：液态玻璃（用户要求与全站玻璃语言一致）。
+          内容必须是玻璃的 children（铁律），否则玻璃 absoluteFill 铺底 + 内容当兄弟 → 不吃触摸/不折射 */}
+      <GlassSurface radius={14} role="chip" style={styles.searchBar}>
         <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
         <TextInput
           value={query}
@@ -560,7 +562,7 @@ export default function MusicLibraryScreen() {
             />
           </ScalePressable>
         ) : null}
-      </View>
+      </GlassSurface>
       {/* 专辑详情条：返回 + 专辑名 + 曲目数 + 播放全部（替代分团 tab 栏） */}
       {albumFilter ? (
         <View style={[styles.tabsBarBase, { borderBottomColor: palette.separator }]}>
@@ -602,17 +604,13 @@ export default function MusicLibraryScreen() {
           contentContainerStyle={styles.tabsContent}
         >
           {GROUP_TABS.map((g, idx) => (
-            <ScalePressable
+            <GlassSurface
               key={g}
+              role="chip"
+              radius={999}
               onPress={() => onGroupChange(g)}
-              pressedScale={0.96}
-              activeOpacity={0.7}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              style={[
-                styles.gChip,
-                { backgroundColor: group === g ? palette.tint : palette.fill2 },
-                g === 'FAV' ? styles.gChipFav : styles.gChipBase,
-              ]}
+              tintColor={group === g ? palette.tint : undefined}
+              style={[styles.gChip, g === 'FAV' ? styles.gChipFav : styles.gChipBase]}
             >
               <Text
                 numberOfLines={1}
@@ -624,7 +622,7 @@ export default function MusicLibraryScreen() {
               >
                 {g === 'FAV' ? t('收藏{count}', { count: favCount ? `(${favCount})` : '' }) : t(GROUP_LABELS[g] || g)}
               </Text>
-            </ScalePressable>
+            </GlassSurface>
           ))}
         </ScrollView>
       </View>
