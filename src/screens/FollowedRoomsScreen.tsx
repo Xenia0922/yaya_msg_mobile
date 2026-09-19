@@ -1083,15 +1083,17 @@ function LiveCoverImage({ uri, palette }: { uri: string; palette: any }) {
 // 音频消息卡片。消息体里没有 duration 字段（实测只有 msgTime 时间戳），时长只能靠播放器解析。
 // 内部用隐藏探测 Video（1px 透明、不可见）拿 ExoPlayer 真实 duration 回填角标，与 VideoCoverCard 同机制。
 function AudioMediaCard({
-  media, idol, mine, palette, onPlay, onLongPress, playing,
+  media, palette, onPlay, onLongPress, playing,
 }: {
-  media: RoomMedia; idol: boolean; mine: boolean; palette: any;
+  media: RoomMedia; palette: any;
   onPlay: () => void; onLongPress: () => void; playing: boolean;
 }) {
   const [resolvedDur, setResolvedDur] = useState(media.duration || '');
-  return (
+  const card = (
     <TouchableOpacity
-      style={[styles.mediaCard, { backgroundColor: (idol || mine) ? palette.tint : palette.surfaceGlass, borderColor: (idol || mine) ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
+      // 语音播放卡玻璃化（用户要求，2026-09-19）：任何人（含房主/自己）一律 GlassSurface，
+      // 与房间文本气泡同语言；此前「idol/mine 粉实底」分支让房主语音卡与深色气泡割裂，已废
+      style={[styles.mediaCard, { backgroundColor: 'transparent', borderWidth: 0, marginTop: 0 }]}
       activeOpacity={0.92}
       onLongPress={onLongPress}
     >
@@ -1099,11 +1101,11 @@ function AudioMediaCard({
         <NetworkImage source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" thumbnail={700} />
       ) : null}
       <View style={styles.mediaMeta}>
-        <Text style={[styles.mediaIcon, (idol || mine) ? { color: palette.onTint } : { color: palette.tint }]}>{t(mediaLabel(media.type))}</Text>
+        <Text style={[styles.mediaIcon, { color: palette.tint }]}>{t(mediaLabel(media.type))}</Text>
         {media.type !== 'audio' && media.type !== 'video' && media.title ? (
-          <Text style={[styles.mediaTitle, (idol || mine) ? { color: palette.onTint } : { color: palette.label }]} numberOfLines={2}>{media.title}</Text>
+          <Text style={[styles.mediaTitle, { color: palette.label }]} numberOfLines={2}>{media.title}</Text>
         ) : null}
-        {resolvedDur ? <Text style={[styles.mediaDuration, (idol || mine) ? { color: palette.onTint } : { color: palette.labelSecondary }]}>{resolvedDur}s</Text> : null}
+        {resolvedDur ? <Text style={[styles.mediaDuration, { color: palette.labelSecondary }]}>{resolvedDur}s</Text> : null}
       </View>
       <TouchableOpacity
         style={[styles.mediaPlayBtn, { backgroundColor: palette.tint, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }]}
@@ -1133,6 +1135,11 @@ function AudioMediaCard({
         }}
       />
     </TouchableOpacity>
+  );
+  return (
+    <GlassSurface radius={14} role="card" style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+      {card}
+    </GlassSurface>
   );
 }
 
@@ -2357,6 +2364,7 @@ export default function FollowedRoomsScreen() {
     });
   }, [roomMessages, roomSearchQuery, selectedRoom, showFanMessages, currentUserId, memberIdSet]);
 
+
   // 消息流按日期分组：今天/昨天/月日 分隔条（消息是新→旧排序，分隔条插在换日处）
   const chatRows = useMemo(() => {
     // 房间已切走/关闭时不能算：messageRole → isIdolMessage 会读 room.id（null 崩）
@@ -2858,8 +2866,6 @@ export default function FollowedRoomsScreen() {
                 // 隐藏探测 Video 在 AudioMediaCard 内部，无需外部 inlineAudio 撑高。
                 <AudioMediaCard
                   media={media}
-                  idol={idol}
-                  mine={mine}
                   palette={palette}
                   playing={!!(playingMedia?.url && media.url && playingMedia.url === media.url)}
                   onPlay={() => playMedia(media)}
@@ -3270,18 +3276,41 @@ export default function FollowedRoomsScreen() {
               blurReductionFactor={Platform.OS === 'android' ? 6 : 4}
               style={styles.chatTools}
             >
-          {/* 分段切换：大房间 / 小房间（玻璃滑动选中） */}
-          <GlassSegmented
-            options={[
-              { key: 'big', label: t('大房间') },
-              { key: 'small', label: t('小房间') },
-            ]}
-            value={roomMode}
-            onChange={(k) => selectedRoom && openRoom(selectedRoom, k as 'big' | 'small', showFanMessages, 'internal')}
-            height={34}
-            style={{ width: 168 }}
-          />
-          <View style={{ flex: 1 }} />
+          {roomSearchOpen ? (
+            /* 搜索态：输入框原位替换分段切换（房间内搜索 = 搜消息） */
+            <>
+              <MaterialCommunityIcons name="magnify" size={17} color={palette.labelTertiary} />
+              <TextInput
+                style={{ flex: 1, fontSize: 14, color: palette.label, padding: 0, height: 34, alignSelf: 'center' }}
+                placeholder={t('搜索聊天记录...')}
+                placeholderTextColor={palette.labelTertiary}
+                value={roomSearchQuery}
+                onChangeText={setRoomSearchQuery}
+                autoFocus
+                returnKeyType="search"
+              />
+              {!!roomSearchQuery ? (
+                <TouchableOpacity onPress={() => setRoomSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
+                  <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {/* 分段切换：大房间 / 小房间（玻璃滑动选中） */}
+              <GlassSegmented
+                options={[
+                  { key: 'big', label: t('大房间') },
+                  { key: 'small', label: t('小房间') },
+                ]}
+                value={roomMode}
+                onChange={(k) => selectedRoom && openRoom(selectedRoom, k as 'big' | 'small', showFanMessages, 'internal')}
+                height={34}
+                style={{ width: 168 }}
+              />
+              <View style={{ flex: 1 }} />
+            </>
+          )}
           <ScalePressable
             style={[styles.chatToolCircle, { backgroundColor: roomSearchOpen ? palette.tint : palette.fill2 }]}
             onPress={() => setRoomSearchOpen((v) => !v)}
