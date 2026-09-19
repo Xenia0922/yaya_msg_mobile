@@ -15,6 +15,7 @@ import { useMemberStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import { EmptyState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
+import { HeaderAction } from '../components/HeaderAction';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOnMicStore, OnMicEntry } from '../store/onMicStore';
 import { Member } from '../types';
@@ -126,7 +127,11 @@ export default function OnMicScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
-      <ScreenHeader title={t('上麦')} />
+      <ScreenHeader
+        title={t('上麦')}
+        // 手动强制重扫（绕过 store 的 60s 节流 + 预算制增量）：解决「有概率扫不出来」
+        right={<HeaderAction label={t('刷新')} onPress={() => scan({ force: true })} loading={scanning} disabled={scanning} />}
+      />
       {scanning ? (
         <GlassSurface radius={20} role="card" style={[styles.scanBar, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
           <ActivityIndicator size="small" color={palette.tint} style={{ marginRight: 8 }} />
@@ -138,7 +143,7 @@ export default function OnMicScreen() {
       {error && entries.length === 0 ? (
         <EmptyState icon="alert-circle-outline" title={t('加载失败')} hint={error} onAction={() => scan({ force: true })} />
       ) : entries.length === 0 ? (
-        <EmptyState icon="microphone-off" title={t('暂无成员上麦')} hint={t('当前没有成员在语音麦上')} />
+        <EmptyState icon="microphone-off" title={t('暂无成员上麦')} hint={t('当前没有成员在语音麦上，可点下方重新扫描')} onAction={() => scan({ force: true })} actionLabel={t('重新扫描')} />
       ) : (
         <FlatList
           data={entries}
