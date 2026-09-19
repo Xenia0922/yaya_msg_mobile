@@ -234,12 +234,14 @@ export function MiniPlayer() {
           styles.wrap,
           pipCover && styles.wrapPiPFull,
           {
-            left: pipCover ? 0 : (pos.x as any),
-            top: pipCover ? 0 : (pos.y as any),
+            // 位置改用 transform 承载（不再用 left/top）：不触发布局重排，拖动/滚动更顺
+            left: 0,
+            top: 0,
             width: pipCover ? winW : boxW,
             height: pipCover ? winH : boxHNow,
             backgroundColor: '#000',
             borderColor: palette.hairline,
+            transform: pipCover ? undefined : pos.getTranslateTransform(),
           },
         ]}
       >
@@ -369,7 +371,7 @@ export function MiniPlayer() {
           StyleSheet.absoluteFill,
           pipCover
             ? { left: 0, top: 0, width: winW, height: winH, zIndex: 9999, elevation: 9999 }
-            : { left: pos.x, top: pos.y, width: boxW, height: boxHNow, zIndex: 1002, elevation: 24 },
+            : { left: 0, top: 0, width: boxW, height: boxHNow, zIndex: 1002, elevation: 24, transform: pos.getTranslateTransform() },
         ]}
       >
         {controlsVisible && !pipCover ? (
