@@ -253,6 +253,9 @@ export async function observeRoomMessages(
     return () => {
       off();
       try { qchatDisconnect(); } catch { /* 忽略 */ }
+      // ⚠️ 断开后必须复位登录态：否则下次 ensureQChatNativeLogin 见 accid 相同会直接 return，
+      // 不会真正重连 → 房间消息通道「只能连接/发送一次」（用户反馈）。点进房间/点输入框即触发重连。
+      qchatNativeAccid = '';
     };
   }
   if (!isPocketImAvailable()) return () => undefined;
