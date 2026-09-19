@@ -38,6 +38,7 @@ import { typography } from '../theme/typography';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
 import { GlassSegmented, GlassSegmentedScroll } from '../components/GlassSegmented';
+import { sniffImageBase64Mime } from '../utils/dataUri';
 
 type SettingsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Settings'>,
@@ -217,7 +218,15 @@ export default function SettingsScreen() {
       if (result.canceled) return;
       const base64 = result.assets?.[0]?.base64;
       if (!base64) { Alert.alert(t('未获取到图片数据')); return; }
-      const mime = result.assets?.[0]?.mimeType || 'image/jpeg';
+      /**
+       * ⚠️ MIME 必须按**真实字节**判定，不能信 picker 给的 `mimeType`。
+       * 实测踩坑：用户存的背景图是 `data:image/png;base64,/9j/4AAQSkZJRgAB…`
+       * —— 声明 PNG，实际是 JPEG（FFD8FFE0）。部分解码路径会信这个声明，
+       * 直接解码失败 → 背景层什么都没画出来，透出下层黑底
+       * （用户反馈的「背景图没加载」）。
+       * 这里嗅探 base64 头部魔数，写对真实类型。
+       */
+      const mime = sniffImageBase64Mime(base64) || result.assets?.[0]?.mimeType || 'image/jpeg';
       await update('customBackgroundFile', `data:${mime};base64,${base64}`, { customBackgroundUpdatedAt: Date.now() });
     } catch (error: any) {
       Alert.alert(t('背景图失败'), error?.message || String(error));

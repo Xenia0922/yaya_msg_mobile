@@ -176,6 +176,23 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
           prev.aborted = true;
         }
         set({ scanning: false });
+      } else if (opts.force && prev) {
+        /**
+         * ⚠️【上麦页「搜不出来」根因修复】force 请求必须**接管**在飞的那一轮，不能丢。
+         *
+         * 旧行为：只要 scanning 为 true 且未超时就直接 return —— 于是
+         * 「先在房间页触发一次房间成员小扫描（如 5 人 → 8 个任务）→ 再进上麦页」
+         * 时，上麦页 mount 的 `scan(inputs, { force: true })`（230 位成员 / 441 任务）
+         * 被静默丢弃；页面只剩那个小扫描的 total=8 进度，若它又迟迟不结束，
+         * 页面就永久停在「正在扫描全部成员上麦状态 8/8…」+ 转圈（用户反馈的现象）。
+         * 头部「刷新」同样会被丢掉 → 怎么点都没反应。
+         *
+         * 现在：显式 force 一律中止在飞轮次并立刻接手（worker 会在下一次
+         * `isCurrent()` 检查时退出，不会与新轮抢 cursor）。
+         */
+        logInfo('[onMic] 强制扫描：中止在飞的上一轮并立即重扫', 'onMic');
+        prev.aborted = true;
+        set({ scanning: false });
       } else {
         return;
       }

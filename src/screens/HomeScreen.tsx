@@ -38,6 +38,7 @@ import { externalApi } from '../api/external';
 import bilibiliApi from '../api/bilibili';
 import { BilibiliLiveRoom } from '../types';
 import { normalizeUrl, pickText, unwrapList } from '../utils/data';
+import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
 
@@ -187,6 +188,10 @@ function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void
             style={styles.liveBannerCover}
             resizeMode="cover"
             fallback={false}
+            // 16:9 全宽横幅：显示约 1080×609px（480dpi），请求「装进 1080 盒子」即可
+            // —— 服务端等比 contain，3:4 竖图会回 ~810×1080，不放大也不损失清晰度，
+            // 体积却从原图 ~780KB 降到约 1/8（此前不传 thumbnail = 每张都下原图）
+            thumbnail={1080}
             onError={handleCoverError}
           />
         ) : (
@@ -809,6 +814,8 @@ export default function HomeScreen() {
                           source={{ uri: (currentTrack.coverUrl || currentTrack.cover || '') as string }}
                           style={styles.musicCover}
                           resizeMode="cover"
+                          // 52dp 封面 ≈156px（480dpi），按 180 取缩略图（此前下原图）
+                          thumbnail={AVATAR_THUMB_WIDTH}
                         />
                       ) : (
                         <MaterialCommunityIcons name="music-note" color={palette.tint} size={24} />

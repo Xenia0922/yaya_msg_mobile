@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
 import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -8,6 +8,7 @@ import { Animated, BackHandler, Easing, ImageBackground, Keyboard, StyleSheet, V
 import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
 import { setPipEnabled, listenPipToggle } from '../utils/pip';
 import { Palettes } from '../theme/colors';
+import { fixDataUriMime } from '../utils/dataUri';
 import { ensureMemberData } from '../services/memberData';
 import { RootStackParamList, TabParamList } from './types';
 import { AppTabBar, MCI } from '../components/AppTabBar';
@@ -278,7 +279,13 @@ function PipToggleBridge() {
 export default function AppNavigator() {
   const theme = useResolvedTheme();
   const palette = usePalette();
-  const customBg = useSettingsStore((state) => state.settings.customBackgroundFile?.trim() || '');
+  const customBgRaw = useSettingsStore((state) => state.settings.customBackgroundFile?.trim() || '');
+  /**
+   * 渲染前修正 data URI 的 mime：历史数据里存在「声明 image/png、实际是 JPEG」的脏值，
+   * 部分解码路径会信声明而解码失败 → 背景一片黑（用户反馈的「背景图没加载」）。
+   * 在这里修可以**顺带修好已保存的旧值**，不用用户重新选图。
+   */
+  const customBg = useMemo(() => fixDataUriMime(customBgRaw), [customBgRaw]);
   const hasBackground = !!customBg;
   const navTheme = theme === 'dark' ? AppDarkTheme : AppTheme;
   // 导航层永远透明：液态玻璃的透光来源是根层 PageBackdrop/背景图，
