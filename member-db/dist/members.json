@@ -1,7 +1,7 @@
 {
-  "version": "20260919",
-  "updatedAt": "2026-09-19T12:18:43.893Z",
-  "contentHash": "5ef84accc691f7af",
+  "version": "20260920",
+  "updatedAt": "2026-09-20T04:08:21.287Z",
+  "contentHash": "d41622bfb67317a2",
   "count": 954,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -12,7 +12,7 @@
   "coverage": {
     "withName": 954,
     "channelId": 536,
-    "yklzId": 280,
+    "yklzId": 283,
     "serverId": 536
   },
   "members": [
@@ -28675,7 +28675,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0402/55owb63s7p0kl2hus2tb619.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0402/vebi05ddec102df2cow8rh3.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0402/qrih9c8iask6u15ir6ed0fx.jpg",
-      "status": 0,
       "ctime": 1780000000000,
       "utime": 1780000000000,
       "isInGroup": false
@@ -28739,7 +28738,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0402/3rlwy7loo3si7l0d2a425lg.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0402/gtnijj4mnto9hosvhm86ve0.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0402/cenk9h9x06fgg3ri5gpb3gw.jpg",
-      "status": 0,
       "ctime": 1780000000000,
       "utime": 1780000000000,
       "isInGroup": false
@@ -29894,6 +29892,7 @@
       "jtime": "2026/9/17",
       "serverId": 32953055,
       "channelId": 40866790,
+      "yklzId": 40948216,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/backstage/2026/0916/g207k126r4cm7soqg3ni2z3.jpg",
@@ -29924,6 +29923,7 @@
       "jtime": "2026/9/17",
       "serverId": 33084279,
       "channelId": 40866791,
+      "yklzId": 40882228,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/backstage/2026/0916/u9r8bladpsj5lfze732t3pr.jpg",
@@ -30075,6 +30075,7 @@
       "jtime": "2026/9/17",
       "serverId": 33018047,
       "channelId": 40866793,
+      "yklzId": 40915955,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/backstage/2026/0916/82a6z844wpx6o35ynz0sck3.jpg",
