@@ -1,10 +1,12 @@
 name: member-db sync
 
-# 每日同步上游成员库 → 应用本地 overrides/extra → 产出 dist/members.json
-# 北京时间 04:00（UTC 20:00），也可在 Actions 页面手动触发
+# 每小时同步上游成员库 → 应用本地 overrides/extra → 产出 dist/members.json
+# 用户要求「数据实时更新」：cron 每小时一次（公开仓库 Actions 免费额度无限）
+# 提交后立即清 jsDelivr 缓存（否则 @main 分支文件会被 CDN 缓存最长 12h）
+# 也可在 Actions 页面手动触发
 on:
   schedule:
-    - cron: '0 20 * * *'
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -34,3 +36,8 @@ jobs:
             git commit -m "chore(member-db): 同步上游成员库 $(date -u +%Y-%m-%d)"
             git push
           fi
+
+      - name: Purge jsDelivr cache
+        if: always()
+        run: |
+          curl -sS "https://purge.jsdelivr.net/gh/Xenia0922/yaya_msg_mobile@main/member-db/dist/members.json" | head -c 300 || true
