@@ -9,14 +9,16 @@
  *   4. 产出 dist/members.json（带 version / updatedAt / count / 覆盖率统计）
  *
  * 安全策略（与客户端护栏一致的"永不劣化"原则）：
- *   - 上游拉取失败 → 保留上一次 dist，不写出、退出码 0（由 Action 决定是否告警）
- *   - 上游条数 < 上次 60%，或大房间覆盖率 < 上次 70% → 拒绝写出（防上游退化传导）
+ *   - 上游拉取失败 → 保留上一次 dist，不写出，退出码 2（让 CI 变红，不再假成功）
+ *   - 上游条数 < 上次 60%，或大房间覆盖率 < 上次 70% → 拒绝写出，退出码 0（防上游退化传导）
  *   - overrides / extra 始终生效（本地维护优先）
  *
  * 用法：
  *   node member-db/sync.mjs                 # 正常同步
  *   node member-db/sync.mjs --force         # 跳过劣化护栏（人工确认后使用）
- *   UPSTREAM_URL=... node member-db/sync.mjs
+ *   UPSTREAM_URL=...  node member-db/sync.mjs
+ *   UPSTREAM_URLS=a,b node member-db/sync.mjs   # 多源依次尝试（首个成功即用）
+ *   （2 个 URL 都失败才判失败；用于主源被 WAF 拦时走备用中继）
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -31,8 +33,33 @@ const DIST_PATH = path.join(ROOT, 'dist', 'members.json');
 const OVERRIDES_PATH = path.join(ROOT, 'overrides.json');
 const EXTRA_PATH = path.join(ROOT, 'extra.json');
 
-const UPSTREAM_URL = process.env.UPSTREAM_URL || 'https://data.gnz.hk/members.json';
+/**
+ * 上游源列表（按顺序尝试，全部失败才判定拉取失败）：
+ *   UPSTREAM_URLS="a,b,c" node member-db/sync.mjs
+ * 单个源用 UPSTREAM_URL 亦可（向后兼容）。
+ */
+const UPSTREAM_URLS = (process.env.UPSTREAM_URLS || process.env.UPSTREAM_URL || 'https://data.gnz.hk/members.json')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const UPSTREAM_URL = UPSTREAM_URLS[0];
 const FORCE = process.argv.includes('--force');
+
+/**
+ * 上游 WAF 反爬绕过（2026-09-27）：
+ * data.gnz.hk 在 Cloudflare 后面，对数据中心出口 IP（GitHub Actions runner）返回 403。
+ * 对照 010push/server/sync_members.py 的可用配方：必须带 Referer + 浏览器 UA，
+ * 否则连境内服务器都会被拦。Node fetch 默认发 `user-agent: undici`，会被直接判 bot。
+ */
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const UPSTREAM_HEADERS = {
+  'User-Agent': BROWSER_UA,
+  Referer: 'https://gnz.hk/database',
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+  'Cache-Control': 'no-cache',
+};
 
 /** 可被 overrides 覆盖的字段白名单（避免误改 id 等关键字段） */
 const OVERRIDABLE = new Set([
@@ -64,9 +91,9 @@ async function readJson(file, fallback) {
   }
 }
 
-async function fetchUpstream() {
-  const url = `${UPSTREAM_URL}${UPSTREAM_URL.includes('?') ? '&' : '?'}t=${Date.now()}`;
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+async function fetchUpstream(url) {
+  const u = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+  const res = await fetch(u, { headers: UPSTREAM_HEADERS, redirect: 'follow' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   const arr = Array.isArray(json)
@@ -74,6 +101,22 @@ async function fetchUpstream() {
     : (json.members || json.roomId || json.data || json.list || []);
   if (!Array.isArray(arr) || !arr.length) throw new Error('上游返回为空或结构未知');
   return arr;
+}
+
+/** 多源依次尝试，返回首个成功结果；全部失败抛出聚合错误 */
+async function fetchUpstreamFirstOk() {
+  const errs = [];
+  for (const url of UPSTREAM_URLS) {
+    try {
+      const arr = await fetchUpstream(url);
+      console.log(`[member-db] 上游同步成功：${arr.length} 位（${url}）`);
+      return { arr, url };
+    } catch (e) {
+      errs.push(`${url} → ${e.message}`);
+      console.error(`[member-db] 源失败：${url} → ${e.message}`);
+    }
+  }
+  throw new Error(errs.join(' | '));
 }
 
 function memberIdOf(m) {
@@ -119,12 +162,15 @@ async function main() {
   const extra = await readJson(EXTRA_PATH, { members: [] });
 
   let upstream;
+  let upstreamUrl = UPSTREAM_URL;
   try {
-    upstream = await fetchUpstream();
-    console.log(`[member-db] 上游同步成功：${upstream.length} 位（${UPSTREAM_URL}）`);
+    const r = await fetchUpstreamFirstOk();
+    upstream = r.arr;
+    upstreamUrl = r.url;
   } catch (e) {
-    console.error(`[member-db] 上游拉取失败：${e.message} → 保留现有 dist，不写出`);
-    process.exit(0);
+    // 非 0 退出：让 workflow 变红，暴露「同步长期失败却显示成功」的假象（2026-09-27 事故）
+    console.error(`[member-db] 全部上游源拉取失败：${e.message} → 保留现有 dist，不写出`);
+    process.exit(2);
   }
 
   const prev = await readJson(DIST_PATH, null);
@@ -165,7 +211,7 @@ async function main() {
     updatedAt: new Date().toISOString(),
     contentHash,
     count: members.length,
-    source: { upstream: UPSTREAM_URL, upstreamCount: upstream.length, overridden, extraAdded: added },
+    source: { upstream: upstreamUrl, upstreamCount: upstream.length, overridden, extraAdded: added },
     coverage: { withName, channelId: cov.channel, yklzId: cov.yklz, serverId: cov.server },
     members,
   };
