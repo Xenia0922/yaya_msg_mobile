@@ -1,12 +1,20 @@
 name: member-db sync
 
-# 每小时同步上游成员库 → 应用本地 overrides/extra → 产出 dist/members.json
-# 用户要求「数据实时更新」：cron 每小时一次（公开仓库 Actions 免费额度无限）
-# 提交后立即清 jsDelivr 缓存（否则 @main 分支文件会被 CDN 缓存最长 12h）
-# 也可在 Actions 页面手动触发
+# ⚠️ 自动同步已迁移到「境内机中继」（2026-09-27）
+# ---------------------------------------------------------------------------
+# 本 workflow 的 schedule 已停用。原因：GitHub Actions 的出口 IP（Azure 机房段）
+# 请求 https://data.gnz.hk/members.json 恒返回 403 —— Cloudflare 按 IP/机房段拦，
+# 加 Referer / 浏览器 UA 均无效（2026-09-27 实测；同时段全球 11 个普通节点全 200）。
+# 且 sync.mjs 的失败分支曾 process.exit(0) → workflow 假成功，问题被掩盖 7 天。
+#
+# 现在「自动抓上游 → 产出 dist → 提交 main → 清 jsDelivr 缓存」由境内机承担：
+#   脚本：member-db/relay/run.sh
+#   部署：阿里云 8.163.75.157 → /root/member_db_relay/run.sh（crontab 每小时）
+#   凭据：仓库 Deploy key「member-db relay」（read/write）
+# App 端无需改动：它读的 jsDelivr URL 随仓库提交自动更新。
+#
+# 本文件保留 workflow_dispatch：将来若出口恢复或换用可达数据源，可在此手动验证。
 on:
-  schedule:
-    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
