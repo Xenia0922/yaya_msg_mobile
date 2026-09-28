@@ -1,7 +1,7 @@
 {
-  "version": "20260927",
-  "updatedAt": "2026-09-27T10:00:07.054Z",
-  "contentHash": "5829440eb1d06738",
+  "version": "20260928",
+  "updatedAt": "2026-09-28T10:00:08.282Z",
+  "contentHash": "010251100d745597",
   "count": 962,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -12,7 +12,7 @@
   "coverage": {
     "withName": 962,
     "channelId": 544,
-    "yklzId": 296,
+    "yklzId": 298,
     "serverId": 544
   },
   "members": [
@@ -27769,6 +27769,7 @@
       "account": "20260926173606_z3leqbsw4y47d2k",
       "serverId": 33149481,
       "channelId": 41112565,
+      "yklzId": 41013733,
       "avatar": "https://source.48.cn/backstage/2026/0924/pbykrtxk5sqw30wu8kfecbq.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/1k3i72189vj09gertfgmqxx.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/twxk34z5iqixr93tl24uou9.jpg",
@@ -27935,6 +27936,7 @@
       "account": "20260926173607_vb71q4hri04itf7",
       "serverId": 33083852,
       "channelId": 41095265,
+      "yklzId": 41078951,
       "avatar": "https://source.48.cn/backstage/2026/0924/500ihwyqnzjo4w2mwuhx999.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/ahhudsfq7trdrycqlcj1jvg.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/pzqlpv4v5psr274twpef8lt.jpg",
