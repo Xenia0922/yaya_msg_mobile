@@ -1,7 +1,7 @@
 {
   "version": "20260929",
-  "updatedAt": "2026-09-29T11:00:07.342Z",
-  "contentHash": "63c9842bfe370c62",
+  "updatedAt": "2026-09-29T17:00:06.962Z",
+  "contentHash": "f2247d13b811e80c",
   "count": 962,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -25329,8 +25329,8 @@
       "specialty": "转20圈走直线",
       "groupId": 10,
       "groupName": "SNH48",
-      "teamId": 1007,
-      "team": "预备生",
+      "teamId": 1003,
+      "team": "TEAM HII",
       "periodId": 1023,
       "periodName": "SNH48 二十三期生",
       "jtime": "2025/9/23",
