@@ -34,6 +34,19 @@ data.gnz.hk ──(境内机 curl/node)──→ sync.mjs 生成 dist
 
 复用仓库里的 `member-db/sync.mjs`，**抓取/覆盖/劣化护栏逻辑零重复**。
 
+### 变更探测：上游一变就同步（2026-10-02）
+
+crontab 每 **2 分钟**跑一次，但**只有上游 ETag 变化时才真正下载**：
+
+```
+curl -sI 上游  →  取 ETag，与 /root/member_db_relay/upstream.etag 比对
+   相同  →  静默 exit 0（不下载 1.2MB、不写日志、不碰 git）
+   不同  →  走完整流程（sync.mjs 内部 contentHash 再兜底一次）
+```
+
+→ 上游更新到镜像更新 **≤ 2 分钟**，常态开销只有一个 HEAD 请求。
+若上游哪天不返 ETag，脚本会退回全量流程，由 `contentHash` 兜底（不会漏更新）。
+
 ## 部署
 
 ```bash
@@ -50,10 +63,10 @@ cat /root/.ssh/member_db_relay_ed25519.pub
 #   → 把公钥加到 https://github.com/Xenia0922/yaya_msg_mobile/settings/keys
 #     勾选 Allow write access
 
-# 4) 定时
+# 4) 定时（每 2 分钟探测上游 ETag，有变化才同步，见下「变更探测」）
 crontab -e
 # 追加：
-0 * * * * /root/member_db_relay/run.sh >> /root/member_db_relay/cron.log 2>&1
+*/2 * * * * /root/member_db_relay/run.sh >> /root/member_db_relay/cron.log 2>&1
 
 # 5) 首次跑通
 bash /root/member_db_relay/run.sh && tail -20 /root/member_db_relay/relay.log
