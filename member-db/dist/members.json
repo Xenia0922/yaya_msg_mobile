@@ -1,7 +1,7 @@
 {
-  "version": "20260929",
-  "updatedAt": "2026-09-29T17:00:06.962Z",
-  "contentHash": "f2247d13b811e80c",
+  "version": "20261002",
+  "updatedAt": "2026-10-02T10:00:07.493Z",
+  "contentHash": "91ee14ac2d879732",
   "count": 962,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -12,7 +12,7 @@
   "coverage": {
     "withName": 962,
     "channelId": 544,
-    "yklzId": 298,
+    "yklzId": 299,
     "serverId": 544
   },
   "members": [
@@ -1866,7 +1866,7 @@
       "account": "20190415141943_jqyay04n5ql9m2p",
       "serverId": 1213951,
       "channelId": 1279493,
-      "yklzId": 39047476,
+      "yklzId": 41096185,
       "wbUid": "5460950220",
       "wbName": "SNH48-陈琳",
       "avatar": "https://www.snh48.com/images/member/zp_10081.jpg",
@@ -13812,7 +13812,7 @@
       "account": "20190415143030_ezb3ei8g3530b3n",
       "serverId": 1148118,
       "channelId": 1230636,
-      "yklzId": 40669185,
+      "yklzId": 41161491,
       "wbUid": "6666213760",
       "wbName": "GNZ48-方琪",
       "avatar": "https://www.snh48.com/images/member/zp_30104.jpg",
@@ -26796,7 +26796,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60063_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60063_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60063_4.jpg",
-      "isInGroup": true
+      "isInGroup": false
     },
     {
       "id": 175374368,
@@ -27797,6 +27797,7 @@
       "account": "20260926173606_n2z7439ulbusu9f",
       "serverId": 33051119,
       "channelId": 41145146,
+      "yklzId": 41111741,
       "avatar": "https://source.48.cn/backstage/2026/0924/a8q573choxxm6ykfs2ok4wo.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/shrbo71b8mhjn9lytyd1d8f.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/onenp3z59xy0y8eod9spg69.jpg",
