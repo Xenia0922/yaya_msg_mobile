@@ -1,7 +1,7 @@
 {
-  "version": "20261005",
-  "updatedAt": "2026-10-05T09:14:08.354Z",
-  "contentHash": "0eee7cf7fd8680e5",
+  "version": "20261006",
+  "updatedAt": "2026-10-06T08:08:08.447Z",
+  "contentHash": "64b3f0e5bb0f8307",
   "count": 962,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -12,7 +12,7 @@
   "coverage": {
     "withName": 962,
     "channelId": 544,
-    "yklzId": 299,
+    "yklzId": 298,
     "serverId": 544
   },
   "members": [
@@ -3024,7 +3024,7 @@
       "account": "20190415141812_szd6d8h2cd1tic5",
       "serverId": 1181227,
       "channelId": 1279287,
-      "yklzId": 3442524,
+      "yklzId": 41111890,
       "wbUid": "5691238431",
       "wbName": "SNH48-胡晓慧",
       "avatar": "https://www.snh48.com/images/member/zp_10118.jpg",
@@ -27494,7 +27494,6 @@
       "account": "20260917212815_ggut1bmq27vx7kj",
       "serverId": 32985554,
       "channelId": 40932204,
-      "yklzId": 40915905,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/backstage/2026/0916/vh8sttcgb10hxu2r11mlpmh.jpg",
