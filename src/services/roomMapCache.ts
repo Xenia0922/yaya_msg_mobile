@@ -142,7 +142,6 @@ export async function resolveMemberRooms(
     // yklzId 仍缺 → 落到下面走 seine 补齐（带上已有的大房间信息）
   }
 
-  // 2b) 连 serverId 都没有 → im/server/jump 按 userId 直查（48tools 同款 ServerJumpResult：
   // content={serverId, channelId}；需登录态，未登录/无权限时静默失败）
   if (!serverId && !channelId) {
     try {

@@ -114,7 +114,6 @@ export default function MusicLibraryScreen() {
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
   const playUrl = useMusicPlayerStore((s) => s.url);
   // 音量归一：R2（gnz.hk/music.gnz.hk）母带普遍比 48 官方源响 10-15%，统一压到 0.86；
-  // 官方源维持 1.0。后续若 bilibili 等直播源也需对齐，按 host 在此表增补即可。
   const playVolume = useMemo(() => {
     const u = String(playUrl || '').toLowerCase();
     return /(gnz\.hk|gnz-music|music\.gnz)/.test(u) || /\.r2\.|r2-music/i.test(u) ? 0.86 : 1.0;
@@ -228,7 +227,6 @@ export default function MusicLibraryScreen() {
         seen.add(key);
         merged.push(t);
       });
-      // 排序（对齐桌面 sortKey='source' 语义 + 用户要求：SNH48 系子团归 SNH48 段）：
       // 段序 SNH48 系(含 7SENSES/BLUEV/DEMOON/HO2/Color Girls/塞纳河组合) → GNZ → ... ；
       // 同段内按 sourceIndex（官方源小在前，R2 公演源大在后），R2 内再按子团聚合后按标题
       merged.sort((a: any, b: any) => {
@@ -919,7 +917,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, 
     borderBottomWidth: StyleSheet.hairlineWidth, 
   },
-  // 内容区：flex row，靠左对齐，gap 由 marginRight 控制
   tabsContent: { 
     flexDirection: 'row', 
     alignItems: 'center', 

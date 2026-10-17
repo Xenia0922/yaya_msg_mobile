@@ -186,10 +186,7 @@ export interface BuildLiveBarrageOptions {
   uuid?: string;
 }
 
-/**
- * 构造直播弹幕 remoteExtension（对齐 ChatMsgBuilder.createBarrageNomalMessageMap
- * + ChatMsgUtil.getBaseParams，字段顺序/取值与官方一致）。
- */
+
 export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<string, any> {
   const { roomId, sourceId, text, self } = options;
   const ext: Record<string, any> = {
@@ -204,7 +201,6 @@ export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<st
       avatar: self.avatar,
       level: self.level ?? 0,
       roleId: self.roleId ?? 0,
-      // 桌面版同款：其他客户端渲染徽章/VIP 标时会读这几个字段
       vip: self.vip === true,
       pfUrl: self.pfUrl || '',
       teamLogo: self.teamLogo ?? null,

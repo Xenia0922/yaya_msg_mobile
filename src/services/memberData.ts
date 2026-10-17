@@ -8,7 +8,6 @@ import pocketApi from '../api/pocket48';
 import { logInfo, logWarn, logError } from '../utils/runtimeLog';
 import { hydrateRoomMap, seedRoomMapFromMembers, getRoomMapEntry } from './roomMapCache';
 
-// v6 结构：分类对齐 yk1z 库（isInGroup 为准，官方 IDFT 标的只有杨添淩 1 人真在团）。
 // 与 v5（官方分类）不兼容，升级 key 强制首启重拉。
 const CACHE_KEY = 'yaya_member_data_cache_v6';
 
@@ -243,7 +242,6 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
       if (!m.wbName) m.wbName = off.wbName ? String(off.wbName) : m.wbName;
       if (!m.wbUid) m.wbUid = off.wbUid ? String(off.wbUid) : m.wbUid;
       if (!m.birthday) m.birthday = off.birthday ? String(off.birthday) : m.birthday;
-      // 分类对齐 yk1z 库：不覆盖库的 isInGroup/status/team（官方 "IDFT" 标的几乎全是毕业成员，
       // 只有杨添淩 1 人库 isInGroup=true 是在团），state 保持库语义
       return m;
     });

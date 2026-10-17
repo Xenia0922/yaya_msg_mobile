@@ -4,9 +4,7 @@ import { requestJson, xhrPost, fetchWithTimeout } from '../utils/network';
 import { unwrapList, normalizeUrl } from '../utils/data';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// E2 记录：移动端 API 方法数少于桌面端 v2.11 通道（100+）——未移植的桌面通道：
 // 选举计分（score-*）、花漾（pageantry-*）、QR 登录（login-*-qr）、部分 Area48 话题接口；
-// 移动端无对应 UI，历史确认不在范围。新增接口时以桌面 pocket-runtime.mjs 为参数/头权威源。
 
 const BASE = 'https://pocketapi.48.cn';
 const APP_VERSION = '7.0.41';
@@ -619,7 +617,6 @@ export const pocketApi = {
   },
 
   async getNimLoginInfo() {
-    // E1：优先走桌面 v2.11 同款新通道 im/api/v1/im/userinfo（P-Sign-Type V0）——
     // 官方云信凭证新接口，返回 content.accid/accId/imUserId + pwd/token/imPwd + userId；
     // 失败再回退旧路径（user/info/reload / user/info/home）多路兜底，防旧接口下线后私信/签到失效。
     try {
@@ -660,7 +657,6 @@ export const pocketApi = {
   async getUserProfile(userId: string) {
     const id = Number(String(userId || '').trim());
     if (!Number.isFinite(id) || id <= 0) throw new Error('missing userId');
-    // 桌面端（pocket-service.fetchUserHomeInfo）已验证可用的写法：
     //   POST /user/api/v1/user/info/home  body { userId: <number> }  + **Android 头**
     // 之前移动端用 iOS/modern 头 + 字符串 userId 依次试 info/detail/home，服务端全部
     // 返回「No message available」（404）→ 资料卡只显示出错文本（用户反馈加载不出来）。
@@ -713,7 +709,6 @@ export const pocketApi = {
   },
 
   async followMember(memberId: string) {
-    // 对齐桌面端 pocket-runtime.followMember：v2/friendships/friends/add + { toSourceId:<number>, toType:1 }
     // + **P-Sign-Type: V0** 头（createFriendshipHeaders 同款），否则可能被判签名类型不符
     return pocketPost(`${BASE}/user/api/v2/friendships/friends/add`, { toSourceId: safeNumber(memberId), toType: 1 }, { headers: createCheckinHeaders(), fallback: '关注失败' });
   },
@@ -822,7 +817,6 @@ export const pocketApi = {
         if (s && s !== '0') { resolvedSid = s; rememberServerId(cid, s); }
       } catch { /* 解析失败保持空，下方兜底流程自然跳过塞纳河 */ }
     }
-    // 背景字段候选链（对齐桌面 _ref_yk1z normalizeFollowedSourceUrl 的消费端）：
     // bgImg|bgImgUrl|backgroundImg|backgroundImgUrl|backImg|backImgUrl|homeBgImg|homeBgImgUrl|bannerUrl
     const pickBg = (o: any): string => {
       if (!o) return '';
@@ -854,7 +848,6 @@ export const pocketApi = {
       return { name, bg: bg ? normalizeUrl(bg) : '' };
     };
     let meta = await tryRoomInfo(cid);
-    // 兜底补位（对齐桌面）：房间有名字但缺背景 → 塞纳河 server/detail 的 channelInfoList/chatServerInfo 补背景
     if ((!meta.bg || (!meta.name && !meta.bg)) && resolvedSid !== undefined && resolvedSid !== null && String(resolvedSid) !== '' && String(resolvedSid) !== '0') {
       try {
         const res = await this.getSeineServerDetail(Number(resolvedSid)).catch(() => null);
@@ -1000,7 +993,6 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   async getOpenLiveOne(liveId: string) {
     const id = String(liveId);
     return tryPocketPost([
-      // v2.7.3 语义：默认请求即返回 rtmp（与桌面/官方一致的原始流）
       {
         url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
         payload: { liveId: id },
@@ -1025,7 +1017,6 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   async getLiveOne(liveId: string) {
     const id = String(liveId);
     return tryPocketPost([
-      // v2.7.3 语义：默认请求即返回 rtmp（与桌面/官方一致的原始流）
       {
         url: `${BASE}/live/api/v1/live/getLiveOne`,
         payload: { liveId: id },
@@ -1104,13 +1095,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }
   },
 
-  /**
-   * 获取录播弹幕的 LRC 文本。
-   * 关键：录播弹幕不在 barrage/list，而在 getLiveOne 返回的 content.msgFilePath（或 lrcUrl）
-   * 指向的 LRC 文件（纯文本，格式 [hh:mm:ss.fff]昵称\t内容）。参考 pocket48_lite 实现。
-   * 拉到 LRC 文本后由 parseDanmaku 解析（已支持该格式）。
-   * 失败/无数据返回 null，弹幕只是锦上添花，绝不拖垮播放。
-   */
+  
   async getLiveLrc(liveId: string): Promise<string | null> {
     const id = String(liveId || '');
     if (!id) return null;
@@ -1156,7 +1141,6 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
       next: params.next ?? 0,
       record: params.record ?? false,
     };
-    // 按成员（userId）服务端直查：桌面基线 fetchLiveList / 48tools requestLiveList 均透传 userId，
     // 服务端原生支持按成员过滤直播/录播，避免「全量加载全局列表再前端筛选」导致的历史数据缺失。
     // 注意官方坑：next=0 时带 userId 查不到数据，首次查询需先取列表最新 liveId 作为 next（调用方处理）。
     if (params.userId !== undefined && params.userId !== null && params.userId !== '') {
@@ -1167,13 +1151,12 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     return pocketPost(`${BASE}/live/api/v1/live/getLiveList`, payload, { tokenRequired: false, fallback: '获取直播列表失败' });
   },
 
-  /** 服务端搜索（房间/成员/话题，48tools 同款 im/server/search）：返回 content.serverApiList[]，
-   *  每项含 serverId/serverName/serverIcon/serverOwner/followStatus。需登录 token。 */
+  
   async serverSearch(searchContent: string) {
     return pocketPost(`${BASE}/im/api/v1/im/server/search`, { searchContent: String(searchContent || '').trim() }, { fallback: '搜索失败' });
   },
 
-  /** 服务端跳转：由 starId 获取 serverId/channelId（进入房间/会话定位用，48tools 同款 im/server/jump） */
+  
   async serverJump(starId: number | string) {
     return pocketPost(`${BASE}/im/api/v1/im/server/jump`, { starId: Number(starId), targetType: 1 }, { fallback: '获取房间信息失败' });
   },
@@ -1420,7 +1403,6 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     return assertPocketOk(res, 'Meet48 API 错误');
   },
 
-  // --- v2.7 New APIs (同步自 yk1z/yaya_msg 电脑版, 2026-08-16) ---
 
   /** 删除单条私信 */
   async deletePrivateMessage(msgId: string) {

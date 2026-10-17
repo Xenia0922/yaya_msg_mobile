@@ -593,7 +593,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.outer, { backgroundColor: usePageBackground() }]}>
-      {/* 顶栏与全站统一：大标题 24/800 左对齐、无返回键（tab 根页） */}
+      {}
       <ScreenHeader title={t('牙牙消息')} hideBack />
       <ScrollView
         style={{ flex: 1 }}
@@ -900,9 +900,7 @@ export default function HomeScreen() {
   );
 }
 
-/** 指示点随动动画：膨胀 + 变色。
- *  外层固定等宽槽位（16）居中，保证 active 横条与其它小点的中心距均匀对齐；
- *  宽度动画用 JS driver（width 不支持 native driver，否则横竖屏/轮播切换时宽度错乱）。 */
+
 function AnimatedDots({ active, color, idle, onPress }: { active: boolean; color: string; idle: string; onPress?: () => void }) {
   const w = useRef(new Animated.Value(active ? 16 : 6)).current;
   const c = useRef(new Animated.Value(active ? 1 : 0)).current;

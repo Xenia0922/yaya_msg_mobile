@@ -711,7 +711,6 @@ export default function MediaScreen() {
       const id = setInterval(poll, 5000);
       return () => { alive = false; clearInterval(id); };
     }
-    // 回放：从 LRC 文件拉取（参考 pocket48_lite：录播弹幕在 getLiveOne 的
     // content.msgFilePath 指向的 LRC 文件，而非 barrage/list；格式 [hh:mm:ss.fff]昵称\t内容，
     // 已由 parseDanmaku 解析为「秒」对上 playbackTime）
     pocketApi.getLiveLrc(lid)
@@ -768,7 +767,6 @@ export default function MediaScreen() {
   // 关注成员 id 集合：「关注」tag 实时筛选（60s 同步一次）
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [playbackTime, setPlaybackTime] = useState(0);
-  // R1: 弹幕时钟 = 统一播放器上报的真实进度（live 也在播中持续推进，对齐 poll 弹幕时间轴）
   const danmakuClock = usePlayerStore((s) => s.position);
   const playerDanmakuOn = usePlayerStore((s) => s.danmakuOn);
   // 播放器控制（哔哩哔哩风格自定义控制条）
@@ -788,11 +786,7 @@ export default function MediaScreen() {
   const [dateFilter, setDateFilter] = useState<Date | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showDanmakuSettings, setShowDanmakuSettings] = useState(false);
-  /**
-   * 弹幕列表抽屉（对齐桌面端弹幕时间轴面板）。
-   * 录播 = LRC 弹幕按时间升序（可点击跳转 + 跟随播放）；
-   * 直播 = 实时弹幕按最新在前（无时间轴，只做列表/搜索/按人筛选）。
-   */
+  
   const [showDanmakuList, setShowDanmakuList] = useState(false);
   /** 弹幕列表点发送者 → 用户资料卡（成员/粉丝同一个界面） */
   const [danmakuProfile, setDanmakuProfile] = useState<UserProfileTarget | null>(null);
@@ -1083,7 +1077,6 @@ export default function MediaScreen() {
     setError('');
     try {
       let finalCursor = cursor;
-      // 官方坑（桌面基线 fetchLiveList / 48tools 同款修复）：next=0 时带 userId 查询拿不到数据，
       // 需先发一次不带 userId 的请求取列表最新 liveId 作为 next，再按成员直查。
       if (userId !== undefined && userId !== null && userId !== '' && Number(cursor) === 0) {
         const probe = await pocketApi.getLiveList({ next: 0, record: mode === 'vod', debug: true }).catch(() => null);
@@ -1135,7 +1128,6 @@ export default function MediaScreen() {
   // 选中成员时切到「回放」并重置列表，立即触发首屏加载。
   // 用 setTimeout(0) 让上面的 setState 先提交，避免读到切换前的旧 tab；
   // 覆盖「已在 vod tab 时初始加载 effect 不触发」以及「切 tab 时 loadingRef 把自动翻页挡掉」两种情况。
-  // 成员检索改为服务端 userId 直查（对齐桌面基线/48tools）：getLiveList 带 userId 即返回该成员
   // 完整直播/录播，替代「全量加载全局列表再前端筛选」——旧实现只能筛到已加载页面内的数据，
   // 成员较早的录播永远搜不到。
   useEffect(() => {
@@ -1193,7 +1185,6 @@ export default function MediaScreen() {
   const scanDoneRef = useRef(false);
   // 关注成员录播：并发按 userId 服务端直查（用户指定实现）——
   // 不再"扫描全局流 48h 再前端筛选"（慢且命中率低），直接对每个关注成员的 userId 调
-  // getLiveList({ userId }) 拿 TA 专属录播，合并去重。桌面基线/48tools 同款能力。
   const loadFollowVodFast = useCallback(async () => {
     if (followLoadingRef.current || groupId !== -1 || tab !== 'vod') return;
     if (!useSettingsStore.getState().settings.p48Token) { scanDoneRef.current = true; return; }
@@ -1287,7 +1278,6 @@ export default function MediaScreen() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
-  // 切到后台时复位横屏锁（防退到桌面/其它 App 仍锁横屏）；
   // 回到前台时按当前播放状态重新锁定（后台复位后上方 effect 不会再触发，需在此补锁）
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {

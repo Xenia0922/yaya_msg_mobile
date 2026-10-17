@@ -50,7 +50,7 @@ export type GlassRole =
 interface Material {
   /** BlurView 强度（1–100） */
   intensity: number;
-  /** 模糊半径压缩（Android 感知强度与 iOS 不同，用它对齐） */
+  
   reduction: number;
   /** expo-blur 的 tint（决定模糊结果的底色走向） */
   blurTint: 'light' | 'dark';

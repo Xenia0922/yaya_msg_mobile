@@ -1,16 +1,4 @@
-/**
- * DanmakuListSheet · 弹幕列表抽屉（直播 / 录播通用）
- *
- * 对齐桌面端 danmu-timeline-feature.js 的能力（移动端等价实现）：
- *   ① 弹幕时间轴列表：时间 + 发送者 + 内容（录播按时间升序；直播按最新在上）
- *   ② 搜索：内容 / 发送者
- *   ③ 按发送者筛选：点条目昵称即「只看 TA」；另有「发送者」页按条数排行，点行即筛
- *   ④ 点击条目跳转到该时间（录播）
- *   ⑤ 播放跟随：自动滚到当前播放位置那一条并高亮，手动滚动即暂停跟随
- *
- * UI 按移动端播放器浮层规范：半透明深底 + 白系文字（叠在视频上时不能用玻璃，
- * 逐帧抓背景又贵又糊），面板高度可拖拽。
- */
+
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -132,7 +120,6 @@ export function DanmakuListSheet({
   const [follow, setFollow] = useState(false);
   const listRef = useRef<FlatList<DanmakuListEntry> | null>(null);
 
-  // 跟随开关持久化（对齐桌面 yaya_danmu_follow_enabled）
   useEffect(() => {
     AsyncStorage.getItem(FOLLOW_KEY)
       .then((v) => setFollow(v === '1'))
@@ -166,7 +153,7 @@ export function DanmakuListSheet({
     });
   }, [entries, query, nickFilter]);
 
-  /** 发送者榜：条数降序（桌面端弹幕分析的等价物）。顺带记住该发送者的 userId 供资料卡使用 */
+  
   const users = useMemo(() => {
     const map = new Map<string, { nick: string; count: number; first: number; userId?: number | string; avatar?: string }>();
     for (const item of entries) {

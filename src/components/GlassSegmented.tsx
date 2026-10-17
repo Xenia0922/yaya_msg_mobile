@@ -1,18 +1,4 @@
-/**
- * GlassSegmented · 玻璃滑动分段控件（全站 tap 切换统一用它）
- *
- * 结构照搬底栏：玻璃轨道 + 一块会滑动的玻璃选中胶囊（跟手/跟值），
- * 选中文字用主题色强调。用于「直播/录播」「大房间/小房间」这类切换。
- *
- * 交互（对齐底栏 AppTabBar）：
- *  - 点击某格 → 胶囊 spring 过去并回调 onChange
- *  - **按住横向拖动 → 胶囊跟手指走**，松手吸附到最近一格并回调 onChange
- *
- * ⚠️ driver 必须用 JS（`useNativeDriver: false`）：
- *  native driver 会把 Animated.Value 迁移到原生节点，之后从 JS 侧 `setValue()`
- *  会被原生节点静默丢弃（不报错、不生效）→ 症状是「点了变胶囊，但拖不动/不跟手」。
- *  这里只有 1 个胶囊 View 在动，JS driver 成本可忽略。
- */
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,

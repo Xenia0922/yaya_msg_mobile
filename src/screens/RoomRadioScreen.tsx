@@ -453,7 +453,6 @@ export default function RoomRadioScreen() {
                   </ScalePressable>
                 </View>
                 {playing ? (
-                  // v2.7.4：上麦流多为 rtmp（48tools 类型定义 VoiceOperate.streamUrl = rtmp://），
                   // react-native-video 播不了 → 用原生 LiveExoView（内置 ExoPlayer RTMP 扩展）播放
                   isRtmpUrl(radioUrl) && Platform.OS === 'android' && LiveExoView ? (
                     <LiveExoView

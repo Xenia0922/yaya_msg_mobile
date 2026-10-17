@@ -15,7 +15,7 @@ export interface OnMicMemberInput {
   smallChannelId?: string;
   /** 成员状态分类（官方源优先） */
   state?: string;
-  /** 是否在团（桌面端 isInGroup !== false 语义）：false 表示退团/毕业，不参与扫描 */
+  
   isInGroup?: boolean;
 }
 
@@ -84,13 +84,13 @@ let roundSeq = 0;
 let currentRound: ScanRound | null = null;
 /** 非强制扫描每轮预算：最多探测 1/3 成员（至少 40 位），最久未探测的优先，约 3 轮全量覆盖 */
 const BUDGET_MIN = 40;
-/** 并发探测数 + 每请求间隔：对齐桌面端 room-radio-feature.js（ROOM_RADIO_SCAN_CONCURRENCY=24 / GAP=20ms） */
+
 const SCAN_CONCURRENCY = 24;
 const REQUEST_GAP_MS = 20;
 
 let snapshotHydrated = false;
 
-/** 规范化 channelId：仅「纯数字且非 0」视为有效（桌面端 normalizeRoomRadioChannelId 同款） */
+
 function normChannelId(value: any): string {
   const v = String(value || '').trim();
   return /^\d+$/.test(v) && v !== '0' ? v : '';
@@ -108,19 +108,13 @@ interface ScanTask {
   smallChannelId: string;
 }
 
-/**
- * 构造扫描任务（桌面端 createRoomRadioScanTaskList 语义）：
- *   每位成员 → 大房间(channelId) + 小房间(yklzId) 两个任务，去重键 `serverId:channelId`。
- *   成员库字段缺失时用 roomMap 本地缓存补（纯本地，不联网）；
- *   小房间被关闭（无 yklzId）→ 不生成该类任务，由大房间结果兜底。
- */
+
 function buildScanTasks(members: OnMicMemberInput[]): ScanTask[] {
   const tasks: ScanTask[] = [];
   const seen = new Set<string>();
   for (const m of members) {
     const name = String(m.name || '').trim();
     if (!name || !m.memberId) continue;
-    // 对齐桌面端：退团/毕业成员（isInGroup === false）不参与扫描，避免几百个无效请求
     if (m.isInGroup === false) continue;
     const cached = getRoomMapEntry(m.memberId);
     const big = normChannelId(m.channelId) || normChannelId(cached?.channelId);
@@ -235,7 +229,6 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
         return;
       }
 
-      // 抄桌面端 room-radio-feature.js：不做运行时房间解析（不再逐人 serverJump/seine 联网），
       // 直接用成员库(+roomMap 本地缓存)的 channelId / yklzId 构造「大房间 + 小房间」任务。
       // 此前逐人 resolveMemberRooms，未登录或解析失败即 continue → 全量扫描只出个位数
       // （用户反馈「根本收不到、只有 9 个」）。
@@ -306,7 +299,6 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
             const voiceList = Array.isArray(content?.voiceUserList) ? content.voiceUserList : null;
             const activeVoice = !!voiceList && voiceList.some((u: any) => u && u.voiceStatus !== false);
             const streamUrl = String(content?.streamUrl || '');
-            // 与桌面端一致的判定：有 streamUrl 且（无 voiceUserList 或列表内存在活跃用户）才算在麦
             const onAir = !!streamUrl && (!voiceList || activeVoice);
             st.done += 1;
             if (onAir) {

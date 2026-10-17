@@ -14,7 +14,7 @@
 /** 官方 appKey（NIMStrategy.getOptions 明文） */
 export const NIM_APP_KEY = '632feff1f4c838541ab75195d1ceb3fa';
 
-/** 官方聊天室入口（48tools 同款；云信 chatroom 专用长连接域） */
+
 export const NIM_CHATROOM_ADDRESSES = ['chatweblink01.netease.im:443'];
 
 /** MsgType（com.pocket.snh48.lib.yunxin.model.MsgType） */
@@ -114,7 +114,7 @@ export interface NimSelfProfile {
   level?: number;
   roleId?: number;
   accid?: string;
-  /** 以下字段进弹幕 remoteExtension.user（桌面版同款），缺省时给安全默认值 */
+  
   vip?: boolean;
   pfUrl?: string;
   teamLogo?: string | null;

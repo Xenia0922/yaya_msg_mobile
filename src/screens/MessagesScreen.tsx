@@ -1,11 +1,4 @@
-/**
- * MessagesScreen · 消息检索 v2.6 布局重做
- * - 顶部成员选择改为行卡（48 圆底图标 + 主标题成员名 + 副标题「共 N 位成员」+ chevron，ScalePressable）
- * - 搜索条按规范（圆角 14 fill2 底 + magnify 图标 + 清除按钮）
- * - 消息列表改「气泡卡行」：sender 名 13/700 tint + 时间 10 右对齐 + 正文 14，行卡圆角 16
- * - 成员选择 Modal 改底部 sheet（Modal transparent + 底部圆角 radii.sheet=22 + 顶部 handle + 搜索条 + 带头像+名字+team 的虚拟化行）
- * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
- */
+
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 

@@ -269,7 +269,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressBar: { height: 28, justifyContent: 'center', paddingHorizontal: 4 },
-  // track/fill/thumb 垂直中心对齐（容器 28、track 3、thumb 14 → 中心 14）
   progressTrack: { position: 'absolute', left: 4, right: 4, top: 12.5, height: 3, borderRadius: 2 },
   progressFill: { position: 'absolute', left: 4, right: 4, top: 12.5, height: 3, borderRadius: 2 },
   progressThumbWrap: { position: 'absolute', left: 4, top: 7, width: 14, height: 14 },

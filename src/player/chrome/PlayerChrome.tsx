@@ -542,7 +542,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
               </TouchableOpacity>
             </View>
             <View style={styles.moreGrid}>
-              {/* 画面旋转/镜像（桌面 DPlayer 对齐） */}
+              {}
               <TouchableOpacity
                 style={styles.moreItem}
                 onPress={() => {

@@ -26,10 +26,7 @@ export function PlayerCore({ onVideoSize, resumeAt: externalResumeAt }: { onVide
   // 公演默认网页失败→原生 的自动回退标记（按源复位）
   const webFallbackDone = useRef(false);
   const sourceChangedRef = useRef('');
-  /**
-   * 直播断流自动重连（对齐桌面 player-core.installArtLiveRecovery 的目的）：
-   * 候选线路全部失败后仍按 1.5s/3s/6s 退避重试，最多 3 次；`retryNonce` 递增 → 内核 key 变化 → 重新拉流。
-   */
+  
   const [retryNonce, setRetryNonce] = useState(0);
   const liveRetry = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null });
 

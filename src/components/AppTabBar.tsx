@@ -1,20 +1,4 @@
-/**
- * AppTabBar · iOS 26 Liquid Glass 底栏
- *
- * 行为对齐 iOS 26（WWDC25 session 284 / HIG）：
- *  - 底栏悬浮胶囊，材质走 GlassSurface（floatingTabBar 预设）
- *  - 选中指示器 = 一块**跟手滑动的玻璃胶囊**：按住底栏横向拖动时它跟着手指走，
- *    松手 spring 到最近的 tab 并切换（对应 Apple「按住拖过不同 tab，玻璃液化成软胶跟手迁移」）
- *  - 图标 spring 弹跳 + 按压反馈 + 安全留白
- *
- * 实现要点：
- *  - 手势用 PanResponder 且 `onStartShouldSetPanResponder: () => false`，
- *    只有横向位移 > 6px 才接管 → 点击仍然正常落到各 tab 的 Pressable 上
- *  - 指示器位移用 native driver 的 translateX（不触发 JS 帧）
- *
- * 后续（未做）：`LiquidGlassContainer` 的平滑 min 融合（拖到隔壁 tab 时拉出「液桥」）、
- * 滚动时底栏缩小/回弹 + 迷你播放器内联。
- */
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -208,10 +192,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
           不会再把 tab 自己折射一遍。PanResponder 挂在外层容器上。 */}
       <View {...pan.panHandlers}>
         <GlassSurface role="bar" radius={28} style={styles.bar}>
-          {/* 选中态照抄 Kyant0 LiquidBottomTabs 第三层：
-              一块真玻璃（clear 变体），表面色浅色主题 = 黑 10%，
-              lens + chromaticAberration（色散）→ 我们的 iridescence 承担。
-              拖动放大保留；速度拉伸待加。 */}
+          {}
           <Animated.View
             pointerEvents="none"
             style={[

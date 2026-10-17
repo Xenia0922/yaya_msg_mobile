@@ -74,7 +74,6 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
   const fullscreen = usePlayerStore((s) => s.fullscreen);
   const rotateDeg = usePlayerStore((s) => s.rotateDeg);
   const mirrorMode = usePlayerStore((s) => s.mirrorMode);
-  // 画面旋转/镜像 transform（桌面 DPlayer 对齐：竖屏视频旋转 90° 等）
   const mediaTransform: any = [];
   if (mirrorMode === 'horizontal') mediaTransform.push({ scaleX: -1 });
   if (mirrorMode === 'vertical') mediaTransform.push({ scaleY: -1 });

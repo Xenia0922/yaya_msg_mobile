@@ -291,7 +291,6 @@ function senderProfile(item: any, room: Member): SenderProfile {
   const body = messageBody(item);
   // ⚠️ 只把 extraInfo 的 **user 段**当发送者资料（官方 getChannelBaseParams / 我们 buildChannelExt
   // 写入的都是发送者），不要把整个 ext 混进下面的字段查找 —— ext 里还有 replyInfo（被回复者）。
-  // 桌面端 v2.13 followed-chat-feature.js:4082 同款：ext.user.roleId / userId / nickName / avatar。
   const extUser: any = ((extraInfo(item) as any)?.user) || {};
   const objects = [item, body];
   const id =
@@ -329,7 +328,6 @@ function senderProfile(item: any, room: Member): SenderProfile {
     'message.nickName',
     'message.nickname',
   ]) || deepFindText(objects, ['nickName', 'nickname', 'senderName', 'userName', 'name']);
-  // 名字/头像：ext.user 优先（桌面端就是用它覆盖顶层 senderName）——消息里带的最新昵称/头像比兜底更准
   const name = String(extUser.nickName || extUser.nickname || '').trim() || topName;
   const topAvatar = firstTextFrom(objects, [
     'avatar',
@@ -412,12 +410,7 @@ function buildMemberIdSet(members: any[]): Set<string> {
   return set;
 }
 
-/**
- * 「用户资料卡」信息解析。数据源 = `user/api/v1/user/info/home`（桌面端 fetchUserHomeInfo 同款：
- * Android 头 + `{ userId }` 数字）。结构（对齐桌面 getFollowedProfileContent）：
- *   content.userInfo.baseUserInfo = 头像/昵称…，content.starInfo = 成员信息（若是成员）。
- * 全部多路径兜底，取不到就留空（UI 只显示拿到的行，不再把原始报错文本糊上去）。
- */
+
 function userCardFromUserRes(res: any) {
   const content = res?.content || res?.data?.content || res?.data || res || {};
   const userInfo = content?.userInfo || content?.user || content?.profile || content || {};
@@ -425,7 +418,6 @@ function userCardFromUserRes(res: any) {
   const star = content?.starInfo || content?.memberInfo || userInfo?.starInfo || {};
   const objs = [base, userInfo, star, content];
   const pick = (keys: string[]) => firstTextFrom(objs, keys);
-  // 关注态：对齐桌面端 followed-chat-feature.js 的取值口径
   //   relation / relationType / followStatus / friendStatus / isFollow / followed / isFriend
   //     mutual|both|friend|friends|2|3 → 互相关注；true|followed|following|1 → 已关注
   const relationValue = String(
@@ -507,13 +499,7 @@ function sortMessagesNewestFirst<T>(list: T[]): T[] {
   return list.slice().sort((a: any, b: any) => getMessageTime(b) - getMessageTime(a));
 }
 
-/**
- * 云信圈组实时消息 → 房间列表可渲染结构。
- *
- * 房间消息的「历史」来自 HTTP（im/api/v1/team/message/list/*），「实时」只有云信圈组
- * 一条通道（HTTP 无发送/无推送）。这里把原生桥回来的消息对齐成 HTTP 历史消息的字段形态，
- * 让既有的 renderChatItem / messageKey / mergeMessages 原样复用。
- */
+
 function qchatToRoomMessage(msg: RoomLiveMessage): any {
   const user = (msg.ext?.user && typeof msg.ext.user === 'object' ? msg.ext.user : {}) as Record<string, any>;
   const nickName = String(user.nickName || user.nickname || msg.fromNick || '');
@@ -925,7 +911,6 @@ function roomMedia(item: any): RoomMedia | null {
     : type === 'image' ? t('图片')
     : text && !text.startsWith('[') && text !== url ? text
     : t('链接');
-  // 封面：对齐电脑版 _ref_yk1z —— 优先用服务端关键帧缩略图 thumbPath（口袋48给视频/音频的关键帧图），
   // 拼 https://source.48.cn 前缀（thumbPath 是相对路径，normalizeUrl 不会拼，需单独处理）。
   // 退而求其次再用 coverUrl/coverPath/cover/liveCover/picPath 等绝对地址字段。
   const rawCover = firstTextFrom([item, ext, body], [
@@ -1486,7 +1471,7 @@ export default function FollowedRoomsScreen() {
     error: string;
     /** 关注态（口袋48 用户间可互相关注：friendships/friends/add|remove, toType=1） */
     following: boolean;
-    /** 互相关注（桌面端文案口径：mutual/both/friend/2/3） */
+    
     mutual: boolean;
     followBusy: boolean;
     /** 成员（含房主）走同一个资料卡界面，只是多加身份/队伍行 */
@@ -1763,7 +1748,6 @@ export default function FollowedRoomsScreen() {
         if (exists) return prev;
         return [{ memberId: id, member }, ...prev];
       });
-      // 与电脑版一致：操作后延迟从服务器拉取最新关注列表，保证状态权威同步
       setTimeout(() => { loadFollowedRef.current(true); }, 600);
     } catch (e) {
       setFollowedIds((prev) => { const r = new Set(prev); if (isFollowing) r.add(id); else r.delete(id); return r; });
@@ -1969,7 +1953,6 @@ export default function FollowedRoomsScreen() {
     setShowFanMessages(includeFans);
     try {
       // 只要还没拿到自己的 userId 就取（原来被 includeFans 挡住 → 非粉丝模式下认不出自己发的消息，
-      // 气泡全部左对齐）。getNimLoginInfo 与模式无关，取到一次即可复用。
       const userInfo = !currentUserId
         ? await pocketApi.getNimLoginInfo().catch(() => null)
         : null;
@@ -2416,7 +2399,6 @@ export default function FollowedRoomsScreen() {
     const label =
       dayStr === todayStr ? '今天' : dayStr === yestStr ? '昨天' : `${d.getMonth() + 1}月${d.getDate()}日`;
     // 用户要求：日期分隔**居中**显示（库的 Day 容器是居中的，但自定义 renderDay 会被塞进
-    // 一个无 alignItems 的普通 View → 文字被拉伸满宽、默认左对齐）→ 靠 alignSelf 居中。
     return <Text style={[styles.daySepText, { color: palette.labelTertiary }]}>{label}</Text>;
   }, [palette]);
 
@@ -2509,11 +2491,7 @@ export default function FollowedRoomsScreen() {
     });
   }, [selectedRoom, onMicMap, showToast, t]);
 
-  /**
-   * 房间内点消息头像 → 弹「用户资料卡」（用户要求：成员/非成员**都用这一个界面**，不再跳成员档案）。
-   *  - 资料源：`user/api/v1/user/info/home`（桌面端同款写法，Android 头 + userId 数字）
-   *  - 成员先用成员库信息立即渲染（队伍/名字），线上资料回来后再补等级/签名等
-   */
+  
   const openSenderProfile = useCallback(
     (opts: { id: string; name: string; avatar: string; member?: Member | null; userIds?: string[] }) => {
       const m = opts.member || null;
@@ -2613,11 +2591,7 @@ export default function FollowedRoomsScreen() {
     [navigation],
   );
 
-  /**
-   * 房间卡片长按 → 快捷操作菜单（对齐桌面 followed-rooms-feature.executeQuickAction）。
-   * ⚠️ 用自研 Modal 而不是 Alert：**Android 的 Alert 只渲染前 3 个按钮**，
-   * 放不下「大/小房间 + 置顶 + 上移下移 + 关注 + 未读提醒」这么多操作。
-   */
+  
   const [roomMenu, setRoomMenu] = useState<any | null>(null);
   const closeRoomMenu = useCallback(() => setRoomMenu(null), []);
   const roomMenuActions = useMemo(() => {
@@ -2699,7 +2673,6 @@ export default function FollowedRoomsScreen() {
         ? (members.find((m: any) => [m.id, m.userId, m.memberId].some((v) => String(v ?? '').trim() === senderId)) as Member | undefined)
         : undefined;
       const isMemberSender = !!senderMember
-        // 兜底（桌面端语义 followed-chat-feature.js:4087）：ext.user.roleId > 1 即成员
         || (Number((extraInfo(item) as any)?.user?.roleId ?? 0) || 0) > 1;
       // 成员发言头像：优先用 API（消息携带）的真实头像；成员库 avatar 多为公式照，仅兜底
       const profile = senderMember
@@ -2769,7 +2742,7 @@ export default function FollowedRoomsScreen() {
                 )}
               </TouchableOpacity>
             ) : (
-              /* 组内连排：占位保持气泡左对齐 */
+              
               <View style={styles.avatarPlaceholder} />
             )
           ) : null}
@@ -3546,8 +3519,7 @@ export default function FollowedRoomsScreen() {
                       )}
                     </View>
                     <View style={styles.memberHitMeta}>
-                      {/* 名字与团队分行但左对齐成一组：横向排版比居中竖排更省高度、信息密度更高。
-                          团队色用 labelSecondary（不是 labelTertiary）—— 深色卡上 tertiary 灰会糊掉。 */}
+                      {}
                       <Text style={[styles.memberHitName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
                       <Text style={[styles.memberHitTeam, { color: palette.labelSecondary }]} numberOfLines={1}>{team}</Text>
                     </View>
@@ -3846,7 +3818,6 @@ const styles = StyleSheet.create({
   memberHitsEmpty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   memberGridRow: { paddingHorizontal: 12 },
   memberGridItem: { paddingVertical: 5 },
-  // 搜索结果卡：横向一行（头像 + 名字/团队 + 关注按钮），左对齐。
   // 原竖排居中版把 2 列卡片撑到 ~210dp 高，一屏只能看到 3 行；横排后约 84dp。
   memberHitCard: {
     flexDirection: 'row',
@@ -4037,7 +4008,6 @@ const styles = StyleSheet.create({
   replyCard: { marginBottom: 6, padding: 8, borderRadius: radii.sm, borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
   replyName: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
   replyText: { fontSize: 13, lineHeight: 18 },
-  // 名字行不要水平内边距：否则名字比气泡左边缘缩进一截（截图中名字与气泡左对齐）
   msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   msgMetaLineMine: { justifyContent: 'flex-end' },
   msgSender: { fontSize: 12, fontWeight: '600', maxWidth: 150 },

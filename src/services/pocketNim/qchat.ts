@@ -184,12 +184,8 @@ async function ensureLogin(): Promise<void> {
   return loginInFlight;
 }
 
-/**
- * 构造圈组消息扩展段（对齐 ChatMsgUtil.getChannelBaseParams）。
- * 服务端会用 user 段渲染昵称/头像，缺失时消息可能显示异常。
- */
+
 export function buildChannelExt(target: RoomMessageTarget, self: NimSelfProfile): string {
-  // 字段与桌面版 member-room-message.buildExtension 一致（vip/pfUrl/teamLogo 缺了别人那端渲染就缺东西）
   // 官方 getChannelBaseParams：channelRole 是 **Integer**（我们此前发字符串，gson 解析异常时身份就乱了）
   return JSON.stringify({
     module: NimModule.QCHAT,
@@ -268,7 +264,7 @@ export async function deleteRoomMessage(params: {
   });
 }
 
-/** 归一化后的房间消息（与 HTTP 历史消息字段对齐，便于直接拼进列表） */
+
 export interface RoomLiveMessage {
   uuid: string;
   serverId: number;

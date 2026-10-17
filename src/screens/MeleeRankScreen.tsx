@@ -25,8 +25,6 @@ import { EmptyState, ErrorState } from '../components/StateViews';
 import { Skeleton } from '../components/Skeleton';
 import { GlassSurface } from '../components/GlassSurface';
 
-// 对齐电脑版鸡腿榜数据源：只有「周榜」（weekRankList + getMeleeWeekRank）可用；
-// 电脑版按钮语义 total=周榜卡片列表、person=成员贡献榜，均基于周榜接口。
 // 原 total/year 走独立端点(getMeleeRankPage 列表 / getMeleeYearRankPage)在本期接口下不可用 → 移除。
 type ViewMode = 'week' | 'person';
 
@@ -396,7 +394,6 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
   const rankNum = Number(item.rankNum || item.rank || item.no || index + 1);
   const u = item.baseUserInfo || item.userInfo || item.user || item;
   const topU = item.topUserInfo || item.topUser || {};
-  // 核对电脑版: 周榜卡片昵称取 baseUserInfo.nickname || starName（此前缺 starName → 偶发空名）
   const name = String(u.nickname || u.starName || u.userName || u.nickName || u.name || '');
   const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
   const topUser = String(topU.userName || topU.nickname || '');
@@ -456,7 +453,6 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
   const palette = usePalette();
   const { t } = useI18n();
   const u = item.userInfo || item.baseUserInfo || item.user || item;
-  // 电脑版字段：userInfo.nickname / realNickName；数值字段 totalCharm（此前缺 → 显示 0）
   const name = String(u.nickname || u.realNickName || u.userName || u.nickName || u.name || '');
   const avatar = normalizeUrl(String(u.avatar || u.userAvatar || u.headImg || u.headUrl || u.picPath || item.userAvatar || item.avatar || item.headImg || ''));
   const userId = String(u.userId || u.id || item.userId || item.uid || '');

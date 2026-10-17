@@ -36,7 +36,7 @@ interface PlayerState {
   qualityQn: number | null;
   /** 播放倍速（回放可用；live 恒 1） */
   rate: number;
-  /** 画面旋转角度（桌面对齐：90° 步进，竖屏视频旋转用） */
+  
   rotateDeg: number;
   /** 镜像模式：none/horizontal/vertical */
   mirrorMode: 'none' | 'horizontal' | 'vertical';
