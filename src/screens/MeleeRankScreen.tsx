@@ -27,12 +27,13 @@ import { EmptyState, ErrorState } from '../components/StateViews';
 import { Skeleton } from '../components/Skeleton';
 import { GlassSurface } from '../components/GlassSurface';
 
-// 原 total/year 走独立端点(getMeleeRankPage 列表 / getMeleeYearRankPage)在本期接口下不可用 → 移除。
-type ViewMode = 'week' | 'person';
+// 年榜走 getMeleeYearRankPage（官方 2026 赛季起有数据则显示；空返回自然落空态）。
+type ViewMode = 'week' | 'person' | 'year';
 
 const MODES: { key: ViewMode; label: string }[] = [
   { key: 'week', label: '周榜' },
   { key: 'person', label: '成员贡献' },
+  { key: 'year', label: '年榜' },
 ];
 
 /**
@@ -117,6 +118,8 @@ export default function MeleeRankScreen() {
         res = wk
           ? await withTransientRetry(() => pocketApi.getMeleeWeekRank(wk.weekRankId))
           : await withTransientRetry(() => pocketApi.getMeleeRankPage());
+      } else if (mode === 'year') {
+        res = await withTransientRetry(() => pocketApi.getMeleeYearRankPage(undefined, nextIdRef.current || undefined));
       } else {
         return;
       }
@@ -163,6 +166,8 @@ export default function MeleeRankScreen() {
         res = wk2
           ? await withTransientRetry(() => pocketApi.getMeleeWeekRank(wk2.weekRankId, nextIdRef.current))
           : await withTransientRetry(() => pocketApi.getMeleeRankPage(0, nextIdRef.current));
+      } else if (mode === 'year') {
+        res = await withTransientRetry(() => pocketApi.getMeleeYearRankPage(undefined, nextIdRef.current));
       } else {
         return;
       }
@@ -223,9 +228,9 @@ export default function MeleeRankScreen() {
    * 若沿用「一个 effect 同时依赖 selectedWeek」的写法，在成员贡献页点日期会**白跑一次
    * loadPerson**（贡献榜数据与周次无关）。拆开后各自只依赖自己真正关心的输入。
    */
-  // 周榜：模式 或 选中周次 变化 → 拉该周榜单
+  // 周榜/年榜：模式 或 选中周次 变化 → 拉对应榜单
   useEffect(() => {
-    if (mode === 'week') loadRank();
+    if (mode === 'week' || mode === 'year') loadRank();
   }, [mode, selectedWeek, loadRank]);
 
   // 成员贡献：模式 或 选中成员 变化 → 拉贡献榜（与周次无关）

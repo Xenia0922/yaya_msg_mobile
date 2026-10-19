@@ -13,7 +13,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, AppState, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -236,6 +236,8 @@ export default function HomeScreen() {
   const [livesOk, setLivesOk] = useState(false);
   const [livesError, setLivesError] = useState('');
   const [bannerIndex, setBannerIndex] = useState(0);
+  /** 口袋私信未读数（红点角标）：进首页拉一次，失败静默为 0 */
+  const [pmUnread, setPmUnread] = useState(0);
   const fetchedRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -631,6 +633,21 @@ export default function HomeScreen() {
     hour < 5 ? t('夜深了') : hour < 11 ? t('早上好') : hour < 14 ? t('中午好') : hour < 18 ? t('下午好') : t('晚上好');
 
   const quick = QUICK.map((i) => ({ ...i, title: t(i.title) }));
+
+  // 私信未读红点：仅在已登录时拉取；失败静默（不打扰）
+  useFocusEffect(useCallback(() => {
+    if (!token) { setPmUnread(0); return; }
+    let alive = true;
+    pocketApi.getUnreadMessageCount()
+      .then((res: any) => {
+        if (!alive) return;
+        const c = res?.content ?? res?.data ?? {};
+        const n = Number(c.num ?? c.unreadNum ?? c.unread ?? c.count ?? c.total ?? 0);
+        setPmUnread(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+      })
+      .catch(() => { if (alive) setPmUnread(0); });
+    return () => { alive = false; };
+  }, [token]));
   const toolChips = TOOL_CHIPS.map((i) => ({ ...i, title: t(i.title) }));
 
   const banner = lives[safeBannerIndex];
@@ -858,6 +875,15 @@ export default function HomeScreen() {
                         <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                       </View>
                       <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>{item.title}</Text>
+                      {/* 私信未读红点角标 */}
+                      {item.route === 'PrivateMessagesScreen' && pmUnread > 0 ? (
+                        <View style={{
+                          position: 'absolute', top: -4, right: -4, minWidth: 17, height: 17, borderRadius: 9,
+                          backgroundColor: palette.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+                        }}>
+                          <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>{pmUnread > 99 ? '99+' : String(pmUnread)}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </ScalePressable>
                 </FadeInView>

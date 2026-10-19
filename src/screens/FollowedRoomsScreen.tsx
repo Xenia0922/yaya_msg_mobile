@@ -1178,6 +1178,32 @@ function AudioMediaCard({
 /** 房间语音时长缓存（url → "秒"）：探测结果全局复用，避免重复创建 Exo 实例 */
 const ROOM_DUR_CACHE = new Map<string, string>();
 
+/** 资料卡头像尺寸（与 styles.userCardAvatar 同步；头像框叠加按此放大） */
+const USER_CARD_AVATAR_SIZE = 64;
+
+/**
+ * 从 user/info/home 响应里泛匹配头像框地址：官方各端字段名不统一
+ * （pictureFrame / pfUrl / headFrame / bubble…），按「key 含框类词 + 值是 URL」匹配。
+ * 拿不到返回空串 —— 资料卡就不叠框，不影响主流程。
+ */
+function findFrameUrl(value: any, depth = 0): string {
+  if (!value || depth > 4) return '';
+  if (Array.isArray(value)) {
+    for (const v of value) { const r = findFrameUrl(v, depth + 1); if (r) return r; }
+    return '';
+  }
+  if (typeof value !== 'object') return '';
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof v === 'string') {
+      if (/(frame|pendant|bubble|border)/i.test(k) && /^(https?:\/\/|\/)/.test(v)) return v;
+    } else if (v && typeof v === 'object') {
+      const r = findFrameUrl(v, depth + 1);
+      if (r) return r;
+    }
+  }
+  return '';
+}
+
 function normalizeLiveRank(res: any): any[] {
   let list = unwrapList(res, [
     'content.rankList',
@@ -1579,6 +1605,8 @@ export default function FollowedRoomsScreen() {
     isMember: boolean;
     /** 成员库 id（仅成员有）：资料卡「主页」按钮跳 ProfileScreen 用 */
     memberDbId: string;
+    /** 头像框地址（user/info/home 泛匹配；拿不到为空，不渲染） */
+    frameUrl: string;
     detail: { name: string; avatar: string; level: string; signature: string; team: string; period: string; isStar: boolean };
   }>(null);
   /** 资料卡请求序号：连点不同头像时丢弃旧响应（避免慢响应覆盖新卡） */
@@ -2731,6 +2759,7 @@ export default function FollowedRoomsScreen() {
         followBusy: false,
         isMember: !!m,
         memberDbId: m ? String((m as any).id || '') : '',
+        frameUrl: '',
         detail: {
           name: '',
           avatar: '',
@@ -2758,6 +2787,12 @@ export default function FollowedRoomsScreen() {
                 ? { ...c, id, loading: false, error: '', following: detail.following, mutual: detail.mutual, detail: { ...c.detail, ...detail } }
                 : c,
             );
+            // 头像框：user/info/home 泛匹配（字段名各端不一；拿不到静默跳过）
+            pocketApi.getUserHomeInfo(id).then((home: any) => {
+              if (userCardSeqRef.current !== seq) return;
+              const frame = findFrameUrl(home);
+              if (frame) apply({ frameUrl: frame });
+            }).catch(() => {});
             return;
           } catch {
             // 该 id 查不到（如非口袋 userId）→ 试下一个
@@ -3428,7 +3463,22 @@ export default function FollowedRoomsScreen() {
                     return (
                       <>
                         {cardAvatar ? (
-                          <NetworkImage source={{ uri: cardAvatar }} style={[styles.userCardAvatar, { backgroundColor: palette.fill2 }]} thumbnail={180} />
+                          <View>
+                            <NetworkImage source={{ uri: cardAvatar }} style={[styles.userCardAvatar, { backgroundColor: palette.fill2 }]} thumbnail={180} />
+                            {userCard?.frameUrl ? (
+                              <Image
+                                source={{ uri: normalizeUrl(userCard.frameUrl) }}
+                                style={{
+                                  position: 'absolute',
+                                  width: USER_CARD_AVATAR_SIZE * 1.34,
+                                  height: USER_CARD_AVATAR_SIZE * 1.34,
+                                  left: (USER_CARD_AVATAR_SIZE - USER_CARD_AVATAR_SIZE * 1.34) / 2,
+                                  top: (USER_CARD_AVATAR_SIZE - USER_CARD_AVATAR_SIZE * 1.34) / 2,
+                                }}
+                                resizeMode="contain"
+                              />
+                            ) : null}
+                          </View>
                         ) : (
                           <View style={[styles.userCardAvatar, { backgroundColor: palette.fill2, alignItems: 'center', justifyContent: 'center' }]}>
                             <MaterialCommunityIcons name="account" size={30} color={palette.labelTertiary} />
