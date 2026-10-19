@@ -28,7 +28,7 @@ export const MEMBERS_URL_SELF_LIST = [
 /** 上游 yk1z 库：自建源不可用时的回退（保证不全依赖自建可用性） */
 export const MEMBERS_URL = 'https://data.gnz.hk/members.json';
 
-export const APP_VERSION = '2.7.6';
+export const APP_VERSION = '2.7.7';
 
 export const MEMBER_DATA_SOURCE_URL = 'https://github.com/yk1z/yaya_msg';
 

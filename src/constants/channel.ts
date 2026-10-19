@@ -6,9 +6,14 @@
  * - `public`：公开发行版。应用内更新只下载公开 Release 里的
  *   `yaya-msg-mobile-<tag>-<abi>.apk`，永远不会匹配到 `yaya-msg-mobile-plus-*`。
  *
- * ⚠️ 把代码同步到公开分支时，这里必须改成 `'public'`，否则公版用户收不到更新。
+ * ⚠️ 把代码同步到自用分支时，这里必须改回 `'plus'`；公开分支保持 `'public'`。
  */
-export const APP_CHANNEL: 'plus' | 'public' = 'plus';
+export type AppChannel = 'plus' | 'public';
+export const APP_CHANNEL: AppChannel = 'public';
+
+// TS5.9 会把 const 字面量收窄成初始值类型，直接 === 另一个成员会报 TS2367；
+// 先放宽成 string 再比较，两个分支都能编译。
+const channelName: string = APP_CHANNEL;
 
 /** 自用权限版：禁用应用内更新 / 下载安装，避免被公版覆盖或对外流出 */
-export const IS_PLUS_BUILD = APP_CHANNEL === 'plus';
+export const IS_PLUS_BUILD = channelName === 'plus';
