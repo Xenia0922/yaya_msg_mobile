@@ -1577,6 +1577,8 @@ export default function FollowedRoomsScreen() {
     followBusy: boolean;
     /** 成员（含房主）走同一个资料卡界面，只是多加身份/队伍行 */
     isMember: boolean;
+    /** 成员库 id（仅成员有）：资料卡「主页」按钮跳 ProfileScreen 用 */
+    memberDbId: string;
     detail: { name: string; avatar: string; level: string; signature: string; team: string; period: string; isStar: boolean };
   }>(null);
   /** 资料卡请求序号：连点不同头像时丢弃旧响应（避免慢响应覆盖新卡） */
@@ -2728,6 +2730,7 @@ export default function FollowedRoomsScreen() {
         mutual: false,
         followBusy: false,
         isMember: !!m,
+        memberDbId: m ? String((m as any).id || '') : '',
         detail: {
           name: '',
           avatar: '',
@@ -3495,6 +3498,22 @@ export default function FollowedRoomsScreen() {
                     <MaterialCommunityIcons name="message-text-outline" size={14} color={palette.tint} />
                     <Text style={[styles.userCardBtnText, { color: palette.tint }]}>{t('私信')}</Text>
                   </ScalePressable>
+                  {/* 成员才有「主页」：跳成员档案页（公演记录/历史），粉丝没有档案页 */}
+                  {userCard?.isMember && userCard.memberDbId ? (
+                    <ScalePressable
+                      style={[styles.userCardBtn, { backgroundColor: palette.fill2 }]}
+                      pressedScale={0.95}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        const mid = userCard.memberDbId;
+                        setUserCard(null);
+                        navigation.navigate('ProfileScreen', { memberId: mid, nonce: Date.now() });
+                      }}
+                    >
+                      <MaterialCommunityIcons name="account-details-outline" size={14} color={palette.tint} />
+                      <Text style={[styles.userCardBtnText, { color: palette.tint }]}>{t('主页')}</Text>
+                    </ScalePressable>
+                  ) : null}
                   <ScalePressable
                     style={[styles.liveResolveBtnGhost, { paddingHorizontal: 16, paddingVertical: 8, borderColor: palette.hairline }]}
                     pressedScale={0.95}
