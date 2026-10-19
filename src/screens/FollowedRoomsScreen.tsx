@@ -15,7 +15,7 @@ import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
-import {ActivityIndicator, BackHandler, Image, ImageBackground, Linking, Modal, ScrollView, View, Text, TouchableOpacity, TextInput, StyleSheet} from 'react-native';
+import {ActivityIndicator, BackHandler, Image, ImageBackground, Linking, Modal, ScrollView, View, Text, TouchableOpacity, TouchableWithoutFeedback, TextInput, StyleSheet} from 'react-native';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -3407,8 +3407,8 @@ export default function FollowedRoomsScreen() {
         {/* 挂载短路：visible=false 的 Modal 常驻房间根节点时，每次房间重渲染都会 flush Modal 窗口 → 整页闪 */}
         {rankVisible ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
-          <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setRankVisible(false)}>
-            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.roomMenuWrap}>
+          <TouchableWithoutFeedback onPress={() => setRankVisible(false)}>
+            <View style={styles.roomModalShade}>
               <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
               {/* 顶部 handle */}
               <View style={styles.roomRankHandleWrap}>
@@ -3447,14 +3447,14 @@ export default function FollowedRoomsScreen() {
                 })()}
               </ScrollView>
             </GlassSurface>
-            </TouchableOpacity>
-          </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
         </Modal>
         ) : null}
         {giftVisible ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
-          <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setGiftVisible(false)}>
-            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.roomMenuWrap}>
+          <TouchableWithoutFeedback onPress={() => setGiftVisible(false)}>
+            <View style={styles.roomModalShade}>
               <GlassSurface radius={20} role="card" style={[styles.rgPanel, { backgroundColor: 'transparent' }]}>
               <View style={styles.rgHeader}>
                 <Text style={[styles.rgTitle, { color: palette.label }]}>
@@ -3538,8 +3538,8 @@ export default function FollowedRoomsScreen() {
                 <Text style={[styles.rgRechargeText, { color: palette.tint }]}>{t('余额不足？去充值鸡腿')}</Text>
               </TouchableOpacity>
             </GlassSurface>
-            </TouchableOpacity>
-          </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
         </Modal>
         ) : null}
         {liveResolve ? (
