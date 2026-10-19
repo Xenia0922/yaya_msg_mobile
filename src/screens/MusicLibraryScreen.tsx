@@ -785,7 +785,7 @@ export default function MusicLibraryScreen() {
                   </ScalePressable>
                 </View>
                 <View style={styles.songInfo}>
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.songTitle, { color: palette.label }]}>{item.title || t('无标题')}</Text>
+                  <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.songTitle, { color: palette.label }]}>{item.title || t('无标题')}</Text>
                   <View style={styles.songMetaLine}>
                     <Text style={[styles.songArtist, { color: palette.labelSecondary }]} numberOfLines={1}>
                       {/* 团体名优先（用户要求：R2 公演曲显示团体而非专辑），不加来源标记 */}
@@ -805,12 +805,10 @@ export default function MusicLibraryScreen() {
                           </Text>
                         );
                       }
-                      // 无时长兜底显示日期
-                      return item.ctime ? (
-                        <Text style={[styles.dateText, { color: palette.labelTertiary }]}>
-                          {formatTimestamp(item.ctime).slice(0, 10)}
-                        </Text>
-                      ) : null;
+                      // 无时长：统一占位（此前显示日期，与上面的 mm:ss 不一致，用户反馈"有的有时长有的没有"）
+                      return (
+                        <Text style={[styles.dateText, { color: palette.labelTertiary }]}>--:--</Text>
+                      );
                     })()}
                   </View>
                 </View>

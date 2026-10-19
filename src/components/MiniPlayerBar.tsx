@@ -169,6 +169,8 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
 
   return (
     <GlassSurface radius={20} role="card"
+      // 提高不透明度：此前太透，后面卡片的爱心/封面会透出来（用户反馈「有点乱」）
+      tintColor={palette.name === 'dark' ? 'rgba(22,22,26,0.90)' : 'rgba(255,255,255,0.90)'}
       style={[
         styles.bar,
         shadows.md,
