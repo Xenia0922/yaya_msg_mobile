@@ -27,6 +27,7 @@ import UpdateInstaller from '../components/UpdateInstaller';
 import { isApkUpdaterAvailable } from '../native/ApkUpdater';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { APP_VERSION } from '../constants';
+import { IS_PLUS_BUILD } from '../constants/channel';
 import { getMemberDataMeta, MemberDataMeta, updateMemberData } from '../services/memberData';
 import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { typography } from '../theme/typography';
@@ -233,6 +234,11 @@ export default function SettingsScreen() {
   // 有更新时优先走应用内下载安装（下载对应 ABI 分包 → 系统安装器）；
   // 原生桥不可用（如 iOS / 旧包）才退回打开下载页。
   const openUpdate = (url: string) => {
+    // 自用权限版：绝不走应用内更新（更新源是公版，装上去会把权限版覆盖掉）
+    if (IS_PLUS_BUILD) {
+      showToast(t('自用版不提供在线更新，请用本地构建包覆盖安装'));
+      return;
+    }
     if (isApkUpdaterAvailable) setUpdateVisible(true);
     else if (url) Linking.openURL(url).catch(() => {});
   };
@@ -276,7 +282,7 @@ export default function SettingsScreen() {
               >
                 <Text style={[styles.verChipText, { color: palette.tint }]}>v{APP_VERSION}</Text>
               </TouchableOpacity>
-              {hasUpdate ? <View style={[styles.verDot, { backgroundColor: palette.danger, borderColor: palette.surface }]} /> : null}
+              {hasUpdate && !IS_PLUS_BUILD ? <View style={[styles.verDot, { backgroundColor: palette.danger, borderColor: palette.surface }]} /> : null}
             </View>
           </View>
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />

@@ -346,6 +346,15 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 - **实现**：`Row`（icon `bell-ring-outline`，右侧显示 `gnz48.tech`）→ `Linking.openURL('https://gnz48.tech/')`
 - **涉及**：`src/screens/SettingsScreen.tsx`
 
+### 24. 自用权限版禁用应用内更新（防覆盖 / 防外流）
+- **背景**：应用内更新的下载源是**公开仓库 Release**（`yaya-msg-mobile-<tag>-<abi>.apk`），装上去会把自用权限版直接覆盖成公版
+- **改动**：
+  - 新增 `src/constants/channel.ts`：`APP_CHANNEL = 'plus'`（公版分支需改 `'public'`）
+  - 设置页 `openUpdate` 在 plus 构建下一律拦截，只 toast「自用版不提供在线更新，请用本地构建包覆盖安装」；版本号红点也不显示
+  - `scripts/build-apk.js` 在 `plus` 分支打包时打印警告：产物禁止上传公开 Release / 网盘 / 下载页
+- **分发安全**：更新器只拼 `yaya-msg-mobile-<tag>-<abi>.apk`，永远不会匹配 `yaya-msg-mobile-plus-*`；权限版仅存在于本地 plus 分支，公开仓库 Release 只有公版资产
+- **涉及**：`src/constants/channel.ts`、`src/screens/SettingsScreen.tsx`、`scripts/build-apk.js`
+
 ## 附：发版清单
 
 - 出包：`node scripts/build-apk.js` → `E:\yymsg\APK\`

@@ -36,6 +36,15 @@ const apkDir = path.join(androidDir, 'app/build/outputs/apk/release');
 
 // 成品名分版：YAYA_FLAVOR=plus → yaya-msg-mobile-plus-v2.7.6-v8a.apk；
 // 不传 → yaya-msg-mobile-v2.7.6-v8a.apk（普通版）
+// ⚠️ 自用权限版保护：plus 分支构建的包**不得**上传到公开仓库的 Release / 网盘 / 下载页。
+// 公版与权限版共用同一个 applicationId，权限版一旦流出，任何人都能覆盖安装并解锁私有功能。
+try {
+  const branch = require('child_process').execSync('git rev-parse --abbrev-ref HEAD', { cwd: path.join(__dirname, '..') }).toString().trim();
+  if (branch === 'plus') {
+    console.warn('\n⚠️  当前分支为 plus（自用权限版）—— 产物仅供本机使用，禁止上传到公开仓库 Release / 下载页。\n');
+  }
+} catch { /* ignore */ }
+
 const FLAVOR = String(process.env.YAYA_FLAVOR || '').trim();
 const baseName = FLAVOR ? `yaya-msg-mobile-${FLAVOR}` : 'yaya-msg-mobile';
 if (FLAVOR) console.log(`   （打包版本：${FLAVOR}）`);
