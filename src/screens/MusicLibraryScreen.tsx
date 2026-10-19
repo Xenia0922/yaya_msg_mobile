@@ -747,22 +747,11 @@ export default function MusicLibraryScreen() {
             // ⚠️ 不要给 FadeInView 加 maxWidth:'50%' —— numColumns=2 的 cell 已是半宽，
             //    再限 50% 会把卡片压成一半、右侧露出页面底色（用户看到的「信息区左右竖带」）
             return (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={{ flex: 1 }}>
-              <TouchableOpacity
-                style={[
-                  styles.songItem,
-                  // 玻璃卡：底色由 GlassSurface 负责，外层只管高亮描边（宽度恒定，避免内容位移）
-                  { borderColor: active ? palette.tint : 'transparent', borderWidth: 1 },
-                ]}
-                onPress={() => playSong(item)}
-                activeOpacity={0.7}
-              >
-              {/* 卡片：实心底（不用实时模糊）—— 信息区左/右不会再出现模糊层边缘的深色竖带，
-                  时长对比度也够。设计规范 §3：卡片 = 实心 surface + hairline + 圆角 16 */}
-              <View style={[styles.songCardBody, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
-                <View style={styles.coverWrap}>
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.albumItem}>
+              <TouchableOpacity activeOpacity={0.8} onPress={() => playSong(item)}>
+                {/* 与「专辑」网格同款：封面 + 卡外文字（不再有灰色信息块 → 也就没有左右竖带） */}
+                <View style={[styles.albumCover, { backgroundColor: palette.fill2 }, active ? { borderColor: palette.tint, borderWidth: 2 } : null]}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
-                  {/* 正在播放指示：三根均衡器柱错峰跳动 */}
                   {active ? (
                     <View style={[styles.playingBadge, { backgroundColor: palette.tint }]}>
                       <EqualizerBars color={palette.onTint} />
@@ -786,35 +775,25 @@ export default function MusicLibraryScreen() {
                     />
                   </ScalePressable>
                 </View>
-                <View style={styles.songInfo}>
-                  <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.songTitle, { color: palette.label }]}>{item.title || t('无标题')}</Text>
-                  <View style={styles.songMetaLine}>
-                    <Text style={[styles.songArtist, { color: palette.labelSecondary }]} numberOfLines={1}>
-                      {/* 团体名优先（用户要求：R2 公演曲显示团体而非专辑），不加来源标记 */}
-                      {joinMeta([item.groupLabel, item.artist, item.album]) || t('官方音乐')}
-                    </Text>
-                    {(() => {
-                      const dur = Number(item.durationSec) || Number(item.duration) || 0;
-                      if (dur > 0) {
-                        const h = Math.floor(dur / 3600);
-                        const m = Math.floor((dur % 3600) / 60);
-                        const sec = Math.floor(dur % 60);
-                        return (
-                          <Text style={[styles.dateText, { color: palette.labelSecondary }]}>
-                            {h > 0
-                              ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-                              : `${m}:${String(sec).padStart(2, '0')}`}
-                          </Text>
-                        );
-                      }
-                      // 无时长：统一占位（此前显示日期，与上面的 mm:ss 不一致，用户反馈"有的有时长有的没有"）
-                      return (
-                        <Text style={[styles.dateText, { color: palette.labelTertiary }]}>--:--</Text>
-                      );
-                    })()}
-                  </View>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.songTitle, { color: palette.label, marginTop: 6 }]}>{item.title || t('无标题')}</Text>
+                <View style={styles.songMetaLine}>
+                  <Text style={[styles.songArtist, { color: palette.labelTertiary }]} numberOfLines={1}>
+                    {joinMeta([item.groupLabel, item.artist, item.album]) || t('官方音乐')}
+                  </Text>
+                  {(() => {
+                    const dur = Number(item.durationSec) || Number(item.duration) || 0;
+                    const h = Math.floor(dur / 3600);
+                    const m = Math.floor((dur % 3600) / 60);
+                    const sec = Math.floor(dur % 60);
+                    return (
+                      <Text style={[styles.dateText, { color: palette.labelTertiary }]}>
+                        {dur > 0
+                          ? (h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`)
+                          : '--:--'}
+                      </Text>
+                    );
+                  })()}
                 </View>
-              </View>
               </TouchableOpacity>
             </FadeInView>
             );
