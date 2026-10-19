@@ -1307,8 +1307,16 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   async sendMemberRoomGift(params: {
     serverId: string; channelId: string; giftId: string; giftNum: number;
     isPocketGift?: number; unitPrice?: number; acceptUserId?: string;
+    bigChannelId?: string; memberId?: string;
   }) {
-    const ctx = await this.getMemberRoomGiftContext({ serverId: params.serverId, channelId: params.channelId });
+    // 二次校验复用 openRoomGiftPanel 同一套上下文解析：小房间 room/info 2002（准入门槛）
+    // 时由 bigChannelId/memberId 兜底直拉 gift/list，避免发送前校验误报「房间信息已变化」
+    const ctx = await this.getMemberRoomGiftContext({
+      serverId: params.serverId,
+      channelId: params.channelId,
+      bigChannelId: String(params.bigChannelId || '') || params.channelId,
+      memberId: String(params.memberId || '') || params.acceptUserId || '',
+    });
     if (params.acceptUserId && String(params.acceptUserId) !== ctx.target.memberId) {
       throw new Error('收礼成员已变化，请重新选择礼物');
     }

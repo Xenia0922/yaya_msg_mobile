@@ -1811,7 +1811,7 @@ export default function FollowedRoomsScreen() {
   }, [roomPlayer, t]);
 
   const sendRoomGift = useCallback(async () => {
-    if (!roomPlayer || !giftSel) {
+    if (!giftSel) {
       setGiftStatus(t('请先选择礼物'));
       return;
     }
@@ -1827,6 +1827,7 @@ export default function FollowedRoomsScreen() {
           giftNum: num,
           isPocketGift: Number(giftSel.isPocketGift || 0),
           unitPrice: Number(giftSel.money || giftSel.cost || giftSel.price || 0),
+          acceptUserId: giftTarget.memberId,
         });
         setGiftStatus(t('已送出 {num} 个 {giftName}', { num, giftName: String(giftSel.giftName || giftSel.name || '') }));
         if (out.balance != null) setGiftBalance(String(out.balance));
@@ -1834,6 +1835,10 @@ export default function FollowedRoomsScreen() {
         // 含「官方未确认有效赠送」等失败文案；网络异常时提示勿重复发送
         setGiftStatus(t('送礼失败：{error}', { error: errorMessage(err) }));
       }
+      return;
+    }
+    if (!roomPlayer) {
+      setGiftStatus(t('请先选择礼物'));
       return;
     }
     const ownerId = String((selectedRoom as any)?.id || '');
@@ -3392,115 +3397,115 @@ export default function FollowedRoomsScreen() {
               />
             </PlayerScreen>
             <DanmakuSettingsSheet visible={showRoomDanmakuSettings} onClose={() => setShowRoomDanmakuSettings(false)} />
-            <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
-              <View style={styles.roomModalShade}>
-                <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
-                  {/* 顶部 handle */}
-                  <View style={styles.roomRankHandleWrap}>
-                    <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
-                  </View>
-                  <View style={styles.roomRankHeader}>
-                    <Text style={[styles.roomRankTitle, { color: palette.label }]}>{t('贡献榜')}</Text>
-                    <ScalePressable onPress={() => setRankVisible(false)} pressedScale={0.92} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                      <View style={[styles.roomRankClose, { backgroundColor: palette.fill2 }]}>
-                        <MaterialCommunityIcons name="close" color={palette.labelSecondary} size={18} />
-                      </View>
-                    </ScalePressable>
-                  </View>
-                  <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>{rankStatus}</Text>
-                  <ScrollView style={styles.roomRankList} showsVerticalScrollIndicator={false}>
-                    {(() => {
-                      // 归一化进度条：取最高贡献值作为基准
-                      const maxValue = rankRows.reduce((max, r) => Math.max(max, Number(r.value) || 0), 0);
-                      return rankRows.map((row, index) => {
-                        const valNum = Number(row.value) || 0;
-                        const progress = maxValue > 0 ? Math.max(0, Math.min(1, valNum / maxValue)) : 0;
-                        return (
-                          <View key={String(row.userId || row.id || index)} style={[styles.roomRankRow, { borderBottomColor: palette.hairline }]}>
-                            <Text style={[styles.roomRankNo, { color: palette.tint }]}>{row.rank || index + 1}</Text>
-                            {row.avatar ? <NetworkImage source={{ uri: row.avatar }} style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} thumbnail={180} /> : <View style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} />}
-                            <View style={styles.roomRankInfo}>
-                              <Text style={[styles.roomRankName, { color: palette.label }]} numberOfLines={1}>{row.name}</Text>
-                              <View style={[styles.roomRankProgressTrack, { backgroundColor: palette.fill3 }]}>
-                                <View style={[styles.roomRankProgressFill, { width: `${progress * 100}%`, backgroundColor: palette.tint }]} />
-                              </View>
-                            </View>
-                            <Text style={[styles.roomRankValue, { color: palette.labelSecondary }]} numberOfLines={1}>{row.value ? t('贡献 {value}', { value: row.value }) : t('贡献用户')}</Text>
-                          </View>
-                        );
-                      });
-                    })()}
-                  </ScrollView>
-                </GlassSurface>
-              </View>
-            </Modal>
-            <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
-              <View style={styles.roomModalShade}>
-                <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
-                  <View style={styles.roomRankHandleWrap}>
-                    <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
-                  </View>
-                  <View style={styles.roomRankHeader}>
-                    <Text style={[styles.roomRankTitle, { color: palette.label }]}>
-                      {giftMode === 'room' ? t('房间送礼') : t('直播送礼')}
-                    </Text>
-                    <ScalePressable onPress={() => setGiftVisible(false)} pressedScale={0.92} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                      <View style={[styles.roomRankClose, { backgroundColor: palette.fill2 }]}>
-                        <MaterialCommunityIcons name="close" color={palette.labelSecondary} size={18} />
-                      </View>
-                    </ScalePressable>
-                  </View>
-                  <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>
-                    {giftMode === 'room' && giftTarget?.memberName ? `${t('收礼：{name}', { name: giftTarget.memberName })} · ` : ''}
-                    {giftBalance ? `${t('余额：{balance} 鸡腿', { balance: giftBalance })} · ` : ''}{giftStatus}
-                  </Text>
-                  <ScrollView style={styles.roomRankList} showsVerticalScrollIndicator={false}>
-                    {giftList.map((g, index) => {
-                      const gid = String(g.giftId || g.id || '');
-                      const gname = String(g.giftName || g.name || t('礼物 {n}', { n: index + 1 }));
-                      const cost = g.cost ?? g.price ?? g.money ?? 0;
-                      const pocket = Number(g.isPocketGift || 0) === 1;
-                      const stock = Number(g.giftTotal || 0);
-                      return (
-                        <TouchableOpacity
-                          key={`${gid}:${pocket ? 1 : 0}` || index}
-                          style={[styles.roomRankRow, { borderBottomColor: palette.hairline, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                          onPress={() => { setGiftSel(g); setGiftNum(1); }}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={[styles.roomRankName, { color: palette.label, flex: 1 }]} numberOfLines={1}>
-                            {gname}{pocket ? t('（背包）') : ''}
-                          </Text>
-                          {pocket && stock > 0 ? (
-                            <Text style={[styles.roomRankValue, { color: palette.labelTertiary }]}>×{stock}</Text>
-                          ) : null}
-                          {Number(cost) > 0 && !pocket ? (
-                            <Text style={[styles.roomRankValue, { color: palette.labelSecondary }]}>{t('{cost} 鸡腿/个', { cost })}</Text>
-                          ) : null}
-                          {giftSel && String(giftSel.giftId || giftSel.id || '') === gid ? <MaterialCommunityIcons name="check-circle" color={palette.tint} size={18} /> : null}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <ScalePressable style={[styles.liveResolveBtnGhost, { paddingHorizontal: 12, paddingVertical: 6 }]} pressedScale={0.92} activeOpacity={0.8} onPress={() => setGiftNum((n) => Math.max(1, n - 1))}>
-                        <Text style={[styles.liveResolveBtnGhostText, { color: palette.tint }]}>−</Text>
-                      </ScalePressable>
-                      <Text style={[styles.roomRankTitle, { color: palette.label }]}>{giftNum}</Text>
-                      <ScalePressable style={[styles.liveResolveBtnGhost, { paddingHorizontal: 12, paddingVertical: 6 }]} pressedScale={0.92} activeOpacity={0.8} onPress={() => setGiftNum((n) => Math.min(999, n + 1))}>
-                        <Text style={[styles.liveResolveBtnGhostText, { color: palette.tint }]}>＋</Text>
-                      </ScalePressable>
-                    </View>
-                    <ScalePressable style={[styles.liveResolveBtn, { backgroundColor: palette.tint, paddingHorizontal: 18, paddingVertical: 8 }]} pressedScale={0.95} activeOpacity={0.85} onPress={sendRoomGift}>
-                      <Text style={styles.liveResolveBtnText}>{t('发送')}</Text>
-                    </ScalePressable>
-                  </View>
-                </GlassSurface>
-              </View>
-            </Modal>
           </View>
         ) : null}
+        <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
+          <View style={styles.roomModalShade}>
+            <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
+              {/* 顶部 handle */}
+              <View style={styles.roomRankHandleWrap}>
+                <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
+              </View>
+              <View style={styles.roomRankHeader}>
+                <Text style={[styles.roomRankTitle, { color: palette.label }]}>{t('贡献榜')}</Text>
+                <ScalePressable onPress={() => setRankVisible(false)} pressedScale={0.92} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <View style={[styles.roomRankClose, { backgroundColor: palette.fill2 }]}>
+                    <MaterialCommunityIcons name="close" color={palette.labelSecondary} size={18} />
+                  </View>
+                </ScalePressable>
+              </View>
+              <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>{rankStatus}</Text>
+              <ScrollView style={styles.roomRankList} showsVerticalScrollIndicator={false}>
+                {(() => {
+                  // 归一化进度条：取最高贡献值作为基准
+                  const maxValue = rankRows.reduce((max, r) => Math.max(max, Number(r.value) || 0), 0);
+                  return rankRows.map((row, index) => {
+                    const valNum = Number(row.value) || 0;
+                    const progress = maxValue > 0 ? Math.max(0, Math.min(1, valNum / maxValue)) : 0;
+                    return (
+                      <View key={String(row.userId || row.id || index)} style={[styles.roomRankRow, { borderBottomColor: palette.hairline }]}>
+                        <Text style={[styles.roomRankNo, { color: palette.tint }]}>{row.rank || index + 1}</Text>
+                        {row.avatar ? <NetworkImage source={{ uri: row.avatar }} style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} thumbnail={180} /> : <View style={[styles.roomRankAvatar, { backgroundColor: palette.fill3 }]} />}
+                        <View style={styles.roomRankInfo}>
+                          <Text style={[styles.roomRankName, { color: palette.label }]} numberOfLines={1}>{row.name}</Text>
+                          <View style={[styles.roomRankProgressTrack, { backgroundColor: palette.fill3 }]}>
+                            <View style={[styles.roomRankProgressFill, { width: `${progress * 100}%`, backgroundColor: palette.tint }]} />
+                          </View>
+                        </View>
+                        <Text style={[styles.roomRankValue, { color: palette.labelSecondary }]} numberOfLines={1}>{row.value ? t('贡献 {value}', { value: row.value }) : t('贡献用户')}</Text>
+                      </View>
+                    );
+                  });
+                })()}
+              </ScrollView>
+            </GlassSurface>
+          </View>
+        </Modal>
+        <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
+          <View style={styles.roomModalShade}>
+            <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
+              <View style={styles.roomRankHandleWrap}>
+                <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
+              </View>
+              <View style={styles.roomRankHeader}>
+                <Text style={[styles.roomRankTitle, { color: palette.label }]}>
+                  {giftMode === 'room' ? t('房间送礼') : t('直播送礼')}
+                </Text>
+                <ScalePressable onPress={() => setGiftVisible(false)} pressedScale={0.92} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <View style={[styles.roomRankClose, { backgroundColor: palette.fill2 }]}>
+                    <MaterialCommunityIcons name="close" color={palette.labelSecondary} size={18} />
+                  </View>
+                </ScalePressable>
+              </View>
+              <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>
+                {giftMode === 'room' && giftTarget?.memberName ? `${t('收礼：{name}', { name: giftTarget.memberName })} · ` : ''}
+                {giftBalance ? `${t('余额：{balance} 鸡腿', { balance: giftBalance })} · ` : ''}{giftStatus}
+              </Text>
+              <ScrollView style={styles.roomRankList} showsVerticalScrollIndicator={false}>
+                {giftList.map((g, index) => {
+                  const gid = String(g.giftId || g.id || '');
+                  const gname = String(g.giftName || g.name || t('礼物 {n}', { n: index + 1 }));
+                  const cost = g.cost ?? g.price ?? g.money ?? 0;
+                  const pocket = Number(g.isPocketGift || 0) === 1;
+                  const stock = Number(g.giftTotal || 0);
+                  return (
+                    <TouchableOpacity
+                      key={`${gid}:${pocket ? 1 : 0}` || index}
+                      style={[styles.roomRankRow, { borderBottomColor: palette.hairline, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                      onPress={() => { setGiftSel(g); setGiftNum(1); }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.roomRankName, { color: palette.label, flex: 1 }]} numberOfLines={1}>
+                        {gname}{pocket ? t('（背包）') : ''}
+                      </Text>
+                      {pocket && stock > 0 ? (
+                        <Text style={[styles.roomRankValue, { color: palette.labelTertiary }]}>×{stock}</Text>
+                      ) : null}
+                      {Number(cost) > 0 && !pocket ? (
+                        <Text style={[styles.roomRankValue, { color: palette.labelSecondary }]}>{t('{cost} 鸡腿/个', { cost })}</Text>
+                      ) : null}
+                      {giftSel && String(giftSel.giftId || giftSel.id || '') === gid ? <MaterialCommunityIcons name="check-circle" color={palette.tint} size={18} /> : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <ScalePressable style={[styles.liveResolveBtnGhost, { paddingHorizontal: 12, paddingVertical: 6 }]} pressedScale={0.92} activeOpacity={0.8} onPress={() => setGiftNum((n) => Math.max(1, n - 1))}>
+                    <Text style={[styles.liveResolveBtnGhostText, { color: palette.tint }]}>−</Text>
+                  </ScalePressable>
+                  <Text style={[styles.roomRankTitle, { color: palette.label }]}>{giftNum}</Text>
+                  <ScalePressable style={[styles.liveResolveBtnGhost, { paddingHorizontal: 12, paddingVertical: 6 }]} pressedScale={0.92} activeOpacity={0.8} onPress={() => setGiftNum((n) => Math.min(999, n + 1))}>
+                    <Text style={[styles.liveResolveBtnGhostText, { color: palette.tint }]}>＋</Text>
+                  </ScalePressable>
+                </View>
+                <ScalePressable style={[styles.liveResolveBtn, { backgroundColor: palette.tint, paddingHorizontal: 18, paddingVertical: 8 }]} pressedScale={0.95} activeOpacity={0.85} onPress={sendRoomGift}>
+                  <Text style={styles.liveResolveBtnText}>{t('发送')}</Text>
+                </ScalePressable>
+              </View>
+            </GlassSurface>
+          </View>
+        </Modal>
         {liveResolve ? (
           /* 直播解析占位：无流地址直播卡点击后立即反馈（转圈/失败重试），出地址后由正式播放器接管 */
           <View style={[styles.roomPlayerPage, { backgroundColor: '#000' }]}>
