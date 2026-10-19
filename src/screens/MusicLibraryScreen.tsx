@@ -917,7 +917,8 @@ export default function MusicLibraryScreen() {
 
 const styles = StyleSheet.create({
   /** 网格卡内层容器（替代逐卡 GlassSurface） */
-  songCardBody: { borderRadius: 20, overflow: 'hidden' },
+  // 圆角必须与外层 songItem 一致（此前 20 vs 16 → 内层比外层圆，四角露出外层底色）
+  songCardBody: { borderRadius: radiiAlias.card, overflow: 'hidden' },
   container: { flex: 1, backgroundColor: 'transparent' },
   albumBarRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6 },
   playAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
@@ -978,7 +979,8 @@ const styles = StyleSheet.create({
     flex: 1,
     margin: 5,
     borderRadius: radiiAlias.card,
-    overflow: 'hidden',
+    // ⚠️ 不要在这里再写 overflow:'hidden'：与 elevation 同时存在时，Android 会把阴影
+    // 裁进视图内侧，渲染成「卡片外圈一圈深色」。裁切交给内层 songCardBody。
     // 克制阴影增强浮起感
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
