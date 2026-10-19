@@ -56,6 +56,18 @@ import { getBgDisplayUri, ensureBgCached } from '../services/roomBgCache';
 import { thumbUrl, AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
+
+/**
+ * OneUI（三星）降级开关：expo-blur 的 RenderEffect 实时模糊在三星机上极易掉帧/发热
+ *（用户反馈「性能够但卡卡卡、热热热」）。房间工具条改用半透明实底替代实时模糊。
+ */
+const IS_SAMSUNG =
+  Platform.OS === 'android' &&
+  /samsung/i.test(
+    String((Platform.constants as any)?.Brand || (Platform.constants as any)?.Manufacturer || ''),
+  );
+/** 工具条外壳：三星用普通 View（无 RenderEffect），其他机型保持玻璃 */
+const ToolbarShell: any = IS_SAMSUNG ? View : BlurView;
 import { useBlurTarget } from '../components/BlurTarget';
 import { GlassSegmented } from '../components/GlassSegmented';
 type FollowedRoom = {
@@ -2948,7 +2960,7 @@ export default function FollowedRoomsScreen() {
             {/* 组首显示名字 + HH:mm；组内不重复 */}
             {row.groupStart ? (
               <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 }}>
                   {/* 皇冠 = 房主标：只给本房房主（用户要求：别的成员不带皇冠） */}
                   {isRoomOwner ? <MaterialCommunityIcons name="crown" size={11} color={palette.tint} /> : null}
                   <Text style={[styles.msgSender, { color: (isRoomOwner || isMemberSender) ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
@@ -2963,7 +2975,7 @@ export default function FollowedRoomsScreen() {
                   ) : null}
                 </View>
                 <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>
-                  {formatTimestamp(item.msgTime).slice(11, 16)}
+                  {formatTimestamp(getMessageTime(item)).slice(11, 16)}
                 </Text>
               </View>
             ) : null}
@@ -3506,16 +3518,25 @@ export default function FollowedRoomsScreen() {
 
           {/* 聊天工具条：高斯模糊玻璃（按深浅色 tint，不挡房间背景）*/}
           <View style={[styles.chatToolsClip, { borderColor: palette.innerStroke }]}>
-            <BlurView
-              intensity={70}
-              tint={resolvedTheme === 'dark' ? 'dark' : 'light'}
-              blurTarget={blurTarget ?? undefined}
-              blurMethod="dimezisBlurViewSdk31Plus"
-              /* ⚠️【功耗/卡顿】必须给降采样系数：不传 = 全分辨率模糊，
-                 这条工具条常驻且叠在滚动消息列表上方，逐帧按原分辨率算 RenderEffect
-                 是房间页掉帧/发热的大头（尤其三星）。6 与 GlassSurface 保持同一档。 */
-              blurReductionFactor={Platform.OS === 'android' ? 6 : 4}
-              style={styles.chatTools}
+            <ToolbarShell
+              {...(IS_SAMSUNG
+                ? {}
+                : {
+                    intensity: 70,
+                    tint: resolvedTheme === 'dark' ? 'dark' : 'light',
+                    blurTarget: blurTarget ?? undefined,
+                    blurMethod: 'dimezisBlurViewSdk31Plus',
+                    /* ⚠️【功耗/卡顿】必须给降采样系数：不传 = 全分辨率模糊，
+                       这条工具条常驻且叠在滚动消息列表上方，逐帧按原分辨率算 RenderEffect
+                       是房间页掉帧/发热的大头（尤其三星）。6 与 GlassSurface 保持同一档。 */
+                    blurReductionFactor: Platform.OS === 'android' ? 6 : 4,
+                  })}
+              style={[
+                styles.chatTools,
+                IS_SAMSUNG
+                  ? { backgroundColor: resolvedTheme === 'dark' ? 'rgba(20,20,24,0.90)' : 'rgba(255,255,255,0.90)' }
+                  : null,
+              ]}
             >
           {roomSearchOpen ? (
             /* 搜索态：输入框原位替换分段切换（房间内搜索 = 搜消息） */
@@ -3598,7 +3619,7 @@ export default function FollowedRoomsScreen() {
               <MaterialCommunityIcons name="microphone" size={18} color={palette.onTint} />
             </ScalePressable>
           ) : null}
-            </BlurView>
+            </ToolbarShell>
           </View>
 
 
@@ -4347,7 +4368,7 @@ const styles = StyleSheet.create({
   followBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: radiiAlias.button, alignItems: 'center', justifyContent: 'center', minWidth: 52, height: 26 },
   followBtnText: { fontSize: 11, fontWeight: '800' },
   // 消息发送者名字后面的队伍标签
-  msgTeamChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, maxWidth: 128 },
+  msgTeamChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, maxWidth: 128, flexShrink: 0 },
   msgTeamLogo: { width: 11, height: 11, marginRight: 3 },
   msgTeamText: { fontSize: 10, fontWeight: '700' },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },
@@ -4396,7 +4417,9 @@ const styles = StyleSheet.create({
   msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   msgMetaLineMine: { justifyContent: 'flex-end' },
   msgSender: { fontSize: 12, fontWeight: '600', maxWidth: 150 },
-  msgTime: { fontSize: 10 },
+  // ⚠️ flexShrink:0 —— OneUI（三星）字号度量偏大时，时间会被左边的名字/队伍标签挤掉最后一位
+  //（截图里出现「00:4」「01:1」）。时间永不被压缩，改为让名字行收缩。
+  msgTime: { fontSize: 10, flexShrink: 0 },
   msgBubble: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 20 },
   msgBody: { fontSize: 15, lineHeight: 22 },
   msgBodyHighlight: {},
