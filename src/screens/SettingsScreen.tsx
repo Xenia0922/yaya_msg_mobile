@@ -301,6 +301,14 @@ export default function SettingsScreen() {
             onPress={() => Linking.openURL('https://gnz48.tech/app/').catch(() => {})}
           />
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          {/* 010 推送：同属「外部链接」，紧跟下载页 —— 用户找下载页时顺手能看到配套推送服务 */}
+          <Row
+            icon="bell-ring-outline"
+            title={t('010 推送')}
+            value="gnz48.tech"
+            onPress={() => Linking.openURL('https://gnz48.tech/').catch(() => {})}
+          />
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
           <Row
             icon="book-open-page-variant"
             title={t('开源协议')}
