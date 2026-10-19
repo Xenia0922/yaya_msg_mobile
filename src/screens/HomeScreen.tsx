@@ -636,7 +636,8 @@ export default function HomeScreen() {
 
   // 私信未读红点：仅在已登录时拉取；失败静默（不打扰）
   useFocusEffect(useCallback(() => {
-    if (!token) { setPmUnread(0); return; }
+    // 设置里有开关（默认开）：关掉就不再拉取、不显示角标
+    if (!token || settings.yaya_pm_unread_badge === false) { setPmUnread(0); return; }
     let alive = true;
     pocketApi.getUnreadMessageCount()
       .then((res: any) => {
@@ -647,7 +648,7 @@ export default function HomeScreen() {
       })
       .catch(() => { if (alive) setPmUnread(0); });
     return () => { alive = false; };
-  }, [token]));
+  }, [token, settings.yaya_pm_unread_badge]));
   const toolChips = TOOL_CHIPS.map((i) => ({ ...i, title: t(i.title) }));
 
   const banner = lives[safeBannerIndex];
@@ -876,7 +877,7 @@ export default function HomeScreen() {
                       </View>
                       <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>{item.title}</Text>
                       {/* 私信未读红点角标 */}
-                      {item.route === 'PrivateMessagesScreen' && pmUnread > 0 ? (
+                      {item.route === 'PrivateMessagesScreen' && pmUnread > 0 && settings.yaya_pm_unread_badge !== false ? (
                         <View style={{
                           position: 'absolute', top: -4, right: -4, minWidth: 17, height: 17, borderRadius: 9,
                           backgroundColor: palette.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,

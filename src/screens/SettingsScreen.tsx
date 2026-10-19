@@ -390,6 +390,21 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
+        {/* 消息 */}
+        <Section title={t('消息')} delay={210}>
+          <View style={styles.innerPad}>
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('首页「私信」入口显示未读红点')}</Text>
+            <ChipRow
+              options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]}
+              value={settings.yaya_pm_unread_badge}
+              onChange={(v) => update('yaya_pm_unread_badge', v)}
+            />
+            <Text style={[styles.note, { color: palette.labelTertiary }]}>
+              {t('关闭后首页不再拉取私信未读数，也不显示红点角标')}
+            </Text>
+          </View>
+        </Section>
+
         {/* 自动签到 */}
         <Section title={t('自动签到')} delay={220}>
           <View style={styles.innerPad}>
@@ -521,7 +536,7 @@ const styles = StyleSheet.create({
     borderRadius: radiiAlias.card,
   },
   autoSyncText: { fontSize: 12, marginLeft: 8, fontWeight: '600' },
-  note: { marginHorizontal: 14, marginTop: 10, fontSize: 11, lineHeight: 16 },
+  note: { marginHorizontal: 14, marginTop: 10, marginBottom: 14, fontSize: 11, lineHeight: 16 },
   textInput: {
     marginTop: 8,
     borderRadius: 10,

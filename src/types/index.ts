@@ -320,4 +320,6 @@ export interface AppSettings {
   meet48Auth?: Meet48Auth | null;
   /** 画中画（系统小窗）：视频播放中切后台自动弹系统悬浮窗。默认关——不主动调用不弹 App 外小窗 */
   pip_auto: boolean;
+  /** 首页「私信」入口的未读红点角标。默认开 */
+  yaya_pm_unread_badge: boolean;
 }

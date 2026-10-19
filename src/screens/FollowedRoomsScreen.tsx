@@ -1181,6 +1181,18 @@ const ROOM_DUR_CACHE = new Map<string, string>();
 /** 资料卡头像尺寸（与 styles.userCardAvatar 同步；头像框叠加按此放大） */
 const USER_CARD_AVATAR_SIZE = 64;
 
+/** 消息头像尺寸（与 styles.avatar 同步） */
+const ROOM_AVATAR_SIZE = 40;
+
+/** 发送者头像框：官方消息 ext.user.badge[]（每项是资源地址）/ pfUrl / headFrame，取第一个可用 URL */
+function firstFrameFrom(extUser: any): string {
+  const b = extUser?.badge ?? extUser?.pfUrl ?? extUser?.headFrame ?? extUser?.frameUrl;
+  if (!b) return '';
+  const first = Array.isArray(b) ? b[0] : (typeof b === 'object' ? (b[0] || b.url || b.picPath || '') : b);
+  const u = String(first || '').trim();
+  return /^(https?:\/\/|\/)/.test(u) ? normalizeUrl(u) : '';
+}
+
 /**
  * 从 user/info/home 响应里泛匹配头像框地址：官方各端字段名不统一
  * （pictureFrame / pfUrl / headFrame / bubble…），按「key 含框类词 + 值是 URL」匹配。
@@ -3015,6 +3027,8 @@ export default function FollowedRoomsScreen() {
       const extUser: any = (extraInfo(item) as any)?.user || {};
       const extUserId = String(extUser?.userId ?? extUser?.user_id ?? extUser?.id ?? '').trim();
       const canOpenProfile = !!avatarMember || !!senderId || !!extUserId;
+      // 头像框：官方消息 ext.user.badge[]（资源地址数组）/ pfUrl / headFrame —— 有就叠加在消息头像上
+      const senderFrameUrl = firstFrameFrom(extUser);
 
       return (
         <View style={[styles.chatRow, mine && styles.chatRowMine, !row.groupStart && styles.chatRowTight]}>
@@ -3026,11 +3040,26 @@ export default function FollowedRoomsScreen() {
                 disabled={!canOpenProfile}
                 onPress={() => openSenderProfile({ id: senderId, name: profile.name, avatar: profile.avatar, member: avatarMember, userIds: [extUserId] })}
               >
-                {profile.avatar ? (
-                  <Image source={{ uri: thumbUrl(profile.avatar, AVATAR_THUMB_WIDTH) }} style={styles.avatar} />
-                ) : (
-                  <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
-                )}
+                <View>
+                  {profile.avatar ? (
+                    <Image source={{ uri: thumbUrl(profile.avatar, AVATAR_THUMB_WIDTH) }} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
+                  )}
+                  {senderFrameUrl ? (
+                    <Image
+                      source={{ uri: senderFrameUrl }}
+                      style={{
+                        position: 'absolute',
+                        width: ROOM_AVATAR_SIZE * 1.32,
+                        height: ROOM_AVATAR_SIZE * 1.32,
+                        left: (ROOM_AVATAR_SIZE - ROOM_AVATAR_SIZE * 1.32) / 2,
+                        top: (ROOM_AVATAR_SIZE - ROOM_AVATAR_SIZE * 1.32) / 2,
+                      }}
+                      resizeMode="contain"
+                    />
+                  ) : null}
+                </View>
               </TouchableOpacity>
             ) : (
               
@@ -3826,6 +3855,14 @@ export default function FollowedRoomsScreen() {
           radius={16}
           style={[styles.roomInputBar, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
         >
+          <TouchableOpacity
+            onPress={() => openRoomGiftPanel()}
+            activeOpacity={0.85}
+            style={styles.roomGiftBtn}
+            accessibilityLabel={t('礼物')}
+          >
+            <MaterialCommunityIcons name="gift-outline" size={20} color={palette.tint} />
+          </TouchableOpacity>
           <TextInput
             style={[styles.roomInput, { color: palette.label }]}
             value={roomDraft}
@@ -4234,6 +4271,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  roomGiftBtn: { paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
   roomInput: { flex: 1, minHeight: 36, maxHeight: 96, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, textAlignVertical: 'center', includeFontPadding: false },
   roomSendBtn: { height: 34, borderRadius: 18, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
   roomSendBtnText: { fontSize: 13, fontWeight: '700' },

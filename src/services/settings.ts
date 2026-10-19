@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   customBackgroundUpdatedAt: 0,
   meet48Auth: null,
   pip_auto: false,
+  yaya_pm_unread_badge: true,
 };
 
 export async function loadSettings(): Promise<AppSettings> {
