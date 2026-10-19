@@ -749,15 +749,14 @@ export default function MusicLibraryScreen() {
               <TouchableOpacity
                 style={[
                   styles.songItem,
-                  // 边框宽度恒定：高亮只换颜色 + 半透明底色，避免 1→2px 造成的内容位移
-                  { backgroundColor: active ? (palette.tintSoft || 'rgba(255,111,145,0.10)') : 'transparent', borderColor: active ? palette.tint : palette.hairline, borderWidth: 1 },
+                  // 玻璃卡：底色由 GlassSurface 负责，外层只管高亮描边（宽度恒定，避免内容位移）
+                  { borderColor: active ? palette.tint : 'transparent', borderWidth: 1 },
                 ]}
                 onPress={() => playSong(item)}
                 activeOpacity={0.7}
               >
-              {/* ⚠️ 网格里禁止逐卡 GlassSurface（每个卡一个模糊层 → 滚动掉帧/布局塌陷）。
-                  卡片底衬由外层 TouchableOpacity 的 border/bg 表达。 */}
-              <View style={[styles.songCardBody, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+              {/* 玻璃卡（用户要求）：走全站唯一玻璃出口 GlassSurface；高亮态由外层描边表达 */}
+              <GlassSurface radius={radiiAlias.card} role="card" style={styles.songCardBody}>
                 <View style={styles.coverWrap}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
                   {/* 正在播放指示：三根均衡器柱错峰跳动 */}
@@ -814,7 +813,7 @@ export default function MusicLibraryScreen() {
                     })()}
                   </View>
                 </View>
-              </View>
+              </GlassSurface>
               </TouchableOpacity>
             </FadeInView>
             );
@@ -917,8 +916,8 @@ export default function MusicLibraryScreen() {
 
 const styles = StyleSheet.create({
   /** 网格卡内层容器（替代逐卡 GlassSurface） */
-  // 圆角必须与外层 songItem 一致（此前 20 vs 16 → 内层比外层圆，四角露出外层底色）
-  songCardBody: { borderRadius: radiiAlias.card, overflow: 'hidden' },
+  /** 玻璃卡内容容器（GlassSurface 自带圆角/描边，这里只负责裁切与撑满宽度） */
+  songCardBody: { overflow: 'hidden' },
   container: { flex: 1, backgroundColor: 'transparent' },
   albumBarRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6 },
   playAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
