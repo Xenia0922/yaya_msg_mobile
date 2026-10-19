@@ -286,8 +286,8 @@ export default function SettingsScreen() {
           <Row
             icon="download-circle"
             title={t('下载页')}
-            value="010push.a23xyz.xyz/app"
-            onPress={() => Linking.openURL('https://010push.a23xyz.xyz/app/').catch(() => {})}
+            value="gnz48.tech/app"
+            onPress={() => Linking.openURL('https://gnz48.tech/app/').catch(() => {})}
           />
           <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
           <Row

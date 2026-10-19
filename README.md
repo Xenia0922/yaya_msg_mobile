@@ -87,7 +87,7 @@
 - 翻牌统计、成员数据库、鸡腿充值
 
 ## 安装
-从[下载页](https://010push.a23xyz.xyz/app/)下载
+从[下载页](https://gnz48.tech/app/)下载
 
 从[夸克网盘](https://pan.quark.cn/s/5b103245218a)下载
 
