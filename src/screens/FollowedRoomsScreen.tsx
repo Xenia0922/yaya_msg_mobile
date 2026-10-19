@@ -2425,14 +2425,16 @@ export default function FollowedRoomsScreen() {
   refreshRoomMessagesRef.current = refreshRoomMessages;
 
 
-  // 房间内实时刷新：打开房间后每 15s 静默拉取一次最新消息（成员 + 粉丝）
-  // B 优化：App 退到后台/锁屏时暂停轮询（避免后台空转耗电耗流量），回前台恢复。
+  // 房间内实时刷新：QChat 长连接（observeRoomMessages）才是实时主通道，
+  // 这里只是 HTTP 兜底（长连接静默降级时房间仍能收到新消息）——
+  // 15s 对兜底而言过于奢侈（前台停留时每 15s 空拉一次全量消息，网络+CPU+耗电），
+  // 2026-10-20 降到 60s：长连接正常情况下消息秒达，兜底一分钟一次足够。
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!selectedRoom) return;
     const startPoll = () => {
       if (pollTimerRef.current) return;
-      pollTimerRef.current = setInterval(() => { refreshRoomMessages(); }, 15000);
+      pollTimerRef.current = setInterval(() => { refreshRoomMessages(); }, 60000);
     };
     const stopPoll = () => {
       if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }

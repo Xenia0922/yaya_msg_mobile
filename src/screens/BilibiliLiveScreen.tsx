@@ -301,8 +301,16 @@ export default function BilibiliLiveScreen() {
 
   useEffect(() => {
     if (streamUrl || !rooms.length) return;
-    const id = setInterval(() => { checkStatuses(true); }, 30000);
-    return () => clearInterval(id);
+    // 功耗：后台暂停开播状态轮询；切回前台由上面的 effect 立即补拉一次
+    let id: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (!id) id = setInterval(() => { checkStatuses(true); }, 30000); };
+    const stop = () => { if (id) { clearInterval(id); id = null; } };
+    if (AppState.currentState === 'active') start();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') start();
+      else stop();
+    });
+    return () => { sub.remove(); stop(); };
   }, [rooms, streamUrl, checkStatuses]);
 
   // 切回前台时立即刷新开播状态（原 effect 只处理横屏锁复位）

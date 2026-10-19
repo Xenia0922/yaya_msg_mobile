@@ -709,6 +709,10 @@ export default function MediaScreen() {
     };
     if (playing.isLive) {
       // 直播：轮询 barrage/list 累积实时弹幕
+      // 功耗：后台/页面失焦时暂停（画面不可见时拉了也白拉），回前台立即补一次
+      let pollId: ReturnType<typeof setInterval> | null = null;
+      const startPoll = () => { if (!pollId) pollId = setInterval(poll, 5000); };
+      const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } };
       const poll = async () => {
         try {
           const infos = await pocketApi.getLiveBarrage(lid);
@@ -735,9 +739,13 @@ export default function MediaScreen() {
           setShowDanmaku(true);
         } catch {}
       };
-      poll();
-      const id = setInterval(poll, 5000);
-      return () => { alive = false; clearInterval(id); };
+      // 初始与前后台切换：前台+页面聚焦才轮询
+      if (AppState.currentState === 'active' && navigation.isFocused()) { poll(); startPoll(); }
+      const sub = AppState.addEventListener('change', (next) => {
+        if (next === 'active' && alive && navigation.isFocused()) { poll(); startPoll(); }
+        else stopPoll();
+      });
+      return () => { alive = false; sub.remove(); stopPoll(); };
     }
     // content.msgFilePath 指向的 LRC 文件，而非 barrage/list；格式 [hh:mm:ss.fff]昵称\t内容，
     // 已由 parseDanmaku 解析为「秒」对上 playbackTime）
