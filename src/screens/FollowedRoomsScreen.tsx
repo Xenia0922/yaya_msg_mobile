@@ -3408,8 +3408,7 @@ export default function FollowedRoomsScreen() {
         {rankVisible ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
           <View style={styles.roomModalShade}>
-            {/* Modal 内禁用实时模糊玻璃：Android 上模糊层采样会溢出到全屏，开关面板时整屏闪 */}
-            <View style={[styles.roomRankPanel, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, borderColor: palette.hairline }]}>
+            <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
               {/* 顶部 handle */}
               <View style={styles.roomRankHandleWrap}>
                 <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
@@ -3446,14 +3445,14 @@ export default function FollowedRoomsScreen() {
                   });
                 })()}
               </ScrollView>
-            </View>
+            </GlassSurface>
           </View>
         </Modal>
         ) : null}
         {giftVisible ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.roomModalShade}>
-            <View style={[styles.rgPanel, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, borderColor: palette.hairline }]}>
+            <GlassSurface radius={20} role="card" style={[styles.rgPanel, { backgroundColor: 'transparent' }]}>
               <View style={styles.rgHeader}>
                 <Text style={[styles.rgTitle, { color: palette.label }]}>
                   {giftMode === 'room' ? t('房间送礼') : t('直播送礼')}
@@ -3535,7 +3534,7 @@ export default function FollowedRoomsScreen() {
               >
                 <Text style={[styles.rgRechargeText, { color: palette.tint }]}>{t('余额不足？去充值鸡腿')}</Text>
               </TouchableOpacity>
-            </View>
+            </GlassSurface>
           </View>
         </Modal>
         ) : null}
