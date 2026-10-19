@@ -3607,7 +3607,12 @@ export default function FollowedRoomsScreen() {
           <Chat
             messages={chatIms}
             // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
+            // ⚠️ OneUI/三星：只传 theme 仍可能被库/系统解析成深色底 → 同时传 darkTheme，
+            //    并显式给列表容器透明，确保消息区不盖住房间背景图。
             theme={{ colors: { background: 'transparent' } }}
+            darkTheme={{ colors: { background: 'transparent' } }}
+            messagesContainerStyle={{ backgroundColor: 'transparent' }}
+            listProps={{ style: { flex: 1, backgroundColor: 'transparent' } }}
             locale="zh"
             // 日期分隔：纯数字「今天/昨天/x月x日」，居中显示（renderDayLabel）
             // 整行自定义：用页面既有的 renderChatItem —— 头像、气泡外的发送者名字、
