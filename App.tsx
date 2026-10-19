@@ -725,11 +725,11 @@ export default function App() {
 // v2.6: Announcement modal styles
 const anStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, maxWidth: 400, width: '100%', maxHeight: '80%' },
+  card: { borderRadius: 16, padding: 20, maxWidth: 400, width: '100%', maxHeight: '80%' }, // 背景色由内联 palette.surface 提供
   header: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
-  title: { fontSize: 15, fontWeight: '600', marginBottom: 10, color: '#333' },
+  title: { fontSize: 15, fontWeight: '600', marginBottom: 10 }, // 颜色由内联 palette.label 提供
   image: { width: '100%', height: 160, borderRadius: 10, marginBottom: 10 },
-  content: { fontSize: 14, lineHeight: 22, color: '#555', marginBottom: 16 },
+  content: { fontSize: 14, lineHeight: 22, marginBottom: 16 }, // 颜色由内联 palette.labelSecondary 提供
   btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
   btn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 },
   btnText: { color: '#fff', fontSize: 14, fontWeight: '600' },

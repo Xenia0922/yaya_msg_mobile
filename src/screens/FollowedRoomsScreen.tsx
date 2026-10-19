@@ -3402,11 +3402,11 @@ export default function FollowedRoomsScreen() {
             <View style={styles.liveResolveWrap}>
               {liveResolve.error ? (
                 <>
-                  <MaterialCommunityIcons name="alert-decagram-outline" color="#ff8fa3" size={46} />
+                  <MaterialCommunityIcons name="alert-decagram-outline" color={palette.tint} size={46} />
                   <Text style={styles.liveResolveTitle}>{t('直播地址解析失败')}</Text>
                   <Text style={styles.liveResolveText}>{liveResolve.error}</Text>
                   <View style={styles.liveResolveBtns}>
-                    <ScalePressable style={[styles.liveResolveBtn, { backgroundColor: '#ff6f91' }]} pressedScale={0.96} activeOpacity={0.85} onPress={() => resolveLiveAndOpen(liveResolve.media)}>
+                    <ScalePressable style={[styles.liveResolveBtn, { backgroundColor: palette.tint }]} pressedScale={0.96} activeOpacity={0.85} onPress={() => resolveLiveAndOpen(liveResolve.media)}>
                       <Text style={styles.liveResolveBtnText}>{t('重试')}</Text>
                     </ScalePressable>
                     <ScalePressable style={[styles.liveResolveBtnGhost, { borderColor: 'rgba(255,255,255,0.35)' }]} pressedScale={0.96} activeOpacity={0.85} onPress={cancelLiveResolve}>
@@ -3416,7 +3416,7 @@ export default function FollowedRoomsScreen() {
                 </>
               ) : (
                 /* 解析中：只转圈不给过程说明（用户反馈「没必要写明出来」；40s 列表缓存+4s 超时已大幅提速） */
-                <ActivityIndicator color="#ff6f91" size="large" />
+                <ActivityIndicator color={palette.tint} size="large" />
               )}
             </View>
           </View>
@@ -3802,7 +3802,7 @@ export default function FollowedRoomsScreen() {
 
         {/* 房间发言（云信圈组）：HTTP 侧只有历史，发送必须走云信 */}
         {replyTarget ? (
-          <View style={styles.replyBar}>
+          <View style={[styles.replyBar, { borderLeftColor: palette.tint }]}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[styles.replyBarName, { color: palette.tint }]} numberOfLines={1}>
                 {t('回复 {name}', { name: replyTarget.replyName })}
@@ -4503,7 +4503,7 @@ const styles = StyleSheet.create({
   avatarText: { fontWeight: '900', fontSize: 15 },
   msgBlock: { maxWidth: '78%', minWidth: 48 },
   msgBlockMine: { alignItems: 'flex-end' },
-  replyCard: { marginBottom: 6, padding: 8, borderRadius: radii.sm, borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
+  replyCard: { marginBottom: 6, padding: 8, borderRadius: radii.sm, borderLeftWidth: 3 },
   essenceBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
   essenceSheet: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
@@ -4527,7 +4527,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderLeftWidth: 3,
-    borderLeftColor: '#ff6f91',
     backgroundColor: 'rgba(0,0,0,0.06)',
     borderRadius: radii.sm,
     marginBottom: 6,
@@ -4550,7 +4549,7 @@ const styles = StyleSheet.create({
   giftCard: { marginTop: 8, minWidth: 210, padding: 10, borderRadius: radiiAlias.cardCompact, backgroundColor: 'rgba(255,240,246,0.88)', borderWidth: 1, borderColor: 'rgba(255,111,145,0.24)', flexDirection: 'row', alignItems: 'center', gap: 10 },
   giftCardCompact: { minWidth: 0, padding: 8, gap: 0 } as any,
   giftImage: { width: 34, height: 34, borderRadius: radii.xs, backgroundColor: '#fff' },
-  giftImageFallback: { width: 34, height: 34, borderRadius: radii.xs, backgroundColor: '#ff6f91', alignItems: 'center', justifyContent: 'center' },
+  giftImageFallback: { width: 34, height: 34, borderRadius: radii.xs, alignItems: 'center', justifyContent: 'center' },
   giftEmoji: { color: '#fff', fontSize: 13, fontWeight: '800' },
   giftTextWrap: { flex: 1, minWidth: 0 },
   giftName: { fontSize: 13, fontWeight: '800' },
@@ -4566,7 +4565,6 @@ const styles = StyleSheet.create({
   videoCoverDuration: { position: 'absolute', right: 8, bottom: 8, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.5)' },
   videoCoverDurationText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   videoCoverPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)' },
-  videoCoverPlaceholderText: { color: '#ff6f91', fontSize: 13, fontWeight: '800' },
   livePlayCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   livePlayIcon: { color: '#fff', fontSize: 24, marginLeft: 4 },
   liveCardTitleBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: 'rgba(0,0,0,0.5)' },
@@ -4585,12 +4583,11 @@ const styles = StyleSheet.create({
   inlineImage: { width: '100%', maxWidth: 228, aspectRatio: 1, marginTop: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
   inlineSticker: { width: 120, height: 120, marginTop: 6, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
   openLinkBtn: { marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.10)', maxWidth: '100%', alignSelf: 'flex-start' },
-  openLinkText: { color: '#ff6f91', fontSize: 11, fontWeight: '800' },
+  openLinkText: { fontSize: 11, fontWeight: '800' },
   roomPlayerPage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 1000, elevation: 1000, backgroundColor: '#000' },
   roomPlayerPageFullscreen: { paddingTop: 0 },
   roomPlayerHeader: { flexDirection: 'row', alignItems: 'center', paddingTop: 44, paddingHorizontal: 10, paddingBottom: 8, backgroundColor: '#080808' },
   roomPlayerBack: { padding: 8 },
-  roomPlayerBackText: { color: '#ff6f91', fontSize: 14, fontWeight: '900' },
   roomPlayerTitle: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '800' },
   roomPlayerTool: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)', marginLeft: 6 },
   roomPlayerToolText: { color: '#fff', fontSize: 12, fontWeight: '900' },

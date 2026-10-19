@@ -7,6 +7,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -26,19 +27,21 @@ export interface AppTabBarProps {
   onSelect: (key: string) => void;
 }
 
-/** 单格宽度（固定宽 → 指示器位移可直接用 index * CELL_W 算） */
-const CELL_W = 76;
 /** 底栏左右内边距（与 styles.bar.paddingHorizontal 保持一致） */
 const BAR_PAD = 8;
+/** 单格最小宽：低于此值（极窄屏/超多 tab）宁可靠边也不挤压文字 */
+const CELL_MIN = 64;
 
 function TabCell({
   item,
   active,
   onSelect,
+  width,
 }: {
   item: TabBarItem;
   active: boolean;
   onSelect: () => void;
+  width: number;
 }) {
   const palette = usePalette();
   const pop = useRef(new Animated.Value(1)).current;
@@ -61,7 +64,7 @@ function TabCell({
       accessibilityState={{ selected: active }}
       hitSlop={6}
       onPress={onSelect}
-      style={({ pressed }) => [styles.cell, pressed && { transform: [{ scale: 0.97 }] }]}
+      style={({ pressed }) => [{ ...styles.cell, width }, pressed && { transform: [{ scale: 0.97 }] }]}
     >
       <Animated.View style={[styles.cellIcon, { transform: [{ scale: pop }] }]}>
         {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 23 })}
@@ -85,12 +88,18 @@ function TabCell({
 export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const palette = usePalette();
   const isDark = palette.name === 'dark';
+  const { width: winW } = useWindowDimensions();
 
   const activeIndex = Math.max(0, items.findIndex((it) => it.key === activeKey));
-  const maxShift = Math.max(0, (items.length - 1) * CELL_W);
+  // D7：单格宽按屏宽/格数自适应（此前写死 76，加第 5 个 tab 必溢出）
+  const cellW = Math.max(CELL_MIN, Math.round((Math.min(winW, 520) - 32 - BAR_PAD * 2) / Math.max(1, items.length)));
+  // PanResponder 只创建一次，闭包里用 ref 读最新格宽（格数/屏宽变化时不出错）
+  const cellWRef = useRef(cellW);
+  cellWRef.current = cellW;
+  const maxShift = Math.max(0, (items.length - 1) * cellW);
 
-  const indX = useRef(new Animated.Value(activeIndex * CELL_W)).current;
-  const indXRef = useRef(activeIndex * CELL_W);
+  const indX = useRef(new Animated.Value(activeIndex * cellWRef.current)).current;
+  const indXRef = useRef(activeIndex * cellWRef.current);
   const startXRef = useRef(0);
   /** 拖动时选中玻璃"液化"：跟随拖动距离横向拉长（苹果/Kyant0 拖动的形变） */
   const dragStretch = useRef(new Animated.Value(1)).current;
@@ -109,7 +118,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   // 外部切页（含导航状态变化）时把指示器弹到位
   useEffect(() => {
     if (hoverRef.current != null) return; // 拖动中不要被外部状态拽走
-    const target = activeIndex * CELL_W;
+    const target = activeIndex * cellWRef.current;
     indXRef.current = target;
     Animated.spring(indX, { toValue: target, tension: 240, friction: 26, useNativeDriver: true }).start();
   }, [activeIndex, indX]);
@@ -142,20 +151,20 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
           indXRef.current = v;
           startXRef.current = v;
         });
-        hoverRef.current = Math.round(indXRef.current / CELL_W);
+        hoverRef.current = Math.round(indXRef.current / cellWRef.current);
         setHoverIndex(hoverRef.current);
         scaleTo(1.12);
         dragStretch.setValue(1.04);
       },
       onPanResponderMove: (_, g) => {
-        const limit = Math.max(0, (itemsRef.current.length - 1) * CELL_W);
+        const limit = Math.max(0, (itemsRef.current.length - 1) * cellWRef.current);
         const nx = Math.min(limit, Math.max(0, startXRef.current + g.dx));
         indXRef.current = nx;
         indX.setValue(nx);
         // 液化：拖得越远，胶囊沿拖动方向拉得越长（iOS 26 拖动的形变）
-        const moved = Math.abs(nx - startXRef.current) / CELL_W;
+        const moved = Math.abs(nx - startXRef.current) / cellWRef.current;
         dragStretch.setValue(Math.min(1.32, 1.04 + moved * 0.26));
-        const h = Math.round(nx / CELL_W);
+        const h = Math.round(nx / cellWRef.current);
         if (h !== hoverRef.current) {
           hoverRef.current = h;
           setHoverIndex(h);
@@ -163,10 +172,10 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
       },
       onPanResponderRelease: () => {
         const n = itemsRef.current.length;
-        const h = Math.min(n - 1, Math.max(0, Math.round(indXRef.current / CELL_W)));
+        const h = Math.min(n - 1, Math.max(0, Math.round(indXRef.current / cellWRef.current)));
         hoverRef.current = null;
         setHoverIndex(null);
-        settle(h * CELL_W);
+        settle(h * cellWRef.current);
         scaleTo(1);
         dragStretch.setValue(1);
         Animated.spring(dragStretch, { toValue: 1, tension: 240, friction: 26, useNativeDriver: true }).start();
@@ -176,7 +185,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
       onPanResponderTerminate: () => {
         hoverRef.current = null;
         setHoverIndex(null);
-        settle(activeIndexRef.current * CELL_W);
+        settle(activeIndexRef.current * cellWRef.current);
         scaleTo(1);
         Animated.spring(dragStretch, { toValue: 1, tension: 240, friction: 26, useNativeDriver: true }).start();
       },
@@ -198,7 +207,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
             style={[
               styles.indicator,
               {
-                width: CELL_W,
+                width: cellWRef.current,
                 // 选中胶囊 = 底面 + 柔和投影。
                 // ⚠️ 阴影必须是「灰色」：黑色投影压在浅色玻璃上会显脏（用户明确要求）。
                 // Android 端 RN 会把 shadowColor 映射到 outline shadow 颜色（API 28+），
@@ -229,7 +238,6 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
                     ? 'rgba(255,255,255,0.10)'
                     : 'rgba(232,232,238,0.40)'
               }
-              iridescence={0.6}
             />
           </Animated.View>
           {items.map((item, i) => (
@@ -237,6 +245,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               key={item.key}
               item={item}
               active={i === litIndex}
+              width={cellW}
               onSelect={() => onSelect(item.key)}
             />
           ))}
@@ -282,7 +291,6 @@ const styles = StyleSheet.create({
     borderRadius: 28,
   },
   cell: {
-    width: CELL_W,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
