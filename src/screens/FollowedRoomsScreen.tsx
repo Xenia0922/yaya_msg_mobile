@@ -1787,7 +1787,7 @@ export default function FollowedRoomsScreen() {
         setGiftList(ctx.gifts);
         setGiftBalance(ctx.balance != null ? String(ctx.balance) : '');
         setGiftStatus(ctx.gifts.length
-          ? t('已加载 {count} 个礼物 · 收礼：{name}', { count: ctx.gifts.length, name: ctx.target.memberName || t('房主') })
+          ? t('已加载 {count} 个礼物', { count: ctx.gifts.length })
           : t('礼物列表为空'));
       } catch (err) {
         setGiftList([]);
@@ -3404,9 +3404,12 @@ export default function FollowedRoomsScreen() {
             <DanmakuSettingsSheet visible={showRoomDanmakuSettings} onClose={() => setShowRoomDanmakuSettings(false)} />
           </View>
         ) : null}
-        <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
+        {/* 挂载短路：visible=false 的 Modal 常驻房间根节点时，每次房间重渲染都会 flush Modal 窗口 → 整页闪 */}
+        {rankVisible ? (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
           <View style={styles.roomModalShade}>
-            <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
+            {/* Modal 内禁用实时模糊玻璃：Android 上模糊层采样会溢出到全屏，开关面板时整屏闪 */}
+            <View style={[styles.roomRankPanel, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, borderColor: palette.hairline }]}>
               {/* 顶部 handle */}
               <View style={styles.roomRankHandleWrap}>
                 <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
@@ -3443,12 +3446,14 @@ export default function FollowedRoomsScreen() {
                   });
                 })()}
               </ScrollView>
-            </GlassSurface>
+            </View>
           </View>
         </Modal>
-        <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
+        ) : null}
+        {giftVisible ? (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.roomModalShade}>
-            <GlassSurface radius={20} role="card" style={[styles.rgPanel, { backgroundColor: 'transparent' }]}>
+            <View style={[styles.rgPanel, { backgroundColor: palette.surface, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, borderColor: palette.hairline }]}>
               <View style={styles.rgHeader}>
                 <Text style={[styles.rgTitle, { color: palette.label }]}>
                   {giftMode === 'room' ? t('房间送礼') : t('直播送礼')}
@@ -3530,9 +3535,10 @@ export default function FollowedRoomsScreen() {
               >
                 <Text style={[styles.rgRechargeText, { color: palette.tint }]}>{t('余额不足？去充值鸡腿')}</Text>
               </TouchableOpacity>
-            </GlassSurface>
+            </View>
           </View>
         </Modal>
+        ) : null}
         {liveResolve ? (
           /* 直播解析占位：无流地址直播卡点击后立即反馈（转圈/失败重试），出地址后由正式播放器接管 */
           <View style={[styles.roomPlayerPage, { backgroundColor: '#000' }]}>
