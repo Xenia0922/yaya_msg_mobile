@@ -253,8 +253,8 @@ export default function MusicLibraryScreen() {
         if (ga !== gb) return ga < gb ? -1 : 1;
         return String(a.title || '').localeCompare(String(b.title || ''), 'zh');
       });
-      // 官方（yk1z）源绝大多数曲目不带时长（源数据只有极少数 songs_time）。
-      // 兜底 1：同名的 R2 曲目若有时长就借用（仅补 0，绝不覆盖已有值）。
+      // 源说明：R2 = yk1z 曲库（自带 duration，如 "4:57"）；官方 = 丝芭站点（多数无 songs_time）。
+      // 兜底：丝芭源里缺时长的曲目，若 yk1z 库有同名曲目就借用（仅补 0，绝不覆盖已有值）。
       const r2DurByTitle = new Map<string, number>();
       for (const t of r2 as any[]) {
         const k = String(t.title || '').trim().toLowerCase();
