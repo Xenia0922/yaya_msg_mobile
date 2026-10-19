@@ -1,15 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 
-import {
-  Alert,
-  Image,
-  Modal,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import {Image, Modal, StyleSheet, Text, TextInput, View} from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
@@ -147,7 +140,7 @@ export default function DownloadScreen() {
 
   const remove = async (id: string) => {
     // 删除下载记录 + 本地文件不可恢复，二次确认
-    Alert.alert(t('删除下载'), t('将删除该下载项及本地文件，确定？'), [
+    showDialog(t('删除下载'), t('将删除该下载项及本地文件，确定？'), [
       { text: t('取消'), style: 'cancel' },
       {
         text: t('删除'),
@@ -162,7 +155,7 @@ export default function DownloadScreen() {
 
   const clearDone = async () => {
     // 清理全部已完成/失败项 + 本地文件，不可恢复，二次确认
-    Alert.alert(t('清理完成'), t('将删除所有已完成和失败的下载项及本地文件，确定？'), [
+    showDialog(t('清理完成'), t('将删除所有已完成和失败的下载项及本地文件，确定？'), [
       { text: t('取消'), style: 'cancel' },
       {
         text: t('清理'),

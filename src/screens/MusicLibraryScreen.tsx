@@ -1,16 +1,8 @@
+import { useNavigation } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
-import {
-  Animated,
-  Easing,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Animated, BackHandler, Easing, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Video from 'react-native-video';
 import officialMediaApi from '../api/officialMedia';
 import { loadOfficialSiteMusic } from '../api/officialSiteMusic';
@@ -108,13 +100,13 @@ const CHIP_HEIGHT = 28;
 const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
 
 export default function MusicLibraryScreen() {
+  const navigation = useNavigation();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
   const playUrl = useMusicPlayerStore((s) => s.url);
   // 音量归一：R2（gnz.hk/music.gnz.hk）母带普遍比 48 官方源响 10-15%，统一压到 0.86；
-  // 官方源维持 1.0。后续若 bilibili 等直播源也需对齐，按 host 在此表增补即可。
   const playVolume = useMemo(() => {
     const u = String(playUrl || '').toLowerCase();
     return /(gnz\.hk|gnz-music|music\.gnz)/.test(u) || /\.r2\.|r2-music/i.test(u) ? 0.86 : 1.0;
@@ -228,7 +220,6 @@ export default function MusicLibraryScreen() {
         seen.add(key);
         merged.push(t);
       });
-      // 排序（对齐桌面 sortKey='source' 语义 + 用户要求：SNH48 系子团归 SNH48 段）：
       // 段序 SNH48 系(含 7SENSES/BLUEV/DEMOON/HO2/Color Girls/塞纳河组合) → GNZ → ... ；
       // 同段内按 sourceIndex（官方源小在前，R2 公演源大在后），R2 内再按子团聚合后按标题
       merged.sort((a: any, b: any) => {
@@ -289,6 +280,21 @@ export default function MusicLibraryScreen() {
   // 续播位置在 onLoad 时消费，拖动进度条在就绪后消费。
   const [mediaReady, setMediaReady] = useState(false);
   const [showFullScreen, setShowFullScreen] = useState(false);
+
+  /**
+   * 硬件返回分层（2026-10-18）：
+   * 全屏播放器/专辑详情都是本页的浮层状态，不接管返回键时按一下会直接把整页 pop 掉
+   * → 用户看到「从全屏播放器返回却回到软件主页」。这里逐层关闭后再交给导航。
+   */
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!navigation.isFocused()) return false;
+      if (showFullScreen) { setShowFullScreen(false); return true; }
+      if (albumFilter) { setAlbumFilter(null); return true; }
+      return false;
+    });
+    return () => sub.remove();
+  }, [navigation, showFullScreen, albumFilter]);
   useEffect(() => {
     // Exo 原生接管时跳过 Video seek（Exo seek 由下方 nativeOk 分支的 effect 消费；
     // 若两者都消费 seekTarget，会竞争清零 → 拖进度在原生路径失效）
@@ -327,6 +333,12 @@ export default function MusicLibraryScreen() {
    * `paused=true + volume=0` —— Video 从未起播，自然不会抢焦点。
    */
   const [nativeDisabled, setNativeDisabled] = useState(false);
+  // 页面挂载期间由本页负责推流；卸载后交给引擎兜底（后台/切 Tab 也能自动下一首）
+  useEffect(() => {
+    MusicEngine.setScreenAttached(true);
+    return () => { MusicEngine.setScreenAttached(false); };
+  }, []);
+
   const setNativeDisabledBoth = (v: boolean) => {
     nativeDisabledRef.current = v;
     setNativeDisabled(v);
@@ -720,19 +732,32 @@ export default function MusicLibraryScreen() {
           contentContainerStyle={styles.listContent}
           renderItem={({ item, index }) => {
             const id = String(item.musicId || item.id || '');
-            const active = queue[currentIndex] && (String(queue[currentIndex].musicId || queue[currentIndex].id) === id);
+            // ⚠️ 只比 musicId 会误伤：官方源与 R2 源存在同 id 不同曲的情况，
+            // 两首歌会同时被判为「正在播放」（一张变浅、边框加粗后内容下移几个像素）。
+            // 改为复合键：musicId + 标题 + 艺人 + 专辑，全部一致才算当前曲。
+            const curTrack = queue[currentIndex];
+            const norm = (v: any) => String(v || '').trim().toLowerCase();
+            const active = !!curTrack && (
+              String(curTrack.musicId || curTrack.id || '') === id
+              && norm(curTrack.title) === norm(item.title)
+              && norm(curTrack.artist || curTrack.joinMemberNames) === norm(item.artist || item.joinMemberNames)
+              && norm(curTrack.album || curTrack.albumName) === norm(item.album || item.albumName)
+            );
             const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
             return (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={{ width: '48.5%' }}>
+            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={{ flex: 1, maxWidth: '50%' }}>
               <TouchableOpacity
                 style={[
                   styles.songItem,
-                  { backgroundColor: 'transparent', borderColor: active ? palette.tint : palette.hairline, borderWidth: active ? 2 : StyleSheet.hairlineWidth },
+                  // 边框宽度恒定：高亮只换颜色 + 半透明底色，避免 1→2px 造成的内容位移
+                  { backgroundColor: active ? (palette.tintSoft || 'rgba(255,111,145,0.10)') : 'transparent', borderColor: active ? palette.tint : palette.hairline, borderWidth: 1 },
                 ]}
                 onPress={() => playSong(item)}
                 activeOpacity={0.7}
               >
-              <GlassSurface radius={20} role="card">
+              {/* ⚠️ 网格里禁止逐卡 GlassSurface（每个卡一个模糊层 → 滚动掉帧/布局塌陷）。
+                  卡片底衬由外层 TouchableOpacity 的 border/bg 表达。 */}
+              <View style={[styles.songCardBody, { backgroundColor: 'rgba(128,128,128,0.06)' }]}>
                 <View style={styles.coverWrap}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
                   {/* 正在播放指示：三根均衡器柱错峰跳动 */}
@@ -760,7 +785,7 @@ export default function MusicLibraryScreen() {
                   </ScalePressable>
                 </View>
                 <View style={styles.songInfo}>
-                  <MarqueeText text={item.title || t('无标题')} style={[styles.songTitle, { color: palette.label }]} />
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.songTitle, { color: palette.label }]}>{item.title || t('无标题')}</Text>
                   <View style={styles.songMetaLine}>
                     <Text style={[styles.songArtist, { color: palette.labelSecondary }]} numberOfLines={1}>
                       {/* 团体名优先（用户要求：R2 公演曲显示团体而非专辑），不加来源标记 */}
@@ -789,7 +814,7 @@ export default function MusicLibraryScreen() {
                     })()}
                   </View>
                 </View>
-              </GlassSurface>
+              </View>
               </TouchableOpacity>
             </FadeInView>
             );
@@ -891,6 +916,8 @@ export default function MusicLibraryScreen() {
 }
 
 const styles = StyleSheet.create({
+  /** 网格卡内层容器（替代逐卡 GlassSurface） */
+  songCardBody: { borderRadius: 20, overflow: 'hidden' },
   container: { flex: 1, backgroundColor: 'transparent' },
   albumBarRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6 },
   playAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
@@ -919,7 +946,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, 
     borderBottomWidth: StyleSheet.hairlineWidth, 
   },
-  // 内容区：flex row，靠左对齐，gap 由 marginRight 控制
   tabsContent: { 
     flexDirection: 'row', 
     alignItems: 'center', 

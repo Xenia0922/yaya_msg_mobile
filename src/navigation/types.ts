@@ -22,6 +22,7 @@ export type RootStackParamList = {
   DownloadScreen: undefined;
   DatabaseScreen: undefined;
   MeleeRankScreen: undefined;
+  RoomAlbumScreen: undefined;
   MemberDynamicScreen: undefined;
   InvoiceScreen: undefined;
 };

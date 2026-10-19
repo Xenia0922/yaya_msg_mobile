@@ -162,6 +162,9 @@ export default function RoomRadioScreen() {
   };
 
   const startRadio = async (member: Member, opts: { instantUrl?: string; mode?: 'big' | 'small' } = {}) => {
+    // ⚠️ 本页自带一路播放器（不使用统一 PlayerScreen），小窗/胶囊若在播会与之并存 →
+    // 双路音频且无法单独静音。开播前先收掉小窗（2026-10-03 修复）。
+    try { useMiniPlayerStore.getState().close(); } catch {}
     // 显式 mode 优先（R3：setRoomMode 同 tick 调 startRadio 时 state/ref 均还是旧值，必须显式传参）
     const mode = opts.mode ?? roomModeRef.current;
     setSelectedMember(member);
@@ -453,7 +456,6 @@ export default function RoomRadioScreen() {
                   </ScalePressable>
                 </View>
                 {playing ? (
-                  // v2.7.4：上麦流多为 rtmp（48tools 类型定义 VoiceOperate.streamUrl = rtmp://），
                   // react-native-video 播不了 → 用原生 LiveExoView（内置 ExoPlayer RTMP 扩展）播放
                   isRtmpUrl(radioUrl) && Platform.OS === 'android' && LiveExoView ? (
                     <LiveExoView

@@ -142,6 +142,10 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
       tpNum,
       toName,
       picPath: firstString(giftInfo.picPath, giftInfo.icon),
+      // 全屏特效（仅 PRESENT_FULLSCREEN(_TWO) 非空）：zipPath 相对路径 + zipMd5 校验
+      zipPath: firstString(giftInfo.zipPath),
+      zipMd5: firstString(giftInfo.zipMd5),
+      resourceType: toNumber(giftInfo.resourceType),
     };
     if (!text) {
       text = toName ? `${nick} 送给 ${toName} ${giftNum}个${giftName}` : `${nick} 送出 ${giftNum}个${giftName}`;
@@ -186,10 +190,7 @@ export interface BuildLiveBarrageOptions {
   uuid?: string;
 }
 
-/**
- * 构造直播弹幕 remoteExtension（对齐 ChatMsgBuilder.createBarrageNomalMessageMap
- * + ChatMsgUtil.getBaseParams，字段顺序/取值与官方一致）。
- */
+
 export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<string, any> {
   const { roomId, sourceId, text, self } = options;
   const ext: Record<string, any> = {
@@ -204,7 +205,6 @@ export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<st
       avatar: self.avatar,
       level: self.level ?? 0,
       roleId: self.roleId ?? 0,
-      // 桌面版同款：其他客户端渲染徽章/VIP 标时会读这几个字段
       vip: self.vip === true,
       pfUrl: self.pfUrl || '',
       teamLogo: self.teamLogo ?? null,
@@ -215,8 +215,6 @@ export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<st
     messageType: options.messageType || NimMsgType.BARRAGE_NORMAL,
     module: options.module || NimModule.LIVE,
     inTop: options.inTop === true,
-    // 官方 getBaseParams 放的是 int（0=普通观众 1=房管 2=房主 3=成员本人 99=超管）
-    sessionRole: self.sessionRole ?? 0,
   };
   if (options.imKey) {
     // 官方 IMChatRoom#sendMsg 会把 md5 塞进 remoteExtension，供其他客户端校验消息真伪

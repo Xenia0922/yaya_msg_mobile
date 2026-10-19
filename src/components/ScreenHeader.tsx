@@ -18,12 +18,7 @@ interface Props {
   hideBack?: boolean;
 }
 
-/**
- * 新式大标题页头（iOS 26 风格，主题化）
- *  - 左对齐大标题 + 玻璃圆形返回键，去霓虹发光
- *  - 三栏布局保留：左(返回) | 中(标题占满) | 右(操作位)
- *  - 兼容旧 props（title/onBack/right/style），全站调用点无需改动
- */
+
 export default function ScreenHeader({ title, onBack, right, style, overlay, hideBack }: Props) {
   const navigation = useNavigation();
   const { t } = useI18n();

@@ -34,6 +34,12 @@ try {
 const version = pkg.version;
 const apkDir = path.join(androidDir, 'app/build/outputs/apk/release');
 
+// 成品名分版：YAYA_FLAVOR=plus → yaya-msg-mobile-plus-v2.7.6-v8a.apk；
+// 不传 → yaya-msg-mobile-v2.7.6-v8a.apk（普通版）
+const FLAVOR = String(process.env.YAYA_FLAVOR || '').trim();
+const baseName = FLAVOR ? `yaya-msg-mobile-${FLAVOR}` : 'yaya-msg-mobile';
+if (FLAVOR) console.log(`   （打包版本：${FLAVOR}）`);
+
 // v2.6.4 起启用 ABI 分包：arm64-v8a / armeabi-v7a / x86_64 / universal(全量)
 const abiSplits = ['arm64-v8a', 'armeabi-v7a', 'x86_64'];
 
@@ -52,7 +58,7 @@ for (const abi of abiSplits) {
     continue;
   }
   const abiTag = abi === 'arm64-v8a' ? 'v8a' : abi === 'x86_64' ? 'x64' : 'v7a';
-  const destName = `yaya-msg-mobile-v${version}-${abiTag}.apk`;
+  const destName = `${baseName}-v${version}-${abiTag}.apk`;
   const destApk = path.join(apkOutputDir, destName);
   fs.copyFileSync(src, destApk);
   copied.push({ abi, file: destApk });
@@ -60,7 +66,7 @@ for (const abi of abiSplits) {
 
 const universalSrc = path.join(apkDir, 'app-universal-release.apk');
 if (fileExists(universalSrc)) {
-  const destName = `yaya-msg-mobile-v${version}.apk`;
+  const destName = `${baseName}-v${version}.apk`;
   const destApk = path.join(apkOutputDir, destName);
   fs.copyFileSync(universalSrc, destApk);
   copied.push({ abi: 'universal', file: destApk });

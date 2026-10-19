@@ -100,11 +100,24 @@ export async function saveDownloadItems(items: DownloadItem[]) {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
-async function updateItem(id: string, patch: Partial<DownloadItem>) {
-  const items = await loadDownloadItems();
-  const next = items.map((item) => (item.id === id ? { ...item, ...patch } : item));
-  await saveDownloadItems(next);
-  return next;
+/**
+ * 写盘串行链：updateItem / enqueue 都是「读整表 → 改 → 写整表」，
+ * 两个下载同时进行时，各自的整表写会覆盖对方最新状态 → 进度丢失或回跳（2026-10-03 修复）。
+ */
+let downloadWriteChain: Promise<unknown> = Promise.resolve();
+function withDownloadWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const run = downloadWriteChain.then(fn);
+  downloadWriteChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+function updateItem(id: string, patch: Partial<DownloadItem>): Promise<DownloadItem[]> {
+  return withDownloadWrite(async () => {
+    const items = await loadDownloadItems();
+    const next = items.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    await saveDownloadItems(next);
+    return next;
+  });
 }
 
 export async function enqueueDownload(params: {
@@ -135,8 +148,10 @@ export async function enqueueDownload(params: {
     createdAt: Date.now(),
   };
 
-  const existing = await loadDownloadItems();
-  await saveDownloadItems([item, ...existing.filter((old) => old.url !== url)]);
+  await withDownloadWrite(async () => {
+    const existing = await loadDownloadItems();
+    await saveDownloadItems([item, ...existing.filter((old) => old.url !== url)]);
+  });
 
   const localUri = `${DOWNLOAD_DIR}${item.id}-${item.name}`;
   try {

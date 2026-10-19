@@ -37,7 +37,10 @@ export function ExoKernel({ source, onError }: Props) {
       if (p.url && p.url !== url) return;
       if (p.width <= 0 || p.height <= 0) return;
       try { logInfo('[live] ExoKernel first frame (native event) → playing', 'player.exo'); } catch {}
-      usePlayerStore.getState().setState('playing');
+      // ⚠️ 首帧事件可能在用户已点暂停之后才到（原生在首帧 + 600ms + 2000ms 各发一次）→
+      // 无条件置 playing 会「自动恢复播放」覆盖用户暂停。仅在加载/空闲态才升级（2026-10-03 修复）。
+      const cur = usePlayerStore.getState();
+      if (cur.state === 'loading' || cur.state === 'idle') cur.setState('playing');
       setPipAspect(p.width, p.height);
     });
     const offError = onLiveNativeError((p) => {
@@ -69,7 +72,9 @@ export function ExoKernel({ source, onError }: Props) {
       onSize={(e) => {
         // 首帧画面尺寸 = 已开始播放 → 结束 loading
         try { logInfo('[live] ExoKernel first frame (onSize) → playing', 'player.exo'); } catch {}
-        usePlayerStore.getState().setState('playing');
+        // 同 onLiveFirstFrame：尺寸回调同样可能在暂停之后才到，不能无条件覆盖用户暂停
+        const cur = usePlayerStore.getState();
+        if (cur.state === 'loading' || cur.state === 'idle') cur.setState('playing');
         // 同步 PiP 窗口比例（成员直播多为竖屏；不跟则系统小窗按默认 16:9 裁边）
         const w = Number(e?.nativeEvent?.width) || 0;
         const h = Number(e?.nativeEvent?.height) || 0;

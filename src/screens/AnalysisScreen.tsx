@@ -352,7 +352,18 @@ export default function AnalysisScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('数据统计')} right={
-        <HeaderAction label={t('刷新')} onPress={() => { setLoadError(''); setLoading(true); loadRoomStats(member!).finally(() => loadFlipStats().finally(() => setLoading(false))); }} disabled={!member || loading} loading={loading} />
+        <HeaderAction
+          label={t('刷新')}
+          onPress={() => {
+            setLoadError('');
+            setLoading(true);
+            // ⚠️ 必须等两个请求都结束再收尾：此前链式 finally 会被先完成的那个提前置 false，
+            // 刷新按钮的转圈在另一个请求仍在跑时就停了（2026-10-03 修复）
+            Promise.allSettled([loadRoomStats(member!), loadFlipStats()]).finally(() => setLoading(false));
+          }}
+          disabled={!member || loading}
+          loading={loading}
+        />
       } />
 
       <View style={styles.pickerWrap}>

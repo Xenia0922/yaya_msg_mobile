@@ -38,17 +38,30 @@ const lastWrite = new Map<string, { ts: number; value: number }>();
 const WRITE_THROTTLE_MS = 30000;
 const WRITE_THROTTLE_DELTA = 15;
 
-export async function saveResumePosition(id: string, seconds: number): Promise<void> {
-  if (!id || !Number.isFinite(seconds) || seconds < 2) return;
+/** 条目上限：按插入顺序淘汰最早的（值只有秒数、无时间戳，故依赖 Map/对象键序） */
+const MAX_ENTRIES = 200;
+
+/** 写入串行链：readAll → 改 → writeAll 是「读改写」，并发保存会互相覆盖丢位置 */
+let writeChain: Promise<void> = Promise.resolve();
+
+export function saveResumePosition(id: string, seconds: number): Promise<void> {
+  if (!id || !Number.isFinite(seconds) || seconds < 2) return Promise.resolve();
   const now = Date.now();
   const prev = lastWrite.get(id);
   if (prev && now - prev.ts < WRITE_THROTTLE_MS && Math.abs(seconds - prev.value) < WRITE_THROTTLE_DELTA) {
-    return;
+    return Promise.resolve();
   }
   lastWrite.set(id, { ts: now, value: seconds });
-  const map = await readAll();
-  map[id] = seconds;
-  await writeAll(map);
+  writeChain = writeChain.then(async () => {
+    const map = await readAll();
+    map[id] = seconds;
+    const keys = Object.keys(map);
+    if (keys.length > MAX_ENTRIES) {
+      keys.slice(0, keys.length - MAX_ENTRIES).forEach((k) => delete map[k]);
+    }
+    await writeAll(map);
+  });
+  return writeChain;
 }
 
 /** 读取续播位置（秒），不存在返回 0。 */
@@ -59,12 +72,15 @@ export async function getResumePosition(id: string): Promise<number> {
   return Number.isFinite(v) ? v : 0;
 }
 
-/** 清空某个视频的续播位置（如播放完成）。 */
-export async function clearResumePosition(id: string): Promise<void> {
-  if (!id) return;
-  const map = await readAll();
-  if (id in map) {
-    delete map[id];
-    await writeAll(map);
-  }
+/** 清空某个视频的续播位置（如播放完成）。同样走串行链，避免与保存互相覆盖。 */
+export function clearResumePosition(id: string): Promise<void> {
+  if (!id) return Promise.resolve();
+  writeChain = writeChain.then(async () => {
+    const map = await readAll();
+    if (id in map) {
+      delete map[id];
+      await writeAll(map);
+    }
+  });
+  return writeChain;
 }

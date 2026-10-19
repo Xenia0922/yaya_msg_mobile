@@ -233,7 +233,7 @@ Go bot 的 pa = `base64("ts,rand,md5hex(ts+rand+secret),")`，secret `40F1065D8E
 | 3 | QChat(24/2) 登录不带包名 | 补属性 32 = `com.seine48.app`（Go bot 同款；官方 SDK 死于 414 就是因为带不了这个） |
 | 4 | QChat 链 SDK 版本 91701 / LBS v=91701，与聊天室不一致 | 统一 92110 |
 | 5 | 在线人数：只解析 13/13 响应但从不发请求（桌面每 10s 发一次 `getChatroomInfo`） | 连上后立即 + 每 10s 发 13/13，响应 → `handleOnlineCount` → `onOnlineCount` |
-| 6 | 弹幕 remoteExtension.user 缺 vip/pfUrl/teamLogo/badge，且缺 `sessionRole` | 按桌面版补齐（`session`/`sessionRole` 两个都带） |
+| 6 | 弹幕 remoteExtension.user 缺 vip/pfUrl/teamLogo/badge | 按桌面版补齐 |
 
 核对一致、无需改的：聊天室进房包（13/2 = `[2]+login{1,2,3,5,8}+auth{3,4,6,9,13,18,19,25,1000}`）、
 弹幕发送（13/6，属性 1/2/3/4/5/13/20/21/22/23，**属性 3 与 13 都填正文**——桌面 `sendText` 就是 `attachment: content`）、

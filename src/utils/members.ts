@@ -55,13 +55,7 @@ export function memberSearchText(member: Member): string {
   ].join(' ').toLowerCase();
 }
 
-/**
- * 成员状态分类（对齐 yk1z 库，用户确认的最终语义）：
- *  - 库记录（isInGroup 已知）：isInGroup=false → 毕业(1)/退团(2)/暂休(3)；true → 在团（status 2/3 优先判离/暂休）
- *  - 官方 "IDFT" 队伍名只有杨添淩 1 人是真在团（库 isInGroup=true），其余官方 IDFT 标的都是毕业成员
- *    ——所以必须用库的 isInGroup，不能信官方 status/teamName
- *  - 仅官方记录（库未收录的新成员）：status 2=退团 3=暂休 1=在团（荣誉毕业生/明星殿堂→毕业）0=在团
- */
+
 export function classifyMemberState(raw: any): string {
   if (raw?.state) return raw.state;
   const inGroupKnown = raw?.isInGroup !== undefined && raw?.isInGroup !== null;
@@ -72,7 +66,11 @@ export function classifyMemberState(raw: any): string {
       if (status === 1) return 'graduated';
       if (status === 2) return 'left';
       if (status === 3) return 'paused';
-      return 'unknown';
+      // ⚠️ 上游（data.gnz.hk）自 2026-09-27 起不再返回 status / roomId / liveRoomId 字段，
+      // 无 status 时旧逻辑返回 'unknown' → 资料卡状态栏空白、按状态分组的地方全丢。
+      // 改为按「已毕业」兜底：库判 isInGroup=false 的成员绝大多数是已毕业/已离团。
+      // 注意上麦页不依赖 state 判定在团（它用 isInGroup !== false），故无副作用。
+      return 'graduated';
     }
     // isInGroup=true：在团（status 2/3 视为退团/暂休）
     if (status === 2) return 'left';

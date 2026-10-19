@@ -1,21 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
-import {
-  Platform,
-  Alert,
-  FlatList,
-  Image,
-  Linking,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import {Platform, FlatList, Image, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import PlayerScreen from '../player';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -402,6 +392,9 @@ export default function PrivateMessagesScreen() {
   const [money, setMoney] = useState('');
   const [flipType, setFlipType] = useState(0);
   const [loading, setLoading] = useState(false);
+  /** 会话列表首屏加载专用：与发送/翻页共用同一个 loading 时，会被它们的 finally 提前置 false
+   *  → 列表在真正加载完之前就露出「暂无私信」空态（2026-10-03 修复） */
+  const [convLoading, setConvLoading] = useState(false);
   const [convError, setConvError] = useState('');
   const [nextTime, setNextTime] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -454,7 +447,7 @@ export default function PrivateMessagesScreen() {
     if (convLoadingRef.current) return;
     const requestId = ++requestIdRef.current;
     convLoadingRef.current = true;
-    if (initial) setLoading(true);
+    if (initial) setConvLoading(true);
     setConvError('');
     try {
       let cursor = initial ? Date.now() : (convCursorRef.current || Date.now());
@@ -491,7 +484,7 @@ export default function PrivateMessagesScreen() {
     finally {
       if (requestId === requestIdRef.current) {
         convLoadingRef.current = false;
-        setLoading(false);
+        setConvLoading(false);
       }
     }
   };
@@ -560,7 +553,7 @@ export default function PrivateMessagesScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeTargetId]);
 
-  /** 私信发图片（对齐桌面 handlePrivateMessageImageSelected）：选图 → 上传 pfile → 发 IMAGE 私信 */
+  
   const pickAndSendImage = async () => {
     if (!sel) return;
     // 对方是成员（成员库命中）→ 不支持发图（与 UI 隐藏图片按钮同一判定，双保险）
@@ -584,7 +577,6 @@ export default function PrivateMessagesScreen() {
       const targetId = convTargetId(sel);
       if (!targetId) return;
       setLoading(true);
-      // 复用已有上传通道（uploadPocketImage 不传 fromType → 私信图片不带 fromType，与桌面端一致）
       const uploaded: any = await pocketApi.uploadPocketImage({
         uri: asset.uri,
         fileName: asset.fileName || `private-message-${Date.now()}.jpg`,
@@ -615,11 +607,11 @@ export default function PrivateMessagesScreen() {
     }
   };
 
-  /** 长按自己的私信 → 删除（桌面 deletePrivateMessageFromContext 同款） */
+  
   const confirmDeletePrivateMessage = useCallback((item: any) => {
     const id = msgId(item);
     if (!id) { showToast(t('该消息不支持删除')); return; }
-    Alert.alert(t('删除消息'), t('删除这条私信？'), [
+    showDialog(t('删除消息'), t('删除这条私信？'), [
       { text: t('取消'), style: 'cancel' },
       {
         text: t('删除'),
@@ -644,7 +636,6 @@ export default function PrivateMessagesScreen() {
       if (flipType && member) {
         const p = prices.find((x) => x.answerType === flipType);
         const cost = p ? (p.privateCost || p.normalCost || lowestPrice(p)) : 0;
-        // 桌面 checkPrivateMessageFlipCostMin 同款：价格缺失或为 0 = 该类型未启用 → 拦下不发
         if (!p || cost <= 0) {
           showToast(t('该类型翻牌未启用，请换一种类型'));
           setLoading(false);
@@ -754,7 +745,6 @@ export default function PrivateMessagesScreen() {
       const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
       const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
       // 用户要求：日期分隔**居中**（库的 Day 容器居中，但自定义 renderDay 的返回被塞进
-      // 无 alignItems 的普通 View → 被拉伸满宽、默认左对齐）→ 用 alignSelf 居中。
       return <Text style={[styles.dateSepText, { color: palette.labelTertiary, alignSelf: 'center' }]}>{label}</Text>;
     };
 
@@ -778,7 +768,6 @@ export default function PrivateMessagesScreen() {
           role="chip"
           radius={22}
           tintColor={mine ? palette.tint : undefined}
-          // 长按自己的消息 → 删除（桌面端右键删除同款）
           onLongPress={mine && item ? () => confirmDeletePrivateMessage(item) : undefined}
           style={styles.ellipseBubble}
         >
@@ -935,8 +924,7 @@ export default function PrivateMessagesScreen() {
         <GlassSurface radius={20} role="card" style={[styles.inputBar, { backgroundColor: 'transparent', borderTopColor: palette.hairline }]}>
           {flipType > 0 ? <Text style={[styles.flipLabel, { color: palette.tint }]}>{t('私密翻牌·{type}', { type: flipTypeName(flipType) })}</Text> : null}
           <View style={styles.inputRow}>
-            {/* 发图片：对方是成员（成员库命中）时**隐藏** —— 成员私信只走翻牌/文字；
-                翻牌模式下禁用（桌面端同语义） */}
+            {}
             {member ? null : (
               <ScalePressable
                 style={[styles.imgPickerBtn, { backgroundColor: palette.fill2 }]}
@@ -1010,10 +998,8 @@ export default function PrivateMessagesScreen() {
                   onPress={() => openConv(conv)}
                   activeOpacity={0.88}
                 >
-                <GlassSurface radius={20} role="card">
-                  {/* ⚠️ 行布局必须放在玻璃内部：GlassSurface 的 children 容器是 column，
-                      若把 flexDirection:'row'/padding 留在外层 TouchableOpacity 上，
-                      内容会在玻璃里竖直堆叠、宽度被压到只剩 1 个字符（名字显示不全） */}
+                  {/* ⚠️ 列表逐行禁止 GlassSurface（每行一个模糊层 → 长列表滚动掉帧）；
+                      改为普通容器 + 外层 Touchable 的 border/bg 表达层次 */}
                   <View style={styles.convCardRow}>
                   <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
                     {convAvatarUrl ? (
@@ -1039,7 +1025,7 @@ export default function PrivateMessagesScreen() {
                     </View>
                   </View>
                   </View>
-                </GlassSurface>
+                
                 </TouchableOpacity>
                 <View style={styles.convActions}>
                   {isPinned && pinnedConvs.length > 1 ? (
@@ -1082,7 +1068,7 @@ export default function PrivateMessagesScreen() {
             );
           }}
           ListEmptyComponent={
-            loading ? <CenterSpinner text={t('正在加载会话…')} />
+            convLoading ? <CenterSpinner text={t('正在加载会话…')} />
             : convError ? (
               <ErrorState title={t('加载失败')} hint={convError} onAction={() => loadConvs()} />
             ) : (

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, Platform } from 'react-native';
+import {Animated, AppState, DeviceEventEmitter, Keyboard, Platform, Pressable, Share} from 'react-native';
+import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
@@ -14,21 +15,7 @@ import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
-import {
-  ActivityIndicator,
-  Alert,
-  BackHandler,
-  Image,
-  ImageBackground,
-  Linking,
-  Modal,
-  ScrollView,
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  StyleSheet,
-} from 'react-native';
+import {ActivityIndicator, BackHandler, Image, ImageBackground, Linking, Modal, ScrollView, View, Text, TouchableOpacity, TextInput, StyleSheet} from 'react-native';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -40,7 +27,7 @@ import { EmptyState, ErrorState } from '../components/StateViews';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
-import { formatTimestamp } from '../utils/format';
+import { formatTimestamp, toMs } from '../utils/format';
 import { findMediaDurationSeconds } from '../utils/mediaDuration';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
@@ -58,6 +45,10 @@ import { t, useI18n } from '../i18n';
 import { logInfo } from '../utils/runtimeLog';
 import pocketApi from '../api/pocket48';
 import PlayerScreen from '../player';
+import Clipboard from '@react-native-clipboard/clipboard';
+import { DanmakuOverlay } from '../components/DanmakuOverlay';
+import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
+import { clearGiftEffectQueue, isGiftEffectSupported, playGiftEffect } from '../services/giftEffect';
 import ZoomImageModal from '../components/ZoomImageModal';
 import { enqueueDownload } from '../services/downloads';
 import { memberSearchText } from '../utils/members';
@@ -88,6 +79,9 @@ type RoomMedia = {
   isLive?: boolean;
   needsVlc?: boolean;
   cover?: string;
+  /** 候选流地址（按优先级）：整组交给 PlayerScreen，首条失败自动换线。
+   *  多人 PK 等场景首条常不可用，只取 urls[0] 会黑屏/卡住。 */
+  urls?: string[];
   /** 消息/卡片已明示「回放/录播」：播放时应走可拖进度条的录播播放器，而非直播播放器 */
   replayHint?: boolean;
 };
@@ -275,6 +269,11 @@ function collectUrls(value: any, result: string[] = [], depth = 0) {
   }
   if (typeof value === 'object') {
     const skipKeys = new Set(['avatar', 'headImg', 'headUrl', 'picPath', 'coverPath', 'coverUrl', 'avatarUrl', 'userAvatar', 'senderAvatar',
+      // 队标/粉丝牌等「身份徽章」图：**永远不是消息内容**。此前只跳过头像类键，
+      // ext.user.teamLogo 会被下面的正则捞出来当图片消息渲染
+      // （用户实测：SNH48-雷薪梦 的文字消息下面挂着绿色 XII 队标大图）。
+      'teamLogo', 'teamLogoUrl', 'teamPic', 'teamBadge', 'teamIcon', 'teamHeadImg',
+      'pfUrl', 'badgeUrl', 'medalUrl', 'levelIcon', 'vipIcon',
       // extInfo/msgExtInfo = 序列化元数据（module/channelRole/user 头像/bubbleId），其中 JSON 字符串会被正则
       // 捞出头像等非媒体 URL——徐钰涵公式照泄漏主因，一律跳过（真正的媒体在 body/已解析 ext 中另扫）
       'extInfo', 'msgExtInfo', 'extMsgInfo', 'attachInfo']);
@@ -291,7 +290,6 @@ function senderProfile(item: any, room: Member): SenderProfile {
   const body = messageBody(item);
   // ⚠️ 只把 extraInfo 的 **user 段**当发送者资料（官方 getChannelBaseParams / 我们 buildChannelExt
   // 写入的都是发送者），不要把整个 ext 混进下面的字段查找 —— ext 里还有 replyInfo（被回复者）。
-  // 桌面端 v2.13 followed-chat-feature.js:4082 同款：ext.user.roleId / userId / nickName / avatar。
   const extUser: any = ((extraInfo(item) as any)?.user) || {};
   const objects = [item, body];
   const id =
@@ -329,7 +327,6 @@ function senderProfile(item: any, room: Member): SenderProfile {
     'message.nickName',
     'message.nickname',
   ]) || deepFindText(objects, ['nickName', 'nickname', 'senderName', 'userName', 'name']);
-  // 名字/头像：ext.user 优先（桌面端就是用它覆盖顶层 senderName）——消息里带的最新昵称/头像比兜底更准
   const name = String(extUser.nickName || extUser.nickname || '').trim() || topName;
   const topAvatar = firstTextFrom(objects, [
     'avatar',
@@ -348,7 +345,8 @@ function senderProfile(item: any, room: Member): SenderProfile {
   const avatar = normalizeUrl(String(extUser.avatar || '').trim() || topAvatar);
 
   return {
-    id,
+    // ⚠️ 归一化 trim（2026-10-03 修复）：id 带空白时 memberIds.has / profile.id === currentUserId
+    id: String(id || '').trim(),
     name: name || (id ? t('用户 {id}', { id }) : t('未知用户')),
     avatar: avatar || '',
   };
@@ -412,12 +410,7 @@ function buildMemberIdSet(members: any[]): Set<string> {
   return set;
 }
 
-/**
- * 「用户资料卡」信息解析。数据源 = `user/api/v1/user/info/home`（桌面端 fetchUserHomeInfo 同款：
- * Android 头 + `{ userId }` 数字）。结构（对齐桌面 getFollowedProfileContent）：
- *   content.userInfo.baseUserInfo = 头像/昵称…，content.starInfo = 成员信息（若是成员）。
- * 全部多路径兜底，取不到就留空（UI 只显示拿到的行，不再把原始报错文本糊上去）。
- */
+
 function userCardFromUserRes(res: any) {
   const content = res?.content || res?.data?.content || res?.data || res || {};
   const userInfo = content?.userInfo || content?.user || content?.profile || content || {};
@@ -425,7 +418,6 @@ function userCardFromUserRes(res: any) {
   const star = content?.starInfo || content?.memberInfo || userInfo?.starInfo || {};
   const objs = [base, userInfo, star, content];
   const pick = (keys: string[]) => firstTextFrom(objs, keys);
-  // 关注态：对齐桌面端 followed-chat-feature.js 的取值口径
   //   relation / relationType / followStatus / friendStatus / isFollow / followed / isFriend
   //     mutual|both|friend|friends|2|3 → 互相关注；true|followed|following|1 → 已关注
   const relationValue = String(
@@ -459,9 +451,19 @@ function messageKey(item: any) {
   return String(`${getMessageTime(item)}-${profile.id || profile.name || ''}-${text || media || JSON.stringify(body).slice(0, 120)}`);
 }
 
+/**
+ * 消息时间统一【归一为毫秒】。
+ *
+ * ⚠️ 单位混用会造成两处致命后果（2026-10-03 修复）：
+ *  1) 排序错乱：HTTP 历史消息的 msgTime 是**秒**，QChat/NIM 推送的 time 是**毫秒**，
+ *     直接比较会把毫秒消息全排到最前并「钉死」。
+ *  2) 轮询水位污染：refreshRoomMessages 用「列表最大原始时间」当水位，
+ *     一旦毫秒值（~1.7e12）进入列表顶部，HTTP 秒级新消息（~1.7e9）永远小于水位 →
+ *     `hasFresh=false` 直接 return，**聊天流永久冻结（新消息永不上屏）**。
+ * 统一走 toMs（10 位当秒转毫秒、13 位原样），比较/排序/去重键全部使用归一后的值。
+ */
 function getMessageTime(item: any): number {
-  const value = Number(item?.msgTime || item?.messageTime || item?.ctime || item?.time || 0);
-  return Number.isFinite(value) ? value : 0;
+  return toMs(item?.msgTime ?? item?.messageTime ?? item?.ctime ?? item?.time) || 0;
 }
 
 function getNextTime(res: any, list: any[]): number {
@@ -507,13 +509,7 @@ function sortMessagesNewestFirst<T>(list: T[]): T[] {
   return list.slice().sort((a: any, b: any) => getMessageTime(b) - getMessageTime(a));
 }
 
-/**
- * 云信圈组实时消息 → 房间列表可渲染结构。
- *
- * 房间消息的「历史」来自 HTTP（im/api/v1/team/message/list/*），「实时」只有云信圈组
- * 一条通道（HTTP 无发送/无推送）。这里把原生桥回来的消息对齐成 HTTP 历史消息的字段形态，
- * 让既有的 renderChatItem / messageKey / mergeMessages 原样复用。
- */
+
 function qchatToRoomMessage(msg: RoomLiveMessage): any {
   const user = (msg.ext?.user && typeof msg.ext.user === 'object' ? msg.ext.user : {}) as Record<string, any>;
   const nickName = String(user.nickName || user.nickname || msg.fromNick || '');
@@ -689,6 +685,10 @@ async function cachedLiveList(record: boolean, page = 0, next = 0): Promise<any>
 function detailLiveState(detail: any): 'live' | 'replay' | 'unknown' {
   const d = detail?.content || detail?.data || detail || {};
   if (d.isLiving === true || d.living === true || d.isLive === true) return 'live';
+  // 官方权威状态位：type=1 直播（2/3=回放/录播）；liveType 1=单人直播 2=PK（同样是在播）；
+  // review=true 表示已下播转回放。此前只看 isLiving 之类衍生字段，PK 场全部落进 unknown。
+  if (d.review === true || d.type === 2 || d.type === 3 || d.isRecord === 1 || d.isRecord === true) return 'replay';
+  if (d.type === 1 || d.liveType === 1 || d.liveType === 2) return 'live';
   if (d.isLiving === false || d.living === false || d.isLive === false
     || d.isEnd === true || d.isEnded === true || d.isFinished === true
     || d.isRecord === 1 || d.isRecord === true || d.record === 1 || d.record === true
@@ -725,7 +725,7 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
     const isRtmp = lower.startsWith('rtmp://') || lower.includes('.flv');
     if (isRtmp) {
       // rtmp/flv 推流只可能是直播
-      return { ...media, liveId, title, url: ownUrl, isLive: true, needsVlc: streamNeedsProxy(ownUrl) };
+      return { ...media, liveId, title, url: ownUrl, urls: [ownUrl], isLive: true, needsVlc: streamNeedsProxy(ownUrl) };
     }
     if (media.replayHint) {
       // 消息明示回放（录播卡）
@@ -764,9 +764,17 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
   // 先分辨直播还是录播，再决定播放器：
   // 回放列表（record:true）命中的结果确定是录播，优先采用；
   // 其余（正在直播列表 / 详情）按接口状态位或 URL 形态兜底判断，避免把回放流误当直播播放。
-  for (let pass = 0; pass < 2; pass += 1) {
-    for (let i = 0; i < attempts.length; i += 1) {
-      if ((pass === 0) !== (attempts[i].label === 'replay')) continue;
+  // 优先级：明确在播 > 未知 > 回放。
+  // 原先是「回放优先」，多人 PK 这类 liveType=2 的场次会被回放列表抢走、播成录播。
+  const rank = (i: number): number => {
+    if (attempts[i].label === 'replay') return 2;
+    const result = settled[i];
+    if (result.status !== 'fulfilled' || !result.value) return 3;
+    return detailLiveState(result.value) === 'live' ? 0 : 1;
+  };
+  const order = attempts.map((_, i) => i).sort((a, b) => rank(a) - rank(b));
+  {
+    for (const i of order) {
       const result = settled[i];
       if (result.status !== 'fulfilled' || !result.value) continue;
       const detail = result.value;
@@ -797,6 +805,7 @@ async function resolveRoomLiveMedia(media: RoomMedia): Promise<RoomMedia> {
           liveId,
           title,
           url: urls[0],
+          urls,
           cover,
           isLive,
           needsVlc: streamNeedsProxy(urls[0]),
@@ -910,6 +919,10 @@ function roomMedia(item: any): RoomMedia | null {
       return null;
     }
   }
+  // 兜底：若识别出的 url 恰好等于发送者的队标，说明是把身份徽章当成了消息内容 —— 不渲染。
+  // （`collectUrls` 的 skipKeys 已跳过队标键；这里再挡一层，防其它路径漏进来。）
+  const senderTeamLogo = String((((extraInfo(item) as any)?.user) || {}).teamLogo || '').trim();
+  if (url && senderTeamLogo && url === senderTeamLogo) return null;
   if (!url && !liveId) return null;
   const type = liveId ? 'live' : classifyMedia(url, msgType, text);
   const durationSec = [item, ext, body].reduce((best, src) => best || findMediaDurationSeconds(src), 0);
@@ -925,7 +938,6 @@ function roomMedia(item: any): RoomMedia | null {
     : type === 'image' ? t('图片')
     : text && !text.startsWith('[') && text !== url ? text
     : t('链接');
-  // 封面：对齐电脑版 _ref_yk1z —— 优先用服务端关键帧缩略图 thumbPath（口袋48给视频/音频的关键帧图），
   // 拼 https://source.48.cn 前缀（thumbPath 是相对路径，normalizeUrl 不会拼，需单独处理）。
   // 退而求其次再用 coverUrl/coverPath/cover/liveCover/picPath 等绝对地址字段。
   const rawCover = firstTextFrom([item, ext, body], [
@@ -1009,7 +1021,9 @@ function playerSource(url: string) {
 //     ExoPlayer 解析的真实 duration（秒）回填角标。探测 Video 不显示画面，不受旋转影响。
 function VideoCoverCard({ media, onPress, onLongPress }: { media: RoomMedia; onPress: () => void; onLongPress: () => void }) {
   const palette = usePalette();
-  const [resolvedDur, setResolvedDur] = useState(media.duration || '');
+  // 全局时长缓存：同一条语音重渲染/滚回列表时不再重复探测（探测 Video 每次创建 Exo 实例，数量一多必然失败）
+  const cachedDur = media.url ? ROOM_DUR_CACHE.get(media.url) : '';
+  const [resolvedDur, setResolvedDur] = useState(media.duration || cachedDur || '');
   const [coverError, setCoverError] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const hasCover = !!media.cover && !coverError;
@@ -1083,15 +1097,17 @@ function LiveCoverImage({ uri, palette }: { uri: string; palette: any }) {
 // 音频消息卡片。消息体里没有 duration 字段（实测只有 msgTime 时间戳），时长只能靠播放器解析。
 // 内部用隐藏探测 Video（1px 透明、不可见）拿 ExoPlayer 真实 duration 回填角标，与 VideoCoverCard 同机制。
 function AudioMediaCard({
-  media, idol, mine, palette, onPlay, onLongPress, playing,
+  media, palette, onPlay, onLongPress, playing,
 }: {
-  media: RoomMedia; idol: boolean; mine: boolean; palette: any;
+  media: RoomMedia; palette: any;
   onPlay: () => void; onLongPress: () => void; playing: boolean;
 }) {
   const [resolvedDur, setResolvedDur] = useState(media.duration || '');
-  return (
+  const card = (
     <TouchableOpacity
-      style={[styles.mediaCard, { backgroundColor: (idol || mine) ? palette.tint : palette.surfaceGlass, borderColor: (idol || mine) ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
+      // 语音播放卡玻璃化（用户要求，2026-09-19）：任何人（含房主/自己）一律 GlassSurface，
+      // 与房间文本气泡同语言；此前「idol/mine 粉实底」分支让房主语音卡与深色气泡割裂，已废
+      style={[styles.mediaCard, { backgroundColor: 'transparent', borderWidth: 0, marginTop: 0 }]}
       activeOpacity={0.92}
       onLongPress={onLongPress}
     >
@@ -1099,11 +1115,11 @@ function AudioMediaCard({
         <NetworkImage source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" thumbnail={700} />
       ) : null}
       <View style={styles.mediaMeta}>
-        <Text style={[styles.mediaIcon, (idol || mine) ? { color: palette.onTint } : { color: palette.tint }]}>{t(mediaLabel(media.type))}</Text>
+        <Text style={[styles.mediaIcon, { color: palette.tint }]}>{t(mediaLabel(media.type))}</Text>
         {media.type !== 'audio' && media.type !== 'video' && media.title ? (
-          <Text style={[styles.mediaTitle, (idol || mine) ? { color: palette.onTint } : { color: palette.label }]} numberOfLines={2}>{media.title}</Text>
+          <Text style={[styles.mediaTitle, { color: palette.label }]} numberOfLines={2}>{media.title}</Text>
         ) : null}
-        {resolvedDur ? <Text style={[styles.mediaDuration, (idol || mine) ? { color: palette.onTint } : { color: palette.labelSecondary }]}>{resolvedDur}s</Text> : null}
+        {resolvedDur ? <Text style={[styles.mediaDuration, { color: palette.labelSecondary }]}>{resolvedDur}s</Text> : null}
       </View>
       <TouchableOpacity
         style={[styles.mediaPlayBtn, { backgroundColor: palette.tint, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }]}
@@ -1119,22 +1135,36 @@ function AudioMediaCard({
           {playing ? t('暂停') : resolvedDur ? `${resolvedDur}s` : t('播放')}
         </Text>
       </TouchableOpacity>
-      {/* 隐藏探测 Video：仅用于拿真实时长，不渲染可见画面 */}
-      <Video
-        source={playerSource(media.url)}
-        style={{ width: 1, height: 1, opacity: 0, position: 'absolute', top: -9999, left: -9999 }}
-        paused
-        controls={false}
-        resizeMode="cover"
-        muted
-        onLoad={(data: any) => {
-          const d = Number(data?.duration || 0);
-          if (d > 0) setResolvedDur(String(Math.round(d)));
-        }}
-      />
+      {/* 隐藏探测 Video：只在未知时长时挂载（解析完立即卸载，避免同屏几十个 Exo 实例互相抢资源） */}
+      {!resolvedDur && media.url ? (
+        <Video
+          source={playerSource(media.url)}
+          style={{ width: 1, height: 1, opacity: 0, position: 'absolute', top: -9999, left: -9999 }}
+          paused
+          controls={false}
+          resizeMode="cover"
+          muted
+          onLoad={(data: any) => {
+            const d = Number(data?.duration || 0);
+            if (d > 0) {
+              const sec = String(Math.round(d));
+              if (media.url) ROOM_DUR_CACHE.set(media.url, sec);
+              setResolvedDur(sec);
+            }
+          }}
+        />
+      ) : null}
     </TouchableOpacity>
   );
+  return (
+    <GlassSurface radius={14} role="card" style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+      {card}
+    </GlassSurface>
+  );
 }
+
+/** 房间语音时长缓存（url → "秒"）：探测结果全局复用，避免重复创建 Exo 实例 */
+const ROOM_DUR_CACHE = new Map<string, string>();
 
 function normalizeLiveRank(res: any): any[] {
   let list = unwrapList(res, [
@@ -1438,6 +1468,44 @@ export default function FollowedRoomsScreen() {
   const roomBarrage = useLiveBarrage({ liveId: roomBarrageLiveId, enabled: !!roomBarrageLiveId, module: 'live' });
   /** 弹幕列表抽屉（房间内直播弹幕）：与飘屏/输入条共用同一条云信连接的数据 */
   const [showRoomDanmakuList, setShowRoomDanmakuList] = useState(false);
+  const [showRoomDanmakuSettings, setShowRoomDanmakuSettings] = useState(false);
+
+  /** 系统画中画（PiP）状态：与 Media 页一致，进小窗时隐藏播放器 chrome */
+  const [inRoomSystemPip, setInRoomSystemPip] = useState(false);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('PipEnteredChanged', (entered: boolean) => {
+      setInRoomSystemPip(!!entered);
+      if (!entered) setRoomPlayerFullscreen((v) => v);
+    });
+    return () => sub.remove();
+  }, []);
+
+  /** 房间直播飘屏弹幕（与 Media 页同一套：进场/礼物文案带昵称，普通弹幕只出正文） */
+  const [showRoomDanmaku, setShowRoomDanmaku] = useState(false);
+  const roomLiveItems = useMemo(
+    () => roomBarrage.items.map((item) => ({ key: item.id, text: item.text || '' })),
+    [roomBarrage.items],
+  );
+  useEffect(() => {
+    if (roomBarrage.items.length) setShowRoomDanmaku(true);
+  }, [roomBarrage.items.length]);
+
+  /** 礼物全屏特效（与 Media 页一致：别人送的与自己送的都播） */
+  const roomPlayedEffectsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isGiftEffectSupported()) return;
+    const items = roomBarrage.items;
+    if (!items.length) return;
+    for (const item of items) {
+      const zip = item.gift?.zipPath;
+      if (!zip || roomPlayedEffectsRef.current.has(item.id)) continue;
+      roomPlayedEffectsRef.current.add(item.id);
+      playGiftEffect({ zipPath: zip, zipMd5: item.gift?.zipMd5, giftName: item.gift?.giftName });
+    }
+    if (roomPlayedEffectsRef.current.size > 200) roomPlayedEffectsRef.current.clear();
+  }, [roomBarrage.items]);
+  useEffect(() => () => { clearGiftEffectQueue(); }, []);
+
   const roomDanmakuEntries = useMemo<DanmakuListEntry[]>(
     () =>
       roomBarrage.items.map((item) => ({
@@ -1451,6 +1519,15 @@ export default function FollowedRoomsScreen() {
   );
   // 房间发言（云信圈组）：草稿 + 发送中 + 错误提示
   const [roomDraft, setRoomDraft] = useState('');
+  /** 回复目标：长按消息 → 回复；发送后清空（字段与官方 replyInfo 对齐） */
+  const [replyTarget, setReplyTarget] = useState<{ replyMessageId: string; replyName: string; replyText: string } | null>(null);
+  /** 房间精华消息（成员在官方端设为精华，服务端存储，全员可见） */
+  const [roomEssences, setRoomEssences] = useState<any[]>([]);
+  /** 消息长按操作面板（自绘圆角，替代原生 Alert） */
+  const [msgMenu, setMsgMenu] = useState<{ item: any; mine: boolean; name: string; text: string; media: RoomMedia | null } | null>(null);
+  const msgReplyRef = useRef<{ replyMessageId: string; senderName: string; text: string } | null>(null);
+  const [essenceSheetOpen, setEssenceSheetOpen] = useState(false);
+  const [essenceLoading, setEssenceLoading] = useState(false);
   const [roomSending, setRoomSending] = useState(false);
   const [roomSendHint, setRoomSendHint] = useState('');
   /** 直播解析占位：点击无流地址的直播卡 → 立即弹全屏「解析中」，不再干等无反馈（连击才加载进去的元凶） */
@@ -1479,7 +1556,7 @@ export default function FollowedRoomsScreen() {
     error: string;
     /** 关注态（口袋48 用户间可互相关注：friendships/friends/add|remove, toType=1） */
     following: boolean;
-    /** 互相关注（桌面端文案口径：mutual/both/friend/2/3） */
+    
     mutual: boolean;
     followBusy: boolean;
     /** 成员（含房主）走同一个资料卡界面，只是多加身份/队伍行 */
@@ -1535,6 +1612,10 @@ export default function FollowedRoomsScreen() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // ⚠️ 失焦的 tab 页仍持有订阅：切到别的 tab 后按返回会关掉后台房间而不是当前页（2026-10-03 修复）
+      if (!navigation.isFocused()) return false;
+      // 返回键先收键盘（房间评论框展开中）
+      if (Keyboard.isVisible()) { Keyboard.dismiss(); return true; }
       if (roomPlayer) {
         setRoomPlayer(null);
         setRoomPlayerFullscreen(false);
@@ -1606,11 +1687,18 @@ export default function FollowedRoomsScreen() {
     const liveId = String(roomPlayer.liveId || '');
     setGiftStatus(t('正在发送...'));
     try {
+      // 直播详情里的 crm（DES 加密的聊天室 id）——服务端靠它把礼物广播进直播间，缺失则成员端无感知
+      let crm = '';
+      try {
+        const one = await pocketApi.getLiveOne(liveId);
+        crm = String((one as any)?.content?.crm || '');
+      } catch { /* 拿不到 crm 时按官方空 crm 路径发送 */ }
       await pocketApi.sendGift({
         giftId: String(giftSel.giftId || giftSel.id),
         liveId,
         acceptUserId: ownerId,
         giftNum: num,
+        crm,
       });
       setGiftStatus(t('已送出 {num} 个 {giftName}', { num, giftName: String(giftSel.giftName || giftSel.name || '') }));
       const money = await pocketApi.getUserMoney().catch(() => null);
@@ -1627,6 +1715,34 @@ export default function FollowedRoomsScreen() {
    * （已实测 /im/api/v1/team/message/send 等候选全部 404），发送只能走云信。
    * 圈组仅官方 Android/iOS SDK 支持 → 走原生桥 PocketIm（PocketImModule.java）。
    */
+  /** 拉取当前房间的精华消息（响应与房间历史同构：content.messageList[]） */
+  const loadRoomEssences = useCallback(async (channelId: string) => {
+    if (!channelId) {
+      setRoomEssences([]);
+      return;
+    }
+    setEssenceLoading(true);
+    try {
+      const res = await pocketApi.getEssenceMessages({ channelId });
+      const list = unwrapList(res, [
+        // 官方字段是 essenceMessageList（2026-10-17 实测）；原先只认 messageList → 永远为空
+        'content.essenceMessageList', 'content.messageList', 'content.list', 'content.data',
+        'data.essenceMessageList', 'data.messageList', 'list', 'data',
+      ]);
+      setRoomEssences(list);
+    } catch {
+      setRoomEssences([]);
+    } finally {
+      setEssenceLoading(false);
+    }
+  }, []);
+
+  // 进房/切房：重置展开态并拉取该房间的精华消息
+  const essenceChannelId = String((selectedRoom as any)?.channelId || '');
+  useEffect(() => {
+    void loadRoomEssences(essenceChannelId);
+  }, [essenceChannelId, loadRoomEssences]);
+
   const handleSendRoomMessage = useCallback(async () => {
     const text = roomDraft.trim();
     if (!text || roomSending) return;
@@ -1648,8 +1764,9 @@ export default function FollowedRoomsScreen() {
       if (!serverId || serverId === '0') {
         throw new Error(t('缺少房间 serverId，无法发言'));
       }
-      await sendRoomTextMessage({ serverId, channelId }, text);
+      await sendRoomTextMessage({ serverId, channelId }, text, replyTarget);
       setRoomDraft('');
+      setReplyTarget(null);
       // ⚠️ 自己发的消息立即上屏：QChat 回显链路不稳定，等 15s 轮询太久（用户反馈）。
       // 发送成功即静默拉最新页合并（mergeMessages 按 msgId 去重，与轮询同路径、不会重复）。
       setTimeout(() => refreshRoomMessagesRef.current?.(), 500);
@@ -1659,7 +1776,7 @@ export default function FollowedRoomsScreen() {
     } finally {
       setRoomSending(false);
     }
-  }, [roomDraft, roomSending, t]);
+  }, [roomDraft, roomSending, t, replyTarget]);
 
   const handleRoomMiniPlayer = useCallback(() => {
     const cur = roomPlayer;
@@ -1689,12 +1806,22 @@ export default function FollowedRoomsScreen() {
       // ⚠️ 带上大窗已知的视频宽高：小窗挂载即按比例适配，不再等 onLoad（拿不到就停在默认条）
       aspectW: roomVideoAspectRef.current?.w,
       aspectH: roomVideoAspectRef.current?.h,
-      backTo: { mode: 'vod', playUrl: cur.url, playTitle: cur.title, playCover: cur.cover, playPosition: pos },
+      // ⚠️ 必须按实际类型回填：cur.isLive 为真时若写死 'vod'，回大窗会被当录播处理
+      //（出现进度条/倍速，且拖动进度条 seek 直播流会触发原生闪退）。
+      backTo: {
+        mode: cur.isLive ? 'live' : 'vod',
+        playUrl: cur.url,
+        playTitle: cur.title,
+        playCover: cur.cover,
+        playPosition: pos,
+      },
     });
     closeRoomPlayer();
   }, [roomPlayer, closeRoomPlayer, showToast, t]);
 
   const closeRoom = useCallback(() => {
+    // ⚠️ 自增房间序号：使在途的进房/轮询/加载更多响应全部作废（否则关房后旧响应仍会写状态）
+    roomSeqRef.current += 1;
     setRoomPlayer(null);
     setRoomPlayerFullscreen(false);
     setPlayingMedia(null);
@@ -1756,7 +1883,6 @@ export default function FollowedRoomsScreen() {
         if (exists) return prev;
         return [{ memberId: id, member }, ...prev];
       });
-      // 与电脑版一致：操作后延迟从服务器拉取最新关注列表，保证状态权威同步
       setTimeout(() => { loadFollowedRef.current(true); }, 600);
     } catch (e) {
       setFollowedIds((prev) => { const r = new Set(prev); if (isFollowing) r.add(id); else r.delete(id); return r; });
@@ -1893,7 +2019,14 @@ export default function FollowedRoomsScreen() {
         })));
       }).catch(() => {});
     };
-    const tick = () => { refreshLiveAndMic(); refreshLastMessages(); };
+    const tick = () => {
+      // ⚠️ 此前不看前后台/焦点：切 tab、退后台、锁屏都照每 30s 请求（房间内轮询早已用 AppState 暂停）
+      // → 统一加双门卫（2026-10-03 修复）
+      if (AppState.currentState !== 'active') return;
+      if (!navigation.isFocused()) return;
+      refreshLiveAndMic();
+      refreshLastMessages();
+    };
     tick();
     const id = setInterval(tick, 30000);
     return () => { active = false; clearInterval(id); };
@@ -1962,7 +2095,6 @@ export default function FollowedRoomsScreen() {
     setShowFanMessages(includeFans);
     try {
       // 只要还没拿到自己的 userId 就取（原来被 includeFans 挡住 → 非粉丝模式下认不出自己发的消息，
-      // 气泡全部左对齐）。getNimLoginInfo 与模式无关，取到一次即可复用。
       const userInfo = !currentUserId
         ? await pocketApi.getNimLoginInfo().catch(() => null)
         : null;
@@ -2025,11 +2157,15 @@ export default function FollowedRoomsScreen() {
         }]);
       }
     } catch (error) {
+      // ⚠️ 切房守卫（2026-10-03）：失败分支同样要判序号 ——
+      // 否则 A 房间的加载失败会把 B 房间刚加载好的消息清空。
+      if (openSeq !== roomSeqRef.current || activeChannelRef.current !== channelId) return;
       showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
       setRoomMessages([]);
       setRoomMsgError(errorMessage(error));
     } finally {
-      setLoading(false);
+      // 仅当仍是当前房间时才复位 loading，避免提前关掉新房间的加载态
+      if (openSeq === roomSeqRef.current) setLoading(false);
     }
   }, [currentUserId, roomMode, showFanMessages, showToast, t]);
 
@@ -2039,6 +2175,7 @@ export default function FollowedRoomsScreen() {
     if (!selectedRoom || loading || loadingMoreMessages || loadingMoreMessagesRef.current || refreshingRef.current || !hasMoreMessages || !roomNextTime) return;
     const channelId = roomChannelId(selectedRoom, roomMode);
     if (!channelId) return;
+    const seq = roomSeqRef.current; // 记录发起时的房间序号，响应回来时校验
     loadingMoreMessagesRef.current = true;
     setLoadingMoreMessages(true);
     try {
@@ -2049,6 +2186,9 @@ export default function FollowedRoomsScreen() {
         fetchAll: showFanMessages,
         fallbackChannelId: roomMode === 'small' ? selectedRoom.channelId : undefined,
       });
+      // ⚠️ 切房守卫（2026-10-03）：期间已切房/关房 → 丢弃。否则旧房间消息会并入新房间列表，
+      // 且 roomNextTime 被旧值覆盖 → 新房间「加载更多」拉到重复/错误页。
+      if (seq !== roomSeqRef.current || activeChannelRef.current !== channelId) return;
       const list = unwrapList(res, ['content.messageList', 'content.message', 'content.messages', 'content.list', 'data.messageList', 'data.message', 'messageList', 'message', 'messages', 'list']);
       const nextTime = getNextTime(res, list);
       setRoomMessages((prev) => {
@@ -2071,6 +2211,7 @@ export default function FollowedRoomsScreen() {
     if (!selectedRoom || refreshingRef.current) return;
     const channelId = roomChannelId(selectedRoom, roomMode);
     if (!channelId) return;
+    const seq = roomSeqRef.current; // 记录发起时的房间序号，响应回来时校验
     refreshingRef.current = true;
     try {
       const res = await pocketApi.getRoomMessages({
@@ -2089,6 +2230,9 @@ export default function FollowedRoomsScreen() {
       const prevNewest = prevMsgs.length ? getMessageTime(prevMsgs[0]) : 0;
       const hasFresh = sorted.some((m: any) => getMessageTime(m) > prevNewest);
       if (!hasFresh) return;
+      // ⚠️ 切房守卫（2026-10-03）：请求在途时用户可能已切房/关房，
+      // 此时合并会把 A 房间的消息写进 B 房间列表（跨成员消息串台）。
+      if (seq !== roomSeqRef.current || activeChannelRef.current !== channelId) return;
       // 关键：实时刷新【绝不改写 roomNextTime】—— roomNextTime 是「上拉加载更多」往前翻的游标，
       // 只能由 loadMoreRoomMessages 更新。否则会被反复重置成最新页游标，导致上拉加载更多拉回重叠/重复内容。
       setRoomMessages((prev) => {
@@ -2206,6 +2350,7 @@ export default function FollowedRoomsScreen() {
   useEffect(() => {
     if (!liveResolve) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!navigation.isFocused()) return false;
       cancelLiveResolve();
       return true;
     });
@@ -2250,7 +2395,7 @@ export default function FollowedRoomsScreen() {
       }
       setPlayingMedia(next);
     } catch (error) {
-      Alert.alert(t('播放失败'), errorMessage(error));
+      showDialog(t('播放失败'), errorMessage(error));
     }
   }, [playingMedia, showToast, navigation, t, resolveLiveAndOpen]);
 
@@ -2357,6 +2502,7 @@ export default function FollowedRoomsScreen() {
     });
   }, [roomMessages, roomSearchQuery, selectedRoom, showFanMessages, currentUserId, memberIdSet]);
 
+
   // 消息流按日期分组：今天/昨天/月日 分隔条（消息是新→旧排序，分隔条插在换日处）
   const chatRows = useMemo(() => {
     // 房间已切走/关闭时不能算：messageRole → isIdolMessage 会读 room.id（null 崩）
@@ -2408,7 +2554,6 @@ export default function FollowedRoomsScreen() {
     const label =
       dayStr === todayStr ? '今天' : dayStr === yestStr ? '昨天' : `${d.getMonth() + 1}月${d.getDate()}日`;
     // 用户要求：日期分隔**居中**显示（库的 Day 容器是居中的，但自定义 renderDay 会被塞进
-    // 一个无 alignItems 的普通 View → 文字被拉伸满宽、默认左对齐）→ 靠 alignSelf 居中。
     return <Text style={[styles.daySepText, { color: palette.labelTertiary }]}>{label}</Text>;
   }, [palette]);
 
@@ -2501,11 +2646,7 @@ export default function FollowedRoomsScreen() {
     });
   }, [selectedRoom, onMicMap, showToast, t]);
 
-  /**
-   * 房间内点消息头像 → 弹「用户资料卡」（用户要求：成员/非成员**都用这一个界面**，不再跳成员档案）。
-   *  - 资料源：`user/api/v1/user/info/home`（桌面端同款写法，Android 头 + userId 数字）
-   *  - 成员先用成员库信息立即渲染（队伍/名字），线上资料回来后再补等级/签名等
-   */
+  
   const openSenderProfile = useCallback(
     (opts: { id: string; name: string; avatar: string; member?: Member | null; userIds?: string[] }) => {
       const m = opts.member || null;
@@ -2605,11 +2746,7 @@ export default function FollowedRoomsScreen() {
     [navigation],
   );
 
-  /**
-   * 房间卡片长按 → 快捷操作菜单（对齐桌面 followed-rooms-feature.executeQuickAction）。
-   * ⚠️ 用自研 Modal 而不是 Alert：**Android 的 Alert 只渲染前 3 个按钮**，
-   * 放不下「大/小房间 + 置顶 + 上移下移 + 关注 + 未读提醒」这么多操作。
-   */
+  
   const [roomMenu, setRoomMenu] = useState<any | null>(null);
   const closeRoomMenu = useCallback(() => setRoomMenu(null), []);
   const roomMenuActions = useMemo(() => {
@@ -2650,7 +2787,7 @@ export default function FollowedRoomsScreen() {
         showToast(t('该消息不支持撤回'));
         return;
       }
-      Alert.alert(t('删除消息'), t('撤回并删除这条你发送的消息？'), [
+      showDialog(t('删除消息'), t('撤回并删除这条你发送的消息？'), [
         { text: t('取消'), style: 'cancel' },
         {
           text: t('删除'),
@@ -2668,6 +2805,49 @@ export default function FollowedRoomsScreen() {
     },
     [currentUserId],
   );
+
+  /** 长按消息：所有人可回复；自己额外保留撤回删除 */
+  /**
+   * 长按消息 → 自绘圆角操作面板（与 App 风格统一；原生 Alert 只有 3 个按钮且样式割裂）。
+   * 规则：文本消息 → 复制 + 回复（自己的再加删除）；媒体消息 → 回复 + 下载。
+   */
+  const openMessageActions = useCallback(
+    (item: any, mine: boolean, senderName: string, media?: RoomMedia | null) => {
+      const text = String(messageText(item) || '').trim();
+      const replyMessageId = String(item?.msgIdClient || item?.uuid || item?.msgId || '');
+      const isMedia = !!media;
+      if (!isMedia && !text) {
+        showToast(t('该消息暂不支持操作'));
+        return;
+      }
+      setMsgMenu({ item, mine, name: senderName, text, media: media || null });
+      // 供面板按钮复用（存 ref 便于回调读取最新值）
+      msgReplyRef.current = { replyMessageId, senderName, text };
+    },
+    [showToast, t],
+  );
+
+  /** 面板内动作：回复 */
+  const msgMenuReply = useCallback(() => {
+    const meta = msgReplyRef.current;
+    setMsgMenu(null);
+    if (!meta) return;
+    setReplyTarget({ replyMessageId: meta.replyMessageId, replyName: meta.senderName, replyText: meta.text || t('媒体消息') });
+  }, [t]);
+
+  /** 面板内动作：复制 */
+  const msgMenuCopy = useCallback(() => {
+    const cur = msgMenu;
+    setMsgMenu(null);
+    const text = cur?.text || '';
+    if (!text) return;
+    try {
+      Clipboard.setString(text);
+      showToast(t('已复制'));
+    } catch {
+      showToast(t('复制失败'));
+    }
+  }, [msgMenu, showToast, t]);
 
   const renderChatItem = useCallback(
     ({ item: row }: { item: any }) => {
@@ -2691,7 +2871,6 @@ export default function FollowedRoomsScreen() {
         ? (members.find((m: any) => [m.id, m.userId, m.memberId].some((v) => String(v ?? '').trim() === senderId)) as Member | undefined)
         : undefined;
       const isMemberSender = !!senderMember
-        // 兜底（桌面端语义 followed-chat-feature.js:4087）：ext.user.roleId > 1 即成员
         || (Number((extraInfo(item) as any)?.user?.roleId ?? 0) || 0) > 1;
       // 成员发言头像：优先用 API（消息携带）的真实头像；成员库 avatar 多为公式照，仅兜底
       const profile = senderMember
@@ -2761,7 +2940,7 @@ export default function FollowedRoomsScreen() {
                 )}
               </TouchableOpacity>
             ) : (
-              /* 组内连排：占位保持气泡左对齐 */
+              
               <View style={styles.avatarPlaceholder} />
             )
           ) : null}
@@ -2793,7 +2972,7 @@ export default function FollowedRoomsScreen() {
             <GlassSurface
               role="chip"
               radius={18}
-              onLongPress={mine ? () => confirmDeleteMessage(item) : undefined}
+              onLongPress={() => openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'))}
               tintColor={mine ? palette.tint : undefined}
               style={[
                 styles.msgBubble,
@@ -2826,7 +3005,7 @@ export default function FollowedRoomsScreen() {
               {media ? (
                 media.type === 'image' && media.url ? (
                 <>
-                  <TouchableOpacity onPress={() => setFullImageUrl(media.url)} onLongPress={() => downloadMedia(media)} activeOpacity={0.9}>
+                  <TouchableOpacity onPress={() => setFullImageUrl(media.url)} onLongPress={() => openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)} activeOpacity={0.9}>
                     {/* ⚠️ 房间图片消息走缩略图：原图动辄 1-3MB/张（1080-3000px），显示仅 228dp。
                         缩略图失败自动退回原图（NetworkImage 两段兜底）；点开大图仍是原图。 */}
                     <NetworkImage
@@ -2838,7 +3017,7 @@ export default function FollowedRoomsScreen() {
                   </TouchableOpacity>
                 </>
               ) : media.type === 'live' && media.cover ? (
-                <TouchableOpacity style={styles.liveCardWrap} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} activeOpacity={0.9}>
+                <TouchableOpacity style={styles.liveCardWrap} onPress={() => playMedia(media)} onLongPress={() => openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)} activeOpacity={0.9}>
                   <LiveCoverImage uri={media.cover} palette={palette} />
                   <View style={styles.liveCardOverlay}>
                     <View style={styles.livePlayCircle}>
@@ -2851,22 +3030,20 @@ export default function FollowedRoomsScreen() {
                 </TouchableOpacity>
               ) : media.type === 'video' && media.url ? (
                 (roomPlayerFullscreen || roomPlayer?.url === media.url || playingMedia?.url === media.url) ? null : (
-                  <VideoCoverCard media={media} onPress={() => playMedia(media)} onLongPress={() => downloadMedia(media)} />
+                  <VideoCoverCard media={media} onPress={() => playMedia(media)} onLongPress={() => openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)} />
                 )
               ) : media.type === 'audio' ? (
                 // 音频播放时不返回 null（否则整张卡片塌缩成小方块）：AudioMediaCard 自带播放中态（暂停按钮）。
                 // 隐藏探测 Video 在 AudioMediaCard 内部，无需外部 inlineAudio 撑高。
                 <AudioMediaCard
                   media={media}
-                  idol={idol}
-                  mine={mine}
                   palette={palette}
                   playing={!!(playingMedia?.url && media.url && playingMedia.url === media.url)}
                   onPlay={() => playMedia(media)}
-                  onLongPress={() => downloadMedia(media)}
+                  onLongPress={() => openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)}
                 />
               ) : (
-                <TouchableOpacity style={[styles.mediaCard, { backgroundColor: (idol || mine) ? palette.tint : palette.surfaceGlass, borderColor: (idol || mine) ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]} activeOpacity={0.92} onLongPress={() => downloadMedia(media)}>
+                <TouchableOpacity style={[styles.mediaCard, { backgroundColor: (idol || mine) ? palette.tint : palette.surfaceGlass, borderColor: (idol || mine) ? 'rgba(255,255,255,0.38)' : palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]} activeOpacity={0.92} onLongPress={() => openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)}>
                   {media.cover ? (
                     <NetworkImage source={{ uri: media.cover }} style={styles.liveCover} resizeMode="cover" thumbnail={700} />
                   ) : null}
@@ -2963,24 +3140,30 @@ export default function FollowedRoomsScreen() {
               source={{
                 kind: roomPlayer.isLive ? 'live' : 'vod',
                 url: roomPlayer.url,
+                urls: roomPlayer.urls,
                 liveId: roomPlayer.liveId,
                 needsNativeExo: roomPlayer.needsVlc,
                 // 上麦/电台（type='audio'）走纯音频：不渲染画面，省一层黑屏
                 audioOnly: roomPlayer.type === 'audio',
-                headers: { 'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)', Referer: 'https://h5.48.cn/' },
+                headers: { 'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)', Referer: 'https://h5.48.cn/', Origin: 'https://h5.48.cn' },
               }}
               meta={{ title: roomPlayer.title, cover: roomPlayer.cover }}
               onVideoSize={(w, h) => { if (w > 0 && h > 0) roomVideoAspectRef.current = { w, h }; }}
-              features={{ kernelSwitch: true, rate: !roomPlayer.isLive }}
+              danmaku={roomPlayer.isLive ? { type: 'poll', liveId: roomBarrageLiveId } : { type: 'lrc', lrcUrl: '' }}
+              features={{ rate: !roomPlayer.isLive, danmaku: true, kernelSwitch: true, resume: !roomPlayer.isLive }}
+              chromeHidden={inRoomSystemPip}
               extraActions={[
                 ...(roomPlayer.isLive
                   ? [{ key: 'gift', icon: 'gift', label: t('礼物'), onPress: () => openRoomGiftPanel() }]
+                  : []),
+                { key: 'rank', icon: 'trophy', label: t('贡献榜'), onPress: openRoomRankPanel },
+                ...(roomPlayer.isLive
+                  ? [{ key: 'danmaku', icon: 'cog', label: t('弹幕设置'), onPress: () => setShowRoomDanmakuSettings(true) }]
                   : []),
                 ...(roomPlayer.isLive
                   ? [{ key: 'danmakuList', icon: 'format-list-bulleted', label: t('弹幕列表'), active: showRoomDanmakuList, onPress: () => setShowRoomDanmakuList((v) => !v) }]
                   : []),
                 { key: 'pip', icon: 'picture-in-picture-bottom-right-outline', label: t('小窗'), onPress: handleRoomMiniPlayer },
-                { key: 'rank', icon: 'trophy', label: t('贡献榜'), onPress: openRoomRankPanel },
               ]}
               barrageInput={roomPlayer.isLive ? (
                 <LiveBarrageBoard source={roomBarrage} liveId={roomBarrageLiveId} module="live" inputOnly variant="plain" />
@@ -2988,6 +3171,14 @@ export default function FollowedRoomsScreen() {
               onClose={closeRoomPlayer}
               persistent
             >
+              {/* 飘屏弹幕：与 Media 页同一套渲染 */}
+              <DanmakuOverlay
+                danmaku={[]}
+                currentTime={0}
+                visible={!!(showRoomDanmaku && roomPlayer.isLive && !inRoomSystemPip)}
+                live={!!roomPlayer.isLive}
+                liveItems={roomPlayer.isLive ? roomLiveItems : undefined}
+              />
               {/* 弹幕列表抽屉：房间直播弹幕（列表 + 搜索 + 按发送者筛选） */}
               <DanmakuListSheet
                 visible={showRoomDanmakuList}
@@ -2997,6 +3188,7 @@ export default function FollowedRoomsScreen() {
                 loading={roomBarrage.status === 'connecting' || roomBarrage.status === 'resolving'}
               />
             </PlayerScreen>
+            <DanmakuSettingsSheet visible={showRoomDanmakuSettings} onClose={() => setShowRoomDanmakuSettings(false)} />
             <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
               <View style={styles.roomModalShade}>
                 <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
@@ -3053,7 +3245,6 @@ export default function FollowedRoomsScreen() {
                       </View>
                     </ScalePressable>
                   </View>
-                  <Text style={[styles.roomRankStatus, { color: palette.danger }]}>{t('直播送礼主播看不到赠送，仅能统计贡献值')}</Text>
                   <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>
                     {giftBalance ? `${t('余额：{balance} 鸡腿', { balance: giftBalance })} · ` : ''}{giftStatus}
                   </Text>
@@ -3140,7 +3331,20 @@ export default function FollowedRoomsScreen() {
             onError={() => setPlayingMedia(null)}
           />
         ) : null}
-        <ZoomImageModal url={fullImageUrl} onClose={() => setFullImageUrl('')} />
+        <ZoomImageModal
+          url={fullImageUrl}
+          onClose={() => setFullImageUrl('')}
+          onDownload={() => {
+            if (!fullImageUrl) return;
+            void enqueueDownload({ url: fullImageUrl, type: 'image', name: `image-${Date.now()}.jpg` })
+              .then(() => showToast(t('已加入下载管理')))
+              .catch((err) => showToast(errorMessage(err)));
+          }}
+          onShare={() => {
+            if (!fullImageUrl) return;
+            Share.share({ url: fullImageUrl }).catch(() => showToast(t('分享失败')));
+          }}
+        />
         {/* 用户资料卡（房间内点非成员头像）：口袋48 user/info 拉昵称/头像/等级/签名 */}
         <Modal visible={!!userCard} transparent animationType="slide" onRequestClose={() => setUserCard(null)}>
           <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setUserCard(null)}>
@@ -3239,6 +3443,49 @@ export default function FollowedRoomsScreen() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+        {/* 精华消息：工具条 ⭐ 打开。成员在官方端设为精华、全员可见（服务端接口）。 */}
+        <Modal visible={essenceSheetOpen} transparent animationType="fade" onRequestClose={() => setEssenceSheetOpen(false)}>
+          <Pressable style={styles.essenceBackdrop} onPress={() => setEssenceSheetOpen(false)} />
+          <View style={[styles.essenceSheet, { backgroundColor: palette.surfaceElevated }]}>
+            <View style={styles.essenceHandle} />
+            <View style={styles.essenceHead}>
+              <MaterialCommunityIcons name="star" size={15} color={palette.tint} />
+              <Text style={[styles.essenceHeadText, { color: palette.label }]}>
+                {t('精华消息')}
+                {roomEssences.length ? ` · ${roomEssences.length}` : ''}
+              </Text>
+              <TouchableOpacity onPress={() => setEssenceSheetOpen(false)} hitSlop={10}>
+                <MaterialCommunityIcons name="close" size={20} color={palette.labelTertiary} />
+              </TouchableOpacity>
+            </View>
+            {roomEssences.length === 0 ? (
+              <Text style={[styles.essenceEmpty, { color: palette.labelTertiary }]}>
+                {essenceLoading ? t('加载中…') : t('暂无精华消息')}
+              </Text>
+            ) : (
+              <ScrollView style={styles.essenceList} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                {roomEssences.map((m: any, i: number) => {
+                  const name = String(senderProfile(m, selectedRoom as Member)?.name || '');
+                  const text = String(messageText(m) || '').trim();
+                  // 图片/表情类精华没有正文，messageText() 返回空 —— 走媒体分支，否则整条被丢掉
+                  const em = roomMedia(m);
+                  if (!text && !em) return null;
+                  return (
+                    <View key={String(m?.msgIdClient || m?.msgId || i)} style={styles.essenceRow}>
+                      <Text style={[styles.essenceName, { color: palette.tint }]} numberOfLines={1}>{name}</Text>
+                      {text ? <Text style={[styles.essenceText, { color: palette.label }]}>{text}</Text> : null}
+                      {em?.type === 'image' && em.url ? (
+                        <TouchableOpacity onPress={() => setFullImageUrl(em.url)} activeOpacity={0.9} style={styles.essenceImageWrap}>
+                          <NetworkImage source={{ uri: em.url }} style={styles.essenceImage} resizeMode="cover" thumbnail={700} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </Modal>
         <ScreenHeader title={headerTitle} onBack={closeRoom} overlay={!!roomBgUri} right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
@@ -3270,18 +3517,53 @@ export default function FollowedRoomsScreen() {
               blurReductionFactor={Platform.OS === 'android' ? 6 : 4}
               style={styles.chatTools}
             >
-          {/* 分段切换：大房间 / 小房间（玻璃滑动选中） */}
-          <GlassSegmented
-            options={[
-              { key: 'big', label: t('大房间') },
-              { key: 'small', label: t('小房间') },
-            ]}
-            value={roomMode}
-            onChange={(k) => selectedRoom && openRoom(selectedRoom, k as 'big' | 'small', showFanMessages, 'internal')}
-            height={34}
-            style={{ width: 168 }}
-          />
-          <View style={{ flex: 1 }} />
+          {roomSearchOpen ? (
+            /* 搜索态：输入框原位替换分段切换（房间内搜索 = 搜消息） */
+            <>
+              <MaterialCommunityIcons name="magnify" size={17} color={palette.labelTertiary} />
+              <TextInput
+                style={{ flex: 1, fontSize: 14, color: palette.label, padding: 0, height: 34, alignSelf: 'center' }}
+                placeholder={t('搜索聊天记录...')}
+                placeholderTextColor={palette.labelTertiary}
+                value={roomSearchQuery}
+                onChangeText={setRoomSearchQuery}
+                autoFocus
+                returnKeyType="search"
+              />
+              {!!roomSearchQuery ? (
+                <TouchableOpacity onPress={() => setRoomSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
+                  <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
+                </TouchableOpacity>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {/* 分段切换：大房间 / 小房间（玻璃滑动选中） */}
+              <GlassSegmented
+                options={[
+                  { key: 'big', label: t('大房间') },
+                  { key: 'small', label: t('小房间') },
+                ]}
+                value={roomMode}
+                onChange={(k) => selectedRoom && openRoom(selectedRoom, k as 'big' | 'small', showFanMessages, 'internal')}
+                height={34}
+                style={{ width: 168 }}
+              />
+              <View style={{ flex: 1 }} />
+            </>
+          )}
+          <ScalePressable
+            style={[styles.chatToolCircle, { backgroundColor: essenceSheetOpen ? palette.tint : palette.fill2 }]}
+            onPress={() => { setEssenceSheetOpen(true); void loadRoomEssences(essenceChannelId); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            pressedScale={0.9}
+          >
+            <MaterialCommunityIcons
+              name="star"
+              size={18}
+              color={essenceSheetOpen ? palette.onTint : (roomEssences.length ? palette.tint : palette.labelSecondary)}
+            />
+          </ScalePressable>
           <ScalePressable
             style={[styles.chatToolCircle, { backgroundColor: roomSearchOpen ? palette.tint : palette.fill2 }]}
             onPress={() => setRoomSearchOpen((v) => !v)}
@@ -3371,6 +3653,21 @@ export default function FollowedRoomsScreen() {
         ) : null}
 
         {/* 房间发言（云信圈组）：HTTP 侧只有历史，发送必须走云信 */}
+        {replyTarget ? (
+          <View style={styles.replyBar}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.replyBarName, { color: palette.tint }]} numberOfLines={1}>
+                {t('回复 {name}', { name: replyTarget.replyName })}
+              </Text>
+              <Text style={[styles.replyBarText, { color: palette.labelSecondary }]} numberOfLines={1}>
+                {replyTarget.replyText}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setReplyTarget(null)} hitSlop={10}>
+              <MaterialCommunityIcons name="close" size={18} color={palette.labelTertiary} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {roomSendHint ? (
           <Text style={[styles.roomSendHint, { color: palette.tint }]} numberOfLines={2}>
             {roomSendHint}
@@ -3408,6 +3705,60 @@ export default function FollowedRoomsScreen() {
             </Text>
           </TouchableOpacity>
         </GlassSurface>
+      {/* 消息长按操作面板：圆角玻璃卡，与成员菜单同一套视觉（替代原生 Alert） */}
+      <Modal visible={!!msgMenu} transparent animationType="fade" onRequestClose={() => setMsgMenu(null)}>
+        <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setMsgMenu(null)}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.roomMenuWrap}>
+            <GlassSurface radius={22} role="card" style={[styles.roomMenuPanel, { backgroundColor: 'transparent' }]}>
+              <View style={styles.roomRankHandleWrap}>
+                <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
+              </View>
+              {msgMenu?.name ? (
+                <Text style={[styles.roomMenuTitle, { color: palette.labelSecondary }]} numberOfLines={1}>
+                  {msgMenu.name}
+                </Text>
+              ) : null}
+              {msgMenu?.media ? (
+                <>
+                  <TouchableOpacity style={[styles.roomMenuItem, { borderTopColor: palette.hairline }]} onPress={msgMenuReply} activeOpacity={0.85}>
+                    <MaterialCommunityIcons name="reply" size={18} color={palette.label} />
+                    <Text style={[styles.roomMenuItemText, { color: palette.label }]}>{t('回复')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.roomMenuItem, { borderTopColor: palette.hairline }]}
+                    onPress={() => { const m = msgMenu?.media; setMsgMenu(null); if (m) void downloadMedia(m); }}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons name="download" size={18} color={palette.label} />
+                    <Text style={[styles.roomMenuItemText, { color: palette.label }]}>{t('下载')}</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity style={[styles.roomMenuItem, { borderTopColor: palette.hairline }]} onPress={msgMenuReply} activeOpacity={0.85}>
+                    <MaterialCommunityIcons name="reply" size={18} color={palette.label} />
+                    <Text style={[styles.roomMenuItemText, { color: palette.label }]}>{t('回复')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.roomMenuItem, { borderTopColor: palette.hairline }]} onPress={msgMenuCopy} activeOpacity={0.85}>
+                    <MaterialCommunityIcons name="content-copy" size={18} color={palette.label} />
+                    <Text style={[styles.roomMenuItemText, { color: palette.label }]}>{t('复制')}</Text>
+                  </TouchableOpacity>
+                  {msgMenu?.mine ? (
+                    <TouchableOpacity
+                      style={[styles.roomMenuItem, { borderTopColor: palette.hairline }]}
+                      onPress={() => { const it = msgMenu?.item; setMsgMenu(null); if (it) confirmDeleteMessage(it); }}
+                      activeOpacity={0.85}
+                    >
+                      <MaterialCommunityIcons name="delete-outline" size={18} color={palette.danger} />
+                      <Text style={[styles.roomMenuItemText, { color: palette.danger }]}>{t('删除')}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              )}
+            </GlassSurface>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
         </View>
       </View>
     );
@@ -3429,6 +3780,7 @@ export default function FollowedRoomsScreen() {
           </TouchableOpacity>
         </View>
       } />
+
 
       {/* 房间长按快捷菜单（自研 Modal：Android 的 Alert 只显示前 3 个按钮） */}
       <Modal visible={!!roomMenu} transparent animationType="fade" onRequestClose={closeRoomMenu}>
@@ -3517,8 +3869,7 @@ export default function FollowedRoomsScreen() {
                       )}
                     </View>
                     <View style={styles.memberHitMeta}>
-                      {/* 名字与团队分行但左对齐成一组：横向排版比居中竖排更省高度、信息密度更高。
-                          团队色用 labelSecondary（不是 labelTertiary）—— 深色卡上 tertiary 灰会糊掉。 */}
+                      {}
                       <Text style={[styles.memberHitName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
                       <Text style={[styles.memberHitTeam, { color: palette.labelSecondary }]} numberOfLines={1}>{team}</Text>
                     </View>
@@ -3666,7 +4017,7 @@ export default function FollowedRoomsScreen() {
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     onPress={() => {
                       if (isFollowing) {
-                        Alert.alert(
+                        showDialog(
                           t('取消关注'),
                           t('确定不再关注 {name} 吗？', { name: shortName(item.member, item.memberId) }),
                           [
@@ -3817,7 +4168,6 @@ const styles = StyleSheet.create({
   memberHitsEmpty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   memberGridRow: { paddingHorizontal: 12 },
   memberGridItem: { paddingVertical: 5 },
-  // 搜索结果卡：横向一行（头像 + 名字/团队 + 关注按钮），左对齐。
   // 原竖排居中版把 2 列卡片撑到 ~210dp 高，一屏只能看到 3 行；横排后约 84dp。
   memberHitCard: {
     flexDirection: 'row',
@@ -4006,9 +4356,38 @@ const styles = StyleSheet.create({
   msgBlock: { maxWidth: '78%', minWidth: 48 },
   msgBlockMine: { alignItems: 'flex-end' },
   replyCard: { marginBottom: 6, padding: 8, borderRadius: radii.sm, borderLeftWidth: 3, borderLeftColor: '#ff6f91' },
+  essenceBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
+  essenceSheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    maxHeight: '78%', borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet,
+  },
+  essenceHandle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(128,128,128,0.35)', marginTop: 8 },
+  essenceHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 44 },
+  essenceHeadText: { flex: 1, fontSize: 15, fontWeight: '700' },
+  // flexGrow + 无固定高度：条目少时面板贴着内容，条目多时吃满面板高度并可滚动（此前 maxHeight:420 会截断）
+  essenceList: { flexGrow: 1, paddingHorizontal: 16, paddingBottom: 24 },
+  essenceRow: { paddingVertical: 6 },
+  essenceName: { fontSize: 12, fontWeight: '700' },
+  essenceText: { fontSize: 13, marginTop: 2, lineHeight: 18 },
+  essenceImageWrap: { marginTop: 6, alignSelf: 'flex-start' },
+  essenceImage: { width: 168, height: 168, borderRadius: 10 },
+  essenceEmpty: { fontSize: 13, paddingVertical: 24, textAlign: 'center' },
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ff6f91',
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    borderRadius: radii.sm,
+    marginBottom: 6,
+  },
+  replyBarName: { fontSize: 12, fontWeight: '700' },
+  replyBarText: { fontSize: 12, marginTop: 2 },
   replyName: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
   replyText: { fontSize: 13, lineHeight: 18 },
-  // 名字行不要水平内边距：否则名字比气泡左边缘缩进一截（截图中名字与气泡左对齐）
   msgMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   msgMetaLineMine: { justifyContent: 'flex-end' },
   msgSender: { fontSize: 12, fontWeight: '600', maxWidth: 150 },

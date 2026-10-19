@@ -4,6 +4,7 @@ import { PerfFlatList } from '../components/PerfFlatList';
 import {
   ActivityIndicator,
   Image,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -13,7 +14,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { useNavigation } from '@react-navigation/native';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
-import { Pill } from '../components/Pill';
+import { GlassSegmented } from '../components/GlassSegmented';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
 import { useI18n } from '../i18n';
@@ -21,12 +22,11 @@ import { errorMessage, normalizeUrl } from '../utils/data';
 import { Member } from '../types';
 import { extractRankList, extractWeeks, WeekItem } from '../utils/meleeParse';
 import { usePalette, radiiAlias } from '../theme';
+import { typography } from '../theme/typography';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import { Skeleton } from '../components/Skeleton';
 import { GlassSurface } from '../components/GlassSurface';
 
-// 对齐电脑版鸡腿榜数据源：只有「周榜」（weekRankList + getMeleeWeekRank）可用；
-// 电脑版按钮语义 total=周榜卡片列表、person=成员贡献榜，均基于周榜接口。
 // 原 total/year 走独立端点(getMeleeRankPage 列表 / getMeleeYearRankPage)在本期接口下不可用 → 移除。
 type ViewMode = 'week' | 'person';
 
@@ -49,6 +49,28 @@ function pickNum(...vals: any[]): number {
   return 0;
 }
 
+/**
+ * 瞬时失败重试（2026-10-06 新增）：鸡腿榜走官方网关，实测**偶发 504 / 超时** ——
+ * 同一个请求时好时坏，用户看到的就是「偶尔加载不出来」。
+ * 只对「看起来是瞬时」的错误重试（超时/网络/5xx），业务错误（4xx、业务码）不重试，
+ * 避免把明确的失败拖成 3 倍等待。
+ */
+async function withTransientRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message || e || '');
+      const transient = /timeout|timed out|超时|network|Network|failed to fetch|50[0-9]|Unexpected end|JSON/i.test(msg);
+      if (!transient || i === attempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, i === 0 ? 400 : 900));
+    }
+  }
+  throw lastErr;
+}
+
 export default function MeleeRankScreen() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
@@ -69,6 +91,13 @@ export default function MeleeRankScreen() {
   const reqIdRef = useRef(0); // Y31: 请求序号（切榜/切周时丢弃过期响应）
 
   const switchMode = (m: ViewMode) => {
+    /**
+     * ⚠️ 已在该页签 → 直接返回（2026-10-06 修复）：`GlassSegmented` 的每一格
+     * **每次点击都会回调 onChange（含点当前已选中那格）**。
+     * 此前无条件 `setRanks([])` 而 `setMode(同一个值)` 不触发下面的加载 effect →
+     * **榜单被清空后永不重载**，表现为「点一下当前页签 → 榜单变『暂无排名数据』」。
+     */
+    if (m === mode) return;
     setRanks([]);
     setPersonRanks([]);
     setError('');
@@ -84,9 +113,10 @@ export default function MeleeRankScreen() {
     try {
       let res: any;
       if (mode === 'week') {
-        res = selectedWeekRef.current
-          ? await pocketApi.getMeleeWeekRank(selectedWeekRef.current.weekRankId)
-          : await pocketApi.getMeleeRankPage();
+        const wk = selectedWeekRef.current;
+        res = wk
+          ? await withTransientRetry(() => pocketApi.getMeleeWeekRank(wk.weekRankId))
+          : await withTransientRetry(() => pocketApi.getMeleeRankPage());
       } else {
         return;
       }
@@ -129,9 +159,10 @@ export default function MeleeRankScreen() {
     try {
       let res: any;
       if (mode === 'week') {
-        res = selectedWeekRef.current
-          ? await pocketApi.getMeleeWeekRank(selectedWeekRef.current.weekRankId, nextIdRef.current)
-          : await pocketApi.getMeleeRankPage(0, nextIdRef.current);
+        const wk2 = selectedWeekRef.current;
+        res = wk2
+          ? await withTransientRetry(() => pocketApi.getMeleeWeekRank(wk2.weekRankId, nextIdRef.current))
+          : await withTransientRetry(() => pocketApi.getMeleeRankPage(0, nextIdRef.current));
       } else {
         return;
       }
@@ -143,8 +174,21 @@ export default function MeleeRankScreen() {
         const fresh = list.filter((it) => !seen.has(String(it.userId || it.rankNum || it.resId || it.id)));
         return [...prev, ...fresh];
       });
-      nextIdRef.current = nextId;
-      hasMoreRef.current = !!nextId && list.length > 0;
+      /**
+       * ⚠️ 上游 getMeleeWeekRank 的 nextId 是**失效字段**（2026-10-06 实测）：
+       * 把返回的 nextId 原样传回去，返回的 nextId 还是同一个值，rankUserList 也**逐条相同**
+       * （试过 int/字符串/0/offset/page/lastId/next/limit 共 9 种传参，全部返回同一份）。
+       * 且周榜本身只有 7 个名额（weekRankId 415~424 共 10 期实测：全部 7 条、rankNum=[1..7]）。
+       * 若不自判，上拉会无限触发、每次拿回同一批又被 seen 去重全滤掉 → 表现为「滑到底没反应」。
+       * 判定：返回值与本次传入相同时视为不可翻页，直接停止。
+       */
+      if (nextId && nextId === String(nextIdRef.current || '')) {
+        nextIdRef.current = '';
+        hasMoreRef.current = false;
+      } else {
+        nextIdRef.current = nextId;
+        hasMoreRef.current = !!nextId && list.length > 0;
+      }
     } catch {
       hasMoreRef.current = false;
     } finally {
@@ -161,7 +205,7 @@ export default function MeleeRankScreen() {
     setLoading(true);
     setError('');
     try {
-      const res = await pocketApi.getPersonMeleeRankPage(Number(m.id));
+      const res = await withTransientRetry(() => pocketApi.getPersonMeleeRankPage(Number(m.id)));
       const data = res?.content ?? res?.data ?? {};
       const list = Array.isArray(data?.charmInfo) ? data.charmInfo : extractRankList(data);
       setPersonRanks(list);
@@ -174,27 +218,73 @@ export default function MeleeRankScreen() {
     }
   }, [t]);
 
+  /**
+   * ⚠️ 拆成两个 effect（2026-10-06）：日期栏现在在两个页签下都常驻，
+   * 若沿用「一个 effect 同时依赖 selectedWeek」的写法，在成员贡献页点日期会**白跑一次
+   * loadPerson**（贡献榜数据与周次无关）。拆开后各自只依赖自己真正关心的输入。
+   */
+  // 周榜：模式 或 选中周次 变化 → 拉该周榜单
   useEffect(() => {
-    if (mode === 'person') {
-      if (member) loadPerson(member);
-      else {
-        setPersonRanks([]);
-        setLoading(false);
-      }
-    } else {
-      loadRank();
+    if (mode === 'week') loadRank();
+  }, [mode, selectedWeek, loadRank]);
+
+  // 成员贡献：模式 或 选中成员 变化 → 拉贡献榜（与周次无关）
+  useEffect(() => {
+    if (mode !== 'person') return;
+    if (member) loadPerson(member);
+    else {
+      setPersonRanks([]);
+      setLoading(false);
     }
-  }, [mode, selectedWeek, member, loadRank, loadPerson]);
+  }, [mode, member, loadPerson]);
 
   const renderWeekChip = ({ item }: { item: WeekItem }) => {
     const active = selectedWeek?.weekRankId === item.weekRankId;
+    /**
+     * ⚠️ 这里**故意不用 `Pill`**（2026-10-06 实测修复「切换日期瞬间 chip 被挤压」）：
+     * `Pill` 在选中/未选中之间会切换**两套完全不同的元素树**（实心 Pressable ↔ GlassSurface 包裹），
+     * 换树会给 Android 一帧未完成测量的重排 —— 连拍实测：切换那一帧粉色胶囊高度塌成 12dp
+     * （文字仍是全尺寸、溢出在外），用户看到的就是「日期被挤压一下」。
+     * 这里用**结构恒定**的实底 chip：只改 backgroundColor，子树永不变化 → 不重排、无闪帧。
+     *
+     * 附带好处：逐卡 `GlassSurface` 违反项目自己的规则（列表/网格逐卡禁玻璃 —— 每个 chip 一次
+     * backdrop 采样，滚动时逐帧重算模糊）。实底 chip 既符合规范又快。
+     */
     return (
-      <Pill
-        label={item.weekRankName}
-        selected={active}
-        onPress={() => { setRanks([]); setSelectedWeek(item); }}
-        style={styles.weekChip}
-      />
+      <Pressable
+        onPress={() => {
+          /**
+           * ⚠️ 点已选中的同一周 → 无操作（2026-10-06 修复）：
+           * 此前无条件 `setRanks([]) + setSelectedWeek(item)`，而 `item` 就是当前
+           * `selectedWeek` 的同一个对象引用 → setState 被 React 判为无变化、**加载 effect 不重跑**
+           * → 榜单被清空后卡在「暂无排名数据」（用户反馈的「双击日期像是刷新/变空」）。
+           */
+          if (selectedWeek?.weekRankId === item.weekRankId) return;
+          /**
+           * ⚠️ 刻意**不** `setRanks([])`（2026-10-06）：清空会让列表瞬间塌成骨架屏 →
+           * 页面内容高度骤变、整块区域重排，切换瞬间看起来「被挤一下」。
+           * 改为保留上一周数据直到新数据到达（loadRank 成功时整体替换），
+           * 切换期间只在标题旁显示小转圈 —— 页面高度全程不变。
+           */
+          setSelectedWeek(item);
+        }}
+        style={styles.weekChipWrap}
+      >
+        {/* 背景层独立：尺寸由 weekChipWrap 定死（32dp），背景层只是 absoluteFill + 小圆角。
+            ⚠️ 之前把 backgroundColor + borderRadius:999 直接放在定尺寸的节点上，实测切换那一帧
+            粉色矩形会按**文字外框**绘制（连拍：h=36px 且文字同步上移 31px）→ 用户看到「日期被挤一下」。
+            圆角也刻意用 16（= 高度一半）而不是 999：超过半高的半径在 Android 上会走另一条绘制路径。 */}
+        <View
+          pointerEvents="none"
+          style={[styles.weekChipBg, { backgroundColor: active ? palette.tint : palette.fill2 }]}
+        />
+        <Text
+          numberOfLines={1}
+          style={[typography.footnote, { fontWeight: '600', color: active ? '#fff' : palette.label }]}
+        >
+          {item.weekRankName}
+        </Text>
+      </Pressable>
     );
   };
 
@@ -228,23 +318,30 @@ export default function MeleeRankScreen() {
       <ScreenHeader title={t('鸡腿榜')} onBack={() => navigation.goBack()} />
 
       <View style={styles.modeRow}>
-        {MODES.map((m) => (
-          <View key={m.key} style={styles.modeWrap}>
-            <Pill
-              label={t(m.label)}
-              selected={mode === m.key}
-              onPress={() => switchMode(m.key)}
-              style={styles.modePill}
-            />
-          </View>
-        ))}
+        {/* 页签用全站标准分段控件（GlassSegmented：玻璃轨道 + 滑动玻璃胶囊 + tint 文字）。
+            ⚠️ 此前是 2 个 `flex:1` 的 Pill —— selected 态是**实心 tint 填充**，
+            被 flex:1 拉到各占半屏 → 一块占半屏宽的纯粉胶囊，与全站玻璃语言冲突（用户实测截图反馈）。 */}
+        <GlassSegmented
+          options={MODES.map((m) => ({ key: m.key, label: t(m.label) }))}
+          value={mode}
+          onChange={switchMode}
+        />
       </View>
 
       {mode === 'person' && (
         <MemberPicker selectedMember={member} onSelect={(m) => { setPersonRanks([]); setMember(m); }} placeholder={t('搜索成员查看鸡腿贡献...')} />
       )}
 
-      {mode === 'week' && weeks.length > 0 && (
+      {/*
+        ⚠️ 日期栏**两个页签下都常驻**（2026-10-06 修复「切换时日期栏塌陷」）：
+        此前写成 `mode === 'week' && ...` → 切到「成员贡献」时整行被卸载，
+        切回来时**重新挂载**：挂载后的第 1 帧父级尚未完成布局，chip 只有一行文字高（连拍实测 12dp，
+        白字溢出在粉色块外），用户看到的就是「日期栏塌陷一下」。
+        常驻即可：不卸载 → 无挂载帧 → 不塌陷；同时保留横向滚动位置，
+        切回「周榜」时你上次选的那一期仍在原位。
+        （选中周次只影响周榜；在成员贡献页点它不改变当前视图，切回即生效。）
+      */}
+      {weeks.length > 0 && (
         <PerfFlatList
           horizontal
           data={weeks}
@@ -253,6 +350,8 @@ export default function MeleeRankScreen() {
           style={styles.weekList}
           contentContainerStyle={styles.weekListContent}
           showsHorizontalScrollIndicator={false}
+          /* 短横列表不需要裁剪优化；Android 上 removeClippedSubviews 对横向列表有已知渲染瑕疵 */
+          removeClippedSubviews={false}
         />
       )}
 
@@ -331,7 +430,8 @@ const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
   const order = [ranks[1], ranks[0], ranks[2]]; // 2nd | 1st | 3rd
   // 柱高按「名次」索引（0=第1名），此前写成 order 顺序 [76,96,64] 却用 realIndex 取值，
   // 导致第 2 名柱子比第 1 名还高（领奖台排版错乱）
-  const heights = [96, 76, 64];
+  // 2026-10-06 压低整体高度（原 96/76/64）：第一名柱子比头像还高，实心色块占掉近半屏，观感很重
+  const heights = [60, 46, 36];
   const tones = [palette.fill2, palette.tintSoft, palette.fill2];
   return (
     <FadeInView delay={60} duration={320} style={{ marginBottom: 12 }}>
@@ -356,8 +456,8 @@ const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
                 </View>
                 <MaterialCommunityIcons name={medal(realIndex) as any} size={18} color={isFirst ? palette.warning : palette.labelTertiary} style={{ marginTop: 6 }} />
                 <Text style={[styles.podiumName, { color: palette.label, fontWeight: isFirst ? '800' : '600' }]} numberOfLines={1}>{name}</Text>
-                <View style={[styles.podiumBar, { height: heights[realIndex], backgroundColor: isFirst ? palette.tint : palette.fill3 }]}>
-                  <Text style={[styles.podiumMelee, { color: isFirst ? palette.onTint : palette.labelTertiary }]} numberOfLines={1}>
+                <View style={[styles.podiumBar, { height: heights[realIndex], backgroundColor: isFirst ? palette.tintSoft : palette.fill2 }]}>
+                  <Text style={[styles.podiumMelee, { color: isFirst ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
                     {melee >= 10000 ? `${(melee / 10000).toFixed(1)}w` : String(melee)}
                   </Text>
                 </View>
@@ -396,7 +496,6 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
   const rankNum = Number(item.rankNum || item.rank || item.no || index + 1);
   const u = item.baseUserInfo || item.userInfo || item.user || item;
   const topU = item.topUserInfo || item.topUser || {};
-  // 核对电脑版: 周榜卡片昵称取 baseUserInfo.nickname || starName（此前缺 starName → 偶发空名）
   const name = String(u.nickname || u.starName || u.userName || u.nickName || u.name || '');
   const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
   const topUser = String(topU.userName || topU.nickname || '');
@@ -456,7 +555,6 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
   const palette = usePalette();
   const { t } = useI18n();
   const u = item.userInfo || item.baseUserInfo || item.user || item;
-  // 电脑版字段：userInfo.nickname / realNickName；数值字段 totalCharm（此前缺 → 显示 0）
   const name = String(u.nickname || u.realNickName || u.userName || u.nickName || u.name || '');
   const avatar = normalizeUrl(String(u.avatar || u.userAvatar || u.headImg || u.headUrl || u.picPath || item.userAvatar || item.avatar || item.headImg || ''));
   const userId = String(u.userId || u.id || item.userId || item.uid || '');
@@ -494,14 +592,41 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
   );
 });
 
+/** 周次 chip 高度（= 18dp 行高 + 上下各 7dp）。尺寸节点与背景层共用同一个常量，避免两处不一致。 */
+const WEEK_CHIP_H = 32;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  modeRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 8, gap: 6 },
-  modeWrap: { flex: 1 },
-  modePill: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
-  weekList: { maxHeight: 46, marginBottom: 4 },
-  weekListContent: { paddingHorizontal: 16, alignItems: 'center', gap: 6 },
-  weekChip: { marginRight: 0 },
+  modeRow: { paddingHorizontal: 16, marginBottom: 10 },
+  // ⚠️ 用显式 height（不再是 maxHeight:46）：给 chip 留足空间，避免任何父级约束把它压扁
+  weekList: { height: 44, marginBottom: 6 },
+  weekListContent: { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
+  /**
+   * ⚠️ 尺寸节点（结构恒定、无背景、无圆角、无 overflow）：高度给死 32dp
+   * （= 18dp 行高 + 上下各 7dp）。此前不设高度被父容器压到 25dp 后只剩 11dp 放 18dp 行高
+   * → **字形被裁**（实测「09月28日」显示成「09日28日」）。显式 height 在 Yoga 里优先于 alignSelf:stretch。
+   */
+  weekChipWrap: {
+    height: WEEK_CHIP_H,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /**
+   * 背景层：**不参与尺寸计算，也不依赖父级布局**。
+   * ⚠️ 刻意用显式 height 而不是 `StyleSheet.absoluteFillObject`（2026-10-06 实测）：
+   * 日期栏在切模式时会被卸载/重新挂载，**挂载后的第 1 帧父级还没完成布局**（高度=文字高度 12dp），
+   * absoluteFill 的 bottom:0 于是也跟着塌成 12dp → 用户看到「切换瞬间日期栏塌陷」。
+   * 给死高度后背景层任何一帧都恒为 32dp。
+   */
+  weekChipBg: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: WEEK_CHIP_H,
+    borderRadius: WEEK_CHIP_H / 2,
+  },
   list: { padding: 14, paddingBottom: 40 },
   podiumCard: {
     borderRadius: radiiAlias.card,
@@ -521,10 +646,11 @@ const styles = StyleSheet.create({
   podiumBar: {
     marginTop: 6,
     width: '100%',
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 6,
+    // 数值垂直居中：此前 justifyContent flex-start + paddingTop 6 → 数值贴顶、
+    // 下方留一大片空色块，像「没渲染完」（实测截图）
+    justifyContent: 'center',
     minHeight: 40,
   },
   podiumMelee: { fontSize: 11, fontWeight: '800', maxWidth: '92%' },

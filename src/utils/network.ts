@@ -41,16 +41,21 @@ interface RequestOptions {
 }
 
 /**
- * 解析响应文本，兼容口袋48 接口把超大数字（如 15+ 位 ID）以 JSON 数字返回导致解析失败的情况。
+ * 解析响应文本，兼容口袋48 接口把超大数字（如 15+ 位 ID）以 JSON 数字返回的情况。
+ *
+ * ⚠️ 必须**先**把 15+ 位整数转成字符串再 JSON.parse：JSON.parse 对合法 JSON 里的
+ * 超大数字不会报错，只会静默舍入（691322274260520960 → 691322274260521000），
+ * 导致 giftId 这类 18 位 ID 失真、服务端回 1004「礼物不存在」。
+ * 正则若误伤了字符串内容导致解析失败，则回退解析原文（退化为无大整数保护，但不破坏数据）。
  */
 function parseResponse(text: string): JsonValue {
   if (!text) return null;
+  const fixed = text.replace(/:\s*([0-9]{15,})\s*([,}\]])/g, ':"$1"$2');
   try {
-    return JSON.parse(text);
+    return JSON.parse(fixed);
   } catch {
-    const fixed = text.replace(/:\s*([0-9]{15,})/g, ':"$1"');
     try {
-      return JSON.parse(fixed);
+      return JSON.parse(text);
     } catch {
       return text;
     }
@@ -128,11 +133,14 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
             ? String(options.body ?? '')
             : JSON.stringify(options.body ?? {})
           : undefined,
-        signal: options.signal ?? controller.signal,
+        // ⚠️ 必须始终用内部 controller.signal：超时（setTimeout → controller.abort）挂的是它。
+        // 此前写成 `options.signal ?? controller.signal`，一旦调用方传了外部 signal，
+        // 内部 controller 的 signal 就没挂到 fetch 上 → **超时彻底失效，请求可永久挂起**。
+        // 外部取消仍生效：由上方 extAbort 监听联动 controller.abort（见 106-114 行）。
+        signal: controller.signal,
       });
 
       clearTimeout(timer);
-      if (extAbort && options.signal) options.signal.removeEventListener('abort', extAbort);
       const text = await res.text();
       const body = parseResponse(text);
 
@@ -163,6 +171,9 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
       }
       throw error;
     } finally {
+      // ⚠️ 清理统一放 finally：此前只在成功路径移除 abort 监听，失败/超时路径会残留 →
+      // 长生命周期的外部 signal 反复请求会持续累积监听（内存泄漏，2026-10-03 修复）
+      if (extAbort && options.signal) options.signal.removeEventListener('abort', extAbort);
       inflight.delete(key);
     }
   })();

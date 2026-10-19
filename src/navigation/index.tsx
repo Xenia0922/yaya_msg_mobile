@@ -1,18 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
-import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Animated, BackHandler, Easing, ImageBackground, Keyboard, StyleSheet, View } from 'react-native';
+import { Animated, BackHandler, DeviceEventEmitter, Easing, ImageBackground, Keyboard, StyleSheet, View } from 'react-native';
 import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
 import { setPipEnabled, listenPipToggle } from '../utils/pip';
 import { Palettes } from '../theme/colors';
 import { fixDataUriMime } from '../utils/dataUri';
 import { ensureMemberData } from '../services/memberData';
+// 副作用导入：安装音乐引擎的全局桥（系统媒体控件动作 / 播完自动切歌 / 后台推流）
+import '../services/musicPlayer';
 import { RootStackParamList, TabParamList } from './types';
 import { AppTabBar, MCI } from '../components/AppTabBar';
-import { PageBackdrop } from '../components/PageBackdrop';
+import { AppDialogHost } from '../components/AppDialog';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
@@ -40,6 +42,7 @@ import AnalysisScreen from '../screens/AnalysisScreen';
 import DownloadScreen from '../screens/DownloadScreen';
 import DatabaseScreen from '../screens/DatabaseScreen';
 import MeleeRankScreen from '../screens/MeleeRankScreen';
+import RoomAlbumScreen from '../screens/RoomAlbumScreen';
 import MemberDynamicScreen from '../screens/MemberDynamicScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
 import AppToast from '../components/AppToast';
@@ -115,6 +118,7 @@ const AnalysisStackScreen = withPageMotion(AnalysisScreen, ui.motion.stackDurati
 const DownloadStackScreen = withPageMotion(DownloadScreen, ui.motion.stackDuration, 10, true);
 const DatabaseStackScreen = withPageMotion(DatabaseScreen, ui.motion.stackDuration, 10, true);
 const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDuration, 10, true);
+const RoomAlbumStackScreen = withPageMotion(RoomAlbumScreen, ui.motion.stackDuration, 10, true);
 const MemberDynamicStackScreen = withPageMotion(MemberDynamicScreen, ui.motion.stackDuration, 10, true);
 const InvoiceStackScreen = withPageMotion(InvoiceScreen, ui.motion.stackDuration, 10, true);
 
@@ -277,6 +281,19 @@ function PipToggleBridge() {
 }
 
 export default function AppNavigator() {
+  const navRef = useNavigationContainerRef();
+  // 系统媒体卡「播放列表」按钮 → 打开音乐库（事件由 musicPlayer 桥接发出）
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('OpenMusicLibrary', () => {
+      try {
+        if (navRef.isReady()) (navRef as any).navigate('MusicLibraryScreen');
+      } catch {
+        /* 导航未就绪时忽略 */
+      }
+    });
+    return () => sub.remove();
+  }, [navRef]);
+
   const theme = useResolvedTheme();
   const palette = usePalette();
   const screenBackdrop = useUiStore((state) => state.screenBackdrop);
@@ -291,6 +308,14 @@ export default function AppNavigator() {
   const navTheme = theme === 'dark' ? AppDarkTheme : AppTheme;
   // 导航层永远透明：液态玻璃的透光来源是根层 PageBackdrop/背景图，
   // card 不透明会把底衬完全盖住 → 玻璃无从谈起
+  /**
+   * 默认背景（2026-10-18 定稿）：浅色/深色各一张内置图，用户自定义背景优先。
+   * 内置换成 require 资源（打包进 APK），不再依赖 PageBackdrop 的纯色渐变兜底。
+   */
+  const defaultBg = theme === 'dark'
+    ? require('../../assets/defaults/bg-dark.jpg')
+    : require('../../assets/defaults/bg-light.jpg');
+  const bgSource = hasBackground ? { uri: customBg } : defaultBg;
   const themed = { ...navTheme, colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' } };
   // 自定义背景暗化遮罩：浅色主题压一层白雾保证深色文字可读，深色主题压一层黑幕保证浅色文字可读。
   // 取值克制（<=0.35），既保证可读性又不至于「看不清背景图」。
@@ -322,25 +347,33 @@ export default function AppNavigator() {
             />
             <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: screenBackdrop.scrim }]} />
           </View>
-        ) : hasBackground ? (
+        ) : (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <ImageBackground
-              source={{ uri: customBg }}
+              source={bgSource as any}
               resizeMode="cover"
               style={StyleSheet.absoluteFill}
             />
-            <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: bgScrim }]} />
+            <View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                // 内置默认图是柔和渐变：遮罩压淡（0.18/0.10），自定义图仍用原强度保证可读性
+                { backgroundColor: hasBackground ? bgScrim : theme === 'dark' ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.10)' },
+              ]}
+            />
           </View>
-        ) : (
-          <PageBackdrop />
         )}
       </BlurTargetSurface>
+      {/* 全局自绘对话框宿主：替代原生 Alert（样式统一，Android 不限按钮数） */}
+      <AppDialogHost />
       {/*
         onStateChange：任何一次导航（含手势返回被 navigator 自己处理掉、不经过
         BackHandler 的情况）都兜底收起输入法 —— 否则键盘可能跟着旧页面留着，
         而靠键盘高度做布局的页面会卡在非 0 高度（背景被顶掉一条）。
       */}
       <NavigationContainer
+        ref={navRef}
         theme={themed}
         onStateChange={() => { if (Keyboard.isVisible()) Keyboard.dismiss(); }}
       >
@@ -374,6 +407,7 @@ export default function AppNavigator() {
           <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
           <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
           <Stack.Screen name="MeleeRankScreen" component={MeleeRankStackScreen} />
+          <Stack.Screen name="RoomAlbumScreen" component={RoomAlbumStackScreen} />
           <Stack.Screen name="MemberDynamicScreen" component={MemberDynamicStackScreen} />
           <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
         </Stack.Navigator>

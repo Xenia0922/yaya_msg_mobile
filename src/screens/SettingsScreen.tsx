@@ -7,20 +7,13 @@
  * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { showDialog } from '../components/AppDialog';
 import { toMs } from '../utils/format';
-import {
-  Alert,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import {Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Image } from 'react-native';
+import {Image} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore, useUpdateStore } from '../store';
@@ -213,11 +206,11 @@ export default function SettingsScreen() {
   const pickBg = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) { Alert.alert(t('需要相册权限')); return; }
+      if (!perm.granted) { showDialog(t('需要相册权限')); return; }
       const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, base64: true } as any);
       if (result.canceled) return;
       const base64 = result.assets?.[0]?.base64;
-      if (!base64) { Alert.alert(t('未获取到图片数据')); return; }
+      if (!base64) { showDialog(t('未获取到图片数据')); return; }
       /**
        * ⚠️ MIME 必须按**真实字节**判定，不能信 picker 给的 `mimeType`。
        * 实测踩坑：用户存的背景图是 `data:image/png;base64,/9j/4AAQSkZJRgAB…`
@@ -229,7 +222,7 @@ export default function SettingsScreen() {
       const mime = sniffImageBase64Mime(base64) || result.assets?.[0]?.mimeType || 'image/jpeg';
       await update('customBackgroundFile', `data:${mime};base64,${base64}`, { customBackgroundUpdatedAt: Date.now() });
     } catch (error: any) {
-      Alert.alert(t('背景图失败'), error?.message || String(error));
+      showDialog(t('背景图失败'), error?.message || String(error));
     }
   };
 
@@ -337,7 +330,7 @@ export default function SettingsScreen() {
                 danger
                 withChevron={false}
                 onPress={() => {
-                  Alert.alert(t('恢复默认背景'), t('将移除当前背景图，确定？'), [
+                  showDialog(t('恢复默认背景'), t('将移除当前背景图，确定？'), [
                     { text: t('取消'), style: 'cancel' },
                     { text: t('恢复默认'), style: 'destructive', onPress: () => update('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() }) },
                   ]);

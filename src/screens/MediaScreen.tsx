@@ -10,6 +10,7 @@ import {
   BackHandler,
   DeviceEventEmitter,
   Image,
+  Keyboard,
   Modal,
   RefreshControl,
   ScrollView,
@@ -40,6 +41,7 @@ import { setLiveImmersiveMode } from '../native/LivePlayer';
 import PlayerScreen from '../player';
 import { usePlayerStore } from '../player/store/playerStore';
 import { DanmakuOverlay } from '../components/DanmakuOverlay';
+import { clearGiftEffectQueue, isGiftEffectSupported, playGiftEffect } from '../services/giftEffect';
 import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
 import { useLiveBarrage } from '../hooks/useLiveBarrage';
 import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
@@ -594,9 +596,35 @@ export default function MediaScreen() {
   const liveBarrageId = playing?.isLive ? String(playing.item?.liveId || playing.item?.id || '') : '';
   const liveBarrage = useLiveBarrage({ liveId: liveBarrageId, enabled: !!liveBarrageId, module: 'live' });
   const liveDanmakuItems = useMemo(
-    () => liveBarrage.items.map((item) => ({ key: item.id, text: item.nick ? `${item.nick}：${item.text}` : item.text })),
+    () =>
+      liveBarrage.items.map((item) => ({
+        key: item.id,
+        // 不额外拼「昵称：」前缀（普通弹幕只出正文）；
+        // 进场/礼物文案 codec 合成时已自带「昵称 进入直播间」「昵称 送给 主播 1个X」，原样保留。
+        text: item.text || '',
+      })),
     [liveBarrage.items]
   );
+  /**
+   * 全屏礼物特效（仅直播页）：PRESENT_FULLSCREEN(_TWO) 消息带 zipPath 时播 PAG 动画。
+   * 别人送的与自己送的都走这条（服务端广播会回投给发送者）；按 item.id 去重防重播。
+   */
+  const playedEffectsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isGiftEffectSupported()) return;
+    const items = liveBarrage.items;
+    if (!items.length) return;
+    for (const item of items) {
+      const zip = item.gift?.zipPath;
+      if (!zip || playedEffectsRef.current.has(item.id)) continue;
+      playedEffectsRef.current.add(item.id);
+      playGiftEffect({ zipPath: zip, zipMd5: item.gift?.zipMd5, giftName: item.gift?.giftName });
+    }
+    if (playedEffectsRef.current.size > 200) playedEffectsRef.current.clear();
+  }, [liveBarrage.items]);
+  // 离开直播间清队列，避免下一场开播播上一场的特效
+  useEffect(() => () => { clearGiftEffectQueue(); }, []);
+
   // 修复「直播弹幕不飘屏」：showDanmaku 此前只由 HTTP 轮询打开，
   // 原生云信通道有弹幕也不会飘 —— 云信一到货就自动打开飘屏。
   useEffect(() => {
@@ -711,7 +739,6 @@ export default function MediaScreen() {
       const id = setInterval(poll, 5000);
       return () => { alive = false; clearInterval(id); };
     }
-    // 回放：从 LRC 文件拉取（参考 pocket48_lite：录播弹幕在 getLiveOne 的
     // content.msgFilePath 指向的 LRC 文件，而非 barrage/list；格式 [hh:mm:ss.fff]昵称\t内容，
     // 已由 parseDanmaku 解析为「秒」对上 playbackTime）
     pocketApi.getLiveLrc(lid)
@@ -768,7 +795,6 @@ export default function MediaScreen() {
   // 关注成员 id 集合：「关注」tag 实时筛选（60s 同步一次）
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [playbackTime, setPlaybackTime] = useState(0);
-  // R1: 弹幕时钟 = 统一播放器上报的真实进度（live 也在播中持续推进，对齐 poll 弹幕时间轴）
   const danmakuClock = usePlayerStore((s) => s.position);
   const playerDanmakuOn = usePlayerStore((s) => s.danmakuOn);
   // 播放器控制（哔哩哔哩风格自定义控制条）
@@ -777,22 +803,16 @@ export default function MediaScreen() {
   const [paused, setPaused] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
 
-  // 画中画（悬浮窗）状态同步：正在播放且未暂停时置位，切后台自动进悬浮窗
-  useEffect(() => {
-    // 应用内小窗已接管 PiP 标志时不覆盖（防小窗切后台不进悬浮窗）
-    if (useMiniPlayerStore.getState().visible) return;
-    setPipPlaying(!!playing && !paused && !useWebPlayer);
-  }, [playing, paused, useWebPlayer]);
+  // ⚠️ 此处**不再写 PiP 标志**（2026-10-03 修复）：统一播放器重写后媒体状态以 playerStore.state 为准，
+  // 本页的 paused 是死状态（全页只有一处 setPaused(false)），用它判定会出现「已暂停、按 Home 仍进悬浮窗」，
+  // 且该写入会覆盖 FullscreenManager 的正确结果（PiP 标志原本有 3 个写入点互相打架）。
+  // PiP 唯一权威源 = FullscreenManager（依据 playerStore.state==='playing' && !fullscreen）。
   // 搜索：选中成员后，搜索框转为「该成员的标题/日期」过滤
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [dateFilter, setDateFilter] = useState<Date | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showDanmakuSettings, setShowDanmakuSettings] = useState(false);
-  /**
-   * 弹幕列表抽屉（对齐桌面端弹幕时间轴面板）。
-   * 录播 = LRC 弹幕按时间升序（可点击跳转 + 跟随播放）；
-   * 直播 = 实时弹幕按最新在前（无时间轴，只做列表/搜索/按人筛选）。
-   */
+  
   const [showDanmakuList, setShowDanmakuList] = useState(false);
   /** 弹幕列表点发送者 → 用户资料卡（成员/粉丝同一个界面） */
   const [danmakuProfile, setDanmakuProfile] = useState<UserProfileTarget | null>(null);
@@ -1065,7 +1085,12 @@ export default function MediaScreen() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // ⚠️ 失焦的 tab 页仍持有 BackHandler 订阅（bottom-tabs 不卸载页面），
+      // 不自行判断焦点会抢走当前页的返回键、关掉后台页面状态（2026-10-03 修复）
+      if (!navigation.isFocused()) return false;
       if (!playing) return false;
+      // 返回键的第一预期行为是收键盘（弹幕输入中）
+      if (Keyboard.isVisible()) { Keyboard.dismiss(); return true; }
       setIsFullscreen(false);
       setIsLandscape(false);
       setLiveImmersiveMode(false);
@@ -1083,7 +1108,6 @@ export default function MediaScreen() {
     setError('');
     try {
       let finalCursor = cursor;
-      // 官方坑（桌面基线 fetchLiveList / 48tools 同款修复）：next=0 时带 userId 查询拿不到数据，
       // 需先发一次不带 userId 的请求取列表最新 liveId 作为 next，再按成员直查。
       if (userId !== undefined && userId !== null && userId !== '' && Number(cursor) === 0) {
         const probe = await pocketApi.getLiveList({ next: 0, record: mode === 'vod', debug: true }).catch(() => null);
@@ -1135,7 +1159,6 @@ export default function MediaScreen() {
   // 选中成员时切到「回放」并重置列表，立即触发首屏加载。
   // 用 setTimeout(0) 让上面的 setState 先提交，避免读到切换前的旧 tab；
   // 覆盖「已在 vod tab 时初始加载 effect 不触发」以及「切 tab 时 loadingRef 把自动翻页挡掉」两种情况。
-  // 成员检索改为服务端 userId 直查（对齐桌面基线/48tools）：getLiveList 带 userId 即返回该成员
   // 完整直播/录播，替代「全量加载全局列表再前端筛选」——旧实现只能筛到已加载页面内的数据，
   // 成员较早的录播永远搜不到。
   useEffect(() => {
@@ -1193,7 +1216,6 @@ export default function MediaScreen() {
   const scanDoneRef = useRef(false);
   // 关注成员录播：并发按 userId 服务端直查（用户指定实现）——
   // 不再"扫描全局流 48h 再前端筛选"（慢且命中率低），直接对每个关注成员的 userId 调
-  // getLiveList({ userId }) 拿 TA 专属录播，合并去重。桌面基线/48tools 同款能力。
   const loadFollowVodFast = useCallback(async () => {
     if (followLoadingRef.current || groupId !== -1 || tab !== 'vod') return;
     if (!useSettingsStore.getState().settings.p48Token) { scanDoneRef.current = true; return; }
@@ -1265,11 +1287,15 @@ export default function MediaScreen() {
   // 关注成员 id 同步（60s 一次；state 声明在组件上部供「关注」tag 筛选使用）
   useEffect(() => {
     let alive = true;
-    const load = () => pocketApi.getFollowedIds().then((res) => {
-      if (!alive) return;
-      const ids = unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String);
-      setFollowedIds(new Set(ids));
-    }).catch(() => {});
+    const load = () => {
+      // 退后台/失焦时不发请求（2026-10-03 修复：此前锁屏仍每 60s 拉一次）
+      if (AppState.currentState !== 'active' || !navigation.isFocused()) return;
+      pocketApi.getFollowedIds().then((res) => {
+        if (!alive) return;
+        const ids = unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String);
+        setFollowedIds(new Set(ids));
+      }).catch(() => {});
+    };
     load();
     const id = setInterval(load, 60000);
     return () => { alive = false; clearInterval(id); };
@@ -1278,7 +1304,11 @@ export default function MediaScreen() {
   // 直播列表实时自动刷新：浏览直播 tab 且未播放时每 60s 静默重拉（关注成员开播即时可见）
   useEffect(() => {
     if (tab !== 'live' || playing) return;
-    const id = setInterval(() => { doFetch('live', 0, false, true); }, 60000);
+    const id = setInterval(() => {
+      // 同上：后台/失焦不轮询
+      if (AppState.currentState !== 'active' || !navigation.isFocused()) return;
+      doFetch('live', 0, false, true);
+    }, 60000);
     return () => clearInterval(id);
   }, [tab, playing, doFetch]);
 
@@ -1287,7 +1317,6 @@ export default function MediaScreen() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
-  // 切到后台时复位横屏锁（防退到桌面/其它 App 仍锁横屏）；
   // 回到前台时按当前播放状态重新锁定（后台复位后上方 effect 不会再触发，需在此补锁）
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -1331,7 +1360,9 @@ export default function MediaScreen() {
       title: cur.title,
       cover: cur.cover,
       isLive: !!cur.isLive,
-      position: playbackTime,
+      // ⚠️ 必须取统一播放器 store 的真实进度：本地 playbackTime 状态除初始 0 外全程未更新，
+      // 用它交棒会导致「大窗看一半 → 小窗从 0 开始」（2026-10-03 修复）
+      position: usePlayerStore.getState().position,
       aspectW: videoSizeRef.current?.w,
       aspectH: videoSizeRef.current?.h,
       backTo: {
@@ -1535,11 +1566,18 @@ export default function MediaScreen() {
     }
     setGiftStatus(t('正在发送...'));
     try {
+      // 直播详情里的 crm（DES 加密的聊天室 id）——服务端靠它把礼物广播进直播间，缺失则成员端无感知
+      let crm = '';
+      try {
+        const one = await pocketApi.getLiveOne(String(playing.item.liveId));
+        crm = String((one as any)?.content?.crm || '');
+      } catch { /* 拿不到 crm 时按官方空 crm 路径发送 */ }
       await pocketApi.sendGift({
         giftId: String(selectedGift.giftId || selectedGift.id),
         liveId: String(playing.item.liveId),
         acceptUserId: targetUserId,
         giftNum: num,
+        crm,
       });
       setGiftStatus(t('已送出 {num} 个 {giftName}', { num, giftName: giftName(selectedGift) }));
       const money = await pocketApi.getUserMoney().catch(() => null);
@@ -1706,6 +1744,7 @@ export default function MediaScreen() {
             onVideoSize={(w, h) => { if (w > 0 && h > 0) videoSizeRef.current = { w, h }; }}
             danmaku={playing.isLive ? { type: 'poll', liveId: String(playing.item?.liveId || playing.item?.id || '') } : { type: 'lrc', lrcUrl: '' }}
             features={{ rate: !playing.isLive, danmaku: true, kernelSwitch: true, resume: !playing.isLive }}
+            chromeHidden={inSystemPip}
             resumeAt={webResumeTime || (playing?.position || 0)}
             extraActions={[
               ...(playing.isLive ? [{ key: 'gift', icon: 'gift', label: t('礼物'), onPress: () => openGiftPanel() }] : []),
@@ -1725,7 +1764,7 @@ export default function MediaScreen() {
                 inputOnly
               />
             ) : undefined}
-            onClose={() => { setPipPlaying(false); closePlayer(); }}
+            onClose={() => { setPipPlaying(false, 'mediascreen'); closePlayer(); }}
             // 直播流地址有时效（wsSecret）：失败重试 = 重新解析（startPlay），而非重播同 URL
             onRetry={() => startPlay(playing.item)}
             persistent
@@ -1777,7 +1816,6 @@ export default function MediaScreen() {
                   <Text style={[styles.backBtnText, { color: palette.tint }]}>{t('关闭')}</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={[styles.giftTip, { color: palette.danger }]}>{t('直播送礼主播看不到赠送，仅能统计贡献值')}</Text>
               <Text style={[styles.giftStatus, { color: palette.labelSecondary }]}>
                 {balance ? `${t('余额：{balance} 鸡腿', { balance })} · ` : ''}{giftStatus}
               </Text>

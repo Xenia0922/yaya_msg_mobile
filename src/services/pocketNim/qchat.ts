@@ -184,16 +184,12 @@ async function ensureLogin(): Promise<void> {
   return loginInFlight;
 }
 
-/**
- * 构造圈组消息扩展段（对齐 ChatMsgUtil.getChannelBaseParams）。
- * 服务端会用 user 段渲染昵称/头像，缺失时消息可能显示异常。
- */
+
 export function buildChannelExt(target: RoomMessageTarget, self: NimSelfProfile): string {
-  // 字段与桌面版 member-room-message.buildExtension 一致（vip/pfUrl/teamLogo 缺了别人那端渲染就缺东西）
   // 官方 getChannelBaseParams：channelRole 是 **Integer**（我们此前发字符串，gson 解析异常时身份就乱了）
   return JSON.stringify({
     module: NimModule.QCHAT,
-    channelRole: Math.trunc(Number(self.sessionRole ?? target.channelRole ?? 0)) || 0,
+    channelRole: Math.trunc(Number(target.channelRole ?? 0)) || 0,
     user: {
       userId: self.userId,
       nickName: self.nickName,
@@ -208,10 +204,38 @@ export function buildChannelExt(target: RoomMessageTarget, self: NimSelfProfile)
   });
 }
 
-/** 发送房间文本消息 */
-export async function sendRoomTextMessage(target: RoomMessageTarget, text: string): Promise<void> {
-  const content = String(text || '').trim();
-  if (!content) return;
+/** 回复引用（官方 REPLY 消息的 replyInfo 字段） */
+export interface RoomReplyInfo {
+  /** 被回复消息的 msgIdClient */
+  replyMessageId: string;
+  /** 被回复者名字 */
+  replyName: string;
+  /** 被回复消息正文 */
+  replyText: string;
+}
+
+/** 发送房间文本消息；带 reply 时按官方 REPLY 结构组包（bodys 变 JSON，msgType=REPLY） */
+export async function sendRoomTextMessage(
+  target: RoomMessageTarget,
+  text: string,
+  reply?: RoomReplyInfo | null,
+): Promise<void> {
+  const body = String(text || '').trim();
+  if (!body) return;
+  // 官方真实样本：普通消息 bodys = 纯文本；回复消息 bodys = JSON
+  // {"replyInfo":{"replyMessageId","replyName","replyText","text","userId":0},"messageType":"REPLY"}
+  const content = reply?.replyMessageId
+    ? JSON.stringify({
+        replyInfo: {
+          replyMessageId: String(reply.replyMessageId),
+          replyName: String(reply.replyName || ''),
+          replyText: String(reply.replyText || ''),
+          text: body,
+          userId: 0,
+        },
+        messageType: 'REPLY',
+      })
+    : body;
   const serverId = Number(target.serverId);
   const channelId = Number(target.channelId);
   if (!Number.isFinite(serverId) || !Number.isFinite(channelId) || channelId <= 0) {
@@ -268,7 +292,7 @@ export async function deleteRoomMessage(params: {
   });
 }
 
-/** 归一化后的房间消息（与 HTTP 历史消息字段对齐，便于直接拼进列表） */
+
 export interface RoomLiveMessage {
   uuid: string;
   serverId: number;

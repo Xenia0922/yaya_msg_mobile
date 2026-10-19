@@ -65,4 +65,10 @@ export interface PlayerScreenProps {
     onPress: () => void;
   }>;
   onClose?: () => void;
+  /**
+   * 隐藏整套播放器 chrome（标题栏/中央播放键/底部控制坞/更多面板）。
+   * 用于系统画中画小窗：窗口只有几百 dp，chrome 会挤成一团叠在画面上（2026-10-17 修）。
+   * 画面层与弹幕 children 不受影响，小窗里仍能看直播与弹幕。
+   */
+  chromeHidden?: boolean;
 }

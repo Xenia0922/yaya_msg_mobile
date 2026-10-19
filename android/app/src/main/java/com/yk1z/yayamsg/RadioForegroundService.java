@@ -104,6 +104,11 @@ public class RadioForegroundService extends Service {
           | (duration > 0 ? PlaybackState.ACTION_SEEK_TO : 0);
       PlaybackState state = new PlaybackState.Builder()
           .setActions(actions)
+          // 系统媒体卡额外按钮：API21+ 的 PlaybackState.CustomAction（收藏／播放列表）
+          .addCustomAction(new PlaybackState.CustomAction.Builder("favorite",
+              com.yk1z.yayamsg.RadioServiceModule.isFavoriteState() ? "已收藏" : "收藏",
+              com.yk1z.yayamsg.RadioServiceModule.isFavoriteState() ? R.drawable.ic_heart : R.drawable.ic_heart_outline).build())
+          .addCustomAction(new PlaybackState.CustomAction.Builder("playlist", "播放列表", R.drawable.ic_playlist).build())
           // ⚠️ 必须用 elapsedRealtime（单调时钟）：SystemUI 用 (now-updated)×speed+position 演算进度，
           // 用墙钟 currentTimeMillis 会让 ColorOS 算出异常差值 → 播放态进度错乱/归 0
           .setState(isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
@@ -157,8 +162,13 @@ public class RadioForegroundService extends Service {
         // 系统媒体条拖动：通知 JS seek（value=毫秒）
         RadioServiceModule.emitControlWithValue(getApplicationContext(), "seek", (double) pos);
       }
+      @Override
+      public void onCustomAction(String action, android.os.Bundle args) {
+        if (action != null && !action.isEmpty()) RadioServiceModule.emitControl(getApplicationContext(), action);
+      }
     });
   }
+
 
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
@@ -419,6 +429,8 @@ public class RadioForegroundService extends Service {
         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
     // 媒体控制按钮：广播 → RadioMediaReceiver → JS
+    PendingIntent favPi = mediaPi(RadioMediaReceiver.ACTION_FAVORITE, 13);
+    PendingIntent listPi = mediaPi(RadioMediaReceiver.ACTION_PLAYLIST, 14);
     PendingIntent prevPi = mediaPi(RadioMediaReceiver.ACTION_PREV, 10);
     PendingIntent playPausePi = mediaPi(isPlaying ? RadioMediaReceiver.ACTION_PLAY_PAUSE : RadioMediaReceiver.ACTION_PLAY_PAUSE, 11);
     PendingIntent nextPi = mediaPi(RadioMediaReceiver.ACTION_NEXT, 12);
@@ -468,12 +480,15 @@ public class RadioForegroundService extends Service {
         .setOnlyAlertOnce(true)
         .setContentIntent(contentPi)
         .setDeleteIntent(stopPi)
+        // 收藏（红心）固定最左；折叠视图仍只放 上一首/播放暂停/下一首
+        .addAction(R.drawable.ic_heart, "收藏", favPi)
+        .addAction(R.drawable.ic_playlist, "播放列表", listPi)
         .addAction(android.R.drawable.ic_media_previous, "上一首", prevPi)
         .addAction(isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play, isPlaying ? "暂停" : "播放", playPausePi)
         .addAction(android.R.drawable.ic_media_next, "下一首", nextPi)
         .setStyle(new android.app.Notification.MediaStyle()
             .setMediaSession(mediaSession.getSessionToken())
-            .setShowActionsInCompactView(0, 1, 2));
+            .setShowActionsInCompactView(2, 3, 4));
     // 展开视图：封面 + 标题 + 歌手·专辑 + 滚动歌词（音乐场景；电台无歌词不发以免空布局）
     boolean hasMusicMeta = (lyric != null && !lyric.isEmpty())
         || (subLine != null && !subLine.isEmpty() && !"牙牙消息".equals(subLine));

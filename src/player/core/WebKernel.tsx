@@ -3,6 +3,7 @@ import { Platform, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getPlayerHtml } from '../../components/media/player';
 import { setPipAspect } from '../../utils/pip';
+import { usePlayerStore } from '../store/playerStore';
 import { PlayerSource } from '../types';
 
 interface Props {
@@ -49,7 +50,9 @@ export const WebKernel = forwardRef<WebKernelHandle, Props>(function WebKernel(
   // 钉死为 URL+headers 级稳定；续播位置只在首次挂载取一次。
   const resumeOnce = useRef<number>(resumeAt || 0);
   const html = useMemo(
-    () => getPlayerHtml(source.url, undefined, resumeOnce.current || 0, source.kind !== 'live', (source.headers || {}) as any, Number(source.volumeBoost) || 1),
+    // showControls 恒 false：RN 控制层（PlayerChrome）已接管播放/进度/倍速，
+    // 若 VOD 同时开 HTML 原生 controls 会出现「双进度条/双控制」互相打架（2026-10-03 修复）
+    () => getPlayerHtml(source.url, undefined, resumeOnce.current || 0, false, (source.headers || {}) as any, Number(source.volumeBoost) || 1),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [source.url, source.headers],
   );
@@ -77,6 +80,11 @@ export const WebKernel = forwardRef<WebKernelHandle, Props>(function WebKernel(
             onEnded();
           } else if (data.type === 'error') {
             onError(String(data.error || '').slice(0, 160) || '网页播放器错误');
+          } else if (data.type === 'duration') {
+            // 时长回传：网页内核此前从不上报 duration → store.duration 恒 0，
+            // RN 进度条显示 0:00 且**完全拖不动**（2026-10-03 修复）
+            const dur = Number(data.duration) || 0;
+            if (Number.isFinite(dur) && dur > 0) usePlayerStore.getState().setDuration(dur);
           } else if (data.type === 'videosize') {
             // B站/公演网页内核直播：视频实际宽高 → PiP 窗口比例跟随源（默认 16:9 不匹配时裁边/黑边）
             const w = Number(data.width) || 0;

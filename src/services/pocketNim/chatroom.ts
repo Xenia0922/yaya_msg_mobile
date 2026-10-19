@@ -1,16 +1,4 @@
-/**
- * 直播间弹幕通道（云信聊天室）。
- *
- * 完整链路（对齐官方 口袋48 7.1.39）：
- *   1. 取凭证      GET/POST im/api/v1/im/userinfo  → accid + pwd(token)
- *   2. 登录云信    NIMStrategy.login(accid, pwd)   → NIMSDK.getAuthService().login(LoginInfo(accid, pwd))
- *   3. 进聊天室    IMChatRoom.enter(roomId, 8)     → enterChatRoomEx(EnterChatRoomData(roomId), 8)
- *                  roomId = live 详情 content.roomId（LivePlayActivity: m58828(getRoomId(), liveId)）
- *   4. 收弹幕      observeReceiveMessage → remoteExtension.messageType 判定
- *   5. 发弹幕      IMChatRoom.sendTextMessage(roomId, map)
- *                  map = ChatMsgBuilder.createBarrageNomalMessageMap(roomId, liveId, text, 'live', topList)
- *                  → createChatRoomTextMessage + setRemoteExtension(map) + setContent(text)
- */
+
 
 import { buildLiveBarrageExt, parseChatroomMessage } from './codec';
 import {
@@ -27,15 +15,7 @@ import { BarrageItem, NimModule } from './types';
 
 export type ChatroomStatus = 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
 
-/**
- * 聊天室接入点解析（关键）。
- *
- * 口袋48 的云信已迁到新集群：LBS(webconf.jsp) 返回的聊天室链路是
- * `chatwl02.yunxinfw.com:443` / `weblink-bgp.netease.im:443` 等；
- * 旧地址 `chatweblink01.netease.im:443` 对该 appKey 会静默超时或直接
- * 「403 非法操作或没有权限」（48tools 就是因为写死旧地址而失效的）。
- * 因此这里启动时向 LBS 动态解析，把返回的 link 列表交给 SDK（chatwl 优先）。
- */
+
 let lbsAddresses: string[] | null = null;
 let lbsInflight: Promise<string[]> | null = null;
 
@@ -189,13 +169,7 @@ export class LiveChatroom {
     }
   }
 
-  /**
-   * 依次尝试三种连法，任一连上就停：
-   *   0) account + token（可收可发）
-   *   1) 匿名（只读；口袋48 聊天室允许匿名进入，48tools 同款）
-   * 之前的问题：只用 0，而这一路在这台机器/这个 appKey 下**静默不连接**
-   * （既无 onconnect 也无 onerror），表现为「弹幕一条不来」。
-   */
+  
   /** 当前使用的接入点（LBS 解析结果；解析完成前为旧默认） */
   private addresses: string[] = NIM_CHATROOM_ADDRESSES;
 
@@ -276,7 +250,6 @@ export class LiveChatroom {
       const SDK = loadNimSdk();
       const profile = credentialsToProfile(credentials);
       const anonymous = attempt === 1;
-      // 匿名模式下昵称必须用随机串（48tools 同款 randomUUID）：
       // 若把真实 accid 当昵称带上，聊天室登录会被服务端判「非法操作」直接 403。
       const anonNick = `yaya-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
       if (attempt === 2) {

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useMusicPlayerStore } from './musicPlayerStore';
 
 /** 应用内悬浮小窗播放信息 */
 export interface MiniPlayerInfo {
@@ -52,7 +53,17 @@ export const useMiniPlayerStore = create<MiniPlayerState>((set) => ({
   playing: true,
   currentPos: 0,
   sysToggleSeq: 0,
-  open: (info) => set({ info, visible: true, playing: true, currentPos: 0 }),
+  open: (info) => {
+    // 播放互斥（后播者胜）：与 playerStore.open 同款 —— 小窗/音频胶囊开播时暂停后台音乐。
+    // 此前这里完全不触碰音乐 store →「正在听音乐 + 点房间上麦」变成双路声音（2026-10-03 修复）。
+    try {
+      const mst = useMusicPlayerStore.getState();
+      if (mst.queue.length && (mst.playbackState === 'playing' || mst.playbackState === 'paused')) {
+        mst.setPlaybackState('paused');
+      }
+    } catch {}
+    set({ info, visible: true, playing: true, currentPos: 0 });
+  },
   close: () => set({ visible: false, info: null, currentPos: 0 }),
   setPlaying: (playing) => set({ playing }),
   setCurrentPos: (currentPos) => set({ currentPos }),

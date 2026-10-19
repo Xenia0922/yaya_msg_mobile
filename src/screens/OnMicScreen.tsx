@@ -34,9 +34,7 @@ export default function OnMicScreen() {
   const scanDone = useOnMicStore((state: any) => state.done);
   const [error, setError] = useState('');
 
-  // v2.7.5：全部在团成员上麦扫描（对齐桌面端 room-radio-feature.js 的 isInGroup !== false）
   //  - 过滤条件含 yklzId：只有小房间的成员此前被 (channelId || serverId) 漏掉
-  //  - isInGroup 透传下去由 buildScanTasks 排除退团/毕业成员（桌面语义）
   const buildInputs = useCallback(() => {
     return members
       .map((item: any) => {

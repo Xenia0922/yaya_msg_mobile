@@ -39,11 +39,14 @@ interface Props extends PlayerScreenProps {
  *   onClose={() => ...}
  * />
  */
-export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, features = {}, extraActions = [], onClose, children, persistent = false, inline = false, onVideoSize, resumeAt, onRetry, barrageInput }: Props) {
+export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, features = {}, extraActions = [], onClose, children, persistent = false, inline = false, onVideoSize, resumeAt, onRetry, barrageInput, chromeHidden = false }: Props) {
   // 播放错误自动重解析（假死/URL 失效场景）：RTMP 流 URL 带 wsSecret 且多为单次有效，
   // 原生重连同 URL 只会再拿一帧；有 onRetry（页面重新解析新地址）时自动触发，同源最多 2 次。
   const dbgState = usePlayerStore((s) => s.state);
   const autoRetryLeft = useRef(2);
+  /** onRetry 的最新引用：不放进 effect 依赖（父组件内联箭头每次渲染都变 → 定时器被反复重排饿死） */
+  const onRetryRef = useRef(onRetry);
+  onRetryRef.current = onRetry;
   useEffect(() => {
     autoRetryLeft.current = 2; // 换源（新 url）重置自动重试额度
   }, [source.url]);
@@ -54,9 +57,11 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
     if (autoRetryLeft.current <= 0) return;
     autoRetryLeft.current -= 1;
     try { logInfo(`[player] error → auto re-resolve (fresh url), left=${autoRetryLeft.current}`, 'player.screen'); } catch {}
-    const t = setTimeout(() => { try { onRetry(); } catch {} }, 900);
+    const t = setTimeout(() => { try { onRetryRef.current?.(); } catch {} }, 900);
     return () => clearTimeout(t);
-  }, [dbgState, onRetry]);
+    // ⚠️ 依赖刻意不含 onRetry（2026-10-03 修复）：父组件每次渲染都新建 onRetry 内联箭头，
+    // 之前 effect 会被反复 cleanup + 重排 → 900ms 定时器永远等不到触发，自动重解析失效。
+  }, [dbgState]);
   // R4: 把页面 onClose 注册进 playerStore，硬件返回键经 FullscreenManager 调它（清理页面状态）
   useEffect(() => {
     if (!onClose) return;
@@ -70,11 +75,12 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
     };
   }, [onClose]);
   const openedFor = useRef('');
+  /** 本页 open 时记录 store 的 openToken：区分「跨页顶替」与「同页内核换线」 */
+  const openTokenAtOpen = useRef(0);
   const sourceUrl = source.url || '';
   const fullscreen = usePlayerStore((s) => s.fullscreen);
   const rotateDeg = usePlayerStore((s) => s.rotateDeg);
   const mirrorMode = usePlayerStore((s) => s.mirrorMode);
-  // 画面旋转/镜像 transform（桌面 DPlayer 对齐：竖屏视频旋转 90° 等）
   const mediaTransform: any = [];
   if (mirrorMode === 'horizontal') mediaTransform.push({ scaleX: -1 });
   if (mirrorMode === 'vertical') mediaTransform.push({ scaleY: -1 });
@@ -87,6 +93,7 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
     const mp = useMiniPlayerStore.getState();
     if (mp && mp.visible) mp.close();
     usePlayerStore.getState().open(source, meta, danmaku);
+    openTokenAtOpen.current = usePlayerStore.getState().openToken;
     try { logInfo(`[player] PlayerScreen open kind=${source.kind} url=${String(source.url).slice(0, 90)}`, 'player.screen'); } catch {}
     return () => {
       // 卸载时若全局播放器仍指向本页打开的源 → 关闭（persistent 页面关闭也应清干净，
@@ -103,16 +110,24 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
   // 跨页播放互斥：全局播放器同一时刻只播一路。本播放器打开的源被其它页面
   // 的新播放器顶替（store.url ≠ 本组件声明的源）→ 本页自动退出播放器
   //（如 Media tab 后台直播被房间点播顶掉，Media 页自动停止播放态）。
-  const storeUrl = usePlayerStore((s) => s.source?.url);
+  const storeOpenToken = usePlayerStore((s) => s.openToken);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
-    if (!sourceUrl || !storeUrl) return;
-    if (openedFor.current === sourceUrl && storeUrl !== sourceUrl && onCloseRef.current) {
+    if (!sourceUrl || openedFor.current !== sourceUrl) return;
+    // ⚠️ 判定「被别的页面顶替」必须用 openToken，不能用 source.url（2026-10-03 修复）：
+    // 内核自动换线（nextCandidate）只改 source.url、不动 openToken，此前用 url 比较会把
+    // 「同一页面内的换线」误判为跨页顶替 → 首条线路失败就关闭整个播放器、退回列表页。
+    //
+    // ⚠️ 必须用 getState() 读**实时** token，不能用 selector 捕获的 storeOpenToken（2026-10-03 二次修复）：
+    // selector 给的是本次 render 时的快照 —— 上面 open effect 刚把 token 推进到 N+1，
+    // 而这里仍拿着 render 期的 N → 首帧就判定「被顶替」→ **播放器刚打开就被自己关闭**
+    //（实测：点回放录像，PlayerScreen 打开后立刻退回列表）。
+    if (usePlayerStore.getState().openToken !== openTokenAtOpen.current && onCloseRef.current) {
       openedFor.current = '';
       onCloseRef.current();
     }
-  }, [storeUrl, sourceUrl]);
+  }, [storeOpenToken, sourceUrl]);
 
   const content = (
     <View style={[styles.container, inline && !fullscreen ? styles.inline : null]}>
@@ -123,7 +138,7 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
         </View>
       </View>
       {children}
-      <PlayerChrome features={features} extraActions={extraActions} onClose={onClose} inline={inline} onRetry={onRetry} barrageInput={barrageInput} />
+      {!chromeHidden && <PlayerChrome features={features} extraActions={extraActions} onClose={onClose} inline={inline} onRetry={onRetry} barrageInput={barrageInput} />}
       <FullscreenManager />
     </View>
   );

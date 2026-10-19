@@ -67,6 +67,9 @@ export function NetworkImage({ fadeDuration, fallback = true, fallbackIcon, onEr
   return (
     <Image
       {...rest}
+      // ⚠️ 按 uri 强制重挂载（2026-10-03 修复）：FlatList 回收单元格时，同一个 <Image> 实例
+      // 换 source 会先显示上一项的旧图、再淡入新图（Android fadeDuration=200 更明显）→ 列表快速滚动闪现错位。
+      key={String((source as any)?.uri || '')}
       source={source}
       style={style}
       fadeDuration={fadeDuration ?? (Platform.OS === 'android' ? 200 : 0)}

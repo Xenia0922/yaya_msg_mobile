@@ -1,15 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import {KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { showDialog } from '../components/AppDialog';
 import { useUiStore } from '../store';
 import ScreenHeader from '../components/ScreenHeader';
 import { FadeInView } from '../components/Motion';
@@ -85,9 +77,9 @@ export default function InvoiceScreen() {
 
   const handleSubmit = async () => {
     const selected = orders.filter((o) => o.selected);
-    if (!selected.length) { Alert.alert(t('提示'), t('请选择要开票的订单')); return; }
-    if (!buyerName.trim()) { Alert.alert(t('提示'), t('请填写发票抬头')); return; }
-    if (!notifyEmail.trim()) { Alert.alert(t('提示'), t('请填写接收邮箱')); return; }
+    if (!selected.length) { showDialog(t('提示'), t('请选择要开票的订单')); return; }
+    if (!buyerName.trim()) { showDialog(t('提示'), t('请填写发票抬头')); return; }
+    if (!notifyEmail.trim()) { showDialog(t('提示'), t('请填写接收邮箱')); return; }
     setSubmitting(true);
     try {
       await pocketApi.applyElectronicInvoice({
@@ -97,7 +89,7 @@ export default function InvoiceScreen() {
       });
       showToast(t('开票申请已提交'));
       fetchOrders();
-    } catch (e: any) { Alert.alert(t('提交失败'), errorMessage(e)); }
+    } catch (e: any) { showDialog(t('提交失败'), errorMessage(e)); }
     finally { setSubmitting(false); }
   };
 

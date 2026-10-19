@@ -15,7 +15,9 @@ import { logInfo, logWarn } from '../utils/runtimeLog';
  * 解析结果持久化到 AsyncStorage，避免每次扫描重复请求 seine/server/detail。
  */
 
-const ROOM_MAP_KEY = 'yaya_member_room_map_v2';
+// v3（2026-10-02）：v2 缓存里可能存过「大房间 channelId 被最新消息反推写成小房间/历史房间」的
+// 污染映射（详情见 memberData.ts 反推逻辑注释）。升级 key 丢弃旧缓存，由成员库 + seine 重新播种。
+const ROOM_MAP_KEY = 'yaya_member_room_map_v3';
 
 export interface RoomMapEntry {
   channelId: string; // 大房间 channelId
@@ -76,8 +78,17 @@ export function seedRoomMapFromMembers(members: any[]): void {
   if (changed) persistRoomMap();
 }
 
+/** 写盘串行链：整表 JSON.stringify 的并发写会让旧快照后落盘覆盖新快照 → 映射偶发回退 */
+let persistChain: Promise<void> = Promise.resolve();
+
 function persistRoomMap(): void {
-  AsyncStorage.setItem(ROOM_MAP_KEY, JSON.stringify(roomMap)).catch(() => {});
+  persistChain = persistChain.then(async () => {
+    try {
+      await AsyncStorage.setItem(ROOM_MAP_KEY, JSON.stringify(roomMap));
+    } catch {
+      /* 写失败静默：下次字段变更时会再写 */
+    }
+  });
 }
 
 /**
@@ -142,7 +153,6 @@ export async function resolveMemberRooms(
     // yklzId 仍缺 → 落到下面走 seine 补齐（带上已有的大房间信息）
   }
 
-  // 2b) 连 serverId 都没有 → im/server/jump 按 userId 直查（48tools 同款 ServerJumpResult：
   // content={serverId, channelId}；需登录态，未登录/无权限时静默失败）
   if (!serverId && !channelId) {
     try {

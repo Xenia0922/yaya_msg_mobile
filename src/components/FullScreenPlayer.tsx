@@ -284,13 +284,13 @@ function FullScreenPlayerInner({
             <Pressable onPress={() => { MusicEngine.cycleMode(); }} style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}>
               <Icon name={playMode === 'single' ? 'repeat-once' : playMode === 'random' ? 'shuffle-variant' : 'repeat'} size={22} color={iconSecondary} />
             </Pressable>
-            <Pressable onPress={() => { MusicEngine.prev(); }} style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}>
+            <Pressable onPress={() => { void MusicEngine.prev().catch(() => {}); }} style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}>
               <Icon name="skip-previous" size={30} color={iconStrong} />
             </Pressable>
-            <Pressable onPress={() => { MusicEngine.togglePause(); }} style={({ pressed }) => [styles.playBtn, { backgroundColor: palette.tint }, pressed && { transform: [{ scale: 0.94 }] }]}>
+            <Pressable onPress={() => { try { MusicEngine.togglePause(); } catch {} }} style={({ pressed }) => [styles.playBtn, { backgroundColor: palette.tint }, pressed && { transform: [{ scale: 0.94 }] }]}>
               <Icon name={isPlaying ? 'pause' : 'play'} size={38} color={palette.onTint} />
             </Pressable>
-            <Pressable onPress={() => { MusicEngine.next(); }} style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}>
+            <Pressable onPress={() => { void MusicEngine.next().catch(() => {}); }} style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}>
               <Icon name="skip-next" size={30} color={iconStrong} />
             </Pressable>
             <Pressable onPress={() => setShowLyrics(!showLyrics)} style={({ pressed }) => [styles.sideBtn, showLyrics && { backgroundColor: palette.tintSoft }, pressed && { opacity: 0.6 }]}>

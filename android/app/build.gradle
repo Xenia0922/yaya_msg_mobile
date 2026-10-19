@@ -116,8 +116,8 @@ android {
         // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2075008
-        versionName "2.7.5"
+        versionCode 3000009
+        versionName "2.7.6"
 
         // 真机架构 + 模拟器架构。MuMu 等安卓模拟器为 x86_64，缺此 ABI 会导致 libhermes 等原生库
         // 无法加载（UnsatisfiedLinkError），表现为「启动即闪退进不去」。为兼容模拟器测试必须保留。
@@ -260,7 +260,6 @@ dependencies {
     implementation("com.facebook.react:react-android")
     // 手动链接（自动链接漏掉）：聊天库内部要用它的原生 SafeAreaProvider
     implementation project(':react-native-safe-area-context')
-    implementation project(':liquid-glass-native')
     // 与 react-android 同版 okhttp：MainApplication 用其 Interceptor 覆写 bilibili 请求的桌面 UA
     implementation("com.squareup.okhttp3:okhttp:4.9.2")
     // 口袋48 消息通道：云信官方 Android SDK（basesdk 负责登录/基础消息，qchat 负责圈组房间消息）。
@@ -277,6 +276,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-datasource:1.8.0")
     implementation("androidx.media3:media3-session:1.8.0")
+    // 礼物全屏特效：腾讯 libpag（服务端下发 giftpag.pag）
+    implementation("com.tencent.tav:libpag:4.5.98")
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";

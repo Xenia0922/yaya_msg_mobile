@@ -34,7 +34,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NavigationContext } from '@react-navigation/native';
 import { usePalette } from '../theme';
 import { GLASS_BACKDROP_ID, useBlurTarget } from './BlurTarget';
-import { LiquidGlassNativeView, isLiquidGlassNativeAvailable } from '../../modules/liquid-glass-native';
 
 /** 语义角色 —— 决定用哪组材质 */
 export type GlassRole =
@@ -50,7 +49,7 @@ export type GlassRole =
 interface Material {
   /** BlurView 强度（1–100） */
   intensity: number;
-  /** 模糊半径压缩（Android 感知强度与 iOS 不同，用它对齐） */
+  
   reduction: number;
   /** expo-blur 的 tint（决定模糊结果的底色走向） */
   blurTint: 'light' | 'dark';
@@ -196,14 +195,6 @@ export function GlassSurface({
   // 自写原生 AGSL 视图（RenderNode 硬件录制 + 链式 RenderEffect）—— 真边缘折射/色散，
   // 且不用软件 Canvas，成本可控。仅 dock 类角色（实例 ≤2）使用。
   const isDock = role === 'bar' || role === 'selector';
-  // ⚠️ 原生视图当前关闭：录制整棵树时会与 expo-blur(Dimezis) 的 RenderNode 互相嵌套，
-  // RenderThread 里 prepareTreeImpl 递归爆栈（实测 SIGSEGV）。修法：改成只录制
-  // PageBackdrop 这一层（传 tag 指定目标，不含任何玻璃/RenderNode），待下轮接。
-  // ⚠️ 暂时关闭：原生视图已能注册（isLiquidGlassNativeAvailable=true），但它的
-  // RenderNode 录制在底栏区域会画出一条深色带（边缘采样/录制偏移问题，非参数问题），
-  // 观感比 expo-blur 更差。等原生渲染修好再打开这个开关。
-  // 注册链路本身是通的（见 modules/liquid-glass-native + settings.gradle 手动链接）。
-  const useNativeDock = false && isLiquidGlassNativeAvailable && isDock;
   // 旧 AGSL 库（软件 Canvas 路线，实测 janky 10%）默认关闭，仅作对照
   const useAgsL = false && isDock && tier !== 'none';
 
@@ -232,47 +223,6 @@ export function GlassSurface({
   const outerBoxStyle: StyleProp<ViewStyle> = asBackground
     ? [StyleSheet.absoluteFill, { borderRadius: r, overflow: 'hidden' }, outerStyle]
     : [{ borderRadius: r, overflow: 'hidden' }, outerStyle];
-
-  if (useNativeDock) {
-    return (
-      <View pointerEvents={asBackground ? 'none' : 'auto'} style={outerBoxStyle} {...rest}>
-        <LiquidGlassNativeView
-          targetId={GLASS_BACKDROP_ID}
-          style={StyleSheet.absoluteFill}
-          cornerRadius={r}
-          blurRadius={role === 'selector' ? 18 : 22}
-          lensWidth={0.32}
-          lensStrength={role === 'selector' ? 16 : 12}
-          // 色散 / 边缘反射光：苹果液态玻璃的签名特征，滑动时才明显
-          dispersion={role === 'selector' ? 0.10 : 0.07}
-          rimStrength={role === 'selector' ? 0.22 : 0.16}
-          tintColor={tintColor ?? (isDark ? '#B314141A' : '#52FFFFFF')}
-        />
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              borderRadius: r,
-              borderWidth: strokeWidth,
-              borderColor: strokeColor,
-              overflow: 'hidden',
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={
-              isDark
-                ? [`rgba(255,255,255,${m.highlight})`, 'transparent']
-                : [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.04)', 'transparent']
-            }
-            style={{ height: '42%' }}
-          />
-        </View>
-        {children}
-      </View>
-    );
-  }
 
   if (useAgsL) {
     return (

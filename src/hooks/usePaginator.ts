@@ -33,6 +33,8 @@ export function usePaginator<T>(options: UsePaginatorOptions<T>) {
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  /** 失败原因（空串 = 无错误）。此前 catch 是空实现，调用方漏处理时界面只剩空列表 */
+  const [error, setError] = useState('');
 
   const cursorRef = useRef(initialCursor);
   const loadingRef = useRef(false);
@@ -78,8 +80,11 @@ export function usePaginator<T>(options: UsePaginatorOptions<T>) {
         });
         cursorRef.current = res.nextCursor;
         setHasMore(res.hasMore);
-      } catch {
-        // 错误由调用方在 fetchPage 内处理，这里仅保证不卡死
+      } catch (e: any) {
+        // ⚠️ 不能静默吞掉（2026-10-03 修复）：调用方若未自行 catch，界面只剩空列表，
+        // 用户无法区分「真的没有数据」与「请求失败」。错误如何展示仍由调用方决定，
+        // 但 Hook 必须把它暴露出来。
+        if (mountedRef.current) setError(e?.message ? String(e.message) : '加载失败');
       } finally {
         if (runId === runIdRef.current) {
           loadingRef.current = false;
@@ -95,5 +100,5 @@ export function usePaginator<T>(options: UsePaginatorOptions<T>) {
     if (hasMore && !loadingRef.current) load(false);
   }, [hasMore, load]);
 
-  return { items, loading, hasMore, refresh, loadMore, setItems, loadingRef };
+  return { items, loading, hasMore, refresh, loadMore, setItems, loadingRef, error, setError };
 }

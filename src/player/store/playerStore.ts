@@ -36,12 +36,22 @@ interface PlayerState {
   qualityQn: number | null;
   /** 播放倍速（回放可用；live 恒 1） */
   rate: number;
-  /** 画面旋转角度（桌面对齐：90° 步进，竖屏视频旋转用） */
+  
   rotateDeg: number;
   /** 镜像模式：none/horizontal/vertical */
   mirrorMode: 'none' | 'horizontal' | 'vertical';
   /** seek 指令：UI 写入，PlayerCore 消费后清零（与音乐 store seekTarget 同模式） */
   seekTarget: number;
+  /** seek 指令序号（自增）。0 不再是「无指令」哨兵，使 seek 到 0 合法 */
+  seekNonce: number;
+  /** 每次 open 自增：区分「跨页顶替」与「同页内核换线」（换线不改它） */
+  openToken: number;
+  /** 进度粘滞守卫：seek 下发后至 stickyUntil 前，丢弃内核上报的旧进度（防进度条回弹） */
+  stickyTarget: number;
+  stickyFrom: number;
+  stickyUntil: number;
+  /** 内核重建请求（无 onRetry 时的「重试」按钮用）：自增后 PlayerCore 重建内核重新拉流 */
+  rebuildNonce: number;
   /** 弹幕开关 */
   danmakuOn: boolean;
 
@@ -63,6 +73,12 @@ interface PlayerState {
   setRotateDeg: (deg: number) => void;
   setMirrorMode: (m: 'none' | 'horizontal' | 'vertical') => void;
   setSeekTarget: (t: number) => void;
+  /** 清除 seek 指令（早退分支用）：不递增 seekNonce，避免消费 effect 重入 */
+  clearSeekTarget: () => void;
+  
+  markSeekIssued: (target: number) => void;
+  /** 请求重建内核（重试同一个 URL） */
+  requestKernelRebuild: () => void;
   toggleDanmaku: () => void;
   /** 播放失败时切到下一候选线路；返回是否切换成功（无候选/已到末尾 → false） */
   nextCandidate: () => boolean;
@@ -105,6 +121,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   rotateDeg: 0,
   mirrorMode: 'none' as const,
   seekTarget: 0,
+  seekNonce: 0,
+  openToken: 0,
+  stickyTarget: 0,
+  stickyFrom: 0,
+  stickyUntil: 0,
+  rebuildNonce: 0,
   danmakuOn: true,
 
   open: (source, meta = { title: '' }, danmaku = { type: 'none' }) => {
@@ -136,6 +158,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         mirrorMode: 'none' as const,
         seekTarget: 0,
         danmakuOn: true,
+        openToken: s.openToken + 1,
         candidateUrls: urls,
         candidateIndex: 0,
         ...(urls[0] && urls[0] !== source.url ? { source: { ...source, url: urls[0] } } : {}),
@@ -156,7 +179,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }),
 
   setState: (state) => set({ state }),
-  setPosition: (position) => set({ position }),
+  setPosition: (position) => set((s) => {
+    // seek 粘滞守卫（2026-10-03 修「进度条松手回弹」）：seek 下发后内核仍可能上报旧位置，
+    // 直接覆盖会让进度条先跳到目标再弹回。窗口内只接受「比出发时更接近目标」的上报。
+    if (s.stickyUntil > Date.now()) {
+      const dNow = Math.abs(position - s.stickyTarget);
+      const dFrom = Math.abs(s.stickyFrom - s.stickyTarget) + 0.3;
+      if (dNow > dFrom) return {};
+    }
+    return { position };
+  }),
   setDuration: (duration) => set({ duration }),
   setError: (error) => set({ error, state: 'error' }),
   clearError: () => set({ error: '', state: 'loading' }),
@@ -169,7 +201,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setRate: (rate) => set({ rate }),
   setRotateDeg: (rotateDeg) => set({ rotateDeg: ((rotateDeg % 360) + 360) % 360 }),
   setMirrorMode: (mirrorMode) => set({ mirrorMode }),
-  setSeekTarget: (seekTarget) => set({ seekTarget }),
+  // seek 指令：递增 seekNonce（使「seek 到 0」也能被消费，不再用 0 当哨兵），并开粘滞窗口
+  setSeekTarget: (seekTarget) => set((s) => ({
+    seekTarget,
+    seekNonce: s.seekNonce + 1,
+    stickyFrom: s.position,
+    stickyTarget: seekTarget,
+    stickyUntil: Date.now() + 1500,
+  })),
+  // 清除指令（直播流/非有限时长等早退分支）：不动 seekNonce，避免消费 effect 重入
+  clearSeekTarget: () => set({ seekTarget: 0 }),
+  markSeekIssued: (target) => set((s) => ({
+    position: target,
+    seekTarget: 0,
+    stickyTarget: target,
+    stickyFrom: s.position,
+    stickyUntil: Date.now() + 1500,
+  })),
+  requestKernelRebuild: () => set((s) => ({ rebuildNonce: s.rebuildNonce + 1 })),
   toggleDanmaku: () => set((s) => ({ danmakuOn: !s.danmakuOn })),
   nextCandidate: () => {
     let switched = false;

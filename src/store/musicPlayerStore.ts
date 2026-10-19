@@ -236,11 +236,22 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       setPosition: (position) => {
         const s = get();
         const GUARD_MS = 1500;
-        if (s.seekIssuedAt > 0 && Date.now() - s.seekIssuedAt < GUARD_MS) {
+        const seekPending = s.seekIssuedAt > 0 && Date.now() - s.seekIssuedAt < GUARD_MS;
+        if (seekPending) {
           const dNow = Math.abs(position - s.seekTarget);
           const dFrom = Math.abs(s.seekFrom - s.seekTarget) + 0.3;
           if (dNow > dFrom) return; // 旧位置（还没跳到目标）→ 丢弃，防回弹
+          // ⚠️ seek 窗口内必须直接放行（含向后 seek）。
+          // 此前落到下面的「回退守卫」：s.position 仍是 seek 前的旧值，新位置更小 → 被当陈旧帧丢掉，
+          // 表现为「点了/拖了进度，音乐跳了但进度条和歌词定在原地，等播放追上旧位置才恢复」（2026-10-18）。
+          set({ position });
+          return;
         }
+        // 无 seek 时的回退守卫（2026-10-18）：
+        // 每次进音乐页/进度条重新挂载，原生或 JS 播放器会先推一帧 0 或早期帧，
+        // 进度条就会「先缩到 0.00 → 再跳到当前 → 附近抖动」。非 seek 场景下
+        // 进度倒退超过 3s 一律视为陈旧帧丢弃；真正的后退都走 setSeekTarget。
+        if (Number.isFinite(position) && s.position - position > 0.5 && s.playbackState !== 'idle') return;
         set({ position });
       },
 
@@ -250,7 +261,14 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
 
       /** 下发 seek 指令，并记录「出发位置 + 时间戳」给 setPosition 的粘滞守卫用 */
       setSeekTarget: (seekTarget) =>
-        set((s) => ({ seekTarget, seekFrom: s.position, seekIssuedAt: Date.now() })),
+        set((s) => ({
+          seekTarget,
+          seekFrom: s.position,
+          seekIssuedAt: Date.now(),
+          // 乐观跳转：进度条/歌词立即到目标位，原生心跳到达后自然校准。
+          // 只在 target > 0 时写（消费完毕会把 seekTarget 清 0，不能把 position 也清掉）。
+          position: seekTarget > 0 ? seekTarget : s.position,
+        })),
 
       /**
        * B7 收藏键归一：收藏统一存 `title|artist` 键（旧数据仍为 musicId，双兼容）——

@@ -32,6 +32,7 @@ import { Button } from '../components/Button';
 import { Skeleton } from '../components/Skeleton';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import { NetworkImage } from '../components/NetworkImage';
+import { MarqueeText } from '../components/MarqueeText';
 import { useI18n } from '../i18n';
 import { pocketApi } from '../api/pocket48';
 import { externalApi } from '../api/external';
@@ -84,6 +85,7 @@ const TOOL_CHIPS: NavItem[] = [
   { title: '公演', desc: '', route: 'OpenLiveScreen', icon: ICONS.OpenLive },
   { title: 'B站', desc: '', route: 'BilibiliLiveScreen', icon: ICONS.Bilibili },
   { title: '鸡腿榜', desc: '', route: 'MeleeRankScreen', icon: ICONS.MeleeRank },
+  { title: '相册', desc: '', route: 'RoomAlbumScreen', icon: ICONS.RoomAlbum },
   { title: '数据库', desc: '', route: 'DatabaseScreen', icon: ICONS.Database },
   { title: '发票', desc: '', route: 'InvoiceScreen', icon: ICONS.Invoice },
 ];
@@ -520,6 +522,56 @@ export default function HomeScreen() {
   const musicIndex = useMusicPlayerStore((s) => s.currentIndex);
   const musicPlaybackState = useMusicPlayerStore((s) => s.playbackState);
   const currentTrack = musicQueue[musicIndex] || null;
+  /**
+   * 当前歌词行：selector 返回字符串（Object.is 比较），position 高频更新时
+   * 只有「行文本变化」才触发首页重渲染，避免每 250ms 刷整页。
+   */
+  /**
+   * minibar 歌词行（2026-10-18 重做）。
+   *
+   * 此前直接按 store.position 取行：一旦位置心跳停更（页面不在 / 原生心跳丢失），
+   * 歌词永远停在第一句（用户看到一直显示「如果有你在 -」这种版权信息行）。
+   *
+   * 现在：不订阅 position（避免 4 次/秒整页重渲染），改成 500ms 本地 ticker：
+   *  - 记录「最近一次 store.position + 对应时刻」作为锚点；
+   *  - 播放中时按墙上时钟补时（锚点 + 已过秒数），与 store.position 取较大值；
+   *  - 只在「命中的行号变化」时才 setState，渲染开销可忽略。
+   */
+  const lyricsList = useMusicPlayerStore((s) => s.lyrics);
+  const playbackForLyric = useMusicPlayerStore((s) => s.playbackState);
+  const [lyricIdx, setLyricIdx] = useState(-1);
+  const lyricAnchor = useRef({ pos: 0, at: Date.now(), last: -1 });
+
+  useEffect(() => {
+    const tick = () => {
+      const st = useMusicPlayerStore.getState();
+      const list = st.lyrics;
+      const pos = Number(st.position) || 0;
+      const a = lyricAnchor.current;
+      if (pos !== a.last) lyricAnchor.current = { pos, at: Date.now(), last: pos };
+      const playing = st.playbackState === 'playing' || st.playbackState === 'loading';
+      const anchorNow = lyricAnchor.current;
+      const est = playing ? anchorNow.pos + (Date.now() - anchorNow.at) / 1000 : pos;
+      const use = Math.max(pos, est);
+      if (!list.length) {
+        setLyricIdx((v) => (v === -1 ? v : -1));
+        return;
+      }
+      let lo = 0;
+      let hi = list.length - 1;
+      let hit = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid].time <= use) { hit = mid; lo = mid + 1; } else { hi = mid - 1; }
+      }
+      setLyricIdx((v) => (v === hit ? v : hit));
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [lyricsList, playbackForLyric]);
+
+  const lyricLine = lyricIdx >= 0 ? (lyricsList[lyricIdx]?.text || '') : '';
 
   const handleNav = useCallback((item: NavItem) => {
     if (item.params) (navigation as any).navigate(item.route, item.params);
@@ -546,9 +598,19 @@ export default function HomeScreen() {
       openMusicLibrary();
       return;
     }
-    MusicEngine.resume();
+    void MusicEngine.resume().catch(() => {});
     openMusicLibrary();
   }, [openMusicLibrary]);
+
+  /** minibar：上一首 / 下一首 / 暂停播放 */
+  const handleMusicPrev = useCallback(() => { void MusicEngine.prev(); }, []);
+  const handleMusicNext = useCallback(() => { void MusicEngine.next(); }, []);
+  const handleMusicToggle = useCallback(() => {
+    const s = useMusicPlayerStore.getState();
+    if (!s.queue[s.currentIndex]) return;
+    if (s.playbackState === 'idle') { void MusicEngine.resume().catch(() => {}); return; }
+    MusicEngine.togglePause();
+  }, []);
 
   /** 关闭音乐：清播放上下文（queue 保留以便再播），idle → 停 Exo 服务与系统媒体通知 */
   const handleStopMusic = useCallback(() => {
@@ -593,7 +655,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.outer, { backgroundColor: usePageBackground() }]}>
-      {/* 顶栏与全站统一：大标题 24/800 左对齐、无返回键（tab 根页） */}
+      {}
       <ScreenHeader title={t('牙牙消息')} hideBack />
       <ScrollView
         style={{ flex: 1 }}
@@ -639,7 +701,10 @@ export default function HomeScreen() {
             onAction={() => handleNav({ title: '', desc: '', route: 'Media', icon: '' })}
           />
 
-          {!livesOk && !livesError ? null : livesError && !livesOk ? (
+          {/* 加载中渲染骨架（此前是 null → 首屏该区块只有标题、下方空白，弱网下像坏了） */}
+          {!livesOk && !livesError ? (
+            <Skeleton width="100%" height={148} radius={20} style={{ marginTop: 12 }} />
+          ) : livesError && !livesOk ? (
             <GlassSurface
               radius={20}
               role="card"
@@ -805,53 +870,82 @@ export default function HomeScreen() {
           <View style={styles.sectionOuter}>
             <SectionHeader title={t('最近播放')} />
             <FadeInView delay={0} duration={320}>
-              <ScalePressable onPress={openMusicLibrary} pressedScale={0.97}>
-                <GlassCard strong padding={12} radius={20}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {/* 音乐 minibar：封面 + 标题 + 当前一句歌词 + 上一首/暂停/下一首，状态与正在播放的音乐同步 */}
+              <GlassCard strong padding={10} radius={20}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <ScalePressable onPress={openMusicLibrary} pressedScale={0.94} hitSlop={4}>
                     <View style={[styles.musicCover, { backgroundColor: palette.tintSoft }]}>
                       {currentTrack?.coverUrl || currentTrack?.cover ? (
                         <NetworkImage
                           source={{ uri: (currentTrack.coverUrl || currentTrack.cover || '') as string }}
                           style={styles.musicCover}
                           resizeMode="cover"
-                          // 52dp 封面 ≈156px（480dpi），按 180 取缩略图（此前下原图）
                           thumbnail={AVATAR_THUMB_WIDTH}
                         />
                       ) : (
-                        <MaterialCommunityIcons name="music-note" color={palette.tint} size={24} />
+                        <MaterialCommunityIcons name="music-note" color={palette.tint} size={22} />
                       )}
                     </View>
-                    <View style={{ flex: 1, marginHorizontal: 12, minWidth: 0 }}>
-                      <Text style={[typography.headline, { color: palette.label }]} numberOfLines={1}>{trackTitle}</Text>
-                      {trackArtist ? (
-                        <Text style={[typography.footnote, { color: palette.labelSecondary, marginTop: 2 }]} numberOfLines={1}>
-                          {trackArtist}
-                        </Text>
-                      ) : null}
-                    </View>
+                  </ScalePressable>
+                  <ScalePressable onPress={openMusicLibrary} pressedScale={0.98} style={{ flex: 1, marginHorizontal: 8, minWidth: 0 }}>
+                    <Text style={[typography.headline, { color: palette.label }]} numberOfLines={1}>{trackTitle}</Text>
+                    <Text style={[typography.footnote, { color: palette.labelSecondary, marginTop: 2 }]} numberOfLines={1}>
+                      {trackArtist || resumeLabel}
+                    </Text>
+                  </ScalePressable>
+                  {/* 控制区：主按钮（播放/暂停）实心高对比，切歌为次级描边，视觉层级分明 */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <ScalePressable
+                      onPress={handleMusicPrev}
+                      pressedScale={0.9}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                      style={[styles.miniBtn, { backgroundColor: 'rgba(128,128,128,0.14)' }]}
+                    >
+                      <MaterialCommunityIcons name="skip-previous" color={palette.label} size={20} />
+                    </ScalePressable>
+                    <ScalePressable
+                      onPress={handleMusicToggle}
+                      pressedScale={0.9}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                      style={[styles.miniBtn, { backgroundColor: palette.tint }]}
+                    >
+                      <MaterialCommunityIcons
+                        name={musicPlaybackState === 'playing' ? 'pause' : musicPlaybackState === 'loading' ? 'dots-horizontal' : 'play'}
+                        color={palette.onTint}
+                        size={22}
+                      />
+                    </ScalePressable>
+                    <ScalePressable
+                      onPress={handleMusicNext}
+                      pressedScale={0.9}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                      style={[styles.miniBtn, { backgroundColor: 'rgba(128,128,128,0.14)' }]}
+                    >
+                      <MaterialCommunityIcons name="skip-next" color={palette.label} size={20} />
+                    </ScalePressable>
                     {musicPlaybackState === 'playing' || musicPlaybackState === 'paused' ? (
-                      // 关闭音乐：正在播放/暂停时显示（由 MusicEngine stop 链清空服务/系统卡）
                       <ScalePressable
                         onPress={handleStopMusic}
-                        pressedScale={0.9}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 17,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: 'rgba(128,128,128,0.12)',
-                          marginRight: 10,
-                        }}
+                        pressedScale={0.85}
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                        style={{ width: 16, height: 30, alignItems: 'center', justifyContent: 'center' }}
                       >
-                        <MaterialCommunityIcons name="close" color={palette.labelSecondary} size={18} />
+                        <MaterialCommunityIcons name="close" color={palette.labelTertiary} size={15} />
                       </ScalePressable>
                     ) : null}
-                    <Pill label={resumeLabel} accent onPress={handleResumeMusic} style={{ alignSelf: 'center' }} />
                   </View>
-                </GlassCard>
-              </ScalePressable>
+                </View>
+                {/* 歌词独占一行、整卡宽：窄列里跑马灯只能看到 7-9 个字，怎么滚都像被截断 */}
+                <ScalePressable onPress={openMusicLibrary} pressedScale={0.99} style={{ marginTop: 6 }}>
+                  <MarqueeText
+                    text={lyricLine || t('暂无歌词')}
+                    style={[typography.footnote, { color: palette.labelSecondary }]}
+                    containerStyle={{ minHeight: 17 }}
+                    speed={22}
+                    pause={1400}
+                  />
+                </ScalePressable>
+              </GlassCard>
             </FadeInView>
           </View>
         ) : null}
@@ -900,9 +994,7 @@ export default function HomeScreen() {
   );
 }
 
-/** 指示点随动动画：膨胀 + 变色。
- *  外层固定等宽槽位（16）居中，保证 active 横条与其它小点的中心距均匀对齐；
- *  宽度动画用 JS driver（width 不支持 native driver，否则横竖屏/轮播切换时宽度错乱）。 */
+
 function AnimatedDots({ active, color, idle, onPress }: { active: boolean; color: string; idle: string; onPress?: () => void }) {
   const w = useRef(new Animated.Value(active ? 16 : 6)).current;
   const c = useRef(new Animated.Value(active ? 1 : 0)).current;
@@ -1046,6 +1138,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     marginLeft: 6,
   },
+  miniBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   musicCover: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   toolChipsContent: {
     paddingRight: 8,

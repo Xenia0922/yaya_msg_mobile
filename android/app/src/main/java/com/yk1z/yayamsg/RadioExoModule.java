@@ -28,9 +28,9 @@ public class RadioExoModule extends ReactContextBaseJavaModule {
   @NonNull @Override
   public String getName() { return "RadioExoModule"; }
 
-  static void emitJs(Context ctx, String type, Map<String, Object> extra) {
+  static boolean emitJs(Context ctx, String type, Map<String, Object> extra) {
     ReactApplicationContext rc = contextRef == null ? null : contextRef.get();
-    if (rc == null || !rc.hasActiveCatalystInstance()) return;
+    if (rc == null || !rc.hasActiveCatalystInstance()) return false;
     WritableMap payload = Arguments.createMap();
     payload.putString("type", type);
     if (extra != null) {
@@ -46,7 +46,10 @@ public class RadioExoModule extends ReactContextBaseJavaModule {
     }
     try {
       rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("YayaExoEvent", payload);
-    } catch (Throwable ignored) {}
+      return true;
+    } catch (Throwable ignored) {
+      return false;
+    }
   }
 
   private void send(Intent i) {

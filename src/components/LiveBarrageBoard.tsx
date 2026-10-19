@@ -139,7 +139,6 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
     ({ item }: { item: BarrageItem }) => (
       <View style={styles.row}>
         <Text style={[styles.rowText, { color: itemColor(item.kind) }]} numberOfLines={1}>
-          {item.nick ? <Text style={styles.nick}>{`${item.nick}：`}</Text> : null}
           {item.text}
         </Text>
       </View>
@@ -288,12 +287,12 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 6 },
   input: {
     flex: 1,
-    minHeight: 36,
+    minHeight: 34,
     maxHeight: 96,
-    borderRadius: 18,
+    borderRadius: 17,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     fontSize: 13,
     textAlignVertical: 'center',
     includeFontPadding: false,

@@ -3,12 +3,31 @@ import { NativeModules, Platform, DeviceEventEmitter } from 'react-native';
 /** 画中画（悬浮窗）控制器桥：NativeModules.PipController（Android 原生模块） */
 const Pip = (NativeModules as any)?.PipController;
 
-/** 标记当前是否有视频/音频在播：切后台时 MainActivity 据此自动进悬浮窗 */
-export function setPipPlaying(playing: boolean) {
+/**
+ * 各播放源对「当前是否有媒体在播」的登记表。
+ *
+ * ⚠️ 必须**按来源分别登记、再 OR 汇总**下发给原生（2026-10-12 修复）：
+ * 此前 5 个调用点各自往原生写**绝对布尔值**，会互相踩。实测两个方向都会坏：
+ *  - 小窗正在播（置 true）→ 用户打开全屏播放器，`FullscreenManager` 因 `fullscreen` 置 **false**
+ *    → 小窗还在播但标志已变 false → 按 Home **不弹**系统悬浮窗；
+ *  - 反向：`FullscreenManager` 卸载时无条件置 false → 把**还在播的小窗**标志一起清掉。
+ * 改成各写各的 bit 之后，任一路在播，原生标志就是 true。
+ */
+const pipSources = new Map<string, boolean>();
+
+function syncPipPlaying() {
   if (Platform.OS !== 'android' || !Pip?.setVideoPlaying) return;
+  const any = Array.from(pipSources.values()).some(Boolean);
   try {
-    Pip.setVideoPlaying(!!playing);
+    Pip.setVideoPlaying(any);
   } catch { /* ignore */ }
+}
+
+/** 标记当前是否有视频/音频在播：切后台时 MainActivity 据此自动进悬浮窗 */
+export function setPipPlaying(playing: boolean, source = 'default') {
+  if (playing) pipSources.set(source, true);
+  else pipSources.delete(source);
+  syncPipPlaying();
 }
 
 /**

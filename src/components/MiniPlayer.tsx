@@ -95,6 +95,9 @@ export function MiniPlayer() {
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
   }, [showControls, visible]);
 
+  /** 回全屏的导航序号：必须自增 —— 毫秒时间戳在同毫秒连点两次时会重复，导致「大窗不播」 */
+  const navNonceRef = useRef(Date.now());
+
   /** 回放全屏：关闭小窗并跳转播放器 */
   const backToFull = useCallback(() => {
     if (!info) return;
@@ -104,7 +107,7 @@ export function MiniPlayer() {
       playUrl: info.backTo.playUrl,
       playTitle: info.backTo.playTitle,
       playCover: info.backTo.playCover,
-      playNonce: Date.now(),
+      playNonce: ++navNonceRef.current,
       // 小窗 → 大窗续播：传当前播放位置（仅录播）
       ...(info.backTo.mode !== 'live' ? { playPosition: useMiniPlayerStore.getState().currentPos } : {}),
     });
@@ -174,9 +177,37 @@ export function MiniPlayer() {
 
   // 是否已渲染为"后台 PiP 盖层"（全屏纯媒体，盖住页面其它 UI，保证系统悬浮窗画面干净）
   const [pipCover, setPipCover] = useState(false);
+
+  // ⚠️ 看门狗（2026-10-03 修复）：pipCover 依赖 PipEnteredChanged(false) 事件复位，
+  // 一旦事件丢失，整个应用窗口会被媒体层覆盖、拖动层吞掉全部触摸 → 界面「假死」。
+  // App 回到前台时无条件复位兜底，代价为零。
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') setPipCover(false);
+    });
+    return () => sub.remove();
+  }, []);
+
+  /** 按内容比例自适应小窗高度 + 同步系统 PiP 比例（原生回调与网页内核消息共用） */
+  const applyContentSize = useCallback((w: number, h: number) => {
+    if (!(w > 0 && h > 0)) return;
+    const rawH = Math.round((W * h) / w);
+    if (rawH > 420) {
+      // 超长内容（极高宽比）：cover 填满默认容器，避免小窗过高遮挡
+      boxHRef.current = H_MIN;
+      setBoxH(H_MIN);
+      setHasNatural(false);
+    } else {
+      const hh = Math.max(H_MIN, rawH);
+      boxHRef.current = hh;
+      setBoxH(hh);
+      setHasNatural(true);
+    }
+    setPipAspect(w, h);
+  }, [W]);
   // 播放状态 → PiP 标志（小窗切后台自动进系统悬浮窗）
   useEffect(() => {
-    setPipPlaying(visible && playing && !!info?.url);
+    setPipPlaying(visible && playing && !!info?.url, 'miniplayer');
   }, [visible, playing, info]);
 
   // 切后台兜底：强制置 PiP 标志（防主播放器关闭时把标志覆盖成 false，导致小窗切后台不进悬浮窗）
@@ -191,7 +222,7 @@ export function MiniPlayer() {
       // 否则：用户点 PiP 展开回 app → entered=false → videoPlaying 被误清为 false →
       // 之后再按 Home 时 onUserLeaveHint 看到 videoPlaying=false 直接 return，悬浮窗不弹。
       // videoPlaying 标志只应由真实播放态（上方 147 行 effect）管，不该被退出事件踩掉。
-      if (entered && active) setPipPlaying(true);
+      if (entered && active) setPipPlaying(true, 'miniplayer');
       // 全屏盖层无条件：不管 pip_auto(自动)还是手动点 dock 小窗进入 PiP,
       // 只要真的进了系统 PiP, 快照就得是纯媒体, 不能是「页面+小窗」。
       setPipCover(entered && active);
@@ -260,13 +291,18 @@ export function MiniPlayer() {
     const w = Number(info?.aspectW || 0);
     const h = Number(info?.aspectH || 0);
     if (!(w > 0 && h > 0)) {
-      // 兜底：成员直播（手机摄像头）默认竖屏 9:16 —— 横条窗会把竖屏内容裁得只剩中间一条
+      // ⚠️ 不再一律假定竖屏 9:16（2026-10-03 修复）：横屏 rtmp 直播（B站/公演网页内核）
+      // 会被当成竖屏 → 小窗变竖条、画面被压。按来源区分：网页内核直播多为横屏，
+      // 成员原生直播（手机摄像头）多为竖屏。
+      const landscapeLive = !!info?.isLive && !!info?.web;
       if (info?.isLive && !info?.audioOnly) {
-        const ph = Math.round(W * 16 / 9);
+        const ph = landscapeLive ? Math.round(W * 9 / 16) : Math.round(W * 16 / 9);
         boxHRef.current = ph;
         setBoxH(ph);
-        setHasNatural(true);
-        setPipAspect(9, 16);
+        // 未确认真实尺寸：等 onSize/onVideoSizeChanged 回调纠正
+        setHasNatural(false);
+        if (landscapeLive) setPipAspect(16, 9);
+        else setPipAspect(9, 16);
       } else {
         setHasNatural(false);
       }
@@ -324,6 +360,20 @@ export function MiniPlayer() {
             mediaPlaybackRequiresUserAction={false}
             originWhitelist={['*']}
             mixedContentMode="always"
+            onMessage={(e) => {
+              // ⚠️ 网页内核小窗此前完全没接 onMessage（2026-10-03 修复）：
+              // ① videosize 拿不到 → 小窗永远停在默认 180×104、竖屏内容被裁；
+              // ② progress 拿不到 → currentPos 恒 0，回大窗从 0 开始。
+              try {
+                const d = JSON.parse(e.nativeEvent.data);
+                if (d.type === 'videosize') {
+                  applyContentSize(Number(d.width) || 0, Number(d.height) || 0);
+                } else if (d.type === 'progress') {
+                  const t = Number(d.time) || 0;
+                  if (Number.isFinite(t) && t > 0) useMiniPlayerStore.getState().setCurrentPos(t);
+                }
+              } catch {}
+            }}
           />
         ) : isNativeLive && NativeLiveView ? (
           /* RTMP/FLV 直播流：ExoPlayer 不支持，必须用原生 LiveExoView（与大播放器一致） */
@@ -475,7 +525,8 @@ export function MiniPlayer() {
               onPress={backToFull}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <MaterialCommunityIcons name="arrow-expand" size={15} color="#fff" />
+              <MaterialCommunityIcons name="arrow-expand" size={10} color="#fff" />
+              <Text style={styles.expandTxt}>全屏</Text>
             </TouchableOpacity>
             {/* 关闭（左上角） */}
             <TouchableOpacity
@@ -483,7 +534,7 @@ export function MiniPlayer() {
               onPress={close}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <MaterialCommunityIcons name="close" size={14} color="#fff" />
+              <MaterialCommunityIcons name="close" size={13} color="#FF7A7A" />
             </TouchableOpacity>
             {/* 缩小/还原（右上角第二颗，循环切换尺寸档位） */}
             <TouchableOpacity
@@ -491,7 +542,9 @@ export function MiniPlayer() {
               onPress={cycleScale}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <MaterialCommunityIcons name={scale > 1 ? 'arrow-collapse' : scale < 1 ? 'arrow-expand-all' : 'arrow-expand'} size={14} color="#fff" />
+              {/* 缩小/还原（右上角第二颗，循环切换尺寸档位）
+                  用户反馈：这颗与「全屏」图标曾经一模一样（都是 arrow-expand），只靠颜色区分不够 → 换成 resize */}
+              <MaterialCommunityIcons name="resize" size={12} color="rgba(255,255,255,0.92)" />
             </TouchableOpacity>
             {/* 暂停/继续（右下角） */}
             <TouchableOpacity
@@ -499,7 +552,7 @@ export function MiniPlayer() {
               onPress={handlePlayToggle}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={14} color="#fff" />
+              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={13} color="#fff" />
             </TouchableOpacity>
           </>
         ) : null}
@@ -553,36 +606,49 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   title: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  // 四个角按钮按「语义」区分（2026-10-18 用户反馈混淆）：
+  // 放大=主操作（品牌色实底）、关闭=危险（红底）、缩放=次要（淡底）、播放/暂停=主操作（品牌色+更大）
+  /** 「全屏」胶囊内文字 */
+  expandTxt: { color: '#fff', fontSize: 9, fontWeight: '800', marginLeft: 2 },
   expandBtn: {
     position: 'absolute',
     top: 4,
     right: 4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
+    paddingHorizontal: 5,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,111,145,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
   },
   closeBtn: {
     position: 'absolute',
     top: 4,
     left: 4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    /* 方形圆角（非圆形）：与右侧「全屏」胶囊、下方「缩放」圆点在形状上直接可辨 */
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    backgroundColor: 'rgba(214,60,60,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   shrinkBtn: {
     position: 'absolute',
-    top: 4,
-    right: 28,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    top: 26,
+    right: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -590,10 +656,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 18,
     right: 6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,111,145,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
     alignItems: 'center',
     justifyContent: 'center',
   },

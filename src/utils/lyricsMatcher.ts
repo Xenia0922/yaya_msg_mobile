@@ -20,6 +20,8 @@ interface MatchRequest {
   song: string;
   artist?: string;
   group?: string;
+  /** 专辑/公演名：同名多版本时用它挑对那一版 LRC */
+  album?: string;
 }
 
 interface MatchResult {
@@ -41,6 +43,30 @@ export class LyricsMatcher {
     this.entries = entries;
   }
 
+  /**
+   * 同名多版本优选：按 LRC 路径里的文件夹（专辑/公演名）与曲目 album 的相似度挑一版。
+   * 没有 album 或只有一个候选时退化为第一条。
+   */
+  private pickVersion(list: LyricEntry[], album?: string): LyricEntry {
+    if (list.length <= 1 || !album) return list[0];
+    const alb = normalizeSong(album).medium;
+    if (!alb) return list[0];
+    const score = (e: LyricEntry) => {
+      const folder = normalizeSong(String(e.filePath).split('/').slice(0, -1).join(' ')).medium;
+      if (!folder) return 0;
+      if (folder.includes(alb) || alb.includes(folder)) return 3;
+      const tokens = alb.split(/\s+/).filter((x) => x.length > 1);
+      return tokens.some((t) => folder.includes(t)) ? 2 : 0;
+    };
+    let best = list[0];
+    let bestScore = -1;
+    for (const e of list) {
+      const sc = score(e);
+      if (sc > bestScore) { bestScore = sc; best = e; }
+    }
+    return best;
+  }
+
   match(req: MatchRequest): MatchResult | null {
     const reqSong = normalizeSong(req.song);
     const reqArtist = req.artist ? normalizeArtist(req.artist) : null;
@@ -55,21 +81,21 @@ export class LyricsMatcher {
 
     // Tier 2: strict exact (song + artist + group)
     if (reqArtist && reqGroup) {
-      const hit = this.entries.find((e) =>
+      const hits = this.entries.filter((e) =>
         e.normalized.song.strict === reqSong.strict &&
         e.normalized.artist.strict === reqArtist.strict &&
         e.normalized.group.loose === reqGroup.loose
       );
-      if (hit) return { entry: hit, tier: 2, score: 1 };
+      if (hits.length) return { entry: this.pickVersion(hits, req.album), tier: 2, score: 1 };
     }
 
     // Tier 3: medium exact (song + group)
     if (reqGroup) {
-      const hit = this.entries.find((e) =>
+      const hits = this.entries.filter((e) =>
         e.normalized.song.medium === reqSong.medium &&
         e.normalized.group.loose === reqGroup.loose
       );
-      if (hit) return { entry: hit, tier: 3, score: 1 };
+      if (hits.length) return { entry: this.pickVersion(hits, req.album), tier: 3, score: 1 };
     }
 
     // Tier 4: medium exact (song + artist)

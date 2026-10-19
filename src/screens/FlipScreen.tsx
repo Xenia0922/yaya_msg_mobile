@@ -23,13 +23,14 @@ import { ScalePressable } from '../components/Motion';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import { LoginPrompt } from '../components/LoginPrompt';
 import { RootStackParamList } from '../navigation/types';
-import { useSettingsStore } from '../store';
+import { useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp , toMs } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
+import { enqueueDownload } from '../services/downloads';
 import { usePalette, radii, radiiAlias } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
@@ -155,15 +156,32 @@ function parseMedia(raw: string): { text: string; url: string; duration: number 
 
 function parseAnswer(item: any, voiceLabel = '语音回复', videoLabel = '视频回复'): { text: string; url: string; duration: number } {
   const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
-  if (!raw) return { text: '', url: '', duration: 0 };
-  const m = parseMedia(raw);
+  let url = '';
+  let duration = 0;
+  let text = '';
+  if (raw) {
+    const m = parseMedia(raw);
+    url = m.url; duration = m.duration; text = m.text;
+  }
+  // 兜底：语音/视频的 URL 与时长可能不在 answerContent 里，而在条目自身字段上。
+  //（用户反馈：翻牌统计里语音翻牌没有播放按钮、也没有秒数 —— 之前只解析 answerContent）
+  if (!url) {
+    url = normalizeUrl(pickText(item, [
+      'answerUrl', 'ansUrl', 'voiceUrl', 'audioUrl', 'videoUrl', 'mediaUrl',
+      'answerMedia', 'answerMediaUrl', 'answerPath', 'answerVoiceUrl', 'answerVideoUrl',
+    ]));
+  }
+  if (!duration) {
+    const d = parseDurationSeconds(pickText(item, ['answerDuration', 'answerSecond', 'duration']) || 0);
+    duration = Number.isFinite(d) ? Math.round(d) : 0;
+  }
   // For audio/video, set appropriate text labels
-  if (Number(item.answerType) === 2 && !m.text) m.text = voiceLabel;
-  if (Number(item.answerType) === 3 && !m.text) m.text = videoLabel;
+  if (Number(item.answerType) === 2 && !text) text = voiceLabel;
+  if (Number(item.answerType) === 3 && !text) text = videoLabel;
   // Fallback to raw text if nothing else
-  if (!m.text && !m.url) m.text = raw;
-  else if (!m.text && m.url) m.text = m.url; // fallback: show URL if no text
-  return m;
+  if (!text && !url) text = raw;
+  else if (!text && url) text = raw || url;
+  return { text, url, duration };
 }
 
 function answerMediaUrl(item: any): string { return parseAnswer(item).url; }
@@ -181,6 +199,7 @@ export default function FlipScreen() {
   const navigation = useNavigation<FlipNavProp>();
   const route = useRoute<FlipRouteProp>();
   const palette = usePalette();
+  const showToast = useUiStore((st) => st.showToast);
   const { t } = useI18n();
   const mode = route.params?.mode || 'view';
 
@@ -657,15 +676,41 @@ export default function FlipScreen() {
                   {answer ? (
                     <View style={styles.answerRow}>
                       <Text style={[styles.cardA, { color: palette.labelSecondary }]}>{t('答：{text}', { text: answer })}</Text>
+                      {/* 语音/视频翻牌：回复时长（此前只解析不显示，用户反馈「秒数没了」） */}
+                      {ansDur > 0 && (flipAnswerType === 2 || flipAnswerType === 3) ? (
+                        <Text style={[styles.answerDur, { color: palette.labelTertiary }]}>
+                          {`${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`}
+                        </Text>
+                      ) : null}
                       {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
-                        <ScalePressable
-                          style={[styles.answerBtn, { backgroundColor: palette.tintSoft }]}
-                          onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
-                          pressedScale={0.96}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <MaterialCommunityIcons name={playingAnswerUrl === answerUrl ? 'chevron-up' : 'play'} size={16} color={palette.tint} />
-                        </ScalePressable>
+                        <>
+                          <ScalePressable
+                            style={[styles.answerBtn, { backgroundColor: palette.tintSoft }]}
+                            onPress={() => setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl))}
+                            pressedScale={0.96}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <MaterialCommunityIcons name={playingAnswerUrl === answerUrl ? 'chevron-up' : 'play'} size={16} color={palette.tint} />
+                          </ScalePressable>
+                          {/* 下载按钮（此前缺失） */}
+                          <ScalePressable
+                            style={[styles.answerBtn, { backgroundColor: palette.fill2 }]}
+                            pressedScale={0.96}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            onPress={() => {
+                              const isVoice = flipAnswerType === 2;
+                              void enqueueDownload({
+                                url: answerUrl,
+                                type: isVoice ? 'voice' : 'video',
+                                name: `${memberName(flip, t('成员'))}-${t(isVoice ? '语音翻牌' : '视频翻牌')}-${formatTimestamp(flip.answerTime || flip.qtime || flip.createTime)}`,
+                              })
+                                .then(() => showToast(t('已加入下载管理')))
+                                .catch((e) => showToast(t('下载失败：{msg}', { msg: errorMessage(e) })));
+                            }}
+                          >
+                            <MaterialCommunityIcons name="download" size={16} color={palette.labelSecondary} />
+                          </ScalePressable>
+                        </>
                       ) : null}
                     </View>
                   ) : (
@@ -706,7 +751,17 @@ export default function FlipScreen() {
             loadFlips(nextPage);
           }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={!useSettingsStore.getState().settings.p48Token ? <LoginPrompt hint={t('查看翻牌记录需要登录')} /> : /失败|错误/.test(status) ? <ErrorState title={t('加载失败')} hint={status} onAction={() => loadFlips(1, true)} /> : <EmptyState icon="card-text-outline" title={t('暂无翻牌记录')} hint={t('去发送翻牌查询历史记录')} />}
+          ListEmptyComponent={
+            !useSettingsStore.getState().settings.p48Token
+              ? <LoginPrompt hint={t('查看翻牌记录需要登录')} />
+              // ⚠️ 必须区分「加载中」与「真的没有」：此前缺 loading 分支，
+              // 首屏/切页在数据回来前就显示「暂无翻牌记录」，用户以为没数据（2026-10-03 修复）
+              : loading
+                ? <CenterSpinner />
+                : /失败|错误/.test(status)
+                  ? <ErrorState title={t('加载失败')} hint={status} onAction={() => loadFlips(1, true)} />
+                  : <EmptyState icon="card-text-outline" title={t('暂无翻牌记录')} hint={t('去发送翻牌查询历史记录')} />
+          }
         />
       </FadeInView>
     </View>
@@ -714,6 +769,7 @@ export default function FlipScreen() {
 }
 
 const styles = StyleSheet.create({
+  answerDur: { fontSize: 12, fontWeight: '700', marginLeft: 6 },
   container: { flex: 1, backgroundColor: 'transparent' },
   sendContainer: { paddingBottom: 48 },
   retryWrap: { alignItems: 'center', marginTop: 6 },

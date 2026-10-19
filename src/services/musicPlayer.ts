@@ -1,9 +1,12 @@
+import { DeviceEventEmitter, NativeModules, ToastAndroid } from 'react-native';
 import { useMusicPlayerStore, Track, LyricLine } from '../store/musicPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
 import { normalizeUrl } from '../utils/data';
 import { parseLrc } from '../utils/lyrics';
 import { getLyricsMatcher } from '../utils/lyricsIndex';
 import { fetchWithTimeout } from '../utils/network';
+import { exoPlayTrack, isNativeExoDisabled, subscribeExo } from '../native/RadioExo';
+import { onRadioControlRequested } from '../native/LivePlayer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LYRICS_BASE_URL = 'https://yaya-data.pages.dev/lyrics';
@@ -170,6 +173,17 @@ export const MusicEngine = {
       }
     } catch {}
     return null;
+  },
+
+  /**
+   * 音乐页是否挂载：页面挂载时由页面负责把当前曲推给原生 Exo（含封面落盘等重活），
+   * 页面不在（后台/切到别的 Tab）时由引擎兜底推流 —— 否则播完切歌后新歌没人下发给原生，
+   * 表现为「播完就停/自动暂停」（2026-10-18 用户反馈）。
+   */
+  screenAttached: false,
+
+  setScreenAttached(attached: boolean) {
+    this.screenAttached = attached;
   },
 
   setUrlResolver(resolver: TrackUrlResolver) {
@@ -483,6 +497,8 @@ export const MusicEngine = {
     // 歌词索引只收核心标题（Starlight / 蒲公英的脚印）——增加「去括号核心标题」候选，
     // 让 medium/loose 匹配能命中（此前整串归一化不匹配 → R2 曲目大量「暂无歌词」）。
     const coreTitle = title.replace(/[（(].*?[)）]/g, '').trim();
+    // 专辑/公演名：同名歌常有公演版/专辑版两套 LRC，交给匹配器挑对版本
+    const albumName = String((track as any).album || (track as any).albumName || '').trim();
     if (coreTitle && coreTitle !== title) {
       const coreGroupCandidates: string[] = [];
       for (const g of candidates) {
@@ -492,7 +508,7 @@ export const MusicEngine = {
       try {
         const { matcher } = await getLyricsMatcher();
         for (const g of coreGroupCandidates) {
-          const r = matcher.match({ song: coreTitle, group: g });
+          const r = matcher.match({ song: coreTitle, group: g, album: albumName });
           if (r) {
             const url = `${LYRICS_BASE_URL}/${encodeURI(r.entry.filePath)}`;
             const cacheKey = `lyric:${r.entry.filePath}`;
@@ -503,19 +519,14 @@ export const MusicEngine = {
               return;
             }
             const lrcResp = await fetchWithTimeout(url, {}, 10000);
+            // ⚠️ 必须校验 ok：此前不校验就把响应体当歌词写入缓存（TTL 7 天），
+            // 404/HTML 错误页会被长期当成歌词（2026-10-03 修复）
+            if (!lrcResp?.ok) throw new Error(`lyrics HTTP ${lrcResp?.status}`);
             const raw = await lrcResp.text();
             commit(parseLrc(raw));
-            cache[cacheKey] = { t: Date.now(), text: raw };
-            const keys = Object.keys(cache);
-            if (keys.length > 200) {
-              const oldest = keys
-                .map((k) => ({ k, t: cache[k].t }))
-                .sort((a, b) => a.t - b.t)
-                .slice(0, keys.length - 200)
-                .map((x) => x.k);
-              oldest.forEach((k) => delete cache[k]);
-            }
-            AsyncStorage.setItem(LYRICS_CACHE_KEY, JSON.stringify(cache)).catch(() => {});
+            // ⚠️ 统一走串行写链 saveLyricCache：此前这里直接 AsyncStorage.setItem，
+            // 与常规分支并发时「后写者基于旧表覆盖」会丢条目（2026-10-03 修复）
+            saveLyricCache(cacheKey, raw);
             return;
           }
         }
@@ -527,7 +538,7 @@ export const MusicEngine = {
       const { matcher } = await getLyricsMatcher();
       let best: ReturnType<typeof matcher.match> = null;
       for (const g of candidates) {
-        const r = matcher.match(g ? { song: title, group: g } : { song: title });
+        const r = matcher.match(g ? { song: title, group: g, album: albumName } : { song: title, album: albumName });
         if (r && (!best || r.tier < best.tier || (r.tier === best.tier && r.score > best.score))) best = r;
       }
       if (best) {
@@ -552,3 +563,171 @@ export const MusicEngine = {
     }
   },
 };
+
+/**
+ * App 全局音乐桥（2026-10-18 实现）。
+ *
+ * 背景：进度/播完切歌 此前只在 MusicLibraryScreen 的 useEffect 里监听，
+ * 一旦离开音乐页（组件卸载/被系统回收），原生 Exo 播完后没有任何人调 next()，
+ * 表现为「后台播放不会自动下一首」，系统控件也失去进度与播放态镜像。
+ *
+ * 这里在模块加载时挂一次常驻订阅（页面无关），只做幂等镜像 + 播完切歌：
+ *  - progress：镜像播放态（边沿）、时长、位置（写入走 store 的 seek/回退守卫）
+ *  - ended：非单曲循环时切下一首（next 自带 250ms 节流，与页面双监听不会连切两首）
+ */
+/** 把「当前曲是否已收藏」同步给原生：系统媒体卡的爱心渲染实心/空心 */
+function syncFavoriteToNative() {
+  try {
+    const st = useMusicPlayerStore.getState();
+    const cur = st.queue[st.currentIndex];
+    const key = cur ? String(cur.musicId || cur.id || '') : '';
+    const active = !!(cur && key && st.isFavorite(key, cur));
+    (NativeModules as any)?.RadioServiceModule?.setFavoriteState?.(active);
+  } catch {
+    /* 原生未就绪时忽略 */
+  }
+}
+
+let musicBridgeInstalled = false;
+function installMusicBridge() {
+  if (musicBridgeInstalled) return;
+  musicBridgeInstalled = true;
+  let lastPlaying: boolean | null = null;
+  subscribeExo((type, p: any) => {
+    try {
+      const st = useMusicPlayerStore.getState();
+      if (type === 'progress') {
+        if (!st.url || !st.queue.length) return;
+        // 旧曲心跳（切歌竞态）不写：url 不一致视为陈旧
+        if (p?.url && st.url && String(p.url) !== String(st.url)) return;
+        const playingN = !!p?.playing;
+        if (st.playbackState !== 'loading' && lastPlaying !== playingN) {
+          lastPlaying = playingN;
+          st.setPlaybackState(playingN ? 'playing' : 'paused');
+        }
+        if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
+        if (typeof p?.position === 'number') st.setPosition(p.position);
+        return;
+      }
+      if (type === 'cmd') {
+        // 系统卡/耳机线控切歌：原生只做指令转发（不再本地切），由 JS 队列决定上一首/下一首
+        const c = String((p as any)?.cmd || '');
+        st.setPlaybackState(st.playbackState === 'idle' ? 'loading' : st.playbackState);
+        if (c === 'next') void MusicEngine.next();
+        else if (c === 'prev') void MusicEngine.prev();
+        return;
+      }
+      if (type === 'ended') {
+        if (!st.queue.length) return;
+        if (st.playMode === 'single') return; // 单曲循环由原生 REPEAT_MODE_ONE 处理
+        lastPlaying = null;
+        void MusicEngine.next();
+      }
+    } catch {
+      /* 桥内异常不影响播放 */
+    }
+  });
+
+  /**
+   * 系统媒体控件（通知栏/锁屏/耳机线控）动作 → 音乐引擎。
+   * 此前只有 RadioControlRequested 的电台消费者，音乐侧无人监听：
+   * 卡片上的播放/暂停/上一首/下一首实际不生效，收藏就更无从谈起。
+   * 仅在「有音乐队列且非 idle」时接管，避免抢电台/上麦的控制权。
+   */
+  // 切歌 / 收藏列表变化 → 同步系统卡爱心状态（否则图标永远是上一次的样子）
+  let lastFavKey = '';
+  useMusicPlayerStore.subscribe((st) => {
+    const cur = st.queue[st.currentIndex];
+    const sig = `${cur ? String(cur.musicId || cur.id || '') : ''}|${st.favorites.length}|${st.currentIndex}`;
+    if (sig === lastFavKey) return;
+    lastFavKey = sig;
+    syncFavoriteToNative();
+  });
+
+  // 页面不在时兜底：store.url 变了且处于播放态 → 直接推给原生 Exo
+  let lastPushedUrl = '';
+  useMusicPlayerStore.subscribe((st, prev) => {
+    try {
+      if (MusicEngine.screenAttached) return;
+      if (isNativeExoDisabled()) return; // 原生已降级：声音交给页面内的 Video，别抢
+      if (!st.url || st.url === lastPushedUrl) return;
+      if (st.playbackState !== 'playing') return;
+      const tr = st.queue[st.currentIndex];
+      if (!tr) return;
+      lastPushedUrl = st.url;
+      const resumeAt = Number(st.seekTarget) > 0 ? Number(st.seekTarget) : 0;
+      if (resumeAt > 0) st.setSeekTarget(0);
+      exoPlayTrack({
+        url: st.url,
+        title: String(tr.title || '音乐'),
+        artist: String((tr as any).artist || (tr as any).groupLabel || ''),
+        album: String((tr as any).album || ''),
+        art: String(tr.coverUrl || tr.cover || ''),
+      }, resumeAt, true, {
+        'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
+        Referer: 'https://h5.48.cn/',
+        Origin: 'https://h5.48.cn',
+      }, 1, st.playMode === 'single' ? 1 : 0);
+    } catch {
+      /* 兜底推流失败不影响页面内播放 */
+    }
+  });
+
+  onRadioControlRequested((action, value) => {
+    try {
+      const st = useMusicPlayerStore.getState();
+      // 播放列表：不管在不在播都直接打开音乐库（用户可能想选歌）
+      if (action === 'playlist') {
+        ToastAndroid.show('打开播放列表', ToastAndroid.SHORT);
+        DeviceEventEmitter.emit('OpenMusicLibrary');
+        return;
+      }
+      if (!st.queue.length || st.playbackState === 'idle') {
+        if (action === 'favorite') ToastAndroid.show('当前没有正在播放的歌曲', ToastAndroid.SHORT);
+        return;
+      }
+      const cur = st.queue[st.currentIndex];
+      switch (action) {
+        case 'play':
+          if (st.playbackState !== 'playing') MusicEngine.togglePause();
+          break;
+        case 'pause':
+          if (st.playbackState === 'playing') MusicEngine.togglePause();
+          break;
+        case 'play_pause':
+          MusicEngine.togglePause();
+          break;
+        case 'next':
+          void MusicEngine.next();
+          break;
+        case 'prev':
+          void MusicEngine.prev();
+          break;
+        case 'seek':
+          if (typeof value === 'number' && Number.isFinite(value)) st.setSeekTarget(Math.max(0, value / 1000));
+          break;
+        case 'favorite': {
+          if (!cur) break;
+          const key = String(cur.musicId || cur.id || '');
+          if (!key) break;
+          const was = st.isFavorite(key, cur);
+          st.toggleFavorite(key, cur);
+          syncFavoriteToNative();
+          // 系统卡上的爱心没有「选中态」，用 Toast 给出可见反馈，否则用户以为没生效
+          ToastAndroid.show(was ? '已取消收藏' : '已收藏', ToastAndroid.SHORT);
+          break;
+        }
+        case 'stop':
+          useMusicPlayerStore.setState({ url: '', playbackState: 'idle', position: 0, seekTarget: 0, lyrics: [] });
+          break;
+        default:
+          break;
+      }
+    } catch {
+      /* 控件动作异常不影响播放 */
+    }
+  });
+}
+
+// 模块加载即安装全局桥（页面无关的进度镜像与播完切歌）
+installMusicBridge();

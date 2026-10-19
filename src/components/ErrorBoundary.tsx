@@ -6,7 +6,7 @@ import { ErrorState } from './StateViews';
 import { usePalette } from '../theme';
 
 interface Props { children: ReactNode; }
-interface State { error: Error | null; }
+interface State { error: Error | null; retryNonce: number; }
 
 function ErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }) {
   const palette = usePalette();
@@ -25,7 +25,7 @@ function ErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, retryNonce: 0 };
   static getDerivedStateFromError(error: Error) { return { error }; }
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.warn('ErrorBoundary caught:', error.message, info.componentStack?.slice(0, 200));
@@ -33,8 +33,15 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
   render() {
     if (this.state.error) {
-      return <ErrorFallback error={this.state.error} onRetry={() => this.setState({ error: null })} />;
+      return (
+        <ErrorFallback
+          error={this.state.error}
+          // ⚠️ 递增 retryNonce 并把它作为子树 key（2026-10-03 修复）：
+          // 只清 error 时，若错误由稳定数据引起会「重试 → 立刻再崩」死循环；换 key 强制重建子树。
+          onRetry={() => this.setState((s) => ({ error: null, retryNonce: s.retryNonce + 1 }))}
+        />
+      );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.retryNonce}>{this.props.children}</React.Fragment>;
   }
 }

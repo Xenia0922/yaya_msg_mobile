@@ -14,7 +14,7 @@
 /** 官方 appKey（NIMStrategy.getOptions 明文） */
 export const NIM_APP_KEY = '632feff1f4c838541ab75195d1ceb3fa';
 
-/** 官方聊天室入口（48tools 同款；云信 chatroom 专用长连接域） */
+
 export const NIM_CHATROOM_ADDRESSES = ['chatweblink01.netease.im:443'];
 
 /** MsgType（com.pocket.snh48.lib.yunxin.model.MsgType） */
@@ -91,7 +91,20 @@ export interface BarrageItem {
   /** 毫秒时间戳 */
   time: number;
   /** 礼物附带信息 */
-  gift?: { giftId: number; giftName: string; giftNum: number; tpNum: number; toName: string; picPath: string };
+  gift?: {
+    giftId: number;
+    giftName: string;
+    giftNum: number;
+    tpNum: number;
+    toName: string;
+    picPath: string;
+    /** 全屏特效资源（仅 PRESENT_FULLSCREEN(_TWO) 非空）：相对路径，配合 https://source.48.cn */
+    zipPath?: string;
+    /** zip 的 MD5（服务端下发，下载后校验） */
+    zipMd5?: string;
+    /** 3 = PAG 动画（GiftInfo.TYPE_PAG） */
+    resourceType?: number;
+  };
 }
 
 /** 云信登录凭证（口袋48 HTTP im/api/v1/im/userinfo 下发） */
@@ -114,11 +127,9 @@ export interface NimSelfProfile {
   level?: number;
   roleId?: number;
   accid?: string;
-  /** 以下字段进弹幕 remoteExtension.user（桌面版同款），缺省时给安全默认值 */
+  
   vip?: boolean;
   pfUrl?: string;
   teamLogo?: string | null;
   badge?: unknown[];
-  /** 房间内身份（ext 的 channelRole/sessionRole 字段）：0=普通观众 1=房管 2=房主 3=成员本人 99=超管 */
-  sessionRole?: number;
 }

@@ -1,18 +1,4 @@
-/**
- * GlassSegmented · 玻璃滑动分段控件（全站 tap 切换统一用它）
- *
- * 结构照搬底栏：玻璃轨道 + 一块会滑动的玻璃选中胶囊（跟手/跟值），
- * 选中文字用主题色强调。用于「直播/录播」「大房间/小房间」这类切换。
- *
- * 交互（对齐底栏 AppTabBar）：
- *  - 点击某格 → 胶囊 spring 过去并回调 onChange
- *  - **按住横向拖动 → 胶囊跟手指走**，松手吸附到最近一格并回调 onChange
- *
- * ⚠️ driver 必须用 JS（`useNativeDriver: false`）：
- *  native driver 会把 Animated.Value 迁移到原生节点，之后从 JS 侧 `setValue()`
- *  会被原生节点静默丢弃（不报错、不生效）→ 症状是「点了变胶囊，但拖不动/不跟手」。
- *  这里只有 1 个胶囊 View 在动，JS driver 成本可忽略。
- */
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -31,6 +17,36 @@ import { usePalette } from '../theme';
 export interface GlassSegmentOption<T extends string> {
   key: T;
   label: string;
+}
+
+/**
+ * 选中胶囊（**刻意不用 BlurView**）。
+ *
+ * ⚠️ 2026-10-06 实测修复「切换页签瞬间胶囊被挤压/变形」：
+ * expo-blur 的 BlurView 在 Android 上用**原生驱动 transform** 位移时，backdrop 的裁剪框
+ * 不跟随视图移动 → 移出旧裁剪框的部分被**竖直切掉**（连拍实拍：胶囊左圆头整块消失、
+ * 左边缘是一条硬直线），用户看到的就是「切换时被挤一下」。
+ *
+ * 这里改用与 `SELECTOR` 材质**等价的不透明层**（深色主题 = 12% 白 + 10% 白描边；
+ * 浅色 = 55% 浅灰 + 45% 白描边）。胶囊底下是纯色/平滑渐变的轨道，模糊在视觉上本就看不出来，
+ * 因此观感一致；同时省掉动画期间每帧一次 backdrop 重采样（更省电、更不掉帧）。
+ * 需要真模糊时请用 `GlassSurface role="selector"`（静止不动的场景）。
+ */
+function SelectorCapsule({ radius, dark }: { radius: number; dark: boolean }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          borderRadius: radius,
+          backgroundColor: dark ? 'rgba(255,255,255,0.12)' : 'rgba(232,232,238,0.55)',
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)',
+        },
+      ]}
+    />
+  );
 }
 
 interface Props<T extends string> {
@@ -62,7 +78,6 @@ export function GlassSegmented<T extends string>({
    *    单值无法既 native 又可 setValue —— 铁律见文件头）。
    *  视觉位置 = xTap + xDrag（两层嵌套 transform 相加）。非拖动时 xDrag 恒 0。
    */
-  const xTap = useRef(new Animated.Value(0)).current;
   const xDrag = useRef(new Animated.Value(0)).current;
   const xTapRef = useRef(0);
   const draggingRef = useRef(false);
@@ -77,17 +92,44 @@ export function GlassSegmented<T extends string>({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  /** 点击/外部变更吸附：原生 spring（重渲染再忙也不抖），并清掉拖动偏移 */
-  const settle = (target: number) => {
-    xTapRef.current = target;
-    Animated.spring(xTap, { toValue: target, tension: 220, friction: 30, useNativeDriver: true }).start();
+  /**
+   * 点击/外部变更吸附。
+   *
+   * ⚠️ 必须 JS 驱动（2026-10-18 修复「滑过去又弹回左边再滑回去」）：
+   * native driver 把值托管给原生后，JS 侧仍持有旧值；父级重渲染（列表/弹幕刷新）时
+   * RN 会用 JS 旧值重建该节点的 transform，随后原生动画再把它推回目标 →
+   * 视觉上就是「先到位 → 弹回原位 → 再滑到位」。
+   * 工程铁律同样适用于此：跟手/可被 JS 复位的值一律 useNativeDriver:false。
+   */
+  /** 松手/外部变更：清掉拖拽偏移，胶囊位置由 idx 直接决定（无位移动画） */
+  const settle = (_target: number) => {
+    xTapRef.current = _target;
     xDrag.setValue(0);
   };
 
+  /**
+   * 只在「页签真的变了」时做弹簧动画。
+   *
+   * ⚠️ 2026-10-18 修「胶囊滑过去又弹回左边再滑回来」：
+   * cellW 由 trackW 算出，首次布局（0 → 真实宽）或父级重排都会让它变一次；
+   * 之前无脑 `settle(idx*cellW)`，等于每次都从索引 0 的位置重新弹一遍 ——
+   * 视觉上就是「到位 → 弹回左边 → 又滑回右边」。
+   * 现在：布局变化（idx 未变）直接落位、不做动画；只有 idx 变化才 spring。
+   */
+  const lastIdxRef = useRef(idx);
   useEffect(() => {
-    // 拖动中不要被外部 value 变化拽走（与底栏同一处理）
     if (draggingRef.current) return;
-    settle(idx * cellW);
+    if (cellW <= 0) return; // 还没量到宽度：什么都不做（避免 settle(0)）
+    const target = idx * cellW;
+    const idxChanged = idx !== lastIdxRef.current;
+    lastIdxRef.current = idx;
+    if (!idxChanged) {
+      // 仅布局宽度变化 → 瞬时落位
+      xTapRef.current = target;
+      xDrag.setValue(0);
+      return;
+    }
+    settle(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, cellW]);
 
@@ -140,17 +182,19 @@ export function GlassSegmented<T extends string>({
         }}
       >
         {cellW > 0 ? (
-          /* 外层：定位 + 原生 spring（点击吸附，重渲染不抖）；
-             内层：填充外层 + JS 拖动偏移。⚠️ 定位样式（absolute/left/top）必须在外层：
-             若留在内层，外层会变成普通 flex 子节点被 row 的 padding 挤偏（胶囊错位，实测截图）。 */
-          <Animated.View
+          /* ⚠️ 胶囊位置 = left: 3 + idx*cellW，**直接跟随选中的索引**，不做位移动画（2026-10-18 第三次修）。
+             前两版用 spring/timing 驱动 translateX，只要父级 value 在切换瞬间有回退
+             （点击 → 父级重渲染 → 旧值先回来 → 新值再到），胶囊就会「右边 → 弹回左边 → 再回右边」。
+             现在位移只由索引决定，父级怎么抖都不会产生二次位移动画；
+             拖拽跟手用内层 xDrag（Animated，JS 驱动）叠加，松手直接归零吸附到最近格。 */
+          <View
             pointerEvents="none"
-            style={[styles.pillPos, { width: cellW, height: height - pad * 2, transform: [{ translateX: xTap }] }]}
+            style={[styles.pillPos, { left: pad + idx * cellW, width: cellW, height: height - pad * 2 }]}
           >
             <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: xDrag }] }]}>
-              <GlassSurface role="selector" radius={(height - pad * 2) / 2} asBackground />
+              <SelectorCapsule radius={(height - pad * 2) / 2} dark={palette.name === 'dark'} />
             </Animated.View>
-          </Animated.View>
+          </View>
         ) : null}
         {options.map((o) => {
           const active = o.key === value;
@@ -215,12 +259,22 @@ export function GlassSegmentedScroll<T extends string>({
   const w = useRef(new Animated.Value(0)).current;
   const target = layouts[idx];
 
+  const lastXRef = useRef<number | null>(null);
   useEffect(() => {
     if (!target) return;
     // 宽度瞬时到位：宽度动画与位置动画是两条独立弹簧，收敛节奏不同 → 看起来像被「二次修正」。
-    // 文案长短不一时这一点尤其明显，因此宽度直接落位，只让位置做弹簧。
-    // ⚠️ JS driver：`w.setValue()` 必须能在 JS 侧生效（见文件头 driver 说明）。
     w.setValue(target.w);
+    // 首次测量 / 仅宽度变化 → 直接落位，避免「从左边滑过去」
+    if (lastXRef.current === null) {
+      lastXRef.current = target.x;
+      x.setValue(target.x);
+      return;
+    }
+    if (Math.abs(lastXRef.current - target.x) < 0.5) {
+      lastXRef.current = target.x;
+      return;
+    }
+    lastXRef.current = target.x;
     Animated.spring(x, { toValue: target.x, tension: 220, friction: 30, useNativeDriver: false }).start();
   }, [target, x, w]);
 
@@ -232,7 +286,7 @@ export function GlassSegmentedScroll<T extends string>({
             pointerEvents="none"
             style={[styles.scrollPill, { height: height - 6, width: w, transform: [{ translateX: x }] }]}
           >
-            <GlassSurface role="selector" radius={(height - 6) / 2} asBackground />
+            <SelectorCapsule radius={(height - 6) / 2} dark={palette.name === 'dark'} />
           </Animated.View>
         ) : null}
         {options.map((o, i) => {

@@ -13,6 +13,10 @@ public class RadioMediaReceiver extends BroadcastReceiver {
   public static final String ACTION_PREV = "com.yk1z.yayamsg.MEDIA_PREV";
   public static final String ACTION_NEXT = "com.yk1z.yayamsg.MEDIA_NEXT";
   public static final String ACTION_STOP = "com.yk1z.yayamsg.MEDIA_STOP";
+  /** 系统媒体控件「收藏」按钮（红心，最左） */
+  public static final String ACTION_FAVORITE = "com.yk1z.yayamsg.MEDIA_FAVORITE";
+  /** 系统媒体控件「播放列表」按钮 */
+  public static final String ACTION_PLAYLIST = "com.yk1z.yayamsg.MEDIA_PLAYLIST";
 
   @Override
   public void onReceive(Context context, Intent intent) {
@@ -28,6 +32,10 @@ public class RadioMediaReceiver extends BroadcastReceiver {
       RadioServiceModule.emitControl(context, "prev");
     } else if (ACTION_NEXT.equals(action)) {
       RadioServiceModule.emitControl(context, "next");
+    } else if (ACTION_FAVORITE.equals(action)) {
+      RadioServiceModule.emitControl(context, "favorite");
+    } else if (ACTION_PLAYLIST.equals(action)) {
+      RadioServiceModule.emitControl(context, "playlist");
     }
   }
 }

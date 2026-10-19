@@ -107,12 +107,23 @@ export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime
   video.addEventListener('canplay', markStarted);
   video.addEventListener('error', function() { showError('视频源错误'); });
 
+  // 时长回传：RN 侧进度条与「可拖动」判定依赖它
+  // （此前从不上报 → store.duration 恒 0 → 进度条 0:00 且拖不动）
+  function reportDuration() {
+    if (!window.ReactNativeWebView) return;
+    var d = video.duration;
+    if (isFinite(d) && d > 0) {
+      try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'duration', duration: d })); } catch (e) {}
+    }
+  }
   video.addEventListener('loadedmetadata', function() {
     if (startTime && startTime > 0) {
       try { video.currentTime = startTime; } catch (e) {}
     }
     reportVideoSize();
+    reportDuration();
   });
+  video.addEventListener('durationchange', reportDuration);
   // 分辨率确认/切换（flv.js 起播瞬间 videoWidth 常为 0，playing/resize 后才可信）
   video.addEventListener('resize', reportVideoSize);
   video.addEventListener('playing', reportVideoSize);

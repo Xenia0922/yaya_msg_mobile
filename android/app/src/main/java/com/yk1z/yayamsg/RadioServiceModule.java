@@ -57,6 +57,25 @@ public class RadioServiceModule extends ReactContextBaseJavaModule {
   }
 
   /** 高频真实进度同步（500ms 级）：只更新 PlaybackState，不重建通知/不改曲目（对齐 Salt/椒盐的 Exo 实时推送节奏） */
+  /** 当前曲是否已收藏：供系统媒体卡渲染实心/空心爱心（由 JS 同步） */
+  public static boolean favoriteState = false;
+  private static java.lang.ref.WeakReference<RadioServiceModule> moduleRef;
+
+  @Override
+  public void initialize() {
+    moduleRef = new java.lang.ref.WeakReference<>(this);
+  }
+
+  @androidx.annotation.Keep
+  @ReactMethod
+  public void setFavoriteState(boolean active) {
+    favoriteState = !!active;
+  }
+
+  public static boolean isFavoriteState() {
+    return favoriteState;
+  }
+
   @ReactMethod
   public void syncPosition(double position) {
     ReactApplicationContext context = getReactApplicationContext();

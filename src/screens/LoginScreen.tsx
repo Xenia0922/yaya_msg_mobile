@@ -20,11 +20,12 @@ import { FadeInView } from '../components/Motion';
 import { ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
+import { NetworkImage } from '../components/NetworkImage';
 import { saveSettings } from '../services/settings';
 import { resetNimSession } from '../services/pocketNim/session';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
-import { errorMessage, pickText } from '../utils/data';
+import { errorMessage, normalizeUrl, pickText } from '../utils/data';
 import { logWarn } from '../utils/runtimeLog';
 import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { translate, useI18n } from '../i18n';
@@ -214,7 +215,6 @@ export default function LoginScreen() {
   // 短信发送触发风控安全验证（status=2001）：展示问题与选项，选对后带 answer 重发
   const [verify, setVerify] = useState<{ question: string; options: string[]; phone: string; area: string } | null>(null);
 
-  // 发言身份（弹幕/房间消息的自定义昵称与头像；留空 = 用登录账号真实资料）
 
   const savePocketToken = async (token: string, message: string) => {
     const clean = token.trim();
@@ -767,11 +767,6 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  sendIdChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 14,
-  },
   container: { flex: 1 },
   content: { paddingBottom: 32, paddingHorizontal: 16 },
   cardMargin: { marginHorizontal: 16, marginTop: 16 },

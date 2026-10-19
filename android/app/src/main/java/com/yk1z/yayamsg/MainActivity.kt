@@ -144,7 +144,18 @@ class MainActivity : ReactActivity() {
         // ⚠️ 在 enterPictureInPictureMode 之前通知 RN，让 JS 提前把"应用内小窗"盖层
         // 全屏化（系统 PiP 内容 = 整窗快照，若不盖页面，悬浮窗里看到的是"列表+小窗"脏画面）
         PipModule.emitPipChanged(true)
-        enterPictureInPictureMode(PipModule.buildPipParams())
+        // 事件到 PiP 建立之间必须给 RN 一帧以上的时间把盖层画出来：
+        // 原先同步调用 enterPictureInPictureMode，快照拍在盖层渲染前，
+        // 小窗里先显示 1-2 秒 App 页面才切成视频（2026-10-18 用户反馈）。
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+          try {
+            if (!isInPictureInPictureMode && !isFinishing && !isDestroyed) {
+              enterPictureInPictureMode(PipModule.buildPipParams())
+            }
+          } catch (_: Exception) {
+            // 部分 ROM 限制，静默
+          }
+        }, PIP_ENTER_DELAY_MS)
       } catch (_: Exception) {
         // 部分 ROM 限制，静默
       }
@@ -213,3 +224,6 @@ class MainActivity : ReactActivity() {
       super.invokeDefaultOnBackPressed()
   }
 }
+
+/** 进系统 PiP 前等待 RN 渲染全屏盖层的时间（ms） */
+private const val PIP_ENTER_DELAY_MS = 160L

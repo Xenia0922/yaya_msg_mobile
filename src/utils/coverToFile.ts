@@ -7,6 +7,8 @@ import * as FileSystem from 'expo-file-system/legacy';
  * MusicLibraryScreen（Exo 原生播放 art）与 App.tsx（旧自管通知）共用。
  */
 const coverDataCache = new Map<string, string>();
+/** 内存缓存上限：Map 保持插入序，超限淘汰最早一批（此前无上限，长跑内存缓慢增长） */
+const COVER_CACHE_MAX = 80;
 let coverDirReady: Promise<boolean> | null = null;
 
 function ensureCoverDir(): Promise<boolean> {
@@ -46,6 +48,10 @@ export async function fetchCoverToFile(coverUrl: string): Promise<string> {
     ]);
     if (res && (res.status === 200 || res.status === undefined)) {
       coverDataCache.set(coverUrl, local);
+      if (coverDataCache.size > COVER_CACHE_MAX) {
+        const keys = Array.from(coverDataCache.keys());
+        keys.slice(0, keys.length - COVER_CACHE_MAX).forEach((k) => coverDataCache.delete(k));
+      }
       return local;
     }
   } catch {

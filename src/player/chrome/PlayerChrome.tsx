@@ -59,7 +59,9 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   const mirrorMode = usePlayerStore((s) => s.mirrorMode);
   const [moreVisible, setMoreVisible] = useState(false);
   const [rateSheetVisible, setRateSheetVisible] = useState(false);
-  const { width: screenW } = useWindowDimensions();
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  // 底坞纵向自适应：不再用一套固定间距（用户反馈「下半控件太高，像是写死高度」）
+  const dockScale = Math.max(0.82, Math.min(1, screenH / 820));
   // 安全区：顶栏保留「系统通知栏」冗余（避免弹幕/标题压到状态栏），底坞避开手势导航条
   const insets = useSafeAreaInsets();
   /**
@@ -82,6 +84,8 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   const tapRef = useRef<{ t: number; side: 'l' | 'r' } | null>(null);
   const [seekFlash, setSeekFlash] = useState<number | null>(null);
   const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 单击判定定时器（320ms 等双击）：必须在卸载时清理，否则回调会对已卸载组件 setState */
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 控制条淡入淡出
   const controlsOpacity = useRef(new Animated.Value(1)).current;
@@ -189,6 +193,10 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
     showControls();
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
+      // ⚠️ 一并清理双击提示与单击判定定时器（此前只清了 hideTimer，卸载后回调仍会 setState）
+      if (seekFlashTimer.current) clearTimeout(seekFlashTimer.current);
+      if (tapTimer.current) clearTimeout(tapTimer.current);
+      if (progRaf.current) cancelAnimationFrame(progRaf.current);
     };
   }, [showControls, source?.url]);
 
@@ -213,7 +221,8 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
       return;
     }
     tapRef.current = { t: now, side };
-    setTimeout(() => {
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    tapTimer.current = setTimeout(() => {
       if (tapRef.current && tapRef.current.t === now) {
         tapRef.current = null;
         showControls();
@@ -250,6 +259,13 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
     if (!downloadAvailable) return extraActions;
     return [{ key: 'download', icon: 'download', label: t('下载'), onPress: runDownload } as any, ...extraActions];
   }, [downloadAvailable, extraActions, runDownload, t]);
+
+  // ⚠️ 必须声明在 `if (!source) return null` **之前**（2026-10-03 修复崩溃）：
+  // 此前它声明在早退之后，当 source 首次渲染为空时该作用域根本没有这个变量，
+  // 卸载时上面 effect 的 cleanup 访问 `progRaf.current` → TypeError
+  // "Cannot read property 'current' of undefined"（实测快速切换播放器必崩）。
+  const progRaf = useRef(0);
+  const pendingRatio = useRef(0);
 
   if (!source) return null;
 
@@ -307,17 +323,31 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
     if (st.state !== 'playing' && st.state !== 'paused') return; // loading/error 阶段不可拖（防 seek 未就绪原生崩）
     const r = ratioFromX(pageX);
     if (r == null) return;
+    if (progRaf.current) { cancelAnimationFrame(progRaf.current); progRaf.current = 0; }
     dragRatioRef.current = r;
     setDragRatio(r); // 本地预览（不写 store）
   };
+  // 拖动跟手优化（2026-10-03 补齐，与 FullScreenPlayer 同款）：
+  // move 事件 60-120Hz，逐事件 setState 会让整页（含大列表/弹幕）每帧重渲染 → 低端机掉帧。
+  // rAF 限帧到 1 次/帧 + 最小跳变 0.4% 才提交渲染。
+  // （progRaf / pendingRatio 已在上方 `if (!source) return null` 之前声明）
   const onProgMove = (pageX: number) => {
     if (dragRatioRef.current == null) return;
     const r = ratioFromX(pageX);
     if (r == null) return;
-    dragRatioRef.current = r;
-    setDragRatio(r); // 本地预览
+    pendingRatio.current = r;
+    if (progRaf.current) return;
+    progRaf.current = requestAnimationFrame(() => {
+      progRaf.current = 0;
+      const nr = pendingRatio.current;
+      const base = dragRatioRef.current;
+      if (base != null && Math.abs(nr - base) < 0.004) return; // 0.4% 内不重渲染
+      dragRatioRef.current = nr;
+      setDragRatio(nr); // 本地预览
+    });
   };
   const onProgUp = () => {
+    if (progRaf.current) { cancelAnimationFrame(progRaf.current); progRaf.current = 0; }
     const r = dragRatioRef.current;
     dragRatioRef.current = null;
     setDragRatio(null);
@@ -362,9 +392,11 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
           <TouchableOpacity
             style={styles.errorBtn}
             onPress={() => {
-              // 有 onRetry（页面重新解析）优先；否则仅重播同 URL
+              // 有 onRetry（页面重新解析）优先；否则强制重建内核重播同一个 URL。
+              // ⚠️ 此前只 clearError()：内核 key 不变、retryNonce 不递增，
+              // 已失败的原生/Exo 播放器不会重建 → 点「重试」永远转圈（2026-10-03 修复）。
               if (onRetry) onRetry();
-              else usePlayerStore.getState().clearError();
+              else usePlayerStore.getState().requestKernelRebuild();
               showControls();
             }}
           >
@@ -438,7 +470,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
             style={styles.bottomShade}
           />
         </Animated.View>
-        <Animated.View style={[styles.dockWrap, { opacity: controlsOpacity, paddingBottom: Math.max(insets.bottom, 12) + 4 + kbHeight }]} pointerEvents="box-none">
+        <Animated.View style={[styles.dockWrap, { opacity: controlsOpacity, paddingBottom: Math.max(insets.bottom, Math.round(10 * dockScale)) + Math.round(4 * dockScale) + kbHeight }]} pointerEvents="box-none">
           {/* 进度行：当前时间 —— 可拖进度 —— 总时间（直播仅显示 直播） */}
           {!isLive ? (
           <View style={styles.progressRow}>
@@ -461,7 +493,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
           </View>
           ) : null}
           {/* 直播弹幕输入条：与控制条同一个底坞容器 → 一起自动隐藏/呼出 */}
-          {barrageInput ? <View style={styles.dockBarrageRow}>{barrageInput}</View> : null}
+          {barrageInput ? <View style={[styles.dockBarrageRow, { marginBottom: Math.round(8 * dockScale) }]}>{barrageInput}</View> : null}
           {/* 控制行：播放/暂停（主按钮）+ 右侧功能 */}
           <View style={styles.ctrlRow}>
             <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.85}>
@@ -542,7 +574,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
               </TouchableOpacity>
             </View>
             <View style={styles.moreGrid}>
-              {/* 画面旋转/镜像（桌面 DPlayer 对齐） */}
+              {}
               <TouchableOpacity
                 style={styles.moreItem}
                 onPress={() => {
@@ -646,15 +678,17 @@ const styles = StyleSheet.create({
   dockBarrageRow: { marginBottom: 10 },
   progressRow: { flexDirection: 'row', alignItems: 'center' },
   timeText: { color: 'rgba(255,255,255,0.92)', fontSize: 11, fontVariant: ['tabular-nums'], marginHorizontal: 8, minWidth: 34, textAlign: 'center' },
+  // 触控高度 30 → 44（2026-10-03）：进度条是最高频的手势目标，30 低于 44×44 推荐值，容易抓不中
   progressTouch: {
-    flex: 1, height: 30, justifyContent: 'center',
+    flex: 1, height: 44, justifyContent: 'center',
   },
   progressTrackBg: {
     height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.26)',
   },
   progressFill: { height: 3, borderRadius: 2, backgroundColor: '#fff' },
   progressThumb: {
-    position: 'absolute', top: 9.5, width: 11, height: 11, borderRadius: 6,
+    // top 随触控高度调整（44/2 - 11/2 = 16.5），保持视觉居中
+    position: 'absolute', top: 16.5, width: 11, height: 11, borderRadius: 6,
     marginLeft: -5.5, backgroundColor: '#fff',
     shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
   },
