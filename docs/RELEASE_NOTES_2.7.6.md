@@ -340,6 +340,12 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 - **涉及**：`android/.../ApkUpdaterModule.java`、`ApkUpdaterPackage.java`、`AndroidManifest.xml`、`res/xml/file_paths.xml`、`MainApplication.kt`、`src/native/ApkUpdater.ts`、`src/utils/appUpdate.ts`、`src/components/UpdateInstaller.tsx`、`src/screens/SettingsScreen.tsx`、`src/i18n/*`
 - **注意**：下载源依赖 Release 资产命名（`yaya-msg-mobile-<tag>-v8a.apk` 等），发版时必须保留分包资产
 
+### 23. 设置页新增「010 推送」入口
+- **需求**：把 010Push（gnz48.tech）放进设置页
+- **位置**：关于区「下载页」正下方 —— 同属外部链接分组，用户找下载页时顺手就能看到配套服务；不为单条目单开分区
+- **实现**：`Row`（icon `bell-ring-outline`，右侧显示 `gnz48.tech`）→ `Linking.openURL('https://gnz48.tech/')`
+- **涉及**：`src/screens/SettingsScreen.tsx`
+
 ## 附：发版清单
 
 - 出包：`node scripts/build-apk.js` → `E:\yymsg\APK\`
