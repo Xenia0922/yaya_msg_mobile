@@ -38,6 +38,8 @@ class MainApplication : Application(), ReactApplication {
       add(GiftEffectPackage())
       // 应用内更新：下载 APK + 拉起系统安装器
       add(ApkUpdaterPackage())
+      // 房间语音/视频时长探测（MediaMetadataRetriever）
+      add(MediaProbePackage())
       // 云信 commonlink 协议（直播弹幕聊天室 + 成员房间 QChat）：登录包里包名由自己填
       // （com.seine48.app，白名单内）→ 过服务端客户端标识校验
       add(com.yk1z.yayamsg.nim.PocketNimChatroomPackage())

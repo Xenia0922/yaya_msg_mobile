@@ -355,6 +355,45 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 - **分发安全**：更新器只拼 `yaya-msg-mobile-<tag>-<abi>.apk`，永远不会匹配 `yaya-msg-mobile-plus-*`；权限版仅存在于本地 plus 分支，公开仓库 Release 只有公版资产
 - **涉及**：`src/constants/channel.ts`、`src/screens/SettingsScreen.tsx`、`scripts/build-apk.js`
 
+### 25. 房间语音秒数：改用原生长度探测（此前部分卡一直显示「播放」）
+- **现象**：房间里的语音卡有的显示 `7s`，有的一直是「播放」，等再久也不出秒数
+- **取证**：真机 logcat 抓到 `[diag:duration:audio] candidates={"msgTime":1792387660639}` —— 服务端语音消息体**根本没有 duration 字段**（只有 msgTime），时长只能客户端解析；原方案靠每条语音挂一个 1px 隐藏 Video（ExoPlayer）读时长，多卡并发时互相抢资源，部分探测半路失败就永远停在「播放」
+- **改动**：新增原生 `MediaProbeModule`（`MediaMetadataRetriever` + 防盗链 headers，单线程池，不起播放器）作为**主路径**，JS 侧按 url 全局缓存（`ROOM_DUR_CACHE`）复用；隐藏 Video 仅作兜底保留
+- **涉及**：`android/.../MediaProbeModule.java`、`MediaProbePackage.java`、`MainApplication.kt`、`src/native/MediaProbe.ts`、`src/screens/FollowedRoomsScreen.tsx`（AudioMediaCard）
+- **实测**：同一房间 3 条语音全部显示秒数（9s / 3s / 7s），角标与按钮同步
+
+### 26. 房间礼物面板点了不出礼物列表（小房间坐标错配）
+- **现象**：点房间输入栏左侧礼物按钮，面板弹出但礼物列表一直空
+- **根因**：`openRoomGiftPanel` 的 room 分支用 `selectedRoom.channelId/serverId`（**大房间坐标**）覆盖 `activeRoomRef.current`（当前活跃小房间的配对坐标）→ `getMemberRoomGiftContext` 校验 `info.serverId !== serverId` 抛「房间信息已变化」→ catch 里 `setGiftList([])`。对照上游 yk1z/yaya_msg `fetchMemberRoomGiftContext` 确认解析逻辑逐行同构，问题只在传参
+- **改动**：坐标整体取自 `activeRoomRef`（与 `handleSendRoomMessage` 同源）；`serverId` 缺失/为 0 时走 `resolveRoomServerId(channelId)` 兜底；`useCallback` 依赖去掉 `selectedRoom`
+- **涉及**：`src/screens/FollowedRoomsScreen.tsx`（openRoomGiftPanel）
+
+### 27. 已关注成员不显示在房间列表（周文迪等 9 月后新成员）
+- **现象**：成员有小房间、也已关注，但房间列表里不出现
+- **根因**（两处叠加）：
+  1. `getFollowedIds` 裸 `pocketPost` 缺 `P-Sign-Type: V0` 签名头（上游 `createFriendshipHeaders` 同款）→ `friends/id` 的 `content.data` 可能缺
+  2. `followedFetchedRef` 在**启动旧缓存阶段**就锁死只拉一次，后台静默刷新补齐新成员（如周文迪 2026/9/17 入团）后不再重新匹配 → 新成员永不进列表
+- **改动**：① `getFollowedIds` 加 `createCheckinHeaders()`；② 新增 `matchFollowedMember` 多字段匹配（id/userId/memberId/account）；③ `followedMatchedMembersRef` 记录上次匹配用的 members 引用，成员库换新数组后重拉一次
+- **涉及**：`src/api/pocket48.ts`、`src/screens/FollowedRoomsScreen.tsx`
+
+### 28. 鸡腿榜：去掉年榜 + 成员贡献页 UI 优化
+- **改动**：
+  - 移除年榜页签与 `getMeleeYearRankPage` API（对齐上游只保留周榜/成员贡献），i18n 四语言清「年榜」相关键
+  - 成员贡献页新增头部 summary 卡（查询成员 / **总贡献值**（`totalCharm` 累加，对齐上游 `queryPersonMeleeRankData`）/ 贡献人数）
+  - 贡献卡：前三名 tint 实底徽标 + mini 进度条（除零保护）
+- **涉及**：`src/screens/MeleeRankScreen.tsx`、`src/api/pocket48.ts`、`src/i18n/{en,ja,ko,zh-Hant}.ts`
+
+### 29. 消息勋章 / 头像框不渲染 + `[发呆]` 等表情不解析
+- **现象**：消息里的勋章、头像框图片不显示；`[发呆][发呆][发呆]` 原样显示为文本
+- **根因**：
+  1. `normalizeUrl` 对相对路径一律拼 `source.48.cn`，但**徽章/头像框资源在 `source1.48.cn`** → 404 不渲染
+  2. `[表情]` 标签只做了 unicode 近似替换，官方 PopoEmoticons 里没有对应 unicode 的（如 `[发呆]`）直接漏渲染
+- **改动**：
+  - `normalizeUrl` 按宿主分流（`avatar|mediasource|backstage` → source.48.cn，其余 → source1.48.cn）
+  - 新增 `assets/emoji/` 107 个官方 PopoEmoticons + `emojiAssets.ts`/`emojiMap.ts`（Metro 静态 require），`splitEmojiParts` 把 `[xx]` 切成文本/表情图片段，消息气泡内联 `<Image>` 渲染
+  - 新增 `src/components/UserDecor.tsx`：`AvatarWithFrame`（头像 1.32x 框叠加）、`UserDecorRow`（成员队标 / 粉丝勋章行），消息行接入 `ext.user.badge[]/pfUrl`
+- **涉及**：`src/utils/data.ts`、`src/utils/emojiMap.ts`、`src/utils/emojiAssets.ts`、`src/components/UserDecor.tsx`、`src/screens/FollowedRoomsScreen.tsx`、`assets/emoji/*`（107 png）
+
 ## 附：发版清单
 
 - 出包：`node scripts/build-apk.js` → `E:\yymsg\APK\`

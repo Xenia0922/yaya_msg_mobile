@@ -27,13 +27,12 @@ import { EmptyState, ErrorState } from '../components/StateViews';
 import { Skeleton } from '../components/Skeleton';
 import { GlassSurface } from '../components/GlassSurface';
 
-// 年榜走 getMeleeYearRankPage（官方 2026 赛季起有数据则显示；空返回自然落空态）。
-type ViewMode = 'week' | 'person' | 'year';
+// 鸡腿榜页签：周榜 + 成员贡献（年榜已按需求移除 2026-10-19）
+type ViewMode = 'week' | 'person';
 
 const MODES: { key: ViewMode; label: string }[] = [
   { key: 'week', label: '周榜' },
   { key: 'person', label: '成员贡献' },
-  { key: 'year', label: '年榜' },
 ];
 
 /**
@@ -84,6 +83,8 @@ export default function MeleeRankScreen() {
   selectedWeekRef.current = selectedWeek;
   const [ranks, setRanks] = useState<any[]>([]);
   const [personRanks, setPersonRanks] = useState<any[]>([]);
+  /** 成员贡献头部：查询成员 + 总贡献值（上游 queryPersonMeleeRankData summary 语义） */
+  const [personTotal, setPersonTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
@@ -101,6 +102,7 @@ export default function MeleeRankScreen() {
     if (m === mode) return;
     setRanks([]);
     setPersonRanks([]);
+    setPersonTotal(null);
     setError('');
     nextIdRef.current = '';
     hasMoreRef.current = false;
@@ -118,8 +120,6 @@ export default function MeleeRankScreen() {
         res = wk
           ? await withTransientRetry(() => pocketApi.getMeleeWeekRank(wk.weekRankId))
           : await withTransientRetry(() => pocketApi.getMeleeRankPage());
-      } else if (mode === 'year') {
-        res = await withTransientRetry(() => pocketApi.getMeleeYearRankPage(undefined, nextIdRef.current || undefined));
       } else {
         return;
       }
@@ -141,7 +141,7 @@ export default function MeleeRankScreen() {
       // Y31: 过期响应丢弃（期间已切榜/切周）
       if (rid !== reqIdRef.current) return;
       setRanks(list);
-      // 分页游标：getMeleeRankPage / getMeleeYearRankPage 支持 nextId
+      // 分页游标：getMeleeRankPage 支持 nextId
       const nextId = String(data?.nextId || data?.next || '');
       nextIdRef.current = nextId;
       hasMoreRef.current = !!nextId && list.length > 0;
@@ -166,8 +166,6 @@ export default function MeleeRankScreen() {
         res = wk2
           ? await withTransientRetry(() => pocketApi.getMeleeWeekRank(wk2.weekRankId, nextIdRef.current))
           : await withTransientRetry(() => pocketApi.getMeleeRankPage(0, nextIdRef.current));
-      } else if (mode === 'year') {
-        res = await withTransientRetry(() => pocketApi.getMeleeYearRankPage(undefined, nextIdRef.current));
       } else {
         return;
       }
@@ -204,6 +202,7 @@ export default function MeleeRankScreen() {
   const loadPerson = useCallback(async (m: Member) => {
     if (!m?.id) {
       setPersonRanks([]);
+      setPersonTotal(null);
       setLoading(false);
       return;
     }
@@ -214,10 +213,14 @@ export default function MeleeRankScreen() {
       const data = res?.content ?? res?.data ?? {};
       const list = Array.isArray(data?.charmInfo) ? data.charmInfo : extractRankList(data);
       setPersonRanks(list);
+      // 总贡献值 = 各贡献用户 totalCharm 之和（上游 queryPersonMeleeRankData 同口径）
+      const total = list.reduce((sum: number, it: any) => sum + pickNum(it?.totalCharm, it?.charm, it?.charmValue, it?.total, it?.score), 0);
+      setPersonTotal(total);
       // 空数据不 setError：交给列表 ListEmptyComponent 渲染，避免错误态与空态重叠（与周榜分支一致）
     } catch (e: any) {
       setError(errorMessage(e));
       setPersonRanks([]);
+      setPersonTotal(null);
     } finally {
       setLoading(false);
     }
@@ -228,9 +231,9 @@ export default function MeleeRankScreen() {
    * 若沿用「一个 effect 同时依赖 selectedWeek」的写法，在成员贡献页点日期会**白跑一次
    * loadPerson**（贡献榜数据与周次无关）。拆开后各自只依赖自己真正关心的输入。
    */
-  // 周榜/年榜：模式 或 选中周次 变化 → 拉对应榜单
+  // 周榜：模式 或 选中周次 变化 → 拉对应榜单
   useEffect(() => {
-    if (mode === 'week' || mode === 'year') loadRank();
+    if (mode === 'week') loadRank();
   }, [mode, selectedWeek, loadRank]);
 
   // 成员贡献：模式 或 选中成员 变化 → 拉贡献榜（与周次无关）
@@ -239,6 +242,7 @@ export default function MeleeRankScreen() {
     if (member) loadPerson(member);
     else {
       setPersonRanks([]);
+      setPersonTotal(null);
       setLoading(false);
     }
   }, [mode, member, loadPerson]);
@@ -302,6 +306,16 @@ export default function MeleeRankScreen() {
     return m;
   }, [ranks]);
 
+  // 成员贡献进度条基准（同 RankCard 逻辑；除零保护）
+  const personMax = useMemo(() => {
+    let m = 1;
+    for (const it of personRanks) {
+      const v = pickNum(it?.totalCharm, it?.charm, it?.charmValue, it?.total, it?.score);
+      if (v > m) m = v;
+    }
+    return m;
+  }, [personRanks]);
+
   const renderRank = useCallback(
     ({ item, index }: { item: any; index: number }) => (
       <RankCard item={item} index={index} max={rankMax} />
@@ -310,9 +324,9 @@ export default function MeleeRankScreen() {
   );
   const renderPerson = useCallback(
     ({ item, index }: { item: any; index: number }) => (
-      <PersonCard item={item} index={index} />
+      <PersonCard item={item} index={index} max={personMax} />
     ),
-    [],
+    [personMax],
   );
 
   const showSkeleton = loading && ranks.length === 0 && mode !== 'person';
@@ -384,6 +398,7 @@ export default function MeleeRankScreen() {
                 colors={[palette.tint]}
               />
             }
+            ListHeaderComponent={member ? <PersonSummary member={member} total={personTotal} count={personRanks.length} /> : null}
             ListEmptyComponent={
               <EmptyState
                 icon="account-heart"
@@ -556,7 +571,42 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
   );
 });
 
-const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; index: number }) {
+/**
+ * 成员贡献头部 summary（对齐上游 queryPersonMeleeRankData 输出）：
+ * 查询成员 + 总贡献值 + 贡献人数，一眼看到头部格局。
+ */
+const PersonSummary = React.memo(function PersonSummary({ member, total, count }: { member: Member; total: number | null; count: number }) {
+  const palette = usePalette();
+  const { t } = useI18n();
+  const name = String(member.ownerName || member.id || '');
+  return (
+    <FadeInView delay={40} duration={280} style={{ marginBottom: 10 }}>
+      <GlassSurface radius={22} role="card" style={[styles.podiumCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+        <View style={styles.personSummaryRow}>
+          <View style={styles.personSummaryCell}>
+            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>{t('查询成员')}</Text>
+            <Text style={[styles.personSummaryValue, { color: palette.label }]} numberOfLines={1}>{name}</Text>
+          </View>
+          <View style={styles.personSummaryCell}>
+            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>{t('总贡献值')}</Text>
+            <View style={styles.personSummaryValueRow}>
+              <MaterialCommunityIcons name="food-drumstick" size={16} color={palette.tint} />
+              <Text style={[styles.personSummaryValue, { color: palette.tint }]}>
+                {total == null ? '--' : total >= 10000 ? `${(total / 10000).toFixed(1)}w` : String(total)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.personSummaryCell}>
+            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>{t('贡献人数')}</Text>
+            <Text style={[styles.personSummaryValue, { color: palette.label }]}>{String(count)}</Text>
+          </View>
+        </View>
+      </GlassSurface>
+    </FadeInView>
+  );
+});
+
+const PersonCard = React.memo(function PersonCard({ item, index, max }: { item: any; index: number; max: number }) {
   const palette = usePalette();
   const { t } = useI18n();
   const u = item.userInfo || item.baseUserInfo || item.user || item;
@@ -566,12 +616,23 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
   const charm = pickNum(item.totalCharm, item.charm, item.charmValue, item.total, item.score, item.melee);
   const rankNum = Number(item.rankNum || item.rank || 0) || index + 1;
   const privacy = !!item.privacy;
+  const isTop = rankNum <= 3;
+  // 除零保护：max 为 0 时避免 Infinity%（与 RankCard 同规则）
+  const pct = max > 0 ? Math.max(2, Math.min(100, (charm / max) * 100)) : 2;
 
   return (
     <FadeInView delay={60 + (index < 12 ? index * 25 : 0)} duration={300}>
       <GlassSurface radius={20} role="card" style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-        <View style={[styles.rankBadge, { backgroundColor: palette.fill2 }]}>
-          <Text style={[styles.rankBadgeText, { color: palette.labelSecondary, fontSize: 14, fontWeight: '800' }]}>{rankNum}</Text>
+        {/* 名次徽标：前三 tint 实底白字，其余 fill2 底（与周榜 RankCard 一致） */}
+        <View
+          style={[
+            styles.rankBadge,
+            isTop
+              ? { backgroundColor: palette.tint }
+              : { backgroundColor: palette.fill2 },
+          ]}
+        >
+          <Text style={[styles.rankBadgeText, { color: isTop ? palette.onTint : palette.labelSecondary, fontSize: isTop ? 16 : 14, fontWeight: isTop ? '900' : '800' }]}>{rankNum}</Text>
         </View>
         {avatar ? (
           <Image source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} />
@@ -585,6 +646,9 @@ const PersonCard = React.memo(function PersonCard({ item, index }: { item: any; 
           <Text style={[styles.rankMeta, { color: palette.labelSecondary }]} numberOfLines={1}>
             {t('ID: {id}', { id: userId })}{privacy ? t(' · 隐私用户') : ''}
           </Text>
+          <View style={[styles.miniTrack, { backgroundColor: palette.fill3 }]}>
+            <View style={[styles.miniFill, { backgroundColor: palette.tint, width: `${pct}%` }]} />
+          </View>
         </View>
         <View style={styles.meleeWrap}>
           <MaterialCommunityIcons name="food-drumstick-outline" size={16} color={palette.tint} />
@@ -659,6 +723,12 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   podiumMelee: { fontSize: 11, fontWeight: '800', maxWidth: '92%' },
+  // 成员贡献 summary（查询成员 / 总贡献值 / 贡献人数）
+  personSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  personSummaryCell: { flex: 1, minWidth: 0 },
+  personSummaryLabel: { fontSize: 11, fontWeight: '600' },
+  personSummaryValue: { fontSize: 15, fontWeight: '800', marginTop: 3 },
+  personSummaryValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
   rankCard: {
     flexDirection: 'row', alignItems: 'center',
     borderRadius: radiiAlias.card, padding: 12, marginBottom: 5,

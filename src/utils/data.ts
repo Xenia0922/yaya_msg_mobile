@@ -61,7 +61,10 @@ export function normalizeUrl(value: any): string {
   const raw = String(value).trim();
   if (!raw) return '';
   if (raw.startsWith('//')) return `https:${raw}`;
-  if (raw.startsWith('/')) return `https://source.48.cn${raw}`;
+  // ⚠️ 相对路径按「宿主」拼，不能一律拼 source.48.cn：
+  // 48 图床（avatar/mediasource/backstage…）→ source.48.cn；
+  // 用户徽章/头像框等资源实际在 source1.48.cn（拼错域名 → 勋章框加载 404/不渲染，2026-10-19 用户反馈）。
+  if (raw.startsWith('/')) return `https://${/^(avatar|mediasource|backstage)\b/i.test(raw.slice(1)) ? 'source.48.cn' : 'source1.48.cn'}${raw}`;
   return raw;
 }
 
@@ -78,22 +81,38 @@ export function parseMaybeJson(value: any): any {
   }
 }
 
-const EMOJI_MAP: Record<string, string> = {
-  '[色]': '😍', '[爱心]': '❤️', '[亲亲]': '😚', '[生病]': '😷', '[大哭]': '😭', '[微笑]': '🙂', '[酷]': '😎', '[坏笑]': '😏',
-  '[惊恐]': '😱', '[愉快]': '😊', '[憨笑]': '😄', '[悠闲]': '😌', '[奋斗]': '💪', '[大笑]': '😆', '[疑问]': '❓', '[嘘]': '🤫',
-  '[晕]': '😵', '[衰]': '😞', '[骷髅]': '💀', '[敲打]': '🔨', '[再见]': '👋', '[擦汗]': '😓', '[抠鼻]': '👃', '[鼓掌]': '👏',
-  '[糗大了]': '😳', '[左哼哼]': '😤', '[右哼哼]': '😤', '[哈欠]': '🥱', '[鄙视]': '👎', '[委屈]': '🥺', '[快哭了]': '😿', '[阴险]': '😈',
-  '[吓]': '😨', '[可怜]': '🥺', '[菜刀]': '🔪', '[西瓜]': '🍉', '[啤酒]': '🍺', '[篮球]': '🏀', '[乒乓]': '🏓', '[咖啡]': '☕',
-  '[饭]': '🍚', '[猪头]': '🐷', '[玫瑰]': '🌹', '[凋谢]': '🥀', '[嘴唇]': '💋', '[心碎]': '💔', '[蛋糕]': '🎂', '[闪电]': '⚡',
-  '[炸弹]': '💣', '[刀]': '🔪', '[足球]': '⚽', '[瓢虫]': '🐞', '[便便]': '💩', '[月亮]': '🌙', '[太阳]': '☀️', '[礼物]': '🎁',
-  '[拥抱]': '🤗', '[强]': '👍', '[弱]': '👎', '[握手]': '🤝', '[胜利]': '✌️', '[抱拳]': '🙏', '[勾引]': '☝️', '[拳头]': '✊',
-  '[差劲]': '👎', '[爱你]': '🤟', '[NO]': '🙅', '[OK]': '👌', '[跳跳]': '💃', '[发抖]': '🥶', '[怄火]': '😡', '[转圈]': '💫',
-  '[磕头]': '🙇', '[回头]': '🔙', '[跳绳]': '🏃', '[挥手]': '🙋', '[激动]': '🤩', '[街舞]': '🕺', '[献吻]': '😽', '[左太极]': '☯️', '[右太极]': '☯️',
-};
+// 表情映射：官方 PopoEmoticons 107 tag → 本地表情图（require 资源，与官方客户端同款表情）。
+// 文本里的 [xx] 标签渲染为表情图片而非 unicode 近似字符（[发呆] 等此前直接漏渲染，2026-10-19 用户反馈）。
+// 映射表见 ./emojiMap（生成自官方 emoji.xml Tag↔File）。
+import EMOJI_MAP from './emojiMap';
+
+export type EmojiPart = string | { emoji: string; source: any };
+
+/** 把文本按 [表情] 标签切成 文本/表情图 片段（供消息气泡内联渲染） */
+export function splitEmojiParts(text: string): EmojiPart[] {
+  if (!text) return [];
+  const parts: EmojiPart[] = [];
+  const re = /\[([^\]]+)\]/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const src = EMOJI_MAP[m[0]];
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (src) parts.push({ emoji: m[0], source: src });
+    else parts.push(m[0]);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
 
 export function replaceEmojiText(text: string): string {
   if (!text) return text;
-  return text.replace(/\[([^\]]+)\]/g, (match: string) => EMOJI_MAP[match] || match);
+  return text.replace(/\[([^\]]+)\]/g, (match: string) => {
+    const src = EMOJI_MAP[match];
+    // 图片映射在纯文本场景（消息列表预览/搜索）保留原始 [xx] 标签（避免出现 [object Object]）
+    return typeof src === 'string' ? src : match;
+  });
 }
 
 export function messagePayload(item: any): any {
@@ -123,6 +142,13 @@ export function messageText(item: any): string {
   }
 
   if (typeof body === 'string') return replaceEmojiText(body);
+
+  // last/message/get 返回的 lastMsgList[] 只有 msgContent（无 bodys/msgType）——
+  // 房间列表大/小房间预览走的就是这条，缺这段兜底会导致「有最新消息但预览空白」
+  const lastPreview = item?.msgContent ?? item?.content ?? item?.message;
+  if (typeof lastPreview === 'string' && lastPreview.trim() && !lastPreview.startsWith('{') && !lastPreview.startsWith('[')) {
+    return replaceEmojiText(lastPreview);
+  }
 
   if (type === 'TEXT') {
     if (body && typeof body === 'object') {

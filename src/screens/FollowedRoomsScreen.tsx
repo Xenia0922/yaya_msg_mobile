@@ -29,6 +29,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp, toMs } from '../utils/format';
 import { findMediaDurationSeconds } from '../utils/mediaDuration';
+import { probeMediaDurationSeconds } from '../native/MediaProbe';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
 import { useOnMicStore } from '../store/onMicStore';
@@ -39,8 +40,10 @@ import {
   normalizeUrl,
   parseMaybeJson,
   pickText,
+  splitEmojiParts,
   unwrapList,
 } from '../utils/data';
+import { UserDecorRow, AvatarWithFrame, type UserDecor } from '../components/UserDecor';
 import { t, useI18n } from '../i18n';
 import { logInfo } from '../utils/runtimeLog';
 import pocketApi from '../api/pocket48';
@@ -410,6 +413,18 @@ function messageRole(
   return 'fan';
 }
 
+/** 关注 id → 成员匹配：friends/id 返回的是口袋 userId（= 库 id），但也可能落到
+ *  userId/account/昵称上（库字段异构、新成员入库延迟）。逐字段兜底，避免
+ *  「已关注却不显示在房间列表」（周文迪等 2026-09 后新成员，2026-10-19 用户反馈）。 */
+function matchFollowedMember(members: any[], id: string): any | undefined {
+  const target = String(id || '').trim();
+  if (!target) return undefined;
+  return members.find((item: any) => {
+    const ids = [item?.id, item?.userId, item?.memberId, item?.account].map((v) => String(v ?? '').trim());
+    return ids.includes(target);
+  });
+}
+
 /** 成员库 id 集合（成员 id / userId / memberId 都可能出现在消息里） */
 function buildMemberIdSet(members: any[]): Set<string> {
   const set = new Set<string>();
@@ -562,10 +577,17 @@ function qchatToRoomMessage(msg: RoomLiveMessage): any {
 function findLastMessage(messages: any[], member?: Member) {
   if (!member) return null;
   const bigId = String(member.channelId || '');
+  const ykid = String(member.yklzId || '');
+  // ① 精确匹配大房间 channelId（唯一可靠判据 —— lastMsgList 有 channelId 字段）
+  if (bigId) {
+    const exact = messages.find((msg) => String(msg.channelId || '') === bigId);
+    if (exact) return exact;
+  }
+  // ② 兜底：只有 userId/ownerId 命中成员 id，且**不是小房间消息**（否则小房间消息会冒充大房间预览）
   return messages.find((msg) => (
-    (bigId && String(msg.channelId || '') === bigId)
-    || String(msg.userId || msg.ownerId || '') === String(member.id || '')
-  ));
+    String(msg.userId || msg.ownerId || '') === String(member.id || '')
+    && (!ykid || ykid === '0' || String(msg.channelId || '') !== ykid)
+  )) || null;
 }
 
 /** 小房间（yklzId）最新消息：只认 channelId 精确匹配小房间 */
@@ -1114,7 +1136,21 @@ function AudioMediaCard({
   media: RoomMedia; palette: any;
   onPlay: () => void; onLongPress: () => void; playing: boolean;
 }) {
-  const [resolvedDur, setResolvedDur] = useState(media.duration || '');
+  // 命中缓存直接用（滚回列表/重渲染不重复探测）
+  const cachedDur = media.url ? ROOM_DUR_CACHE.get(media.url) : '';
+  const [resolvedDur, setResolvedDur] = useState(media.duration || cachedDur || '');
+  // 主路径：原生 MediaMetadataRetriever 读时长（不起播放器，稳定、快）
+  useEffect(() => {
+    if (resolvedDur || !media.url) return;
+    let alive = true;
+    probeMediaDurationSeconds(media.url).then((sec) => {
+      if (!alive || !(sec > 0)) return;
+      const s = String(Math.round(sec));
+      ROOM_DUR_CACHE.set(media.url, s);
+      setResolvedDur(s);
+    });
+    return () => { alive = false; };
+  }, [media.url, resolvedDur]);
   const card = (
     <TouchableOpacity
       // 语音播放卡玻璃化（用户要求，2026-09-19）：任何人（含房主/自己）一律 GlassSurface，
@@ -1184,19 +1220,22 @@ const USER_CARD_AVATAR_SIZE = 64;
 /** 消息头像尺寸（与 styles.avatar 同步） */
 const ROOM_AVATAR_SIZE = 40;
 
-/** 发送者头像框：官方消息 ext.user.badge[]（每项是资源地址）/ pfUrl / headFrame，取第一个可用 URL */
+/** 发送者头像框：官方消息 ext.user.pfUrl / headFrame / pictureFrame（badge[] 是勋章图，**不是**头像框，
+ *  此前优先取 badge 把粉丝勋章画成了头像框 —— 2026-10-19 用户反馈「头像框被当成勋章、勋章被当成头像框」） */
 function firstFrameFrom(extUser: any): string {
-  const b = extUser?.badge ?? extUser?.pfUrl ?? extUser?.headFrame ?? extUser?.frameUrl;
+  const b = extUser?.pfUrl ?? extUser?.headFrame ?? extUser?.pictureFrame ?? extUser?.frameUrl;
   if (!b) return '';
   const first = Array.isArray(b) ? b[0] : (typeof b === 'object' ? (b[0] || b.url || b.picPath || '') : b);
   const u = String(first || '').trim();
-  return /^(https?:\/\/|\/)/.test(u) ? normalizeUrl(u) : '';
+  // 相对路径（/…）也算有效 —— normalizeUrl 会按宿主补齐
+  return u && !/^\[/.test(u) ? normalizeUrl(u) : '';
 }
 
 /**
  * 从 user/info/home 响应里泛匹配头像框地址：官方各端字段名不统一
  * （pictureFrame / pfUrl / headFrame / bubble…），按「key 含框类词 + 值是 URL」匹配。
  * 拿不到返回空串 —— 资料卡就不叠框，不影响主流程。
+ * ⚠️ badge / medal / level 类键一律跳过（勋章 ≠ 头像框，2026-10-19 语义互换教训）。
  */
 function findFrameUrl(value: any, depth = 0): string {
   if (!value || depth > 4) return '';
@@ -1206,6 +1245,7 @@ function findFrameUrl(value: any, depth = 0): string {
   }
   if (typeof value !== 'object') return '';
   for (const [k, v] of Object.entries(value)) {
+    if (/(badge|medal|level|icon)/i.test(k)) continue;
     if (typeof v === 'string') {
       if (/(frame|pendant|bubble|border)/i.test(k) && /^(https?:\/\/|\/)/.test(v)) return v;
     } else if (v && typeof v === 'object') {
@@ -1717,10 +1757,27 @@ export default function FollowedRoomsScreen() {
     if (!liveId) {
       setGiftMode('room');
       try {
+        // ⚠️ 坐标整体取自 activeRoomRef（与 handleSendRoomMessage 一致）：
+        // selectedRoom.channelId/serverId 是「大房间」坐标，用户当前若在小房间（yklzId），
+        // 用 selectedRoom 覆盖 target 会把大房间 channelId 拼上小房间的配对坐标 →
+        // getMemberRoomGiftContext 校验 `info.serverId !== serverId` 抛「房间信息已变化」，
+        // catch 里 setGiftList([]) → 面板只剩状态文字 = 「点了礼物没出现礼物列表」。
         const target = activeRoomRef.current;
-        const channelId = String((selectedRoom as any)?.channelId || target.channelId || '');
-        const serverId = String((selectedRoom as any)?.serverId || target.serverId || '');
-        const ctx = await pocketApi.getMemberRoomGiftContext({ serverId, channelId });
+        const channelId = String(target.channelId || '');
+        let serverId = String(target.serverId || '');
+        // 成员库缺失 serverId 时按 channelId 解析（与发言路径同一兜底）
+        if (!serverId || serverId === '0') {
+          serverId = await pocketApi.resolveRoomServerId(channelId).catch(() => '');
+        }
+        // 小房间 room/info 返回 2002（准入门槛）→ 送礼上下文改用成员「大房间」解析 ownerId/权限
+        const targetMember = (selectedRoom?.id ? selectedRoom : null)
+          || useMemberStore.getState().members.find((m: any) => String(m.id) === String(target.memberId || ''));
+        const ctx = await pocketApi.getMemberRoomGiftContext({
+          serverId,
+          channelId,
+          bigChannelId: String((targetMember as any)?.channelId || '') || channelId,
+          memberId: String(target.memberId || (targetMember as any)?.id || ''),
+        });
         setGiftTarget(ctx.target);
         setGiftList(ctx.gifts);
         setGiftBalance(ctx.balance != null ? String(ctx.balance) : '');
@@ -1750,7 +1807,8 @@ export default function FollowedRoomsScreen() {
       setGiftList([]);
       setGiftStatus(t('加载礼物失败：{error}', { error: errorMessage(err) }));
     }
-  }, [roomPlayer, selectedRoom, t]);
+    // selectedRoom 不再参与坐标（room 分支走 activeRoomRef），依赖里去掉避免无谓重生成
+  }, [roomPlayer, t]);
 
   const sendRoomGift = useCallback(async () => {
     if (!roomPlayer || !giftSel) {
@@ -2006,7 +2064,7 @@ export default function FollowedRoomsScreen() {
       const idsArr = unwrapList(idsRes, ['content.data', 'content', 'data', 'list']).map(String);
       setFollowedIds(new Set(idsArr));
       const followedMembers = idsArr.map((id: string) => {
-        const member = members.find((item: any) => String(item.id || item.userId) === id);
+        const member = matchFollowedMember(members, id);
         return { memberId: id, member };
       }).filter((item: any) => item.member?.channelId);
       const serverIds = followedMembers.map((item: any) => Number(item.member?.serverId || 0)).filter((id: number) => id > 0);
@@ -2129,14 +2187,21 @@ export default function FollowedRoomsScreen() {
     return () => { active = false; clearInterval(id); };
   }, [selectedRoom]);
 
-  // Y23: 关注列表在 members 就绪后只拉一次（loadFollowed 依赖 members，随其变化会反复重拉）
+  // Y23: 关注列表在 members 就绪后只拉一次（loadFollowed 依赖 members，随其变化会反复重拉）。
+  // ⚠️ 但「只拉一次」不能卡在**旧缓存**上：启动先载入本地缓存（可能缺 9 月新成员），
+  // 若 followedFetchedRef 在缓存阶段就置 true，后台静默刷新补齐新成员后也不会重新匹配
+  // → 新成员（如周文迪）已关注却永远不进房间列表（2026-10-19 用户反馈）。
+  // 记录上次匹配用的 members 引用，成员库更新（setMembers 换新数组）后重拉一次静默刷新。
   const followedFetchedRef = useRef(false);
+  const followedMatchedMembersRef = useRef<any>(null);
   useEffect(() => {
-    if (!members.length || followedFetchedRef.current) return;
+    if (!members.length) return;
+    if (followedFetchedRef.current && followedMatchedMembersRef.current === members) return;
     followedFetchedRef.current = true;
+    followedMatchedMembersRef.current = members;
     loadFollowed(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members.length]);
+  }, [members]);
 
   // mode: 'internal' = 同房间内切换大/小房间或成员/粉丝发言（同一成员，标题/背景不变，必须秒切、无骨架）
   //       'enter'    = 从房间列表点成员进入（跨成员/跨房间，保留骨架隔离旧房间残留）
@@ -3027,7 +3092,7 @@ export default function FollowedRoomsScreen() {
       const extUser: any = (extraInfo(item) as any)?.user || {};
       const extUserId = String(extUser?.userId ?? extUser?.user_id ?? extUser?.id ?? '').trim();
       const canOpenProfile = !!avatarMember || !!senderId || !!extUserId;
-      // 头像框：官方消息 ext.user.badge[]（资源地址数组）/ pfUrl / headFrame —— 有就叠加在消息头像上
+      // 头像框：官方消息 ext.user.pfUrl（badge[] 是勋章、不是框，勿混）
       const senderFrameUrl = firstFrameFrom(extUser);
 
       return (
@@ -3041,24 +3106,14 @@ export default function FollowedRoomsScreen() {
                 onPress={() => openSenderProfile({ id: senderId, name: profile.name, avatar: profile.avatar, member: avatarMember, userIds: [extUserId] })}
               >
                 <View>
-                  {profile.avatar ? (
-                    <Image source={{ uri: thumbUrl(profile.avatar, AVATAR_THUMB_WIDTH) }} style={styles.avatar} />
-                  ) : (
-                    <View style={[styles.avatarFallback, { backgroundColor: palette.fill2 }]}><Text style={[styles.avatarText, { color: palette.tint }]}>{avatarInitial(profile.name)}</Text></View>
-                  )}
-                  {senderFrameUrl ? (
-                    <Image
-                      source={{ uri: senderFrameUrl }}
-                      style={{
-                        position: 'absolute',
-                        width: ROOM_AVATAR_SIZE * 1.32,
-                        height: ROOM_AVATAR_SIZE * 1.32,
-                        left: (ROOM_AVATAR_SIZE - ROOM_AVATAR_SIZE * 1.32) / 2,
-                        top: (ROOM_AVATAR_SIZE - ROOM_AVATAR_SIZE * 1.32) / 2,
-                      }}
-                      resizeMode="contain"
-                    />
-                  ) : null}
+                  <AvatarWithFrame
+                    avatarUri={profile.avatar ? thumbUrl(profile.avatar, AVATAR_THUMB_WIDTH) : ''}
+                    frameUri={senderFrameUrl}
+                    size={ROOM_AVATAR_SIZE}
+                    fallbackText={avatarInitial(profile.name)}
+                    fallbackColor={palette.tint}
+                    fallbackBg={palette.fill2}
+                  />
                 </View>
               </TouchableOpacity>
             ) : (
@@ -3076,6 +3131,20 @@ export default function FollowedRoomsScreen() {
                   <Text style={[styles.msgSender, { color: (isRoomOwner || isMemberSender) ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
                     {profile.name}
                   </Text>
+                  {/* 身份装饰：成员队标 / 粉丝等级胶囊（2026-10-19 用户要求：勋章不显示，只留等级；头像框叠在头像上） */}
+                  {row.groupStart && !isRoomOwner ? (
+                    <UserDecorRow
+                      decor={{
+                        isStar: isMemberSender,
+                        roleId: isMemberSender ? 2 : Number(extUser?.roleId ?? extUser?.userRole ?? 0),
+                        teamLogo: String(extUser?.teamLogo || ''),
+                        pfUrl: String(extUser?.pfUrl || ''),
+                        vip: !!extUser?.vip,
+                        level: extUser?.level ?? extUser?.userLevel ?? extUser?.grade,
+                      }}
+                      size={11}
+                    />
+                  ) : null}
                   {/* 队伍标签：紧跟发送者名字（成员消息，**含其他成员在别人房间发言**）；有官方队标显示图，否则文字 */}
                   {(isRoomOwner || isMemberSender) && (teamText || teamLogo) ? (
                     <View style={[styles.msgTeamChip, { backgroundColor: palette.tintSoft }]}>
@@ -3111,9 +3180,21 @@ export default function FollowedRoomsScreen() {
                 </View>
               ) : null}
               {bubbleText ? (
-                <Text style={[styles.msgBody, (mine || idol) && styles.msgBodyHighlight, { color: mine ? palette.onTint : idol ? palette.label : palette.labelSecondary }]}>
-                  {bubbleText}
-                </Text>
+                /* [表情] 标签内联渲染为官方表情图（107 个 PopoEmoticons），不再是漏渲染的 [发呆] 文本 */
+                (() => {
+                  const parts = splitEmojiParts(bubbleText);
+                  return (
+                    <Text style={[styles.msgBody, (mine || idol) && styles.msgBodyHighlight, { color: mine ? palette.onTint : idol ? palette.label : palette.labelSecondary }]}>
+                      {parts.map((p, i) =>
+                        typeof p === 'string' ? (
+                          p
+                        ) : (
+                          <Image key={`${p.emoji}-${i}`} source={p.source} style={{ width: 20, height: 20 }} resizeMode="contain" />
+                        ),
+                      )}
+                    </Text>
+                  );
+                })()
               ) : null}
               {gift && !giftReplyText ? (
                 <View style={[styles.giftCard, { backgroundColor: palette.fill2, borderColor: palette.tintSoft }, giftReplyText ? styles.giftCardCompact : null]}>
@@ -3499,10 +3580,10 @@ export default function FollowedRoomsScreen() {
                                 source={{ uri: normalizeUrl(userCard.frameUrl) }}
                                 style={{
                                   position: 'absolute',
-                                  width: USER_CARD_AVATAR_SIZE * 1.34,
-                                  height: USER_CARD_AVATAR_SIZE * 1.34,
-                                  left: (USER_CARD_AVATAR_SIZE - USER_CARD_AVATAR_SIZE * 1.34) / 2,
-                                  top: (USER_CARD_AVATAR_SIZE - USER_CARD_AVATAR_SIZE * 1.34) / 2,
+                                  width: USER_CARD_AVATAR_SIZE * 1.42,
+                                  height: USER_CARD_AVATAR_SIZE * 1.42,
+                                  left: (USER_CARD_AVATAR_SIZE - USER_CARD_AVATAR_SIZE * 1.42) / 2,
+                                  top: (USER_CARD_AVATAR_SIZE - USER_CARD_AVATAR_SIZE * 1.42) / 2,
                                 }}
                                 resizeMode="contain"
                               />
@@ -4164,17 +4245,20 @@ export default function FollowedRoomsScreen() {
                       </View>
                     ) : null}
                     {(() => {
+                      // 小房间始终显示入口行（有 yklzId 即可），不再依赖是否有小房间消息 ——
+                      // 否则「有小房间但还没消息」时用户看不到小房间入口（周文迪 2026-10-19 反馈）
+                      const ykid = String((item.member as any)?.yklzId || '');
+                      if (!ykid || ykid === '0' || ykid === 'undefined') return null;
                       const sMsg = item.lastSmallMessage;
-                      if (!sMsg) return null;
-                      const sText = messageText(sMsg);
-                      if (!sText || sText === lastText) return null;
+                      const sText = sMsg ? messageText(sMsg) : '';
+                      if (sText && sText === lastText) return null; // 与大房间预览相同时省略重复行
                       return (
                         <View style={styles.lastRow}>
                           <View style={[styles.lastTag, { backgroundColor: palette.fill2 }]}>
                             <Text style={[styles.lastTagText, { color: palette.labelSecondary }]}>{t('小')}</Text>
                           </View>
                           <Text style={[styles.roomLast, { color: palette.labelTertiary }]} numberOfLines={1}>
-                            {sText}
+                            {sText || t('小房间 {id}', { id: ykid })}
                           </Text>
                         </View>
                       );

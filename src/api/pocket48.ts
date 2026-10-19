@@ -695,7 +695,10 @@ export const pocketApi = {
   },
 
   async getFollowedIds() {
-    return pocketPost(`${BASE}/user/api/v1/friendships/friends/id`, {}, { fallback: '获取关注房间失败' });
+    // ⚠️ 必须带 P-Sign-Type: V0（createCheckinHeaders，上游 createFriendshipHeaders 同款）：
+    // 裸 pocketPost 默认头在这个接口上可能被判签名类型不符 → content.data 缺失/为空 →
+    // 房间列表少人（如周文迪不显示，2026-10-19 用户反馈）。
+    return pocketPost(`${BASE}/user/api/v1/friendships/friends/id`, {}, { headers: createCheckinHeaders(), fallback: '获取关注房间失败' });
   },
 
   async followMember(memberId: string) {
@@ -1214,17 +1217,32 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
    *    + /user/api/v1/user/money（余额）
    * 返回前对礼物做清洗（对齐上游）：跳过 typeId=888 / 投票礼物 / 口袋礼物无库存 / 价格非法。
    */
-  async getMemberRoomGiftContext(params: { serverId: string; channelId: string }) {
+  async getMemberRoomGiftContext(params: { serverId: string; channelId: string; bigChannelId?: string; memberId?: string }) {
     const serverId = String(params.serverId || '');
     const channelId = String(params.channelId || '');
     if (!/^\d+$/.test(serverId) || !/^\d+$/.test(channelId)) throw new Error('缺少有效的房间 ID');
-    const room: any = await pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId }, { fallback: '获取房间信息失败' });
-    const info = room?.content?.channelInfo;
-    if (!info) throw new Error('房间信息缺失');
-    if (String(info.serverId) !== serverId) throw new Error('房间信息已变化，请重新打开房间');
-    if (Number(info.serverType) === 0) throw new Error('队伍房间暂不支持选择收礼成员，请进入成员房间送礼');
-    if (room?.content?.userFunction?.sendGift === false) throw new Error('当前账号在此房间暂不能送礼');
-    const memberId = String(info.ownerId || '');
+    // ⚠️ room/info 对「小房间」（yklzId）会返回 2002「最近30天内赠送过鸡腿礼物…可访问频道」——
+    // 这是小房间的准入门槛（pocketAccessMode），不是送礼接口挂了。送礼上下文的权威源是
+    // 成员「大房间」的 room/info（大房间始终可访问），因此传入 bigChannelId 时优先用它解析
+    // ownerId/权限；拿不到就回退直接拉 gift/list（不依赖 room/info），避免面板空列表。
+    const infoChannelId = String(params.bigChannelId || '') || channelId;
+    let info: any = null;
+    let sendGiftOk = true;
+    try {
+      const room: any = await pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: infoChannelId }, { fallback: '获取房间信息失败' });
+      info = room?.content?.channelInfo;
+      if (info) {
+        if (String(info.serverId) !== serverId) throw new Error('房间信息已变化，请重新打开房间');
+        if (Number(info.serverType) === 0) throw new Error('队伍房间暂不支持选择收礼成员，请进入成员房间送礼');
+        sendGiftOk = room?.content?.userFunction?.sendGift !== false;
+      }
+    } catch (e: any) {
+      // 大/小房间都拿不到 info（如 2002 准入门槛）→ 不阻断，走 gift/list 直拉
+      if (!params.memberId) throw e;
+      info = null;
+    }
+    if (!sendGiftOk) throw new Error('当前账号在此房间暂不能送礼');
+    const memberId = String(info?.ownerId || params.memberId || '');
     if (!/^\d+$/.test(memberId)) throw new Error('缺少有效的收礼成员 ID');
     const account: any = await pocketPost(`${BASE}/user/api/v1/user/info/reload`, { from: 'appstart' }, { fallback: '获取账号信息失败' });
     const userRole = Number(account?.content?.userInfo?.userRole ?? account?.content?.userRole ?? 0);
@@ -1273,7 +1291,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
         serverId,
         channelId,
         memberId,
-        memberName: String(info.ownerName || room?.content?.ownerInfo?.nickname || room?.content?.ownerInfo?.nickName || ''),
+        memberName: String(info?.ownerName || params.memberId || ''),
       },
       gifts,
       balance: Number.isFinite(moneyTotal) && moneyTotal >= 0 ? moneyTotal : null,
@@ -1358,13 +1376,6 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     if (rankId !== undefined && rankId !== null) payload.rankid = Number(rankId) || 0;
     if (nextId) payload.nextId = nextId;
     return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeRankPage`, payload, { fallback: '获取乱斗榜单失败' });
-  },
-
-  async getMeleeYearRankPage(rankId?: number, nextId?: string) {
-    const payload: any = {};
-    if (rankId !== undefined && rankId !== null) payload.rankid = Number(rankId) || 0;
-    if (nextId) payload.nextId = nextId;
-    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeYearRankPage`, payload, { fallback: '获取乱斗年榜失败' });
   },
 
   async getPersonMeleeRankPage(resId: number) {
