@@ -947,4 +947,7 @@ export const en: Record<string, string> = {
   '在系统设置里打开「允许来自此来源的应用」后返回本页，会自动继续。': 'Enable “Allow from this source” in system settings, then come back — it will continue automatically.',
   'APK 会安装到当前应用，数据不会丢失': 'The APK installs over this app; your data is kept',
   '安装包已交给系统，安装完成后重新打开应用即可': 'Handed to the system installer. Reopen the app after installing.',
+  '房间送礼': 'Send room gift',
+  '收礼：{name}': 'To: {name}',
+  '（背包）': ' (bag)',
 };

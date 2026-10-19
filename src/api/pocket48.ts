@@ -1190,9 +1190,9 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }, { fallback: '获取房间电台失败' });
   },
 
-  async sendGift(params: { giftId: string; liveId: string; acceptUserId: string; giftNum?: number; crm?: string }) {
+  async sendGift(params: { giftId: string; liveId: string; acceptUserId: string; giftNum?: number; crm?: string; businessCode?: number }) {
     // 成员直播送礼（协议对齐官方 GiftManager.m57278 → C7246.m30090 + C9430.m34072）：
-    // - businessCode=0（LivePlay 场景，liveType=5 才是 7；1 是公演场景）
+    // - businessCode 默认 0（LivePlay 场景）；liveType=5（公演直播）是 7，由调用方按 liveType 动态下发
     // - crm 必须透传「直播详情」里的值：它是 DES(key=TT^3m$b#) 加密的聊天室 id，
     //   服务端靠它把礼物广播进直播间聊天室。缺失 → 只计贡献、成员端零感知（2026-10-17 实测）；
     //   乱填 → 1008「暂不可送礼」（实测）。crm 为空的直播才不发（官方走 sendToRoomId）。
@@ -1200,7 +1200,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
       giftId: String(params.giftId),
       acceptUserId: String(params.acceptUserId),
       giftNum: Number(params.giftNum) || 1,
-      businessCode: 0,
+      businessCode: Number(params.businessCode ?? 0),
       businessId: String(params.liveId),
       isPocketGift: 0,
       ...(params.crm ? { crm: String(params.crm) } : {}),
@@ -1212,6 +1212,123 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
       businessId: String(liveId),
       giftType: 1,
     }, { fallback: '获取礼物列表失败' });
+  },
+
+  /**
+   * 房间（非直播）送礼上下文 —— 协议对齐桌面版 v2.14 fetchMemberRoomGiftContext：
+   * 1) /im/api/v1/im/team/room/info {channelId} → channelInfo：ownerId 即收礼成员；
+   *    serverType=0 是队伍房间（官方不支持选人送礼）；userFunction.sendGift===false 时该账号在此房间不能送礼
+   * 2) /user/api/v1/user/info/reload → userRole（官方身份 2-5 时 get_receive_gift_state 的 msgType 用 2，否则 1）
+   * 3) /gift/api/v1/gift/list {memberId, businessCode:5}（房间场景 businessCode 固定 5）
+   *    + /gift/api/v1/gift/get_receive_gift_state {moduleType:2, starIds, msgType}（receiveGiftStatus!==1 → 不能收礼，文案取 receiveGiftTips）
+   *    + /user/api/v1/user/money（余额）
+   * 返回前对礼物做清洗（对齐上游）：跳过 typeId=888 / 投票礼物 / 口袋礼物无库存 / 价格非法。
+   */
+  async getMemberRoomGiftContext(params: { serverId: string; channelId: string }) {
+    const serverId = String(params.serverId || '');
+    const channelId = String(params.channelId || '');
+    if (!/^\d+$/.test(serverId) || !/^\d+$/.test(channelId)) throw new Error('缺少有效的房间 ID');
+    const room: any = await pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId }, { fallback: '获取房间信息失败' });
+    const info = room?.content?.channelInfo;
+    if (!info) throw new Error('房间信息缺失');
+    if (String(info.serverId) !== serverId) throw new Error('房间信息已变化，请重新打开房间');
+    if (Number(info.serverType) === 0) throw new Error('队伍房间暂不支持选择收礼成员，请进入成员房间送礼');
+    if (room?.content?.userFunction?.sendGift === false) throw new Error('当前账号在此房间暂不能送礼');
+    const memberId = String(info.ownerId || '');
+    if (!/^\d+$/.test(memberId)) throw new Error('缺少有效的收礼成员 ID');
+    const account: any = await pocketPost(`${BASE}/user/api/v1/user/info/reload`, { from: 'appstart' }, { fallback: '获取账号信息失败' });
+    const userRole = Number(account?.content?.userInfo?.userRole ?? account?.content?.userRole ?? 0);
+    const [giftRes, receiveRes, moneyRes] = await Promise.all([
+      pocketPost(`${BASE}/gift/api/v1/gift/list`, { memberId, businessCode: 5 }, { fallback: '获取礼物列表失败' }),
+      pocketPost(`${BASE}/gift/api/v1/gift/get_receive_gift_state`, {
+        moduleType: 2,
+        starIds: memberId,
+        msgType: [2, 3, 4, 5].includes(userRole) ? 2 : 1,
+      }, { fallback: '获取收礼状态失败' }),
+      pocketPost(`${BASE}/user/api/v1/user/money`, {}, { fallback: '获取余额失败' }),
+    ]);
+    const receive = receiveRes?.content || {};
+    if (Number(receive.receiveGiftStatus) !== 1) {
+      throw new Error(String(receive.receiveGiftTips || '该成员暂不能接收礼物'));
+    }
+    const moneyTotal = Number(moneyRes?.content?.moneyTotal);
+    const groups = Array.isArray(giftRes?.content) ? giftRes.content : [giftRes?.content];
+    const gifts: any[] = [];
+    const seen = new Set<string>();
+    for (const group of groups) {
+      if (!group || Number(group.typeId) === 888) continue;
+      for (const g of group.giftList || []) {
+        const giftId = String(g.giftId ?? '');
+        const price = Number(g.money);
+        const isPocketGift = Number(g.isPocketGift || 0);
+        const stock = Number(g.giftTotal || 0);
+        const key = `${giftId}:${isPocketGift}`;
+        if (!/^\d+$/.test(giftId) || seen.has(key) || Number(g.typeId) === 888
+          || g.isVote === true || Number(g.isVote) === 1
+          || !Number.isSafeInteger(price) || price < 0
+          || ![0, 1].includes(isPocketGift) || (isPocketGift === 1 && !(stock > 0))) continue;
+        seen.add(key);
+        gifts.push({
+          giftId,
+          giftName: String(g.giftName || '礼物'),
+          money: price,
+          isPocketGift,
+          stock,
+          picPath: String(g.picPath || ''),
+        });
+      }
+    }
+    return {
+      target: {
+        serverId,
+        channelId,
+        memberId,
+        memberName: String(info.ownerName || room?.content?.ownerInfo?.nickname || room?.content?.ownerInfo?.nickName || ''),
+      },
+      gifts,
+      balance: Number.isFinite(moneyTotal) && moneyTotal >= 0 ? moneyTotal : null,
+    };
+  },
+
+  /**
+   * 房间送礼（协议对齐桌面版 v2.14 sendMemberRoomGift）：
+   * - businessCode=5、businessId=serverId、sendToRoomId=channelId（房间场景固定）
+   * - 发送前二次校验：收礼成员未变化、礼物仍可用、价格未变、口袋礼物查库存 / 鸡腿查余额
+   * - 响应 content.giftNum 存在且 <1 → 官方未确认有效赠送（未扣款），按失败处理
+   */
+  async sendMemberRoomGift(params: {
+    serverId: string; channelId: string; giftId: string; giftNum: number;
+    isPocketGift?: number; unitPrice?: number; acceptUserId?: string;
+  }) {
+    const ctx = await this.getMemberRoomGiftContext({ serverId: params.serverId, channelId: params.channelId });
+    if (params.acceptUserId && String(params.acceptUserId) !== ctx.target.memberId) {
+      throw new Error('收礼成员已变化，请重新选择礼物');
+    }
+    const gift = ctx.gifts.find((g: any) => String(g.giftId) === String(params.giftId)
+      && Number(g.isPocketGift) === Number(params.isPocketGift || 0));
+    if (!gift) throw new Error('该礼物已不可用，请重新打开礼物面板');
+    if (gift.money !== Number(params.unitPrice)) throw new Error('礼物价格已变化，请重新选择');
+    if (gift.isPocketGift === 1
+      ? params.giftNum > gift.stock
+      : gift.money * params.giftNum > (ctx.balance ?? Number.POSITIVE_INFINITY)) {
+      throw new Error(gift.isPocketGift === 1 ? '背包礼物数量不足' : '鸡腿余额不足');
+    }
+    const res: any = await pocketPost(`${BASE}/gift/api/v1/gift/send`, {
+      acceptUserId: ctx.target.memberId,
+      giftId: gift.giftId,
+      giftNum: Number(params.giftNum),
+      businessCode: 5,
+      businessId: ctx.target.serverId,
+      sendToRoomId: ctx.target.channelId,
+      isPocketGift: gift.isPocketGift,
+    }, { modern: true, fallback: '送礼未成功，请检查余额和房间记录' });
+    const content = res?.content || {};
+    const explicitEmpty = content.giftNum != null && !(Number(content.giftNum) > 0);
+    if (explicitEmpty) throw new Error('官方未确认有效赠送，请检查余额和房间记录');
+    return {
+      balance: content.money != null && Number.isFinite(Number(content.money)) ? Number(content.money) : null,
+      target: ctx.target,
+    };
   },
 
   async getLiveRank(liveId: string) {
