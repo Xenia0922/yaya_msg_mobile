@@ -783,7 +783,14 @@ export default function MusicLibraryScreen() {
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.albumItem}>
               <TouchableOpacity activeOpacity={0.8} onPress={() => playSong(item)}>
                 {/* 与「专辑」网格同款：封面 + 卡外文字（不再有灰色信息块 → 也就没有左右竖带） */}
-                <View style={[styles.albumCover, { backgroundColor: palette.fill2 }, active ? { borderColor: palette.tint, borderWidth: 2 } : null]}>
+                <View style={[styles.albumCover, {
+                  backgroundColor: palette.fill2,
+                  // ⚠️ 描边宽度必须恒定（非播放态用 transparent 占位）：
+                  // 切歌时 active 变化会让 borderWidth 0↔2，content box 随之变化 → 触发封面重排，
+                  // 百分比/绝对定位的封面内容在某些 Android 机型上会算成 0 尺寸 =「上一首播完后封面消失」。
+                  borderWidth: 2,
+                  borderColor: active ? palette.tint : 'transparent',
+                }]}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
                   {active ? (
                     <View style={[styles.playingBadge, { backgroundColor: palette.tint }]}>

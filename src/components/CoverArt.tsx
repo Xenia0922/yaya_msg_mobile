@@ -111,8 +111,14 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     }
   }, []);
 
+  // ⚠️ fill 必须用「绝对定位四边贴齐」，不能用 width/height:'100%'（2026-10-19 封面消失复发根因）：
+  // 列表卡的封面容器是 width:'100%' + aspectRatio:1，高度由父级反推；
+  // 百分比高度的子节点在这种父级下不参与父级 measure，一旦父级因描边宽度变化触发重排
+  // （切歌时 active 的 borderWidth 0↔2），Yoga 复用的旧测量会把子节点算成 0 高 →
+  // 整块 CoverArt（含渐变兜底）全部不可见，只剩父容器底色 = 用户看到的「封面没了」。
+  // 绝对定位的边距解析在父级最终尺寸确定后做，不依赖父级缓存测量，彻底规避该问题。
   const boxStyle: any = fill
-    ? { width: '100%', height: '100%', borderRadius: round ? radii.pill : 0 }
+    ? { ...StyleSheet.absoluteFillObject, borderRadius: round ? radii.pill : 0 }
     : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
   const showImage = !!uri && !errored;
   const iconSize = fill ? 44 : Math.round((size || 0) * 0.34);

@@ -312,6 +312,16 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 - **涉及**：`src/components/LiveBarrageBoard.tsx`
 - **commit**：`512d62f`
 
+### 20. 音乐库：上一首播完后专辑封面消失（复发）
+- **现象**：一首歌播完自动切下一首后，**刚播完那首歌的卡片封面变成一块空白**（只剩卡片底色，连渐变兜底和音符都不显示）；正在播放的那张正常
+- **根因**：切歌时 `currentIndex` 变化 → 列表 `extraData` 变化 → 全量重渲染，`active` 从旧卡移到新卡：
+  ① 旧卡的封面容器此前只在 active 时挂 `borderWidth: 2`，取消高亮后描边 0↔2 变化会改变 content box → 触发封面子树重排；
+  ② 封面容器是 `width:'100%' + aspectRatio:1`（高度由父级反推），`CoverArt` 用 `width/height:'100%'` 撑满 —— **百分比高度子节点不参与父级 measure**，父级重排时 Yoga 复用旧测量会把它算成 0 尺寸，整个 `CoverArt`（渐变 + 兜底图标）一起不可见，只剩父容器 `fill2` 底色
+  历史同源：`96ff47d` 修过「切歌后整列空白（连渐变都没有）」，结论就是 `numColumns=2 + 百分比宽度 + aspectRatio + overflow:hidden` 的重排塌陷；本轮卡片改版（`322dcbd`）让歌曲卡复用专辑网格的同一套尺寸样式，重新凑齐了这组条件
+- **改动**：① 封面高亮描边**宽度恒定**（非播放态用 `transparent` 占位），切歌不再触发封面重排；② `CoverArt` 的 `fill` 由 `width/height:'100%'` 改为**绝对定位四边贴齐**（`absoluteFillObject`），尺寸解析在父级最终尺寸确定后进行，不依赖父级缓存测量
+- **涉及**：`src/components/CoverArt.tsx`、`src/screens/MusicLibraryScreen.tsx`
+- **commit**：see `git log --grep="音乐库：上一首播完后专辑封面消失"`
+
 ## 附：发版清单
 
 - 出包：`node scripts/build-apk.js` → `E:\yymsg\APK\`
