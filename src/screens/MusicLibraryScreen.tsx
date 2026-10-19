@@ -99,6 +99,23 @@ const CHIP_FAV_MIN_WIDTH = 92;
 const CHIP_HEIGHT = 28;
 const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
 
+/**
+ * 时长统一解析：数字秒 / "m:ss" / "h:mm:ss" → 秒。
+ * ⚠️ yk1z(R2) 源的 duration 是 "4:57" 这种字符串，直接 Number() 会变 NaN → 显示成 --:--。
+ */
+function durationSecOf(v: any): number {
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+  const s = String(v ?? '').trim();
+  if (!s) return 0;
+  const n = Number(s);
+  if (Number.isFinite(n)) return n > 0 ? Math.round(n) : 0;
+  const parts = s.split(':').map((p) => parseInt(p, 10));
+  if (!parts.length || parts.some((p) => Number.isNaN(p))) return 0;
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] * 3600 + parts[1] * 60 + parts[2];
+}
+
 export default function MusicLibraryScreen() {
   const navigation = useNavigation();
   const palette = usePalette();
@@ -169,7 +186,7 @@ export default function MusicLibraryScreen() {
       };
       entry.count += 1;
       // 时长累加：R2(durationSec) + 官方(duration 秒) 统一
-      entry.durationSec += Number(t.durationSec) || Number(t.duration) || Number(durations[String(t.musicId || t.id || '')]) || 0;
+      entry.durationSec += durationSecOf(t.durationSec) || durationSecOf(t.duration) || Number(durations[String(t.musicId || t.id || '')]) || 0;
       if (!entry.cover) entry.cover = String(t.coverUrl || t.cover || '');
       map.set(key, entry);
     }
@@ -241,7 +258,7 @@ export default function MusicLibraryScreen() {
       const r2DurByTitle = new Map<string, number>();
       for (const t of r2 as any[]) {
         const k = String(t.title || '').trim().toLowerCase();
-        const d = Number(t.durationSec) || Number(t.duration) || 0;
+        const d = durationSecOf(t.durationSec) || durationSecOf(t.duration) || 0;
         if (k && d > 0 && !r2DurByTitle.has(k)) r2DurByTitle.set(k, d);
       }
       for (const t of merged as any[]) {
@@ -797,7 +814,7 @@ export default function MusicLibraryScreen() {
                     {joinMeta([item.groupLabel, item.artist, item.album]) || t('官方音乐')}
                   </Text>
                   {(() => {
-                    const dur = Number(item.durationSec) || Number(item.duration) || Number(durations[String(item.musicId || item.id || '')]) || 0;
+                    const dur = durationSecOf(item.durationSec) || durationSecOf(item.duration) || Number(durations[String(item.musicId || item.id || '')]) || 0;
                     const h = Math.floor(dur / 3600);
                     const m = Math.floor((dur % 3600) / 60);
                     const sec = Math.floor(dur % 60);

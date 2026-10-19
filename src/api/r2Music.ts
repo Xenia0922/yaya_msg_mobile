@@ -4,7 +4,8 @@ import { fetchWithTimeout } from '../utils/network';
 
 
 const R2_MUSIC_URL = 'https://gnz.hk/api/r2-music?metadata_v=3';
-const CACHE_KEY = 'yaya_r2_music_cache_v1';
+// v2：列表结构新增 durationSec（旧缓存里只有 duration 字符串，等于没有时长）
+const CACHE_KEY = 'yaya_r2_music_cache_v2';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 export interface R2MusicTrack {
