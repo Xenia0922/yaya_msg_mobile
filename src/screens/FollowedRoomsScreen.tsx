@@ -2974,7 +2974,7 @@ export default function FollowedRoomsScreen() {
                     </View>
                   ) : null}
                 </View>
-                <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>
+                <Text style={[styles.msgTime, { color: palette.labelTertiary }]} allowFontScaling={false}>
                   {formatTimestamp(getMessageTime(item)).slice(11, 16)}
                 </Text>
               </View>
@@ -4419,7 +4419,9 @@ const styles = StyleSheet.create({
   msgSender: { fontSize: 12, fontWeight: '600', maxWidth: 150 },
   // ⚠️ flexShrink:0 —— OneUI（三星）字号度量偏大时，时间会被左边的名字/队伍标签挤掉最后一位
   //（截图里出现「00:4」「01:1」）。时间永不被压缩，改为让名字行收缩。
-  msgTime: { fontSize: 10, flexShrink: 0 },
+  // ⚠️ OneUI（三星）专属：默认 allowFontScaling=true，系统字体调大后时间被放大挤掉最后一位
+  //（截图「21:4」「01:1」）。时间固定宽度 + 关闭字体缩放（配合 Text 上的 allowFontScaling={false}）。
+  msgTime: { fontSize: 10, flexShrink: 0, width: 36, textAlign: 'right' },
   msgBubble: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 20 },
   msgBody: { fontSize: 15, lineHeight: 22 },
   msgBodyHighlight: {},
