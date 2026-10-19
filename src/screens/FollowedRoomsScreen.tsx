@@ -3407,8 +3407,9 @@ export default function FollowedRoomsScreen() {
         {/* 挂载短路：visible=false 的 Modal 常驻房间根节点时，每次房间重渲染都会 flush Modal 窗口 → 整页闪 */}
         {rankVisible ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
-          <View style={styles.roomModalShade}>
-            <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
+          <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setRankVisible(false)}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.roomMenuWrap}>
+              <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
               {/* 顶部 handle */}
               <View style={styles.roomRankHandleWrap}>
                 <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
@@ -3446,13 +3447,15 @@ export default function FollowedRoomsScreen() {
                 })()}
               </ScrollView>
             </GlassSurface>
-          </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </Modal>
         ) : null}
         {giftVisible ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
-          <View style={styles.roomModalShade}>
-            <GlassSurface radius={20} role="card" style={[styles.rgPanel, { backgroundColor: 'transparent' }]}>
+          <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setGiftVisible(false)}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.roomMenuWrap}>
+              <GlassSurface radius={20} role="card" style={[styles.rgPanel, { backgroundColor: 'transparent' }]}>
               <View style={styles.rgHeader}>
                 <Text style={[styles.rgTitle, { color: palette.label }]}>
                   {giftMode === 'room' ? t('房间送礼') : t('直播送礼')}
@@ -3535,7 +3538,8 @@ export default function FollowedRoomsScreen() {
                 <Text style={[styles.rgRechargeText, { color: palette.tint }]}>{t('余额不足？去充值鸡腿')}</Text>
               </TouchableOpacity>
             </GlassSurface>
-          </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </Modal>
         ) : null}
         {liveResolve ? (
