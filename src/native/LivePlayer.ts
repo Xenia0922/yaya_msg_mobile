@@ -146,18 +146,6 @@ export function updateRadioLyric(text: string) {
   RadioServiceModule.updateLyric(String(text || ''));
 }
 
-/**
- * 音乐：把当前歌词行推给系统媒体控件（OneUI 媒体面板 / 锁屏主标题显示歌词）。
- * 与 updateRadioLyric 的区别：不受「原生 Exo 已接管」guard 限制（音乐本身就走 Exo）。
- * 只在歌词行切换时调用，频率极低。
- */
-export function updateMusicLyric(text: string) {
-  if (Platform.OS !== 'android' || !RadioServiceModule?.updateLyric) return;
-  try {
-    RadioServiceModule.updateLyric(String(text || ''));
-  } catch {}
-}
-
 /** 停播电台：结束前台保活服务并移除通知 */
 export function stopRadioForeground() {
   if (Platform.OS === 'android' && RadioServiceModule?.end) {
