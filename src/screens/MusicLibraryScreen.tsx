@@ -744,9 +744,9 @@ export default function MusicLibraryScreen() {
               && norm(curTrack.album || curTrack.albumName) === norm(item.album || item.albumName)
             );
             const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
+            // ⚠️ 不要给 FadeInView 加 maxWidth:'50%' —— numColumns=2 的 cell 已是半宽，
+            //    再限 50% 会把卡片压成一半、右侧露出页面底色（用户看到的「信息区左右竖带」）
             return (
-            {/* ⚠️ 这里不要写 maxWidth:'50%' —— numColumns=2 时 cell 本身已是半宽，
-                再限 50% 会把卡片压成 cell 的一半，右侧留出页面底色（用户看到的「信息区左右竖带」） */}
             <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={{ flex: 1 }}>
               <TouchableOpacity
                 style={[
