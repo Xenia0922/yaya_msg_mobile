@@ -330,6 +330,16 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 - **涉及**：`src/screens/MusicLibraryScreen.tsx`、`src/store/musicPlayerStore.ts`
 - **验证**：真机（PJZ110）同样路径：JS 线程 96%→**3.7%**，点卡片立刻高亮切歌，退出页面 CPU 归零
 
+### 22. 应用内更新：直接下载并安装新版本
+- **需求**：设置页检查到新版本时，不再跳浏览器下载页，而是应用内下载对应机型的分包并拉起系统安装器
+- **实现**：
+  - 原生 `ApkUpdaterModule`（Java）：`getDeviceAbi` 取设备 ABI → 下载 `yaya-msg-mobile-<tag>-<v8a|v7a|x64>.apk`（GitHub Release 资产），404 自动回退 `-universal`；下载走原生流式写 `cacheDir/updates`，进度经 `ApkUpdaterProgress` 事件回传；完成后用 `getPackageArchiveInfo` **校验包名**，再用 FileProvider + `ACTION_VIEW` 拉起安装器
+  - 权限：`REQUEST_INSTALL_PACKAGES` + `FileProvider`（authority `${applicationId}.fileprovider`，只暴露 `updates/` 目录）
+  - Android 8+ 未授权「安装未知应用」时：弹窗引导跳系统设置，**返回后用 AppState 复查权限并直接安装已下载的包**（不重复下 66MB）
+  - JS：`src/native/ApkUpdater.ts` 桥接、`src/utils/appUpdate.ts` 资产地址解析、`src/components/UpdateInstaller.tsx` 进度弹窗；设置页版本 chip 改为打开该弹窗，原生桥不可用时才回退浏览器
+- **涉及**：`android/.../ApkUpdaterModule.java`、`ApkUpdaterPackage.java`、`AndroidManifest.xml`、`res/xml/file_paths.xml`、`MainApplication.kt`、`src/native/ApkUpdater.ts`、`src/utils/appUpdate.ts`、`src/components/UpdateInstaller.tsx`、`src/screens/SettingsScreen.tsx`、`src/i18n/*`
+- **注意**：下载源依赖 Release 资产命名（`yaya-msg-mobile-<tag>-v8a.apk` 等），发版时必须保留分包资产
+
 ## 附：发版清单
 
 - 出包：`node scripts/build-apk.js` → `E:\yymsg\APK\`

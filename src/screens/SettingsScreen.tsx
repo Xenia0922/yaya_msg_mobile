@@ -23,6 +23,8 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import RuntimeLogViewer from '../components/RuntimeLogViewer';
+import UpdateInstaller from '../components/UpdateInstaller';
+import { isApkUpdaterAvailable } from '../native/ApkUpdater';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { APP_VERSION } from '../constants';
 import { getMemberDataMeta, MemberDataMeta, updateMemberData } from '../services/memberData';
@@ -150,6 +152,8 @@ export default function SettingsScreen() {
   const hasUpdate = useUpdateStore((s) => s.hasUpdate);
   const [meta, setMeta] = useState<MemberDataMeta | null>(null);
   const [logVisible, setLogVisible] = useState(false);
+  const [updateVisible, setUpdateVisible] = useState(false);
+  const latestVersion = useUpdateStore((s) => s.latestVersion);
   const [memberSyncing, setMemberSyncing] = useState(false);
   // 卸载守卫：手动同步耗时较长，期间用户可能退出设置页 → 避免卸载后 setState / 弹 toast
   const mountedRef = useRef(true);
@@ -226,16 +230,23 @@ export default function SettingsScreen() {
     }
   };
 
+  // 有更新时优先走应用内下载安装（下载对应 ABI 分包 → 系统安装器）；
+  // 原生桥不可用（如 iOS / 旧包）才退回打开下载页。
+  const openUpdate = (url: string) => {
+    if (isApkUpdaterAvailable) setUpdateVisible(true);
+    else if (url) Linking.openURL(url).catch(() => {});
+  };
+
   const checkVersion = () => {
     const { hasUpdate: up, latestUrl } = useUpdateStore.getState();
     if (up && latestUrl) {
-      Linking.openURL(latestUrl).catch(() => {});
+      openUpdate(latestUrl);
     } else {
       // force=true：绕过 24h 限流立即请求（否则冷启静默检查后 24h 内手动检查会直接跳过）；
       // 检查不到更新（含网络失败，视为无更新）统一提示「已是最新版本」
       useUpdateStore.getState().checkUpdate(true).then((has) => {
         const next = useUpdateStore.getState();
-        if (has && next.hasUpdate && next.latestUrl) Linking.openURL(next.latestUrl).catch(() => {});
+        if (has && next.hasUpdate && next.latestUrl) openUpdate(next.latestUrl);
         else showToast(t('已是最新版本'));
       }).catch(() => showToast(t('已是最新版本')));
     }
@@ -424,6 +435,7 @@ export default function SettingsScreen() {
         </ScrollView>
       </View>
       <RuntimeLogViewer visible={logVisible} onClose={() => setLogVisible(false)} />
+      <UpdateInstaller visible={updateVisible} version={latestVersion} onClose={() => setUpdateVisible(false)} />
     </>
   );
 }
