@@ -226,6 +226,11 @@ function capText(text: string, max = 18) {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
+/** 送礼面板网格单元格的礼物图（picPath 为相对路径 → normalizeUrl 补全域名） */
+function rgiftImage(g: any): string {
+  return normalizeUrl(g?.picPath || g?.icon || g?.giftPic || g?.url || '');
+}
+
 function parseObject(value: any) {
   const parsed = parseMaybeJson(value);
   if (parsed && typeof parsed === 'object') return parsed;
@@ -3443,66 +3448,88 @@ export default function FollowedRoomsScreen() {
         </Modal>
         <Modal visible={giftVisible} transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
           <View style={styles.roomModalShade}>
-            <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
-              <View style={styles.roomRankHandleWrap}>
-                <View style={[styles.roomRankHandle, { backgroundColor: palette.fill3 }]} />
-              </View>
-              <View style={styles.roomRankHeader}>
-                <Text style={[styles.roomRankTitle, { color: palette.label }]}>
+            <GlassSurface radius={20} role="card" style={[styles.rgPanel, { backgroundColor: 'transparent' }]}>
+              <View style={styles.rgHeader}>
+                <Text style={[styles.rgTitle, { color: palette.label }]}>
                   {giftMode === 'room' ? t('房间送礼') : t('直播送礼')}
                 </Text>
-                <ScalePressable onPress={() => setGiftVisible(false)} pressedScale={0.92} activeOpacity={0.8} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <View style={[styles.roomRankClose, { backgroundColor: palette.fill2 }]}>
-                    <MaterialCommunityIcons name="close" color={palette.labelSecondary} size={18} />
-                  </View>
-                </ScalePressable>
+                <TouchableOpacity onPress={() => setGiftVisible(false)} activeOpacity={0.8} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={[styles.rgCloseText, { color: palette.tint }]}>{t('关闭')}</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>
+              <Text style={[styles.rgStatus, { color: palette.labelSecondary }]} numberOfLines={1}>
                 {giftMode === 'room' && giftTarget?.memberName ? `${t('收礼：{name}', { name: giftTarget.memberName })} · ` : ''}
                 {giftBalance ? `${t('余额：{balance} 鸡腿', { balance: giftBalance })} · ` : ''}{giftStatus}
               </Text>
-              <ScrollView style={styles.roomRankList} showsVerticalScrollIndicator={false}>
-                {giftList.map((g, index) => {
-                  const gid = String(g.giftId || g.id || '');
-                  const gname = String(g.giftName || g.name || t('礼物 {n}', { n: index + 1 }));
-                  const cost = g.cost ?? g.price ?? g.money ?? 0;
-                  const pocket = Number(g.isPocketGift || 0) === 1;
-                  const stock = Number(g.giftTotal || 0);
-                  return (
-                    <TouchableOpacity
-                      key={`${gid}:${pocket ? 1 : 0}` || index}
-                      style={[styles.roomRankRow, { borderBottomColor: palette.hairline, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                      onPress={() => { setGiftSel(g); setGiftNum(1); }}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={[styles.roomRankName, { color: palette.label, flex: 1 }]} numberOfLines={1}>
-                        {gname}{pocket ? t('（背包）') : ''}
-                      </Text>
-                      {pocket && stock > 0 ? (
-                        <Text style={[styles.roomRankValue, { color: palette.labelTertiary }]}>×{stock}</Text>
-                      ) : null}
-                      {Number(cost) > 0 && !pocket ? (
-                        <Text style={[styles.roomRankValue, { color: palette.labelSecondary }]}>{t('{cost} 鸡腿/个', { cost })}</Text>
-                      ) : null}
-                      {giftSel && String(giftSel.giftId || giftSel.id || '') === gid ? <MaterialCommunityIcons name="check-circle" color={palette.tint} size={18} /> : null}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <ScalePressable style={[styles.liveResolveBtnGhost, { paddingHorizontal: 12, paddingVertical: 6 }]} pressedScale={0.92} activeOpacity={0.8} onPress={() => setGiftNum((n) => Math.max(1, n - 1))}>
-                    <Text style={[styles.liveResolveBtnGhostText, { color: palette.tint }]}>−</Text>
-                  </ScalePressable>
-                  <Text style={[styles.roomRankTitle, { color: palette.label }]}>{giftNum}</Text>
-                  <ScalePressable style={[styles.liveResolveBtnGhost, { paddingHorizontal: 12, paddingVertical: 6 }]} pressedScale={0.92} activeOpacity={0.8} onPress={() => setGiftNum((n) => Math.min(999, n + 1))}>
-                    <Text style={[styles.liveResolveBtnGhostText, { color: palette.tint }]}>＋</Text>
-                  </ScalePressable>
+              <ScrollView style={styles.rgGrid} showsVerticalScrollIndicator={false}>
+                <View style={styles.rgGridInner}>
+                  {giftList.map((g, index) => {
+                    const gid = String(g.giftId || g.id || '');
+                    const pocket = Number(g.isPocketGift || 0) === 1;
+                    const stock = Number(g.giftTotal || g.stock || 0);
+                    const cost = Number(g.money ?? g.cost ?? g.price ?? 0) || 0;
+                    const active = !!giftSel && String(giftSel.giftId || giftSel.id || '') === gid;
+                    const img = rgiftImage(g);
+                    return (
+                      <TouchableOpacity
+                        key={`${gid}:${pocket ? 1 : 0}`}
+                        style={[
+                          styles.rgCell,
+                          { backgroundColor: active ? palette.tintSoft : palette.fill2, borderColor: active ? palette.tint : palette.hairline },
+                        ]}
+                        onPress={() => { setGiftSel(g); setGiftNum(1); }}
+                        activeOpacity={0.85}
+                      >
+                        {img ? (
+                          <Image source={{ uri: img }} style={styles.rgCellImg} />
+                        ) : (
+                          <View style={[styles.rgCellImg, { backgroundColor: palette.fill3, alignItems: 'center', justifyContent: 'center' }]}>
+                            <MaterialCommunityIcons name="gift-outline" size={18} color={palette.labelTertiary} />
+                          </View>
+                        )}
+                        <Text style={[styles.rgCellName, { color: palette.label }]} numberOfLines={1}>
+                          {String(g.giftName || g.name || t('礼物 {n}', { n: index + 1 }))}{pocket ? t('（背包）') : ''}
+                        </Text>
+                        {pocket ? (
+                          <Text style={[styles.rgCellCost, { color: palette.labelTertiary }]}>×{stock}</Text>
+                        ) : (
+                          <Text style={[styles.rgCellCost, { color: palette.tint }]}>{t('{count} 鸡腿', { count: cost })}</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-                <ScalePressable style={[styles.liveResolveBtn, { backgroundColor: palette.tint, paddingHorizontal: 18, paddingVertical: 8 }]} pressedScale={0.95} activeOpacity={0.85} onPress={sendRoomGift}>
-                  <Text style={styles.liveResolveBtnText}>{t('发送')}</Text>
-                </ScalePressable>
+              </ScrollView>
+              <View style={styles.rgFooter}>
+                <TextInput
+                  style={[styles.rgNum, { color: palette.label, borderColor: palette.hairline, backgroundColor: palette.fill2 }]}
+                  keyboardType="numeric"
+                  value={String(giftNum)}
+                  onChangeText={(s) => setGiftNum(Math.min(999, Math.max(1, Math.floor(Number(String(s).replace(/\D/g, '')) || 1))))}
+                />
+                <TouchableOpacity
+                  style={[styles.rgSendBtn, { backgroundColor: giftSel ? palette.tint : palette.fill3 }]}
+                  onPress={sendRoomGift}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.rgSendText, { color: giftSel ? palette.onTint : palette.labelTertiary }]}>
+                    {giftSel
+                      ? t('送出 · {count}', {
+                          count: Number(giftSel.isPocketGift) === 1
+                            ? (Number(giftNum) || 1)
+                            : (Number(giftSel.money ?? giftSel.cost ?? giftSel.price ?? 0) || 0) * (Number(giftNum) || 1),
+                        })
+                      : t('选择礼物')}
+                  </Text>
+                </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={styles.rgRecharge}
+                onPress={() => { setGiftVisible(false); navigation.navigate('RechargeScreen'); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.rgRechargeText, { color: palette.tint }]}>{t('余额不足？去充值鸡腿')}</Text>
+              </TouchableOpacity>
             </GlassSurface>
           </View>
         </Modal>
@@ -4758,6 +4785,24 @@ const styles = StyleSheet.create({
   roomRankHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   roomRankClose: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   roomRankTitle: { fontSize: 18, fontWeight: '900' },
+  // 送礼面板（对齐 MediaScreen 直播礼物网格：图片 + 名称 + 价格）
+  rgPanel: { maxHeight: '82%', borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet, padding: 14 },
+  rgHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  rgTitle: { fontSize: 18, fontWeight: '800' },
+  rgCloseText: { fontSize: 14, fontWeight: '800' },
+  rgStatus: { fontSize: 12, marginBottom: 10 },
+  rgGrid: { maxHeight: 360 },
+  rgGridInner: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  rgCell: { width: '31%', padding: 8, borderRadius: radiiAlias.input, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
+  rgCellImg: { width: 44, height: 44, borderRadius: radiiAlias.button, backgroundColor: '#ddd', marginBottom: 6 },
+  rgCellName: { fontSize: 11, fontWeight: '700' },
+  rgCellCost: { fontSize: 10, marginTop: 2 },
+  rgFooter: { flexDirection: 'row', gap: 10, paddingTop: 12 },
+  rgNum: { width: 82, borderRadius: radiiAlias.input, borderWidth: 1, paddingHorizontal: 12 },
+  rgSendBtn: { flex: 1, borderRadius: radiiAlias.button, alignItems: 'center', justifyContent: 'center', minHeight: 44 },
+  rgSendText: { fontSize: 14, fontWeight: '800' },
+  rgRecharge: { marginTop: 10, alignItems: 'center', paddingVertical: 10 },
+  rgRechargeText: { fontSize: 13, fontWeight: '800' },
   roomRankStatus: { fontSize: 12, marginBottom: 10 },
   roomRankList: { maxHeight: 420 },
   roomRankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
