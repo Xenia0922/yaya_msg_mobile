@@ -22,7 +22,7 @@ import {
   onApkProgress,
   openInstallPermissionSettings,
 } from '../native/ApkUpdater';
-import { buildApkAsset } from '../utils/appUpdate';
+import { buildApkAsset, findSelfHostedUrl } from '../utils/appUpdate';
 
 type Phase = 'checking' | 'ready' | 'perm' | 'downloading' | 'installing' | 'error';
 
@@ -114,6 +114,14 @@ export default function UpdateInstaller({
 
   const startDownload = useCallback(async () => {
     const a = buildApkAsset(version, abiRef.current);
+    // 境内直连 GitHub 的下载链路经常不通：自建源（gnz48.tech）有同名包就优先，GitHub 兜底
+    let primary = a.primaryUrl;
+    let fallback = a.fallbackUrl;
+    const selfUrl = await findSelfHostedUrl(a.assetName);
+    if (selfUrl) {
+      fallback = primary;
+      primary = selfUrl;
+    }
     setPhase('downloading');
     setPercent(0);
     setReceived(0);
@@ -127,7 +135,7 @@ export default function UpdateInstaller({
       setPercent(tot > 0 ? Math.min(100, Math.round((rec / tot) * 100)) : 0);
     });
     try {
-      const path = await downloadApk(a.primaryUrl, a.fallbackUrl, a.fileName);
+      const path = await downloadApk(primary, fallback, a.fileName);
       apkPathRef.current = path;
       cleanup();
       setPhase('installing');
