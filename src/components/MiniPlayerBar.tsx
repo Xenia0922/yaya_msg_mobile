@@ -29,6 +29,8 @@ import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
 import { GlassSurface } from '../components/GlassSurface';
+import { lyricIndexAt } from '../utils/lyrics';
+import { updateMusicLyric } from '../native/LivePlayer';
 
 interface Props {
   onOpenFullScreen?: () => void;
@@ -45,6 +47,23 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
   const playMode = useMusicPlayerStore((s) => s.playMode);
   const duration = useMusicPlayerStore((s) => s.duration);
   const position = useMusicPlayerStore((s) => s.position);
+  const lyrics = useMusicPlayerStore((s) => s.lyrics);
+
+  /**
+   * 系统媒体控件歌词：OneUI 媒体面板 / 锁屏的主标题显示「当前歌词行」，
+   * 副标题显示「歌名 - 歌手」（原生见 RadioForegroundService.buildNotification）。
+   * 只在歌词行切换时下发，避免高频跨桥。
+   * ⚠️ hook 必须在下方早退（!track || idle）之前。
+   */
+  const lastLyricRef = useRef('');
+  useEffect(() => {
+    const lines = lyrics || [];
+    const idx = lines.length ? lyricIndexAt(lines, position) : -1;
+    const line = idx >= 0 ? String(lines[idx]?.text || '').trim() : '';
+    if (line === lastLyricRef.current) return;
+    lastLyricRef.current = line;
+    updateMusicLyric(line);
+  }, [lyrics, position]);
 
   const track = queue[currentIndex] || null;
   // 切歌/加载(loading)瞬间也保持「暂停」图标：否则 loading→playing 会让播放键闪「播放」动画

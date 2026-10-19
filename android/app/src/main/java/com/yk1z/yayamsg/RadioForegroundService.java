@@ -422,6 +422,18 @@ public class RadioForegroundService extends Service {
         album == null || album.isEmpty() ? "" : album).trim();
     String text = subLine.isEmpty() ? "牙牙消息" : subLine;
 
+    // 系统媒体控件（OneUI 媒体面板 / 锁屏）展示：**有歌词行时主标题=当前歌词**，
+    // 副标题=「歌名 - 歌手」，与主流播放器一致（用户要求：在系统控件里直接看歌词）。
+    String shownTitle = (lyric != null && !lyric.isEmpty())
+        ? lyric
+        : ((title == null || title.isEmpty()) ? "牙牙消息" : title);
+    String shownArtist = (lyric != null && !lyric.isEmpty())
+        ? String.format("%s%s%s",
+            title == null ? "" : title,
+            (title != null && !title.isEmpty() && artist != null && !artist.isEmpty()) ? " - " : "",
+            artist == null ? "" : artist).trim()
+        : (artist == null ? "" : artist);
+
     // 点击通知 → 回到 App
     Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
     PendingIntent contentPi = PendingIntent.getActivity(
@@ -439,8 +451,8 @@ public class RadioForegroundService extends Service {
     // MediaSession 元数据：标题/歌手/专辑/时长 + 封面（锁屏与各厂商媒体中心取封面/时间用）
     try {
       MediaMetadata.Builder md = new MediaMetadata.Builder();
-      md.putString(MediaMetadata.METADATA_KEY_TITLE, (title == null || title.isEmpty()) ? "牙牙消息" : title);
-      md.putString(MediaMetadata.METADATA_KEY_ARTIST, artist == null ? "" : artist);
+      md.putString(MediaMetadata.METADATA_KEY_TITLE, shownTitle);
+      md.putString(MediaMetadata.METADATA_KEY_ARTIST, shownArtist);
       md.putString(MediaMetadata.METADATA_KEY_ALBUM, album == null ? "" : album);
       if (duration > 0) md.putLong(MediaMetadata.METADATA_KEY_DURATION, duration);
       if (coverBitmap != null) md.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, coverBitmap);
@@ -471,7 +483,7 @@ public class RadioForegroundService extends Service {
       builder.setLargeIcon(appIconBitmap); // 兜底：无封面也显示 app logo（免去系统色块）
     }
     builder.setSmallIcon(R.mipmap.ic_launcher)
-        .setContentTitle((title == null || title.isEmpty()) ? "牙牙消息" : title)
+        .setContentTitle(shownTitle)
         .setContentText(text)
         .setCategory(Notification.CATEGORY_TRANSPORT)
         // 公开可见性：锁屏/安全锁下仍显示封面与控件（部分厂商默认 private 会藏内容→看似无封面/无进度）
