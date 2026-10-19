@@ -757,7 +757,7 @@ export default function MusicLibraryScreen() {
               >
               {/* ⚠️ 网格里禁止逐卡 GlassSurface（每个卡一个模糊层 → 滚动掉帧/布局塌陷）。
                   卡片底衬由外层 TouchableOpacity 的 border/bg 表达。 */}
-              <View style={[styles.songCardBody, { backgroundColor: 'rgba(128,128,128,0.06)' }]}>
+              <View style={[styles.songCardBody, { backgroundColor: palette.surface, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
                 <View style={styles.coverWrap}>
                   <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
                   {/* 正在播放指示：三根均衡器柱错峰跳动 */}
@@ -979,14 +979,8 @@ const styles = StyleSheet.create({
     flex: 1,
     margin: 5,
     borderRadius: radiiAlias.card,
-    // ⚠️ 不要在这里再写 overflow:'hidden'：与 elevation 同时存在时，Android 会把阴影
-    // 裁进视图内侧，渲染成「卡片外圈一圈深色」。裁切交给内层 songCardBody。
-    // 克制阴影增强浮起感
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    // 不再用 elevation/阴影：Android 上阴影与圆角裁切叠加会在卡片内侧画出一圈暗边
+    //（用户反馈「中间浅色、外面一圈深色」）。层次改由「实心卡 + hairline 边」表达。
   },
   coverWrap: { width: '100%', aspectRatio: 1 },
   playingBadge: {
