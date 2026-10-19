@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { parseMaybeJson } from '../utils/data';
 import { loadMembers, normalizeMember, classifyMemberState } from '../utils/members';
 import { Member } from '../types';
 import { useMemberStore } from '../store';
@@ -142,7 +143,7 @@ async function fetchYk1zDb(): Promise<Member[]> {
         headers: { Accept: 'application/json' },
       }, 15000);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const json = parseMaybeJson(await res.text());
       const arr = Array.isArray(json) ? json : (json.roomId || json.data || json.members || json.list || []);
       const members = await loadMembers(arr);
       if (!members.length) throw new Error('成员库返回为空');

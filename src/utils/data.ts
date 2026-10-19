@@ -69,9 +69,12 @@ export function parseMaybeJson(value: any): any {
   if (!value) return null;
   if (typeof value === 'object') return value;
   if (typeof value !== 'string') return null;
-  try { return JSON.parse(value); } catch {
-    const fixed = value.replace(/:\s*([0-9]{15,})/g, ':"$1"');
-    try { return JSON.parse(fixed); } catch { return null; }
+  // ⚠️ 必须先替换长数字再 parse：JSON.parse 对 15+ 位数字**不会失败**，只会静默丢精度，
+  // 「先 parse 失败再修」的写法永远走不到修复分支（2026-10-19 审计 D3）。
+  const fixed = value.replace(/:\s*([0-9]{15,})/g, ':"$1"');
+  try { return JSON.parse(fixed); } catch {
+    // 替换后仍失败 → 按原始文本再试一次（可能是转义/编码问题，非长数字导致）
+    try { return JSON.parse(value); } catch { return null; }
   }
 }
 

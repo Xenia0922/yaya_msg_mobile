@@ -10,6 +10,8 @@
 
 const REPO = 'Xenia0922/yaya_msg_mobile';
 
+import { parseMaybeJson } from '../utils/data';
+
 export type AbiAssetTag = 'v8a' | 'v7a' | 'x64' | 'universal';
 
 export function resolveAbiAssetTag(abi: string): AbiAssetTag {
@@ -45,7 +47,7 @@ export async function findSelfHostedUrl(assetName: string): Promise<string | nul
   try {
     const res = await fetch(SELF_PACKAGES_URL, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!res.ok) return null;
-    const data: any = await res.json();
+    const data: any = parseMaybeJson(await res.text());
     const list = Array.isArray(data?.packages) ? data.packages : [];
     // 同名可能有多条（重复上传）：取最新一条
     const hits = list

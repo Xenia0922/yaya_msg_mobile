@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { parseMaybeJson } from '../utils/data';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, Member } from '../types';
 import { APP_VERSION } from '../constants';
@@ -189,7 +190,7 @@ export const useUpdateStore = create<UpdateState>((set) => ({
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT)),
         ]);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: any = await res.json();
+        const data: any = parseMaybeJson(await res.text());
         tag = String(data.tag_name || data.name || '');
       } catch {
         // 源2：GitHub release 页面 HTML（无 API 匿名限流）：重定向 URL 提取 tag

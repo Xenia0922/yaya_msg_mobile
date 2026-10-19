@@ -1,4 +1,5 @@
 import { LyricsMatcher, LyricEntry } from './lyricsMatcher';
+import { parseMaybeJson } from './data';
 import { normalizeSong, normalizeArtist, normalizeGroup } from './normalize';
 import { fetchWithTimeout } from './network';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -67,7 +68,7 @@ export async function getLyricsMatcher() {
 
   // 2) 网络拉取 + 写缓存
   const resp = await fetchWithTimeout('https://yaya-data.pages.dev/lyrics-index.json', {}, 10000);
-  const raw: RawIndexEntry[] = await resp.json();
+  const raw: RawIndexEntry[] = parseMaybeJson(await resp.text()) || [];
   const entries = buildLyricEntries(raw);
   const matcher = new LyricsMatcher(entries);
   cachedMatcher = { entries, matcher };

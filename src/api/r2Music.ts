@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { parseMaybeJson } from '../utils/data';
 import { fetchWithTimeout } from '../utils/network';
 
 
@@ -53,7 +54,7 @@ async function fetchR2MusicRaw(): Promise<R2MusicTrack[]> {
   try {
     const resp = await fetchWithTimeout(R2_MUSIC_URL, { signal: controller.signal }, 20000);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const json: any = await resp.json();
+    const json: any = parseMaybeJson(await resp.text());
     if (!json || !Array.isArray(json.tracks)) throw new Error('r2-music 响应缺少 tracks');
     return json.tracks as R2MusicTrack[];
   } finally {

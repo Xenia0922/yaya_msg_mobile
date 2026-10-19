@@ -1,7 +1,7 @@
 import { useMemberStore, useSettingsStore } from '../store';
 import { generatePa, generatePaAsync, getWasmError, initWasm } from '../auth';
 import { requestJson, xhrPost, fetchWithTimeout } from '../utils/network';
-import { unwrapList, normalizeUrl } from '../utils/data';
+import { unwrapList, normalizeUrl, parseMaybeJson } from '../utils/data';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // 选举计分（score-*）、花漾（pageantry-*）、QR 登录（login-*-qr）、部分 Area48 话题接口；
@@ -336,16 +336,6 @@ async function rawPost(url: string, data: any, options: { token?: string; modern
   return xhrPost(url, data, headers);
 }
 
-function parsePocketJson(text: string): any {
-  if (!text) return null;
-  const fixed = text.replace(/:\s*([0-9]{15,})/g, ':"$1"');
-  try {
-    return JSON.parse(fixed);
-  } catch {
-    return { status: 500, success: false, message: fixed.replace(/\s+/g, ' ').slice(0, 180) };
-  }
-}
-
 async function signedHeaders(token?: string, modern = false, patch: HeadersMap = {}) {
   return createSignedHeaders(token ?? tokenFromStore(), modern, patch);
 }
@@ -583,7 +573,7 @@ export const pocketApi = {
       clearTimeout(timer);
     }
     const contentType = response.headers.get('content-type') || '';
-    const data = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+    const data = contentType.includes('application/json') ? parseMaybeJson(await response.text()) : null;
     if (response.ok && data && (data.status === 200 || data.success)) {
       const item = Array.isArray(data.content) ? data.content[0] : data.content;
       const path = item?.path || item?.url || item?.filePath || '';
