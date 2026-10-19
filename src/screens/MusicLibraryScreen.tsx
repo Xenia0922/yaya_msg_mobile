@@ -115,6 +115,8 @@ export default function MusicLibraryScreen() {
   const queue = useMusicPlayerStore((s) => s.queue);
   const playMode = useMusicPlayerStore((s) => s.playMode);
   const favorites = useMusicPlayerStore((s) => s.favorites);
+  // 播放过的真实时长缓存（官方/yk1z 源多数曲目不带时长）
+  const durations = useMusicPlayerStore((s) => s.durations);
   const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
   const seekTarget = useMusicPlayerStore((s) => s.seekTarget);
   const [songs, setSongs] = useState<any[]>(songsCache ?? []);
@@ -167,7 +169,7 @@ export default function MusicLibraryScreen() {
       };
       entry.count += 1;
       // 时长累加：R2(durationSec) + 官方(duration 秒) 统一
-      entry.durationSec += Number(t.durationSec) || Number(t.duration) || 0;
+      entry.durationSec += Number(t.durationSec) || Number(t.duration) || Number(durations[String(t.musicId || t.id || '')]) || 0;
       if (!entry.cover) entry.cover = String(t.coverUrl || t.cover || '');
       map.set(key, entry);
     }
@@ -181,7 +183,7 @@ export default function MusicLibraryScreen() {
       if (ga !== gb) return ga < gb ? -1 : 1;
       return String(a.album || '').localeCompare(String(b.album || ''), 'zh');
     });
-  }, [filteredSongs]);
+  }, [filteredSongs, durations]);
 
   // 双源合并：官方源（口袋48官网静态 JS）+ R2 音乐库（music.gnz.hk 公演音频，1559 首）。
   // 去重键 title|artist（官方源优先）；任一源失败不阻塞另一源，合并结果为空才报错。
@@ -234,6 +236,20 @@ export default function MusicLibraryScreen() {
         if (ga !== gb) return ga < gb ? -1 : 1;
         return String(a.title || '').localeCompare(String(b.title || ''), 'zh');
       });
+      // 官方（yk1z）源绝大多数曲目不带时长（源数据只有极少数 songs_time）。
+      // 兜底 1：同名的 R2 曲目若有时长就借用（仅补 0，绝不覆盖已有值）。
+      const r2DurByTitle = new Map<string, number>();
+      for (const t of r2 as any[]) {
+        const k = String(t.title || '').trim().toLowerCase();
+        const d = Number(t.durationSec) || Number(t.duration) || 0;
+        if (k && d > 0 && !r2DurByTitle.has(k)) r2DurByTitle.set(k, d);
+      }
+      for (const t of merged as any[]) {
+        if (!(Number(t.durationSec) || Number(t.duration))) {
+          const d = r2DurByTitle.get(String(t.title || '').trim().toLowerCase()) || 0;
+          if (d > 0) t.duration = d;
+        }
+      }
       applySongs(merged);
       setHasMore(false);
       // 静默提示各源状态（不打扰）：仅当 R2 失败时提示「官方源可用」，双失败已在上面抛错
@@ -781,7 +797,7 @@ export default function MusicLibraryScreen() {
                     {joinMeta([item.groupLabel, item.artist, item.album]) || t('官方音乐')}
                   </Text>
                   {(() => {
-                    const dur = Number(item.durationSec) || Number(item.duration) || 0;
+                    const dur = Number(item.durationSec) || Number(item.duration) || Number(durations[String(item.musicId || item.id || '')]) || 0;
                     const h = Math.floor(dur / 3600);
                     const m = Math.floor((dur % 3600) / 60);
                     const sec = Math.floor(dur % 60);
