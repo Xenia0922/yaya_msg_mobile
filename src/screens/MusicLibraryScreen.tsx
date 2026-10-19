@@ -99,23 +99,6 @@ const CHIP_FAV_MIN_WIDTH = 92;
 const CHIP_HEIGHT = 28;
 const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
 
-/**
- * 时长统一解析：数字秒 / "m:ss" / "h:mm:ss" → 秒。
- * ⚠️ yk1z(R2) 源的 duration 是 "4:57" 这种字符串，直接 Number() 会变 NaN → 显示成 --:--。
- */
-function durationSecOf(v: any): number {
-  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
-  const s = String(v ?? '').trim();
-  if (!s) return 0;
-  const n = Number(s);
-  if (Number.isFinite(n)) return n > 0 ? Math.round(n) : 0;
-  const parts = s.split(':').map((p) => parseInt(p, 10));
-  if (!parts.length || parts.some((p) => Number.isNaN(p))) return 0;
-  if (parts.length === 1) return parts[0];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0] * 3600 + parts[1] * 60 + parts[2];
-}
-
 export default function MusicLibraryScreen() {
   const navigation = useNavigation();
   const palette = usePalette();
@@ -132,8 +115,6 @@ export default function MusicLibraryScreen() {
   const queue = useMusicPlayerStore((s) => s.queue);
   const playMode = useMusicPlayerStore((s) => s.playMode);
   const favorites = useMusicPlayerStore((s) => s.favorites);
-  // 播放过的真实时长缓存（官方/yk1z 源多数曲目不带时长）
-  const durations = useMusicPlayerStore((s) => s.durations);
   const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
   const seekTarget = useMusicPlayerStore((s) => s.seekTarget);
   const [songs, setSongs] = useState<any[]>(songsCache ?? []);
@@ -171,7 +152,7 @@ export default function MusicLibraryScreen() {
 
   // 专辑分组：按 团体+专辑 聚合（封面取组内第一张、统计曲目数与总时长）
   const albums = useMemo(() => {
-    const map = new Map<string, { key: string; groupLabel: string; album: string; cover: string; count: number; durationSec: number }>();
+    const map = new Map<string, { key: string; groupLabel: string; album: string; cover: string; count: number }>();
     for (const t of filteredSongs) {
       const album = String(t.album || '').trim();
       if (!album) continue;
@@ -182,11 +163,8 @@ export default function MusicLibraryScreen() {
         album,
         cover: '',
         count: 0,
-        durationSec: 0,
       };
       entry.count += 1;
-      // 时长累加：R2(durationSec) + 官方(duration 秒) 统一
-      entry.durationSec += durationSecOf(t.durationSec) || durationSecOf(t.duration) || Number(durations[String(t.musicId || t.id || '')]) || 0;
       if (!entry.cover) entry.cover = String(t.coverUrl || t.cover || '');
       map.set(key, entry);
     }
@@ -200,7 +178,7 @@ export default function MusicLibraryScreen() {
       if (ga !== gb) return ga < gb ? -1 : 1;
       return String(a.album || '').localeCompare(String(b.album || ''), 'zh');
     });
-  }, [filteredSongs, durations]);
+  }, [filteredSongs]);
 
   // 双源合并：官方源（口袋48官网静态 JS）+ R2 音乐库（music.gnz.hk 公演音频，1559 首）。
   // 去重键 title|artist（官方源优先）；任一源失败不阻塞另一源，合并结果为空才报错。
@@ -253,20 +231,6 @@ export default function MusicLibraryScreen() {
         if (ga !== gb) return ga < gb ? -1 : 1;
         return String(a.title || '').localeCompare(String(b.title || ''), 'zh');
       });
-      // 源说明：R2 = yk1z 曲库（自带 duration，如 "4:57"）；官方 = 丝芭站点（多数无 songs_time）。
-      // 兜底：丝芭源里缺时长的曲目，若 yk1z 库有同名曲目就借用（仅补 0，绝不覆盖已有值）。
-      const r2DurByTitle = new Map<string, number>();
-      for (const t of r2 as any[]) {
-        const k = String(t.title || '').trim().toLowerCase();
-        const d = durationSecOf(t.durationSec) || durationSecOf(t.duration) || 0;
-        if (k && d > 0 && !r2DurByTitle.has(k)) r2DurByTitle.set(k, d);
-      }
-      for (const t of merged as any[]) {
-        if (!(Number(t.durationSec) || Number(t.duration))) {
-          const d = r2DurByTitle.get(String(t.title || '').trim().toLowerCase()) || 0;
-          if (d > 0) t.duration = d;
-        }
-      }
       applySongs(merged);
       setHasMore(false);
       // 静默提示各源状态（不打扰）：仅当 R2 失败时提示「官方源可用」，双失败已在上面抛错
@@ -744,7 +708,6 @@ export default function MusicLibraryScreen() {
                 <Text numberOfLines={1} style={[styles.songTitle, { color: palette.label, marginTop: 6 }]}>{item.album}</Text>
                 <Text numberOfLines={1} style={[styles.songArtist, { color: palette.labelTertiary }]}>
                   {item.groupLabel || t('未知团体')}
-                  {item.durationSec ? ` · ${Math.floor(item.durationSec / 60)}${t('分钟')}` : ''}
                 </Text>
               </TouchableOpacity>
             </FadeInView>
@@ -820,19 +783,6 @@ export default function MusicLibraryScreen() {
                   <Text style={[styles.songArtist, { color: palette.labelTertiary }]} numberOfLines={1}>
                     {joinMeta([item.groupLabel, item.artist, item.album]) || t('官方音乐')}
                   </Text>
-                  {(() => {
-                    const dur = durationSecOf(item.durationSec) || durationSecOf(item.duration) || Number(durations[String(item.musicId || item.id || '')]) || 0;
-                    const h = Math.floor(dur / 3600);
-                    const m = Math.floor((dur % 3600) / 60);
-                    const sec = Math.floor(dur % 60);
-                    return (
-                      <Text style={[styles.dateText, { color: palette.labelTertiary }]}>
-                        {dur > 0
-                          ? (h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`)
-                          : '--:--'}
-                      </Text>
-                    );
-                  })()}
                 </View>
               </TouchableOpacity>
             </FadeInView>

@@ -99,8 +99,6 @@ interface MusicPlayerState {
   error: string | null;
   // Favorites (persisted)
   favorites: string[];
-  /** 歌曲时长缓存（musicId → 秒）。官方/yk1z 源多数曲目不带时长，播放过一次后回填 */
-  durations: Record<string, number>;
   /**
    * Seek 指令：组件写，Video onLoad / effect 检测后执行 seek 并清零。
    * 不持久化（持久化 seek 位置通过 position 字段实现）。
@@ -165,7 +163,6 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       lyrics: [],
       error: null,
       favorites: [],
-      durations: {},
       seekTarget: 0,
       seekFrom: 0,
       seekIssuedAt: 0,
@@ -227,13 +224,12 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
 
       setMode: (playMode) => set({ playMode }),
 
-      setDuration: (duration) =>
-        set((s) => {
-          const cur: any = s.queue[s.currentIndex];
-          const id = String(cur?.musicId || cur?.id || '');
-          const durations = duration > 0 && id ? { ...s.durations, [id]: duration } : s.durations;
-          return { duration, durations };
-        }),
+      // 只存当前曲时长（进度条用）；不再维护 durations 映射（列表已不显示时长）。
+      // 心跳每 0.5s 报一次相同时长——值没变就不写 store，避免无谓重渲染与持久化序列化。
+      setDuration: (duration) => {
+        if (Math.abs(Number(get().duration) - Number(duration)) < 0.5) return;
+        set({ duration });
+      },
 
       /**
        * 位置上报唯一入口（原生 onProgress / Exo 回调都走这里）。
@@ -353,7 +349,6 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
         position: s.position,
         playMode: s.playMode,
         favorites: s.favorites,
-        durations: s.durations,
         lyrics: s.lyrics,
         duration: s.duration,
       }),

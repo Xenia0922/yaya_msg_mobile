@@ -322,6 +322,14 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 - **涉及**：`src/components/CoverArt.tsx`、`src/screens/MusicLibraryScreen.tsx`
 - **commit**：see `git log --grep="音乐库：上一首播完后专辑封面消失"`
 
+### 21. 音乐页卡死（点什么都卡，JS 线程 100%）
+- **现象**：进音乐页后整页失去响应，点卡片/mini 播放条都没反应，退出页面后 JS 线程仍 100%
+- **取证**：`top -H` 见 `mqt_v_js` 持续 96–103%、RSS 一路涨到 640MB+；临时埋点显示**列表每 2s 只渲染 3 次**，但 store 每 2s 变更 24 次 —— 卡顿不在列表渲染，在 store 写入
+- **根因**：时长显示引入的 `durations`（musicId→秒）缓存。原生心跳每 0.5s 上报一次 duration，`setDuration` **每次都新建 `{...durations}` 对象** → 屏幕订阅 `durations` → 全页重渲染 + `albums` memo 对 1755 首重算 + zustand persist 每次 set 都序列化整个队列（≈800KB）→ 每秒十几次 800KB 序列化 + GC 风暴，JS 线程打满
+- **改动**：按用户要求**删掉全部时长显示**（歌曲卡 `--:--`/m:ss、专辑卡总时长、跨源借用时长兜底），`durationSecOf` 与 `durations` 缓存整体移除；`setDuration` 只在值真的变化（≥0.5s）时写 store
+- **涉及**：`src/screens/MusicLibraryScreen.tsx`、`src/store/musicPlayerStore.ts`
+- **验证**：真机（PJZ110）同样路径：JS 线程 96%→**3.7%**，点卡片立刻高亮切歌，退出页面 CPU 归零
+
 ## 附：发版清单
 
 - 出包：`node scripts/build-apk.js` → `E:\yymsg\APK\`
