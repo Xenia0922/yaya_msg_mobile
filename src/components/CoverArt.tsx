@@ -126,10 +126,6 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
           source={{ uri }}
           style={[StyleSheet.absoluteFill, { borderRadius: round ? radii.pill : 0 }]}
           resizeMode="cover"
-          // ⭐ 治本：不少专辑图**自带边框/留白**（整图 cover 会把边框一起显示成「中间浅、外圈深」）。
-          //    thumbnail 会改写成 48 图床的 resize_700x700 —— 该接口是**中心裁切**，自然把边框裁掉。
-          //    （非 48 图床时 thumbUrl 原样返回，不影响 R2/其他源）
-          thumbnail={700}
           // scale：保留原图分辨率由 GPU 缩放，比 resize 预解码缩放更锐利（修复封面发糊）
           resizeMethod="scale"
           fadeDuration={200}
