@@ -1208,6 +1208,18 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   /**
+   * 按成员取可送礼物列表（房间场景同一接口，businessCode 固定 5）。
+   * 直播内送礼用 liveId 版常返回空列表（服务端按 liveId 维度无配置），
+   * 房间内此接口已验证可用 → 直播优先用它，空再回退 liveId 版。
+   */
+  async getGiftListByMember(memberId: string) {
+    return pocketPost(`${BASE}/gift/api/v1/gift/list`, {
+      memberId: String(memberId),
+      businessCode: 5,
+    }, { fallback: '获取礼物列表失败' });
+  },
+
+  /**
    * 房间（非直播）送礼上下文 —— 协议对齐桌面版 v2.14 fetchMemberRoomGiftContext：
    * 1) /im/api/v1/im/team/room/info {channelId} → channelInfo：ownerId 即收礼成员；
    *    serverType=0 是队伍房间（官方不支持选人送礼）；userFunction.sendGift===false 时该账号在此房间不能送礼

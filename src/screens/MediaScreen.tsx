@@ -1547,11 +1547,21 @@ export default function MediaScreen() {
     setGiftStatus('');
     setSelectedGift(null);
     try {
-      const [giftRes, moneyRes] = await Promise.all([
-        pocketApi.getGiftList(String(source.item.liveId)),
+      // 礼物列表：优先按主播成员 ID 拉（房间内同一接口已验证可用）；
+      // 直播场景 liveId 版常返回空列表（服务端按 liveId 维度无礼物配置）→ 空则回退。
+      const anchorUserId = acceptUserId(source.item);
+      const [moneyRes] = await Promise.all([
         pocketApi.getUserMoney().catch(() => null),
       ]);
-      const next = normalizeGiftList(giftRes);
+      let next: any[] = [];
+      if (anchorUserId) {
+        const byMember = await pocketApi.getGiftListByMember(String(anchorUserId)).catch(() => null);
+        next = normalizeGiftList(byMember);
+      }
+      if (!next.length) {
+        const giftRes = await pocketApi.getGiftList(String(source.item.liveId)).catch(() => null);
+        next = normalizeGiftList(giftRes);
+      }
       setGifts(next);
       setBalance(moneyRes?.content?.moneyTotal !== undefined ? String(moneyRes.content.moneyTotal) : '');
       setGiftStatus(next.length ? t('已加载 {count} 个礼物', { count: next.length }) : t('礼物列表为空'));
@@ -1876,7 +1886,7 @@ export default function MediaScreen() {
             </GlassSurface>
           </View>
         </Modal>
-        <Modal visible={rankVisible} transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
+        <Modal visible={rankVisible} transparent animationType="slide" presentationStyle="overFullScreen" statusBarTranslucent onRequestClose={() => setRankVisible(false)}>
           <View style={styles.modalShade}>
             <GlassSurface radius={20} role="card" style={[styles.giftPanel, { backgroundColor: 'transparent' }]}>
               <View style={styles.giftHeader}>
@@ -1886,7 +1896,7 @@ export default function MediaScreen() {
                 </TouchableOpacity>
               </View>
               <Text style={[styles.giftStatus, { color: palette.labelSecondary }]}>{rankStatus}</Text>
-              <ScrollView style={styles.rankList}>
+              <ScrollView style={styles.rankList} nestedScrollEnabled overScrollMode="never" showsVerticalScrollIndicator>
                 {rankRows.map((row, index) => (
                   <View key={String(row.userId || row.id || index)} style={[styles.rankRow, { borderBottomColor: palette.hairline }]}>
                     <Text style={[styles.rankNo, { color: palette.tint }]}>{row.rank || index + 1}</Text>
@@ -2454,7 +2464,7 @@ const styles = StyleSheet.create({
   sendGiftText: { fontSize: 14, fontWeight: '800' },
   rechargeBtn: { marginTop: 10, alignItems: 'center', paddingVertical: 10 },
   rechargeText: { fontSize: 13, fontWeight: '800' },
-  rankList: { maxHeight: 430 },
+  rankList: { flexGrow: 0, flexShrink: 1, maxHeight: 430, minHeight: 0 },
   rankRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
   rankNo: { width: 32, fontSize: 15, fontWeight: '900' },
   rankAvatar: { width: 38, height: 38, borderRadius: 20, marginRight: 10 },

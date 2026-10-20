@@ -84,7 +84,10 @@ export default function ZoomImageModal({
     onStartShouldSetPanResponder: () => true,
     onStartShouldSetPanResponderCapture: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: () => true,
+    // 捕获阶段只抢「双指」或「明确向下拖」的手势：
+    // 原为无条件 true → 任何轻微滑动都被当成关闭手势（用户反馈「下滑关闭太敏感」）。
+    onMoveShouldSetPanResponderCapture: (_e, g) =>
+      g.numberActiveTouches >= 2 || (g.dy > 10 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2),
     onPanResponderTerminationRequest: () => false,
     onShouldBlockNativeResponder: () => true,
     onPanResponderGrant: (event) => {
@@ -148,9 +151,9 @@ export default function ZoomImageModal({
         }
         lastTapAt.current = now;
       }
-      // 下滑返回：位移超过 110 视为关闭，否则弹回原位
+      // 下滑返回：位移超过 180 才关闭（原 110 太敏感，轻微下滑就退出预览）
       const dyNow = Number((translateY as any).__getValue() || 0);
-      if (dyNow > 110) {
+      if (dyNow > 180) {
         Animated.timing(shadeOpacity, { toValue: 0, duration: 140, useNativeDriver: false }).start(() => {
           // ⚠️ 先关再复位：若先 setValue(0)，关闭前的最后一帧会看到图片「闪回原位」（用户实测）
           onCloseRef.current();
