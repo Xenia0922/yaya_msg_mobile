@@ -54,11 +54,18 @@ export function FadeInView({
       duration,
       delay,
       easing: EASE_OUT,
-      useNativeDriver: true,
+      // ⚠️【丢界面修复 2026-10-20】必须用 JS 驱动：
+      // native driver 的原生动画在「页面转场 / 切后台 / react-native-screens 冻结」时会被系统
+      // 中断，值停在 0 且不再恢复 → 整块内容透明（用户反馈：设置页 / 账号设置页随机空白）。
+      // 入场只是 delay+duration 的装饰动画，JS 驱动足够，且不会被系统暂停吞掉。
+      useNativeDriver: false,
     });
-    animation.start();
-    // 兜底：动画未回调（native driver 异常/被打断）时强制可见，避免整块内容消失
-    const guard = setTimeout(() => value.setValue(1), delay + duration + 150);
+    animation.start(({ finished }) => {
+      // 动画被中途 stop（切页/中断）时强制可见
+      if (!finished) value.setValue(1);
+    });
+    // 兜底二：无论动画状态如何，delay+duration 后一定可见
+    const guard = setTimeout(() => value.setValue(1), delay + duration + 120);
     return () => { animation.stop(); clearTimeout(guard); };
   }, [delay, duration, value]);
 
