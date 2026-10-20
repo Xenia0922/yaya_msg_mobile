@@ -2472,6 +2472,7 @@ export default function FollowedRoomsScreen() {
       const fresh = messages
         .filter((m) => String(m.channelId) === String(cid))
         .map(qchatToRoomMessage);
+      console.warn('[qchat] recv=', messages.length, 'cid=', cid, 'matched=', fresh.length);
       if (!fresh.length) return;
       setRoomMessages((prev) => {
         const merged = mergeMessages(prev, fresh);

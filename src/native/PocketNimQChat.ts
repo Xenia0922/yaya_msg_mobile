@@ -66,21 +66,39 @@ export function onQChatStatus(listener: (status: { state: string; detail: string
   return () => sub.remove();
 }
 
+/**
+ * 圈组消息监听。
+ *
+ * ⚠️【2026-10-20 修复】原生有**两套**事件名/字段命名：
+ *  - 旧：`PocketNimQChat:message`，单条，字段 body / ext / msgIdClient / msgIdServer
+ *  - 实际在跑的 PocketImModule：`PocketIm:message`，**一次 emit 一个数组**，
+ *    字段是 content / extension / uuid（无 msgIdClient）
+ * 之前只监听旧事件名 → 每条推送都被丢掉 → 房间消息只能靠 15s/60s 轮询，
+ * 表现为「消息收到了（轮询拉到）但很久才显示 / 不实时」。两个都监听并统一字段。
+ */
 export function onQChatMessage(listener: (message: QChatNativeMessage) => void): () => void {
-  const sub = DeviceEventEmitter.addListener('PocketNimQChat:message', (e: any) => {
-    listener({
-      serverId: String(e?.serverId || ''),
-      channelId: String(e?.channelId || ''),
-      fromAccount: String(e?.fromAccount || ''),
-      fromNick: String(e?.fromNick || ''),
-      time: Number(e?.time) || Date.now(),
-      type: Number(e?.type ?? 0),
-      body: String(e?.body || ''),
-      attachment: String(e?.attachment || ''),
-      ext: String(e?.ext || '{}'),
-      msgIdClient: String(e?.msgIdClient || ''),
-      msgIdServer: String(e?.msgIdServer || ''),
-    });
+  const mapOne = (e: any): QChatNativeMessage => ({
+    serverId: String(e?.serverId || ''),
+    channelId: String(e?.channelId || ''),
+    fromAccount: String(e?.fromAccount || ''),
+    fromNick: String(e?.fromNick || ''),
+    time: Number(e?.time) || Date.now(),
+    type: Number(e?.type ?? 0),
+    // PocketImModule 用 content；旧桥用 body
+    body: String(e?.body ?? e?.content ?? ''),
+    attachment: String(e?.attachment || ''),
+    // PocketImModule 用 extension（JSON 字符串）；旧桥用 ext
+    ext: typeof e?.ext === 'string' ? e.ext : String(e?.extension || '{}'),
+    // PocketImModule 只给 uuid（云信消息 uuid，全局唯一，可直接当消息 key）
+    msgIdClient: String(e?.msgIdClient || e?.uuid || ''),
+    msgIdServer: String(e?.msgIdServer || ''),
   });
-  return () => sub.remove();
+  const subOld = DeviceEventEmitter.addListener('PocketNimQChat:message', (e: any) => {
+    listener(mapOne(e));
+  });
+  const subIm = DeviceEventEmitter.addListener('PocketIm:message', (arr: any) => {
+    const list: any[] = Array.isArray(arr) ? arr : [arr];
+    for (const e of list) listener(mapOne(e));
+  });
+  return () => { subOld.remove(); subIm.remove(); };
 }
