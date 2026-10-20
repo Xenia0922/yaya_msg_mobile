@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-ff6f91" alt="license" /></a>
-  <a href="https://github.com/Xenia0922/yaya_msg_mobile/releases"><img src="https://img.shields.io/badge/release-v2.7.5-ff6f91" alt="release" /></a>
+  <a href="https://github.com/Xenia0922/yaya_msg_mobile/releases"><img src="https://img.shields.io/badge/release-v2.7.6-ff6f91" alt="release" /></a>
   <img src="https://img.shields.io/badge/platform-Android-3DDC84?logo=android" alt="Android" />
 </p>
 
@@ -17,7 +17,38 @@
 
 > **⚠️ 重要：由于版本更新较大，建议每一位用户卸载后重新安装软件！**
 
-## 最新更新（v2.7.5，对比 v2.7.4 共 144 个提交）
+## 最新更新（v2.7.6，对比 v2.7.5）
+
+> 逐项改动明细（现象 / 根因 / 涉及文件 / commit）见 [`docs/RELEASE_NOTES_2.7.6.md`](docs/RELEASE_NOTES_2.7.6.md)。
+
+**房间 / 礼物**
+- 全新礼物面板：礼物图片化展示，挑礼物、送礼物更直观顺手
+- 房间内可直接送礼，大小房间都能用
+- 礼物榜与贡献榜体验更顺畅
+
+**消息**
+- 消息头像支持头像框，粉丝身份等级清晰可见
+- 官方表情全面支持
+- 语音消息显示时长
+- 新增私信未读红点开关
+- 消息时间显示优化
+
+**音乐**
+- 音乐页性能与稳定性明显提升
+- 切歌封面、歌曲时长等显示更准确
+- 歌曲卡片样式统一
+
+**更新与推送**
+- 支持应用内一键更新，下载更省心
+- 新增「010 推送」入口
+
+**其他**
+- 鸡腿榜界面优化
+- 切换房间更流畅
+- 整体使用更稳定、更省电
+
+
+## 历史更新（v2.7.5，对比 v2.7.4 共 144 个提交）
 
 **房间 / 消息**
 - 消息身份重做：每条消息独立成组；非房主成员发言也按成员档案渲染（名字/头像/队标）；皇冠只给房主
@@ -44,15 +75,15 @@
 - 翻牌统计、成员数据库、鸡腿充值
 
 ## 安装
-从[下载页](https://010push.a23xyz.xyz/app/)下载
+从[下载页](https://gnz48.tech/app/)下载
 
 从[夸克网盘](https://pan.quark.cn/s/5b103245218a)下载
 
 从 [Releases](https://github.com/Xenia0922/yaya_msg_mobile/releases) 下载：
 
-- `yaya-msg-mobile-v2.7.5-universal.apk`：通用包（全 ABI，体积最大）
-- `yaya-msg-mobile-v2.7.5-x64.apk`：x86_64 模拟器专用
-- `yaya-msg-mobile-v2.7.5-v8a.apk` / `-v7a.apk`：真机包（**推荐真机使用**，比通用包小约 40%）
+- `yaya-msg-mobile-v2.7.6.apk`：通用包（全 ABI，体积最大）
+- `yaya-msg-mobile-v2.7.6-x64.apk`：x86_64 模拟器专用
+- `yaya-msg-mobile-v2.7.6-v8a.apk` / `-v7a.apk`：真机包（**推荐真机使用**，比通用包小约 60%）
 
 模拟器请用 x64 包，否则无法启动。App 内「检查更新」始终提供通用包直链，真机如需最小体积请在 Release 页面按架构下载。
 
