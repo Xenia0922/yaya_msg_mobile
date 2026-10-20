@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" width="100%" alt="牙牙消息" />
+  <img src="assets/banner-v2.svg" width="100%" alt="牙牙消息" />
 </p>
 <p align="center">
   <img src="assets/logo-rounded.png" width="96" alt="logo" />
