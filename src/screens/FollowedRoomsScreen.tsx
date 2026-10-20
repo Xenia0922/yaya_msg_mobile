@@ -2427,20 +2427,22 @@ export default function FollowedRoomsScreen() {
 
   // 房间内实时刷新：QChat 长连接（observeRoomMessages）才是实时主通道，
   // 这里只是 HTTP 兜底（长连接静默降级时房间仍能收到新消息）——
-  // 15s 对兜底而言过于奢侈（前台停留时每 15s 空拉一次全量消息，网络+CPU+耗电），
-  // 2026-10-20 降到 60s：长连接正常情况下消息秒达，兜底一分钟一次足够。
+  // ⚠️【实时性修复 2026-10-20】曾为省电把兜底轮询降到 60s，但 QChat 长连接在部分设备/登录态下
+  // 会静默降级（ensureQChatNativeLogin 失败 → 返回空订阅），此时轮询是唯一消息通道，
+  // 60s 表现为「房间消息不实时更新」→ 恢复 15s，实时性优先于这点功耗。
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!selectedRoom) return;
     const startPoll = () => {
       if (pollTimerRef.current) return;
-      pollTimerRef.current = setInterval(() => { refreshRoomMessages(); }, 60000);
+      pollTimerRef.current = setInterval(() => { refreshRoomMessages(); }, 15000);
     };
     const stopPoll = () => {
       if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
     };
-    // 初始按当前前后台状态决定
-    if (AppState.currentState === 'active') startPoll();
+    // ⚠️ 无条件先启动：冷启动时 AppState.currentState 可能是 'unknown'，
+    // 按它判断会出现「轮询从不启动」，一旦长连接也降级 → 完全收不到新消息。
+    startPoll();
     // 前后台切换：前台启动、后台暂停
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') startPoll();

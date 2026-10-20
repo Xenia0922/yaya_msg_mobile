@@ -336,7 +336,10 @@ export async function observeRoomMessages(
   if (isPocketNimQChatAvailable()) {
     try {
       await ensureQChatNativeLogin();
-    } catch {
+    } catch (e) {
+      // 静默降级会让「消息不实时」无从排查：这里留一条可见日志（logcat 可查），
+      // 调用方（房间页）仍有 15s 轮询兜底。
+      console.warn('[qchat] 实时消息通道登录失败，降级为轮询：', String((e as any)?.message || e));
       return () => undefined;
     }
     observeRefCount += 1;
