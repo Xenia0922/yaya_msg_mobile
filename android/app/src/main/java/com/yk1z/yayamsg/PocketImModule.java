@@ -234,14 +234,12 @@ public class PocketImModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * 订阅圈组频道（收消息）。
+   * 订阅圈组（收消息）。
    *
-   * ⚠️【2026-10-20 根因】云信 QChat 只有订阅过的频道才推送消息；普通用户不是频道成员，
-   * 官方走「访客订阅」subscribeAsVisitor(QChatSubscribeChannelAsVisitorParam(serverId, channelId, operateType))。
-   * 此前只登录 + 注册监听、从未订阅 → 原生几乎不 emit，房间只能靠轮询（"不实时"根因）。
-   *
-   * 为避免 SDK 版本间枚举常量命名差异（QChatSubscribeOperateType.SUBSCRIBE 在 10.9.11 不存在），
-   * 这里全反射：枚举常量按「含 SUB 且不含 UN」自选，同时把实际常量名打到日志便于排查。
+   * 参考 010push 的 nim-bridge：云信 QChat 的订阅是 **server 级**（协议包 cmd 25/7
+   * subscribeAllChannels，一次订阅该 server 下所有频道），不是 channel 级。
+   * 这里在 SDK 上遍历所有 QChat*Service 的 subscribe* 方法，按 (serverId, channelId)
+   * 依次尝试，尽力命中（不同 SDK 版本 API 命名不同），并打印全部候选签名便于排查。
    */
   @ReactMethod
   public void joinChannel(final double serverIdD, final double channelIdD, final Promise promise) {
@@ -252,30 +250,63 @@ public class PocketImModule extends ReactContextBaseJavaModule {
         final long channelId = (long) channelIdD;
         try {
           initOnce(DEFAULT_APP_KEY);
-          Class<?> otCls = Class.forName("com.netease.nimlib.sdk.qchat.enums.QChatSubscribeOperateType");
-          Object[] consts = otCls.getEnumConstants();
-          StringBuilder names = new StringBuilder();
-          Object ot = null;
-          if (consts != null) {
-            for (Object c : consts) {
-              String n = ((Enum<?>) c).name();
-              if (names.length() > 0) names.append(',');
-              names.append(n);
-              if (ot == null && n.contains("SUB") && !n.contains("UN")) ot = c;
+          String[] svcNames = {
+              "com.netease.nimlib.sdk.qchat.QChatServerService",
+              "com.netease.nimlib.sdk.qchat.QChatChannelService",
+          };
+          boolean invoked = false;
+          for (String svcName : svcNames) {
+            Class<?> svcCls;
+            try {
+              svcCls = Class.forName(svcName);
+            } catch (Throwable t) {
+              android.util.Log.e(TAG, "svc missing: " + svcName);
+              continue;
             }
-            if (ot == null) ot = consts[0];
+            Object svc = NIMClient.getService((Class) svcCls);
+            if (svc == null) continue;
+            for (java.lang.reflect.Method m : svc.getClass().getMethods()) {
+              String n = m.getName();
+              if (!n.toLowerCase().contains("subscribe")) continue;
+              Class<?>[] pts = m.getParameterTypes();
+              StringBuilder sig = new StringBuilder("subscribeAPI " + svcName.substring(svcName.lastIndexOf('.') + 1) + "." + n + "(");
+              for (int i = 0; i < pts.length; i++) {
+                if (i > 0) sig.append(',');
+                sig.append(pts[i].getSimpleName());
+              }
+              sig.append(')');
+              android.util.Log.e(TAG, sig.toString());
+              if (invoked || pts.length != 1) continue;
+              Class<?> pc = pts[0];
+              Object param = null;
+              // 尝试常见构造：(long,long) / (long,long,long) / (long)
+              try {
+                param = pc.getConstructor(long.class, long.class).newInstance(serverId, channelId);
+              } catch (Throwable t) {
+                try {
+                  param = pc.getConstructor(long.class, long.class, long.class)
+                      .newInstance(serverId, channelId, 0L);
+                } catch (Throwable t2) {
+                  try {
+                    param = pc.getConstructor(long.class).newInstance(serverId);
+                  } catch (Throwable t3) {
+                    continue;
+                  }
+                }
+              }
+              try {
+                Object ret = m.invoke(svc, param);
+                android.util.Log.i(TAG, "subscribe invoked " + n + " -> " + ret);
+                invoked = true;
+              } catch (Throwable t) {
+                android.util.Log.e(TAG, "subscribe invoke failed " + n, t);
+              }
+            }
           }
-          android.util.Log.i(TAG, "subscribeOperateTypes=" + names);
-          Class<?> pc = Class.forName("com.netease.nimlib.sdk.qchat.param.QChatSubscribeChannelAsVisitorParam");
-          Object param = pc.getConstructor(long.class, long.class, otCls).newInstance(serverId, channelId, ot);
-          Class<?> svcCls = Class.forName("com.netease.nimlib.sdk.qchat.QChatChannelService");
-          Object svc = NIMClient.getService((Class) svcCls);
-          Object future = svc.getClass().getMethod("subscribeAsVisitor", pc).invoke(svc, param);
-          android.util.Log.i(TAG, "subscribeAsVisitor ok serverId=" + serverId + " channelId=" + channelId
-              + " op=" + (ot == null ? "null" : ((Enum<?>) ot).name()) + " ret=" + future);
-          promise.resolve(true);
+          android.util.Log.i(TAG, "subscribe done invoked=" + invoked + " serverId=" + serverId + " channelId=" + channelId);
+          promise.resolve(invoked);
         } catch (Throwable t) {
-          android.util.Log.e(TAG, "subscribeAsVisitor failed serverId=" + serverId + " channelId=" + channelId, t);
+          android.util.Log.e(TAG, "subscribe failed", t);
           promise.resolve(false);
         }
       }
