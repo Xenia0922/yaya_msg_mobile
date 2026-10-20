@@ -234,14 +234,14 @@ public class PocketImModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * 加入（订阅）圈组频道 —— 云信 QChat **只有 join/subscribe 过的频道才会推送消息**。
+   * 订阅圈组频道（收消息）。
    *
-   * ⚠️【2026-10-20 根因修复】此前只做了登录 + 注册消息监听、从未 join 频道，
-   * 导致原生永远不 emit 消息 → 房间只能靠 15s/60s 轮询（用户感知「消息不实时」）。
+   * ⚠️【2026-10-20 根因】云信 QChat 只有订阅过的频道才推送消息；普通用户不是频道成员，
+   * 官方走「访客订阅」subscribeAsVisitor(QChatSubscribeChannelAsVisitorParam(serverId, channelId, operateType))。
+   * 此前只登录 + 注册监听、从未订阅 → 原生几乎不 emit，房间只能靠轮询（"不实时"根因）。
    *
-   * SDK（qchat 10.9.11）在不同版本的 join 签名不一致，这里用反射按候选
-   * （QChatSubscribeChannelParam/QChatJoinChannelParam × joinChannel/subscribeChannel）
-   * 逐一尝试，命中即回调。失败静默（房间仍有轮询兜底）。
+   * 为避免 SDK 版本间枚举常量命名差异（QChatSubscribeOperateType.SUBSCRIBE 在 10.9.11 不存在），
+   * 这里全反射：枚举常量按「含 SUB 且不含 UN」自选，同时把实际常量名打到日志便于排查。
    */
   @ReactMethod
   public void joinChannel(final double serverIdD, final double channelIdD, final Promise promise) {
@@ -252,91 +252,30 @@ public class PocketImModule extends ReactContextBaseJavaModule {
         final long channelId = (long) channelIdD;
         try {
           initOnce(DEFAULT_APP_KEY);
+          Class<?> otCls = Class.forName("com.netease.nimlib.sdk.qchat.enums.QChatSubscribeOperateType");
+          Object[] consts = otCls.getEnumConstants();
+          StringBuilder names = new StringBuilder();
+          Object ot = null;
+          if (consts != null) {
+            for (Object c : consts) {
+              String n = ((Enum<?>) c).name();
+              if (names.length() > 0) names.append(',');
+              names.append(n);
+              if (ot == null && n.contains("SUB") && !n.contains("UN")) ot = c;
+            }
+            if (ot == null) ot = consts[0];
+          }
+          android.util.Log.i(TAG, "subscribeOperateTypes=" + names);
+          Class<?> pc = Class.forName("com.netease.nimlib.sdk.qchat.param.QChatSubscribeChannelAsVisitorParam");
+          Object param = pc.getConstructor(long.class, long.class, otCls).newInstance(serverId, channelId, ot);
           Class<?> svcCls = Class.forName("com.netease.nimlib.sdk.qchat.QChatChannelService");
           Object svc = NIMClient.getService((Class) svcCls);
-          if (svc == null) {
-            promise.resolve(false);
-            return;
-          }
-          String[] paramClasses = {
-              "com.netease.nimlib.sdk.qchat.param.QChatSubscribeChannelParam",
-              "com.netease.nimlib.sdk.qchat.param.QChatJoinChannelParam",
-          };
-          String[] methodNames = {"joinChannel", "subscribeChannel"};
-          for (String paramClsName : paramClasses) {
-            Class<?> pc;
-            try {
-              pc = Class.forName(paramClsName);
-            } catch (Throwable t) {
-              continue;
-            }
-            for (String mName : methodNames) {
-              for (java.lang.reflect.Method m : svc.getClass().getMethods()) {
-                if (!m.getName().equals(mName)) continue;
-                Class<?>[] pts = m.getParameterTypes();
-                if (pts.length < 1 || !pts[0].isAssignableFrom(pc)) continue;
-                Object param = null;
-                try {
-                  param = pc.getConstructor(long.class, long.class).newInstance(serverId, channelId);
-                } catch (Throwable t) {
-                  try {
-                    param = pc.getConstructor(long.class, long.class, long.class)
-                        .newInstance(serverId, channelId, 0L);
-                  } catch (Throwable t2) {
-                    continue;
-                  }
-                }
-                Object[] args = new Object[pts.length];
-                args[0] = param;
-                for (int i = 1; i < pts.length; i++) {
-                  if (RequestCallback.class.isAssignableFrom(pts[i])) {
-                    args[i] = new RequestCallback<Object>() {
-                      public void onSuccess(Object r) {
-                        android.util.Log.i(TAG, "joinChannel ok serverId=" + serverId + " channelId=" + channelId);
-                        promise.resolve(true);
-                      }
-                      public void onFailed(int code) {
-                        android.util.Log.e(TAG, "joinChannel failed code=" + code);
-                        promise.resolve(false);
-                      }
-                      public void onException(Throwable e) {
-                        android.util.Log.e(TAG, "joinChannel exception", e);
-                        promise.resolve(false);
-                      }
-                    };
-                  } else {
-                    args[i] = null;
-                  }
-                }
-                try {
-                  m.invoke(svc, args);
-                  android.util.Log.i(TAG, "joinChannel invoked " + mName + "(" + paramClsName + ") paramCount=" + pts.length);
-                  return;
-                } catch (Throwable t) {
-                  android.util.Log.e(TAG, "joinChannel invoke failed: " + mName, t);
-                }
-              }
-            }
-          }
-          android.util.Log.e(TAG, "joinChannel: no matching SDK API");
-          // 诊断：把 QChatChannelService 的全部方法签名打出来（一次性定位 SDK 实际 API）
-          try {
-            for (java.lang.reflect.Method m : svc.getClass().getMethods()) {
-              if (m.getDeclaringClass() == Object.class) continue;
-              StringBuilder sb = new StringBuilder("joinChannelAPI ");
-              sb.append(m.getName()).append('(');
-              Class<?>[] ps = m.getParameterTypes();
-              for (int i = 0; i < ps.length; i++) {
-                if (i > 0) sb.append(',');
-                sb.append(ps[i].getName());
-              }
-              sb.append(')');
-              android.util.Log.e(TAG, sb.toString());
-            }
-          } catch (Throwable ignored) { }
-          promise.resolve(false);
+          Object future = svc.getClass().getMethod("subscribeAsVisitor", pc).invoke(svc, param);
+          android.util.Log.i(TAG, "subscribeAsVisitor ok serverId=" + serverId + " channelId=" + channelId
+              + " op=" + (ot == null ? "null" : ((Enum<?>) ot).name()) + " ret=" + future);
+          promise.resolve(true);
         } catch (Throwable t) {
-          android.util.Log.e(TAG, "joinChannel failed", t);
+          android.util.Log.e(TAG, "subscribeAsVisitor failed serverId=" + serverId + " channelId=" + channelId, t);
           promise.resolve(false);
         }
       }
