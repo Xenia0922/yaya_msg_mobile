@@ -3300,6 +3300,18 @@ export default function FollowedRoomsScreen() {
     [selectedRoom, showFanMessages, currentUserId, memberIdSet, members, openSenderProfile, confirmDeleteMessage, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
   );
 
+  /**
+   * Chat 的 renderMessage 必须是稳定引用：内联箭头函数每次父渲染都是新函数 →
+   * Chat 内部会重渲染所有可见消息项（重新测量/重绘）→ 房间高频刷新（QChat 推送 / 精华加载）
+   * 时整片消息区看起来在「闪」。2026-10-20 用户反馈「房间页消息在闪」修复。
+   */
+  const renderChatMessage = useCallback(({ currentMessage }: any) => {
+    const row = (currentMessage as any)?.__row;
+    // 库要求必须返回元素（null 不合法）
+    if (!row) return <View />;
+    return renderChatItem({ item: row });
+  }, [renderChatItem]);
+
   if (selectedRoom) {
     const fid = String(selectedRoom.id || '');
     const isFollowingRoom = followedIds.has(fid);
@@ -3730,8 +3742,11 @@ export default function FollowedRoomsScreen() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
-        {/* 精华消息：工具条 ⭐ 打开。成员在官方端设为精华、全员可见（服务端接口）。 */}
-        <Modal visible={essenceSheetOpen} transparent animationType="fade" onRequestClose={() => setEssenceSheetOpen(false)}>
+        {/* 精华消息：工具条 ⭐ 打开。成员在官方端设为精华、全员可见（服务端接口）。
+            挂载短路：抽屉关闭时不做 roomEssences.map（每条精华都要跑 senderProfile/messageBody/
+            roomMedia 深解析，40+ 条 × 每次房间重渲染 = JS 抖动，用户感知为「消息在闪」） */}
+        {essenceSheetOpen ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setEssenceSheetOpen(false)}>
           <Pressable style={styles.essenceBackdrop} onPress={() => setEssenceSheetOpen(false)} />
           <View style={[styles.essenceSheet, { backgroundColor: palette.surfaceElevated }]}>
             <View style={styles.essenceHandle} />
@@ -3773,6 +3788,7 @@ export default function FollowedRoomsScreen() {
             )}
           </View>
         </Modal>
+        ) : null}
         <ScreenHeader title={headerTitle} onBack={closeRoom} overlay={!!roomBgUri} right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
@@ -3914,12 +3930,7 @@ export default function FollowedRoomsScreen() {
             // 整行自定义：用页面既有的 renderChatItem —— 头像、气泡外的发送者名字、
             // 回复卡片、礼物、媒体全都保留；气泡本身是玻璃（GlassSurface）。
             // 不再用 renderBubble：它只能改气泡内部，名字被迫塞进气泡里（与设计不符）。
-            renderMessage={({ currentMessage }: any) => {
-              const row = (currentMessage as any)?.__row;
-              // 库要求必须返回元素（null 不合法）
-              if (!row) return <View />;
-              return renderChatItem({ item: row });
-            }}
+            renderMessage={renderChatMessage}
             renderDay={renderDayLabel}
             isDayAnimationEnabled={false}
             user={{ _id: 'SELF' }}
