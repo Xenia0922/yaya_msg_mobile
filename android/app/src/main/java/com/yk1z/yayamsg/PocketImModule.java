@@ -319,6 +319,21 @@ public class PocketImModule extends ReactContextBaseJavaModule {
             }
           }
           android.util.Log.e(TAG, "joinChannel: no matching SDK API");
+          // 诊断：把 QChatChannelService 的全部方法签名打出来（一次性定位 SDK 实际 API）
+          try {
+            for (java.lang.reflect.Method m : svc.getClass().getMethods()) {
+              if (m.getDeclaringClass() == Object.class) continue;
+              StringBuilder sb = new StringBuilder("joinChannelAPI ");
+              sb.append(m.getName()).append('(');
+              Class<?>[] ps = m.getParameterTypes();
+              for (int i = 0; i < ps.length; i++) {
+                if (i > 0) sb.append(',');
+                sb.append(ps[i].getName());
+              }
+              sb.append(')');
+              android.util.Log.e(TAG, sb.toString());
+            }
+          } catch (Throwable ignored) { }
           promise.resolve(false);
         } catch (Throwable t) {
           android.util.Log.e(TAG, "joinChannel failed", t);
