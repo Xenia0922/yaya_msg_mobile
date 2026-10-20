@@ -236,10 +236,10 @@ public class PocketImModule extends ReactContextBaseJavaModule {
   /**
    * 订阅圈组（收消息）。
    *
-   * 参考 010push 的 nim-bridge：云信 QChat 的订阅是 **server 级**（协议包 cmd 25/7
-   * subscribeAllChannels，一次订阅该 server 下所有频道），不是 channel 级。
-   * 这里在 SDK 上遍历所有 QChat*Service 的 subscribe* 方法，按 (serverId, channelId)
-   * 依次尝试，尽力命中（不同 SDK 版本 API 命名不同），并打印全部候选签名便于排查。
+   * 云信 QChat 订阅是 **server 级**：SDK 对应 `QChatServerService.subscribeAllChannel(
+   * QChatSubscribeAllChannelParam)`（= 010push nim-bridge 的协议包 cmd 25/7 subscribeAllChannels）。
+   * 参数类的构造签名随 SDK 版本变化，这里枚举常见构造（单 long / List<Long> / long[] /
+   * long+枚举 / 空构造+setter）逐个尝试，并打印全部构造签名便于排查。
    */
   @ReactMethod
   public void joinChannel(final double serverIdD, final double channelIdD, final Promise promise) {
@@ -250,63 +250,56 @@ public class PocketImModule extends ReactContextBaseJavaModule {
         final long channelId = (long) channelIdD;
         try {
           initOnce(DEFAULT_APP_KEY);
-          String[] svcNames = {
-              "com.netease.nimlib.sdk.qchat.QChatServerService",
-              "com.netease.nimlib.sdk.qchat.QChatChannelService",
-          };
-          boolean invoked = false;
-          for (String svcName : svcNames) {
-            Class<?> svcCls;
+          Class<?> pc = Class.forName("com.netease.nimlib.sdk.qchat.param.QChatSubscribeAllChannelParam");
+          java.lang.reflect.Constructor<?>[] ctors = pc.getConstructors();
+          StringBuilder dump = new StringBuilder("subscribeAllChannelParam ctors:");
+          for (java.lang.reflect.Constructor<?> c : ctors) {
+            dump.append(" [");
+            for (Class<?> pt : c.getParameterTypes()) dump.append(pt.getSimpleName()).append(',');
+            dump.append(']');
+          }
+          android.util.Log.e(TAG, dump.toString());
+
+          Object param = null;
+          for (java.lang.reflect.Constructor<?> c : ctors) {
+            if (param != null) break;
+            Class<?>[] pts = c.getParameterTypes();
             try {
-              svcCls = Class.forName(svcName);
-            } catch (Throwable t) {
-              android.util.Log.e(TAG, "svc missing: " + svcName);
-              continue;
-            }
-            Object svc = NIMClient.getService((Class) svcCls);
-            if (svc == null) continue;
-            for (java.lang.reflect.Method m : svc.getClass().getMethods()) {
-              String n = m.getName();
-              if (!n.toLowerCase().contains("subscribe")) continue;
-              Class<?>[] pts = m.getParameterTypes();
-              StringBuilder sig = new StringBuilder("subscribeAPI " + svcName.substring(svcName.lastIndexOf('.') + 1) + "." + n + "(");
-              for (int i = 0; i < pts.length; i++) {
-                if (i > 0) sig.append(',');
-                sig.append(pts[i].getSimpleName());
-              }
-              sig.append(')');
-              android.util.Log.e(TAG, sig.toString());
-              if (invoked || pts.length != 1) continue;
-              Class<?> pc = pts[0];
-              Object param = null;
-              // 尝试常见构造：(long,long) / (long,long,long) / (long)
-              try {
-                param = pc.getConstructor(long.class, long.class).newInstance(serverId, channelId);
-              } catch (Throwable t) {
-                try {
-                  param = pc.getConstructor(long.class, long.class, long.class)
-                      .newInstance(serverId, channelId, 0L);
-                } catch (Throwable t2) {
-                  try {
-                    param = pc.getConstructor(long.class).newInstance(serverId);
-                  } catch (Throwable t3) {
-                    continue;
-                  }
+              if (pts.length == 1 && pts[0] == long.class) {
+                param = c.newInstance(serverId);
+              } else if (pts.length == 1 && java.util.List.class.isAssignableFrom(pts[0])) {
+                java.util.List<Long> l = new java.util.ArrayList<>();
+                l.add(serverId);
+                param = c.newInstance(l);
+              } else if (pts.length == 1 && pts[0] == long[].class) {
+                param = c.newInstance((Object) new long[]{serverId});
+              } else if (pts.length == 2 && pts[0] == long.class && pts[1].isEnum()) {
+                Object ev = null;
+                for (Object ec : pts[1].getEnumConstants()) {
+                  String en = ((Enum<?>) ec).name();
+                  if (en.contains("SUB") && !en.contains("UN")) { ev = ec; break; }
                 }
+                if (ev == null && pts[1].getEnumConstants().length > 0) ev = pts[1].getEnumConstants()[0];
+                param = c.newInstance(serverId, ev);
+              } else if (pts.length == 0) {
+                param = c.newInstance();
               }
-              try {
-                Object ret = m.invoke(svc, param);
-                android.util.Log.i(TAG, "subscribe invoked " + n + " -> " + ret);
-                invoked = true;
-              } catch (Throwable t) {
-                android.util.Log.e(TAG, "subscribe invoke failed " + n, t);
-              }
+            } catch (Throwable ignored) {
             }
           }
-          android.util.Log.i(TAG, "subscribe done invoked=" + invoked + " serverId=" + serverId + " channelId=" + channelId);
-          promise.resolve(invoked);
+          if (param == null) {
+            android.util.Log.e(TAG, "subscribeAllChannelParam 构造失败（见上方签名）");
+            promise.resolve(false);
+            return;
+          }
+          Class<?> svcCls = Class.forName("com.netease.nimlib.sdk.qchat.QChatServerService");
+          Object svc = NIMClient.getService((Class) svcCls);
+          Object ret = svcCls.getMethod("subscribeAllChannel", pc).invoke(svc, param);
+          android.util.Log.i(TAG, "subscribeAllChannel ok serverId=" + serverId + " channelId=" + channelId
+              + " ret=" + ret);
+          promise.resolve(true);
         } catch (Throwable t) {
-          android.util.Log.e(TAG, "subscribe failed", t);
+          android.util.Log.e(TAG, "subscribeAllChannel failed serverId=" + serverId, t);
           promise.resolve(false);
         }
       }
