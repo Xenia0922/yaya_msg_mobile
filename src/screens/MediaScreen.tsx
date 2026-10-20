@@ -1547,20 +1547,22 @@ export default function MediaScreen() {
     setGiftStatus('');
     setSelectedGift(null);
     try {
-      // 礼物列表：优先按主播成员 ID 拉（房间内同一接口已验证可用）；
-      // 直播场景 liveId 版常返回空列表（服务端按 liveId 维度无礼物配置）→ 空则回退。
+      // 礼物列表：直播送礼走直播协议（businessId=liveId, giftType=1）；
+      // 只有它返回空时才用成员维度兜底（否则面板空着没法送），并打日志便于定位。
       const anchorUserId = acceptUserId(source.item);
       const [moneyRes] = await Promise.all([
         pocketApi.getUserMoney().catch(() => null),
       ]);
       let next: any[] = [];
-      if (anchorUserId) {
-        const byMember = await pocketApi.getGiftListByMember(String(anchorUserId)).catch(() => null);
-        next = normalizeGiftList(byMember);
-      }
+      const liveGiftRes = await pocketApi.getGiftList(String(source.item.liveId)).catch(() => null);
+      next = normalizeGiftList(liveGiftRes);
       if (!next.length) {
-        const giftRes = await pocketApi.getGiftList(String(source.item.liveId)).catch(() => null);
-        next = normalizeGiftList(giftRes);
+        console.warn('[live-gift] 直播礼物列表为空 liveId=', String(source.item.liveId),
+          'raw=', JSON.stringify(liveGiftRes)?.slice(0, 300));
+        if (anchorUserId) {
+          const byMember = await pocketApi.getGiftListByMember(String(anchorUserId)).catch(() => null);
+          next = normalizeGiftList(byMember);
+        }
       }
       setGifts(next);
       setBalance(moneyRes?.content?.moneyTotal !== undefined ? String(moneyRes.content.moneyTotal) : '');
