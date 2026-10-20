@@ -73,6 +73,7 @@ const IS_SAMSUNG =
 const ToolbarShell: any = IS_SAMSUNG ? View : BlurView;
 import { useBlurTarget } from '../components/BlurTarget';
 import { GlassSegmented } from '../components/GlassSegmented';
+import { pocketImJoinChannel } from '../native/PocketIm';
 type FollowedRoom = {
   memberId: string;
   member?: Member;
@@ -2233,6 +2234,17 @@ export default function FollowedRoomsScreen() {
       serverId: String((room as any).serverId || ''),
       memberId: String(room.id || ''),
     };
+    // ⚠️ 云信圈组：必须 join 频道，服务端才会推送该频道消息。
+    // 此前从未 join → QChat 一条推送都收不到，房间消息只能靠轮询（"不实时"的真正根因）。
+    {
+      const sidNum = Number((room as any).serverId || 0);
+      const cidNum = Number(channelId || 0);
+      if (sidNum > 0 && cidNum > 0) {
+        void pocketImJoinChannel(sidNum, cidNum).then((ok) => {
+          if (!ok) console.warn('[qchat] joinChannel 未成功 sid=', sidNum, 'cid=', cidNum);
+        });
+      }
+    }
     // internal：同房间内切换大/小房间或成员/粉丝发言（同一成员、同一背景）。
     // 不清 meta、不进骨架，上一帧消息直接被新数据覆盖 → 标题/背景秒切、无割裂（fix7 回归修复点）。
     // enter：从列表点成员进入房间（跨成员/跨房间），保留骨架隔离旧房间残留 + 清 meta 让本地缓存瞬时显示。

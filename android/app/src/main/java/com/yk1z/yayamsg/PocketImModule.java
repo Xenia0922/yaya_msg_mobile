@@ -234,6 +234,101 @@ public class PocketImModule extends ReactContextBaseJavaModule {
   }
 
   /**
+   * 加入（订阅）圈组频道 —— 云信 QChat **只有 join/subscribe 过的频道才会推送消息**。
+   *
+   * ⚠️【2026-10-20 根因修复】此前只做了登录 + 注册消息监听、从未 join 频道，
+   * 导致原生永远不 emit 消息 → 房间只能靠 15s/60s 轮询（用户感知「消息不实时」）。
+   *
+   * SDK（qchat 10.9.11）在不同版本的 join 签名不一致，这里用反射按候选
+   * （QChatSubscribeChannelParam/QChatJoinChannelParam × joinChannel/subscribeChannel）
+   * 逐一尝试，命中即回调。失败静默（房间仍有轮询兜底）。
+   */
+  @ReactMethod
+  public void joinChannel(final double serverIdD, final double channelIdD, final Promise promise) {
+    main.post(new Runnable() {
+      @Override
+      public void run() {
+        final long serverId = (long) serverIdD;
+        final long channelId = (long) channelIdD;
+        try {
+          initOnce(DEFAULT_APP_KEY);
+          Class<?> svcCls = Class.forName("com.netease.nimlib.sdk.qchat.QChatChannelService");
+          Object svc = NIMClient.getService((Class) svcCls);
+          if (svc == null) {
+            promise.resolve(false);
+            return;
+          }
+          String[] paramClasses = {
+              "com.netease.nimlib.sdk.qchat.param.QChatSubscribeChannelParam",
+              "com.netease.nimlib.sdk.qchat.param.QChatJoinChannelParam",
+          };
+          String[] methodNames = {"joinChannel", "subscribeChannel"};
+          for (String paramClsName : paramClasses) {
+            Class<?> pc;
+            try {
+              pc = Class.forName(paramClsName);
+            } catch (Throwable t) {
+              continue;
+            }
+            for (String mName : methodNames) {
+              for (java.lang.reflect.Method m : svc.getClass().getMethods()) {
+                if (!m.getName().equals(mName)) continue;
+                Class<?>[] pts = m.getParameterTypes();
+                if (pts.length < 1 || !pts[0].isAssignableFrom(pc)) continue;
+                Object param = null;
+                try {
+                  param = pc.getConstructor(long.class, long.class).newInstance(serverId, channelId);
+                } catch (Throwable t) {
+                  try {
+                    param = pc.getConstructor(long.class, long.class, long.class)
+                        .newInstance(serverId, channelId, 0L);
+                  } catch (Throwable t2) {
+                    continue;
+                  }
+                }
+                Object[] args = new Object[pts.length];
+                args[0] = param;
+                for (int i = 1; i < pts.length; i++) {
+                  if (RequestCallback.class.isAssignableFrom(pts[i])) {
+                    args[i] = new RequestCallback<Object>() {
+                      public void onSuccess(Object r) {
+                        android.util.Log.i(TAG, "joinChannel ok serverId=" + serverId + " channelId=" + channelId);
+                        promise.resolve(true);
+                      }
+                      public void onFailed(int code) {
+                        android.util.Log.e(TAG, "joinChannel failed code=" + code);
+                        promise.resolve(false);
+                      }
+                      public void onException(Throwable e) {
+                        android.util.Log.e(TAG, "joinChannel exception", e);
+                        promise.resolve(false);
+                      }
+                    };
+                  } else {
+                    args[i] = null;
+                  }
+                }
+                try {
+                  m.invoke(svc, args);
+                  android.util.Log.i(TAG, "joinChannel invoked " + mName + "(" + paramClsName + ") paramCount=" + pts.length);
+                  return;
+                } catch (Throwable t) {
+                  android.util.Log.e(TAG, "joinChannel invoke failed: " + mName, t);
+                }
+              }
+            }
+          }
+          android.util.Log.e(TAG, "joinChannel: no matching SDK API");
+          promise.resolve(false);
+        } catch (Throwable t) {
+          android.util.Log.e(TAG, "joinChannel failed", t);
+          promise.resolve(false);
+        }
+      }
+    });
+  }
+
+  /**
    * 发送房间（圈组）文本消息。
    *
    * @param serverId  圈组 serverId

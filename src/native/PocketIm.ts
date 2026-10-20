@@ -21,6 +21,8 @@ interface PocketImNative {
     extJson: string
   ): Promise<boolean>;
   observeMessages(enable: boolean): Promise<boolean>;
+  /** 加入（订阅）圈组频道：未 join 的频道不会推送消息 */
+  joinChannel(serverId: number, channelId: number): Promise<boolean>;
 }
 
 const native: PocketImNative | undefined = (NativeModules as any)?.PocketIm;
@@ -68,6 +70,19 @@ export async function pocketImSendChannelText(
 export async function pocketImObserveMessages(enable: boolean): Promise<void> {
   if (!native) return;
   await native.observeMessages(enable);
+}
+
+/**
+ * 加入（订阅）圈组频道。云信 QChat 只有 join 过的频道才会推送消息 ——
+ * 进房时必须调用，否则原生一条消息都不 emit（只能靠轮询）。
+ */
+export async function pocketImJoinChannel(serverId: number, channelId: number): Promise<boolean> {
+  if (!native) return false;
+  try {
+    return await native.joinChannel(serverId, channelId);
+  } catch {
+    return false;
+  }
 }
 
 /** 圈组消息事件（原生 PocketIm:message 推送，元素为扁平化后的消息） */
