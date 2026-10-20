@@ -343,6 +343,16 @@ export async function observeRoomMessages(
       return () => undefined;
     }
     observeRefCount += 1;
+    // ⚠️【2026-10-20 关键修复】必须显式注册原生 observer（PocketImModule.observeMessages），
+    // 否则原生从不 emit `PocketIm:message` → JS 一条推送都收不到，
+    // 房间消息只能靠 15s/60s 轮询（用户感知「不实时 / 消息收到了但不显示」）。
+    if (observeRefCount === 1) {
+      try {
+        await pocketImObserveMessages(true);
+      } catch (e) {
+        logWarn('注册圈组消息监听失败（降级为轮询）：' + String((e as any)?.message || e), 'qchat.observe');
+      }
+    }
     const off = onQChatMessage((message) => {
       let ext: Record<string, any> = {};
       try {

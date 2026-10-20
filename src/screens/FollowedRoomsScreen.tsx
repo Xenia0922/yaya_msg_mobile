@@ -2427,15 +2427,15 @@ export default function FollowedRoomsScreen() {
 
   // 房间内实时刷新：QChat 长连接（observeRoomMessages）才是实时主通道，
   // 这里只是 HTTP 兜底（长连接静默降级时房间仍能收到新消息）——
-  // ⚠️【实时性修复 2026-10-20】曾为省电把兜底轮询降到 60s，但 QChat 长连接在部分设备/登录态下
-  // 会静默降级（ensureQChatNativeLogin 失败 → 返回空订阅），此时轮询是唯一消息通道，
-  // 60s 表现为「房间消息不实时更新」→ 恢复 15s，实时性优先于这点功耗。
+  // 房间内实时消息走 QChat 长连接（observeRoomMessages 已注册原生 observer），
+  // 这里的轮询只是极端兜底：长连接断线且未重连时最多 60s 补齐一次。
+  // 房间外的房间列表仍按 30s tick 刷新（省性能）。
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!selectedRoom) return;
     const startPoll = () => {
       if (pollTimerRef.current) return;
-      pollTimerRef.current = setInterval(() => { refreshRoomMessages(); }, 15000);
+      pollTimerRef.current = setInterval(() => { refreshRoomMessages(); }, 60000);
     };
     const stopPoll = () => {
       if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
