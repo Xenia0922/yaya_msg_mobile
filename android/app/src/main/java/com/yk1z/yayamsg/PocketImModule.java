@@ -265,26 +265,31 @@ public class PocketImModule extends ReactContextBaseJavaModule {
             if (param != null) break;
             Class<?>[] pts = c.getParameterTypes();
             try {
-              if (pts.length == 1 && pts[0] == long.class) {
-                param = c.newInstance(serverId);
+              // 实际签名（qchat 10.9.11）：(QChatSubscribeType, List<Long>)
+              if (pts.length == 2 && pts[0].isEnum() && java.util.List.class.isAssignableFrom(pts[1])) {
+                Object[] ecs = pts[0].getEnumConstants();
+                StringBuilder tn = new StringBuilder();
+                Object sub = null;
+                for (Object ec : ecs) {
+                  String en = ((Enum<?>) ec).name();
+                  if (tn.length() > 0) tn.append(',');
+                  tn.append(en);
+                  if (sub == null && en.contains("SUB") && !en.contains("UN")) sub = ec;
+                }
+                android.util.Log.i(TAG, "QChatSubscribeType=" + tn);
+                if (sub == null) sub = ecs[0];
+                java.util.List<Long> ids = new java.util.ArrayList<>();
+                ids.add(serverId);
+                param = c.newInstance(sub, ids);
               } else if (pts.length == 1 && java.util.List.class.isAssignableFrom(pts[0])) {
                 java.util.List<Long> l = new java.util.ArrayList<>();
                 l.add(serverId);
                 param = c.newInstance(l);
-              } else if (pts.length == 1 && pts[0] == long[].class) {
-                param = c.newInstance((Object) new long[]{serverId});
-              } else if (pts.length == 2 && pts[0] == long.class && pts[1].isEnum()) {
-                Object ev = null;
-                for (Object ec : pts[1].getEnumConstants()) {
-                  String en = ((Enum<?>) ec).name();
-                  if (en.contains("SUB") && !en.contains("UN")) { ev = ec; break; }
-                }
-                if (ev == null && pts[1].getEnumConstants().length > 0) ev = pts[1].getEnumConstants()[0];
-                param = c.newInstance(serverId, ev);
-              } else if (pts.length == 0) {
-                param = c.newInstance();
+              } else if (pts.length == 1 && pts[0] == long.class) {
+                param = c.newInstance(serverId);
               }
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+              android.util.Log.e(TAG, "ctor attempt failed", t);
             }
           }
           if (param == null) {
