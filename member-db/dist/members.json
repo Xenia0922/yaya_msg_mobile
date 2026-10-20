@@ -1,7 +1,7 @@
 {
-  "version": "20261018",
-  "updatedAt": "2026-10-18T00:02:11.221Z",
-  "contentHash": "194dce29aac64adc",
+  "version": "20261020",
+  "updatedAt": "2026-10-20T17:44:12.279Z",
+  "contentHash": "645a79f1f033cc99",
   "count": 962,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -25239,7 +25239,7 @@
       "account": "20251003220409_vpgsguj9y2j90qv",
       "serverId": 29266193,
       "channelId": 36393163,
-      "yklzId": 36393646,
+      "yklzId": 41292609,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://www.snh48.com/images/member/zp_60061.jpg",
