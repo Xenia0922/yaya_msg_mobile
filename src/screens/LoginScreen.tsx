@@ -764,6 +764,11 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  sendIdChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
   container: { flex: 1 },
   content: { paddingBottom: 32, paddingHorizontal: 16 },
   cardMargin: { marginHorizontal: 16, marginTop: 16 },
