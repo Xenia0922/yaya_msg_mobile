@@ -357,7 +357,6 @@ export default function LoginScreen() {
 
   const pollBiliLogin = async (key: string) => {
     // Y3: 抢占——刷新二维码会带新 key 启动新轮询；旧轮询被抢占即退出（此前靠从未赋值的 qrKey，永不退出）
-    if (activePollKeyRef.current && activePollKeyRef.current !== key) return;
     activePollKeyRef.current = key;
     let pollWarned = false;
     for (let i = 0; i < 30; i += 1) {
@@ -373,20 +372,18 @@ export default function LoginScreen() {
             // B站 2024+ 新协议：poll 只回 ticket url，cookie 在 crossDomain 302 的 Set-Cookie 里
             // → 原生 BiliLoginModule（followRedirects=false 读首包）换 cookie
             try {
-              const raw = await bilibiliApi.exchangeTicket(rawUrl);
-              cookie = pickBiliCookies(raw);
+              cookie = pickBiliCookies(await bilibiliApi.exchangeTicket(rawUrl));
               logWarn(
-                `[bili-login] ticket 换 cookie ${cookie.includes('SESSDATA') ? '成功' : '失败（无 SESSDATA）'} 原生返: ${raw.slice(0, 200)}`,
+                `[bili-login] ticket 换 cookie ${cookie.includes('SESSDATA') ? '成功' : '失败（无 SESSDATA）'}`,
                 'login.pollBili',
               );
             } catch (e) {
-              logWarn('[bili-login] ticket 换 cookie 异常: ' + errorMessage(e), 'login.pollBili');
+              logWarn('[bili-login] ticket 换 cookie 异常', 'login.pollBili');
             }
           }
           if (!cookie.includes('SESSDATA')) {
-            // 记录真实回调 url（截断），下次仍失败时 logcat 可定位是 B站侧缺参数还是解析问题
             logWarn(
-              `[bili-login] 扫码已确认但 url 未解析出 SESSDATA（前 200 字符）: ${rawUrl.slice(0, 200)} code=${res.data?.code}`,
+              `[bili-login] 扫码已确认但未解析出 SESSDATA，code=${res.data?.code}`,
               'login.pollBili',
             );
             setBiliStatus(t('B站已确认但没有拿到Cookie'));

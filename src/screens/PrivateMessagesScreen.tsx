@@ -282,12 +282,6 @@ function privateMessageMedia(msg: any): MediaInfo {
 function oldestFirst<T>(list: T[], timeOf: (item: T) => number): T[] { return list.slice().sort((a, b) => timeOf(a) - timeOf(b)); }
 
 function flipTypeName(value: any) { const id = Number(value); if (id === 1) return translate('文字'); if (id === 2) return translate('语音'); if (id === 3) return translate('视频'); return translate('类型{value}', { value: value || '' }); }
-function lowestPrice(item: any) {
-  const arr = [item.normalCost, item.privateCost, item.anonymityCost].map(Number).filter((v: number) => isFinite(v) && v >= 0);
-  // Y21: 全部非法时 Math.min(...[]) = Infinity → 兜底 0
-  return arr.length ? Math.min(...arr) : 0;
-}
-
 export default function PrivateMessagesScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const palette = usePalette();
@@ -516,11 +510,21 @@ export default function PrivateMessagesScreen() {
     }
   };
 
+  const closeConv = () => {
+    ++convRequestIdRef.current;
+    setSel(null);
+    setLoading(false);
+  };
+
   const loadMore = async () => {
     if (!sel || loading || !hasMore || !nextTime) return;
+    const requestId = convRequestIdRef.current;
+    const targetId = convTargetId(sel);
+    const cursor = nextTime;
     setLoading(true);
     try {
-      const res = await pocketApi.getPrivateMessageDetail(convTargetId(sel), nextTime);
+      const res = await pocketApi.getPrivateMessageDetail(targetId, cursor);
+      if (requestId !== convRequestIdRef.current) return;
       const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'messageList', 'list']);
       if (!list.length) { setHasMore(false); return; }
       const older = oldestFirst(list, msgTimeNumber);
@@ -532,9 +536,12 @@ export default function PrivateMessagesScreen() {
       const nextCursor = Number(res?.content?.nextTime || res?.data?.nextTime || 0);
       setNextTime(nextCursor);
       // 游标无前进时终止（防恒定游标死循环）
-      setHasMore(list.length > 0 && nextCursor > 0 && nextCursor !== nextTime);
-    } catch (e) { showToast(t('历史加载失败：{msg}', { msg: errorMessage(e) })); }
-    finally { setLoading(false); }
+      setHasMore(list.length > 0 && nextCursor > 0 && nextCursor !== cursor);
+    } catch (e) {
+      if (requestId === convRequestIdRef.current) showToast(t('历史加载失败：{msg}', { msg: errorMessage(e) }));
+    } finally {
+      if (requestId === convRequestIdRef.current) setLoading(false);
+    }
   };
 
   /**
@@ -556,6 +563,8 @@ export default function PrivateMessagesScreen() {
   
   const pickAndSendImage = async () => {
     if (!sel) return;
+    const selectedConv = sel;
+    const requestId = convRequestIdRef.current;
     // 对方是成员（成员库命中）→ 不支持发图（与 UI 隐藏图片按钮同一判定，双保险）
     if (member) { showToast(t('成员私信不支持发送图片')); return; }
     if (flipType > 0) { showToast(t('翻牌模式不能发送图片')); return; }
@@ -574,7 +583,7 @@ export default function PrivateMessagesScreen() {
         return;
       }
       if (Number(asset.fileSize || 0) > 20 * 1024 * 1024) { showToast(t('图片不能超过 20MB')); return; }
-      const targetId = convTargetId(sel);
+      const targetId = convTargetId(selectedConv);
       if (!targetId) return;
       setLoading(true);
       const uploaded: any = await pocketApi.uploadPocketImage({
@@ -598,12 +607,13 @@ export default function PrivateMessagesScreen() {
         imgHeight: Number(uploadedItem.height) || localSize.height || 0,
         imgSize: Number(uploadedItem.size) || Number(asset.fileSize || 0) || 0,
       });
+      if (requestId !== convRequestIdRef.current) return;
       showToast(t('已发送'));
-      await openConv(sel);
+      await openConv(selectedConv);
     } catch (e) {
-      showToast(t('发送图片失败：{msg}', { msg: errorMessage(e) }));
+      if (requestId === convRequestIdRef.current) showToast(t('发送图片失败：{msg}', { msg: errorMessage(e) }));
     } finally {
-      setLoading(false);
+      if (requestId === convRequestIdRef.current) setLoading(false);
     }
   };
 
@@ -631,13 +641,15 @@ export default function PrivateMessagesScreen() {
 
   const doSend = async (override?: string) => {    const txt = String(override ?? text).trim();
     if (!txt || !sel) return;
+    const selectedConv = sel;
+    const requestId = convRequestIdRef.current;
     setLoading(true);
     try {
       if (flipType && member) {
         const p = prices.find((x) => x.answerType === flipType);
-        const cost = p ? (p.privateCost || p.normalCost || lowestPrice(p)) : 0;
+        const cost = p ? Number(p.privateCost) || 0 : 0;
         if (!p || cost <= 0) {
-          showToast(t('该类型翻牌未启用，请换一种类型'));
+          showToast(t('该类型私密翻牌未开放，请换一种类型'));
           setLoading(false);
           return;
         }
@@ -650,13 +662,18 @@ export default function PrivateMessagesScreen() {
         });
         showToast(t('翻牌已提交'));
       } else {
-        await pocketApi.sendPrivateMessageReply(convTargetId(sel), txt);
+        await pocketApi.sendPrivateMessageReply(convTargetId(selectedConv), txt);
+        if (requestId !== convRequestIdRef.current) return;
         showToast(t('已发送'));
-        await openConv(sel);
+        await openConv(selectedConv);
       }
+      if (requestId !== convRequestIdRef.current) return;
       if (!override) setText('');
-    } catch (e) { showToast(t('发送失败：{msg}', { msg: errorMessage(e) })); }
-    finally { setLoading(false); }
+    } catch (e) {
+      if (requestId === convRequestIdRef.current) showToast(t('发送失败：{msg}', { msg: errorMessage(e) }));
+    } finally {
+      if (requestId === convRequestIdRef.current) setLoading(false);
+    }
   };
 
   if (sel) {
@@ -868,7 +885,7 @@ export default function PrivateMessagesScreen() {
     return (
       <View style={styles.screenContainer}>
         <View style={[styles.screen, { backgroundColor: usePageBackground(), paddingBottom: keyboardHeight }]}>
-        <ScreenHeader title={convName(sel)} onBack={() => setSel(null)} />
+        <ScreenHeader title={convName(sel)} onBack={closeConv} />
         {/* 官方 demo 用法：只给 messages / user / onSend，其余全用库默认（气泡、日期、输入条） */}
         <View style={{ flex: 1 }}>
         <Chat
@@ -895,11 +912,12 @@ export default function PrivateMessagesScreen() {
               {prices.slice(0, 3).map((p) => (
                 <ScalePressable
                   key={p.answerType}
+                  disabled={Number(p.privateCost) <= 0}
                   style={[
                     styles.flipChip,
                     flipType === p.answerType
                       ? { backgroundColor: palette.tint }
-                      : { backgroundColor: palette.fill2 },
+                      : { backgroundColor: Number(p.privateCost) > 0 ? palette.fill2 : palette.fill3 },
                   ]}
                   onPress={() => setFlipType((v) => v === p.answerType ? 0 : p.answerType)}
                 >
@@ -909,7 +927,7 @@ export default function PrivateMessagesScreen() {
                       flipType === p.answerType ? { color: palette.onTint } : { color: palette.labelSecondary },
                     ]}
                   >
-                    {flipTypeName(p.answerType)}·{lowestPrice(p)}
+                    {flipTypeName(p.answerType)}·{Number(p.privateCost) > 0 ? Number(p.privateCost) : t('未开放')}
                   </Text>
                 </ScalePressable>
               ))}
@@ -972,7 +990,7 @@ export default function PrivateMessagesScreen() {
           windowSize={7}
           removeClippedSubviews
           contentContainerStyle={styles.convList}
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             if (item.type === 'header') {
               return (
                 <Text style={[styles.groupTitle, { color: palette.labelTertiary }]}>{item.title}</Text>
@@ -988,8 +1006,7 @@ export default function PrivateMessagesScreen() {
             const convMember = members.find((m: any) => String(m.id || m.userId || m.memberId) === convTarget);
             const convAvatarUrl = (convMember as any)?.avatar || (convMember as any)?.avatarUrl || '';
             return (
-              <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300}>
-                <View style={styles.convRowWrap}>
+              <View style={styles.convRowWrap}>
                 <TouchableOpacity
                   style={[
                     styles.convCard,
@@ -1064,7 +1081,6 @@ export default function PrivateMessagesScreen() {
                   </ScalePressable>
                 </View>
                 </View>
-              </FadeInView>
             );
           }}
           ListEmptyComponent={

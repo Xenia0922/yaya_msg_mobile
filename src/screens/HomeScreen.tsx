@@ -13,7 +13,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, AppState, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -127,6 +127,10 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   ]);
 }
 
+function isAppForeground(): boolean {
+  return AppState.currentState !== 'background' && AppState.currentState !== 'inactive';
+}
+
 function normalizeLiveList(res: any): LiveCardItem[] {
   const source = unwrapList(res, [
     'content.liveList', 'content.list', 'content.data', 'content.records',
@@ -221,6 +225,9 @@ function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavProp>();
+  const isFocused = useIsFocused();
+  const focusedRef = useRef(isFocused);
+  focusedRef.current = isFocused;
   const settings = useSettingsStore((state) => state.settings);
   const palette = usePalette();
   const shadows = makeShadows(palette.name === 'dark');
@@ -267,6 +274,7 @@ export default function HomeScreen() {
   useEffect(() => { gongyanInfoRef.current = gongyanInfo; }, [gongyanInfo]);
 
   const fetchGongyanStatus = useCallback(async () => {
+    if (!focusedRef.current || !isAppForeground()) return;
     try {
       const rooms = await externalApi.fetchBilibiliConfig();
       // 五团固定顺序（按 GONGYAN_ROOMS 序，非 B站接口返回序 —— 接口顺序跨轮不稳会导致行顺序跳动"抽风"）
@@ -288,7 +296,6 @@ export default function HomeScreen() {
           next[room.roomId] = !!prevLive[room.roomId];
         }
       });
-      setGongyanLive(next);
       // 在播房间并行抓取封面 + 直播标题（公演行展示真实封面与场次标题；6s 竞速超时）
       const liveIds = filtered.filter((room) => next[room.roomId]).map((room) => room.roomId);
       const infoResults = await Promise.allSettled(liveIds.map((id) => withTimeout(bilibiliApi.getRoomInfo(id), BILI_FAST_TIMEOUT)));
@@ -307,6 +314,8 @@ export default function HomeScreen() {
           infoMap[rid] = prevInfo[rid] || { title: '', cover: '' };
         }
       });
+      if (!focusedRef.current || !isAppForeground()) return;
+      setGongyanLive(next);
       setGongyanInfo(infoMap);
       setGongyanRooms(filtered);
       setGongyanOk(true);
@@ -319,14 +328,15 @@ export default function HomeScreen() {
         JSON.stringify({ rooms: filtered, live: next, info: infoMap }),
       ).catch(() => {});
     } catch (e: any) {
+      if (!focusedRef.current) return;
       // 刷新失败：保留旧数据继续展示（不闪骨架）；完全无数据时才记错误态
       if (!gongyanHasDataRef.current) setGongyanError(e?.message || String(e));
       // 初次失败 5s 后自动重试（最多 2 次），不必干等 60s 轮询
       if (gongyanRetryRef.current < 2) {
         gongyanRetryRef.current += 1;
         setTimeout(() => {
-          if (!mountedRef.current) return;
-          if (AppState.currentState === 'active') fetchGongyanStatus();
+          if (!mountedRef.current || !focusedRef.current) return;
+          if (isAppForeground()) fetchGongyanStatus();
         }, 5000);
       }
     }
@@ -352,6 +362,7 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
+    if (!isFocused) return;
     fetchGongyanStatus();
     gongyanTimer.current = setInterval(() => {
       // 切到后台时暂停轮询，回前台立即补一次（省电 + 不占后台网络）
@@ -365,7 +376,7 @@ export default function HomeScreen() {
       if (gongyanTimer.current) clearInterval(gongyanTimer.current);
       sub.remove();
     };
-  }, [fetchGongyanStatus]);
+  }, [fetchGongyanStatus, isFocused]);
 
   const liveGongyanRooms = useMemo(
     () => gongyanRooms.filter((room) => !!gongyanLive[room.roomId]),
@@ -393,10 +404,11 @@ export default function HomeScreen() {
   }, [token]);
 
   const fetchLives = useCallback(() => {
+    if (!focusedRef.current || !isAppForeground()) return;
     // 秒显上次缓存（stale-while-revalidate）：冷启动立即有内容，后台刷新
     AsyncStorage.getItem(LIVES_CACHE_KEY)
       .then((raw) => {
-        if (!raw) return;
+        if (!raw || !focusedRef.current) return;
         try {
           const cached = JSON.parse(raw);
           if (Array.isArray(cached) && cached.length && !fetchedRef.current) {
@@ -411,6 +423,7 @@ export default function HomeScreen() {
       10000,
     )
       .then((res: any) => {
+        if (!focusedRef.current || !isAppForeground()) return;
         if (!res) throw new Error('timeout');
         // 空壳防护：官方接口偶发返回 success/200 但 content 无 liveList 字段（限流/风控/异常），
         // 此时 normalizeLiveList 会解出空数组 → 误把"有直播"显示成"暂无成员直播"。
@@ -419,33 +432,25 @@ export default function HomeScreen() {
         const rawList = (res?.content ?? res?.data ?? res)?.liveList;
         if (!Array.isArray(rawList)) throw new Error('live list empty shell');
         const list = sortLivesByPreference(normalizeLiveList(res), followedIds, pinnedIds);
-        if (list.length) {
-          setLives(list);
-          setLivesOk(true);
-          setLivesError('');
-          livesRetryRef.current = 0;
-          AsyncStorage.setItem(LIVES_CACHE_KEY, JSON.stringify(list)).catch(() => {});
-        } else if (livesRef.current.length === 0) {
-          // 结构完整但确实无人开播：仅在本地本就无数据时落空态；
-          // 已有旧数据时保留旧列表（直播可能刚下播/接口瞬时空，等下一轮轮询纠正）
-          setLives([]);
-          setLivesOk(true);
-          setLivesError('');
-          livesRetryRef.current = 0;
-        }
+        setLives(list);
+        fetchedRef.current = true;
+        setLivesOk(true);
+        setLivesError('');
+        livesRetryRef.current = 0;
+        AsyncStorage.setItem(LIVES_CACHE_KEY, JSON.stringify(list)).catch(() => {});
       })
       .catch((e: any) => {
+        if (!focusedRef.current) return;
         // 有缓存/已有列表时网络失败不打断展示（保留内容，仅静默）；
         // 无任何数据时：记错误态 + 5s 后自动重试（最多 3 次，网络抖动自愈，不必等手动点重试）。
-        // ⚠️ 判断依据是"当前无可展示数据"，不是 fetchedRef（后者首屏已置 true，
-        // 用它会让首屏失败永不进入错误态/重试，只剩 60s 轮询兜底 → 首页整段空白）。
+        // 判断依据是当前无可展示数据，避免首屏失败后只剩 60s 轮询兜底。
         if (livesRef.current.length === 0) {
           setLivesError(e?.message || String(e));
           if (livesRetryRef.current < 3) {
             livesRetryRef.current += 1;
             setTimeout(() => {
-              if (!mountedRef.current) return;
-              if (AppState.currentState === 'active') fetchLives();
+              if (!mountedRef.current || !focusedRef.current) return;
+              if (isAppForeground()) fetchLives();
             }, 5000);
           }
         }
@@ -457,15 +462,14 @@ export default function HomeScreen() {
     setLives((prev) => (prev.length ? sortLivesByPreference(prev, followedIds, pinnedIds) : prev));
   }, [followedIds, pinnedIds]);
 
-  // 首屏拉取（fetchedRef 防重复）
+  // 仅首页可见时请求和轮询；重新进入首页立即刷新。
+  const wasFocusedRef = useRef(false);
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    fetchLives();
-  }, [fetchLives]);
-
-  // 成员直播 60s 轮询 + 回前台立即刷新：避免「启动时网络差失败后永久骨架/错误态，只能手动重试」
-  useEffect(() => {
+    if (!isFocused) { wasFocusedRef.current = false; return; }
+    if (!wasFocusedRef.current) {
+      wasFocusedRef.current = true;
+      fetchLives();
+    }
     const id = setInterval(() => {
       if (AppState.currentState === 'active') fetchLives();
     }, 60 * 1000);
@@ -473,36 +477,45 @@ export default function HomeScreen() {
       if (state === 'active') fetchLives();
     });
     return () => { clearInterval(id); sub.remove(); };
-  }, [fetchLives]);
+  }, [fetchLives, isFocused]);
 
   // banner 轮播：2.5s 自动切换下一条（最多轮前 4 条），切换带 crossfade + 位移动画。
-  // B1 修复：与直播/公演 60s 轮询一致，仅前台运行时切换（后台不跑动画/不空转，回前台立即恢复）。
+  // 与直播/公演轮询一致，仅首页可见且 App 前台时切换。
   const bannerCount = Math.min(4, lives.length);
   // B4 修复：渲染期安全下标 —— 轮询把 lives 变短（主播下播）时，bannerIndex 可能暂时越界；
   // 仅靠 effect 收敛会先渲染一帧 lives[idx]=undefined → banner 整块消失 → 下方列表跳位“抽风”。
   // 渲染期直接夹取，保证任何一帧 banner 都存在（dots 也跟随安全下标）。
   const safeBannerIndex = bannerCount > 0 ? Math.min(bannerIndex, bannerCount - 1) : 0;
   useEffect(() => {
-    if (bannerCount <= 1) return;
+    if (!isFocused || bannerCount <= 1) return;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let transition: Animated.CompositeAnimation | null = null;
     const startLoop = () => {
-      if (timer) return;
+      if (timer || !isAppForeground()) return;
       timer = setInterval(() => {
-        if (AppState.currentState !== 'active') return;
-        // 退场再入场
-        Animated.sequence([
-          Animated.parallel([
-            Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-            Animated.timing(slideAnim, { toValue: 10, duration: 150, useNativeDriver: true }),
-          ]),
-          Animated.timing(fadeAnim, { toValue: 1, duration: 240, useNativeDriver: true }),
-        ]).start();
-        Animated.spring(slideAnim, { toValue: 0, speed: 26, bounciness: 5, useNativeDriver: true }).start();
-        setBannerIndex((i) => ((i < 0 ? 0 : Math.min(i, bannerCount - 1)) + 1) % bannerCount);
+        if (!isAppForeground()) return;
+        transition = Animated.parallel([
+          Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+          Animated.timing(slideAnim, { toValue: 10, duration: 150, useNativeDriver: true }),
+        ]);
+        transition.start(({ finished }) => {
+          if (!finished || !focusedRef.current || !isAppForeground()) return;
+          setBannerIndex((i) => ((i < 0 ? 0 : Math.min(i, bannerCount - 1)) + 1) % bannerCount);
+          // 退场结束后再回弹，避免两个动画同时驱动 slideAnim。
+          transition = Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 240, useNativeDriver: true }),
+            Animated.spring(slideAnim, { toValue: 0, speed: 26, bounciness: 5, useNativeDriver: true }),
+          ]);
+          transition.start(() => { transition = null; });
+        });
       }, 2500);
     };
     const stopLoop = () => {
       if (timer) { clearInterval(timer); timer = null; }
+      transition?.stop();
+      transition = null;
+      fadeAnim.setValue(1);
+      slideAnim.setValue(0);
     };
     startLoop();
     const sub = AppState.addEventListener('change', (s) => {
@@ -510,7 +523,7 @@ export default function HomeScreen() {
       else stopLoop();
     });
     return () => { sub.remove(); stopLoop(); };
-  }, [bannerCount, fadeAnim, slideAnim]);
+  }, [bannerCount, fadeAnim, slideAnim, isFocused]);
 
   // B2 修复：lives 数量变化（60s 轮询）后 bannerIndex 收敛到有效范围（dots 点击/轮播前进以渲染期安全值为主）
   useEffect(() => {
@@ -545,6 +558,7 @@ export default function HomeScreen() {
   const lyricAnchor = useRef({ pos: 0, at: Date.now(), last: -1 });
 
   useEffect(() => {
+    if (!isFocused) return;
     const tick = () => {
       const st = useMusicPlayerStore.getState();
       const list = st.lyrics;
@@ -571,7 +585,7 @@ export default function HomeScreen() {
     tick();
     const id = setInterval(tick, 500);
     return () => clearInterval(id);
-  }, [lyricsList, playbackForLyric]);
+  }, [lyricsList, playbackForLyric, isFocused]);
 
   const lyricLine = lyricIdx >= 0 ? (lyricsList[lyricIdx]?.text || '') : '';
 

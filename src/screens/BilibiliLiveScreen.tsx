@@ -19,7 +19,7 @@ import { useSettingsStore } from '../store';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import PlayerScreen from '../player';
 import { usePlayerStore } from '../player/store/playerStore';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
 import { EmptyState, ErrorState } from '../components/StateViews';
@@ -529,12 +529,11 @@ export default function BilibiliLiveScreen() {
             progressBackgroundColor={palette.surface}
           />
         }
-        renderItem={({ item, index }) => {
+        renderItem={({ item }) => {
           const live = !!liveStatuses[item.roomId];
           const info = roomInfo[item.roomId];
           return (
-            <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
-              <ScalePressable
+            <ScalePressable
                 activeOpacity={0.85}
                 pressedScale={0.97}
                 style={[styles.roomItem, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
@@ -556,8 +555,7 @@ export default function BilibiliLiveScreen() {
                   </Text>
                 </View>
                 <StatusDot live={live} palette={palette} label={live ? t('直播中') : t('未开播')} />
-              </ScalePressable>
-            </FadeInView>
+            </ScalePressable>
           );
         }}
         ListEmptyComponent={

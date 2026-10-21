@@ -210,6 +210,7 @@ export default function FlipScreen() {
   const pageRef = useRef(1);
   const loadingRef = useRef(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const priceRequestRef = useRef(0);
   const [prices, setPrices] = useState<FlipPriceConfig[]>([]);
   const [answerType, setAnswerType] = useState<number | null>(null);
   const [privacyType, setPrivacyType] = useState<PrivacyType>('1');
@@ -275,6 +276,7 @@ export default function FlipScreen() {
   }, [minCost, selectedPrice]);
 
   const selectMemberForPrice = async (member: Member) => {
+    const requestId = ++priceRequestRef.current;
     setSelectedMember(member);
     setPrices([]);
     setAnswerType(null);
@@ -287,12 +289,13 @@ export default function FlipScreen() {
     }
     try {
       const res = await pocketApi.getFlipPrices(member.id);
+      if (requestId !== priceRequestRef.current) return;
       const list = normalizePriceList(res);
       setPrices(list);
       setAnswerType(list[0]?.answerType ?? null);
       setStatus(list.length ? t('已加载 {count} 种回复形式', { count: list.length }) : t('该成员暂未开放翻牌'));
     } catch (error) {
-      setStatus(t('加载翻牌配置失败：{err}', { err: errorMessage(error) }));
+      if (requestId === priceRequestRef.current) setStatus(t('加载翻牌配置失败：{err}', { err: errorMessage(error) }));
     }
   };
 
@@ -615,7 +618,7 @@ export default function FlipScreen() {
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             if (item.type === 'header') {
               return (
                 <Text style={[styles.monthGroup, { color: palette.labelTertiary }]}>{item.title}</Text>
@@ -641,9 +644,7 @@ export default function FlipScreen() {
             const elapsedMinutes = Math.floor((elapsed % 3600000) / 60000);
             const elapsedStr = elapsed > 0 ? t('耗时 {time}', { time: `${elapsedDays > 0 ? t('{m}天', { m: elapsedDays }) : ''}${elapsedHours > 0 ? t('{m}小时', { m: elapsedHours }) : ''}${t('{m}分', { m: elapsedMinutes })}` }) : '';
             return (
-              <FadeInView delay={index < 12 ? 60 + index * 25 : 0} distance={8}>
-                {/* 翻牌卡片 = 玻璃（内容进玻璃） */}
-                <GlassSurface radius={20} role="card" style={styles.card}>
+              <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
                   <View style={styles.cardTop}>
                     <View style={styles.tagRow}>
                       <View style={[styles.typeTag, { backgroundColor: palette.tintSoft }]}>
@@ -740,8 +741,7 @@ export default function FlipScreen() {
                     {elapsedStr ? ` · ${elapsedStr}` : ''}
                     {flip.answerTime ? ` · ${t('回复于 {time}', { time: formatTimestamp(flip.answerTime) })}` : ''}
                   </Text>
-                </GlassSurface>
-              </FadeInView>
+              </View>
             );
           }}
           onEndReached={() => {

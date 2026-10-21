@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 
 import { Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -136,9 +136,21 @@ export default function AnalysisScreen() {
   const [mediaFullUrl, setMediaFullUrl] = useState('');
   // 成员切换竞态防护：快速切换成员时丢弃慢响应（房间统计循环翻页较久，旧响应不得覆盖新成员）
   const statsReqRef = useRef(0);
+  const flipStatsReqRef = useRef(0);
+  const previousTokenRef = useRef(token);
   const [playMedia, setPlayMedia] = useState<{ url: string; type: string } | null>(null);
   const [flipPlayUrl, setFlipPlayUrl] = useState('');
   const [flipMemberFilter, setFlipMemberFilter] = useState('');
+
+  useEffect(() => {
+    if (previousTokenRef.current === token) return;
+    previousTokenRef.current = token;
+    ++statsReqRef.current;
+    ++flipStatsReqRef.current;
+    setFlips([]);
+    setFlipMemberFilter('');
+    setLoading(false);
+  }, [token]);
 
   const flipMemberNames = useMemo(() => {
     const set = new Set<string>();
@@ -303,6 +315,7 @@ export default function AnalysisScreen() {
   };
 
   const loadFlipStats = async () => {
+    const requestId = ++flipStatsReqRef.current;
     setLoading(true);
     try {
       // 循环拉取直到拉完，移除原先 [0,50,100,150] 的 200 条上限
@@ -314,9 +327,11 @@ export default function AnalysisScreen() {
         try {
           res = await pocketApi.getFlipList(begin, 100);
         } catch {
+          if (requestId !== flipStatsReqRef.current) return;
           failed = true;
           break;
         }
+        if (requestId !== flipStatsReqRef.current) return;
         const list = res ? unwrapList(res, ['content.questions', 'content.list', 'content.data', 'data.questions', 'questions', 'list']) : [];
         if (!list.length) break;
         collected.push(...list);
@@ -333,9 +348,9 @@ export default function AnalysisScreen() {
         showToast(collected.length ? t('已加载 {count} 条翻牌', { count: collected.length }) : t('无翻牌记录'));
       }
     } catch (error) {
-      setStatus(t('翻牌统计失败：{err}', { err: errorMessage(error) }));
+      if (requestId === flipStatsReqRef.current) setStatus(t('翻牌统计失败：{err}', { err: errorMessage(error) }));
     } finally {
-      setLoading(false);
+      if (requestId === flipStatsReqRef.current) setLoading(false);
     }
   };
 
@@ -668,7 +683,7 @@ export default function AnalysisScreen() {
               <Text style={[styles.statusText, { color: palette.labelSecondary, marginBottom: 8, marginTop: 6 }]}>{t('翻牌明细 · 共 {count} 条', { count: filteredFlips.length })}</Text>
             </View>
           }
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             const flipAnswerType = Number(item.answerType);
             const isText = flipAnswerType === 1;
             const isVoice = flipAnswerType === 2;
@@ -699,7 +714,7 @@ export default function AnalysisScreen() {
               ? `${rd ? t('{m}天', { m: rd }) : ''}${rh ? t('{m}小时', { m: rh }) : ''}${t('{m}分', { m: rm })}`
               : (!isAnswered && remaining <= 0 ? t('已过期') : '');
             return (
-              <FadeInView delay={80 + index * 30} duration={300}>
+              <View>
                 <GlassSurface radius={20} role="card" style={[styles.rowCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
                   <View style={[styles.rowIcon, { backgroundColor: palette.tintSoft }]}>
                     <MaterialCommunityIcons
@@ -753,7 +768,7 @@ export default function AnalysisScreen() {
                     </View>
                   </View>
                 </GlassSurface>
-              </FadeInView>
+              </View>
             );
           }}
           ListEmptyComponent={<EmptyState icon="card-outline" title={t('暂无翻牌记录')} />}

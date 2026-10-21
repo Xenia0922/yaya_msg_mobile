@@ -172,9 +172,8 @@ export default function PhotosScreen() {
 
   const renderPhotoItem = useCallback(({ item, index }: { item: any; index: number }) => {
     const url = photoUrls[index] || deepFindImageUrl(item);
-    const delay = index < 12 ? 60 + index * 25 : 0;
     return (
-      <FadeInView delay={delay} distance={8} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <ScalePressable
           style={styles.photoCell}
           activeOpacity={0.9}
@@ -190,7 +189,7 @@ export default function PhotosScreen() {
             </View>
           )}
         </ScalePressable>
-      </FadeInView>
+      </View>
     );
   }, [downloadPhoto, palette, photoUrls]);
 

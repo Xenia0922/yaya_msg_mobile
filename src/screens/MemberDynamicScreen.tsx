@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ScreenHeader from '../components/ScreenHeader';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import MemberPicker from '../components/MemberPicker';
 import ZoomImageModal from '../components/ZoomImageModal';
 import pocketApi from '../api/pocket48';
@@ -25,7 +25,6 @@ import { Skeleton } from '../components/Skeleton';
 import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { GlassSurface } from '../components/GlassSurface';
 
 interface DynItem {
   key: string;
@@ -111,9 +110,8 @@ export default function MemberDynamicScreen() {
     setRefreshing(false);
   }, [refresh]);
 
-  const renderItem = ({ item, index }: { item: DynItem; index: number }) => (
-    <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
-      <GlassSurface radius={20} role="card" style={[styles.card, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+  const renderItem = ({ item }: { item: DynItem }) => (
+    <View style={[styles.card, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
         {item.ownerName ? (
           <View style={styles.ownerRow}>
             {item.ownerAvatar ? (
@@ -157,8 +155,7 @@ export default function MemberDynamicScreen() {
           </View>
         )}
         <View style={[styles.hairline, { backgroundColor: palette.hairline }]} />
-      </GlassSurface>
-    </FadeInView>
+    </View>
   );
 
   return (

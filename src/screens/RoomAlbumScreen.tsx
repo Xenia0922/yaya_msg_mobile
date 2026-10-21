@@ -158,16 +158,18 @@ export default function RoomAlbumScreen() {
 
   const load = useCallback(
     async (target: Member, roomMode: RoomMode, append: boolean) => {
-      if (busyRef.current) return;
       const channelId = roomMode === 'small' ? target.yklzId : target.channelId;
       if (!channelId) {
+        ++reqRef.current;
+        busyRef.current = false;
+        setLoading(false);
         setError(roomMode === 'small' ? t('这个成员没有小房间') : t('这个成员没有大房间'));
         setItems([]);
         setHasMore(false);
         return;
       }
-      busyRef.current = true;
       const rid = ++reqRef.current;
+      busyRef.current = true;
       setLoading(true);
       if (!append) setError('');
       const sentCursor = append ? cursorRef.current : 0;
@@ -192,8 +194,10 @@ export default function RoomAlbumScreen() {
         if (!append) setItems([]);
         setHasMore(false);
       } finally {
-        busyRef.current = false;
-        if (rid === reqRef.current) setLoading(false);
+        if (rid === reqRef.current) {
+          busyRef.current = false;
+          setLoading(false);
+        }
       }
     },
     [t],

@@ -248,7 +248,7 @@ export default function DownloadScreen() {
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             if (item.type === 'header') {
               return (
                 <Text style={[styles.groupTitle, { color: palette.labelTertiary }]}>{item.title}</Text>
@@ -258,8 +258,7 @@ export default function DownloadScreen() {
             const progress = Math.round((task.progress || 0) * 100);
             const thumbUri = task.type === 'image' ? (task.localUri || task.url) : '';
             return (
-              <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300}>
-                <GlassSurface radius={20} role="card" style={[styles.task, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+              <View style={[styles.task, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderRadius: 20 }]}>
                   {/* 缩略图 44 圆角 10：图片用本地/网络缩略，其余回退为类型图标 */}
                   {thumbUri ? (
                     <NetworkImage source={{ uri: thumbUri }} style={[styles.taskThumb, { backgroundColor: palette.fill3 }]} />
@@ -304,8 +303,7 @@ export default function DownloadScreen() {
                       <MaterialCommunityIcons name="delete-outline" size={16} color={palette.danger} />
                     </ScalePressable>
                   </View>
-                </GlassSurface>
-              </FadeInView>
+              </View>
             );
           }}
         />

@@ -166,7 +166,10 @@ class NimQChatClient(
       103 to 1,
       105 to 1,
     )
-    session.request(QCHAT_LOGIN_SERVICE_ID, 10, NimProtocol.encodeProperties(properties), 12_000)
+    val response = session.request(QCHAT_LOGIN_SERVICE_ID, 10, NimProtocol.encodeProperties(properties), 12_000)
+    if (response.resultCode != 200) {
+      throw IllegalStateException("房间消息发送失败（${response.resultCode}）")
+    }
     return msgIdClient
   }
 

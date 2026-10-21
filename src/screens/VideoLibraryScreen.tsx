@@ -233,8 +233,8 @@ export default function VideoLibraryScreen() {
             ) : null
           }
           ListFooterComponent={loadingMore ? <CenterSpinner text={t('加载更多...')} /> : null}
-          renderItem={({ item, index }) => (
-            <FadeInView delay={index < 12 ? 60 + index * 25 : 0} distance={8} style={styles.gridItem}>
+          renderItem={({ item }) => (
+            <View style={styles.gridItem}>
               <ScalePressable
                 style={styles.gridCard}
                 onPress={() => play(item)}
@@ -265,7 +265,7 @@ export default function VideoLibraryScreen() {
                   </Text>
                 </View>
               </ScalePressable>
-            </FadeInView>
+            </View>
           )}
         />
       </FadeInView>

@@ -4,7 +4,6 @@ import { useNavigation } from '@react-navigation/native';
 import { showDialog } from '../components/AppDialog';
 import { useUiStore } from '../store';
 import ScreenHeader from '../components/ScreenHeader';
-import { FadeInView } from '../components/Motion';
 import { HeaderAction } from '../components/HeaderAction';
 import { Button } from '../components/Button';
 import { Pill } from '../components/Pill';
@@ -93,7 +92,7 @@ export default function InvoiceScreen() {
     finally { setSubmitting(false); }
   };
 
-  const renderOrder = ({ item, index }: { item: OrderItem; index: number }) => {
+  const renderOrder = ({ item }: { item: OrderItem; index: number }) => {
     const disabled = item.invoiceStatus !== 0;
     const selected = item.selected;
     const statusLabel = statusLabels[item.invoiceStatus] || t('未知');
@@ -104,8 +103,7 @@ export default function InvoiceScreen() {
         ? palette.fill2
         : palette.labelTertiary;
     return (
-      <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300}>
-        <GlassSurface radius={20} role="card" style={[styles.orderCard, { backgroundColor: 'transparent', borderColor: selected ? palette.tint : palette.hairline }, disabled && styles.cardDisabled]}>
+      <View style={[styles.orderCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: selected ? palette.tint : palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 }, disabled && styles.cardDisabled]}>
           {/* 订单信息 */}
           <View style={styles.orderInfo}>
             <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>{item.goodsName}</Text>
@@ -137,8 +135,7 @@ export default function InvoiceScreen() {
               ]}
             />
           )}
-        </GlassSurface>
-      </FadeInView>
+      </View>
     );
   };
 

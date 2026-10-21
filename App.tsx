@@ -11,7 +11,7 @@ import { fetchJson } from './src/utils/network';
 import { loadCachedMemberData } from './src/services/memberData';
 import { prefetchR2Music } from './src/api/r2Music';
 import { initWasm, WebViewSigner } from './src/auth';
-import { startRadioForeground, stopRadioForeground, updateRadioLyric, onRadioStopRequested, onRadioControlRequested , syncRadioPosition } from './src/native/LivePlayer';
+import { startRadioForeground, stopRadioForeground, updateRadioLyric, onRadioStopRequested, syncRadioPosition } from './src/native/LivePlayer';
 import {
   subscribeExo,
   exoPlayTrack,
@@ -115,7 +115,7 @@ async function pushExoAfterSwitch() {
     let resumeAt = 0;
     if (Number(st.seekTarget) > 0) {
       resumeAt = Number(st.seekTarget);
-      useMusicPlayerStore.setState({ seekTarget: 0 });
+      useMusicPlayerStore.getState().consumeSeekTarget();
     }
     const vol = /(gnz\.hk|gnz-music|music\.gnz)/i.test(url) ? 0.86 : 1;
     const rep = st.playMode === 'single' ? 1 : 0;
@@ -494,29 +494,6 @@ function MusicForegroundBridge() {
     const st = useMusicPlayerStore.getState();
     if (st.playbackState === 'playing' || st.playbackState === 'paused') {
       st.setPlaybackState('paused');
-    }
-  }), []);
-  // 通知栏媒体控制（播放/暂停、上一首、下一首）→ 驱动 MusicEngine
-  useEffect(() => onRadioControlRequested((action, value) => {
-    const st = useMusicPlayerStore.getState();
-    if (action === 'play') {
-      if (st.playbackState === 'paused' && st.queue.length) MusicEngine.resume();
-    } else if (action === 'pause') {
-      if (st.playbackState === 'playing') st.setPlaybackState('paused');
-    } else if (action === 'play_pause') {
-      if (st.playbackState === 'playing') st.setPlaybackState('paused');
-      else if (st.playbackState === 'paused') MusicEngine.resume();
-      else if (!st.queue.length) return;
-    } else if (action === 'seek' && value) {
-      // 系统媒体条拖动 seek（value=毫秒）→ 交给 MusicEngine（消费后清 seekTarget）
-      st.setSeekTarget(Math.max(0, Number(value) / 1000));
-    } else if (action === 'next') {
-      MusicEngine.next();
-    } else if (action === 'prev') {
-      MusicEngine.prev();
-    } else if (action === 'stop') {
-      stopRadioForeground();
-      if (st.playbackState === 'playing' || st.playbackState === 'paused') st.setPlaybackState('paused');
     }
   }), []);
   return null;

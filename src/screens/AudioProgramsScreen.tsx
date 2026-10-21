@@ -246,11 +246,10 @@ export default function AudioProgramsScreen() {
             ) : null
           }
           ListFooterComponent={null}
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             const isActive = String(active || '') === String(item.talkId || item.id);
             return (
-              <FadeInView delay={index < 12 ? 60 + index * 25 : 0} distance={8}>
-                <ScalePressable
+              <ScalePressable
                   style={[styles.progItem, isActive && { backgroundColor: palette.tintSoft }]}
                   onPress={() => onItemPress(item)}
                   pressedScale={0.97}
@@ -278,8 +277,7 @@ export default function AudioProgramsScreen() {
                       <Text style={[styles.rowDuration, { color: palette.labelTertiary }]}>{programDuration(item)}</Text>
                     ) : null}
                   </View>
-                </ScalePressable>
-              </FadeInView>
+              </ScalePressable>
             );
           }}
         />

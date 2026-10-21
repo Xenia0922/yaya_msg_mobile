@@ -12,7 +12,6 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 import { useMemberStore } from '../store';
-import { FadeInView } from '../components/Motion';
 import { EmptyState } from '../components/StateViews';
 import { CenterSpinner } from '../components/Loaders';
 import ScreenHeader from '../components/ScreenHeader';
@@ -95,7 +94,7 @@ export default function OnMicScreen() {
   const renderItem = ({ item, index }: { item: OnMicEntry; index: number }) => {
     const member = members.find((m: any) => String(m.id || m.userId) === item.memberId);
     return (
-      <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={300} style={{ marginHorizontal: 16, marginTop: index === 0 ? 12 : 8 }}>
+      <View style={{ marginHorizontal: 16, marginTop: index === 0 ? 12 : 8 }}>
         <TouchableOpacity
           onPress={() => member && navigation.navigate('RoomRadioScreen', {
             member,
@@ -142,7 +141,7 @@ export default function OnMicScreen() {
           <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
           </View>
         </TouchableOpacity>
-      </FadeInView>
+      </View>
     );
   };
 

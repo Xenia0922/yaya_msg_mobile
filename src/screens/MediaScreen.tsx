@@ -28,13 +28,12 @@ import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { setPipPlaying, setPipAspect } from '../utils/pip';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
-import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { VODItem, Member } from '../types';
 import { formatTimestamp, formatDuration } from '../utils/format';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import { thumbUrl } from '../utils/imageThumb';
-import { getResumePosition } from '../utils/resumePosition';
+import { getResumePosition, saveResumePosition } from '../utils/resumePosition';
 import { logWarn } from '../utils/runtimeLog';
 import pocketApi from '../api/pocket48';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
@@ -662,6 +661,16 @@ export default function MediaScreen() {
       .catch((e) => { logWarn('读取续播进度失败: ' + errorMessage(e), 'MediaScreen.resume'); });
     return () => { alive = false; };
   }, [resumeKey]);
+
+  useEffect(() => {
+    if (!playing || playing.isLive) return;
+    const save = (force = false) => saveResumePosition(resumeKey, usePlayerStore.getState().position, force);
+    const timer = setInterval(() => { void save(); }, 10000);
+    return () => {
+      clearInterval(timer);
+      void save(true);
+    };
+  }, [playing, resumeKey]);
 
   // 拉取/轮询弹幕并解析；失败静默，不拖垮播放
   useEffect(() => {
@@ -2052,7 +2061,7 @@ export default function MediaScreen() {
           removeClippedSubviews={false}
           // 性能（用户反馈「全部」网格滑动严重掉帧）：限制同屏挂载的玻璃卡数量、加快批渲染。
           updateCellsBatchingPeriod={40}
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             // 录播：组头 / 双卡行
             if (tab === 'vod') {
               if (item.type === 'header') {
@@ -2065,7 +2074,7 @@ export default function MediaScreen() {
                 const coverUrl = it.liveCover || it.coverPath;
                 const meta = [it.nickname, formatTimestamp(it.startTime).slice(0, 16)].filter(Boolean).join(' · ');
                 return (
-                  <FadeInView duration={300} style={styles.vodGridItem}>
+                  <View style={styles.vodGridItem}>
                     <TouchableOpacity
                       style={[styles.vodGridCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                       onPress={() => startPlay(it)}
@@ -2116,7 +2125,7 @@ export default function MediaScreen() {
                       </View>
                     </View>
                     </TouchableOpacity>
-                  </FadeInView>
+                  </View>
                 );
               };
               return (
@@ -2130,7 +2139,7 @@ export default function MediaScreen() {
             const coverUrl = item.liveCover || item.coverPath;
             const meta = [item.nickname, formatTimestamp(item.startTime).slice(0, 16)].filter(Boolean).join(' · ');
             return (
-              <FadeInView delay={index < 16 ? 80 + index * 30 : 0} duration={300} style={styles.vodGridItem}>
+              <View style={styles.vodGridItem}>
                 <TouchableOpacity
                   style={[styles.vodGridCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
                   onPress={() => startPlay(item)}
@@ -2189,7 +2198,7 @@ export default function MediaScreen() {
                   </View>
                 </View>
                 </TouchableOpacity>
-              </FadeInView>
+              </View>
             );
           }}
           ListEmptyComponent={

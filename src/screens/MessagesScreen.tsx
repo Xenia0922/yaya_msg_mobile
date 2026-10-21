@@ -6,7 +6,7 @@ import {
   View, Text, TextInput, StyleSheet, Modal, ScrollView,
 } from 'react-native';
 import { useSettingsStore, useMemberStore, useUiStore } from '../store';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
@@ -87,24 +87,13 @@ export default function MessagesScreen() {
   }, [messages, search]);
 
   const renderMsgItem = useCallback(({ item }: { item: any }) => (
-    <FadeInView delay={80} duration={300} distance={8}>
-      <GlassSurface radius={20} role="card"
-        style={[
-          styles.msg,
-          {
-            backgroundColor: 'transparent',
-            borderColor: palette.hairline,
-            borderWidth: StyleSheet.hairlineWidth,
-          },
-        ]}
-      >
+    <View style={[styles.msg, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 }]}>
         <View style={styles.msgHeader}>
           <Text style={[styles.msgSender, { color: palette.tint }]} numberOfLines={1}>{item.senderName || item.senderNickName || t('成员')}</Text>
           <Text style={[styles.msgTime, { color: palette.labelTertiary }]}>{formatTimestamp(item.msgTime || item.time || item.ctime)}</Text>
         </View>
         <Text style={[styles.msgBody, { color: palette.labelSecondary }]}>{messageText(item) || t('[空消息]')}</Text>
-      </GlassSurface>
-    </FadeInView>
+    </View>
   ), [palette, t]);
 
   return (
@@ -186,8 +175,7 @@ export default function MessagesScreen() {
             <PerfFlatList
               data={pickerList}
               keyExtractor={(item) => `${item.id}-${item.channelId}`}
-              renderItem={({ item, index }) => (
-                <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={260} distance={8}>
+              renderItem={({ item }) => (
                   <ScalePressable
                     style={styles.memberRow}
                     onPress={() => {
@@ -207,7 +195,6 @@ export default function MessagesScreen() {
                     </View>
                     <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={18} />
                   </ScalePressable>
-                </FadeInView>
               )}
               ListEmptyComponent={<EmptyState icon="account-search-outline" title={t('成员列表为空')} />}
             />

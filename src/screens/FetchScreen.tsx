@@ -195,9 +195,8 @@ export default function FetchScreen() {
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
-          renderItem={({ item, index }) => (
-            <FadeInView delay={index < 12 ? 60 + index * 25 : 0} distance={8}>
-              <GlassSurface radius={20} role="card" style={[styles.msgItem, { backgroundColor: 'transparent' }]}>
+          renderItem={({ item }) => (
+            <View style={[styles.msgItem, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 }]}>
                 <View style={styles.msgHead}>
                   <Text style={[styles.msgSender, { color: palette.label }]} numberOfLines={1}>
                     {item.senderName || item.senderNickName || item.extInfo?.user?.nickName || t('成员')}
@@ -209,8 +208,7 @@ export default function FetchScreen() {
                 <Text style={[styles.msgText, { color: palette.labelSecondary }]} numberOfLines={4}>
                   {messageText(item) || t('[空消息]')}
                 </Text>
-              </GlassSurface>
-            </FadeInView>
+            </View>
           )}
           ListEmptyComponent={loading ? <CenterSpinner text={t('抓取中…')} /> : <EmptyState icon="message-text-outline" title={t('暂无数据')} hint={t('选择成员并点击"开始抓取"获取消息')} />}
         />

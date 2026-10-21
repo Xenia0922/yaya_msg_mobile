@@ -346,8 +346,7 @@ export default function OpenLiveScreen() {
               {loading ? '' : hasMore ? t('上滑加载更多') : t('没有更多了')}
             </Text>
           ) : null}
-          renderItem={({ item, index }) => (
-            <FadeInView delay={index < 12 ? 60 + index * 25 : 0} duration={360}>
+          renderItem={({ item }) => (
               <ScalePressable
                 activeOpacity={0.85}
                 pressedScale={0.97}
@@ -379,7 +378,6 @@ export default function OpenLiveScreen() {
                 <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} style={styles.chevron} />
               </View>
               </ScalePressable>
-            </FadeInView>
           )}
         />
       </FadeInView>

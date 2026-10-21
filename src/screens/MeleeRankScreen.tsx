@@ -525,8 +525,7 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
   const pct = max > 0 ? Math.max(2, Math.min(100, (melee / max) * 100)) : 2;
 
   return (
-    <FadeInView delay={60 + (index < 12 ? index * 25 : 0)} duration={300}>
-      <GlassSurface radius={20} role="card" style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+    <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
         {/* 名次徽标：前三名 tint 实底白字 16/900，其余 fill2 底 14/800 */}
         <View
           style={[
@@ -566,8 +565,7 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
             {melee >= 10000 ? `${(melee / 10000).toFixed(1)}w` : String(melee)}
           </Text>
         </View>
-      </GlassSurface>
-    </FadeInView>
+    </View>
   );
 });
 
@@ -621,8 +619,7 @@ const PersonCard = React.memo(function PersonCard({ item, index, max }: { item: 
   const pct = max > 0 ? Math.max(2, Math.min(100, (charm / max) * 100)) : 2;
 
   return (
-    <FadeInView delay={60 + (index < 12 ? index * 25 : 0)} duration={300}>
-      <GlassSurface radius={20} role="card" style={[styles.rankCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+    <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
         {/* 名次徽标：前三 tint 实底白字，其余 fill2 底（与周榜 RankCard 一致） */}
         <View
           style={[
@@ -656,8 +653,7 @@ const PersonCard = React.memo(function PersonCard({ item, index, max }: { item: 
             {charm >= 10000 ? `${(charm / 10000).toFixed(1)}w` : String(charm)}
           </Text>
         </View>
-      </GlassSurface>
-    </FadeInView>
+    </View>
   );
 });
 
