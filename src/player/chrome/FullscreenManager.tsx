@@ -26,14 +26,19 @@ export function FullscreenManager() {
     return () => setLiveImmersiveMode(false);
   }, [fullscreen]);
 
-  // PiP 标志：播放中且未全屏（App 切后台自动进系统悬浮窗）。
+  // PiP 标志：播放中（含全屏）即可在切后台时进系统悬浮窗。
   // 统一写点：所有视频（原生/Exo/网页内核）的 PiP 身份都从这里下发；
   // 页面的私有播放器/小窗各自经 setPipPlaying 覆写此标志（播放确立时由 PlayerCore 事件驱动）。
+  //
+  // ⚠️ 原条件带 `&& !fullscreen` → 用户全屏看直播/录播时按 Home，videoPlaying 恒 false，
+  //    MainActivity.onUserLeaveHint 直接 return，**永远换不出系统小窗**（2026-10-21 反馈）。
+  //    Manifest 已声明 keyboad|orientation|screenSize|screenLayout 的 configChanges，
+  //    进 PiP 不会重建 Activity，横屏状态可保留；PiP 窗口比例由 setPipAspect 控制。
   useEffect(() => {
-    const on = !!source?.url && state === 'playing' && !fullscreen;
+    const on = !!source?.url && state === 'playing';
     setPipPlaying(on, 'fullscreen');
     // 视频（非音乐）成为前台媒体时，若音乐服务只是"暂停残留"，可留待原生 PiP 入口统一清理
-  }, [source, state, fullscreen]);
+  }, [source, state]);
 
   // 卸载（播放器关闭）兜底复位：防"最后置位 true 后页面已关，再按 Home 误进无内容悬浮窗"
   useEffect(() => () => setPipPlaying(false, 'fullscreen'), []);
