@@ -76,10 +76,6 @@ function trimCache(map: Map<string, any>) {
   }
 }
 
-function requestKey(method: string, url: string, body?: any): string {
-  return `${method} ${url}` + (method === 'POST' && body !== undefined ? ` ${JSON.stringify(body)}` : '');
-}
-
 /**
  * 统一的 JSON 请求封装。
  * - 基于 fetch + AbortController，支持超时取消与 signal 外部取消；
@@ -89,10 +85,13 @@ function requestKey(method: string, url: string, body?: any): string {
 function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method || 'GET';
   const cacheTtl = options.cacheTtl ?? 0;
-  const key = requestKey(method, url, options.body);
+  // 带调用方 headers 的请求可能属于不同账号；POST 也可能修改状态。
+  // 只有公开 GET 可共用响应，且不把凭证写进缓存键。
+  const shareable = method === 'GET' && !options.headers;
+  const key = shareable ? `GET ${url}` : '';
 
   // 命中 GET 缓存
-  if (method === 'GET' && cacheTtl > 0) {
+  if (shareable && cacheTtl > 0) {
     const hit = responseCache.get(key);
     if (hit && Date.now() - hit.ts < cacheTtl) {
       return Promise.resolve(hit.data as T);
@@ -100,7 +99,7 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
   }
 
   // 并发去重：相同请求在途时复用（仅在无外部 signal 时去重，避免误取消）
-  if (!options.signal && inflight.has(key)) {
+  if (shareable && !options.signal && inflight.has(key)) {
     return inflight.get(key) as Promise<T>;
   }
 
@@ -145,7 +144,7 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
       const body = parseResponse(text);
 
       if (res.status >= 200 && res.status < 300) {
-        if (method === 'GET' && cacheTtl > 0) {
+        if (shareable && cacheTtl > 0) {
           responseCache.set(key, { ts: Date.now(), data: body });
           trimCache(responseCache);
         }
@@ -174,11 +173,11 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
       // ⚠️ 清理统一放 finally：此前只在成功路径移除 abort 监听，失败/超时路径会残留 →
       // 长生命周期的外部 signal 反复请求会持续累积监听（内存泄漏，2026-10-03 修复）
       if (extAbort && options.signal) options.signal.removeEventListener('abort', extAbort);
-      inflight.delete(key);
+      if (shareable) inflight.delete(key);
     }
   })();
 
-  if (!options.signal) {
+  if (shareable && !options.signal) {
     inflight.set(key, promise);
     trimCache(inflight);
   }

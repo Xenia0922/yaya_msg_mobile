@@ -3,15 +3,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { logError } from '../utils/runtimeLog';
 import { Linking, Platform, Alert } from 'react-native';
-import { useSettingsStore } from '../store';
-
-function getToken(): string {
-  try {
-    return useSettingsStore.getState().settings.p48Token || '';
-  } catch {
-    return '';
-  }
-}
 
 export type DownloadType = 'replay' | 'voice' | 'image' | 'video' | 'audio' | 'file';
 export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'failed';
@@ -90,7 +81,12 @@ export async function loadDownloadItems(): Promise<DownloadItem[]> {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    // 下载执行器只存在于当前进程；重启后没有任务会继续这些状态，恢复为可重试失败项。
+    return Array.isArray(parsed)
+      ? parsed.map((item) => item.status === 'downloading' || item.status === 'queued'
+        ? { ...item, status: 'failed' as const, error: '应用重启后下载中断，请重试' }
+        : item)
+      : [];
   } catch {
     return [];
   }
@@ -154,28 +150,36 @@ export async function enqueueDownload(params: {
   });
 
   const localUri = `${DOWNLOAD_DIR}${item.id}-${item.name}`;
+  let progressTimer: ReturnType<typeof setTimeout> | null = null;
+  let latestPatch: Partial<DownloadItem> | null = null;
+  let progressWrite: Promise<unknown> = Promise.resolve();
+  let progressClosed = false;
+  const stopProgress = async () => {
+    progressClosed = true;
+    if (progressTimer) clearTimeout(progressTimer);
+    progressTimer = null;
+    latestPatch = null;
+    await progressWrite.catch(() => undefined);
+  };
   try {
-    const token = getToken();
     const headers: Record<string, string> = {
       'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
       Referer: 'https://h5.48.cn/',
     };
-    if (token) headers['token'] = token;
 
     const createDownloadResumable = (FileSystem as any).createDownloadResumable;
     if (typeof createDownloadResumable === 'function') {
-      let progressTimer: ReturnType<typeof setTimeout> | null = null;
-      let latestPatch: Partial<DownloadItem> | null = null;
-
       const flushProgress = async () => {
-        if (!latestPatch) return;
+        if (progressClosed || !latestPatch) return;
         const patch = latestPatch;
         latestPatch = null;
         progressTimer = null;
-        await updateItem(item.id, patch);
+        progressWrite = updateItem(item.id, patch);
+        await progressWrite;
       };
 
       const updateProgress = (written: number, expected: number) => {
+        if (progressClosed) return;
         const total = Number(expected) || 0;
         const done = Number(written) || 0;
         const progress = total > 0 ? Math.max(0, Math.min(1, done / total)) : 0;
@@ -189,8 +193,7 @@ export async function enqueueDownload(params: {
       });
 
       const result = await dl.downloadAsync();
-      if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
-      await flushProgress();
+      await stopProgress();
       const downloadedUri = result?.uri;
       const done = { status: 'done' as const, progress: 1, localUri: downloadedUri || localUri };
       await updateItem(item.id, done);
@@ -231,6 +234,7 @@ export async function enqueueDownload(params: {
 
     return { ...item, ...done };
   } catch (error: any) {
+    await stopProgress();
     const failed = { status: 'failed' as const, error: error?.message || String(error) };
     await updateItem(item.id, failed);
     throw error;
@@ -238,21 +242,25 @@ export async function enqueueDownload(params: {
 }
 
 export async function deleteDownloadItem(id: string) {
-  const items = await loadDownloadItems();
-  const target = items.find((item) => item.id === id);
-  if (target?.localUri) {
-    await FileSystem.deleteAsync(target.localUri, { idempotent: true }).catch(() => undefined);
-  }
-  await saveDownloadItems(items.filter((item) => item.id !== id));
+  await withDownloadWrite(async () => {
+    const items = await loadDownloadItems();
+    const target = items.find((item) => item.id === id);
+    if (target?.localUri) {
+      await FileSystem.deleteAsync(target.localUri, { idempotent: true }).catch(() => undefined);
+    }
+    await saveDownloadItems(items.filter((item) => item.id !== id));
+  });
 }
 
 export async function clearFinishedDownloads() {
-  const items = await loadDownloadItems();
-  const finished = items.filter((item) => item.status === 'done' || item.status === 'failed');
-  await Promise.all(finished.map((item) =>
-    item.localUri ? FileSystem.deleteAsync(item.localUri, { idempotent: true }).catch(() => undefined) : Promise.resolve(),
-  ));
-  await saveDownloadItems(items.filter((item) => item.status === 'downloading' || item.status === 'queued'));
+  await withDownloadWrite(async () => {
+    const items = await loadDownloadItems();
+    const finished = items.filter((item) => item.status === 'done' || item.status === 'failed');
+    await Promise.all(finished.map((item) =>
+      item.localUri ? FileSystem.deleteAsync(item.localUri, { idempotent: true }).catch(() => undefined) : Promise.resolve(),
+    ));
+    await saveDownloadItems(items.filter((item) => item.status === 'downloading' || item.status === 'queued'));
+  });
 }
 
 /**
@@ -260,33 +268,35 @@ export async function clearFinishedDownloads() {
  * 在每次下载完成时调用：超出 MAX_CACHE_BYTES 后，从最早的「已完成」项开始删文件，直到回到额度内。
  */
 export async function enforceCacheQuota(maxBytes: number = MAX_CACHE_BYTES): Promise<void> {
-  let items = await loadDownloadItems();
-  const done = items.filter((i) => i.status === 'done' && i.localUri);
-  // totalBytes 可能缺失（服务端无 Content-Length / fallback 路径下载），这类文件
-  // 之前永不参与淘汰。这里用实际文件大小兜底，确保 4GB 额度对全部完成项生效。
-  const entries = (
-    await Promise.all(
-      done.map(async (i) => {
-        let bytes = i.totalBytes || 0;
-        if (bytes <= 0) {
-          const info = await FileSystem.getInfoAsync(i.localUri!).catch(() => null);
-          bytes = info && info.exists ? info.size || 0 : 0;
-        }
-        return { item: i, bytes };
-      }),
-    )
-  ).filter((e) => e.bytes > 0);
-  let total = entries.reduce((sum, e) => sum + e.bytes, 0);
-  if (total <= maxBytes) return;
+  return withDownloadWrite(async () => {
+    let items = await loadDownloadItems();
+    const done = items.filter((i) => i.status === 'done' && i.localUri);
+    // totalBytes 可能缺失（服务端无 Content-Length / fallback 路径下载），这类文件
+    // 之前永不参与淘汰。这里用实际文件大小兜底，确保 4GB 额度对全部完成项生效。
+    const entries = (
+      await Promise.all(
+        done.map(async (i) => {
+          let bytes = i.totalBytes || 0;
+          if (bytes <= 0) {
+            const info = await FileSystem.getInfoAsync(i.localUri!).catch(() => null);
+            bytes = info && info.exists ? info.size || 0 : 0;
+          }
+          return { item: i, bytes };
+        }),
+      )
+    ).filter((e) => e.bytes > 0);
+    let total = entries.reduce((sum, e) => sum + e.bytes, 0);
+    if (total <= maxBytes) return;
 
-  const oldestFirst = [...entries].sort((a, b) => a.item.createdAt - b.item.createdAt);
-  for (const { item: target, bytes } of oldestFirst) {
-    if (total <= maxBytes) break;
-    await FileSystem.deleteAsync(target.localUri!, { idempotent: true }).catch(() => undefined);
-    items = items.filter((i) => i.id !== target.id);
-    total -= bytes;
-  }
-  await saveDownloadItems(items);
+    const oldestFirst = [...entries].sort((a, b) => a.item.createdAt - b.item.createdAt);
+    for (const { item: target, bytes } of oldestFirst) {
+      if (total <= maxBytes) break;
+      await FileSystem.deleteAsync(target.localUri!, { idempotent: true }).catch(() => undefined);
+      items = items.filter((i) => i.id !== target.id);
+      total -= bytes;
+    }
+    await saveDownloadItems(items);
+  });
 }
 
 /**

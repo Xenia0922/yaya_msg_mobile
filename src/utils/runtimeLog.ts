@@ -37,7 +37,23 @@ function trim(arr: LogEntry[]): LogEntry[] {
   return arr.length > MAX_ENTRIES ? arr.slice(arr.length - MAX_ENTRIES) : arr;
 }
 
+function redactSensitive(value: string): string {
+  return value
+    .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [REDACTED]')
+    .replace(/\b(SESSDATA|bili_jct|DedeUserID__ckMd5|bilibiliCookie|p48Token|access[_-]?token|refresh[_-]?token|authorization|cookie|ticket|token)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi, '$1$2[REDACTED]');
+}
+
+function redactEntry(entry: LogEntry): LogEntry {
+  return {
+    ...entry,
+    msg: redactSensitive(entry.msg),
+    stack: entry.stack ? redactSensitive(entry.stack) : undefined,
+    ctx: entry.ctx ? redactSensitive(entry.ctx) : undefined,
+  };
+}
+
 function write(entry: LogEntry) {
+  entry = redactEntry(entry);
   if (!loaded) {
     pending.push(entry);
     return;
@@ -67,8 +83,8 @@ function extractStack(args: unknown[]): string | undefined {
 /** console.debug 转发：logcat（ReactNativeJS tag）可见，且不被 installConsoleCapture 捕获 → 不重复 */
 function tee(level: 'info' | 'warn' | 'error', tag: string | undefined, msg: string, stack?: string) {
   try {
-    const line = tag ? `[${tag}] ${msg}` : msg;
-    if (level === 'error') console.debug(`[ERR] ${line}${stack ? `\n${stack}` : ''}`);
+    const line = redactSensitive(tag ? `[${tag}] ${msg}` : msg);
+    if (level === 'error') console.debug(`[ERR] ${line}${stack ? `\n${redactSensitive(stack)}` : ''}`);
     else console.debug(line);
   } catch {
     /* 忽略 */
@@ -100,7 +116,7 @@ export function logCrash(err: unknown, ctx?: string) {
 
 export function getLogEntries(): LogEntry[] {
   // 最新在前
-  return [...buffer].reverse();
+  return [...buffer].reverse().map(redactEntry);
 }
 
 export function getLogCounts(): Record<LogLevel, number> {
@@ -116,7 +132,7 @@ export async function clearLog() {
 }
 
 export function exportLogText(entries?: LogEntry[]): string {
-  const src = (entries ?? buffer).slice().reverse(); // 与现有顺序保持一致（最新在前）
+  const src = (entries ?? buffer).slice().reverse().map(redactEntry); // 与现有顺序保持一致（最新在前）
   const os = `${Platform.OS} ${String(Platform.Version)}`;
   const header = `牙牙消息 v${APP_VERSION} · ${os} · 日志导出 ${new Date().toLocaleString()}\n${'='.repeat(40)}`;
   const body = src
@@ -143,12 +159,13 @@ export async function initRuntimeLog() {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) buffer = trim(parsed as LogEntry[]);
+      if (Array.isArray(parsed)) buffer = trim((parsed as LogEntry[]).map(redactEntry));
     }
   } catch {
     /* 忽略损坏数据 */
   }
   loaded = true;
+  persist(); // 历史日志中的敏感字段也需覆盖落盘
   // 合并初始化前暂存的条目
   if (pending.length) {
     buffer = trim(buffer.concat(pending));
@@ -170,40 +187,44 @@ function installConsoleCapture() {
   const origLog = console.log.bind(console);
 
   console.error = (...args: unknown[]) => {
-    origError(...args);
+    const safeArgs = args.map((arg) => redactSensitive(stringifyArg(arg)));
+    origError(...safeArgs);
     write({
       id: genId(),
       t: Date.now(),
       level: 'error',
-      msg: args.map(stringifyArg).join(' '),
+      msg: safeArgs.join(' '),
       stack: extractStack(args),
       ctx: 'console',
     });
   };
   console.warn = (...args: unknown[]) => {
-    origWarn(...args);
+    const safeArgs = args.map((arg) => redactSensitive(stringifyArg(arg)));
+    origWarn(...safeArgs);
     write({
       id: genId(),
       t: Date.now(),
       level: 'warn',
-      msg: args.map(stringifyArg).join(' '),
+      msg: safeArgs.join(' '),
       ctx: 'console',
     });
   };
   console.info = (...args: unknown[]) => {
-    origInfo(...args);
+    const safeArgs = args.map((arg) => redactSensitive(stringifyArg(arg)));
+    origInfo(...safeArgs);
     write({
       id: genId(),
       t: Date.now(),
       level: 'info',
-      msg: args.map(stringifyArg).join(' '),
+      msg: safeArgs.join(' '),
       ctx: 'console',
     });
   };
   console.log = (...args: unknown[]) => {
-    origLog(...args);
+    const safeArgs = args.map((arg) => redactSensitive(stringifyArg(arg)));
+    origLog(...safeArgs);
     // log 量大，仅记录前若干字符，避免刷屏
-    const text = args.map(stringifyArg).join(' ');
+    const text = safeArgs.join(' ');
     if (text.length > 200) return;
     write({ id: genId(), t: Date.now(), level: 'info', msg: text, ctx: 'console' });
   };

@@ -14,6 +14,8 @@ import { NimCredentials, NimSelfProfile } from './types';
 
 let cached: NimCredentials | null = null;
 let inflight: Promise<NimCredentials | null> | null = null;
+let inflightToken = '';
+let generation = 0;
 /**
  * 缓存凭证对应的口袋 token。
  * 切号（switchBigSmall）/ 重新登录后 token 变了，但缓存里的 accid/token 还是旧号的
@@ -37,45 +39,56 @@ function currentPocketToken(): string {
 }
 
 export function peekNimCredentials(): NimCredentials | null {
-  return cached;
+  return cachedToken === currentPocketToken() ? cached : null;
+}
+
+function invalidateChangedAccount(tokenNow: string): void {
+  // token 变了（切号/换号/重新登录）→ 缓存凭证与自身资料一律作废，重取
+  if ((cached && cachedToken !== tokenNow) || (inflight && inflightToken !== tokenNow)) {
+    logInfo('[nim] 检测到口袋 token 变化，云信凭证缓存作废并重取', 'nim');
+    clearNimCredentials();
+  }
 }
 
 export async function loadNimCredentials(force = false): Promise<NimCredentials | null> {
   const tokenNow = currentPocketToken();
-  // token 变了（切号/换号/重新登录）→ 缓存凭证与自身资料一律作废，重取
-  if (cached && tokenNow && cachedToken !== tokenNow) {
-    logInfo('[nim] 检测到口袋 token 变化，云信凭证缓存作废并重取', 'nim');
-    cached = null;
-    selfProfileCache = null;
-  }
+  invalidateChangedAccount(tokenNow);
   if (!force && cached) return cached;
   if (!force && inflight) return inflight;
-  inflight = (async () => {
+  const requestGeneration = generation;
+  let request!: Promise<NimCredentials | null>;
+  request = (async () => {
     try {
       const res = await pocketApi.getNimLoginInfo();
+      if (requestGeneration !== generation || tokenNow !== currentPocketToken()) return null;
       const creds = normalizeCredentials(res);
-      // 诊断（排查云信登录 414）：打印原始响应键路径与归一化结果（token 只留长度/前 4 位）
+      // 诊断仅记录响应结构和凭证是否有效，不记录凭证内容。
       try {
         const content = (res && (res.content || res.data)) || {};
         // eslint-disable-next-line no-console
         console.log('[nim] userinfo keys =', Object.keys(content).join(','), '| status =', (res && (res.status ?? res.code)) ?? '-');
         // eslint-disable-next-line no-console
-        console.log('[nim] creds =', creds ? `accid=${creds.accid} userId=${creds.userId} tokenLen=${creds.token.length} tokenHead=${creds.token.slice(0, 4)}` : 'null');
+        console.log('[nim] creds valid =', Boolean(creds));
       } catch {
         /* 诊断失败忽略 */
       }
       if (creds) {
         cached = creds;
-        cachedToken = currentPocketToken();
+        cachedToken = tokenNow;
       }
       return creds;
     } catch {
       return null;
     } finally {
-      inflight = null;
+      if (inflight === request) {
+        inflight = null;
+        inflightToken = '';
+      }
     }
   })();
-  return inflight;
+  inflight = request;
+  inflightToken = tokenNow;
+  return request;
 }
 
 /** 相对路径头像 → source.48.cn 绝对地址（App 内同款惯例） */function absAvatar(a: string): string {
@@ -93,19 +106,27 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
  * 这里补一手 user/info/reload（登录态校验同款接口，返回完整用户资料），结果缓存。
  */
 export async function loadSelfProfile(force = false): Promise<NimSelfProfile | null> {
+  invalidateChangedAccount(currentPocketToken());
+  const requestGeneration = generation;
+  const requestToken = currentPocketToken();
   const profile = await resolveSelfProfile(force);
-  if (!profile) return null;
+  if (!profile || requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
   return profile;
 }
 
 async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null> {
+  const requestGeneration = generation;
+  const requestToken = currentPocketToken();
   const base = await loadNimCredentials(force).then((c) => (c ? credentialsToProfile(c) : null));
+  if (requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
   if (base && base.nickName && base.avatar) return base;
   if (!force && selfProfileCache) return selfProfileCache;
   if (!selfProfileInflight) {
-    selfProfileInflight = (async () => {
+    let request!: Promise<NimSelfProfile | null>;
+    request = (async () => {
       try {
         const res = await pocketApi.loginCheckToken();
+        if (requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
         const content = (res && (res.content || res.data)) || {};
         const u = (content.userInfo || content.user || content) as Record<string, any>;
         if (base && u && typeof u === 'object') {
@@ -123,11 +144,12 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
         selfProfileCache = base;
         return base;
       } catch {
-        return base;
+        return requestGeneration === generation && requestToken === currentPocketToken() ? base : null;
       } finally {
-        selfProfileInflight = null;
+        if (selfProfileInflight === request) selfProfileInflight = null;
       }
     })();
+    selfProfileInflight = request;
   }
   return selfProfileInflight;
 }
@@ -138,9 +160,11 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
  *    resolveSelfProfile 会回落到旧号的 selfProfileCache → 用旧号的昵称/头像/等级发言。
  */
 export function clearNimCredentials(): void {
+  generation += 1;
   cached = null;
   cachedToken = '';
   selfProfileCache = null;
   selfProfileInflight = null;
   inflight = null;
+  inflightToken = '';
 }
