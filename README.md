@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-ff6f91" alt="license" /></a>
-  <a href="https://github.com/Xenia0922/yaya_msg_mobile/releases"><img src="https://img.shields.io/badge/release-v2.7.7-ff6f91" alt="release" /></a>
+  <a href="https://github.com/Xenia0922/yaya_msg_mobile/releases"><img src="https://img.shields.io/badge/release-v2.7.6-ff6f91" alt="release" /></a>
   <img src="https://img.shields.io/badge/platform-Android-3DDC84?logo=android" alt="Android" />
 </p>
 
@@ -17,12 +17,13 @@
 
 > **⚠️ v2.7.5 之前的旧版本建议卸载后重装；v2.7.5 及之后可直接覆盖安装。**
 
-## 最新更新（v2.7.7，对比 v2.7.6）
+## 最新更新（v2.7.6 修订 · 2026-10-21）
 
 - 修复账号切换期间的旧请求回写、下载中断恢复和私信历史竞态
 - 修复网页播放器控制/错误回传、音乐零秒定位、单曲循环进度与回放续播记忆
-- 降低房间、排行、消息及媒体长列表的动画和模糊渲染开销
-- 修正 plus APK 命名和 ABI 产物收集，避免把旧分包误当成本次构建
+- 修复房间贡献榜/送礼面板「滑一下就关」、贡献榜点开后长时间空白无反馈
+- 全屏播放时切到后台也能进系统小窗；画中画权限被系统拒绝时给出明确提示
+- 修正 APK 命名与 ABI 产物收集，避免把旧分包误当成本次构建
 
 ## v2.7.6 更新记录
 
@@ -67,9 +68,9 @@
 
 从 [Releases](https://github.com/Xenia0922/yaya_msg_mobile/releases) 下载：
 
-- `yaya-msg-mobile-v2.7.7.apk`：通用包（全 ABI，体积最大）
-- `yaya-msg-mobile-v2.7.7-x64.apk`：x86_64 模拟器专用
-- `yaya-msg-mobile-v2.7.7-v8a.apk` / `-v7a.apk`：真机包（**推荐真机使用**，比通用包小约 60%）
+- `yaya-msg-mobile-v2.7.6.apk`：通用包（全 ABI，体积最大）
+- `yaya-msg-mobile-v2.7.6-x64.apk`：x86_64 模拟器专用
+- `yaya-msg-mobile-v2.7.6-v8a.apk` / `-v7a.apk`：真机包（**推荐真机使用**，比通用包小约 60%）
 
 模拟器请用 x64 包，否则无法启动。App 内「检查更新」始终提供通用包直链，真机如需最小体积请在 Release 页面按架构下载。
 
