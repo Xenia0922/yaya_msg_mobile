@@ -4,9 +4,9 @@ import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect, useNaviga
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Animated, BackHandler, DeviceEventEmitter, Easing, ImageBackground, Keyboard, StyleSheet, View } from 'react-native';
+import { Animated, BackHandler, DeviceEventEmitter, Easing, ImageBackground, Keyboard, StyleSheet, ToastAndroid, View } from 'react-native';
 import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
-import { setPipEnabled, listenPipToggle } from '../utils/pip';
+import { setPipEnabled, listenPipToggle, listenPipDenied } from '../utils/pip';
 import { Palettes } from '../theme/colors';
 import { fixDataUriMime } from '../utils/dataUri';
 import { ensureMemberData } from '../services/memberData';
@@ -275,6 +275,16 @@ function PipToggleBridge() {
           ps.setState(ps.state === 'playing' ? 'paused' : 'playing');
         }
       } catch {}
+    });
+  }, []);
+
+  // 进系统小窗被拒（ROM 关掉了画中画权限 / 调用失败）→ 明确提示，别再静默失败
+  useEffect(() => {
+    return listenPipDenied((reason) => {
+      const msg = reason === 'appops'
+        ? '系统未允许画中画：请到 系统设置 → 应用 → 牙牙消息 → 画中画 中开启'
+        : '系统未能进入小窗，请稍后重试';
+      ToastAndroid.show(msg, ToastAndroid.LONG);
     });
   }, []);
   return null;

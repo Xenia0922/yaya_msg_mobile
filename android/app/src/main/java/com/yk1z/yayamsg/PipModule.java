@@ -51,6 +51,8 @@ public class PipModule extends ReactContextBaseJavaModule {
   public static final String ACTION_PIP_TOGGLE = "yaya.pip.toggle";
   /** RN 事件名：PiP ⏯ 被点（JS 侧 DeviceEventEmitter 订阅） */
   public static final String EVENT_PIP_TOGGLE = "PipToggleCmd";
+  /** RN 事件名：系统拒绝进入 PiP（画中画权限被 ROM 关闭 / 调用失败）→ JS 侧提示用户去系统设置 */
+  public static final String EVENT_PIP_DENIED = "PipDenied";
 
   private static volatile ReactApplicationContext savedReactContext;
   private static volatile Context savedAppContext;
@@ -97,6 +99,42 @@ public class PipModule extends ReactContextBaseJavaModule {
     pipEnabled = enabled;
   }
 
+  /**
+   * 系统是否允许本应用使用画中画。
+   * ColorOS / MIUI 等 ROM 把「画中画」作为独立的 AppOps 权限，用户关掉后
+   * enterPictureInPictureMode 会静默失败（不抛异常也不进 PiP）→ 表现为「怎么都换不出系统小窗」。
+   */
+  public static boolean canUsePip(Context ctx) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false;
+    try {
+      android.app.AppOpsManager ops =
+          (android.app.AppOpsManager) ctx.getSystemService(Context.APP_OPS_SERVICE);
+      if (ops == null) return true;
+      int mode = ops.checkOpNoThrow(
+          android.app.AppOpsManager.OPSTR_PICTURE_IN_PICTURE,
+          android.os.Process.myUid(),
+          ctx.getPackageName());
+      return mode == android.app.AppOpsManager.MODE_ALLOWED;
+    } catch (Throwable t) {
+      // 查不到就不阻断，交给系统实际调用判定
+      return true;
+    }
+  }
+
+  /** 通知 JS：进 PiP 被系统拒绝（reason: appops / enter-failed / timeout） */
+  public static void emitPipDenied(String reason) {
+    if (savedReactContext == null) return;
+    main.post(() -> {
+      try {
+        WritableMap m = Arguments.createMap();
+        m.putString("reason", reason);
+        savedReactContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+            .emit(EVENT_PIP_DENIED, m);
+      } catch (Throwable ignored) {}
+    });
+  }
+
   @Override
   public void onCatalystInstanceDestroy() {
     try {
@@ -120,10 +158,16 @@ public class PipModule extends ReactContextBaseJavaModule {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
     Activity activity = getCurrentActivity();
     if (activity == null || activity.isDestroyed() || activity.isInPictureInPictureMode()) return;
+    if (!canUsePip(activity)) {
+      // 静默失败是「换不出系统小窗」最难查的形态：明确告诉 JS 去开系统权限
+      emitPipDenied("appops");
+      return;
+    }
     try {
       activity.enterPictureInPictureMode(buildPipParams());
     } catch (Exception ignored) {
       // 部分 ROM 在转场等特定时刻调用会抛异常，静默忽略
+      emitPipDenied("enter-failed");
     }
   }
 

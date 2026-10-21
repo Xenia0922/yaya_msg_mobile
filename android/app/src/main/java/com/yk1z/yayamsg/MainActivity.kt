@@ -140,6 +140,11 @@ class MainActivity : ReactActivity() {
     if (!PipModule.videoPlaying || !PipModule.pipEnabled) return
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
         && !isInPictureInPictureMode) {
+      // ColorOS/MIUI 把画中画当独立 AppOps 权限：被关时调用会静默失败 → 提前判定并回报 JS
+      if (!PipModule.canUsePip(this)) {
+        PipModule.emitPipDenied("appops")
+        return
+      }
       try {
         // ⚠️ 在 enterPictureInPictureMode 之前通知 RN，让 JS 提前把"应用内小窗"盖层
         // 全屏化（系统 PiP 内容 = 整窗快照，若不盖页面，悬浮窗里看到的是"列表+小窗"脏画面）
@@ -154,7 +159,17 @@ class MainActivity : ReactActivity() {
             }
           } catch (_: Exception) {
             // 部分 ROM 限制，静默
+            PipModule.emitPipDenied("enter-failed")
           }
+          // 兜底回滚：上面已提前 emitPipChanged(true)（让 JS 先把盖层画出来），
+          // 若 ROM 静默拒绝（不抛异常也不真正进 PiP），必须撤掉盖层，
+          // 否则 JS 的 pipCover 卡在 true → 页面被全屏视频层盖死（2026-10-21）。
+          android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (!isInPictureInPictureMode) {
+              PipModule.emitPipChanged(false)
+              PipModule.emitPipDenied("timeout")
+            }
+          }, 900)
         }, PIP_ENTER_DELAY_MS)
       } catch (_: Exception) {
         // 部分 ROM 限制，静默

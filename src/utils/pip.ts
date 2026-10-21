@@ -50,6 +50,22 @@ export function enterPipMode() {
 }
 
 /**
+ * 订阅「系统拒绝进入 PiP」事件。
+ * reason：appops（ROM 关了画中画权限）/ enter-failed / timeout。
+ * 有了它，「换不出系统小窗」不再是静默失败 —— 可以明确提示用户去系统设置开权限。
+ * 返回退订函数。
+ */
+export function listenPipDenied(cb: (reason: string) => void): () => void {
+  if (Platform.OS !== 'android') return () => {};
+  const sub = DeviceEventEmitter.addListener('PipDenied', (e: any) => {
+    try {
+      cb(String(e?.reason || 'unknown'));
+    } catch {}
+  });
+  return () => sub.remove();
+}
+
+/**
  * 订阅系统 PiP 窗口 ⏯ 按钮点击（原生 RemoteAction → 广播 → 本事件）。
  * 回调里应切换"当前正在小窗里播的媒体"（应用内小窗 → 统一播放器）的播放/暂停。
  * 返回退订函数。
