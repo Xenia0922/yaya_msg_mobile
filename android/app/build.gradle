@@ -72,12 +72,16 @@ react {
  * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
  */
 def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
-def releaseStoreFile = findProperty('RELEASE_STORE_FILE')
-def releaseStorePassword = findProperty('RELEASE_STORE_PASSWORD')
-def releaseKeyAlias = findProperty('RELEASE_KEY_ALIAS')
-def releaseKeyPassword = findProperty('RELEASE_KEY_PASSWORD')
+def releaseStoreFile = findProperty('RELEASE_STORE_FILE') ?: System.getenv('RELEASE_STORE_FILE')
+def releaseStorePassword = findProperty('RELEASE_STORE_PASSWORD') ?: System.getenv('RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = findProperty('RELEASE_KEY_ALIAS') ?: System.getenv('RELEASE_KEY_ALIAS')
+def releaseKeyPassword = findProperty('RELEASE_KEY_PASSWORD') ?: System.getenv('RELEASE_KEY_PASSWORD')
 def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { value ->
     value != null && value.toString().trim()
+}
+def requireReleaseSigning = (findProperty('yaya.requireReleaseSigning') ?: 'false').toString().toBoolean()
+if (requireReleaseSigning && !hasReleaseSigning) {
+    throw new GradleException('Release signing is required but RELEASE_* signing values are incomplete.')
 }
 
 /**
@@ -116,8 +120,8 @@ android {
         // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3000009
-        versionName "2.7.6"
+        versionCode 3000010
+        versionName "2.7.7"
 
         // 真机架构 + 模拟器架构。MuMu 等安卓模拟器为 x86_64，缺此 ABI 会导致 libhermes 等原生库
         // 无法加载（UnsatisfiedLinkError），表现为「启动即闪退进不去」。为兼容模拟器测试必须保留。

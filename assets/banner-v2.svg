@@ -56,7 +56,7 @@
     <!-- 版本胶囊 + 兼容说明 -->
     <g>
       <rect x="64" y="196" width="96" height="32" rx="16" fill="#ff6f91" fill-opacity="0.16" stroke="#ff6f91" stroke-opacity="0.45" stroke-width="1"/>
-      <text x="112" y="217" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif" font-size="15" font-weight="700" fill="#ff9db6">v2.7.6</text>
+      <text x="112" y="217" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif" font-size="15" font-weight="700" fill="#ff9db6">v2.7.7</text>
       <text x="176" y="217" font-family="PingFang SC, Microsoft YaHei, Noto Sans SC, sans-serif" font-size="15" fill="#ffffff" fill-opacity="0.42">鸿蒙 2/3/4 · Android 8.0+</text>
     </g>
 

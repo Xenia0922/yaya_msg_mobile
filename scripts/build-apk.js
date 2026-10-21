@@ -25,7 +25,11 @@ const gradleArgs = ['assembleRelease', '-Dorg.gradle.daemon=true', '-Dorg.gradle
   .join(' ');
 if (extraProps) console.log(`   （附加 gradle 参数：${extraProps}）`);
 try {
-  execSync(`${gradleCmd} ${gradleArgs}`, { cwd: androidDir, stdio: 'inherit' });
+  execSync(`${gradleCmd} ${gradleArgs}`, {
+    cwd: androidDir,
+    stdio: 'inherit',
+    env: { ...process.env, NODE_ENV: process.env.NODE_ENV || 'production' },
+  });
 } catch (e) {
   console.error('❌ Build failed');
   process.exit(1);
@@ -34,8 +38,8 @@ try {
 const version = pkg.version;
 const apkDir = path.join(androidDir, 'app/build/outputs/apk/release');
 
-// 成品名分版：YAYA_FLAVOR=plus → yaya-msg-mobile-plus-v2.7.6-v8a.apk；
-// 不传 → yaya-msg-mobile-v2.7.6-v8a.apk（普通版）
+// 成品名分版：YAYA_FLAVOR=plus → yaya-msg-mobile-plus-v<version>-v8a.apk；
+// 不传 → yaya-msg-mobile-v<version>-v8a.apk（普通版）
 // ⚠️ 自用权限版保护：plus 分支构建的包**不得**上传到公开仓库的 Release / 网盘 / 下载页。
 // 公版与权限版共用同一个 applicationId，权限版一旦流出，任何人都能覆盖安装并解锁私有功能。
 try {
@@ -45,12 +49,16 @@ try {
   }
 } catch { /* ignore */ }
 
-const FLAVOR = String(process.env.YAYA_FLAVOR || '').trim();
+let branch = '';
+try { branch = require('child_process').execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot }).toString().trim(); } catch {}
+const FLAVOR = String(process.env.YAYA_FLAVOR || (branch === 'plus' ? 'plus' : '')).trim();
 const baseName = FLAVOR ? `yaya-msg-mobile-${FLAVOR}` : 'yaya-msg-mobile';
 if (FLAVOR) console.log(`   （打包版本：${FLAVOR}）`);
 
 // v2.6.4 起启用 ABI 分包：arm64-v8a / armeabi-v7a / x86_64 / universal(全量)
-const abiSplits = ['arm64-v8a', 'armeabi-v7a', 'x86_64'];
+const abiSplits = (process.env.YAYA_ABIS || 'armeabi-v7a,arm64-v8a,x86_64')
+  .split(',').map((abi) => abi.trim()).filter(Boolean);
+const universalEnabled = String(process.env.YAYA_UNIVERSAL || 'true').toLowerCase() === 'true';
 
 // Ensure APK output dir exists
 if (!fs.existsSync(apkOutputDir)) {
@@ -58,12 +66,13 @@ if (!fs.existsSync(apkOutputDir)) {
 }
 
 const copied = [];
+const missing = [];
 const fileExists = f => fs.existsSync(f);
 
 for (const abi of abiSplits) {
   const src = path.join(apkDir, `app-${abi}-release.apk`);
   if (!fileExists(src)) {
-    console.warn(`⚠️  Missing split APK for ${abi}`);
+    missing.push(abi);
     continue;
   }
   const abiTag = abi === 'arm64-v8a' ? 'v8a' : abi === 'x86_64' ? 'x64' : 'v7a';
@@ -74,11 +83,16 @@ for (const abi of abiSplits) {
 }
 
 const universalSrc = path.join(apkDir, 'app-universal-release.apk');
-if (fileExists(universalSrc)) {
+if (universalEnabled && fileExists(universalSrc)) {
   const destName = `${baseName}-v${version}.apk`;
   const destApk = path.join(apkOutputDir, destName);
   fs.copyFileSync(universalSrc, destApk);
   copied.push({ abi: 'universal', file: destApk });
+}
+
+if (missing.length || (universalEnabled && !fileExists(universalSrc))) {
+  console.error(`❌ Expected APK output missing: ${[...missing, ...(universalEnabled && !fileExists(universalSrc) ? ['universal'] : [])].join(', ')}`);
+  process.exit(1);
 }
 
 if (copied.length === 0) {

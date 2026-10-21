@@ -1,6 +1,6 @@
 {
   "name": "yaya_msg-mobile",
-  "version": "2.7.6",
+  "version": "2.7.7",
   "description": "口袋48 第三方 React Native 移动客户端",
   "homepage": "https://github.com/Xenia0922/yaya_msg_mobile",
   "repository": {
@@ -29,7 +29,7 @@
     "build:android:copy": "node scripts/build-apk.js",
     "gen:wasm": "node scripts/gen-wasm-base64.mjs",
     "verify:version": "node scripts/verify-version.js",
-    "test:core": "node scripts/melee-parse.test.mjs && node scripts/network-request.test.mjs",
+    "test:core": "node scripts/melee-parse.test.mjs && node scripts/network-request.test.mjs && node scripts/nim-credentials.test.mjs && node scripts/runtime-log.test.mjs && node scripts/downloads.test.mjs",
     "typecheck": "tsc --noEmit && node scripts/verify-version.js"
   },
   "dependencies": {
