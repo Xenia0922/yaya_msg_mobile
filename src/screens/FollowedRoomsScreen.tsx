@@ -1644,6 +1644,8 @@ export default function FollowedRoomsScreen() {
   const [giftTarget, setGiftTarget] = useState<null | { serverId: string; channelId: string; memberId: string; memberName: string }>(null);
   const [rankRows, setRankRows] = useState<any[]>([]);
   const [rankStatus, setRankStatus] = useState('');
+  /** 贡献榜请求在途：此前无 loading 态 → 点开面板先看到一片空白（只有标题+关闭），像卡住 */
+  const [rankLoading, setRankLoading] = useState(false);
   /**
    * 用户资料卡：房间内点「非成员」头像（粉丝）时弹出。
    * 成员（含房主）直接跳「成员档案」页 —— 见 openSenderProfile。
@@ -2592,12 +2594,15 @@ export default function FollowedRoomsScreen() {
   const openRoomRankPanel = useCallback(async () => {
     if (!roomPlayer?.liveId) {
       setRankRows([]);
+      setRankLoading(false);
       setRankStatus(t('该直播来源暂不支持贡献榜（如快捷开播/分享卡）'));
       setRankVisible(true);
       return;
     }
     setRankVisible(true);
     setRankStatus('');
+    setRankRows([]);
+    setRankLoading(true);
     try {
       const res = await pocketApi.getLiveRank(String(roomPlayer.liveId));
       const rows = normalizeLiveRank(res);
@@ -2606,6 +2611,8 @@ export default function FollowedRoomsScreen() {
     } catch (error) {
       setRankRows([]);
       setRankStatus(t('贡献榜加载失败：{msg}', { msg: errorMessage(error) }));
+    } finally {
+      setRankLoading(false);
     }
   }, [roomPlayer, t]);
 
@@ -3458,6 +3465,12 @@ export default function FollowedRoomsScreen() {
                 </ScalePressable>
               </View>
               <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>{rankStatus}</Text>
+              {rankLoading ? (
+                <View style={styles.roomRankLoading}>
+                  <ActivityIndicator color={palette.tint} />
+                  <Text style={[styles.roomRankStatus, { color: palette.labelSecondary }]}>{t('加载中…')}</Text>
+                </View>
+              ) : (
               <ScrollView style={styles.roomRankList} showsVerticalScrollIndicator={false}>
                 {(() => {
                   // 归一化进度条：取最高贡献值作为基准
@@ -3481,6 +3494,7 @@ export default function FollowedRoomsScreen() {
                   });
                 })()}
               </ScrollView>
+              )}
             </GlassSurface>
           </View>
         </Modal>
@@ -4846,6 +4860,7 @@ const styles = StyleSheet.create({
   rgRecharge: { marginTop: 10, alignItems: 'center', paddingVertical: 10 },
   rgRechargeText: { fontSize: 13, fontWeight: '800' },
   roomRankStatus: { fontSize: 12, marginBottom: 10 },
+  roomRankLoading: { paddingVertical: 28, alignItems: 'center', gap: 10 },
   roomRankList: { maxHeight: 420 },
   roomRankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   roomRankNo: { width: 24, fontSize: 13, fontWeight: '900', textAlign: 'center' },
