@@ -15,7 +15,7 @@ import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
-import {ActivityIndicator, BackHandler, Image, ImageBackground, Linking, Modal, ScrollView, View, Text, TouchableOpacity, TouchableWithoutFeedback, TextInput, StyleSheet} from 'react-native';
+import {ActivityIndicator, BackHandler, Image, ImageBackground, Linking, Modal, ScrollView, View, Text, TouchableOpacity, TextInput, StyleSheet} from 'react-native';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -3437,8 +3437,13 @@ export default function FollowedRoomsScreen() {
         {/* 挂载短路：visible=false 的 Modal 常驻房间根节点时，每次房间重渲染都会 flush Modal 窗口 → 整页闪 */}
         {rankVisible ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setRankVisible(false)}>
-          <TouchableWithoutFeedback onPress={() => setRankVisible(false)}>
-            <View style={styles.roomModalShade}>
+          {/* 遮罩点击层必须与面板**同级**、且排在面板之前（下层）：
+              此前用 TouchableWithoutFeedback 包住整个 shade（包含面板），Pressability 会在
+              手指抬起时判定 onPress → 面板内 ScrollView 刚滑一点点（或内容不足一屏没产生滚动）
+              就被当成「点遮罩」直接关闭，用户感知为「下滑返回太灵敏」（2026-10-21 反馈）。
+              flex:1 仍留在 shade 上：TouchableOpacity 作 Modal 直子会塌缩、面板悬空（10-19 教训）。 */}
+          <View style={styles.roomModalShade}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setRankVisible(false)} />
               <GlassSurface radius={22} role="card" style={[styles.roomRankPanel, { backgroundColor: 'transparent' }]}>
               {/* 顶部 handle */}
               <View style={styles.roomRankHandleWrap}>
@@ -3477,14 +3482,14 @@ export default function FollowedRoomsScreen() {
                 })()}
               </ScrollView>
             </GlassSurface>
-            </View>
-          </TouchableWithoutFeedback>
+          </View>
         </Modal>
         ) : null}
         {giftVisible ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setGiftVisible(false)}>
-          <TouchableWithoutFeedback onPress={() => setGiftVisible(false)}>
-            <View style={styles.roomModalShade}>
+          {/* 同贡献榜：点击层与面板同级、排在面板之前，礼物网格滑动不会被判成点击关闭 */}
+          <View style={styles.roomModalShade}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setGiftVisible(false)} />
               <GlassSurface radius={20} role="card" style={[styles.rgPanel, { backgroundColor: 'transparent' }]}>
               <View style={styles.rgHeader}>
                 <Text style={[styles.rgTitle, { color: palette.label }]}>
@@ -3568,8 +3573,7 @@ export default function FollowedRoomsScreen() {
                 <Text style={[styles.rgRechargeText, { color: palette.tint }]}>{t('余额不足？去充值鸡腿')}</Text>
               </TouchableOpacity>
             </GlassSurface>
-            </View>
-          </TouchableWithoutFeedback>
+          </View>
         </Modal>
         ) : null}
         {liveResolve ? (
@@ -4179,14 +4183,14 @@ export default function FollowedRoomsScreen() {
             keyExtractor={(member: any) => String((member as any).id || (member as any).userId || member.ownerName)}
             contentContainerStyle={styles.memberHitsListContent}
             keyboardShouldPersistTaps="handled"
-            renderItem={({ item: member, index }) => {
+            renderItem={({ item: member }) => {
               const mid = String((member as any).id || (member as any).userId || '');
               const isFollowing = followedIds.has(mid);
               const busy = followBusy.has(mid);
               const name = shortName(member, mid);
               const team = member.team || member.groupName || t('成员');
               return (
-                <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.memberGridItem}>
+                <View style={styles.memberGridItem}>
                   {/* ⚠️ 列表/网格逐卡禁止 GlassSurface（滚动逐帧重算模糊 → 掉帧）。
                       这里用实底卡 + hairline 描边，观感与玻璃卡一致但不参与模糊管线。 */}
                   <TouchableOpacity
@@ -4225,7 +4229,7 @@ export default function FollowedRoomsScreen() {
                       )}
                     </TouchableOpacity>
                   </TouchableOpacity>
-                </FadeInView>
+                </View>
               );
             }}
           />
@@ -4238,7 +4242,7 @@ export default function FollowedRoomsScreen() {
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyExtractor={(item: any, index) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             const fid = String(item.member?.id || item.memberId);
             const isFollowing = followedIds.has(fid);
             const busy = followBusy.has(fid);
@@ -4256,7 +4260,7 @@ export default function FollowedRoomsScreen() {
             // 上麦中：与直播中互斥（一个房间不可能同时直播和上麦），复用直播中徽标槽位
             const isOnMic = !isLiveNow && !!onMicMap[mid];
             return (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.roomRow}>
+            <View style={styles.roomRow}>
               {/* ⚠️ 逐卡禁止 GlassSurface（长列表滚动逐帧重算模糊 → 掉帧）。
                   实底 surfaceGlassStrong + hairline，观感与玻璃卡一致但不进模糊管线。 */}
               <View style={[styles.roomRowCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
@@ -4381,7 +4385,7 @@ export default function FollowedRoomsScreen() {
                   </ScalePressable>
                 </View>
               </View>
-            </FadeInView>
+            </View>
             );
           }}
           ListEmptyComponent={
