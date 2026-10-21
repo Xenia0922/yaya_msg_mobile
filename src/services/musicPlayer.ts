@@ -656,7 +656,7 @@ function installMusicBridge() {
       if (!tr) return;
       lastPushedUrl = st.url;
       const resumeAt = Number(st.seekTarget) > 0 ? Number(st.seekTarget) : 0;
-      if (resumeAt > 0) st.setSeekTarget(0);
+      if (resumeAt > 0) st.consumeSeekTarget();
       exoPlayTrack({
         url: st.url,
         title: String(tr.title || '音乐'),

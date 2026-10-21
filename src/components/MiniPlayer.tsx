@@ -101,6 +101,7 @@ export function MiniPlayer() {
   /** 回放全屏：关闭小窗并跳转播放器 */
   const backToFull = useCallback(() => {
     if (!info) return;
+    const playPosition = useMiniPlayerStore.getState().currentPos;
     close();
     (navigation as any).navigate('Media', {
       mode: info.backTo.mode,
@@ -109,7 +110,7 @@ export function MiniPlayer() {
       playCover: info.backTo.playCover,
       playNonce: ++navNonceRef.current,
       // 小窗 → 大窗续播：传当前播放位置（仅录播）
-      ...(info.backTo.mode !== 'live' ? { playPosition: useMiniPlayerStore.getState().currentPos } : {}),
+      ...(info.backTo.mode !== 'live' ? { playPosition } : {}),
     });
   }, [info, close, navigation]);
 
@@ -249,7 +250,7 @@ export function MiniPlayer() {
   // return 若夹在 hooks 中间，每次小窗开/关(visible 翻转) hooks 数量变化 → "Rendered more hooks" 崩溃
   const lowerUrl = String(info?.url || '').toLowerCase();
   const isNativeLive = !!info?.isLive && !!info?.url && (lowerUrl.startsWith('rtmp://') || lowerUrl.includes('.flv')) && !!LiveExoView;
-  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{ style?: any; url: string; onSize?: (e: any) => void; audioOnly?: boolean }> | null;
+  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{ style?: any; url: string; onSize?: (e: any) => void; audioOnly?: boolean; paused?: boolean }> | null;
   // 公演/B站直播小窗：网页内核（无 LIVE 标、带 WebAudio 增益与防盗链 headers，音量与大屏一致）
   const useWebMini = !!info?.web && !!info?.isLive && /^https?:\/\//i.test(lowerUrl);
   const webMiniRef = useRef<WebView>(null);
@@ -381,6 +382,7 @@ export function MiniPlayer() {
             key={info.url}
             style={StyleSheet.absoluteFill}
             url={info.url}
+            paused={!playing}
             // 纯音频（上麦/电台）：原生不渲染画面，露出胶囊自己的主题底色（否则是一块黑）
             audioOnly={!!info.audioOnly}
             onSize={(e) => {

@@ -4,6 +4,7 @@ import { logWarn } from '../../utils/runtimeLog';
 import { NativeKernel, NativeKernelHandle } from './NativeKernel';
 import { ExoKernel } from './ExoKernel';
 import { WebKernel, WebKernelHandle } from './WebKernel';
+import { kernelForSource } from '../store/playerStore';
 
 /**
  * PlayerCore：内核路由（重写核心）。
@@ -190,11 +191,12 @@ export function PlayerCore({ onVideoSize, resumeAt: externalResumeAt }: { onVide
   //（activeKernel === 'web'）恒不成立，网页内核实失败时会做无意义的自动重解析。
   // 每次 open() 都会把 activeKernel 重置回 kernelForSource，故此处只需单向补报 web。
   useEffect(() => {
-    if (!useWebKernel) return;
-    if (usePlayerStore.getState().activeKernel !== 'web') {
-      usePlayerStore.getState().setActiveKernel('web');
+    if (useWebKernel) {
+      if (usePlayerStore.getState().activeKernel !== 'web') setActiveKernel('web');
+    } else if (source && usePlayerStore.getState().activeKernel === 'web') {
+      setActiveKernel(kernelForSource(source));
     }
-  }, [useWebKernel]);
+  }, [useWebKernel, source, setActiveKernel]);
 
   if (!source || !source.url) return null;
   // 自动回退标记按源复位（source 已判非空）

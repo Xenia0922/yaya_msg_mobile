@@ -44,11 +44,11 @@ const MAX_ENTRIES = 200;
 /** 写入串行链：readAll → 改 → writeAll 是「读改写」，并发保存会互相覆盖丢位置 */
 let writeChain: Promise<void> = Promise.resolve();
 
-export function saveResumePosition(id: string, seconds: number): Promise<void> {
+export function saveResumePosition(id: string, seconds: number, force = false): Promise<void> {
   if (!id || !Number.isFinite(seconds) || seconds < 2) return Promise.resolve();
   const now = Date.now();
   const prev = lastWrite.get(id);
-  if (prev && now - prev.ts < WRITE_THROTTLE_MS && Math.abs(seconds - prev.value) < WRITE_THROTTLE_DELTA) {
+  if (!force && prev && now - prev.ts < WRITE_THROTTLE_MS && Math.abs(seconds - prev.value) < WRITE_THROTTLE_DELTA) {
     return Promise.resolve();
   }
   lastWrite.set(id, { ts: now, value: seconds });

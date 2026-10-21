@@ -35,11 +35,16 @@ export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime
   var video = document.getElementById('video');
   var loading = document.getElementById('loading');
   var errorDiv = document.getElementById('error');
+  var errorSent = false;
 
   function showError(msg) {
     loading.style.display = 'none';
     errorDiv.style.display = 'block';
     errorDiv.textContent = msg;
+    if (!errorSent && window.ReactNativeWebView) {
+      errorSent = true;
+      try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', error: String(msg || '网页播放器错误').slice(0, 160) })); } catch (e) {}
+    }
   }
 
   function hideLoading() {
@@ -149,7 +154,7 @@ export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime
         else if (msg.type === 'play') video.play();
         else if (msg.type === 'pause') video.pause();
       } catch (e) {}
-    });
+    }, true);
   }
 
   var url = ${JSON.stringify(streamUrl)};

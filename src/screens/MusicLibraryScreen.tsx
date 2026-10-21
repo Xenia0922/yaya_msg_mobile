@@ -23,7 +23,7 @@ import CoverArt from '../components/CoverArt';
 import { NetworkImage } from '../components/NetworkImage';
 import { Skeleton } from '../components/Skeleton';
 import { EmptyState, ErrorState } from '../components/StateViews';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useI18n } from '../i18n';
@@ -117,6 +117,7 @@ export default function MusicLibraryScreen() {
   const favorites = useMusicPlayerStore((s) => s.favorites);
   const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
   const seekTarget = useMusicPlayerStore((s) => s.seekTarget);
+  const seekNonce = useMusicPlayerStore((s) => s.seekNonce);
   const [songs, setSongs] = useState<any[]>(songsCache ?? []);
   const applySongs = (list: any[]) => { songsCache = list; setSongs(list); };
   // 搜索词 / 分团：纯 local state（不再镜像到 store，避免双写）。
@@ -132,6 +133,7 @@ export default function MusicLibraryScreen() {
   const [hasMore, setHasMore] = useState(true);
   const loadingRef = useRef(false);
   const videoRef = useRef<any>(null);
+  const consumedSeekNonceRef = useRef(0);
 
   // 收藏计数：与 FAV 列表（isFavorite 过滤）一致，避免显示旧 id 键造成的虚高
   // 收藏数 = 收藏版本数（与 FAV 列表一致）
@@ -182,15 +184,15 @@ export default function MusicLibraryScreen() {
 
   // 双源合并：官方源（口袋48官网静态 JS）+ R2 音乐库（music.gnz.hk 公演音频，1559 首）。
   // 去重键 title|artist（官方源优先）；任一源失败不阻塞另一源，合并结果为空才报错。
-  const loadAll = async () => {
+  const loadAll = async (force = false) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     if (!songs.length) setLoading(true);
     setStatus('');
     try {
       const [officialRes, r2Res] = await Promise.allSettled([
-        loadOfficialSiteMusic(false),
-        loadR2Music(false),
+        loadOfficialSiteMusic(force),
+        loadR2Music(force),
       ]);
       const official = officialRes.status === 'fulfilled' ? officialRes.value : [];
       const r2 = r2Res.status === 'fulfilled' ? r2Res.value : [];
@@ -293,10 +295,18 @@ export default function MusicLibraryScreen() {
     return () => sub.remove();
   }, [navigation, showFullScreen, albumFilter]);
   useEffect(() => {
+    if (!seekNonce || seekNonce === consumedSeekNonceRef.current) return;
     // Exo 原生接管时跳过 Video seek（Exo seek 由下方 nativeOk 分支的 effect 消费；
     // 若两者都消费 seekTarget，会竞争清零 → 拖进度在原生路径失效）
-    if (seekTarget > 0 && nativeOkRef.current) return;
-    if (seekTarget > 0 && mediaReady && videoRef.current && typeof videoRef.current.seek === 'function') {
+    if (nativeOkRef.current) {
+      const st = useMusicPlayerStore.getState();
+      st.setPosition(seekTarget);
+      exoControl('seek', seekTarget);
+      consumedSeekNonceRef.current = seekNonce;
+      st.consumeSeekTarget();
+      return;
+    }
+    if (mediaReady && videoRef.current && typeof videoRef.current.seek === 'function') {
       // 乐观回写本地位置（RNV onProgress 随后校准；消除拖动松手回跳）
       const st0 = useMusicPlayerStore.getState();
       st0.setPosition(seekTarget);
@@ -305,9 +315,10 @@ export default function MusicLibraryScreen() {
       } catch (err) {
         console.warn('[MusicLibraryScreen] seekTarget error:', err);
       }
-      st0.setSeekTarget(0);
+      consumedSeekNonceRef.current = seekNonce;
+      st0.consumeSeekTarget();
     }
-  }, [seekTarget, mediaReady]);
+  }, [seekTarget, seekNonce, mediaReady]);
 
   // ===== M2 原生 Exo 驱动（media3 会话承担系统媒体卡；失败自动降级 RNV Video）=====
   // nativeOk=true：Exo 拥有真实声音（Video 静音暂停占位）。候选期（下发后未确认）即静音，
@@ -366,7 +377,6 @@ export default function MusicLibraryScreen() {
     try {
       const st = useMusicPlayerStore.getState();
       if (type === 'progress') {
-        lastProgressTsRef.current = Date.now();
         const playingN = !!p?.playing;
         // 切歌竞态防护：旧曲心跳不写位置/时长，**也不得改写播放态**
         //（旧曲末尾那条 playing=false 心跳曾把新歌打成 paused → 用户看到「点卡片变暂停、不放」）
@@ -384,7 +394,10 @@ export default function MusicLibraryScreen() {
           if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
           if (typeof p?.position === 'number') st.setPosition(p.position);
         }
-        if (playingN) cancelArmTimer(); // Exo 已在原生出声 → 候选确认
+        if (playingN && !staleUrl) {
+          lastProgressTsRef.current = Date.now();
+          cancelArmTimer(); // 当前曲目确认后取消原生候选超时
+        }
       } else if (type === 'error') {
         // 原生播放失败 → 本次会话降级 RNV（Video volume/paused 由 nativeOk=false 自动接管）
         if (!nativeDisabledRef.current) {
@@ -429,11 +442,12 @@ export default function MusicLibraryScreen() {
       if (seq !== armSeqRef.current) return;
       const st2 = useMusicPlayerStore.getState();
       if (!st2.url || st2.url !== playUrl || st2.playbackState !== 'playing') return;
+      const progressAtArm = lastProgressTsRef.current;
       console.warn(`[push-page] ${art ? 'art-refresh' : 'initial'} url=${String(playUrl).slice(0, 50)} resumeAt=${Number(st2.seekTarget) > 0 ? st2.seekTarget : 0}`);
       // 起始位置只认 seekTarget：MusicEngine 切歌/点歌会清 0，resume(记忆续播)才写入位置；
       // 不能读 store.position —— 那是「上一首歌」的进度残留，会造成切歌从旧秒数开始（19:15 实测）
       const resumeAt = Number(st2.seekTarget) > 0 ? Number(st2.seekTarget) : 0;
-      if (resumeAt > 0) st2.setSeekTarget(0); // 消费续播点（由本次下发承担）
+      if (resumeAt > 0) st2.consumeSeekTarget(); // 消费续播点（由本次下发承担）
       exoPlayTrack({
         url: playUrl,
         title: String(tr.title || '音乐'),
@@ -444,7 +458,7 @@ export default function MusicLibraryScreen() {
       // 候选确认超时：Exo 正常 1-3s 内必有 progress；4s 无 → 服务没起来/异常无事件 → 降级
       cancelArmTimer();
       armTimer.current = setTimeout(() => {
-        if (!nativeOkRef.current && !nativeDisabledRef.current) {
+        if (lastProgressTsRef.current <= progressAtArm && !nativeDisabledRef.current) {
           setNativeDisabledBoth(true);
           setNativeExoDisabled(true);
           setNativeState(false);
@@ -494,14 +508,15 @@ export default function MusicLibraryScreen() {
 
   // 拖动进度 → Exo seek（消费后清 0）
   useEffect(() => {
-    if (seekTarget > 0 && nativeOkRef.current) {
+    if (seekNonce && seekNonce !== consumedSeekNonceRef.current && nativeOkRef.current) {
       // 乐观回写本地位置：松手立即停在新位置，不等原生 500ms 心跳校准（去回跳感）
       const st = useMusicPlayerStore.getState();
       st.setPosition(seekTarget);
       exoControl('seek', seekTarget);
-      st.setSeekTarget(0);
+      consumedSeekNonceRef.current = seekNonce;
+      st.consumeSeekTarget();
     }
-  }, [seekTarget]);
+  }, [seekTarget, seekNonce]);
 
   // 停止/清除 → Exo stop；清 armed/候选计时；下次播放重新尝试原生（模块 disabled 由 App 全局在 idle 重置）
   useEffect(() => {
@@ -537,7 +552,7 @@ export default function MusicLibraryScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('音乐')} right={
-        <HeaderAction label={t('刷新')} onPress={() => loadAll()} loading={loading} disabled={loading} />
+        <HeaderAction label={t('刷新')} onPress={() => loadAll(true)} loading={loading} disabled={loading} />
       } />
       {/* 搜索框：液态玻璃（用户要求与全站玻璃语言一致）。
           内容必须是玻璃的 children（铁律），否则玻璃 absoluteFill 铺底 + 内容当兄弟 → 不吃触摸/不折射 */}
@@ -687,8 +702,8 @@ export default function MusicLibraryScreen() {
           numColumns={2}
           contentContainerStyle={styles.listContent}
           removeClippedSubviews={false}
-          renderItem={({ item, index }) => (
-            <FadeInView delay={index < 12 ? 80 + index * 25 : 0} duration={300} style={styles.albumItem}>
+          renderItem={({ item }) => (
+            <View style={styles.albumItem}>
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => setAlbumFilter({ groupLabel: item.groupLabel, album: item.album })}
@@ -710,7 +725,7 @@ export default function MusicLibraryScreen() {
                   {item.groupLabel || t('未知团体')}
                 </Text>
               </TouchableOpacity>
-            </FadeInView>
+            </View>
           )}
         />
       ) : (
@@ -726,7 +741,7 @@ export default function MusicLibraryScreen() {
           // FlatList 默认等分两列，item 用 flex:1 + 自身内边距即可。
           removeClippedSubviews={false}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             const id = String(item.musicId || item.id || '');
             // ⚠️ 只比 musicId 会误伤：官方源与 R2 源存在同 id 不同曲的情况，
             // 两首歌会同时被判为「正在播放」（一张变浅、边框加粗后内容下移几个像素）。
@@ -740,10 +755,8 @@ export default function MusicLibraryScreen() {
               && norm(curTrack.album || curTrack.albumName) === norm(item.album || item.albumName)
             );
             const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
-            // ⚠️ 不要给 FadeInView 加 maxWidth:'50%' —— numColumns=2 的 cell 已是半宽，
-            //    再限 50% 会把卡片压成一半、右侧露出页面底色（用户看到的「信息区左右竖带」）
             return (
-            <FadeInView delay={index < 12 ? 80 + index * 30 : 0} duration={300} style={styles.albumItem}>
+            <View style={styles.albumItem}>
               <TouchableOpacity activeOpacity={0.8} onPress={() => playSong(item)}>
                 {/* 与「专辑」网格同款：封面 + 卡外文字（不再有灰色信息块 → 也就没有左右竖带） */}
                 <View style={[styles.albumCover, {
@@ -785,7 +798,7 @@ export default function MusicLibraryScreen() {
                   </Text>
                 </View>
               </TouchableOpacity>
-            </FadeInView>
+            </View>
             );
           }}
         />
@@ -839,7 +852,8 @@ export default function MusicLibraryScreen() {
               } catch (err) {
                 console.warn('[MusicLibraryScreen] resume seek error:', err);
               }
-              useMusicPlayerStore.getState().setSeekTarget(0);
+              consumedSeekNonceRef.current = st.seekNonce;
+              useMusicPlayerStore.getState().consumeSeekTarget();
             }
           } catch (err) {
             console.warn('[MusicLibraryScreen] onLoad error:', err);

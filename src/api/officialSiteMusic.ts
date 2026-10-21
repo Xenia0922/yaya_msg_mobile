@@ -443,7 +443,7 @@ function buildTracks(
     .filter(Boolean) as OfficialSiteTrack[];
 }
 
-const CACHE_KEY = 'yaya_official_site_music_cache_v6';
+const CACHE_KEY = 'yaya_official_site_music_cache_v7';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 export async function loadOfficialSiteMusic(force = false): Promise<OfficialSiteTrack[]> {
@@ -508,10 +508,12 @@ export async function loadOfficialSiteMusic(force = false): Promise<OfficialSite
     }
     throw new Error('官网音乐列表为空');
   }
-  try {
-    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), list: all }));
-  } catch {
-    /* ignore */
+  if (groupDataArr.every((r) => r.status === 'fulfilled')) {
+    try {
+      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), list: all }));
+    } catch {
+      /* ignore */
+    }
   }
   return all;
 }
