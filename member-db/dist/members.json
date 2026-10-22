@@ -1,7 +1,7 @@
 {
-  "version": "20260926",
-  "updatedAt": "2026-09-26T18:11:50.192Z",
-  "contentHash": "3b6c22692fd1eae9",
+  "version": "20261022",
+  "updatedAt": "2026-10-22T10:04:12.907Z",
+  "contentHash": "6e22395c1da8d0b5",
   "count": 962,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -12,7 +12,7 @@
   "coverage": {
     "withName": 962,
     "channelId": 544,
-    "yklzId": 291,
+    "yklzId": 300,
     "serverId": 544
   },
   "members": [
@@ -50,9 +50,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10019_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10019_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10019_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -117,9 +114,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10001_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10001_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10001_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -277,9 +271,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10010_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10010_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10010_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -564,9 +555,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10004_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10004_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10004_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -603,9 +591,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10014_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10014_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10014_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -640,9 +625,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10005_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10005_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10005_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -676,9 +658,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10006_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10006_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10006_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -713,9 +692,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10015_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10015_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10015_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -784,9 +760,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10029_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10029_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10029_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -884,9 +857,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10037_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10037_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10037_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1013,9 +983,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10030_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10030_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10030_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1052,9 +1019,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10007_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10007_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10007_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1089,9 +1053,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10008_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10008_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10008_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1124,9 +1085,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10002_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10002_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10002_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1163,9 +1121,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10003_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10003_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10003_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1202,9 +1157,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10013_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10013_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10013_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1238,9 +1190,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10009_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10009_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10009_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1598,9 +1547,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10075_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10075_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10075_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1622,6 +1568,10 @@
       "periodId": 1003,
       "periodName": "SNH48 三期生",
       "jtime": "2014/7/26",
+      "ptime": "2014/9/5",
+      "qtime": "2018/6/29",
+      "rank": "42",
+      "note": "资料删除",
       "wbUid": "-",
       "wbName": "-",
       "avatar": "http://www.snh48.com/images/member/zp_10051.jpg?ram=1541160863770",
@@ -1789,9 +1739,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10070_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10070_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10070_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -1861,8 +1808,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415142302_jir0fiilktunyfh",
-      "roomId": "67207881",
-      "liveRoomId": 3869841,
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -1929,9 +1874,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10081_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10081_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10081_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -2126,9 +2068,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10087_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10087_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10087_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -2257,9 +2196,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10091_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10091_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10091_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -2327,9 +2263,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10093_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10093_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10093_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -2365,9 +2298,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10094_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10094_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10094_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -2471,7 +2401,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415142744_urfesi4pt8sxn08",
-      "roomId": "67236685",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -2756,9 +2685,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30001_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30001_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30001_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -2945,9 +2871,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10113_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10113_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10113_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -3109,9 +3032,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10118_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10118_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10118_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -3147,9 +3067,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10119_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10119_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10119_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -3184,9 +3101,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10120_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10120_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10120_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -3343,9 +3257,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10125_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10125_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10125_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -3381,9 +3292,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10126_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10126_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10126_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -3511,9 +3419,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10130_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10130_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10130_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -3597,6 +3502,10 @@
       "periodId": 1005,
       "periodName": "SNH48 五期生",
       "jtime": "2015/7/25",
+      "ptime": "2015/12/4",
+      "qtime": "2023/12/27",
+      "rank": "30",
+      "note": "资料删除",
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/20200629/1593434533481dCmOmq052y.jpg",
@@ -3700,9 +3609,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30014_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30014_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30014_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -4173,9 +4079,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10151_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10151_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10151_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -4273,9 +4176,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30010_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30010_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30010_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -4342,9 +4242,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30016_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30016_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30016_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -4439,9 +4336,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30020_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30020_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30020_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -4465,8 +4359,8 @@
       "jtime": "2016/4/20",
       "ptime": "2016/4/20",
       "qtime": "2020/4/25",
-      "rank": "GNZ48 第9名",
-      "note": "资料删除",
+      "rank": "9",
+      "note": "资料删除 曾任KIRABASE三创店星辰 现为トイプラ研修生",
       "wbUid": "7568600876",
       "wbName": "-莞旎媲氏-",
       "avatar": "https://source.48.cn/20191018/1571385170926RO0d3JK2o5.jpg",
@@ -4573,9 +4467,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30024_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30024_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30024_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -4611,9 +4502,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30025_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30025_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30025_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -4650,9 +4538,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30026_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30026_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30026_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -4719,9 +4604,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30028_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30028_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30028_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -4917,9 +4799,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10273_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10273_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10273_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1740000000000,
       "isInGroup": true
     },
     {
@@ -4984,9 +4863,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10236_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10236_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10236_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -5022,9 +4898,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/2enlmbacqq5fh448hc69qlj.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/mek0grj3bomjhhjsjh627dh.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/h910i8z9dt073nun4os23vh.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -5060,9 +4933,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10238_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10238_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10238_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -5594,9 +5464,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10241_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10241_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10241_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -5763,8 +5630,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415142248_a113kfk5mlooj1u",
-      "roomId": "67207875",
-      "liveRoomId": 3872562,
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -5776,8 +5641,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415142350_pwxqty1aw7x8jx0",
-      "roomId": "67380600",
-      "liveRoomId": 3874066,
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -6187,9 +6050,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10167_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10167_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10167_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -6657,9 +6517,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10247_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10247_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10247_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -7125,9 +6982,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30054_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30054_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30054_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -7164,9 +7018,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30043_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30043_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30043_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -7331,9 +7182,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30041_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30041_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30041_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -7370,9 +7218,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30047_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30047_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30047_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -7408,9 +7253,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30046_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30046_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30046_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -7976,9 +7818,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10265_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10265_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10265_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -8171,7 +8010,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415142142_q92v8u2h24126ep",
-      "roomId": "67189818",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -8641,9 +8479,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30132_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30132_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30132_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -8653,7 +8488,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415142436_9l5do184vkpjiy0",
-      "roomId": "67256375",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -9453,9 +9287,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10220_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10220_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10220_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -9918,9 +9749,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30071_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30071_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30071_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -10049,9 +9877,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10232_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10232_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10232_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -10087,9 +9912,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10178_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10178_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10178_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -10183,6 +10005,9 @@
       "periodId": 1008,
       "periodName": "SNH48 八期生",
       "jtime": "2017/9/6",
+      "ptime": "2017/9/6",
+      "qtime": "2017/9/30",
+      "note": "资料删除",
       "wbUid": "-",
       "wbName": "-",
       "avatar": "http://www.snh48.com/images/member/zp_10183.jpg?ram=1541160918456",
@@ -10603,9 +10428,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30076_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30076_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30076_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -10789,8 +10611,8 @@
       "periodId": 1203,
       "periodName": "GNZ48 三期生",
       "jtime": "2017/10/1",
-      "ptime": "2018/6/1",
-      "qtime": "2019/1/19",
+      "ptime": "2017/10/1、2018/6/1",
+      "qtime": "2018/12/16",
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/20191018/15713852021574WBYVE8we4.jpg",
@@ -10955,9 +10777,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10233_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10233_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10233_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -11051,9 +10870,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10234_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10234_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10234_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -11152,9 +10968,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50004_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50004_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50004_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -11762,9 +11575,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10212_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10212_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10212_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -12029,9 +11839,7 @@
       "periodName": "CKG48 一期生",
       "jtime": "2017/10/27",
       "qtime": "2023/6/2",
-      "rank": "CKG48 第5名",
-      "roomId": "67390993",
-      "liveRoomId": 19843743,
+      "rank": "5",
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/20191018/1571385238594vbt99pm3B5.jpg",
@@ -12105,9 +11913,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30171_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30171_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30171_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -12448,7 +12253,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415142742_n6kuskbi1v53zcc",
-      "roomId": "67333170",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -12972,9 +12776,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50059_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50059_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50059_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -13159,9 +12960,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30102_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30102_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30102_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -13531,9 +13329,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10249_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10249_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10249_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -13598,9 +13393,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/ll27nwh8531sns2isrjcewu.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/f4nbnp5csn5z72xn07opnjd.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/amr62b10js1zzsi9er2dhcg.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -13949,7 +13741,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415143011_gsq9mtd6e28559f",
-      "roomId": "67189881",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -13961,7 +13752,6 @@
       "groupName": "官方",
       "periodName": "官方",
       "account": "20190415143008_nfwfip007p3nggv",
-      "roomId": "67293999",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -14030,9 +13820,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30104_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30104_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30104_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -14286,9 +14073,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10201_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10201_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10201_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -14603,9 +14387,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30098_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30098_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30098_4.jpg",
-      "status": 1,
-      "ctime": 1550000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -15032,9 +14813,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10258_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10258_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10258_4.jpg",
-      "status": 1,
-      "ctime": 1600000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -15149,7 +14927,8 @@
       "periodName": "SNH48 十四期生",
       "jtime": "2020/10/3",
       "ptime": "2020/10/3",
-      "qtime": "2021/6/4",
+      "qtime": "2026/1/28",
+      "note": "资料删除",
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/mediasource/avatar/1602230848229WHw1sVbyso.jpg",
@@ -15504,9 +15283,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/t1ik5ijswnemz2ryast90vg.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/ut404u38p5cu4kfm4rcabal.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/e8af9os0l5vywcf7hhdhqyz.jpg",
-      "status": 1,
-      "ctime": 1610000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -15703,9 +15479,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30119_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30119_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30119_4.jpg",
-      "status": 1,
-      "ctime": 1620000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -15801,9 +15574,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10259_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10259_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10259_4.jpg",
-      "status": 1,
-      "ctime": 1620000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -15839,9 +15609,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10260_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10260_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10260_4.jpg",
-      "status": 1,
-      "ctime": 1620000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -15876,9 +15643,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10261_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10261_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10261_4.jpg",
-      "status": 1,
-      "ctime": 1620000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -15900,7 +15664,7 @@
       "periodId": 1015,
       "periodName": "SNH48 十五期生",
       "jtime": "2021/4/4",
-      "qtime": "2021/12/15",
+      "qtime": "2021/8/29",
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/2021/0617/000x2faz4el6gzu6nw0zlny4025.jpg",
@@ -16077,9 +15841,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30126_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30126_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30126_4.jpg",
-      "status": 1,
-      "ctime": 1620000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -16144,9 +15905,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10269_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10269_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10269_4.jpg",
-      "status": 1,
-      "ctime": 1630000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -16214,9 +15972,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10267_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10267_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10267_4.jpg",
-      "status": 1,
-      "ctime": 1630000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -16318,9 +16073,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50074_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50074_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50074_4.jpg",
-      "status": 1,
-      "ctime": 1640000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -16545,9 +16297,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/ec5nt3epwbkq77225smiyqp.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/rfkcj36r57e04kz2lafuo96.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/iker12nd0pngqgs93tb7znk.jpg",
-      "status": 1,
-      "ctime": 1640000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -16744,9 +16493,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/9e5q9wu2e9a78elmp6ut81h.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/2l7lb7383r4i0mhx77try8b.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/vpr82l158s025za4959cvtp.jpg",
-      "status": 1,
-      "ctime": 1640000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -17074,9 +16820,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10274_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10274_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10274_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -17240,9 +16983,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30136_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30136_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30136_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17277,9 +17017,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60001_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60001_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60001_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17315,9 +17052,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60002_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60002_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60002_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17387,9 +17121,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30140_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30140_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30140_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": false
     },
     {
@@ -17424,9 +17155,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30141_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30141_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30141_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17664,9 +17392,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10341_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10341_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10341_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17703,9 +17428,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30149_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30149_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30149_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17740,9 +17462,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60013_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60013_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60013_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17778,9 +17497,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60014_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60014_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60014_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17816,9 +17532,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30152_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30152_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30152_4.jpg",
-      "status": 1,
-      "ctime": 1660000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -17957,9 +17670,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/w72rex6kra9veg954jabv64.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/ppusg29qtharcc4j1pwql6a.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/9cicpsgf54yi19x6t5kms31.jpg",
-      "status": 1,
-      "ctime": 1670000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -18061,9 +17771,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/y0qyuuncf841rn9kszk439u.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/04nk3c3qdtq3l8mx3no9l3d.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/8igv4ehng7u82w77h79fq1c.jpg",
-      "status": 1,
-      "ctime": 1680000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -18268,9 +17975,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10286_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10286_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10286_4.jpg",
-      "status": 1,
-      "ctime": 1680000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -18373,9 +18077,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10289_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10289_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10289_4.jpg",
-      "status": 1,
-      "ctime": 1680000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -18410,9 +18111,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10290_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10290_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10290_4.jpg",
-      "status": 1,
-      "ctime": 1680000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -18481,9 +18179,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30156_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30156_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30156_4.jpg",
-      "status": 1,
-      "ctime": 1680000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -18627,9 +18322,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10378_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10378_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10378_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -18730,9 +18422,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60022_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60022_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60022_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -18800,9 +18489,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2024/0924/rtd5a8spo749tekrhn8e6ki.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2024/0924/uxan4t4ef0u3pe2rcxckmae.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2024/0924/2mxyrn4eahnfau0fmlfk2x6.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -18872,9 +18558,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30207_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30207_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30207_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -18891,8 +18574,8 @@
       "specialty": "跳舞、做手工、把饭吃得很香",
       "groupId": 21,
       "groupName": "CGT48",
-      "teamId": 2103,
-      "team": "预备生",
+      "teamId": 2101,
+      "team": "TEAM CII",
       "periodId": 2101,
       "periodName": "CGT48 一期生",
       "jtime": "2023/6/2",
@@ -18980,9 +18663,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60028_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60028_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60028_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19119,9 +18799,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50078_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50078_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50078_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19157,9 +18834,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50079_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50079_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50079_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19225,9 +18899,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50081_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50081_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50081_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19262,9 +18933,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50082_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50082_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50082_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19298,9 +18966,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50083_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50083_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50083_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19368,9 +19033,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50085_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50085_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50085_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19437,9 +19099,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50087_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50087_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50087_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19474,9 +19133,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50088_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50088_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50088_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19511,9 +19167,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50089_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50089_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50089_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19548,9 +19201,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50090_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50090_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50090_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19585,9 +19235,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60032_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60032_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60032_4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -19755,9 +19402,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/099omq8czds5aqnatlgny17.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/tca150as4v2vfz7fgqtn7wh.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/01loqwzcfqdwsxg9qlbmhv4.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -19891,9 +19535,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/esxnf5zwp1l6zmzeju907vo.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/6alaaiyd75zi5a3dg3zygd2.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/om5ycd260a60h8c0b74kt8r.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -19963,9 +19604,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/m5o5beoghd1haki56d6jypj.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/dgwzrvd62nj488gvlnxgp3c.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/x5njsga9dxk27aco58uk3dx.jpg",
-      "status": 1,
-      "ctime": 1690000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -20033,9 +19671,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30159_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30159_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30159_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20072,9 +19707,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30160_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30160_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30160_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20143,9 +19775,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30162_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30162_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30162_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20181,9 +19810,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30163_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30163_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30163_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20249,9 +19875,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50093_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50093_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50093_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20357,9 +19980,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10295_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10295_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10295_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -20458,9 +20078,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10298_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10298_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10298_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -20495,9 +20112,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10299_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10299_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10299_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -20531,9 +20145,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50095_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50095_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50095_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20567,9 +20178,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50096_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50096_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50096_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20602,9 +20210,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50097_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50097_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50097_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20702,9 +20307,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/o4mf4kt9zj9t80omkcuiw13.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/cep9rsp459a6o658xl5w3lz.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/biiy739ddx8rw3opjk417us.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -20739,9 +20341,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30164_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30164_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30164_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -20776,9 +20375,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30165_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30165_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30165_4.jpg",
-      "status": 1,
-      "ctime": 1700000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -21273,9 +20869,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50100_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50100_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50100_4.jpg",
-      "status": 1,
-      "ctime": 1710000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -21309,9 +20902,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50099_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50099_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50099_4.jpg",
-      "status": 1,
-      "ctime": 1710000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -21478,9 +21068,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30174_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30174_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30174_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -21547,9 +21134,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30176_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30176_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30176_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -21617,9 +21201,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60041_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60041_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60041_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -21752,9 +21333,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/remjy7wim0jweyhw02mmi32.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/wxzwvw7m4knxhzb6u82i6d9.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/wmzgv5y9z8fcw7pvacvda7x.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -21822,9 +21400,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/485e36k4c6jt2y0j850lomv.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/u4j8a4s3vroy43ma0kslm15.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/20fyp55z8qba5ed14uct7vy.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -21891,9 +21466,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_20165_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_20165_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_20165_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -21929,9 +21501,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/jqng7qulfxf7921o9kk7d4o.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/x5kx40qezz33bq6yrce5mc3.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/4sbtm8y1e434igee0dft1cb.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -22030,9 +21599,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/74tf08sddodk94h6c471x9a.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/btzzrs3ef5037bkd72ssyt7.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/8ie4320uj9qng3g69b2465k.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -22066,9 +21632,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10312_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10312_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10312_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -22102,9 +21665,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10313_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10313_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10313_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -22173,9 +21733,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10315_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10315_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10315_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -22209,9 +21766,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10316_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10316_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10316_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -22278,9 +21832,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10318_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10318_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10318_4.jpg",
-      "status": 1,
-      "ctime": 1720000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -22314,10 +21865,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50101_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50101_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50101_4.jpg",
-      "status": 1,
-      "ctime": 1730000000000,
-      "utime": 1760000000000,
-      "isInGroup": true
+      "isInGroup": false
     },
     {
       "id": 135987437,
@@ -22386,9 +21934,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30177_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30177_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30177_4.jpg",
-      "status": 1,
-      "ctime": 1730000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -22423,9 +21968,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30178_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30178_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30178_4.jpg",
-      "status": 1,
-      "ctime": 1730000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -22460,9 +22002,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30179_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30179_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30179_4.jpg",
-      "status": 1,
-      "ctime": 1730000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -22531,9 +22070,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30181_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30181_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30181_4.jpg",
-      "status": 1,
-      "ctime": 1730000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -22601,9 +22137,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30183_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30183_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30183_4.jpg",
-      "status": 1,
-      "ctime": 1730000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -22638,9 +22171,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30184_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30184_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30184_4.jpg",
-      "status": 1,
-      "ctime": 1730000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -22675,9 +22205,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/vxhrk90vze4br36qmhd46b8.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/q89ju8bh9lqh52n43zfiygj.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/12xl23eqyywoqzkyq5183fc.jpg",
-      "status": 1,
-      "ctime": 1730000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -23601,9 +23128,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50106_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50106_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50106_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -23668,9 +23192,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50109_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50109_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50109_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -23829,9 +23350,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30187_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30187_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30187_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1740000000000,
       "isInGroup": true
     },
     {
@@ -23867,9 +23385,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30189_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30189_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30189_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -23903,9 +23418,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30188_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30188_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30188_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1740000000000,
       "isInGroup": true
     },
     {
@@ -23940,9 +23452,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30190_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30190_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30190_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -23978,9 +23487,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/ssj2c314myb9zlkra82ctkv.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/e2awg1hdxxi48x5d860ap2c.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/dikri4aqljrw2wqv7k3vkt5.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24046,9 +23552,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10322_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10322_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10322_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24083,9 +23586,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10323_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10323_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10323_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24119,9 +23619,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10324_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10324_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10324_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24156,9 +23653,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10325_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10325_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10325_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24257,9 +23751,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10328_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10328_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10328_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24285,7 +23776,7 @@
       "account": "20250408120143_7x4cqj92p6a212f",
       "serverId": 27398419,
       "channelId": 34296180,
-      "yklzId": 39408542,
+      "yklzId": 41194175,
       "wbUid": "8011080194",
       "wbName": "SNH48-盛乐",
       "avatar": "https://www.snh48.com/images/member/zp_10329.jpg",
@@ -24293,9 +23784,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10329_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10329_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10329_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24331,9 +23819,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10330_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10330_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10330_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24398,9 +23883,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10334_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10334_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10334_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24468,9 +23950,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/a78u5g2cjadsyzv3z7il3jb.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/4q8o4m8emqm30ces03rs331.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/0bfug99os2hvx11hwd6gn6p.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24537,10 +24016,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10336_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10336_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10336_4.jpg",
-      "status": 1,
-      "ctime": 1740000000000,
-      "utime": 1770000000000,
-      "isInGroup": true
+      "isInGroup": false
     },
     {
       "id": 151126114,
@@ -24633,9 +24109,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60046_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60046_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60046_4.jpg",
-      "status": 1,
-      "ctime": 1750000000000,
-      "utime": 1750000000000,
       "isInGroup": true
     },
     {
@@ -24702,9 +24175,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30206_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30206_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30206_4.jpg",
-      "status": 1,
-      "ctime": 1750000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24834,9 +24304,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60053_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60053_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60053_4.jpg",
-      "status": 1,
-      "ctime": 1750000000000,
-      "utime": 1750000000000,
       "isInGroup": true
     },
     {
@@ -24897,9 +24364,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50112_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50112_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50112_4.jpg",
-      "status": 1,
-      "ctime": 1750000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -24934,9 +24398,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50114_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50114_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50114_4.jpg",
-      "status": 1,
-      "ctime": 1750000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25002,9 +24463,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50113_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50113_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50113_4.jpg",
-      "status": 1,
-      "ctime": 1750000000000,
-      "utime": 1750000000000,
       "isInGroup": true
     },
     {
@@ -25070,9 +24528,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10337_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10337_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10337_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25107,9 +24562,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10338_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10338_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10338_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25136,7 +24588,7 @@
       "account": "20250903160759_l3rihl639b69i9x",
       "serverId": 28889369,
       "channelId": 35967261,
-      "yklzId": 36196733,
+      "yklzId": 41128503,
       "wbUid": "9171559267",
       "wbName": "SNH48-柳雨呈",
       "avatar": "https://www.snh48.com/images/member/zp_10339.jpg",
@@ -25144,9 +24596,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10339_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10339_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10339_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25180,9 +24629,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30192_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30192_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30192_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25216,9 +24662,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30193_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30193_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30193_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25252,9 +24695,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30194_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30194_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30194_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25289,9 +24729,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30195_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30195_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30195_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25325,9 +24762,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30196_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30196_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30196_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25361,9 +24795,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30197_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30197_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30197_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25398,9 +24829,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30198_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30198_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30198_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25434,9 +24862,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30199_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30199_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30199_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25535,9 +24960,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/9tcy7u6i30zrf5dudddhfsa.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/j4tmnez40shvc6qgoeb79qh.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/385n28svf440rewmfsa2mu7.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25570,10 +24992,7 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/r6xfrch7b4mn832n9syoebi.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/a1g58egf7br51otpgez9mz6.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/id39g2pvhqh9v213qsegw8g.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
-      "isInGroup": true
+      "isInGroup": false
     },
     {
       "id": 161415232,
@@ -25605,9 +25024,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60054_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60054_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60054_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25702,9 +25118,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60057_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60057_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60057_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25770,9 +25183,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60059_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60059_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60059_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25804,9 +25214,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60060_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60060_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60060_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25840,9 +25247,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60061_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60061_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60061_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25875,9 +25279,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60062_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60062_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60062_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -25912,9 +25313,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10344_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10344_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10344_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25947,9 +25345,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10359_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10359_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10359_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -25983,9 +25378,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10360_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10360_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10360_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26007,6 +25399,8 @@
       "periodId": 1023,
       "periodName": "SNH48 二十三期生",
       "jtime": "2025/9/23",
+      "qtime": "2025/11/7",
+      "account": "20251005123708_uhu9gizh15z4j9w",
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/backstage/2025/1005/4nmlhu5y5k1trxz14ohm593.jpg",
@@ -26046,9 +25440,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10346_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10346_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10346_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26082,9 +25473,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10347_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10347_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10347_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26150,9 +25538,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10349_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10349_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10349_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26185,9 +25570,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10350_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10350_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10350_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26255,9 +25637,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10352_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10352_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10352_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26292,9 +25671,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10353_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10353_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10353_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26328,9 +25704,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10354_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10354_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10354_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26364,9 +25737,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10355_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10355_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10355_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26433,9 +25803,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10357_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10357_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10357_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26468,9 +25835,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10358_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10358_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10358_4.jpg",
-      "status": 1,
-      "ctime": 1760000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26503,9 +25867,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10361_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10361_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10361_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26538,9 +25899,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50117_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50117_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50117_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26573,9 +25931,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50118_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50118_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50118_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26608,9 +25963,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50119_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50119_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50119_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26643,9 +25995,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50120_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50120_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50120_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26678,9 +26027,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50121_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50121_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50121_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26746,9 +26092,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30201_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30201_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30201_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26781,9 +26124,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30202_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30202_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30202_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26817,9 +26157,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30203_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30203_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30203_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": false
     },
     {
@@ -26852,9 +26189,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30204_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30204_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30204_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26887,9 +26221,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30205_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30205_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30205_4.jpg",
-      "status": 1,
-      "ctime": 1770000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -26917,8 +26248,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0402/55owb63s7p0kl2hus2tb619.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0402/vebi05ddec102df2cow8rh3.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0402/qrih9c8iask6u15ir6ed0fx.jpg",
-      "ctime": 1780000000000,
-      "utime": 1780000000000,
       "isInGroup": false
     },
     {
@@ -26951,9 +26280,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0925/d7ur0caa08163ndq1w7opht.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0925/of9a2mq0aj5t75b9ufo4n4o.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0925/hc5cslqerk21tnfbuxekfue.jpg",
-      "status": 1,
-      "ctime": 1780000000000,
-      "utime": 1780000000000,
       "isInGroup": true
     },
     {
@@ -26981,8 +26307,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0402/3rlwy7loo3si7l0d2a425lg.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0402/gtnijj4mnto9hosvhm86ve0.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0402/cenk9h9x06fgg3ri5gpb3gw.jpg",
-      "ctime": 1780000000000,
-      "utime": 1780000000000,
       "isInGroup": false
     },
     {
@@ -27015,9 +26339,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0925/7y4x1wsv3xxz9w6zzxrp31f.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0925/mgy5c5bwr1lmj9q8ycq667s.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0925/167n7odyvr8bmn1rk084ln6.jpg",
-      "status": 1,
-      "ctime": 1780000000000,
-      "utime": 1780000000000,
       "isInGroup": true
     },
     {
@@ -27052,9 +26373,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/4xpn4qp6oawyh5crily2b2a.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/2ozyc8vbdc4fs7lwb90l06u.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/dssz4njwuu59rxrohbc0qvz.jpg",
-      "status": 1,
-      "ctime": 1780000000000,
-      "utime": 1780000000000,
       "isInGroup": true
     },
     {
@@ -27087,9 +26405,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0925/lj7jzr153mzj3x62z3rmhry.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0925/1ativaven9u0vy79m8oflnw.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0925/f1cub7155vzebgpwcf69ln5.jpg",
-      "status": 1,
-      "ctime": 1780000000000,
-      "utime": 1780000000000,
       "isInGroup": true
     },
     {
@@ -27124,9 +26439,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/707xl7hwqw9kpt3kwc2s0d7.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/2pqpjdw7f4x13osci8n52hf.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/vzu345c894foafbt9ynswov.jpg",
-      "status": 1,
-      "ctime": 1780000000000,
-      "utime": 1780000000000,
       "isInGroup": true
     },
     {
@@ -27160,9 +26472,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0915/k4i97b9p35uqdb3ewvuijvp.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0915/i0nbjjwdcne6qkh5h6bv10y.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0915/vkwy9q1bzqb442szpjjwzps.jpg",
-      "status": 1,
-      "ctime": 1780000000000,
-      "utime": 1780000000000,
       "isInGroup": true
     },
     {
@@ -27195,9 +26504,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10362_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10362_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10362_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27231,9 +26537,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10363_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10363_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10363_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27266,9 +26569,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10364_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10364_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10364_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27301,9 +26601,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10365_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10365_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10365_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27339,9 +26636,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10366_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10366_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10366_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27374,9 +26668,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10367_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10367_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10367_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27409,9 +26700,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10368_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10368_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10368_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27444,9 +26732,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10369_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10369_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10369_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27479,9 +26764,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10370_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10370_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10370_4.jpg",
-      "status": 1,
-      "ctime": 1777470000000,
-      "utime": 1777470000000,
       "isInGroup": true
     },
     {
@@ -27514,10 +26796,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60063_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60063_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60063_4.jpg",
-      "status": 1,
-      "ctime": 1777520000000,
-      "utime": 1777520000000,
-      "isInGroup": true
+      "isInGroup": false
     },
     {
       "id": 175374368,
@@ -27549,9 +26828,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60064_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60064_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60064_4.jpg",
-      "status": 1,
-      "ctime": 1777520000000,
-      "utime": 1777520000000,
       "isInGroup": true
     },
     {
@@ -27585,9 +26861,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60065_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60065_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60065_4.jpg",
-      "status": 1,
-      "ctime": 1777520000000,
-      "utime": 1777520000000,
       "isInGroup": true
     },
     {
@@ -27620,9 +26893,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60066_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60066_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60066_4.jpg",
-      "status": 1,
-      "ctime": 1777520000000,
-      "utime": 1777520000000,
       "isInGroup": true
     },
     {
@@ -27748,6 +27018,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142132_ysf5bzg2jcoe5w2",
       "serverId": 32936687,
       "channelId": 40850159,
       "yklzId": 40964489,
@@ -27758,7 +27029,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60067_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60067_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60067_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -27780,6 +27050,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_eafmybtab7e2eae",
       "serverId": 32838496,
       "channelId": 40784725,
       "yklzId": 40915037,
@@ -27790,7 +27061,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60068_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60068_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60068_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -27812,6 +27082,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_ifglf7q9w397z66",
       "serverId": 32952605,
       "channelId": 40980659,
       "yklzId": 40915250,
@@ -27822,7 +27093,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60069_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60069_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60069_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -27844,8 +27114,10 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_wmv5w72rnn5qq0t",
       "serverId": 32936688,
       "channelId": 40964715,
+      "yklzId": 41095968,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://www.snh48.com/images/member/zp_60070.jpg",
@@ -27853,7 +27125,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60070_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60070_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60070_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -27875,6 +27146,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_y840o3o81hj7s4x",
       "serverId": 32985125,
       "channelId": 40899244,
       "yklzId": 40964680,
@@ -27885,7 +27157,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60071_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60071_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60071_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -27907,6 +27178,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_1fa0bnyr87nszj4",
       "serverId": 32838497,
       "channelId": 40784728,
       "yklzId": 41095197,
@@ -27917,12 +27189,11 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60072_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60072_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60072_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
       "id": 184156252,
-      "ownerName": "梁云朝",
+      "ownerName": "梁雲朝",
       "pinyin": "LiangYunChao",
       "nickname": "安娜",
       "birthday": "2006/10/30",
@@ -27939,8 +27210,10 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_s7l08fe0xsw70ty",
       "serverId": 32985126,
       "channelId": 40866328,
+      "yklzId": 41177807,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://www.snh48.com/images/member/zp_60073.jpg",
@@ -27948,7 +27221,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60073_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60073_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60073_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -27970,6 +27242,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_1960etqtl4yldcx",
       "serverId": 32854259,
       "channelId": 40964516,
       "yklzId": 40964786,
@@ -27980,7 +27253,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60074_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60074_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60074_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28002,6 +27274,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_otln4ns3y1gcssf",
       "serverId": 32969178,
       "channelId": 40849970,
       "yklzId": 40980862,
@@ -28012,7 +27285,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60075_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60075_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60075_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28034,6 +27306,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_xjdijk1fw4hdyo1",
       "serverId": 32838498,
       "channelId": 40784731,
       "yklzId": 40964639,
@@ -28044,7 +27317,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60076_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60076_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60076_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28066,6 +27338,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_mz9q6lcvjhfzzq7",
       "serverId": 33002090,
       "channelId": 40899046,
       "yklzId": 40964782,
@@ -28076,7 +27349,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60077_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60077_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60077_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28084,6 +27356,7 @@
       "ownerName": "张婷",
       "pinyin": "ZhangTing",
       "nickname": "茴茴",
+      "birthday": "2003/8/20",
       "birthplace": "安徽 淮南",
       "constellation": "狮子座",
       "height": 165,
@@ -28097,6 +27370,7 @@
       "periodId": 2107,
       "periodName": "CGT48 七期生",
       "jtime": "2026/9/12",
+      "account": "20260912142133_ud2k9p152ojguzo",
       "serverId": 32838499,
       "channelId": 40899264,
       "yklzId": 40866367,
@@ -28107,7 +27381,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_60078_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60078_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60078_4.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28115,6 +27388,7 @@
       "ownerName": "陈柯睿",
       "pinyin": "ChenKeRui",
       "nickname": "睿睿",
+      "birthday": "2010/8/4",
       "birthplace": "湖北 宜昌",
       "constellation": "狮子座",
       "height": 168,
@@ -28128,6 +27402,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212815_tg08y8il0boj70s",
       "serverId": 33034419,
       "channelId": 40997441,
       "yklzId": 40947904,
@@ -28138,7 +27413,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/s1qumgzi53qc8b5mu1xezcz.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/4u25le4vf9d7k01vc5x8v7o.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/k4fcpvxyjodt4ftvdxbgksm.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28146,6 +27420,7 @@
       "ownerName": "贺宇晨",
       "pinyin": "HeYuChen",
       "nickname": "层层",
+      "birthday": "2006/1/6",
       "birthplace": "湖南 衡阳",
       "constellation": "魔羯座",
       "height": 165,
@@ -28159,6 +27434,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212815_ymqmqkd8j008pjo",
       "serverId": 32953055,
       "channelId": 40866790,
       "yklzId": 40948216,
@@ -28169,7 +27445,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/3u8q2tioqv2thhztz19bsg7.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/mvf6nv4tqr1ym9p2bze1rmq.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/q4rcjpi0qy634aq3nviu8zq.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28177,6 +27452,7 @@
       "ownerName": "何颖莹",
       "pinyin": "HeYingYing",
       "nickname": "葡挞",
+      "birthday": "2008/8/23",
       "birthplace": "广东 江门",
       "constellation": "处女座",
       "height": 161,
@@ -28190,6 +27466,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212815_oeopb6dkbxxeihw",
       "serverId": 33084279,
       "channelId": 40866791,
       "yklzId": 40882228,
@@ -28200,7 +27477,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/y7agdzslwe1k0ahcz4euki4.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/w6d337vq92jfzdrn7n7r7wd.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/ncvsk3ooh4x7n8b74etuh0n.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28208,6 +27484,7 @@
       "ownerName": "贾佳慧",
       "pinyin": "JiaJiaHui",
       "nickname": "喵脆角、Lilu",
+      "birthday": "2004/9/7",
       "birthplace": "北京",
       "constellation": "处女座",
       "height": 161,
@@ -28221,9 +27498,9 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212815_ggut1bmq27vx7kj",
       "serverId": 32985554,
       "channelId": 40932204,
-      "yklzId": 40915905,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/backstage/2026/0916/vh8sttcgb10hxu2r11mlpmh.jpg",
@@ -28231,7 +27508,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/ccf5dsi9e712608ewuy3u24.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/nbp3mk3tegjts9jriydmh3a.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/kwmrj2725cu2nd68si3pr12.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28239,6 +27515,7 @@
       "ownerName": "罗晶",
       "pinyin": "LuoJing",
       "nickname": "晶晶",
+      "birthday": "2007/5/26",
       "birthplace": "广东 梅州",
       "constellation": "双子座",
       "height": 163,
@@ -28252,6 +27529,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212816_gnrxa5xun3yu64m",
       "serverId": 32985555,
       "channelId": 40997056,
       "yklzId": 40997211,
@@ -28262,7 +27540,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/rlpo2f0exss9b9577u77343.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/9rmn0y3mnakl39e0sq2hbbj.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/ie6ge18tntnq2qix0rqcisu.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28270,6 +27547,7 @@
       "ownerName": "李若竹",
       "pinyin": "LiRuoZhu",
       "nickname": "香菜",
+      "birthday": "2007/3/4",
       "birthplace": "辽宁 沈阳",
       "constellation": "双鱼座",
       "height": 165,
@@ -28283,6 +27561,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212816_opbs2mhkpoynfis",
       "serverId": 32854856,
       "channelId": 40882359,
       "yklzId": 40883113,
@@ -28293,7 +27572,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/w1ukxkfgo0l870mlrijuw7z.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/v8x1glpu2d8ljgfhm5m40pa.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/d9eyrfj809miz35c9jn128v.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28301,6 +27579,7 @@
       "ownerName": "刘媛媛",
       "pinyin": "LiuYuanYuan",
       "nickname": "媛媛、小媛",
+      "birthday": "2005/2/22",
       "birthplace": "广西 桂林",
       "constellation": "双鱼座",
       "height": 166,
@@ -28314,6 +27593,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212816_j6kf5p5akyien6s",
       "serverId": 33018878,
       "channelId": 40882361,
       "yklzId": 41030105,
@@ -28324,7 +27604,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/ir726a3nri1fh2o2ua0bcsr.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/5lrcm2qhwsy3j6q6u9r5y0i.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/p316vddqif98e7rkbpyq4x5.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28332,6 +27611,7 @@
       "ownerName": "陶佳妮",
       "pinyin": "TaoJiaNi",
       "nickname": "天使、猫猫",
+      "birthday": "2009/3/15",
       "birthplace": "江西 南昌",
       "constellation": "双鱼座",
       "height": 161,
@@ -28345,6 +27625,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212816_syms595i5l64btq",
       "serverId": 33018047,
       "channelId": 40866793,
       "yklzId": 40915955,
@@ -28355,7 +27636,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/1m304qbz6rx08ew11zx8c89.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/y0ioej3dpvmnczc7n9b5xmk.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/7mtjv85t2f15b11wbnujhlj.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28363,6 +27643,7 @@
       "ownerName": "王唯祎",
       "pinyin": "WangWeiYi",
       "nickname": "卫衣",
+      "birthday": "2008/1/1",
       "birthplace": "香港",
       "constellation": "魔羯座",
       "height": 170,
@@ -28376,6 +27657,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212816_wo18169dr4mqubs",
       "serverId": 33018048,
       "channelId": 40996895,
       "yklzId": 40947795,
@@ -28386,7 +27668,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/fnvoj3wfzs2kmwl0rrtsd2d.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/1y4rwg19xj895l19j3aiji3.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/0qykq5765862ryoh9f5rj85.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28394,6 +27675,7 @@
       "ownerName": "向吴怡轩",
       "pinyin": "XiangWuYiXuan",
       "nickname": "柚柚",
+      "birthday": "2007/7/12",
       "birthplace": "湖北 宜昌",
       "constellation": "巨蟹座",
       "height": 168,
@@ -28407,6 +27689,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212816_rf3ky2j3dq1f3t3",
       "serverId": 33018879,
       "channelId": 40915886,
       "yklzId": 40882235,
@@ -28417,7 +27700,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/3n24k3ttc0p28jhz45y8u95.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/xh48zwfqc6g4m2hsq0jbm1r.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/7yq4siyhj0l6fz4fjeh1srg.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28425,6 +27707,7 @@
       "ownerName": "周文迪",
       "pinyin": "ZhouWenDi",
       "nickname": "兔子",
+      "birthday": "2005/9/25",
       "birthplace": "四川 雅安",
       "constellation": "天秤座",
       "height": 162,
@@ -28438,6 +27721,7 @@
       "periodId": 1221,
       "periodName": "GNZ48 二十一期生",
       "jtime": "2026/9/17",
+      "account": "20260917212816_z5shnflmmui0vc8",
       "serverId": 33051620,
       "channelId": 40997260,
       "yklzId": 40882888,
@@ -28448,7 +27732,6 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/wnjuzkroq2nbec5x9v304o6.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/8gshh3n7m5tpxklschwo0jq.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/2kqq5dfe3tq2fssjstj8kgr.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28456,6 +27739,8 @@
       "ownerName": "范小天",
       "pinyin": "FanXiaoTian",
       "nickname": "天天 饭饭",
+      "birthday": "2005/1/17",
+      "birthplace": "陕西 宝鸡",
       "constellation": "魔羯座",
       "height": 161,
       "bloodType": "未知",
@@ -28468,14 +27753,15 @@
       "periodId": 1119,
       "periodName": "BEJ48 十九期生",
       "jtime": "2026/9/26",
+      "account": "20260926173605_01u5idnvbcd83br",
       "serverId": 33182381,
       "channelId": 41095260,
+      "yklzId": 41127977,
       "avatar": "https://source.48.cn/backstage/2026/0924/f5cs1mmfh2u2rqtknekkyw9.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/83zy8cyy74x3u5jow4uahk3.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/i6v1ei16x65v05qhlq8m5g3.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0924/duam8b62qq2amf60015grk4.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0924/w5kt9wczdvrfjhd7vdayn57.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28483,6 +27769,8 @@
       "ownerName": "刘雨硕",
       "pinyin": "LiuYuShuo",
       "nickname": "岁岁",
+      "birthday": "2005/8/2",
+      "birthplace": "河南 驻马店",
       "constellation": "狮子座",
       "height": 161,
       "bloodType": "未知",
@@ -28495,14 +27783,15 @@
       "periodId": 1119,
       "periodName": "BEJ48 十九期生",
       "jtime": "2026/9/26",
+      "account": "20260926173606_z3leqbsw4y47d2k",
       "serverId": 33149481,
       "channelId": 41112565,
+      "yklzId": 41013733,
       "avatar": "https://source.48.cn/backstage/2026/0924/pbykrtxk5sqw30wu8kfecbq.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/1k3i72189vj09gertfgmqxx.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/twxk34z5iqixr93tl24uou9.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0924/74mhucn4d4t3n8bvie0qhtb.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0924/d8juufq5v6g3gvaqa46vwk3.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28510,6 +27799,8 @@
       "ownerName": "刘卓尔",
       "pinyin": "LiuZhuoEr",
       "nickname": "小满",
+      "birthday": "2004/5/21",
+      "birthplace": "北京",
       "constellation": "双子座",
       "height": 170,
       "bloodType": "B",
@@ -28522,14 +27813,15 @@
       "periodId": 1119,
       "periodName": "BEJ48 十九期生",
       "jtime": "2026/9/26",
+      "account": "20260926173606_n2z7439ulbusu9f",
       "serverId": 33051119,
       "channelId": 41145146,
+      "yklzId": 41111741,
       "avatar": "https://source.48.cn/backstage/2026/0924/a8q573choxxm6ykfs2ok4wo.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/shrbo71b8mhjn9lytyd1d8f.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/onenp3z59xy0y8eod9spg69.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0924/8p9kjccrdu8q3l7e6nxhdm3.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0924/209ctrg58eui8hj19bnvi30.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28537,6 +27829,8 @@
       "ownerName": "李祉瑶",
       "pinyin": "LiZhiYao",
       "nickname": "荔枝",
+      "birthday": "2009/5/24",
+      "birthplace": "黑龙江 佳木斯",
       "constellation": "双子座",
       "height": 159,
       "bloodType": "B",
@@ -28549,14 +27843,15 @@
       "periodId": 1119,
       "periodName": "BEJ48 十九期生",
       "jtime": "2026/9/26",
+      "account": "20260926173606_2qzz1ac2y7q45uf",
       "serverId": 33050926,
       "channelId": 41014021,
+      "yklzId": 41046815,
       "avatar": "https://source.48.cn/backstage/2026/0924/3czfhc9czu6r7a89el4ygbq.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/2wxie285n3sik8rh2dhezrr.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/bebmse56vasm5qk31q0b6y1.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0924/0d833x4298l7n55ubo3250u.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0924/f4n9hj05xdqnkfpg8j9l22e.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28564,6 +27859,8 @@
       "ownerName": "武佳凝",
       "pinyin": "WuJiaNing",
       "nickname": "辞酱",
+      "birthday": "2009/8/21",
+      "birthplace": "北京",
       "constellation": "狮子座",
       "height": 163,
       "bloodType": "未知",
@@ -28576,14 +27873,15 @@
       "periodId": 1119,
       "periodName": "BEJ48 十九期生",
       "jtime": "2026/9/26",
+      "account": "20260926173606_m99fl2ksg4we0f8",
       "serverId": 33198115,
       "channelId": 41112567,
+      "yklzId": 41063365,
       "avatar": "https://source.48.cn/backstage/2026/0924/c9arqrx5lh5e9httl1qv44q.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/1r4jxq348fe7aaobkucplkq.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/1sn7dvhcikh07t29luhyq77.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0924/fwwd17kn02vvy3edmsead0w.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0924/0v43fweo2xrkzm0elqoyrb7.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28591,6 +27889,8 @@
       "ownerName": "王馨怡",
       "pinyin": "WangXinYi",
       "nickname": "星星",
+      "birthday": "2009/1/26",
+      "birthplace": "河南 南阳",
       "constellation": "水瓶座",
       "height": 168,
       "bloodType": "未知",
@@ -28603,14 +27903,15 @@
       "periodId": 1119,
       "periodName": "BEJ48 十九期生",
       "jtime": "2026/9/26",
+      "account": "20260926173606_bth7wc8se4753a7",
       "serverId": 33067728,
       "channelId": 41112395,
+      "yklzId": 41063221,
       "avatar": "https://source.48.cn/backstage/2026/0924/73rz5yb54l95tab23s30fe8.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/z40p0lro6f8k4q9w6kz59oi.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/7er5r0qx5pnq6k9lyiqwhog.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0924/nkx5j3u6uhp8bfodx5h6oyj.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0924/8ddzs4pbib6p30q3dmvkvp6.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28618,6 +27919,8 @@
       "ownerName": "张旭",
       "pinyin": "ZhangXu",
       "nickname": "木头",
+      "birthday": "2007/4/28",
+      "birthplace": "安徽 亳州",
       "constellation": "金牛座",
       "height": 167,
       "bloodType": "未知",
@@ -28630,14 +27933,15 @@
       "periodId": 1119,
       "periodName": "BEJ48 十九期生",
       "jtime": "2026/9/26",
+      "account": "20260926173606_4jybuvpf49s6u66",
       "serverId": 33132744,
       "channelId": 41112397,
+      "yklzId": 41079674,
       "avatar": "https://source.48.cn/backstage/2026/0924/jp6ty3is2o2zag0hrio7zwk.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/ytwjoej42owifjbvda1j5yw.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/zx7fj0nolsuc882158r1i8a.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0924/6wblze5yzlhy345vr51gdcy.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0924/46p8wobtjrjt1921pxsu6ak.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28645,6 +27949,8 @@
       "ownerName": "张怡璐",
       "pinyin": "ZhangYiLu",
       "nickname": "yilu酱 16",
+      "birthday": "2004/11/2",
+      "birthplace": "湖南 湘西",
       "constellation": "天蝎座",
       "height": 165,
       "bloodType": "未知",
@@ -28657,14 +27963,15 @@
       "periodId": 1119,
       "periodName": "BEJ48 十九期生",
       "jtime": "2026/9/26",
+      "account": "20260926173607_vb71q4hri04itf7",
       "serverId": 33083852,
       "channelId": 41095265,
+      "yklzId": 41078951,
       "avatar": "https://source.48.cn/backstage/2026/0924/500ihwyqnzjo4w2mwuhx999.jpg",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0924/ahhudsfq7trdrycqlcj1jvg.jpg",
       "fullPhoto2": "https://source.48.cn/backstage/2026/0924/pzqlpv4v5psr274twpef8lt.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0924/0l8ae9ik85xfj00w5pyvce6.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0924/1v8qydw3lr84v431qk2wpuw.jpg",
-      "status": 1,
       "isInGroup": true
     },
     {
@@ -28942,9 +28249,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10230_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10230_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10230_4.jpg",
-      "status": 1,
-      "ctime": 1570000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -29100,9 +28404,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10227_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10227_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10227_4.jpg",
-      "status": 1,
-      "ctime": 1580000000000,
-      "utime": 1770000000000,
       "isInGroup": true
     },
     {
@@ -29199,9 +28500,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30109_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30109_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30109_4.jpg",
-      "status": 1,
-      "ctime": 1580000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -29332,9 +28630,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30112_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30112_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30112_4.jpg",
-      "status": 1,
-      "ctime": 1590000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -29470,9 +28765,6 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_50057_2.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_50057_3.jpg",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_50057_4.jpg",
-      "status": 1,
-      "ctime": 1590000000000,
-      "utime": 1760000000000,
       "isInGroup": true
     },
     {
@@ -29514,7 +28806,8 @@
       "periodId": 1212,
       "periodName": "GNZ48 十二期生",
       "jtime": "2022/5/4",
-      "qtime": "2022/6/22",
+      "ptime": "2022/5/4",
+      "qtime": "2022/6/21",
       "wbUid": "7485350696",
       "wbName": "GNZ48-侯祎冉",
       "isInGroup": false
@@ -29546,6 +28839,9 @@
       "team": "TEAM NII",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "ptime": "2013/11/11",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29558,6 +28854,8 @@
       "team": "非正式成员",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "qtime": "2013/9/5",
+      "note": "未正式公开",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29572,6 +28870,9 @@
       "team": "TEAM NII",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "ptime": "2013/11/11",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29584,6 +28885,8 @@
       "team": "非正式成员",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "qtime": "2013/9/5",
+      "note": "未正式公开",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29597,6 +28900,8 @@
       "team": "非正式成员",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "qtime": "2013/11/6",
+      "note": "资料删除",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29610,6 +28915,8 @@
       "team": "非正式成员",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "qtime": "2013/9/5",
+      "note": "未正式公开",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29624,6 +28931,9 @@
       "team": "TEAM NII",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "ptime": "2013/11/11",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29638,6 +28948,9 @@
       "team": "TEAM NII",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "ptime": "2013/11/11",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29652,6 +28965,9 @@
       "team": "TEAM NII",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "ptime": "2013/11/11",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29666,6 +28982,9 @@
       "team": "TEAM NII",
       "periodId": 1002,
       "periodName": "SNH48 二期生",
+      "ptime": "2013/11/11",
+      "qtime": "2014/4/2",
+      "note": "资料删除",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29682,6 +29001,7 @@
       "periodName": "SNH48 二期生",
       "ptime": "2013/11/11",
       "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29696,6 +29016,9 @@
       "team": "TEAM HII",
       "periodId": 1003,
       "periodName": "SNH48 三期生",
+      "ptime": "2014/9/5",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29710,6 +29033,9 @@
       "team": "TEAM NII",
       "periodId": 1003,
       "periodName": "SNH48 三期生",
+      "ptime": "2014/9/5",
+      "qtime": "2015/1/8",
+      "note": "资料删除",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29724,6 +29050,9 @@
       "team": "TEAM HII",
       "periodId": 1003,
       "periodName": "SNH48 三期生",
+      "ptime": "2014/9/5",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29738,6 +29067,9 @@
       "team": "TEAM HII",
       "periodId": 1003,
       "periodName": "SNH48 三期生",
+      "ptime": "2014/9/5",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29752,6 +29084,9 @@
       "team": "TEAM HII",
       "periodId": 1003,
       "periodName": "SNH48 三期生",
+      "ptime": "2014/9/5",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29766,6 +29101,9 @@
       "team": "TEAM NII",
       "periodId": 1003,
       "periodName": "SNH48 三期生",
+      "ptime": "2014/9/5",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29780,6 +29118,9 @@
       "team": "TEAM HII",
       "periodId": 1003,
       "periodName": "SNH48 三期生",
+      "ptime": "2014/9/5",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29794,6 +29135,9 @@
       "team": "TEAM HII",
       "periodId": 1003,
       "periodName": "SNH48 三期生",
+      "ptime": "2014/9/5",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29810,6 +29154,7 @@
       "periodName": "SNH48 三期生",
       "ptime": "2014/9/5",
       "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29826,6 +29171,7 @@
       "periodName": "SNH48 三期生",
       "ptime": "2014/9/5",
       "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29840,6 +29186,7 @@
       "periodId": 1003,
       "periodName": "SNH48 三期生",
       "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29854,6 +29201,8 @@
       "team": "预备生",
       "periodId": 1010,
       "periodName": "SNH48 十期生",
+      "qtime": "2019/1/19",
+      "note": "未正式公开",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29867,6 +29216,8 @@
       "team": "非正式成员",
       "periodId": 1004,
       "periodName": "SNH48 四期生",
+      "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29880,6 +29231,9 @@
       "team": "未配属",
       "periodId": 1001,
       "periodName": "SNH48 一期生",
+      "ptime": "2013/4/17",
+      "qtime": "2015/9/13",
+      "note": "原签约生 2013年10月6日举行告别演出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29893,6 +29247,8 @@
       "team": "非正式成员",
       "periodId": 1001,
       "periodName": "SNH48 一期生",
+      "qtime": "2013/5/3",
+      "note": "退出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29906,6 +29262,8 @@
       "team": "非正式成员",
       "periodId": 1001,
       "periodName": "SNH48 一期生",
+      "qtime": "2012/12/21",
+      "note": "退出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29919,6 +29277,8 @@
       "team": "非正式成员",
       "periodId": 1001,
       "periodName": "SNH48 一期生",
+      "qtime": "2013/8/18",
+      "note": "退出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29932,6 +29292,8 @@
       "team": "非正式成员",
       "periodId": 1001,
       "periodName": "SNH48 一期生",
+      "qtime": "2013/8/18",
+      "note": "退出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29945,6 +29307,8 @@
       "team": "非正式成员",
       "periodId": 1001,
       "periodName": "SNH48 一期生",
+      "qtime": "2013/8/18",
+      "note": "退出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29958,6 +29322,8 @@
       "team": "非正式成员",
       "periodId": 1001,
       "periodName": "SNH48 一期生",
+      "qtime": "2013/8/18",
+      "note": "退出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29972,6 +29338,7 @@
       "periodId": 1001,
       "periodName": "SNH48 一期生",
       "qtime": "2013/5/2",
+      "note": "退出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -29986,6 +29353,7 @@
       "periodId": 1001,
       "periodName": "SNH48 一期生",
       "qtime": "2012/12/21",
+      "note": "退出",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -30002,6 +29370,7 @@
       "periodName": "SNH48 一期生",
       "ptime": "2013/4/17",
       "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -30018,6 +29387,7 @@
       "periodName": "SNH48 一期生",
       "ptime": "2013/4/17",
       "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -30034,6 +29404,7 @@
       "periodName": "SNH48 一期生",
       "ptime": "2013/4/17",
       "qtime": "2015/9/13",
+      "note": "原签约生",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
@@ -30049,6 +29420,7 @@
       "periodName": "SNH48 一期生",
       "ptime": "2013/4/17",
       "qtime": "2013/8/18",
+      "note": "资料删除",
       "wbUid": "-",
       "wbName": "-",
       "isInGroup": false
