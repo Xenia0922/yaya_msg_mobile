@@ -1,7 +1,7 @@
 {
-  "version": "20261022",
-  "updatedAt": "2026-10-22T10:04:12.907Z",
-  "contentHash": "6e22395c1da8d0b5",
+  "version": "20261026",
+  "updatedAt": "2026-10-26T22:18:12.110Z",
+  "contentHash": "5c72fd9c03efda2f",
   "count": 962,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -27596,7 +27596,7 @@
       "account": "20260917212816_j6kf5p5akyien6s",
       "serverId": 33018878,
       "channelId": 40882361,
-      "yklzId": 41030105,
+      "yklzId": 41537897,
       "wbUid": "-",
       "wbName": "-",
       "avatar": "https://source.48.cn/backstage/2026/0916/jhb7p5la9x831essz9um5l4.jpg",
