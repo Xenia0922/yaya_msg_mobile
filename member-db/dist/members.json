@@ -1,7 +1,7 @@
 {
-  "version": "20261026",
-  "updatedAt": "2026-10-26T22:18:12.110Z",
-  "contentHash": "5c72fd9c03efda2f",
+  "version": "20261028",
+  "updatedAt": "2026-10-28T22:18:08.065Z",
+  "contentHash": "2d8691c845b33b68",
   "count": 962,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -23410,7 +23410,7 @@
       "account": "20250101005123_589m5t7oe2mfiy6",
       "serverId": 18567466,
       "channelId": 24908222,
-      "yklzId": 36032760,
+      "yklzId": 41537951,
       "wbUid": "9190822903",
       "wbName": "GNZ48-谢林容",
       "avatar": "https://www.snh48.com/images/member/zp_30188.jpg",
