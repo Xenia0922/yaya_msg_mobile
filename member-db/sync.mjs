@@ -151,6 +151,7 @@ function applyOverrides(upstream, overrides, extra) {
   for (const m of (extra?.members || [])) {
     const id = memberIdOf(m);
     if (!id || !norm(m.ownerName)) continue;
+    if (index.has(id) && m._onlyIfMissing) continue;
     if (index.has(id)) out[index.get(id)] = { ...out[index.get(id)], ...m, _extra: true };
     else { out.push({ ...m, _extra: true }); added += 1; }
   }
