@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { parseMaybeJson } from '../utils/data';
-import { loadMembers, normalizeMember, classifyMemberState } from '../utils/members';
+import { loadMembers, normalizeMember, classifyMemberState, appendOfficialGroupMembers } from '../utils/members';
 import { Member } from '../types';
 import { useMemberStore } from '../store';
 import { MEMBERS_URL, MEMBERS_URL_SELF_LIST } from '../constants';
@@ -227,9 +227,7 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     logWarn(`[memberData] getStarServerMap 失败（不阻断）：${mapSettled.reason?.message || String(mapSettled.reason)}`, 'memberData');
   }
 
-  // 双源合并（v2.7.4 修正版）：成员库 = yk1z 库全量（严格一致，官方独有成员不追加——
-  // 官方 starInfo 含虚拟偶像团 Error404Girls 等非真人，追加会污染成员库）。
-  // 官方只做：补库里缺失的档案字段（头像/期数/serverId）、用官方 status/队伍重算状态分类、关注消息反推 channelId。
+  // 保留现有房间映射，并补充官方目录中的 48 系新成员。
   let members: Member[] = [];
   if (dbMembers.length) {
     const officialById = new Map<string, any>();
@@ -258,7 +256,9 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
       // 只有杨添淩 1 人库 isInGroup=true 是在团），state 保持库语义
       return m;
     });
-    logInfo(`[memberData] 双源合并完成：成员库 = yk1z 库 ${members.length} 位（官方仅补缺口与分类）`, 'memberData');
+    const before = members.length;
+    members = appendOfficialGroupMembers(members, starInfo);
+    logInfo(`[memberData] 双源合并完成：${members.length} 位（新增官方成员 ${members.length - before} 位）`, 'memberData');
   } else {
     // yk1z 库拉取失败 → 退化为官方目录（房间映射会缺，日志警告）
     members = starInfo

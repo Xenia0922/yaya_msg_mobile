@@ -108,6 +108,21 @@ export function normalizeMember(raw: any): Member {
   };
 }
 
+/** 把官方新增的 48 系成员加入现有成员库，不重复添加，也不混入其他团体。 */
+export function appendOfficialGroupMembers(members: Member[], official: any[]): Member[] {
+  const groups = new Set(['SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'SHY48']);
+  const ids = new Set(members.map((member) => String(member.id)));
+  const result = [...members];
+  for (const raw of official) {
+    if (!groups.has(String(raw?.groupName || ''))) continue;
+    const member = normalizeMember(raw);
+    if (!member.id || !member.ownerName || ids.has(member.id)) continue;
+    ids.add(member.id);
+    result.push(member);
+  }
+  return result;
+}
+
 export async function loadMembers(json?: any): Promise<Member[]> {
   let arr: any[] = [];
   if (Array.isArray(json)) arr = json;
