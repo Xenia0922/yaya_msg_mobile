@@ -29,7 +29,7 @@
     "build:android:copy": "node scripts/build-apk.js",
     "gen:wasm": "node scripts/gen-wasm-base64.mjs",
     "verify:version": "node scripts/verify-version.js",
-    "test:core": "node scripts/melee-parse.test.mjs && node scripts/network-request.test.mjs && node scripts/nim-credentials.test.mjs && node scripts/runtime-log.test.mjs && node scripts/downloads.test.mjs",
+    "test:core": "node scripts/melee-parse.test.mjs && node scripts/network-request.test.mjs && node scripts/nim-credentials.test.mjs && node scripts/runtime-log.test.mjs && node scripts/downloads.test.mjs && node scripts/official-members.test.mjs && node scripts/member-data-update.test.mjs",
     "typecheck": "tsc --noEmit && node scripts/verify-version.js"
   },
   "dependencies": {
