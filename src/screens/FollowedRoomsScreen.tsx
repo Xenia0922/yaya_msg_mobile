@@ -31,7 +31,7 @@ import { Member, RoomMessage } from '../types';
 import { formatTimestamp, toMs } from '../utils/format';
 import { findMediaDurationSeconds } from '../utils/mediaDuration';
 import { normalizeGiftList } from '../utils/giftList';
-import { roomPollDelay, ROOM_REFRESH_LIMIT } from '../services/roomLivePolicy';
+import { ROOM_POLL_INTERVAL_MS, ROOM_REFRESH_LIMIT, ROOM_REJOIN_AFTER_MS } from '../services/roomLivePolicy';
 import { probeMediaDurationSeconds } from '../native/MediaProbe';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
@@ -1406,8 +1406,10 @@ export default function FollowedRoomsScreen() {
   // 持有一份最新 roomMessages 引用，供 refreshRoomMessages 预判「是否有新消息」而无需把 roomMessages 列入 deps（避免定时器频繁重建）
   const roomMessagesRef = useRef<RoomMessage[]>([]);
   roomMessagesRef.current = roomMessages;
-  // 最近一次收到「本频道」QChat 推送的时间：长连接活着时轮询降频，静默时转快速轮询（见 roomLivePolicy）
+  // 最近一次收到「本频道」QChat 推送的时间：长时间没有推送就补订一次频道（不影响 2s 持续刷新）
   const lastRoomPushAtRef = useRef(0);
+  // 推送到达计数：只在前几次写运行日志，用来判断长连接到底通没通（导出日志可查）
+  const roomPushCountRef = useRef(0);
   // 键盘高度：edge-to-edge 下 adjustResize 失效，手动抬升房间容器 —— 消息列表 + 输入框整体上移
   const roomKeyboardHeight = useKeyboardHeight();
   const [loading, setLoading] = useState(false);
@@ -2332,6 +2334,7 @@ export default function FollowedRoomsScreen() {
     }
     setSelectedRoom(room);
     lastRoomPushAtRef.current = 0; // 上一房间的推送不能算作新房间的长连接存活证据
+    roomPushCountRef.current = 0;
     const openSeq = ++roomSeqRef.current;
     const channelChanged = activeChannelRef.current !== channelId;
     activeChannelRef.current = channelId;
@@ -2548,33 +2551,6 @@ export default function FollowedRoomsScreen() {
   refreshRoomMessagesRef.current = refreshRoomMessages;
 
 
-  // 房间内实时刷新：QChat 长连接（observeRoomMessages）才是实时主通道，
-  // HTTP 轮询只是兜底：长连接活着时 60s 一次，静默（未收到本频道推送超 45s）时 8s 一次。
-  // 切回本页、从后台回前台、重新订阅频道后立刻补一次，不等下一个 tick。
-  useEffect(() => {
-    if (!selectedRoom) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let stopped = false;
-    const canRefresh = () => navigation.isFocused() && AppState.currentState === 'active';
-    const schedule = () => {
-      if (stopped) return;
-      timer = setTimeout(async () => {
-        if (!stopped && canRefresh()) await refreshRoomMessages();
-        schedule();
-      }, roomPollDelay(Date.now(), lastRoomPushAtRef.current));
-    };
-    const refreshNow = () => { if (canRefresh()) void refreshRoomMessages(); };
-    schedule();
-    const appStateSub = AppState.addEventListener('change', (next) => { if (next === 'active') refreshNow(); });
-    const focusSub = navigation.addListener('focus', refreshNow);
-    return () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-      appStateSub.remove();
-      focusSub();
-    };
-  }, [selectedRoom, refreshRoomMessages, navigation]);
-
   /**
    * 重新订阅当前房间频道。
    * 推送依赖「已登录 + 已订阅」两个条件，二者都可能晚于进房动作完成：
@@ -2591,6 +2567,41 @@ export default function FollowedRoomsScreen() {
       });
     }
   }, []);
+
+  // 房间内持续刷新：停在房间页时每 2s 拉一次最新消息，列表自己动，不用手动下拉。
+  // QChat 推送仍是实时主通道（到了先上屏）；HTTP 刷新只保证「任何情况下都在更新」。
+  // 切回本页 / 回前台立即补一次，不等下一个 tick。
+  useEffect(() => {
+    if (!selectedRoom) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const canRefresh = () => navigation.isFocused() && AppState.currentState === 'active';
+    const schedule = () => {
+      if (stopped) return;
+      timer = setTimeout(async () => {
+        if (!stopped && canRefresh()) {
+          await refreshRoomMessages();
+          // 长连接可能被服务端回收：60s 内没收到本频道推送就补订一次（这个时间戳同时当节流用）
+          const lastPush = lastRoomPushAtRef.current;
+          if (!lastPush || Date.now() - lastPush >= ROOM_REJOIN_AFTER_MS) {
+            lastRoomPushAtRef.current = Date.now();
+            rejoinActiveChannel();
+          }
+        }
+        schedule();
+      }, ROOM_POLL_INTERVAL_MS);
+    };
+    const refreshNow = () => { if (canRefresh()) void refreshRoomMessages(); };
+    schedule();
+    const appStateSub = AppState.addEventListener('change', (next) => { if (next === 'active') { rejoinActiveChannel(); refreshNow(); } });
+    const focusSub = navigation.addListener('focus', refreshNow);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      appStateSub.remove();
+      focusSub();
+    };
+  }, [selectedRoom, refreshRoomMessages, navigation, rejoinActiveChannel]);
 
   /**
    * 房间消息「实时」接收：云信圈组（QChat）推送。
@@ -2613,6 +2624,10 @@ export default function FollowedRoomsScreen() {
       if (__DEV__) console.warn('[qchat] recv=', messages.length, 'matched=', fresh.length);
       if (!fresh.length) return;
       lastRoomPushAtRef.current = Date.now();
+      roomPushCountRef.current += 1;
+      if (roomPushCountRef.current <= 3) {
+        logInfo(`[qchat] 实时推送到达 ${fresh.length} 条（本房间第 ${roomPushCountRef.current} 次）`, 'room.live');
+      }
       setRoomMessages((prev) => {
         const merged = mergeMessages(prev, fresh);
         diagnoseUndefined(merged, 'QCHAT');
