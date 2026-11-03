@@ -32,6 +32,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { VODItem, Member } from '../types';
 import { formatTimestamp, formatDuration } from '../utils/format';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
+import { normalizeGiftList } from '../utils/giftList';
 import { thumbUrl } from '../utils/imageThumb';
 import { getResumePosition, saveResumePosition } from '../utils/resumePosition';
 import { logWarn } from '../utils/runtimeLog';
@@ -376,23 +377,6 @@ function playerSource(url: string) {
       Referer: 'https://h5.48.cn/',
     },
   };
-}
-
-function normalizeGiftList(res: any): any[] {
-  const categories = unwrapList(res, ['content', 'content.list', 'data.content', 'data.list', 'list']);
-  const gifts: any[] = [];
-  for (const item of categories) {
-    const nested = unwrapList(item, ['giftList', 'gifts', 'list']);
-    if (nested.length) gifts.push(...nested);
-    else if (item?.giftId || item?.id) gifts.push(item);
-  }
-  const seen = new Set<string>();
-  return gifts.filter((gift) => {
-    const id = String(gift.giftId || gift.id || '');
-    if (!id || seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
 }
 
 function normalizeLiveRank(res: any): any[] {
