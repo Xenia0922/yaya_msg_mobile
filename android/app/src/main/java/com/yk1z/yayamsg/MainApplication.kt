@@ -40,6 +40,8 @@ class MainApplication : Application(), ReactApplication {
       add(ApkUpdaterPackage())
       // 房间语音/视频时长探测（MediaMetadataRetriever）
       add(MediaProbePackage())
+      // 导出下载到 Android 公共 Downloads，允许文件管理器直接访问
+      add(PublicDownloadsPackage())
       // 云信 commonlink 协议（直播弹幕聊天室 + 成员房间 QChat）：登录包里包名由自己填
       // （com.seine48.app，白名单内）→ 过服务端客户端标识校验
       add(com.yk1z.yayamsg.nim.PocketNimChatroomPackage())

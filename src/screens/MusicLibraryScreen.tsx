@@ -11,7 +11,7 @@ import { useSettingsStore, useUiStore } from '../store';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import MiniPlayerBar from '../components/MiniPlayerBar';
 import FullScreenPlayer from '../components/FullScreenPlayer';
-import { MusicEngine, mediaUrl as buildMediaUrl, isPlayableHost } from '../services/musicPlayer';
+import { MusicEngine, mediaUrl as buildMediaUrl, isPlayableHost, syncNativePlaybackSnapshot } from '../services/musicPlayer';
 import { exoPlayTrack, exoControl, subscribeExo, setNativeExoDisabled } from '../native/RadioExo';
 import { errorMessage } from '../utils/data';
 import { logError } from '../utils/runtimeLog';
@@ -118,6 +118,28 @@ export default function MusicLibraryScreen() {
   const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
   const seekTarget = useMusicPlayerStore((s) => s.seekTarget);
   const seekNonce = useMusicPlayerStore((s) => s.seekNonce);
+  const [nativeSnapshotReady, setNativeSnapshotReady] = useState(false);
+  const nativeSnapshotBlockedRef = useRef(false);
+  const nativeSnapshotBlockedKeyRef = useRef({ index: -1, url: '' });
+  useEffect(() => {
+    let alive = true;
+    void syncNativePlaybackSnapshot().then((result) => {
+      if (!alive) return;
+      if (result.active && !result.matched) {
+        const current = useMusicPlayerStore.getState();
+        nativeSnapshotBlockedRef.current = true;
+        nativeSnapshotBlockedKeyRef.current = { index: current.currentIndex, url: current.url };
+      }
+      setNativeSnapshotReady(true);
+    }).catch(() => { if (alive) setNativeSnapshotReady(true); });
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => {
+    const blockedAt = nativeSnapshotBlockedKeyRef.current;
+    if (nativeSnapshotBlockedRef.current && (currentIndex !== blockedAt.index || playUrl !== blockedAt.url)) {
+      nativeSnapshotBlockedRef.current = false;
+    }
+  }, [currentIndex, playUrl]);
   const [songs, setSongs] = useState<any[]>(songsCache ?? []);
   const applySongs = (list: any[]) => { songsCache = list; setSongs(list); };
   // 搜索词 / 分团：纯 local state（不再镜像到 store，避免双写）。
@@ -405,7 +427,7 @@ export default function MusicLibraryScreen() {
   // （暂停→恢复走下方 control resume 原位续播，避免 setMediaItems 重缓冲）。
   // 封面先 RN 落盘为 file://（OPPO 唯一可靠），下载限时 1.5s，超时用原 http 直推（声音不等待）。
   useEffect(() => {
-    if (!playUrl || playbackState !== 'playing') return;
+    if (!nativeSnapshotReady || nativeSnapshotBlockedRef.current || !playUrl || playbackState !== 'playing') return;
     if (nativeDisabledRef.current) return; // 已降级：声音全交给 Video
     // 声音权交给 Exo：只要未降级，无论本次是否实际下发，Video 都要静音占位（杜绝 RNV 双放/抢焦点）
     if (!nativeOkRef.current) setNativeState(true);
@@ -435,6 +457,7 @@ export default function MusicLibraryScreen() {
       if (resumeAt > 0) st2.consumeSeekTarget(); // 消费续播点（由本次下发承担）
       exoPlayTrack({
         url: playUrl,
+        trackId: String(tr.musicId || tr.id || ''),
         title: String(tr.title || '音乐'),
         artist: String((tr as any).artist || (tr as any).groupLabel || ''),
         album: String((tr as any).album || ''),
@@ -474,7 +497,7 @@ export default function MusicLibraryScreen() {
       })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playUrl, currentIndex, playbackState, playMode, playVolume]);
+  }, [playUrl, currentIndex, playbackState, playMode, playVolume, nativeSnapshotReady]);
 
   // 播放/暂停同步 Exo → 已由 App 全局 MusicForegroundBridge 常驻镜像处理（页面无关：
   // 页面挂载/卸载都应一致，避免"返回主页后系统控件才生效"的导航依赖手感）。

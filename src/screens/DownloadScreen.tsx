@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 
-import {Image, Modal, StyleSheet, Text, TextInput, View} from 'react-native';
+import {Image, Modal, Platform, StyleSheet, Text, TextInput, View} from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
@@ -22,6 +22,7 @@ import {
   deleteDownloadItem,
   DownloadItem,
   enqueueDownload,
+  exportExistingDownload,
   loadDownloadItems,
   openDownloadItem,
 } from '../services/downloads';
@@ -73,6 +74,16 @@ export default function DownloadScreen() {
       return;
     }
     try { await openDownloadItem(item); } catch (e: any) { showToast(t('打开失败：{msg}', { msg: e?.message || e })); }
+  };
+
+  const handleExport = async (item: DownloadItem) => {
+    try {
+      await exportExistingDownload(item);
+      showToast(t('已保存到系统下载目录'));
+      await refresh();
+    } catch (error: any) {
+      showToast(t('保存失败：{msg}', { msg: error?.message || error }));
+    }
   };
 
   const refresh = useCallback(async () => {
@@ -284,12 +295,17 @@ export default function DownloadScreen() {
                     </View>
                     <View style={styles.taskMetaRow}>
                       <Text style={[styles.taskStatus, { color: task.status === 'failed' ? palette.danger : palette.labelSecondary }]} numberOfLines={1}>
-                        {task.status === 'done' ? t('完成') : task.status === 'failed' ? t('失败：{msg}', { msg: task.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(task.downloadedBytes), total: formatBytes(task.totalBytes) })}
+                        {task.status === 'done' ? task.exportError || (Platform.OS === 'android' && !task.publicUri ? t('仅保存在应用内') : t('完成')) : task.status === 'failed' ? t('失败：{msg}', { msg: task.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(task.downloadedBytes), total: formatBytes(task.totalBytes) })}
                       </Text>
                       <Text style={[styles.taskPercent, { color: palette.labelTertiary }]}>{progress}%</Text>
                     </View>
                   </View>
                   <View style={styles.taskActions}>
+                    {task.status === 'done' && Platform.OS === 'android' && !task.publicUri ? (
+                      <ScalePressable accessibilityRole="button" accessibilityLabel={t('保存到系统下载目录')} onPress={() => handleExport(task)} style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <MaterialCommunityIcons name="folder-download-outline" size={16} color={palette.tint} />
+                      </ScalePressable>
+                    ) : null}
                     {task.status === 'failed' ? (
                       <ScalePressable onPress={() => retryTask(task)} style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <MaterialCommunityIcons name="refresh" size={16} color={palette.tint} />

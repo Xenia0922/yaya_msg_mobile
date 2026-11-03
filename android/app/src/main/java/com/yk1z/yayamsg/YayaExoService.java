@@ -61,6 +61,7 @@ public class YayaExoService extends Service {
   public static final String ACTION_SET_HINTS = "yaya.exo.set_hints";
   /** 服务进程存活标记：MainActivity 在视频进 PiP 前据它决定是否给音乐服务发 stop（释放会话防劫持系统控件） */
   public static volatile boolean serviceAlive = false;
+  private static volatile YayaExoService runningInstance;
   /** 音乐是否"真的在出声"（playWhenReady 且 Exo 就绪）：非实播态（暂停/未起播）才允许被视频 PiP 停止 */
   public static volatile boolean musicActuallyPlaying = false;
   private static final String CHANNEL_ID = "yaya_radio_v3";
@@ -79,6 +80,7 @@ public class YayaExoService extends Service {
   // 元数据（来自 playQueue JSON）
   private String title = "";
   private String lastTrackUrl = ""; // 当前已下发曲目 url（progress 事件带出，供 JS 去竞态）
+  private String lastTrackId = "";
   private String artist = "";
   private String album = "";
   private String artPath = "";
@@ -91,8 +93,8 @@ public class YayaExoService extends Service {
   // skip hints（单跳）：服务端本地切歌用，结构 = {url,title,artist,album,art?,index?}
   // index = 引擎语义下的队列下标（供 JS 恢复对账定位曲目）；-1 = 未知
   // art = 封面 file://（JS 已落盘）；后台本地切歌直接展示，不等回前台 JS 补推
-  private String nextUrl = "", nextTitle = "", nextArtist = "", nextAlbum = "", nextArt = "";
-  private String prevUrl = "", prevTitle = "", prevArtist = "", prevAlbum = "", prevArt = "";
+  private String nextUrl = "", nextTrackId = "", nextTitle = "", nextArtist = "", nextAlbum = "", nextArt = "";
+  private String prevUrl = "", prevTrackId = "", prevTitle = "", prevArtist = "", prevAlbum = "", prevArt = "";
   private int nextIndexHint = -1, prevIndexHint = -1;
 
   private final Runnable progressPoller = new Runnable() {
@@ -206,7 +208,27 @@ public class YayaExoService extends Service {
   public void onCreate() {
     super.onCreate();
     serviceAlive = true;
+    runningInstance = this;
     ensureChannel();
+  }
+
+  /** 由 React Native 在主线程读取，提供回前台时的真实播放状态。 */
+  public static Map<String, Object> getPlaybackSnapshot() {
+    Map<String, Object> result = new HashMap<>();
+    YayaExoService s = runningInstance;
+    boolean active = s != null && s.exo != null && s.exo.getCurrentMediaItem() != null;
+    result.put("active", active);
+    if (!active) return result;
+    result.put("url", String.valueOf(s.currentMediaUrl() == null ? "" : s.currentMediaUrl()));
+    result.put("trackId", s.lastTrackId == null ? "" : s.lastTrackId);
+    result.put("title", s.title == null ? "" : s.title);
+    result.put("artist", s.artist == null ? "" : s.artist);
+    result.put("album", s.album == null ? "" : s.album);
+    result.put("position", Math.max(0, s.exo.getCurrentPosition()) / 1000.0);
+    long duration = s.exo.getDuration();
+    result.put("duration", duration > 0 ? duration / 1000.0 : 0.0);
+    result.put("playing", s.exo.getPlayWhenReady() && s.exo.getPlaybackState() != Player.STATE_ENDED);
+    return result;
   }
 
   private void ensureChannel() {
@@ -330,8 +352,11 @@ public class YayaExoService extends Service {
         for (int i = 0; i < arr.length(); i++) {
           JSONObject o = arr.getJSONObject(i);
           String url = o.optString("url", "");
-          if (i == 0) firstUrl = url;
-          if (i == 0) lastTrackUrl = url;
+          if (i == 0) {
+            firstUrl = url;
+            lastTrackUrl = url;
+            lastTrackId = o.optString("trackId", "");
+          }
           items.add(new MediaItem.Builder().setUri(url).build());
           title = o.optString("title");
           artist = o.optString("artist");
@@ -454,7 +479,7 @@ public class YayaExoService extends Service {
       if (nextJson != null && nextJson.startsWith("{")) {
         JSONObject o = new JSONObject(nextJson);
         String u = o.optString("url", "");
-        setNextHint(u, o.optString("title", ""), o.optString("artist", ""), o.optString("album", ""),
+        setNextHint(u, o.optString("trackId", ""), o.optString("title", ""), o.optString("artist", ""), o.optString("album", ""),
             o.optString("art", ""),
             o.has("index") ? o.optInt("index", -1) : -1);
       } else {
@@ -465,7 +490,7 @@ public class YayaExoService extends Service {
       if (prevJson != null && prevJson.startsWith("{")) {
         JSONObject o = new JSONObject(prevJson);
         String u = o.optString("url", "");
-        setPrevHint(u, o.optString("title", ""), o.optString("artist", ""), o.optString("album", ""),
+        setPrevHint(u, o.optString("trackId", ""), o.optString("title", ""), o.optString("artist", ""), o.optString("album", ""),
             o.optString("art", ""),
             o.has("index") ? o.optInt("index", -1) : -1);
       } else {
@@ -474,18 +499,18 @@ public class YayaExoService extends Service {
     } catch (Throwable t) { clearPrevHint(); }
   }
 
-  private void setNextHint(String u, String t, String a, String al, String art, int idx) {
-    nextUrl = u == null ? "" : u; nextTitle = t == null ? "" : t;
+  private void setNextHint(String u, String id, String t, String a, String al, String art, int idx) {
+    nextUrl = u == null ? "" : u; nextTrackId = id == null ? "" : id; nextTitle = t == null ? "" : t;
     nextArtist = a == null ? "" : a; nextAlbum = al == null ? "" : al;
     nextArt = art == null ? "" : art; nextIndexHint = idx;
   }
-  private void setPrevHint(String u, String t, String a, String al, String art, int idx) {
-    prevUrl = u == null ? "" : u; prevTitle = t == null ? "" : t;
+  private void setPrevHint(String u, String id, String t, String a, String al, String art, int idx) {
+    prevUrl = u == null ? "" : u; prevTrackId = id == null ? "" : id; prevTitle = t == null ? "" : t;
     prevArtist = a == null ? "" : a; prevAlbum = al == null ? "" : al;
     prevArt = art == null ? "" : art; prevIndexHint = idx;
   }
-  private void clearNextHint() { setNextHint("", "", "", "", "", -1); }
-  private void clearPrevHint() { setPrevHint("", "", "", "", "", -1); }
+  private void clearNextHint() { setNextHint("", "", "", "", "", "", -1); }
+  private void clearPrevHint() { setPrevHint("", "", "", "", "", "", -1); }
 
   /** 当前已下发曲目 url（mediaId/localConfiguration.uri 双回退，与 playQueue 同曲去重逻辑一致） */
   private String currentMediaUrl() {
@@ -514,6 +539,7 @@ public class YayaExoService extends Service {
     if (u.isEmpty()) {
       return;
     }
+    String nTrackId = isNext ? nextTrackId : prevTrackId;
     String nTitle = isNext ? nextTitle : prevTitle;
     String nArtist = isNext ? nextArtist : prevArtist;
     String nAlbum = isNext ? nextAlbum : prevAlbum;
@@ -521,9 +547,9 @@ public class YayaExoService extends Service {
     int nIndex = isNext ? nextIndexHint : prevIndexHint;
     // 反方向槽位 = 刚离开的当前曲（一步 prev/next 可回原曲，含其封面）；已用方向槽位清空
     // （无下一跳元数据，避免二次点击重放同曲；前台 JS 会即刻按新 index 重新推送）
-    if (isNext) { setPrevHint(lastTrackUrl, title, artist, album, artPath, -1); clearNextHint(); }
-    else { setNextHint(lastTrackUrl, title, artist, album, artPath, -1); clearPrevHint(); }
-    title = nTitle; artist = nArtist; album = nAlbum; lastTrackUrl = u;
+    if (isNext) { setPrevHint(lastTrackUrl, lastTrackId, title, artist, album, artPath, -1); clearNextHint(); }
+    else { setNextHint(lastTrackUrl, lastTrackId, title, artist, album, artPath, -1); clearPrevHint(); }
+    title = nTitle; artist = nArtist; album = nAlbum; lastTrackUrl = u; lastTrackId = nTrackId;
     String curU = currentMediaUrl();
     boolean same = curU != null && curU.equals(u);
     try {
@@ -555,6 +581,7 @@ public class YayaExoService extends Service {
     Map<String, Object> ev = new HashMap<>();
     ev.put("cmd", isNext ? "next" : "prev");
     ev.put("url", u);
+    ev.put("trackId", nTrackId);
     ev.put("title", nTitle);
     ev.put("artist", nArtist);
     ev.put("album", nAlbum);
@@ -612,6 +639,10 @@ public class YayaExoService extends Service {
       extra.put("playing", playing);
       extra.put("index", exo.getCurrentMediaItemIndex());
       extra.put("url", lastTrackUrl);
+      extra.put("trackId", lastTrackId);
+      extra.put("title", title);
+      extra.put("artist", artist);
+      extra.put("album", album);
       RadioExoModule.emitJs(getApplicationContext(), "progress", extra);
     } catch (Throwable ignored) {}
   }
@@ -702,6 +733,7 @@ public class YayaExoService extends Service {
   @Override
   public void onDestroy() {
     serviceAlive = false;
+    if (runningInstance == this) runningInstance = null;
     musicActuallyPlaying = false;
     stopPolling();
     try {

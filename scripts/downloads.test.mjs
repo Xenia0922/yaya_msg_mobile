@@ -35,12 +35,25 @@ const filesystem = {
   },
 };
 const moduleObject = { exports: {} };
+let publicDownloadFails = false;
 const imports = {
   '@react-native-async-storage/async-storage': { __esModule: true, default: storage },
   'expo-file-system/legacy': filesystem,
   'expo-media-library': {},
   '../utils/runtimeLog': { logError() {} },
-  'react-native': { Linking: {}, Platform: { OS: 'android' }, Alert: {} },
+  'react-native': {
+    Linking: {},
+    Platform: { OS: 'android' },
+    Alert: {},
+    NativeModules: {
+      PublicDownloads: {
+        saveToDownloads: async (_uri, name) => {
+          if (publicDownloadFails) throw new Error('synthetic export failure');
+          return `content://downloads/${name}`;
+        },
+      },
+    },
+  },
 };
 vm.runInNewContext(compiled, {
   module: moduleObject,
@@ -64,6 +77,16 @@ releaseDownload();
 await downloading;
 assert.equal(data.length, 1, '清理不能覆盖并发新下载');
 assert.equal(data[0].status, 'done');
+assert.ok(String(data[0].publicUri || '').startsWith('content://downloads/'), '下载完成应导出到系统下载目录');
+
+// 导出失败只记 exportError，不能把已下载完的文件判成 failed（旧包没有原生模块就会踩到）
+data = [];
+publicDownloadFails = true;
+filesystem.createDownloadResumable = () => ({ downloadAsync: async () => ({ uri: 'file:///mock/export-failed' }) });
+await api.enqueueDownload({ url: 'https://example.test/export-failure', type: 'file' });
+assert.equal(data[0].status, 'done', '导出失败不应导致下载失败');
+assert.match(String(data[0].exportError || ''), /synthetic export failure/);
+publicDownloadFails = false;
 
 data = [];
 filesystem.createDownloadResumable = (_url, _uri, _options, onProgress) => ({

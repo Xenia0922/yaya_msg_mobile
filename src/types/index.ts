@@ -326,6 +326,8 @@ export interface AppSettings {
   yaya_send_teamlogo: string;
   /** 个性装扮：勋章 badge（多个用逗号分隔；留空 = 不带） */
   yaya_send_badge: string;
+  /** 口袋官方聊天气泡 id（0=默认）；发房间消息时随 bubbleId 发送 */
+  yaya_send_bubble_id: string;
   /** 首页「私信」入口的未读红点角标。默认开 */
   yaya_pm_unread_badge: boolean;
 }

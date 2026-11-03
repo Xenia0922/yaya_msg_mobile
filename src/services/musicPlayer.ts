@@ -1,11 +1,11 @@
-import { DeviceEventEmitter, NativeModules, ToastAndroid } from 'react-native';
-import { useMusicPlayerStore, Track, LyricLine } from '../store/musicPlayerStore';
+import { AppState, DeviceEventEmitter, NativeModules, ToastAndroid } from 'react-native';
+import { flushMusicPlayerStorage, useMusicPlayerStore, Track, LyricLine } from '../store/musicPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
 import { normalizeUrl } from '../utils/data';
 import { parseLrc } from '../utils/lyrics';
 import { getLyricsMatcher } from '../utils/lyricsIndex';
 import { fetchWithTimeout } from '../utils/network';
-import { exoPlayTrack, isNativeExoDisabled, subscribeExo } from '../native/RadioExo';
+import { exoGetPlaybackSnapshot, exoPlayTrack, ExoPlaybackSnapshot, isNativeExoDisabled, subscribeExo } from '../native/RadioExo';
 import { onRadioControlRequested } from '../native/LivePlayer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -79,6 +79,67 @@ const PLAY_REFERER = 'https://h5.48.cn/';
 
 function trackKey(track: Track): string {
   return String((track as any).musicId || (track as any).id || `${track.title}|${track.artist || ''}`);
+}
+
+function findNativeTrackIndex(queue: Track[], snapshot: ExoPlaybackSnapshot, currentIndex: number): number {
+  if (snapshot.trackId) {
+    const byId = queue.findIndex((track) => String(track.musicId || track.id || '') === snapshot.trackId);
+    if (byId >= 0) return byId;
+  }
+  if (snapshot.url) {
+    const byUrl = queue.findIndex((track) => String(track.mp3 || '') === snapshot.url);
+    if (byUrl >= 0) return byUrl;
+  }
+  const norm = (value: unknown) => String(value || '').trim().toLocaleLowerCase();
+  const title = norm(snapshot.title);
+  if (!title) return -1;
+  const titleMatches = queue.map((track, index) => ({ track, index })).filter(({ track }) => norm(track.title) === title);
+  if (!titleMatches.length) return -1;
+  const artist = norm(snapshot.artist);
+  const artistMatches = artist
+    ? titleMatches.filter(({ track }) => norm(track.artist || track.groupLabel) === artist)
+    : [];
+  const album = norm(snapshot.album);
+  const albumMatches = (artistMatches.length ? artistMatches : titleMatches).filter(({ track }) => norm(track.album || track.albumName) === album);
+  if (album && albumMatches.length === 1) return albumMatches[0].index;
+  if (artistMatches.length === 1) return artistMatches[0].index;
+  if (artistMatches.some(({ index }) => index === currentIndex)) return currentIndex;
+  if (titleMatches.length === 1) return titleMatches[0].index;
+  if (titleMatches.some(({ index }) => index === currentIndex)) return currentIndex;
+  return -1;
+}
+
+function applyNativeSnapshot(snapshot: ExoPlaybackSnapshot): { active: boolean; matched: boolean } {
+  if (!snapshot.active) return { active: false, matched: false };
+  const st = useMusicPlayerStore.getState();
+  if (!st.queue.length || !snapshot.url) return { active: true, matched: false };
+  const index = findNativeTrackIndex(st.queue, snapshot, st.currentIndex);
+  if (index < 0) return { active: true, matched: false };
+  useMusicPlayerStore.setState({
+    currentIndex: index,
+    url: snapshot.url,
+    position: snapshot.position,
+    duration: snapshot.duration,
+    playbackState: snapshot.playing ? 'playing' : 'paused',
+    seekTarget: 0,
+    seekNonce: 0,
+    seekFrom: snapshot.position,
+    seekIssuedAt: 0,
+    error: null,
+  });
+  flushMusicPlayerStorage();
+  return { active: true, matched: true };
+}
+
+export async function syncNativePlaybackSnapshot(): Promise<{ active: boolean; matched: boolean }> {
+  try {
+    if (!useMusicPlayerStore.persist.hasHydrated()) {
+      await new Promise<void>((resolve) => useMusicPlayerStore.persist.onFinishHydration(() => resolve()));
+    }
+    return applyNativeSnapshot(await exoGetPlaybackSnapshot());
+  } catch {
+    return { active: false, matched: false };
+  }
 }
 
 export const MusicEngine = {
@@ -611,10 +672,28 @@ function installMusicBridge() {
     try {
       const st = useMusicPlayerStore.getState();
       if (type === 'progress') {
-        if (!st.url || !st.queue.length) return;
+        if (!st.queue.length) return;
+        if (!st.url) {
+          const restored = applyNativeSnapshot({
+            active: true,
+            url: String(p?.url || ''),
+            trackId: String(p?.trackId || ''),
+            title: String(p?.title || ''),
+            artist: String(p?.artist || ''),
+            album: String(p?.album || ''),
+            position: Math.max(0, Number(p?.position) || 0),
+            duration: Math.max(0, Number(p?.duration) || 0),
+            playing: !!p?.playing,
+          });
+          if (!restored.matched) return;
+          return;
+        }
         if (st.playbackState === 'loading') return;
         // 旧曲心跳（切歌竞态）不写：url 不一致视为陈旧
         if (p?.url && st.url && String(p.url) !== String(st.url)) return;
+        const current = st.queue[st.currentIndex];
+        const currentId = current ? String(current.musicId || current.id || '') : '';
+        if (p?.trackId && currentId && String(p.trackId) !== currentId) return;
         const playingN = !!p?.playing;
         if (lastPlaying !== playingN) {
           lastPlaying = playingN;
@@ -622,6 +701,25 @@ function installMusicBridge() {
         }
         if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
         if (typeof p?.position === 'number') st.setPosition(p.position);
+        return;
+      }
+      if (type === 'skipped') {
+        const result = applyNativeSnapshot({
+          active: true,
+          url: String(p?.url || ''),
+          trackId: String(p?.trackId || ''),
+          title: String(p?.title || ''),
+          artist: String(p?.artist || ''),
+          album: String(p?.album || ''),
+          position: 0,
+          duration: 0,
+          playing: true,
+        });
+        if (result.matched) {
+          const current = useMusicPlayerStore.getState();
+          const track = current.queue[current.currentIndex];
+          if (track) MusicEngine._fetchLyrics(track);
+        }
         return;
       }
       if (type === 'cmd') {
@@ -642,6 +740,19 @@ function installMusicBridge() {
       /* 桥内异常不影响播放 */
     }
   });
+
+  // Android 上原生 Exo 是后台播放的位置权威；回到前台时读取实时状态，
+  // 避免持久化的旧曲目/旧进度被音乐页重新下发后把原生播放倒回去。
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      void syncNativePlaybackSnapshot();
+    } else {
+      flushMusicPlayerStorage();
+    }
+  });
+  const syncAfterHydration = () => { void syncNativePlaybackSnapshot(); };
+  if (useMusicPlayerStore.persist.hasHydrated()) syncAfterHydration();
+  else useMusicPlayerStore.persist.onFinishHydration(syncAfterHydration);
 
   /**
    * 系统媒体控件（通知栏/锁屏/耳机线控）动作 → 音乐引擎。
@@ -676,6 +787,7 @@ function installMusicBridge() {
       if (resumeAt > 0) st.consumeSeekTarget();
       exoPlayTrack({
         url: st.url,
+        trackId: String(tr.musicId || tr.id || ''),
         title: String(tr.title || '音乐'),
         artist: String((tr as any).artist || (tr as any).groupLabel || ''),
         album: String((tr as any).album || ''),

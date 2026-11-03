@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Animated, AppState, DeviceEventEmitter, Keyboard, NativeModules, Platform, Pressable, Share} from 'react-native';
+import {Animated, AppState, DeviceEventEmitter, Keyboard, NativeModules, Platform, Pressable, Share, useWindowDimensions} from 'react-native';
 import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
@@ -30,6 +30,8 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Member, RoomMessage } from '../types';
 import { formatTimestamp, toMs } from '../utils/format';
 import { findMediaDurationSeconds } from '../utils/mediaDuration';
+import { normalizeGiftList } from '../utils/giftList';
+import { roomPollDelay, ROOM_REFRESH_LIMIT } from '../services/roomLivePolicy';
 import { probeMediaDurationSeconds } from '../native/MediaProbe';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
@@ -1382,6 +1384,7 @@ export default function FollowedRoomsScreen() {
   const resolvedTheme = useResolvedTheme();
   const { t } = useI18n();
   const token = useSettingsStore((state) => state.settings.p48Token);
+  const sendBubbleId = useSettingsStore((state) => state.settings.yaya_send_bubble_id);
   const setDockHidden = useUiStore((state) => state.setTabBarHidden);
   const setTabBarHidden = useCallback((hidden: boolean) => setDockHidden(hidden, 'Rooms'), [setDockHidden]);
   const showToast = useUiStore((state) => state.showToast);
@@ -1403,6 +1406,8 @@ export default function FollowedRoomsScreen() {
   // 持有一份最新 roomMessages 引用，供 refreshRoomMessages 预判「是否有新消息」而无需把 roomMessages 列入 deps（避免定时器频繁重建）
   const roomMessagesRef = useRef<RoomMessage[]>([]);
   roomMessagesRef.current = roomMessages;
+  // 最近一次收到「本频道」QChat 推送的时间：长连接活着时轮询降频，静默时转快速轮询（见 roomLivePolicy）
+  const lastRoomPushAtRef = useRef(0);
   // 键盘高度：edge-to-edge 下 adjustResize 失效，手动抬升房间容器 —— 消息列表 + 输入框整体上移
   const roomKeyboardHeight = useKeyboardHeight();
   const [loading, setLoading] = useState(false);
@@ -1687,14 +1692,25 @@ export default function FollowedRoomsScreen() {
   const [roomSending, setRoomSending] = useState(false);
   const [roomSendHint, setRoomSendHint] = useState('');
   const [stickerPanelOpen, setStickerPanelOpen] = useState(false);
-  const [roomNavigationInset, setRoomNavigationInset] = useState(0);
+  const { width: roomWidth, height: roomHeight } = useWindowDimensions();
+  const roomInsetFallback = Platform.OS === 'ios' ? 34 : Platform.OS === 'android' ? (roomWidth > roomHeight ? 16 : 24) : 0;
+  const [roomNavigationInset, setRoomNavigationInset] = useState(roomInsetFallback);
   useEffect(() => {
     let alive = true;
-    NativeModules.PipController?.getNavigationInset?.().then((inset: number) => {
-      if (alive) setRoomNavigationInset(Math.max(0, Number(inset) || 0));
-    }).catch(() => {});
-    return () => { alive = false; };
-  }, []);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    const readInset = () => {
+      attempts += 1;
+      NativeModules.PipController?.getNavigationInset?.().then((inset: number) => {
+        if (!alive) return;
+        const value = Math.max(0, Number(inset) || 0);
+        if (value > 0) setRoomNavigationInset(value);
+        else if (attempts < 5) timer = setTimeout(readInset, 180);
+      }).catch(() => { if (alive && attempts < 5) timer = setTimeout(readInset, 180); });
+    };
+    readInset();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [roomWidth > roomHeight, roomInsetFallback]);
   /** 直播解析占位：点击无流地址的直播卡 → 立即弹全屏「解析中」，不再干等无反馈（连击才加载进去的元凶） */
   const [liveResolve, setLiveResolve] = useState<null | { key: string; error: string; media: RoomMedia }>(null);
   const liveResolveToken = useRef(0);
@@ -1988,7 +2004,7 @@ export default function FollowedRoomsScreen() {
       const serverId = target.serverId && target.serverId !== '0' ? target.serverId : await pocketApi.resolveRoomServerId(target.channelId);
       if (!serverId || serverId === '0') throw new Error(t('缺少房间 serverId，无法发言'));
       if (activeRoomRef.current.channelId !== target.channelId) return;
-      await sendRoomSticker({ serverId, channelId: target.channelId }, sticker);
+      await sendRoomSticker({ serverId, channelId: target.channelId, bubbleId: sendBubbleId }, sticker);
       setTimeout(() => refreshRoomMessagesRef.current?.(), 500);
       setTimeout(() => refreshRoomMessagesRef.current?.(), 1500);
     } catch (err) {
@@ -1996,7 +2012,7 @@ export default function FollowedRoomsScreen() {
     } finally {
       setRoomSending(false);
     }
-  }, [roomSending, t]);
+  }, [roomSending, sendBubbleId, t]);
 
   const handleSendRoomMessage = useCallback(async () => {
     const text = roomDraft.trim();
@@ -2019,7 +2035,7 @@ export default function FollowedRoomsScreen() {
       if (!serverId || serverId === '0') {
         throw new Error(t('缺少房间 serverId，无法发言'));
       }
-      await sendRoomTextMessage({ serverId, channelId }, text, replyTarget);
+      await sendRoomTextMessage({ serverId, channelId, bubbleId: sendBubbleId }, text, replyTarget);
       setRoomDraft('');
       setReplyTarget(null);
       // ⚠️ 自己发的消息立即上屏：QChat 回显链路不稳定，等 15s 轮询太久（用户反馈）。
@@ -2031,7 +2047,7 @@ export default function FollowedRoomsScreen() {
     } finally {
       setRoomSending(false);
     }
-  }, [roomDraft, roomSending, t, replyTarget]);
+  }, [roomDraft, roomSending, t, replyTarget, sendBubbleId]);
 
   const handleRoomMiniPlayer = useCallback(() => {
     const cur = roomPlayer;
@@ -2315,6 +2331,7 @@ export default function FollowedRoomsScreen() {
       return;
     }
     setSelectedRoom(room);
+    lastRoomPushAtRef.current = 0; // 上一房间的推送不能算作新房间的长连接存活证据
     const openSeq = ++roomSeqRef.current;
     const channelChanged = activeChannelRef.current !== channelId;
     activeChannelRef.current = channelId;
@@ -2492,6 +2509,7 @@ export default function FollowedRoomsScreen() {
         channelId,
         serverId: selectedRoom.serverId,
         nextTime: 0, // 实时刷新永远拉「最新页」，只用于把新消息合并进顶部
+        limit: ROOM_REFRESH_LIMIT, // 只取最新一小页：8s 一轮也不至于每轮拉 100 条
         fetchAll: showFanMessages,
         fallbackChannelId: roomMode === 'small' ? selectedRoom.channelId : undefined,
       });
@@ -2502,7 +2520,10 @@ export default function FollowedRoomsScreen() {
       // 预判当前列表最新消息时间，若服务端最新条不比它新，直接 return，连 reducer 都不跑。
       const prevMsgs = roomMessagesRef.current;
       const prevNewest = prevMsgs.length ? getMessageTime(prevMsgs[0]) : 0;
-      const hasFresh = sorted.some((m: any) => getMessageTime(m) > prevNewest);
+      // 判新按消息 key，不只看时间：HTTP 历史消息的 msgTime 只到秒，
+      // 同一秒内到达的第二条消息时间戳与最新条相等，用 `>` 会永远判成「没有新消息」。
+      const prevKeys = new Set(prevMsgs.map((m) => messageKey(m)));
+      const hasFresh = sorted.some((m: any) => !prevKeys.has(messageKey(m)) && getMessageTime(m) >= prevNewest);
       if (!hasFresh) return;
       // ⚠️ 切房守卫（2026-10-03）：请求在途时用户可能已切房/关房，
       // 此时合并会把 A 房间的消息写进 B 房间列表（跨成员消息串台）。
@@ -2528,40 +2549,53 @@ export default function FollowedRoomsScreen() {
 
 
   // 房间内实时刷新：QChat 长连接（observeRoomMessages）才是实时主通道，
-  // 这里只是 HTTP 兜底（长连接静默降级时房间仍能收到新消息）——
-  // 房间内实时消息走 QChat 长连接（observeRoomMessages 已注册原生 observer），
-  // 这里的轮询只是极端兜底：长连接断线且未重连时最多 60s 补齐一次。
-  // 房间外的房间列表仍按 30s tick 刷新（省性能）。
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // HTTP 轮询只是兜底：长连接活着时 60s 一次，静默（未收到本频道推送超 45s）时 8s 一次。
+  // 切回本页、从后台回前台、重新订阅频道后立刻补一次，不等下一个 tick。
   useEffect(() => {
     if (!selectedRoom) return;
-    const startPoll = () => {
-      if (pollTimerRef.current) return;
-      pollTimerRef.current = setInterval(() => {
-        if (navigation.isFocused() && AppState.currentState === 'active') refreshRoomMessages();
-      }, 60000);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const canRefresh = () => navigation.isFocused() && AppState.currentState === 'active';
+    const schedule = () => {
+      if (stopped) return;
+      timer = setTimeout(async () => {
+        if (!stopped && canRefresh()) await refreshRoomMessages();
+        schedule();
+      }, roomPollDelay(Date.now(), lastRoomPushAtRef.current));
     };
-    const stopPoll = () => {
-      if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
-    };
-    // ⚠️ 无条件先启动：冷启动时 AppState.currentState 可能是 'unknown'，
-    // 按它判断会出现「轮询从不启动」，一旦长连接也降级 → 完全收不到新消息。
-    startPoll();
-    // 前后台切换：前台启动、后台暂停
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') startPoll();
-      else stopPoll();
-    });
+    const refreshNow = () => { if (canRefresh()) void refreshRoomMessages(); };
+    schedule();
+    const appStateSub = AppState.addEventListener('change', (next) => { if (next === 'active') refreshNow(); });
+    const focusSub = navigation.addListener('focus', refreshNow);
     return () => {
-      sub.remove();
-      stopPoll();
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      appStateSub.remove();
+      focusSub();
     };
-  }, [selectedRoom, refreshRoomMessages]);
+  }, [selectedRoom, refreshRoomMessages, navigation]);
+
+  /**
+   * 重新订阅当前房间频道。
+   * 推送依赖「已登录 + 已订阅」两个条件，二者都可能晚于进房动作完成：
+   * 冷启动时 joinChannel 常常跑在 QChat 登录之前，订阅被服务端丢弃后不会自动补，
+   * 表现就是进房后一条实时消息都收不到、只能靠轮询。
+   */
+  const rejoinActiveChannel = useCallback(() => {
+    const target = activeRoomRef.current;
+    const sid = Number(target?.serverId || 0);
+    const cid = Number(target?.channelId || 0);
+    if (sid > 0 && cid > 0) {
+      void pocketImJoinChannel(sid, cid).then((ok) => {
+        if (!ok && __DEV__) console.warn('[qchat] rejoin 未成功 sid=', sid, 'cid=', cid);
+      });
+    }
+  }, []);
 
   /**
    * 房间消息「实时」接收：云信圈组（QChat）推送。
    *
-   * 上面的 15s 轮询只是 HTTP 兜底；圈组才有真正的实时推送（官方同款通道）。
+   * 实时消息主通道是云信圈组（QChat）推送，HTTP 轮询只做兜底（间隔自适应，见 roomLivePolicy）。
    * 原生桥不可用 / 未登录 / 非 Android 时 observeRoomMessages 内部静默降级，
    * 房间仍按轮询工作，不影响既有行为。
    */
@@ -2578,6 +2612,7 @@ export default function FollowedRoomsScreen() {
         .map(qchatToRoomMessage);
       if (__DEV__) console.warn('[qchat] recv=', messages.length, 'matched=', fresh.length);
       if (!fresh.length) return;
+      lastRoomPushAtRef.current = Date.now();
       setRoomMessages((prev) => {
         const merged = mergeMessages(prev, fresh);
         diagnoseUndefined(merged, 'QCHAT');
@@ -2585,15 +2620,22 @@ export default function FollowedRoomsScreen() {
       });
     })
       .then((unsub) => {
-        if (disposed) unsub();
-        else unsubscribe = unsub;
+        if (disposed) { unsub(); return; }
+        unsubscribe = unsub;
+        // 订阅晚于进房时登录可能还没完成：登录成功后再补一次订阅，否则该房间永远收不到推送
+        rejoinActiveChannel();
       })
       .catch(() => undefined);
+    const appStateSub = AppState.addEventListener('change', (next) => {
+      // 后台回来长连接可能已被回收，重新订阅一次（失败也无副作用）
+      if (next === 'active') rejoinActiveChannel();
+    });
     return () => {
       disposed = true;
+      appStateSub.remove();
       if (unsubscribe) unsubscribe();
     };
-  }, [selectedRoom, nimEpoch]);
+  }, [selectedRoom, nimEpoch, rejoinActiveChannel]);
 
   /** 直播解析并开播（占位式）：点击即反馈，出地址后无缝换正式播放器 */
   const resolveLiveAndOpen = useCallback(async (media: RoomMedia) => {

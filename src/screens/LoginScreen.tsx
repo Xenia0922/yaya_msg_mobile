@@ -925,7 +925,7 @@ export default function LoginScreen() {
         {/* 个性装扮：头像框 / 勋章（账号装饰，只影响消息展示，不改账号资料） */}
         <GlassSurface radius={20} role="card" style={styles.card}>
           <AccountSectionTitle icon="auto-fix" title={t('个性装扮')} />
-          <IdentityDecorations accountKey={settings.p48Token || ''} frame={settings.yaya_send_pfurl || ''} teamLogo={settings.yaya_send_teamlogo || ''} badges={settings.yaya_send_badge || ''} onChange={saveSendIdentity} />
+          <IdentityDecorations accountKey={settings.p48Token || ''} frame={settings.yaya_send_pfurl || ''} teamLogo={settings.yaya_send_teamlogo || ''} badges={settings.yaya_send_badge || ''} bubbleId={settings.yaya_send_bubble_id || '0'} onChange={saveSendIdentity} />
         </GlassSurface>
         {/* 鸡腿充值 */}
         <GlassSurface radius={20} role="card" style={styles.card}>

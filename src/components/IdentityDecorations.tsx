@@ -6,8 +6,10 @@ import { usePalette } from '../theme';
 import { errorMessage, normalizeUrl } from '../utils/data';
 import { ALLOW_CUSTOM_SENDER_PROFILE, ALLOW_CUSTOM_TEAM_LOGO, VIP_FEATURE_NOTICE } from '../constants/identityFeatures';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { getOfficialRoomBubbles, type OfficialRoomBubble } from '../services/roomBubbles';
 
 type Option = { id: string; name: string; url: string; vip?: boolean };
+type BubbleOption = OfficialRoomBubble;
 // 官方成员资料中实际返回的队标，成员库未携带 teamLogo 时仍可选择。
 const TEAM_LOGOS: Array<[string, string]> = [
   ['SNH48 · SII', '/mediasource/teamLogo2/all/snh48_s2.png'],
@@ -24,21 +26,23 @@ const TEAM_LOGOS: Array<[string, string]> = [
   ['预备生', '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png'],
 ];
 
-export default function IdentityDecorations({ accountKey, frame, teamLogo, badges, onChange }: {
-  accountKey: string; frame: string; teamLogo: string; badges: string;
+export default function IdentityDecorations({ accountKey, frame, teamLogo, badges, bubbleId, onChange }: {
+  accountKey: string; frame: string; teamLogo: string; badges: string; bubbleId: string;
   onChange: (patch: Record<string, string>) => void;
 }) {
   const palette = usePalette();
   const members = useMemberStore((state) => state.members);
   const [frames, setFrames] = useState<Option[]>([]);
   const [badgeOptions, setBadgeOptions] = useState<Option[]>([]);
+  const [bubbleOptions, setBubbleOptions] = useState<BubbleOption[]>([]);
   const [catalogTeams, setCatalogTeams] = useState<Option[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [accountFrame, setAccountFrame] = useState('');
   const [settingAccount, setSettingAccount] = useState(false);
+  const [settingBubble, setSettingBubble] = useState(false);
   const [reload, setReload] = useState(0);
-  const [picker, setPicker] = useState<'team' | 'frame' | 'badge' | null>(null);
+  const [picker, setPicker] = useState<'team' | 'frame' | 'badge' | 'bubble' | null>(null);
   const [pendingBadges, setPendingBadges] = useState<string[]>([]);
 
   useEffect(() => {
@@ -59,23 +63,28 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
 
   useEffect(() => {
     let active = true;
-    setFrames([]); setBadgeOptions([]); setAccountFrame(''); setStatus('');
-    if (!accountKey) { setLoading(false); return () => { active = false; }; }
+    setFrames([]); setBadgeOptions([]); setBubbleOptions([]); setAccountFrame(''); setStatus('');
     setLoading(true);
-    Promise.allSettled([pocketApi.getUserPictureFrames(), pocketApi.getUserBadges()]).then(([frameResult, badgeResult]) => {
+    const framesRequest = accountKey ? pocketApi.getUserPictureFrames() : Promise.resolve(null);
+    const badgesRequest = accountKey ? pocketApi.getUserBadges() : Promise.resolve(null);
+    const bubblesRequest = accountKey ? getOfficialRoomBubbles(true) : Promise.resolve(null);
+    Promise.allSettled([framesRequest, badgesRequest, bubblesRequest]).then(([frameResult, badgeResult, bubbleResult]) => {
       if (!active) return;
       const failed: string[] = [];
-      if (frameResult.status === 'fulfilled') {
+      if (accountKey && frameResult.status === 'fulfilled') {
         const content = frameResult.value?.content || frameResult.value?.data || {};
         const list = Array.isArray(content.pictureFrames) ? content.pictureFrames : [];
         setFrames(list.map((item: any) => ({ id: String(item.pfId ?? ''), name: String(item.pfName || '头像框'), url: String(item.pfUrl || ''), vip: item.forVip === true || item.forVip === 1 })).filter((item: Option) => !!item.url));
         setAccountFrame(String(content.pfId ?? ''));
-      } else failed.push('头像框');
-      if (badgeResult.status === 'fulfilled') {
+      } else if (accountKey) failed.push('头像框');
+      if (accountKey && badgeResult.status === 'fulfilled') {
         const content = badgeResult.value?.content || badgeResult.value?.data || {};
         const list = [...(Array.isArray(content.levelBadge) ? content.levelBadge : []), ...(Array.isArray(content.achievementBadge) ? content.achievementBadge : [])];
         setBadgeOptions(list.map((item: any) => ({ id: String(item.badgeId ?? ''), name: String(item.badgeName || '勋章'), url: String(item.smallPic || item.bigPic || '') })).filter((item: Option) => !!item.url));
-      } else failed.push('勋章');
+      } else if (accountKey) failed.push('勋章');
+      if (bubbleResult.status === 'fulfilled' && bubbleResult.value) {
+        setBubbleOptions(bubbleResult.value);
+      } else if (accountKey) failed.push('官方气泡');
       if (failed.length) setStatus(`${failed.join('、')}加载失败，请重试`);
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -98,6 +107,7 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
   }, [members, catalogTeams]);
   const chosenBadges = badges.split(',').map((v) => v.trim()).filter(Boolean);
   const selectedFrame = frames.find((item) => normalizeUrl(item.url) === normalizeUrl(frame));
+  const selectedBubble = bubbleOptions.find((item) => item.id === bubbleId);
   const writeAccountFrame = async () => {
     if (!selectedFrame || settingAccount) return;
     const pfId = Number(selectedFrame.id);
@@ -109,6 +119,21 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
       setStatus('口袋账号头像框设置成功');
     } catch (err) { setStatus(`口袋账号设置失败：${errorMessage(err)}`); }
     finally { setSettingAccount(false); }
+  };
+  const selectOfficialBubble = async (option: BubbleOption) => {
+    if (option.id === bubbleId || settingBubble) return;
+    onChange({ yaya_send_bubble_id: option.id });
+    setPicker(null);
+    setSettingBubble(true);
+    setStatus(`正在同步口袋官方气泡「${option.name}」…`);
+    try {
+      await pocketApi.setRoomBubble(option.id);
+      setStatus(`已同步口袋官方气泡「${option.name}」`);
+    } catch (err) {
+      setStatus(`已保存发言气泡编号；口袋官方设置同步失败：${errorMessage(err)}`);
+    } finally {
+      setSettingBubble(false);
+    }
   };
   const renderOptions = (options: Option[], selected: (option: Option) => boolean, choose: (option: Option) => void) => (
     <View style={styles.options}>
@@ -154,7 +179,7 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
       {ALLOW_CUSTOM_SENDER_PROFILE ? <Text style={[styles.section, { color: palette.label }]}>个性装扮</Text> : null}
       {loading ? <ActivityIndicator size="small" color={palette.tint} /> : null}
       {decorationRow('头像框', selectedFrame?.name || (frame ? '自定义头像框' : '跟随账号 · 点击选择'), 'account-circle-outline', frame, () => setPicker('frame'))}
-      {!accountKey ? <Text style={[styles.hint, { color: palette.labelTertiary }]}>登录口袋账号后加载头像框和勋章</Text> : null}
+      {!accountKey ? <Text style={[styles.hint, { color: palette.labelTertiary }]}>登录口袋账号后加载头像框、勋章和官方气泡</Text> : null}
       <View style={styles.actions}>
         {frame ? actionButton('恢复账号头像框', 'restore', () => onChange({ yaya_send_pfurl: '' })) : null}
         {selectedFrame ? actionButton(accountFrame === selectedFrame.id ? '账号当前头像框' : '设置到口袋账号', 'account-check-outline', writeAccountFrame, settingAccount || accountFrame === selectedFrame.id) : null}
@@ -162,13 +187,14 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
       </View>
       {decorationRow('勋章', chosenBadges.length ? `已选 ${chosenBadges.length} 枚 · 可多选` : '跟随账号 · 可多选', 'medal-outline', chosenBadges[0], () => { setPendingBadges(chosenBadges); setPicker('badge'); })}
       {chosenBadges.length ? <View style={styles.actions}>{actionButton('恢复账号勋章', 'restore', () => onChange({ yaya_send_badge: '' }))}</View> : null}
+      {decorationRow('消息气泡', selectedBubble?.name || (bubbleId === '0' ? '默认气泡 · 选择口袋官方装扮' : `气泡 ${bubbleId}`), 'message-text-outline', selectedBubble?.previewPath, () => setPicker('bubble'))}
       <View style={[styles.notice, { backgroundColor: palette.fill2 }]}><MaterialCommunityIcons name="information-outline" size={16} color={palette.labelSecondary} /><Text style={[styles.noticeText, { color: palette.labelSecondary }]}>免责声明：{VIP_FEATURE_NOTICE}</Text></View>
       {status ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>{status}</Text> : null}
       <Modal visible={picker !== null} transparent animationType="slide" onRequestClose={() => setPicker(null)}>
         <View style={styles.shade}>
           <View style={[styles.sheet, { backgroundColor: palette.surface }]}>
             <View style={styles.sheetHeader}>
-              <Text style={[styles.section, { color: palette.label, marginTop: 0 }]}>{picker === 'team' ? '选择队标' : picker === 'frame' ? '选择头像框' : `选择勋章（已选 ${pendingBadges.length}）`}</Text>
+              <Text style={[styles.section, { color: palette.label, marginTop: 0 }]}>{picker === 'team' ? '选择队标' : picker === 'frame' ? '选择头像框' : picker === 'badge' ? `选择勋章（已选 ${pendingBadges.length}）` : '口袋官方消息气泡'}</Text>
               <TouchableOpacity onPress={() => { if (picker === 'badge') onChange({ yaya_send_badge: pendingBadges.join(',') }); setPicker(null); }}><Text style={[styles.action, { color: palette.tint }]}>完成</Text></TouchableOpacity>
             </View>
             {picker === 'badge' ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>可多选，再次点击取消选择。</Text> : null}
@@ -176,7 +202,25 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
               {picker === 'team' ? renderOptions(teams, (option) => normalizeUrl(option.url) === normalizeUrl(teamLogo), (option) => { onChange({ yaya_send_teamlogo: option.url }); setPicker(null); }) : null}
               {picker === 'frame' ? renderOptions(frames, (option) => normalizeUrl(option.url) === normalizeUrl(frame), (option) => { onChange({ yaya_send_pfurl: option.url }); setPicker(null); }) : null}
               {picker === 'badge' ? renderOptions(badgeOptions, (option) => pendingBadges.some((url) => normalizeUrl(url) === normalizeUrl(option.url)), (option) => setPendingBadges((current) => current.some((url) => normalizeUrl(url) === normalizeUrl(option.url)) ? current.filter((url) => normalizeUrl(url) !== normalizeUrl(option.url)) : [...current, option.url])) : null}
-              {picker !== 'team' && !loading && !(picker === 'frame' ? frames.length : badgeOptions.length) ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>{accountKey ? '暂无可选图标，请刷新后重试' : '请先登录口袋账号'}</Text> : null}
+              {picker === 'bubble' ? <>
+                {bubbleOptions.length ? <View style={styles.options}>
+                  {bubbleOptions.map((option, index) => {
+                    const selected = option.id === bubbleId;
+                    return (
+                      <TouchableOpacity key={`${option.id}-${index}`} onPress={() => selectOfficialBubble(option)} style={[styles.option, { borderColor: selected ? palette.tint : palette.hairline, backgroundColor: palette.fill2 }]}>
+                        {option.previewPath ? <Image source={{ uri: normalizeUrl(option.previewPath) }} style={styles.image} resizeMode="contain" /> : <MaterialCommunityIcons name="message-text-outline" size={25} color={palette.tint} />}
+                        <Text style={[styles.name, { color: palette.label }]} numberOfLines={1}>{option.name}</Text>
+                        {option.vip && option.id !== '0' ? <Text style={[styles.vip, { color: palette.tint }]}>VIP</Text> : null}
+                        {selected ? <Text style={[styles.vip, { color: palette.tint }]}>已选</Text> : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View> : !loading && !accountKey ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>请先登录口袋账号</Text> : !loading && status.includes('官方气泡') ? <TouchableOpacity onPress={() => setReload((value) => value + 1)}><Text style={[styles.hint, { color: palette.tint }]}>官方气泡加载失败，点击重试</Text></TouchableOpacity> : !loading ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>暂无官方气泡</Text> : null}
+                {status && !status.includes('官方气泡') ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>{status}</Text> : null}
+                {loading ? <ActivityIndicator size="small" color={palette.tint} /> : null}
+                <Text style={[styles.hint, { color: palette.labelTertiary }]}>VIP 只显示官方标记；选择后同步到口袋账号，发言消息也携带气泡 ID。</Text>
+              </> : null}
+              {picker !== 'team' && picker !== 'bubble' && !loading && !(picker === 'frame' ? frames.length : badgeOptions.length) ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>{accountKey ? '暂无可选图标，请刷新后重试' : '请先登录口袋账号'}</Text> : null}
             </ScrollView>
           </View>
         </View>

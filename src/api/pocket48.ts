@@ -1526,6 +1526,20 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     });
   },
 
+  /** 官方口袋消息气泡列表；bubbleId 与 IM/QChat 消息扩展中的字段一致 */
+  async getRoomBubbles() {
+    return pocketPost(`${BASE}/im/api/v1/room/bubbleList`, {}, {
+      modern: true, fallback: '获取口袋官方消息气泡失败',
+    });
+  },
+
+  /** 设置口袋官方消息气泡；VIP 权限由官方接口返回 */
+  async setRoomBubble(bubbleId: string) {
+    return pocketPost(`${BASE}/im/api/v1/room/chooseBubble`, { bubbleId: String(bubbleId) }, {
+      modern: true, fallback: '设置口袋官方消息气泡失败',
+    });
+  },
+
   async getMediaCollectionTotalCount() {
     return pocketPost(`${BASE}/media/api/media/v1/getCollectionTotalCount`, {}, {
       modern: true,
