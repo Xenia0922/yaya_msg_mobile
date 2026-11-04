@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Animated, AppState, DeviceEventEmitter, Keyboard, Platform, Pressable, Share} from 'react-native';
+import {Animated, AppState, DeviceEventEmitter, Keyboard, NativeModules, Platform, Pressable, Share} from 'react-native';
 import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
-import { deleteRoomMessage, observeRoomMessages, sendRoomTextMessage, type RoomLiveMessage } from '../services/pocketNim/qchat';
+import { deleteRoomMessage, observeRoomMessages, sendRoomSticker, sendRoomTextMessage, type RoomLiveMessage, type RoomSticker } from '../services/pocketNim/qchat';
 import { getNimSessionEpoch, subscribeNimSession } from '../services/pocketNim/session';
 import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
 import { NetworkImage } from '../components/NetworkImage';
 import { useLiveBarrage } from '../hooks/useLiveBarrage';
 import DanmakuListSheet, { type DanmakuListEntry } from '../components/DanmakuListSheet';
+import { enrichReplayDanmaku, parseDanmaku, replayBarrageToDanmaku, type DanmakuItem } from '../utils/danmaku';
 import { fetchMemberRadioUrl, isRtmpRadioUrl } from '../services/radio';
 import { usePalette, radii, radiiAlias } from '../theme';
 import { useResolvedTheme } from '../hooks/useAppTheme';
@@ -35,6 +36,7 @@ import { usePlayerStore } from '../player/store/playerStore';
 import { useOnMicStore } from '../store/onMicStore';
 import {
   errorMessage,
+  getPath,
   messagePayload,
   messageText,
   normalizeUrl,
@@ -49,16 +51,18 @@ import { logInfo } from '../utils/runtimeLog';
 import pocketApi from '../api/pocket48';
 import PlayerScreen from '../player';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { DanmakuOverlay } from '../components/DanmakuOverlay';
 import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
 import { clearGiftEffectQueue, isGiftEffectSupported, playGiftEffect } from '../services/giftEffect';
 import ZoomImageModal from '../components/ZoomImageModal';
 import { enqueueDownload } from '../services/downloads';
-import { memberSearchText } from '../utils/members';
+import { memberSearchText, isRoomMember } from '../utils/members';
 import { getBgDisplayUri, ensureBgCached } from '../services/roomBgCache';
 import { thumbUrl, AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
+import RoomStickerPanel from '../components/RoomStickerPanel';
+import RoomFlipQuestion from '../components/RoomFlipQuestion';
+import { getRoomFlipInfo } from '../utils/roomFlip';
 
 /**
  * OneUI（三星）降级开关：expo-blur 的 RenderEffect 实时模糊在三星机上极易掉帧/发热
@@ -74,6 +78,7 @@ const ToolbarShell: any = IS_SAMSUNG ? View : BlurView;
 import { useBlurTarget } from '../components/BlurTarget';
 import { GlassSegmented } from '../components/GlassSegmented';
 import { pocketImJoinChannel } from '../native/PocketIm';
+import { setPipPlaying } from '../utils/pip';
 type FollowedRoom = {
   memberId: string;
   member?: Member;
@@ -220,6 +225,13 @@ function RoomMediaPlayer({ media }: { media: RoomMedia }) {
   );
 }
 
+function RoomPlayerDanmakuSheet({ entries, live, loading, onClose, onOpenProfile }: { entries: DanmakuListEntry[]; live: boolean; loading: boolean; onClose: () => void; onOpenProfile?: (entry: DanmakuListEntry) => void }) {
+  const position = usePlayerStore((state) => state.position);
+  return <DanmakuListSheet visible onClose={onClose} entries={entries} live={live} loading={loading}
+    currentTime={live ? undefined : position}
+    onSeek={live ? undefined : (time) => usePlayerStore.getState().setSeekTarget(time)} onOpenProfile={onOpenProfile} />;
+}
+
 /** 通用文本限位（房间名等） */
 function capText(text: string, max = 18) {
   const clean = (text || '').trim();
@@ -294,12 +306,17 @@ function collectUrls(value: any, result: string[] = [], depth = 0) {
       // ext.user.teamLogo 会被下面的正则捞出来当图片消息渲染
       // （用户实测：SNH48-雷薪梦 的文字消息下面挂着绿色 XII 队标大图）。
       'teamLogo', 'teamLogoUrl', 'teamPic', 'teamBadge', 'teamIcon', 'teamHeadImg',
-      'pfUrl', 'badgeUrl', 'medalUrl', 'levelIcon', 'vipIcon',
+      'pfUrl', 'headFrame', 'pictureFrame', 'frameUrl', 'badgeUrl', 'medalUrl', 'levelIcon', 'vipIcon', 'badge', 'badges', 'badgeList', 'badgeInfo', 'badgeInfos', 'userBadge', 'seineBadge', 'seineBadgeList', 'specialBadge', 'monthCardBadge', 'nameplateList', 'nameplate', 'decoration', 'decorations', 'userDecoration', 'avatarFrame', 'avatarPendant', 'headPendant', 'pendant', 'bubbleInfo', 'user', 'userInfo', 'sender',
       // extInfo/msgExtInfo = 序列化元数据（module/channelRole/user 头像/bubbleId），其中 JSON 字符串会被正则
       // 捞出头像等非媒体 URL——徐钰涵公式照泄漏主因，一律跳过（真正的媒体在 body/已解析 ext 中另扫）
       'extInfo', 'msgExtInfo', 'extMsgInfo', 'attachInfo']);
     for (const [key, val] of Object.entries(value)) {
-      if (skipKeys.has(key) && typeof val === 'string') continue;
+      if (skipKeys.has(key)) continue;
+      if (typeof val === 'string' && isRawJsonText(val)) {
+        const parsed = parseMaybeJson(val);
+        if (parsed && typeof parsed === 'object') collectUrls(parsed, result, depth + 1);
+        continue;
+      }
       collectUrls(val, result, depth + 1);
     }
   }
@@ -554,6 +571,7 @@ function qchatToRoomMessage(msg: RoomLiveMessage): any {
     msgType: msg.messageType,
     // bodys 沿用 HTTP 消息的「JSON 体」形态：正文 + 类型 + 发送者
     bodys: {
+      ...msg.attachment,
       text: msg.text,
       messageType: msg.messageType,
       user: {
@@ -628,9 +646,7 @@ function streamScore(url: string, preferLive = false): number {
 
 function pickPlayableUrls(raw: any, preferLive = false): string[] {
   const candidates: string[] = [];
-  const direct = normalizeUrl(pickText(raw, PLAY_URL_FIELDS));
-  if (direct) candidates.push(direct);
-  const nested = unwrapList(raw, [
+  const listPaths = [
     'streams',
     'playStreams',
     'liveStreams',
@@ -647,11 +663,20 @@ function pickPlayableUrls(raw: any, preferLive = false): string[] {
     'data.streamList',
     'data.playStreamList',
     'data.urls',
-  ]);
-  nested.forEach((item) => {
-    const url = normalizeUrl(pickText(item, PLAY_URL_FIELDS));
-    if (url) candidates.push(url);
-  });
+  ];
+  const sources = Array.isArray(raw) ? raw : [raw];
+  for (const source of sources) {
+    const direct = normalizeUrl(pickText(source, PLAY_URL_FIELDS));
+    if (direct) candidates.push(direct);
+    for (const path of listPaths) {
+      const nested = getPath(source, path);
+      if (!Array.isArray(nested)) continue;
+      nested.forEach((item) => {
+        const url = normalizeUrl(typeof item === 'string' ? item : pickText(item, PLAY_URL_FIELDS));
+        if (url) candidates.push(url);
+      });
+    }
+  }
   collectUrls(raw).forEach((url) => candidates.push(url));
   return Array.from(new Set(candidates.filter(Boolean))).sort((a, b) => streamScore(b, preferLive) - streamScore(a, preferLive));
 }
@@ -1237,6 +1262,15 @@ function firstFrameFrom(extUser: any): string {
   return u && !/^\[/.test(u) ? normalizeUrl(u) : '';
 }
 
+/** 房间消息只显示第一枚勋章，不把它当头像框或消息图片。 */
+function firstBadgeFrom(extUser: any): string {
+  const value = [extUser?.badge, extUser?.seineBadge, extUser?.badgeList].find((item) => Array.isArray(item) ? item.length > 0 : !!item);
+  const parsed = typeof value === 'string' ? (parseMaybeJson(value) || value) : value;
+  const first = Array.isArray(parsed) ? parsed[0] : parsed;
+  const url = typeof first === 'string' ? first : pickText(first, ['smallPic', 'url', 'badgeUrl', 'picPath', 'image']);
+  return normalizeUrl(url);
+}
+
 /**
  * 从 user/info/home 响应里泛匹配头像框地址：官方各端字段名不统一
  * （pictureFrame / pfUrl / headFrame / bubble…），按「key 含框类词 + 值是 URL」匹配。
@@ -1348,7 +1382,8 @@ export default function FollowedRoomsScreen() {
   const resolvedTheme = useResolvedTheme();
   const { t } = useI18n();
   const token = useSettingsStore((state) => state.settings.p48Token);
-  const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
+  const setDockHidden = useUiStore((state) => state.setTabBarHidden);
+  const setTabBarHidden = useCallback((hidden: boolean) => setDockHidden(hidden, 'Rooms'), [setDockHidden]);
   const showToast = useUiStore((state) => state.showToast);
   const setScreenBackdrop = useUiStore((state) => state.setScreenBackdrop);
   const navigation = useNavigation<any>();
@@ -1538,6 +1573,10 @@ export default function FollowedRoomsScreen() {
   }, [selectedRoom, currentUserId, nimEpoch]);
   const [fullImageUrl, setFullImageUrl] = useState('');
   const [roomPlayer, setRoomPlayer] = useState<RoomMedia | null>(null);
+  const roomPlayerRef = useRef(roomPlayer);
+  roomPlayerRef.current = roomPlayer;
+  const hidePlayerEffects = usePlayerStore((s) => s.hideEffects || s.cleanScreen);
+  const roomPlaybackState = usePlayerStore((s) => s.state);
   /** 房间播放器视频真实宽高（PlayerScreen onVideoSize）：交棒小窗时带上，小窗立即按比例适配 */
   const roomVideoAspectRef = useRef<{ w: number; h: number } | null>(null);
   const [roomPlayerFullscreen, setRoomPlayerFullscreen] = useState(false);
@@ -1562,6 +1601,35 @@ export default function FollowedRoomsScreen() {
   // 直播弹幕：页面浮层 + 播放器底坞输入条共用同一条云信连接（避免重复建连）
   const roomBarrageLiveId = roomPlayer?.isLive && roomPlayer.liveId ? String(roomPlayer.liveId) : '';
   const roomBarrage = useLiveBarrage({ liveId: roomBarrageLiveId, enabled: !!roomBarrageLiveId, module: 'live' });
+  const [roomReplayDanmaku, setRoomReplayDanmaku] = useState<DanmakuItem[]>([]);
+  useEffect(() => {
+    let active = true;
+    setRoomReplayDanmaku([]);
+    if (roomPlayer && !roomPlayer.isLive && roomPlayer.liveId) {
+      const liveId = String(roomPlayer.liveId);
+      Promise.all([pocketApi.getLiveLrc(liveId), pocketApi.getLiveBarrage(liveId)]).then(([text, rows]) => {
+        if (!active) return;
+        const lrc = parseDanmaku(text || '');
+        if (lrc.length) {
+          setRoomReplayDanmaku(enrichReplayDanmaku(lrc, rows));
+        } else {
+          setRoomReplayDanmaku(replayBarrageToDanmaku(rows));
+        }
+      }).catch(() => {});
+    }
+    return () => { active = false; };
+  }, [roomPlayer?.liveId, roomPlayer?.isLive]);
+  /**
+   * 房间内直播在播 → 登记 PiP 播放态。
+   * ⚠️ 此前只有 MiniPlayer / FullscreenManager / MediaScreen 三处登记，
+   *    房间里的直播窗口没登记 → MainActivity.onUserLeaveHint 判定 videoPlaying=false
+   *    → 按 Home/退到桌面**不会进系统小窗**（2026-10-25 用户反馈「退出没系统小窗」）。
+   */
+  useEffect(() => {
+    const on = !!roomPlayer?.isLive && !!roomPlayer?.url && roomPlaybackState === 'playing';
+    setPipPlaying(on, 'roomlive');
+    return () => setPipPlaying(false, 'roomlive');
+  }, [roomPlayer?.url, roomPlayer?.isLive, roomPlaybackState]);
   /** 弹幕列表抽屉（房间内直播弹幕）：与飘屏/输入条共用同一条云信连接的数据 */
   const [showRoomDanmakuList, setShowRoomDanmakuList] = useState(false);
   const [showRoomDanmakuSettings, setShowRoomDanmakuSettings] = useState(false);
@@ -1576,16 +1644,6 @@ export default function FollowedRoomsScreen() {
     return () => sub.remove();
   }, []);
 
-  /** 房间直播飘屏弹幕（与 Media 页同一套：进场/礼物文案带昵称，普通弹幕只出正文） */
-  const [showRoomDanmaku, setShowRoomDanmaku] = useState(false);
-  const roomLiveItems = useMemo(
-    () => roomBarrage.items.map((item) => ({ key: item.id, text: item.text || '' })),
-    [roomBarrage.items],
-  );
-  useEffect(() => {
-    if (roomBarrage.items.length) setShowRoomDanmaku(true);
-  }, [roomBarrage.items.length]);
-
   /** 礼物全屏特效（与 Media 页一致：别人送的与自己送的都播） */
   const roomPlayedEffectsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -1596,22 +1654,24 @@ export default function FollowedRoomsScreen() {
       const zip = item.gift?.zipPath;
       if (!zip || roomPlayedEffectsRef.current.has(item.id)) continue;
       roomPlayedEffectsRef.current.add(item.id);
-      playGiftEffect({ zipPath: zip, zipMd5: item.gift?.zipMd5, giftName: item.gift?.giftName });
+      if (!hidePlayerEffects) playGiftEffect({ zipPath: zip, zipMd5: item.gift?.zipMd5, giftName: item.gift?.giftName });
     }
     if (roomPlayedEffectsRef.current.size > 200) roomPlayedEffectsRef.current.clear();
-  }, [roomBarrage.items]);
+  }, [roomBarrage.items, hidePlayerEffects]);
   useEffect(() => () => { clearGiftEffectQueue(); }, []);
 
   const roomDanmakuEntries = useMemo<DanmakuListEntry[]>(
     () =>
-      roomBarrage.items.map((item) => ({
+      roomPlayer?.isLive ? roomBarrage.items.map((item) => ({
         id: item.id,
         time: 0,
         nick: item.nick || '',
         text: item.text || '',
         kind: item.kind,
-      })),
-    [roomBarrage.items],
+        userId: item.userId || undefined,
+        avatar: item.avatar || undefined,
+      })) : roomReplayDanmaku.map((item, index) => ({ id: `replay-${index}`, time: item.time, nick: item.nick || '', text: item.text, userId: item.userId, avatar: item.avatar })),
+    [roomBarrage.items, roomPlayer?.isLive, roomReplayDanmaku],
   );
   // 房间发言（云信圈组）：草稿 + 发送中 + 错误提示
   const [roomDraft, setRoomDraft] = useState('');
@@ -1626,6 +1686,15 @@ export default function FollowedRoomsScreen() {
   const [essenceLoading, setEssenceLoading] = useState(false);
   const [roomSending, setRoomSending] = useState(false);
   const [roomSendHint, setRoomSendHint] = useState('');
+  const [stickerPanelOpen, setStickerPanelOpen] = useState(false);
+  const [roomNavigationInset, setRoomNavigationInset] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    NativeModules.PipController?.getNavigationInset?.().then((inset: number) => {
+      if (alive) setRoomNavigationInset(Math.max(0, Number(inset) || 0));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   /** 直播解析占位：点击无流地址的直播卡 → 立即弹全屏「解析中」，不再干等无反馈（连击才加载进去的元凶） */
   const [liveResolve, setLiveResolve] = useState<null | { key: string; error: string; media: RoomMedia }>(null);
   const liveResolveToken = useRef(0);
@@ -1685,14 +1754,12 @@ export default function FollowedRoomsScreen() {
   useFocusEffect(useCallback(() => {
     setTabBarHidden(!!selectedRoom || !!roomPlayer);
     return () => {
-      setTabBarHidden(false);
       setLiveImmersiveMode(false);
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
   }, [roomPlayer, selectedRoom, setTabBarHidden]));
 
   useEffect(() => {
-    setTabBarHidden(!!selectedRoom);
     if (!selectedRoom) {
       setRoomPlayer(null);
       setLiveImmersiveMode(false);
@@ -1700,11 +1767,10 @@ export default function FollowedRoomsScreen() {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
     return () => {
-      setTabBarHidden(false);
       setLiveImmersiveMode(false);
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
-  }, [selectedRoom, setTabBarHidden]);
+  }, [selectedRoom]);
 
   useEffect(() => {
     setLiveImmersiveMode(!!roomPlayer && roomPlayerFullscreen);
@@ -1909,7 +1975,28 @@ export default function FollowedRoomsScreen() {
   const essenceChannelId = String((selectedRoom as any)?.channelId || '');
   useEffect(() => {
     void loadRoomEssences(essenceChannelId);
+    setStickerPanelOpen(false);
   }, [essenceChannelId, loadRoomEssences]);
+
+  const handleSendRoomSticker = useCallback(async (sticker: RoomSticker) => {
+    if (roomSending) return;
+    const target = { ...activeRoomRef.current };
+    if (!target.channelId) { setRoomSendHint(t('房间未就绪')); return; }
+    setRoomSending(true);
+    setRoomSendHint('');
+    try {
+      const serverId = target.serverId && target.serverId !== '0' ? target.serverId : await pocketApi.resolveRoomServerId(target.channelId);
+      if (!serverId || serverId === '0') throw new Error(t('缺少房间 serverId，无法发言'));
+      if (activeRoomRef.current.channelId !== target.channelId) return;
+      await sendRoomSticker({ serverId, channelId: target.channelId }, sticker);
+      setTimeout(() => refreshRoomMessagesRef.current?.(), 500);
+      setTimeout(() => refreshRoomMessagesRef.current?.(), 1500);
+    } catch (err) {
+      setRoomSendHint(errorMessage(err));
+    } finally {
+      setRoomSending(false);
+    }
+  }, [roomSending, t]);
 
   const handleSendRoomMessage = useCallback(async () => {
     const text = roomDraft.trim();
@@ -1979,6 +2066,7 @@ export default function FollowedRoomsScreen() {
       backTo: {
         mode: cur.isLive ? 'live' : 'vod',
         playUrl: cur.url,
+        playLiveId: cur.liveId ? String(cur.liveId) : undefined,
         playTitle: cur.title,
         playCover: cur.cover,
         playPosition: pos,
@@ -2449,7 +2537,9 @@ export default function FollowedRoomsScreen() {
     if (!selectedRoom) return;
     const startPoll = () => {
       if (pollTimerRef.current) return;
-      pollTimerRef.current = setInterval(() => { refreshRoomMessages(); }, 60000);
+      pollTimerRef.current = setInterval(() => {
+        if (navigation.isFocused() && AppState.currentState === 'active') refreshRoomMessages();
+      }, 60000);
     };
     const stopPoll = () => {
       if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
@@ -2486,8 +2576,7 @@ export default function FollowedRoomsScreen() {
       const fresh = messages
         .filter((m) => String(m.channelId) === String(cid))
         .map(qchatToRoomMessage);
-      console.warn('[qchat] recv=', messages.length, 'cid=', cid,
-        'msgCid=', messages.map((m) => String(m.channelId)).join('|'), 'matched=', fresh.length);
+      if (__DEV__) console.warn('[qchat] recv=', messages.length, 'matched=', fresh.length);
       if (!fresh.length) return;
       setRoomMessages((prev) => {
         const merged = mergeMessages(prev, fresh);
@@ -2640,9 +2729,9 @@ export default function FollowedRoomsScreen() {
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    let list = followed;
+    let list = followed.filter((item) => !item.member || isRoomMember(item.member));
     if (q) {
-      list = followed.filter((item) => {
+      list = list.filter((item) => {
         const member = item.member;
         if (!member) return false;
         return memberSearchText(member).includes(q);
@@ -2665,7 +2754,7 @@ export default function FollowedRoomsScreen() {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     return members
-      .filter((m) => memberSearchText(m).includes(q))
+      .filter((m) => isRoomMember(m) && memberSearchText(m).includes(q))
       .sort((a, b) => {
         // 已关注排前，方便快速打开房间
         const af = followedIds.has(String((a as any).id || (a as any).userId || '')) ? 0 : 1;
@@ -2845,7 +2934,7 @@ export default function FollowedRoomsScreen() {
 
   
   const openSenderProfile = useCallback(
-    (opts: { id: string; name: string; avatar: string; member?: Member | null; userIds?: string[] }) => {
+    (opts: { id: string; name: string; avatar: string; member?: Member | null; userIds?: string[]; missingIdMessage?: string }) => {
       const m = opts.member || null;
       // 候选 id：**消息 ext.user.userId 优先**（官方 getChannelBaseParams / 我们自己 buildChannelExt 都写的是发送者的口袋 userId），
       // 再退成员库的 userId / id，最后退消息里取到的发送者字段（可能是云信 accid，查不到就会自动换下一个）。
@@ -2883,7 +2972,7 @@ export default function FollowedRoomsScreen() {
         },
       });
       if (!candidates.length) {
-        apply({ loading: false, error: t('该用户没有可加载的口袋48资料') });
+        apply({ loading: false, error: opts.missingIdMessage || t('该用户没有可加载的口袋48资料') });
         return;
       }
       // 依次尝试候选 id：命中第一个能查到资料的即用（查不到再换下一个）
@@ -3014,7 +3103,7 @@ export default function FollowedRoomsScreen() {
   /** 长按消息：所有人可回复；自己额外保留撤回删除 */
   /**
    * 长按消息 → 自绘圆角操作面板（与 App 风格统一；原生 Alert 只有 3 个按钮且样式割裂）。
-   * 规则：文本消息 → 复制 + 回复（自己的再加删除）；媒体消息 → 回复 + 下载。
+   * 规则：文本消息可复制、回复；媒体消息可回复、下载；本人消息均可删除。
    */
   const openMessageActions = useCallback(
     (item: any, mine: boolean, senderName: string, media?: RoomMedia | null) => {
@@ -3083,16 +3172,13 @@ export default function FollowedRoomsScreen() {
         : (isRoomOwner
           ? { id: room.id, name: (msgProfile.name || '').trim() || shortName(room), avatar: msgProfile.avatar || room.avatar }
           : msgProfile);
-      // 队伍标签：其他成员用他自己的档案，房主用房间档案（用户要求：放每条消息名字后面）
+      // 消息里的官方队标优先；缺失时使用该发送者的官方成员资料。
       const tagSource: any = senderMember || (isRoomOwner ? room : undefined);
-      const teamGroup = String(tagSource?.groupName || '').trim();
-      const teamName = String(tagSource?.team || '').trim();
-      // 用户要求：队标「分团区分去掉」—— 只显示队伍（Team X），不再拼团名前缀
-      const teamText = teamName || '';
       const teamLogo = String(tagSource?.teamLogo || '').trim();
       const media = roomMedia(item);
       const gift = roomGiftInfo(item);
       const payload = messagePayload(item) as any;
+      const flipInfo = getRoomFlipInfo(payload, String(item?.msgType || item?.extMsgType || ''));
       const replyInfo = payload?.replyInfo || payload?.giftReplyInfo;
       const replyName = replyInfo?.replyName || '';
       const replyQuoted = replyInfo?.replyText || '';
@@ -3116,7 +3202,7 @@ export default function FollowedRoomsScreen() {
           flipAnswer = String(flipAnswerRaw);
         }
       }
-      const baseText = flipAnswer || body;
+      const baseText = flipInfo ? flipInfo.answerText : flipAnswer || body;
       const isMediaLabel = /^\[(语音|图片|视频|链接|直播)\]/.test(baseText);
       const looksLikeFile = !media && /^https?:\/\//i.test(String(baseText || '')) || /\.(amr|mp3|m4a|aac|mp4|mov|jpg|jpeg|png|gif|webp)(\?|$)/i.test(String(baseText || ''));
       const bubbleText = gift ? giftReplyText : (media ? (!isMediaLabel ? baseText : '') : (looksLikeFile ? '' : baseText));
@@ -3124,11 +3210,12 @@ export default function FollowedRoomsScreen() {
       // 点头像能打开什么：成员（房主 / 成员库里的其他成员）→ 资料卡（带成员信息）；否则按发送者 id 试用户资料
       const avatarMember: Member | null = senderMember || (isRoomOwner ? room : null);
       // 消息 ext.user.userId = 发送者的口袋 userId（官方 getChannelBaseParams 结构）→ 查资料最靠谱的 id
-      const extUser: any = (extraInfo(item) as any)?.user || {};
+      const extUser: any = (extraInfo(item) as any)?.user || payload?.user || {};
       const extUserId = String(extUser?.userId ?? extUser?.user_id ?? extUser?.id ?? '').trim();
       const canOpenProfile = !!avatarMember || !!senderId || !!extUserId;
-      // 头像框：官方消息 ext.user.pfUrl（badge[] 是勋章、不是框，勿混）
+      // 头像框和勋章来自不同字段。
       const senderFrameUrl = firstFrameFrom(extUser);
+      const senderBadgeUrl = firstBadgeFrom(extUser);
 
       return (
         <View style={[styles.chatRow, mine && styles.chatRowMine, !row.groupStart && styles.chatRowTight]}>
@@ -3166,13 +3253,13 @@ export default function FollowedRoomsScreen() {
                   <Text style={[styles.msgSender, { color: (isRoomOwner || isMemberSender) ? palette.tint : mine ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
                     {profile.name}
                   </Text>
-                  {/* 身份装饰：成员队标 / 粉丝等级胶囊（2026-10-19 用户要求：勋章不显示，只留等级；头像框叠在头像上） */}
-                  {row.groupStart && !isRoomOwner ? (
+                  {/* 身份装饰：成员队标 / 粉丝账号等级。 */}
+                  {row.groupStart ? (
                     <UserDecorRow
                       decor={{
-                        isStar: isMemberSender,
+                        isStar: isRoomOwner || isMemberSender,
                         roleId: isMemberSender ? 2 : Number(extUser?.roleId ?? extUser?.userRole ?? 0),
-                        teamLogo: String(extUser?.teamLogo || ''),
+                        teamLogo: String(extUser?.teamLogo || teamLogo || ''),
                         pfUrl: String(extUser?.pfUrl || ''),
                         vip: !!extUser?.vip,
                         level: extUser?.level ?? extUser?.userLevel ?? extUser?.grade,
@@ -3180,13 +3267,7 @@ export default function FollowedRoomsScreen() {
                       size={11}
                     />
                   ) : null}
-                  {/* 队伍标签：紧跟发送者名字（成员消息，**含其他成员在别人房间发言**）；有官方队标显示图，否则文字 */}
-                  {(isRoomOwner || isMemberSender) && (teamText || teamLogo) ? (
-                    <View style={[styles.msgTeamChip, { backgroundColor: palette.tintSoft }]}>
-                      {teamLogo ? <NetworkImage source={{ uri: teamLogo }} style={styles.msgTeamLogo} resizeMode="contain" thumbnail={120} /> : null}
-                      {teamText ? <Text style={[styles.msgTeamText, { color: palette.tint }]} numberOfLines={1}>{teamText}</Text> : null}
-                    </View>
-                  ) : null}
+                  {senderBadgeUrl ? <NetworkImage source={{ uri: senderBadgeUrl }} style={{ width: 19, height: 19 }} resizeMode="contain" fallback={false} /> : null}
                 </View>
                 <Text style={[styles.msgTime, { color: palette.labelTertiary }]} allowFontScaling={false}>
                   {formatTimestamp(getMessageTime(item)).slice(11, 16)}
@@ -3208,6 +3289,7 @@ export default function FollowedRoomsScreen() {
 
               ]}
             >
+              {flipInfo ? <RoomFlipQuestion question={flipInfo.question} questionId={flipInfo.questionId} answerId={flipInfo.answerId} token={token || ''} mine={mine} onOpenProfile={openSenderProfile} /> : null}
               {replyName || replyQuoted ? (
                 <View style={[styles.replyCard, { backgroundColor: mine ? 'rgba(255,255,255,0.18)' : idol ? palette.tintSoft : palette.fill2, borderLeftColor: mine ? 'rgba(255,255,255,0.85)' : palette.tint }]}>
                   {replyName ? <Text style={[styles.replyName, { color: mine ? palette.onTint : idol ? palette.tint : palette.tint }]} numberOfLines={1}>{replyName}</Text> : null}
@@ -3243,7 +3325,7 @@ export default function FollowedRoomsScreen() {
               {media ? (
                 media.type === 'image' && media.url ? (
                 <>
-                  <TouchableOpacity onPress={() => setFullImageUrl(media.url)} onLongPress={() => openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)} activeOpacity={0.9}>
+                  <TouchableOpacity style={[styles.inlineImageWrap, media.title === t('表情') && styles.inlineStickerWrap, (bubbleText || replyName || replyQuoted) && { marginTop: 8 }]} onPress={() => setFullImageUrl(media.url)} onLongPress={() => openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)} activeOpacity={0.9}>
                     {/* ⚠️ 房间图片消息走缩略图：原图动辄 1-3MB/张（1080-3000px），显示仅 228dp。
                         缩略图失败自动退回原图（NetworkImage 两段兜底）；点开大图仍是原图。 */}
                     <NetworkImage
@@ -3320,7 +3402,7 @@ export default function FollowedRoomsScreen() {
         </View>
       );
     },
-    [selectedRoom, showFanMessages, currentUserId, memberIdSet, members, openSenderProfile, confirmDeleteMessage, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
+    [selectedRoom, showFanMessages, currentUserId, memberIdSet, members, token, openSenderProfile, confirmDeleteMessage, roomPlayerFullscreen, roomPlayer, playingMedia, palette, t, playMedia, downloadMedia, setFullImageUrl, setPlayingMedia]
   );
 
   /**
@@ -3395,9 +3477,21 @@ export default function FollowedRoomsScreen() {
                 needsNativeExo: roomPlayer.needsVlc,
                 // 上麦/电台（type='audio'）走纯音频：不渲染画面，省一层黑屏
                 audioOnly: roomPlayer.type === 'audio',
+                coverPortrait: roomPlayer.type !== 'audio',
                 headers: { 'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)', Referer: 'https://h5.48.cn/', Origin: 'https://h5.48.cn' },
               }}
               meta={{ title: roomPlayer.title, cover: roomPlayer.cover }}
+              pocket={roomPlayer.type !== 'audio' ? {
+                name: roomBarrage.liveInfo.hostName || roomPlayer.title || selectedRoom?.ownerName || '',
+                avatar: normalizeUrl(roomBarrage.liveInfo.hostAvatar || ''),
+                liveId: roomPlayer.liveId,
+                audience: roomBarrage.liveInfo.audience,
+                rankAvatars: roomBarrage.liveInfo.rankAvatars,
+                comments: roomPlayer.isLive ? roomBarrage.items.slice().reverse().map((item) => ({ id: item.id, text: item.text, nick: item.nick, level: item.level, kind: item.kind, userId: item.userId, avatar: item.avatar })) : [],
+                replayComments: roomPlayer.isLive ? undefined : roomReplayDanmaku,
+                onRankPress: openRoomRankPanel,
+                onCommentPress: (item) => openSenderProfile({ id: String(item.userId || ''), name: item.nick || '', avatar: item.avatar || '', missingIdMessage: roomPlayer.isLive ? undefined : t('录播弹幕未提供用户 ID，无法加载完整资料') }),
+              } : undefined}
               onVideoSize={(w, h) => { if (w > 0 && h > 0) roomVideoAspectRef.current = { w, h }; }}
               danmaku={roomPlayer.isLive ? { type: 'poll', liveId: roomBarrageLiveId } : { type: 'lrc', lrcUrl: '' }}
               features={{ rate: !roomPlayer.isLive, danmaku: true, kernelSwitch: true, resume: !roomPlayer.isLive }}
@@ -3407,38 +3501,40 @@ export default function FollowedRoomsScreen() {
                   ? [{ key: 'gift', icon: 'gift', label: t('礼物'), onPress: () => openRoomGiftPanel() }]
                   : []),
                 { key: 'rank', icon: 'trophy', label: t('贡献榜'), onPress: openRoomRankPanel },
-                ...(roomPlayer.isLive
-                  ? [{ key: 'danmaku', icon: 'cog', label: t('弹幕设置'), onPress: () => setShowRoomDanmakuSettings(true) }]
-                  : []),
-                ...(roomPlayer.isLive
-                  ? [{ key: 'danmakuList', icon: 'format-list-bulleted', label: t('弹幕列表'), active: showRoomDanmakuList, onPress: () => setShowRoomDanmakuList((v) => !v) }]
-                  : []),
+                { key: 'danmaku', icon: 'cog', label: t('弹幕设置'), onPress: () => setShowRoomDanmakuSettings(true) },
+                { key: 'danmakuList', icon: 'format-list-bulleted', label: t('弹幕列表'), active: showRoomDanmakuList, onPress: () => setShowRoomDanmakuList((v) => !v) },
                 { key: 'pip', icon: 'picture-in-picture-bottom-right-outline', label: t('小窗'), onPress: handleRoomMiniPlayer },
               ]}
               barrageInput={roomPlayer.isLive ? (
-                <LiveBarrageBoard source={roomBarrage} liveId={roomBarrageLiveId} module="live" inputOnly variant="plain" />
+                <LiveBarrageBoard source={roomBarrage} liveId={roomBarrageLiveId} module="live" inputOnly variant="pocket" />
               ) : undefined}
               onClose={closeRoomPlayer}
+              liveTransitionKey={roomBarrage.streamRevision}
+              onRetry={roomPlayer.isLive ? () => {
+                const current = roomPlayerRef.current;
+                if (!current?.liveId) { usePlayerStore.getState().requestKernelRebuild(); return; }
+                void (async () => {
+                  const detail = await pocketApi.getLiveOne(current.liveId!).catch(() => null)
+                    || await pocketApi.getOpenLiveOne(current.liveId!).catch(() => null);
+                  if (roomPlayerRef.current !== current) return;
+                  const urls = pickPlayableUrls(detail, true).filter(isPlayableMediaUrl);
+                  if (urls[0] && urls[0] !== current.url) {
+                    setRoomPlayer({ ...current, url: urls[0], urls, needsVlc: streamNeedsProxy(urls[0]) });
+                  } else {
+                    usePlayerStore.getState().requestKernelRebuild();
+                  }
+                })();
+              } : undefined}
               persistent
             >
-              {/* 飘屏弹幕：与 Media 页同一套渲染 */}
-              <DanmakuOverlay
-                danmaku={[]}
-                currentTime={0}
-                visible={!!(showRoomDanmaku && roomPlayer.isLive && !inRoomSystemPip)}
-                live={!!roomPlayer.isLive}
-                liveItems={roomPlayer.isLive ? roomLiveItems : undefined}
-              />
               {/* 弹幕列表抽屉：房间直播弹幕（列表 + 搜索 + 按发送者筛选） */}
-              <DanmakuListSheet
-                visible={showRoomDanmakuList}
-                onClose={() => setShowRoomDanmakuList(false)}
-                entries={roomDanmakuEntries}
-                live
-                loading={roomBarrage.status === 'connecting' || roomBarrage.status === 'resolving'}
-              />
+              {showRoomDanmakuList ? <RoomPlayerDanmakuSheet
+                onClose={() => setShowRoomDanmakuList(false)} entries={roomDanmakuEntries} live={!!roomPlayer.isLive}
+                loading={!!roomPlayer.isLive && (roomBarrage.status === 'connecting' || roomBarrage.status === 'resolving')}
+                onOpenProfile={(entry) => openSenderProfile({ id: String(entry.userId || ''), name: entry.nick || '', avatar: entry.avatar || '' })}
+              /> : null}
             </PlayerScreen>
-            <DanmakuSettingsSheet visible={showRoomDanmakuSettings} onClose={() => setShowRoomDanmakuSettings(false)} />
+            <DanmakuSettingsSheet staticFeed visible={showRoomDanmakuSettings} onClose={() => setShowRoomDanmakuSettings(false)} />
           </View>
         ) : null}
         {/* 挂载短路：visible=false 的 Modal 常驻房间根节点时，每次房间重渲染都会 flush Modal 窗口 → 整页闪 */}
@@ -4022,7 +4118,7 @@ export default function FollowedRoomsScreen() {
         <GlassSurface
           role="chip"
           radius={16}
-          style={[styles.roomInputBar, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+          style={[styles.roomInputBar, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth, marginBottom: stickerPanelOpen || roomKeyboardHeight ? 8 : Math.max(12, roomNavigationInset + 4) }]}
         >
           <TouchableOpacity
             onPress={() => openRoomGiftPanel()}
@@ -4039,12 +4135,16 @@ export default function FollowedRoomsScreen() {
               setRoomDraft(next);
               if (roomSendHint) setRoomSendHint('');
             }}
+            onFocus={() => setStickerPanelOpen(false)}
             placeholder={t('说点什么…')}
             placeholderTextColor={palette.labelTertiary}
             maxLength={200}
             returnKeyType="send"
             onSubmitEditing={handleSendRoomMessage}
           />
+          <TouchableOpacity onPress={() => { Keyboard.dismiss(); setStickerPanelOpen((open) => !open); }} style={styles.roomEmojiBtn} accessibilityLabel={t('表情包')}>
+            <MaterialCommunityIcons name="emoticon-outline" size={22} color={palette.tint} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSendRoomMessage}
             disabled={roomSending || !roomDraft.trim()}
@@ -4059,6 +4159,11 @@ export default function FollowedRoomsScreen() {
             </Text>
           </TouchableOpacity>
         </GlassSurface>
+        {stickerPanelOpen ? (
+          <View style={{ paddingBottom: Math.max(8, roomNavigationInset) }}>
+            <RoomStickerPanel channelId={activeRoomRef.current.channelId} ownerId={activeRoomRef.current.memberId} disabled={roomSending} onEmoji={(tag) => setRoomDraft((draft) => (draft + tag).slice(0, 200))} onSticker={handleSendRoomSticker} />
+          </View>
+        ) : null}
       {/* 消息长按操作面板：圆角玻璃卡，与成员菜单同一套视觉（替代原生 Alert） */}
       <Modal visible={!!msgMenu} transparent animationType="fade" onRequestClose={() => setMsgMenu(null)}>
         <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setMsgMenu(null)}>
@@ -4097,18 +4202,18 @@ export default function FollowedRoomsScreen() {
                     <MaterialCommunityIcons name="content-copy" size={18} color={palette.label} />
                     <Text style={[styles.roomMenuItemText, { color: palette.label }]}>{t('复制')}</Text>
                   </TouchableOpacity>
-                  {msgMenu?.mine ? (
-                    <TouchableOpacity
-                      style={[styles.roomMenuItem, { borderTopColor: palette.hairline }]}
-                      onPress={() => { const it = msgMenu?.item; setMsgMenu(null); if (it) confirmDeleteMessage(it); }}
-                      activeOpacity={0.85}
-                    >
-                      <MaterialCommunityIcons name="delete-outline" size={18} color={palette.danger} />
-                      <Text style={[styles.roomMenuItemText, { color: palette.danger }]}>{t('删除')}</Text>
-                    </TouchableOpacity>
-                  ) : null}
                 </>
               )}
+              {msgMenu?.mine ? (
+                <TouchableOpacity
+                  style={[styles.roomMenuItem, { borderTopColor: palette.hairline }]}
+                  onPress={() => { const it = msgMenu?.item; setMsgMenu(null); if (it) confirmDeleteMessage(it); }}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons name="delete-outline" size={18} color={palette.danger} />
+                  <Text style={[styles.roomMenuItemText, { color: palette.danger }]}>{t('删除')}</Text>
+                </TouchableOpacity>
+              ) : null}
             </GlassSurface>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -4275,9 +4380,8 @@ export default function FollowedRoomsScreen() {
             const isOnMic = !isLiveNow && !!onMicMap[mid];
             return (
             <View style={styles.roomRow}>
-              {/* ⚠️ 逐卡禁止 GlassSurface（长列表滚动逐帧重算模糊 → 掉帧）。
-                  实底 surfaceGlassStrong + hairline，观感与玻璃卡一致但不进模糊管线。 */}
-              <View style={[styles.roomRowCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+              {/* 半透明底色保留背景，同时避免长列表逐卡模糊。 */}
+              <View style={[styles.roomRowCard, { backgroundColor: palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)', borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)' }]}>
                 <ScalePressable
                   style={styles.roomRowMain}
                   onPress={() => item.member && openRoom(item.member)}
@@ -4444,6 +4548,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   roomGiftBtn: { paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
+  roomEmojiBtn: { paddingVertical: 8, paddingHorizontal: 2 },
   roomInput: { flex: 1, minHeight: 36, maxHeight: 96, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, textAlignVertical: 'center', includeFontPadding: false },
   roomSendBtn: { height: 34, borderRadius: 18, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
   roomSendBtnText: { fontSize: 13, fontWeight: '700' },
@@ -4699,10 +4804,6 @@ const styles = StyleSheet.create({
   chatContent: { paddingBottom: 132, paddingTop: 4 },
   followBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: radiiAlias.button, alignItems: 'center', justifyContent: 'center', minWidth: 52, height: 26 },
   followBtnText: { fontSize: 11, fontWeight: '800' },
-  // 消息发送者名字后面的队伍标签
-  msgTeamChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, maxWidth: 128, flexShrink: 0 },
-  msgTeamLogo: { width: 11, height: 11, marginRight: 3 },
-  msgTeamText: { fontSize: 10, fontWeight: '700' },
   chatFooter: { paddingVertical: 16, alignItems: 'center' },
   chatRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12, marginTop: 7, marginBottom: 2 },
   chatRowTight: { marginTop: 2, marginBottom: 1 },
@@ -4790,8 +4891,10 @@ const styles = StyleSheet.create({
   inlineAudioHidden: { height: 0, width: 0 },
   // 内联视频已交给 <AdaptiveAspectVideo /> 处理真实宽高比，不再用固定 height/minWidth。
   // （保留 inlineImage / inlineSticker 等其它媒体类型的固定尺寸样式。）
-  inlineImage: { width: '100%', maxWidth: 228, aspectRatio: 1, marginTop: 8, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
-  inlineSticker: { width: 120, height: 120, marginTop: 6, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
+  inlineImageWrap: { alignSelf: 'center', width: 228, maxWidth: '100%' },
+  inlineStickerWrap: { width: 120 },
+  inlineImage: { width: '100%', aspectRatio: 1, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.10)' },
+  inlineSticker: { width: '100%', aspectRatio: 1, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
   openLinkBtn: { marginTop: 8, padding: 8, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.10)', maxWidth: '100%', alignSelf: 'flex-start' },
   openLinkText: { fontSize: 11, fontWeight: '800' },
   roomPlayerPage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 1000, elevation: 1000, backgroundColor: '#000' },

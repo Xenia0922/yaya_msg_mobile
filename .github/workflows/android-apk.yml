@@ -65,6 +65,11 @@ jobs:
       - name: Install deps
         run: npm ci --no-audit --no-fund --legacy-peer-deps || npm install --no-audit --no-fund --legacy-peer-deps
 
+      # 渠道必须由构建期写入：私有出包仓库 → plus，公开仓库 → public。
+      # 漏掉这一步会让 plus 包按公开渠道运行（权限功能全关、应用内更新被打开）。
+      - name: Select build channel
+        run: node scripts/write-build-channel.js
+
       # Gradle 缓存：首次约 18 分钟，之后能省掉大部分依赖下载/编译
       - name: Cache Gradle
         uses: actions/cache@v4

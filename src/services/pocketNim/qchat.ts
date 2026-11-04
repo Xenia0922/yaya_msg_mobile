@@ -13,6 +13,7 @@
  */
 
 import pocketApi from '../../api/pocket48';
+import { ALLOW_VIP_STICKERS } from '../../constants/identityFeatures';
 import {
   addPocketImMessageListener,
   isPocketImAvailable,
@@ -27,6 +28,7 @@ import {
   qchatConnect,
   qchatDisconnect,
   qchatSend,
+  qchatSendCustom,
   onQChatMessage,
   onQChatStatus,
 } from '../../native/PocketNimQChat';
@@ -199,6 +201,7 @@ export function buildChannelExt(target: RoomMessageTarget, self: NimSelfProfile)
       roleId: self.roleId ?? 0,
       vip: self.vip === true,
       pfUrl: self.pfUrl || '',
+      badge: Array.isArray(self.badge) ? self.badge : [],
     },
     bubbleId: String(target.bubbleId || '0'),
   });
@@ -212,6 +215,37 @@ export interface RoomReplyInfo {
   replyName: string;
   /** 被回复消息正文 */
   replyText: string;
+}
+
+export interface RoomSticker {
+  sourceName: string;
+  sourcePath: string;
+  width: number;
+  height: number;
+  vip: boolean;
+}
+
+/** 按口袋圈组自定义消息格式发送；服务端保留最终权限判断。 */
+export async function sendRoomSticker(target: RoomMessageTarget, sticker: RoomSticker): Promise<void> {
+  if (sticker.vip && !ALLOW_VIP_STICKERS) throw new Error('当前版本不支持发送 VIP 表情包');
+  const serverId = String(target.serverId || '');
+  const channelId = String(target.channelId || '');
+  if (!/^\d+$/.test(serverId) || serverId === '0' || !/^\d+$/.test(channelId) || channelId === '0' || !sticker.sourcePath) throw new Error('表情包或房间信息不完整');
+  const self = await loadSelfProfile();
+  if (!self) throw new Error('未取到云信登录凭证，请重新登录口袋48账号');
+  if (!isPocketNimQChatAvailable()) throw new Error('当前设备不支持发送表情包');
+  const attachment = JSON.stringify({
+    messageType: 'EXPRESSIMAGE',
+    expressImgInfo: {
+      emotionName: sticker.sourceName,
+      emotionPattern: sticker.sourcePath,
+      emotionRemote: sticker.sourcePath,
+      width: Math.max(0, Math.round(Number(sticker.width) || 0)),
+      height: Math.max(0, Math.round(Number(sticker.height) || 0)),
+    },
+  });
+  await ensureQChatNativeLogin();
+  await qchatSendCustom(serverId, channelId, attachment, buildChannelExt(target, self));
 }
 
 /** 发送房间文本消息；带 reply 时按官方 REPLY 结构组包（bodys 变 JSON，msgType=REPLY） */
@@ -302,6 +336,7 @@ export interface RoomLiveMessage {
   time: number;
   text: string;
   messageType: string;
+  attachment?: Record<string, any>;
   /** 解析后的 remoteExtension */
   ext: Record<string, any>;
 }
@@ -361,6 +396,8 @@ export async function observeRoomMessages(
         ext = {};
       }
       const user = (ext.user && typeof ext.user === 'object' ? ext.user : {}) as Record<string, any>;
+      let attachment: Record<string, any> = {};
+      try { attachment = message.attachment ? JSON.parse(message.attachment) : {}; } catch {}
       handler([
         {
           uuid: message.msgIdClient || message.msgIdServer || `${message.time}`,
@@ -370,7 +407,8 @@ export async function observeRoomMessages(
           fromNick: message.fromNick || String(user.nickName || ''),
           time: message.time || Date.now(),
           text: message.body || String(ext.text || ''),
-          messageType: String(ext.messageType || 'TEXT'),
+          messageType: String(attachment.messageType || ext.messageType || 'TEXT'),
+          attachment,
           ext,
         },
       ]);

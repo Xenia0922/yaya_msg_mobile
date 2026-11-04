@@ -103,6 +103,16 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun sendCustom(serverId: String, channelId: String, attachment: String, extJson: String, promise: Promise) {
+    val active = client
+    if (active == null) { promise.reject("E_STATE", "成员房间尚未连接"); return }
+    Thread({
+      try { promise.resolve(active.sendCustom(serverId, channelId, attachment, extJson)) }
+      catch (t: Throwable) { promise.reject("E_SEND", t) }
+    }, "nim-qchat-sticker").also { it.isDaemon = true; it.start() }
+  }
+
+  @ReactMethod
   fun disconnect() {
     disconnectInternal()
     emit("PocketNimQChat:status", Arguments.createMap().apply {

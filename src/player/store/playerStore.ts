@@ -26,6 +26,7 @@ interface PlayerState {
   error: string;
   // 控制条 / 全屏 / 内核
   controlsVisible: boolean;
+  cleanScreen: boolean;
   fullscreen: boolean;
   useWebKernel: boolean;
   /** 本次开播是否因「公演默认网页」自动进入 web：web 失败时回退原生一次（防整场看不了） */
@@ -54,6 +55,8 @@ interface PlayerState {
   rebuildNonce: number;
   /** 弹幕开关 */
   danmakuOn: boolean;
+  hideEnter: boolean;
+  hideEffects: boolean;
 
   // Actions
   open: (source: PlayerSource, meta?: PlayerMeta, danmaku?: DanmakuSource) => void;
@@ -64,6 +67,7 @@ interface PlayerState {
   setError: (e: string) => void;
   clearError: () => void;
   toggleControls: (visible?: boolean) => void;
+  setCleanScreen: (value: boolean) => void;
   setFullscreen: (v: boolean) => void;
   setUseWebKernel: (v: boolean) => void;
   setForceWebOnce: (v: boolean) => void;
@@ -80,6 +84,8 @@ interface PlayerState {
   /** 请求重建内核（重试同一个 URL） */
   requestKernelRebuild: () => void;
   toggleDanmaku: () => void;
+  toggleEnter: () => void;
+  toggleEffects: () => void;
   /** 播放失败时切到下一候选线路；返回是否切换成功（无候选/已到末尾 → false） */
   nextCandidate: () => boolean;
   /** 页面级 onClose 回调（PlayerScreen 挂载时注册；返回键/关闭时先调用它清理页面状态） */
@@ -112,6 +118,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   duration: 0,
   error: '',
   controlsVisible: true,
+  cleanScreen: false,
   fullscreen: false,
   useWebKernel: false,
   forceWebOnce: false,
@@ -128,6 +135,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   stickyUntil: 0,
   rebuildNonce: 0,
   danmakuOn: true,
+  hideEnter: false,
+  hideEffects: false,
 
   open: (source, meta = { title: '' }, danmaku = { type: 'none' }) => {
     // 播放互斥：后播者胜 —— 直播/录播/电台/视频开播时，后台音乐自动暂停（可再点回播放）
@@ -148,6 +157,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         duration: 0,
         error: '',
         controlsVisible: true,
+        cleanScreen: false,
         fullscreen: false,
         useWebKernel: false,
         forceWebOnce: false,
@@ -175,6 +185,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       position: 0,
       duration: 0,
       error: '',
+      cleanScreen: false,
       fullscreen: false,
     }),
 
@@ -193,6 +204,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setError: (error) => set({ error, state: 'error' }),
   clearError: () => set({ error: '', state: 'loading' }),
   toggleControls: (visible) => set((s) => ({ controlsVisible: visible === undefined ? !s.controlsVisible : visible })),
+  setCleanScreen: (cleanScreen) => set({ cleanScreen }),
   setFullscreen: (fullscreen) => set({ fullscreen }),
   setUseWebKernel: (useWebKernel) => set({ useWebKernel }),
   setForceWebOnce: (forceWebOnce) => set({ forceWebOnce }),
@@ -220,6 +232,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   })),
   requestKernelRebuild: () => set((s) => ({ rebuildNonce: s.rebuildNonce + 1 })),
   toggleDanmaku: () => set((s) => ({ danmakuOn: !s.danmakuOn })),
+  toggleEnter: () => set((s) => ({ hideEnter: !s.hideEnter })),
+  toggleEffects: () => set((s) => ({ hideEffects: !s.hideEffects })),
   nextCandidate: () => {
     let switched = false;
     set((s) => {

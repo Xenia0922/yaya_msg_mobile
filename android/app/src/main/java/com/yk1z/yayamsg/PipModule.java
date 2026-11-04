@@ -20,6 +20,7 @@ import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
@@ -80,7 +81,11 @@ public class PipModule extends ReactContextBaseJavaModule {
     super.initialize();
     try {
       IntentFilter f = new IntentFilter(ACTION_PIP_TOGGLE);
-      savedAppContext.registerReceiver(toggleReceiver, f);
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        savedAppContext.registerReceiver(toggleReceiver, f, Context.RECEIVER_NOT_EXPORTED);
+      } else {
+        savedAppContext.registerReceiver(toggleReceiver, f);
+      }
     } catch (Throwable ignored) {
       // 已注册过/环境限制：静默
     }
@@ -97,6 +102,21 @@ public class PipModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void setPipEnabled(boolean enabled) {
     pipEnabled = enabled;
+    refreshPipActions();
+  }
+
+  @ReactMethod
+  public void getNavigationInset(Promise promise) {
+    main.post(() -> {
+      Activity activity = getCurrentActivity();
+      if (activity == null) { promise.resolve(null); return; }
+      android.view.WindowInsets insets = activity.getWindow().getDecorView().getRootWindowInsets();
+      if (insets == null) { promise.resolve(null); return; }
+      int pixels = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+          ? insets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.navigationBars()).bottom
+          : insets.getSystemWindowInsetBottom();
+      promise.resolve(pixels / activity.getResources().getDisplayMetrics().density);
+    });
   }
 
   /**
@@ -114,7 +134,7 @@ public class PipModule extends ReactContextBaseJavaModule {
           android.app.AppOpsManager.OPSTR_PICTURE_IN_PICTURE,
           android.os.Process.myUid(),
           ctx.getPackageName());
-      return mode == android.app.AppOpsManager.MODE_ALLOWED;
+      return mode != android.app.AppOpsManager.MODE_IGNORED && mode != android.app.AppOpsManager.MODE_ERRORED;
     } catch (Throwable t) {
       // 查不到就不阻断，交给系统实际调用判定
       return true;
@@ -149,6 +169,7 @@ public class PipModule extends ReactContextBaseJavaModule {
     if (w > 0 && h > 0) {
       pipAspectW = (float) w;
       pipAspectH = (float) h;
+      refreshPipActions();
     }
   }
 
@@ -156,19 +177,19 @@ public class PipModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void enterPip() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-    Activity activity = getCurrentActivity();
-    if (activity == null || activity.isDestroyed() || activity.isInPictureInPictureMode()) return;
-    if (!canUsePip(activity)) {
-      // 静默失败是「换不出系统小窗」最难查的形态：明确告诉 JS 去开系统权限
-      emitPipDenied("appops");
-      return;
-    }
-    try {
-      activity.enterPictureInPictureMode(buildPipParams());
-    } catch (Exception ignored) {
-      // 部分 ROM 在转场等特定时刻调用会抛异常，静默忽略
+    main.post(() -> {
+      Activity activity = getCurrentActivity();
+      if (activity == null || activity.isDestroyed() || activity.isFinishing() || activity.isInPictureInPictureMode()) return;
+      if (!canUsePip(activity)) { emitPipDenied("appops"); return; }
+      PipOverlayController.setHidden(activity, true);
+      emitPipChanged(true);
+      try {
+        if (activity.enterPictureInPictureMode(buildPipParams())) return;
+      } catch (Exception ignored) {}
+      PipOverlayController.setHidden(activity, false);
+      emitPipChanged(false);
       emitPipDenied("enter-failed");
-    }
+    });
   }
 
   /** 播放/暂停态变化时刷新 PiP 内按钮：仅当已处于 PiP 中才有意义（无参重建 params 更新图标） */
@@ -178,7 +199,7 @@ public class PipModule extends ReactContextBaseJavaModule {
     main.post(() -> {
       try {
         Activity activity = savedReactContext.getCurrentActivity();
-        if (activity == null || activity.isDestroyed() || !activity.isInPictureInPictureMode()) return;
+        if (activity == null || activity.isDestroyed()) return;
         activity.setPictureInPictureParams(buildPipParams());
       } catch (Throwable ignored) {
         // 刷新失败不影响播放
@@ -189,8 +210,12 @@ public class PipModule extends ReactContextBaseJavaModule {
   /** 构造 PiP 参数：宽高比 + （有视频在播时）播放/暂停 RemoteAction */
   public static PictureInPictureParams buildPipParams() {
     try {
+      float ratio = Math.max(0.4185f, Math.min(2.39f, pipAspectW / pipAspectH));
       PictureInPictureParams.Builder b = new PictureInPictureParams.Builder()
-          .setAspectRatio(new Rational(Math.round(pipAspectW), Math.round(pipAspectH)));
+          .setAspectRatio(new Rational(Math.round(ratio * 10000), 10000));
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        b.setAutoEnterEnabled(videoPlaying && pipEnabled);
+      }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         RemoteAction action = buildToggleAction();
         if (action != null) b.setActions(java.util.Collections.singletonList(action));

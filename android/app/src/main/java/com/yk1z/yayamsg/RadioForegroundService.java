@@ -295,7 +295,7 @@ public class RadioForegroundService extends Service {
       for (String t : uniq) {
         if (tryLoadCoverOnce(t)) return;
       }
-      Log.i("RadioFg", "cover ALL FAIL url=" + url);
+      Log.i("RadioFg", "cover ALL FAIL");
     });
   }
 
@@ -356,13 +356,13 @@ public class RadioForegroundService extends Service {
       conn.setRequestProperty("Accept", "image/*");
       int code = conn.getResponseCode();
       if (code / 100 != 2) {
-        Log.i("RadioFg", "cover http " + code + " " + url);
+        Log.i("RadioFg", "cover http " + code);
         return false;
       }
       // ⚠️ 同一条连接只读一次流（旧实现读两遍 → 第二遍为空 → 解码 null → OPPO 封面=logo）
       byte[] bytes = readAll(conn.getInputStream());
       if (bytes == null || bytes.length == 0) {
-        Log.i("RadioFg", "cover empty body " + url);
+        Log.i("RadioFg", "cover empty body");
         return false;
       }
       BitmapFactory.Options bounds = new BitmapFactory.Options();
@@ -375,15 +375,15 @@ public class RadioForegroundService extends Service {
           : 1;
       Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opt);
       if (bmp == null) {
-        Log.i("RadioFg", "cover decode null: " + url);
+        Log.i("RadioFg", "cover decode null");
         return false;
       }
       coverBitmap = bmp;
-      Log.i("RadioFg", "cover OK " + url + " " + bmp.getWidth() + "x" + bmp.getHeight());
+      Log.i("RadioFg", "cover OK " + bmp.getWidth() + "x" + bmp.getHeight());
       renotify();
       return true;
     } catch (Throwable t) {
-      Log.i("RadioFg", "cover ERR " + url);
+      Log.i("RadioFg", "cover ERR");
       return false;
     } finally {
       if (conn != null) {

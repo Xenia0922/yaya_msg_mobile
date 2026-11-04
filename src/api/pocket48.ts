@@ -1,7 +1,7 @@
 import { useMemberStore, useSettingsStore } from '../store';
 import { generatePa, generatePaAsync, getWasmError, initWasm } from '../auth';
 import { requestJson, xhrPost, fetchWithTimeout } from '../utils/network';
-import { unwrapList, normalizeUrl, parseMaybeJson } from '../utils/data';
+import { unwrapList, normalizeUrl, parseMaybeJson, pickText } from '../utils/data';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // 选举计分（score-*）、花漾（pageantry-*）、QR 登录（login-*-qr）、部分 Area48 话题接口；
@@ -141,6 +141,16 @@ function createPocketAndroidHeaders(token?: string, pa?: string | null): Headers
   if (token) headers.token = token;
   if (pa) headers.pa = pa;
   return headers;
+}
+
+async function createPocketLoginHeaders(): Promise<HeadersMap> {
+  const deviceId = Array.from((await ensureDeviceId()).replace(/[^a-z0-9]/gi, '').slice(0, 16), (c) => (c.charCodeAt(0) % 16).toString(16)).join('').padEnd(16, '0');
+  return {
+    'Content-Type': 'application/json; charset=UTF-8',
+    'User-Agent': 'PocketFans201807/7.1.45_26102701 (SM-G9730:Android 12;Samsung V417IR release-keys)',
+    'Accept-Language': 'zh-Hans-CN;q=1',
+    appInfo: JSON.stringify({ IMEI: deviceId, deviceId, appName: 'pocket48', appVersion: '7.1.45', appBuild: '26102701', deviceName: 'SM-G9730', osType: 'android', osVersion: '12', phoneName: 'SM-G9730', phoneSystemVersion: '12', vendor: 'Samsung' }),
+  };
 }
 
 /** Seine（ckg48 新版客户端）Android 头 */
@@ -471,9 +481,16 @@ export const pocketApi = {
   generatePaAsync,
 
   async loginSendSms(mobile: string, area = '86', answer?: string) {
-    const payload: any = { mobile, area };
-    if (answer) payload.answer = answer;
-    const data = await rawPost(`${BASE}/user/api/v1/sms/send2`, payload, { signed: false });
+    const cleanArea = String(area || '').replace(/[^0-9]/g, '') || '86';
+    const payload: any = { mobile, area: cleanArea };
+    if (answer !== undefined && String(answer).trim() !== '') {
+      payload.answer = String(answer).trim();
+    } else {
+      // 首次发送：带业务码（登录注册）与风控 token（无顶象 SDK 时为空串，服务端降级为问答题）
+      payload.businessCode = 1;
+      payload.intelligenceToken = '';
+    }
+    const data = await rawPost(`${BASE}/user/api/v2/sms/send_sms`, payload, { token: '', signed: true, headers: await createPocketLoginHeaders() });
     if (data.status === 200 || data.success) return { success: true };
     if (data.status === 2001) {
       try {
@@ -491,9 +508,25 @@ export const pocketApi = {
     return { success: false, msg: responseMessage(data, '验证码发送失败') };
   },
 
-  async loginByCode(mobile: string, code: string) {
-    const res = await rawPost(`${BASE}/user/api/v1/login/app/mobile/code`, { mobile, code }, { token: '', signed: true });
-    return assertPocketOk(res, '登录失败');
+  /** 短信验证码登录：保留未注册状态，由界面进入注册流程。 */
+  async loginByCode(mobile: string, code: string, area = '86') {
+    const cleanArea = String(area || '').replace(/[^0-9]/g, '') || '86';
+    return rawPost(`${BASE}/user/api/v2/login/app/app_login`,
+      { mobileCodeLogin: { mobile, code, area: cleanArea }, loginType: 'MOBILE_SMS_CODE', deviceToken: '' },
+      { token: '', signed: true, headers: await createPocketLoginHeaders() });
+  },
+
+  async registerByCode(mobile: string, code: string, area: string, encryptedPassword: string) {
+    return rawPost(`${BASE}/user/api/v1/register/mobile`,
+      { mobile, code, area, mobilePwd: encryptedPassword },
+      { token: '', signed: true, headers: await createPocketLoginHeaders() });
+  },
+
+  async loginByPassword(mobile: string, encryptedPassword: string) {
+    const result = await rawPost(`${BASE}/user/api/v1/login/app/mobile`,
+      { loginMobile: { mobile, pwd: encryptedPassword }, loginType: 'MOBILE_PWD', intelligenceToken: '', deviceToken: '' },
+      { token: '', signed: true, headers: await createPocketLoginHeaders() });
+    return assertPocketOk(result, '登录失败');
   },
 
   async loginCheckToken() {
@@ -938,6 +971,12 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }, { modern: true, fallback: '获取私信列表失败' });
   },
 
+  async getRoomExpressionList(ownerId: string, serverType: number) {
+    return pocketPost(`${BASE}/im/api/v2/auth/manager/getExpressionList`, {
+      ownerId: String(ownerId), serverType: Number(serverType) || 0,
+    }, { modern: true, fallback: '获取房间表情包失败' });
+  },
+
   async getPrivateMessageDetail(targetUserId: string, lastTime = 0) {
     return pocketPost(`${BASE}/message/api/v1/user/message/info`, {
       lastTime: Number(lastTime) || 0,
@@ -1024,6 +1063,16 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     ], '获取公演详情失败');
   },
 
+  async getRoomFlipUser(questionId: string, answerId: string) {
+    if (!/^[1-9]\d{0,31}$/.test(questionId) || !/^[1-9]\d{0,31}$/.test(answerId)) throw new Error('翻牌编号无效');
+    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/question_answer/detail`, { questionId, answerId }, { fallback: '获取翻牌提问者失败' });
+  },
+
+  async getOpenLiveMemberRank(liveId: string) {
+    if (!liveId) throw new Error('缺少公演 ID');
+    return pocketPost(`${BASE}/live/api/v1/live/getOpenLiveMemberRank`, { liveId }, { fallback: '获取公演成员失败' });
+  },
+
   async getLiveOne(liveId: string) {
     const id = String(liveId);
     return tryPocketPost([
@@ -1055,18 +1104,21 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
    * （LivePlayActivity 里 `m58828(live.getRoomId(), liveId)`），sourceId = liveId。
    * 这里一次取齐，避免调用方再解析一遍返回结构。
    */
-  async getLiveChatroom(liveId: string): Promise<{ roomId: string; sourceId: string; title: string } | null> {
+  async getLiveChatroom(liveId: string): Promise<{ roomId: string; sourceId: string; title: string; audience?: string; rankAvatars?: string[]; hostName?: string; hostAvatar?: string } | null> {
     const id = String(liveId || '');
     if (!id) return null;
     try {
       const res = await pocketApi.getLiveOne(id);
       const content = (res && (res.content || res.data)) || {};
       const roomId = String(content.roomId || content.chatroomId || content.chatRoomId || '');
-      if (!roomId) return null;
       return {
         roomId,
         sourceId: id,
         title: String(content.title || content.liveTitle || ''),
+        hostName: pickText(content, ['user.userName', 'user.nickName', 'user.nickname', 'nickname', 'ownerName']) || undefined,
+        hostAvatar: pickText(content, ['user.userAvatar', 'user.avatar', 'avatar', 'headImg']) || undefined,
+        audience: pickText(content, ['onlineNum', 'onlineCount', 'onlineUserCount', 'viewerCount']) || undefined,
+        rankAvatars: Array.isArray(content.topUser) ? content.topUser.slice(0, 3).map((row: any) => normalizeUrl(pickText(row, ['user.userAvatar', 'user.avatar', 'userInfo.avatar', 'avatar']))).filter(Boolean) : undefined,
       };
     } catch {
       return null;
@@ -1077,7 +1129,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
    * 获取直播间弹幕（录播回放）。接口失败/无数据返回空数组，绝不抛错，
    * 保证弹幕只是「锦上添花」，不会拖垮播放。
    */
-  async getLiveBarrage(liveId: string): Promise<Array<{ messageId: string; content: string; color: string; time: number; user: string }>> {
+  async getLiveBarrage(liveId: string): Promise<Array<{ messageId: string; content: string; color: string; time: number; user: string; userId?: string; avatar?: string; level?: number }>> {
     const id = String(liveId || '');
     if (!id) return [];
     try {
@@ -1098,7 +1150,10 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
         content: String(b.content || b.msg || b.text || ''),
         color: String(b.color || ''),
         time: Number(b.time || b.t || 0) || 0,
-        user: String(b.user || b.nickName || b.userName || b.name || ''),
+        user: pickText(b, ['user.nickName', 'user.nickname', 'user.userName', 'userInfo.nickName', 'userInfo.nickname', 'userInfo.userName', 'nickName', 'userName', 'name']) || (typeof b.user === 'string' ? b.user : ''),
+        userId: pickText(b, ['user.userId', 'user.id', 'userInfo.userId', 'userInfo.id', 'userId', 'uid']) || undefined,
+        avatar: pickText(b, ['user.avatar', 'user.userAvatar', 'user.avatarUrl', 'user.headImg', 'userInfo.avatar', 'userInfo.userAvatar', 'userInfo.avatarUrl', 'userInfo.headImg', 'avatar', 'userAvatar', 'avatarUrl', 'headImg']) || undefined,
+        level: Number(b.user?.level ?? b.user?.userLevel ?? b.userInfo?.level ?? b.userInfo?.userLevel ?? b.level ?? b.userLevel) || undefined,
       }));
     } catch {
       return [];
@@ -1456,6 +1511,18 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     return pocketPost(`${BASE}/user/api/v1/user/get/picture/frame`, {}, {
       modern: true,
       fallback: '获取头像框失败',
+    });
+  },
+
+  async setUserPictureFrame(pfId: number) {
+    return pocketPost(`${BASE}/user/api/v1/user/modify/picture/frame`, { pfId }, {
+      modern: true, fallback: '设置口袋账号头像框失败',
+    });
+  },
+
+  async getUserBadges() {
+    return pocketPost(`${BASE}/user/api/v1/user/badge`, {}, {
+      modern: true, fallback: '获取勋章失败',
     });
   },
 

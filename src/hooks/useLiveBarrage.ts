@@ -13,6 +13,7 @@ import { LiveChatroom, type ChatroomStatus } from '../services/pocketNim/chatroo
 import { loadNimCredentials, loadSelfProfile } from '../services/pocketNim/credentials';
 import { getNimSessionEpoch, subscribeNimSession } from '../services/pocketNim/session';
 import { BarrageItem } from '../services/pocketNim/types';
+import { isLiveStreamTransition } from '../services/pocketNim/codec';
 
 /** 弹幕列表上限（超出丢弃最旧的，避免长时间挂直播间内存膨胀） */
 const MAX_ITEMS = 300;
@@ -35,6 +36,8 @@ export interface UseLiveBarrageResult {
   send: (text: string) => Promise<void>;
   clear: () => void;
   retry: () => void;
+  streamRevision: number;
+  liveInfo: { audience?: string; rankAvatars?: string[]; hostName?: string; hostAvatar?: string };
 }
 
 export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageResult {
@@ -43,6 +46,9 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
   const [status, setStatus] = useState<ChatroomStatus | 'idle' | 'resolving'>('idle');
   const [error, setError] = useState('');
   const [retryToken, setRetryToken] = useState(0);
+  const [streamRevision, setStreamRevision] = useState(0);
+  const [liveInfo, setLiveInfo] = useState<{ audience?: string; rankAvatars?: string[]; hostName?: string; hostAvatar?: string }>({});
+  const transitionIdsRef = useRef(new Set<string>());
   /**
    * 云信会话世代：切号 / 换号后 +1。
    * 连接是用「当时的账号凭证」建立的，换代后必须整条重连
@@ -53,6 +59,7 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
 
   const chatroomRef = useRef<LiveChatroom | null>(null);
   const seqRef = useRef(0);
+  const roomKeyRef = useRef('');
   // 乐观上屏记录：聊天室不一定回投自己的弹幕，发送成功后本地先插一条；
   // 服务端回投到达时按 昵称+文本 去重（60s 窗口，只吞第一条）
   const lastLocalRef = useRef<{ nick: string; text: string; ts: number; consumed: boolean } | null>(null);
@@ -62,7 +69,17 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
 
   useEffect(() => {
     const id = String(liveId || '');
+    const roomKey = enabled && id ? `${module}:${id}` : '';
+    if (roomKeyRef.current !== roomKey) {
+      roomKeyRef.current = roomKey;
+      lastLocalRef.current = null;
+      transitionIdsRef.current.clear();
+      setItems([]);
+      setLiveInfo({});
+      setError('');
+    }
     if (!enabled || !id) {
+      seqRef.current += 1;
       setStatus('idle');
       return undefined;
     }
@@ -79,9 +96,10 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
         pocketApi.getLiveChatroom(id).catch(() => null),
       ]);
       if (cancelled || seqRef.current !== seq) return;
+      if (chatroom) setLiveInfo((previous) => ({ ...previous, rankAvatars: chatroom.rankAvatars, hostName: chatroom.hostName, hostAvatar: chatroom.hostAvatar }));
       // 诊断：确认聊天室坐标是否解析成功（成员直播弹幕不显示时先看这条）
       // eslint-disable-next-line no-console
-      console.log('[nim] live barrage resolve liveId=', id, 'roomId=', chatroom?.roomId || '(none)', 'creds=', credentials ? credentials.accid : '(none)');
+      console.log('[nim] live barrage resolved:', !!chatroom?.roomId, 'credentials:', !!credentials);
       if (!credentials) {
         setStatus('error');
         setError('未取到云信登录凭证，请先登录口袋48账号');
@@ -98,19 +116,39 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
         liveId: chatroom.sourceId || id,
         credentials,
         module,
+        onOnlineCount: (count) => {
+          if (cancelled || seqRef.current !== seq) return;
+          setLiveInfo((previous) => ({ ...previous, audience: String(count) }));
+        },
+        onLiveInfo: (info) => {
+          if (cancelled || seqRef.current !== seq) return;
+          setLiveInfo((previous) => ({
+            ...previous,
+            rankAvatars: info.rankAvatars ?? previous.rankAvatars,
+          }));
+        },
         onMessages: (incoming) => {
           if (cancelled || seqRef.current !== seq) return;
+          const chatItems = incoming.filter((item) => {
+            if (!isLiveStreamTransition(item.messageType)) return true;
+            if (!transitionIdsRef.current.has(item.id)) {
+              transitionIdsRef.current.add(item.id);
+              if (transitionIdsRef.current.size > 100) transitionIdsRef.current.clear();
+              setStreamRevision((n) => n + 1);
+            }
+            return false;
+          });
           // 吞掉乐观上屏那条的服务端回投（昵称+文本匹配，只吞第一条）
           const lastLocal = lastLocalRef.current;
-          const deduped = lastLocal && !lastLocal.consumed
-            ? incoming.filter((it) => {
+          const deduped = lastLocal && !lastLocal.consumed && Date.now() - lastLocal.ts < 60000
+            ? chatItems.filter((it) => {
                 if (it.text === lastLocal.text && it.nick === lastLocal.nick) {
                   lastLocal.consumed = true;
                   return false;
                 }
                 return true;
               })
-            : incoming;
+            : chatItems;
           setItems((prev) => {
             // 云信聊天室可能重复推送（重连补发），按 id 去重
             const seen = new Set(prev.map((item) => item.id));
@@ -141,10 +179,12 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
   const send = useCallback(async (text: string) => {
     const instance = chatroomRef.current;
     if (!instance) throw new Error('弹幕通道尚未就绪');
+    const seq = seqRef.current;
     const content = String(text || '').trim();
     await instance.send(content);
     // 乐观上屏：立刻显示自己的弹幕（不等服务端回投）
     const self = await loadSelfProfile().catch(() => null);
+    if (seqRef.current !== seq || chatroomRef.current !== instance) return;
     lastLocalRef.current = { nick: self?.nickName || '', text: content, ts: Date.now(), consumed: false };
     setItems((prev) => [
       {
@@ -154,7 +194,7 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
         text: content,
         nick: self?.nickName || '',
         avatar: self?.avatar || '',
-        userId: self?.userId || 0,
+        userId: self?.userId ? String(self.userId) : '',
         roleId: 0,
         level: self?.level ?? 0,
         time: Date.now(),
@@ -163,14 +203,18 @@ export function useLiveBarrage(options: UseLiveBarrageOptions): UseLiveBarrageRe
     ].slice(0, MAX_ITEMS));
   }, []);
 
+  const currentRoomKey = enabled && liveId ? `${module}:${String(liveId)}` : '';
+  const sameRoom = roomKeyRef.current === currentRoomKey;
   return {
-    items,
-    status,
-    error,
-    ready: status === 'connected',
+    items: sameRoom ? items : [],
+    status: sameRoom ? status : (currentRoomKey ? 'resolving' : 'idle'),
+    error: sameRoom ? error : '',
+    ready: sameRoom && status === 'connected',
     send,
     clear,
     retry,
+    streamRevision,
+    liveInfo: sameRoom ? liveInfo : {},
   };
 }
 

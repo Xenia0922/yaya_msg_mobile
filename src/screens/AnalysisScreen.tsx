@@ -382,7 +382,7 @@ export default function AnalysisScreen() {
       } />
 
       <View style={styles.pickerWrap}>
-        <MemberPicker selectedMember={member} onSelect={loadRoomStats} />
+        <MemberPicker selectedMember={member} onSelect={loadRoomStats} activeOnly />
         {/* 未登录引导：选了成员但缺 token 时显示，避免"全 0"误导 */}
         {(member && !token) ? (
           <LoginPrompt hint={t('统计该成员的互动画像需要登录')} />

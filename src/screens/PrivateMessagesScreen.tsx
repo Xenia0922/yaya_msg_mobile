@@ -497,6 +497,8 @@ export default function PrivateMessagesScreen() {
       const res = await pocketApi.getPrivateMessageDetail(convTargetId(c));
       if (requestId !== convRequestIdRef.current) return; // 已切换会话，丢弃慢响应
       const list = unwrapList(res, ['content.messageList', 'content.messages', 'content.list', 'messageList', 'list']);
+      const targetId = convTargetId(c);
+      setConvs((prev) => prev.map((item) => convTargetId(item) === targetId ? { ...item, noreadNum: 0 } : item));
       const sorted = oldestFirst(list, msgTimeNumber);
       setMsgs(sorted);
       setNextTime(Number(res?.content?.nextTime || res?.data?.nextTime || 0));
@@ -514,6 +516,7 @@ export default function PrivateMessagesScreen() {
     ++convRequestIdRef.current;
     setSel(null);
     setLoading(false);
+    void loadConvs();
   };
 
   const loadMore = async () => {

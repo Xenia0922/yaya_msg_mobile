@@ -288,13 +288,13 @@ export const MusicEngine = {
     this._fetchLyrics(track);
     this._initDefaultResolver();
     const resolver = await this._waitForResolver();
-    if (seq !== this._playSeq) return; // 等待期间用户已发起更新的播放请求
+    if (seq !== this._playSeq || useMusicPlayerStore.getState().playbackState === 'idle') return;
     if (!resolver) { store.setError('解析器未就绪'); return; }
     try {
       // 已预热的曲目（切歌路径）直接取缓存地址，跳过解析网络往返
       const warmed = this._warmUrls.get(trackKey(track));
       const url = warmed || await resolver(track);
-      if (seq !== this._playSeq) return; // 解析期间用户已切换曲目，丢弃旧响应
+      if (seq !== this._playSeq || useMusicPlayerStore.getState().playbackState === 'idle') return;
       if (!url) throw new Error('no url');
       if (!isPlayableHost(url)) throw new Error('不支持的播放源');
       if (!/^https?:\/\//i.test(url)) throw new Error('非法播放地址');
@@ -304,15 +304,18 @@ export const MusicEngine = {
       // 后台预解析 + Range 预热下一首：切歌/下一首起播不再等 AWS 冷连接
       this._prewarmNextTrack();
     } catch (e: any) {
-      if (seq !== this._playSeq) return;
+      if (seq !== this._playSeq || useMusicPlayerStore.getState().playbackState === 'idle') return;
       store.setError(e?.message || 'play failed');
       // 无效的歌曲自动跳到下一首；但 single 模式/仅一首时 next() 会绕回同曲
       // （nextIndex 返回 current），造成无限重试，必须停在 error 态由用户手动处理。
       // _autoSkipDepth 封顶（≤队列长度）：整队 URL 全失效时最多完整扫一遍即停，防失败级联无限连跳。
       const st = useMusicPlayerStore.getState();
       if (st.queue.length > 1 && st.playMode !== 'single') {
-        if (this._autoSkipDepth < st.queue.length) {
+        if (this._autoSkipDepth < st.queue.length - 1) {
           this._autoSkipDepth += 1;
+          const waitMs = 250 - (Date.now() - this._skipTs);
+          if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+          if (seq !== this._playSeq || useMusicPlayerStore.getState().playbackState === 'idle') return;
           try { await this.next(); } catch {}
         } else {
           this._autoSkipDepth = 0; // 本队列已扫完一轮仍全失效：复位待命，避免自动跳过永久锁死
@@ -340,12 +343,12 @@ export const MusicEngine = {
     this._fetchLyrics(track);
     this._initDefaultResolver();
     const resolver = await this._waitForResolver();
-    if (seq !== this._playSeq) return null; // 已有更新的播放请求
+    if (seq !== this._playSeq || useMusicPlayerStore.getState().playbackState === 'idle') return null;
     if (!resolver) { store.setError('解析器未就绪'); return null; }
     try {
       const warmed = this._warmUrls.get(trackKey(track));
       const url = warmed || await resolver(track);
-      if (seq !== this._playSeq) return null; // 解析期间用户已切换，丢弃旧响应
+      if (seq !== this._playSeq || useMusicPlayerStore.getState().playbackState === 'idle') return null;
       if (!url) throw new Error('no url');
       if (!isPlayableHost(url)) throw new Error('不支持的播放源');
       if (!/^https?:\/\//i.test(url)) throw new Error('非法播放地址');
@@ -354,6 +357,7 @@ export const MusicEngine = {
       this._prewarmNextTrack();
       return track;
     } catch (e: any) {
+      if (seq !== this._playSeq || useMusicPlayerStore.getState().playbackState === 'idle') return null;
       store.setError(e?.message || '恢复播放失败');
       return null;
     }
@@ -419,16 +423,27 @@ export const MusicEngine = {
    */
   togglePause() {
     const s = useMusicPlayerStore.getState();
+    // 正在解析时不重复启动解析任务。
+    if (s.playbackState === 'loading') return;
     // 记忆恢复后首次播放：url 为空，需要先重新解析地址
     if (!s.url && s.queue[s.currentIndex]) {
       const t = s.queue[s.currentIndex];
+      const seq = ++this._playSeq;
+      s.setPlaybackState('loading');
+      const isCurrentRequest = () => {
+        const current = useMusicPlayerStore.getState();
+        const track = current.queue[current.currentIndex];
+        return seq === this._playSeq && current.playbackState === 'loading' && !!track && trackKey(track) === trackKey(t);
+      };
       this._initDefaultResolver();
       this._waitForResolver().then(async (resolver) => {
+        if (!isCurrentRequest()) return;
         if (!resolver) { useMusicPlayerStore.getState().setError('解析器未就绪'); return; }
         try {
           const url = await resolver(t);
+          if (!isCurrentRequest()) return;
           if (!url || !isPlayableHost(url) || !/^https?:\/\//i.test(url)) {
-            console.warn('[MusicEngine] resume url invalid');
+            useMusicPlayerStore.getState().setError('播放地址不可用');
             return;
           }
           // 异步解析期间可能已切歌 / 已被并发路径（playTrack/loadQueueAt 预解析）写回 url：
@@ -446,18 +461,17 @@ export const MusicEngine = {
           cur.setPlaybackState('playing');
           if (!cur.lyrics || cur.lyrics.length === 0) this._fetchLyrics(t);
         } catch (e: any) {
-          useMusicPlayerStore.getState().setError(e?.message || '播放恢复失败');
+          if (isCurrentRequest()) useMusicPlayerStore.getState().setError(e?.message || '播放恢复失败');
         }
       });
       return;
     }
     // URL 非法/空 → 禁止状态翻转
     if (!s.url || !/^https?:\/\//i.test(s.url) || !isPlayableHost(s.url)) {
-      console.warn('[MusicEngine] togglePause blocked: invalid url', s.url);
+      console.warn('[MusicEngine] togglePause blocked: invalid url');
       return;
     }
     // 加载/解析中（切歌/起播）不接受切换：store 马上会进入 playing，防误翻转为 paused/playing
-    if (s.playbackState === 'loading') return;
     const willPlay = s.playbackState !== 'playing';
     s.setPlaybackState(willPlay ? 'playing' : 'paused');
     if (willPlay && s.queue[s.currentIndex] && (!s.lyrics || s.lyrics.length === 0)) {
@@ -598,10 +612,11 @@ function installMusicBridge() {
       const st = useMusicPlayerStore.getState();
       if (type === 'progress') {
         if (!st.url || !st.queue.length) return;
+        if (st.playbackState === 'loading') return;
         // 旧曲心跳（切歌竞态）不写：url 不一致视为陈旧
         if (p?.url && st.url && String(p.url) !== String(st.url)) return;
         const playingN = !!p?.playing;
-        if (st.playbackState !== 'loading' && lastPlaying !== playingN) {
+        if (lastPlaying !== playingN) {
           lastPlaying = playingN;
           st.setPlaybackState(playingN ? 'playing' : 'paused');
         }
@@ -648,9 +663,11 @@ function installMusicBridge() {
   let lastPushedUrl = '';
   useMusicPlayerStore.subscribe((st, prev) => {
     try {
+      if (!st.url || st.playbackState === 'idle') { lastPushedUrl = ''; return; }
+      if (st.playbackState === 'loading' && prev.playbackState !== 'loading') lastPushedUrl = '';
       if (MusicEngine.screenAttached) return;
       if (isNativeExoDisabled()) return; // 原生已降级：声音交给页面内的 Video，别抢
-      if (!st.url || st.url === lastPushedUrl) return;
+      if (st.url === lastPushedUrl) return;
       if (st.playbackState !== 'playing') return;
       const tr = st.queue[st.currentIndex];
       if (!tr) return;

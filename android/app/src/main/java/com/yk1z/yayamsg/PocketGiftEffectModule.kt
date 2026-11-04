@@ -2,6 +2,8 @@ package com.yk1z.yayamsg
 
 import android.app.Activity
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -40,6 +42,8 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
   private val queue = ArrayDeque<Effect>()
   private val recentKeys = LinkedHashMap<String, Long>()
   private var playing = false
+  private var generation = 0L
+  private var activeStop: (() -> Unit)? = null
 
   override fun getName(): String = NAME
 
@@ -81,17 +85,24 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
   /** 退出直播间/切房时清空待播队列 */
   @ReactMethod
   fun clearQueue(promise: Promise) {
-    synchronized(this) { queue.clear() }
+    val stop = synchronized(this) {
+      queue.clear()
+      generation += 1
+      activeStop
+    }
+    if (stop != null) Handler(Looper.getMainLooper()).post { stop() }
     promise.resolve(true)
   }
 
   private fun drain() {
     val next: Effect
+    val playGeneration: Long
     synchronized(this) {
       if (playing) return
       val item = queue.pollFirst() ?: return
       playing = true
       next = item
+      playGeneration = generation
     }
     io.execute {
       val file = try { prepare(next) } catch (_: Throwable) { null }
@@ -102,11 +113,14 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
         finish()
         return@execute
       }
-      activity.runOnUiThread { play(activity, file) }
+      activity.runOnUiThread {
+        if (synchronized(this) { generation != playGeneration }) finish()
+        else play(activity, file, playGeneration)
+      }
     }
   }
 
-  private fun play(activity: Activity, file: File) {
+  private fun play(activity: Activity, file: File, playGeneration: Long) {
     val root = activity.window?.decorView as? FrameLayout ?: run { finish(); return }
     val view = PAGView(activity)
     view.setBackgroundColor(Color.TRANSPARENT)
@@ -124,14 +138,21 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
             Gravity.CENTER,
         ).apply { bottomMargin = bottomInset },
     )
+    var stopped = false
     val stop: () -> Unit = {
-      try {
-        if (view.isAttachedToWindow) root.removeView(view)
-        view.stop()
-      } catch (_: Throwable) {
+      if (!stopped) {
+        stopped = true
+        synchronized(this) { activeStop = null }
+        try {
+          if (view.isAttachedToWindow) root.removeView(view)
+          view.stop()
+        } catch (_: Throwable) {
+        }
+        finish()
       }
-      finish()
     }
+    synchronized(this) { activeStop = stop }
+    if (synchronized(this) { generation != playGeneration }) { stop(); return }
     view.addListener(object : PAGView.PAGViewListener {
       override fun onAnimationStart(pagView: PAGView?) {}
       override fun onAnimationEnd(pagView: PAGView?) = stop()

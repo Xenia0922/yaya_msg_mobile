@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useMemberStore } from '../store';
 import { Member } from '../types';
-import { normalizeMember, memberSearchText } from '../utils/members';
+import { normalizeMember, memberSearchText, isRoomMember } from '../utils/members';
 import { useI18n } from '../i18n';
 import { usePalette, radii, spacing } from '../theme';
 import { typography } from '../theme/typography';
@@ -21,6 +21,7 @@ interface MemberPickerProps {
   onSelect: (member: Member) => void;
   placeholder?: string;
   limit?: number;
+  activeOnly?: boolean;
 }
 
 function memberShortName(member: Member): string {
@@ -32,6 +33,7 @@ export default function MemberPicker({
   onSelect,
   placeholder = '搜索成员...',
   limit = 80,
+  activeOnly = false,
 }: MemberPickerProps) {
   const palette = usePalette();
   const { t } = useI18n();
@@ -43,9 +45,9 @@ export default function MemberPicker({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    const list = members.filter((member) => memberSearchText(member).includes(q));
+    const list = members.filter((member) => (!activeOnly || isRoomMember(member)) && memberSearchText(member).includes(q));
     return list.slice(0, limit);
-  }, [members, query, limit]);
+  }, [members, query, limit, activeOnly]);
 
   return (
     <View style={[styles.wrapper, { paddingHorizontal: spacing.md }]}>

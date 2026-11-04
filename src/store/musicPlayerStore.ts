@@ -244,6 +244,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
        */
       setPosition: (position) => {
         const s = get();
+        if (!Number.isFinite(position) || position < 0 || position === s.position) return;
         const GUARD_MS = 1500;
         const seekPending = s.seekIssuedAt > 0 && Date.now() - s.seekIssuedAt < GUARD_MS;
         if (seekPending) {

@@ -1,4 +1,4 @@
-export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime?: number, showControls = true, extraHeaders: Record<string, string> = {}, volumeBoost = 1): string {
+export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime?: number, showControls = true, extraHeaders: Record<string, string> = {}, volumeBoost = 1, coverPortrait = false): string {
   const poster = posterUrl || '';
   const startTime = Number.isFinite(initialTime) && (initialTime as number) > 0 ? (initialTime as number) : 0;
   // 直播流不挂原生 controls：HTML5 播放条上的进度条/预览对直播无意义且遮挡画面
@@ -33,6 +33,14 @@ export function getPlayerHtml(streamUrl: string, posterUrl?: string, initialTime
 <script>
 (function() {
   var video = document.getElementById('video');
+  function updateVideoFit() {
+    var cover = ${JSON.stringify(coverPortrait)} && video.videoWidth > 0 && video.videoWidth < video.videoHeight && window.innerWidth < window.innerHeight;
+    video.style.height = cover ? '100%' : 'auto';
+    video.style.objectFit = cover ? 'cover' : 'contain';
+  }
+  video.addEventListener('loadedmetadata', updateVideoFit);
+  video.addEventListener('resize', updateVideoFit);
+  window.addEventListener('resize', updateVideoFit);
   var loading = document.getElementById('loading');
   var errorDiv = document.getElementById('error');
   var errorSent = false;

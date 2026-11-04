@@ -40,6 +40,11 @@ public class LiveExoViewManager extends SimpleViewManager<LiveExoView> {
     view.setAudioOnly(audioOnly);
   }
 
+  @ReactProp(name = "coverPortrait", defaultBoolean = false)
+  public void setCoverPortrait(LiveExoView view, boolean coverPortrait) {
+    view.setCoverPortrait(coverPortrait);
+  }
+
   @Override
   @Nullable
   public Map<String, Object> getExportedCustomBubblingEventTypeConstants() {

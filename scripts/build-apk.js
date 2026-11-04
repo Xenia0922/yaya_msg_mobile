@@ -9,6 +9,13 @@ const projectRoot = path.join(__dirname, '..');
 const androidDir = path.join(projectRoot, 'android');
 const apkOutputDir = path.join('E:/yymsg/APK');
 const pkg = require(path.join(projectRoot, 'package.json'));
+let branch = '';
+try { branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot }).toString().trim(); } catch {}
+const requestedFlavor = String(process.env.YAYA_FLAVOR || (branch === 'plus' ? 'plus' : 'public')).trim().toLowerCase();
+if (!['plus', 'public'].includes(requestedFlavor)) throw new Error('YAYA_FLAVOR 必须为 plus 或 public');
+const FLAVOR = requestedFlavor === 'plus' ? 'plus' : '';
+const { writeBuildChannel, channelFile } = require('./write-build-channel');
+const originalChannel = fs.readFileSync(channelFile, 'utf8');
 
 console.log('🔨 Building Android release APK...');
 const gradleCmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
@@ -20,11 +27,13 @@ const extraProps = [
   process.env.YAYA_ABIS ? `-Pyaya.abis=${process.env.YAYA_ABIS}` : '',
   process.env.YAYA_UNIVERSAL ? `-Pyaya.universal=${process.env.YAYA_UNIVERSAL}` : '',
 ].filter(Boolean).join(' ');
-const gradleArgs = ['assembleRelease', '-Dorg.gradle.daemon=true', '-Dorg.gradle.parallel=false', extraProps]
+const gradleArgs = ['assembleRelease', '--max-workers=1', '-Dorg.gradle.daemon=true', '-Dorg.gradle.parallel=false', extraProps]
   .filter(Boolean)
   .join(' ');
 if (extraProps) console.log(`   （附加 gradle 参数：${extraProps}）`);
+let buildFailed = false;
 try {
+  console.log(`   渠道写入 buildChannel.ts ← ${writeBuildChannel(requestedFlavor)}`);
   execSync(`${gradleCmd} ${gradleArgs}`, {
     cwd: androidDir,
     stdio: 'inherit',
@@ -32,8 +41,11 @@ try {
   });
 } catch (e) {
   console.error('❌ Build failed');
-  process.exit(1);
+  buildFailed = true;
+} finally {
+  fs.writeFileSync(channelFile, originalChannel);
 }
+if (buildFailed) process.exit(1);
 
 const version = pkg.version;
 const apkDir = path.join(androidDir, 'app/build/outputs/apk/release');
@@ -42,16 +54,7 @@ const apkDir = path.join(androidDir, 'app/build/outputs/apk/release');
 // 不传 → yaya-msg-mobile-v<version>-v8a.apk（普通版）
 // ⚠️ 自用权限版保护：plus 分支构建的包**不得**上传到公开仓库的 Release / 网盘 / 下载页。
 // 公版与权限版共用同一个 applicationId，权限版一旦流出，任何人都能覆盖安装并解锁私有功能。
-try {
-  const branch = require('child_process').execSync('git rev-parse --abbrev-ref HEAD', { cwd: path.join(__dirname, '..') }).toString().trim();
-  if (branch === 'plus') {
-    console.warn('\n⚠️  当前分支为 plus（自用权限版）—— 产物仅供本机使用，禁止上传到公开仓库 Release / 下载页。\n');
-  }
-} catch { /* ignore */ }
-
-let branch = '';
-try { branch = require('child_process').execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot }).toString().trim(); } catch {}
-const FLAVOR = String(process.env.YAYA_FLAVOR || (branch === 'plus' ? 'plus' : '')).trim();
+if (FLAVOR === 'plus') console.warn('\n⚠️  当前产物为 plus 自用权限版，不得公开分发。\n');
 const baseName = FLAVOR ? `yaya-msg-mobile-${FLAVOR}` : 'yaya-msg-mobile';
 if (FLAVOR) console.log(`   （打包版本：${FLAVOR}）`);
 

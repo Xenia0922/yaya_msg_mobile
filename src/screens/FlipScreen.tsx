@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import PlayerScreen, { buildPocketHeaders } from '../player';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import MemberPicker from '../components/MemberPicker';
 import ScreenHeader from '../components/ScreenHeader';
@@ -53,6 +53,11 @@ const PRIVACY_OPTIONS: { value: PrivacyType; label: string }[] = [
   { value: '2', label: '私密' },
   { value: '3', label: '匿名' },
 ];
+
+function flipDeadline(timestamp: number | string): number {
+  const start = toMs(timestamp);
+  return start ? start + 8 * 86400000 : 0;
+}
 
 function normalizeFlipList(res: any): any[] {
   return unwrapList(res, [
@@ -134,7 +139,8 @@ function statusLabel(status: any): string {
   if (Number(status) === 1) return '等待回复中';
   if (Number(status) === 2) return '已翻牌';
   if (Number(status) === 3) return '已退款';
-  return '等待回复中';
+  if (Number(status) === 5) return '翻牌中';
+  return '状态未知';
 }
 
 function questionText(item: any): string {
@@ -155,6 +161,7 @@ function parseMedia(raw: string): { text: string; url: string; duration: number 
 }
 
 function parseAnswer(item: any, voiceLabel = '语音回复', videoLabel = '视频回复'): { text: string; url: string; duration: number } {
+  if (Number(item?.status) !== 2) return { text: '', url: '', duration: 0 };
   const raw = pickText(item, ['answerContent', 'answer', 'answerText', 'replyContent']);
   let url = '';
   let duration = 0;
@@ -250,12 +257,12 @@ export default function FlipScreen() {
     }
   }, []);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (mode === 'view') {
       pageRef.current = 1;
       loadFlips(1, true);
     }
-  }, [loadFlips, mode]);
+  }, [loadFlips, mode]));
 
   useEffect(() => {
     if (mode !== 'send') return;
@@ -618,6 +625,12 @@ export default function FlipScreen() {
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
+          refreshing={loading && pageRef.current === 1}
+          onRefresh={() => {
+            if (loadingRef.current) return;
+            pageRef.current = 1;
+            void loadFlips(1, true);
+          }}
           renderItem={({ item }) => {
             if (item.type === 'header') {
               return (
@@ -630,14 +643,15 @@ export default function FlipScreen() {
             const answerUrl = parsed.url;
             const flipAnswerType = Number(flip.answerType);
             const ansDur = parsed.duration;
-            const qTime = Number(flip.qtime || flip.createTime || 0);
-            const aTime = Number(flip.answerTime || 0);
-            const deadline = qTime ? qTime + 7 * 86400000 : 0;
+            const qTime = toMs(flip.qtime || flip.createTime || 0);
+            const aTime = toMs(flip.answerTime || 0);
+            const deadline = flipDeadline(qTime);
             const remaining = deadline - Date.now();
             const remainingDays = Math.max(0, Math.floor(remaining / 86400000));
             const remainingHours = Math.max(0, Math.floor((remaining % 86400000) / 3600000));
             const remainingMinutes = Math.max(0, Math.floor((remaining % 3600000) / 60000));
-            const remainingStr = aTime ? '' : (remaining > 0 ? t('剩{time}', { time: `${remainingDays > 0 ? t('{m}天', { m: remainingDays }) : ''}${remainingHours > 0 ? t('{m}小时', { m: remainingHours }) : ''}${t('{m}分', { m: remainingMinutes })}` }) : t('已过期'));
+            const isPending = Number(flip.status) === 1 || Number(flip.status) === 5;
+            const remainingStr = isPending && qTime ? (remaining > 0 ? t('剩{time}', { time: `${remainingDays > 0 ? t('{m}天', { m: remainingDays }) : ''}${remainingHours > 0 ? t('{m}小时', { m: remainingHours }) : ''}${t('{m}分', { m: remainingMinutes })}` }) : t('已过期')) : '';
             const elapsed = aTime && qTime ? aTime - qTime : 0;
             const elapsedDays = Math.floor(elapsed / 86400000);
             const elapsedHours = Math.floor((elapsed % 86400000) / 3600000);
@@ -662,9 +676,13 @@ export default function FlipScreen() {
                         <View style={[styles.statusBadge, { backgroundColor: 'rgba(52,199,89,0.14)' }]}>
                           <Text style={[styles.statusBadgeText, { color: palette.success }]}>{t(statusLabel(flip.status))}</Text>
                         </View>
+                      ) : Number(flip.status) === 5 ? (
+                        <View style={[styles.statusBadge, { backgroundColor: 'rgba(24,144,255,0.14)' }]}>
+                          <Text style={[styles.statusBadgeText, { color: '#1890ff' }]}>{t(statusLabel(flip.status))}</Text>
+                        </View>
                       ) : (
-                        <View style={[styles.statusBadge, { backgroundColor: 'rgba(255,59,48,0.12)' }]}>
-                          <Text style={[styles.statusBadgeText, { color: palette.danger }]}>{t(statusLabel(flip.status))}</Text>
+                        <View style={[styles.statusBadge, { backgroundColor: Number(flip.status) === 3 ? 'rgba(255,59,48,0.12)' : palette.fill3 }]}>
+                          <Text style={[styles.statusBadgeText, { color: Number(flip.status) === 3 ? palette.danger : palette.labelSecondary }]}>{t(statusLabel(flip.status))}</Text>
                         </View>
                       )}
                     </View>

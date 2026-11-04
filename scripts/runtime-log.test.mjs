@@ -23,6 +23,7 @@ const imports = {
   '@react-native-async-storage/async-storage': { __esModule: true, default: storage },
   'react-native': { Platform: { OS: 'test', Version: '0' } },
   '../constants': { APP_VERSION: 'test' },
+  '../constants/buildChannel': { BUILD_CHANNEL: 'plus', BUILD_TAG: 'test-build' },
 };
 const fakeConsole = { debug() {}, error() {}, warn() {}, info() {}, log() {} };
 vm.runInNewContext(compiled, {
@@ -38,6 +39,7 @@ await api.initRuntimeLog();
 api.logWarn('ticket=MOCK_TICKET&token=MOCK_TOKEN Authorization: Bearer MOCK_BEARER');
 fakeConsole.log('{"p48Token":"MOCK_JSON_TOKEN"}');
 const text = api.exportLogText();
+assert.ok(text.includes('test-build'), '导出日志应标明当前构建');
 for (const secret of ['MOCK_OLD_COOKIE', 'MOCK_TICKET', 'MOCK_TOKEN', 'MOCK_BEARER', 'MOCK_JSON_TOKEN']) {
   assert.equal(text.includes(secret), false, '导出日志包含测试凭证');
 }

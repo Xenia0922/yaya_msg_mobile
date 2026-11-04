@@ -46,6 +46,7 @@ public class LiveExoView extends FrameLayout {
   private float videoPixelRatio = 1f;
   private boolean released = false;
   private boolean audioOnly = false;
+  private boolean coverPortrait = false;
   /** JS 显式暂停（统一播放器控制条用；默认 false=自动播，等同 v2.7.3 行为） */
   private volatile boolean paused = false;
   private final com.facebook.react.uimanager.ThemedReactContext reactContext;
@@ -243,6 +244,11 @@ public class LiveExoView extends FrameLayout {
     }
   }
 
+  public void setCoverPortrait(boolean coverPortrait) {
+    this.coverPortrait = coverPortrait;
+    applyAspectTransform();
+  }
+
   private void applyAspectTransform() {
     if (audioOnly) return; // 纯音频模式下不渲染画面，无需适配
     int hostW = getWidth();
@@ -253,7 +259,10 @@ public class LiveExoView extends FrameLayout {
 
     float scaleX = 1f;
     float scaleY = 1f;
-    if (videoRatio > hostRatio) {
+    if (coverPortrait && videoRatio < 1f && hostRatio < 1f) {
+      if (videoRatio > hostRatio) scaleX = videoRatio / hostRatio;
+      else scaleY = hostRatio / videoRatio;
+    } else if (videoRatio > hostRatio) {
       scaleY = hostRatio / videoRatio;
     } else {
       scaleX = videoRatio / hostRatio;

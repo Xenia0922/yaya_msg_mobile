@@ -145,17 +145,24 @@ class NimQChatClient(
 
   /** 发送房间消息：24/10 */
   fun sendText(serverId: String, channelId: String, text: String, extJson: String): String {
+    return sendMessage(serverId, channelId, text, extJson, null)
+  }
+
+  fun sendCustom(serverId: String, channelId: String, attachment: String, extJson: String): String {
+    return sendMessage(serverId, channelId, "", extJson, attachment)
+  }
+
+  private fun sendMessage(serverId: String, channelId: String, text: String, extJson: String, attachment: String?): String {
     val session = qchatSession ?: throw IllegalStateException("成员房间尚未连接")
     if (!session.connected) throw IllegalStateException("成员房间尚未连接")
     val content = text.trim()
-    require(content.isNotEmpty()) { "消息内容不能为空" }
+    require(content.isNotEmpty() || !attachment.isNullOrBlank()) { "消息内容不能为空" }
     val msgIdClient = UUID.randomUUID().toString().replace("-", "")
     val properties = mutableMapOf<Int, Any?>(
       1 to serverId,
       2 to channelId,
       3 to account,
-      9 to 0,
-      10 to content,
+      9 to if (attachment == null) 0 else 100,
       12 to (extJson ?: ""),
       13 to msgIdClient,
       20 to 0,
@@ -166,6 +173,8 @@ class NimQChatClient(
       103 to 1,
       105 to 1,
     )
+    if (content.isNotEmpty()) properties[10] = content
+    if (!attachment.isNullOrBlank()) properties[11] = attachment
     val response = session.request(QCHAT_LOGIN_SERVICE_ID, 10, NimProtocol.encodeProperties(properties), 12_000)
     if (response.resultCode != 200) {
       throw IllegalStateException("房间消息发送失败（${response.resultCode}）")

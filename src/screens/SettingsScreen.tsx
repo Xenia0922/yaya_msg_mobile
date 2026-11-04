@@ -3,7 +3,7 @@
  * - 全页 inset 分组：每个 Section 圆角 16 卡片，Section 内行式条目（28 圆角图标底 + 标题 15/600 + 右侧 chevron/状态文字）
  * - 关于区 hero 卡（logo 52 圆角 16 + 名称 + 版本 chip + 红点）
  * - 成员数据统计 2 列卡
- * - 区块入场 FadeInView 错峰
+ * - 区块直接显示，避免频繁切换时闪烁
  * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -21,7 +21,7 @@ import { saveSettings } from '../services/settings';
 import { setPipEnabled } from '../utils/pip';
 import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import RuntimeLogViewer from '../components/RuntimeLogViewer';
 import UpdateInstaller from '../components/UpdateInstaller';
 import { isApkUpdaterAvailable } from '../native/ApkUpdater';
@@ -41,10 +41,10 @@ type SettingsNavProp = CompositeNavigationProp<
   StackNavigationProp<RootStackParamList>
 >;
 
-function Section({ title, children, delay = 0 }: { title: string; children: React.ReactNode; delay?: number }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const palette = usePalette();
   return (
-    <FadeInView delay={delay} duration={300}>
+    <View>
       {title ? (
         <Text style={[styles.sectionTitle, { color: palette.label }]}>{title}</Text>
       ) : null}
@@ -59,7 +59,7 @@ function Section({ title, children, delay = 0 }: { title: string; children: Reac
       <GlassSurface radius={20} role="card" style={styles.section}>
         {children}
       </GlassSurface>
-    </FadeInView>
+    </View>
   );
 }
 
@@ -265,7 +265,7 @@ export default function SettingsScreen() {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
         {/* 关于 hero 卡 */}
-        <Section title="" delay={60}>
+        <Section title={t('关于')}>
           <View style={styles.aboutHero}>
             <View style={[styles.aboutLogoWrap, { backgroundColor: palette.fill3 }]}>
               <Image source={require('../../assets/logo.jpg')} style={styles.aboutLogoImg} />
@@ -324,7 +324,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* 账号 */}
-        <Section title={t('账号')} delay={100}>
+        <Section title={t('账号')}>
           <Row
             icon="account-key"
             title={t('进入账号管理')}
@@ -334,7 +334,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* 外观 */}
-        <Section title={t('外观')} delay={140}>
+        <Section title={t('外观')}>
           <View style={styles.innerPad}>
             <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('主题')}</Text>
             <ChipRow options={THEME_OPTIONS} value={settings.theme} onChange={(v) => update('theme', v)} />
@@ -366,14 +366,14 @@ export default function SettingsScreen() {
         </Section>
 
         {/* 语言 */}
-        <Section title={t('语言')} delay={180}>
+        <Section title={t('语言')}>
           <View style={styles.innerPad}>
             <ChipRow options={LANGUAGE_OPTIONS.map((o) => ({ ...o, label: o.value === 'system' ? t(o.label) : o.label }))} value={settings.language || 'system'} onChange={(v) => update('language', v)} />
           </View>
         </Section>
 
-        {/* 小窗（画中画） */}
-        <Section title={t('小窗播放')} delay={200}>
+        {/* 使用偏好 */}
+        <Section title={t('使用偏好')}>
           <View style={styles.innerPad}>
             <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('切到后台自动弹出系统小窗')}</Text>
             <ChipRow
@@ -384,14 +384,11 @@ export default function SettingsScreen() {
                 update('pip_auto', v);
               }}
             />
-            <Text style={[styles.note, { color: palette.labelTertiary }]}>
-              {t('关闭后，播放视频时切到后台不会弹出系统小窗（可用播放器内小窗在应用内继续看）；开启后切后台自动以系统小窗继续播放')}
+            <Text style={[styles.inlineNote, { color: palette.labelTertiary }]}>
+              {t('开启后，视频切到后台时自动进入系统小窗')}
             </Text>
           </View>
-        </Section>
-
-        {/* 消息 */}
-        <Section title={t('消息')} delay={210}>
+          <View style={[styles.settingsDivider, { backgroundColor: palette.innerStroke }]} />
           <View style={styles.innerPad}>
             <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('首页「私信」入口显示未读红点')}</Text>
             <ChipRow
@@ -399,15 +396,13 @@ export default function SettingsScreen() {
               value={settings.yaya_pm_unread_badge}
               onChange={(v) => update('yaya_pm_unread_badge', v)}
             />
-            <Text style={[styles.note, { color: palette.labelTertiary }]}>
+            <Text style={[styles.inlineNote, { color: palette.labelTertiary }]}>
               {t('关闭后首页不再拉取私信未读数，也不显示红点角标')}
             </Text>
           </View>
-        </Section>
-
-        {/* 自动签到 */}
-        <Section title={t('自动签到')} delay={220}>
+          <View style={[styles.settingsDivider, { backgroundColor: palette.innerStroke }]} />
           <View style={styles.innerPad}>
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('自动签到')}</Text>
             <ChipRow options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]} value={settings.yaya_auto_checkin_enabled} onChange={(v) => update('yaya_auto_checkin_enabled', v)} />
             {settings.yaya_auto_checkin_enabled ? (
               <Text style={[styles.rowLabel, { color: palette.labelSecondary, marginTop: 10 }]}>
@@ -418,7 +413,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* 工具 */}
-        <Section title={t('工具')} delay={260}>
+        <Section title={t('工具')}>
           <Row
             icon="download"
             title={t('下载管理')}
@@ -433,7 +428,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* 成员数据 */}
-        <Section title={t('成员数据')} delay={300}>
+        <Section title={t('成员数据')}>
           <View style={styles.memberStatRow}>
             <View style={[styles.memberStatCard, { backgroundColor: palette.fill3 }]}>
               <Text style={[styles.memberStatNum, { color: palette.label }]}>{memberCount}</Text>
@@ -471,8 +466,8 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingBottom: 112, paddingHorizontal: 16 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', marginTop: 20, marginBottom: 8, paddingHorizontal: 4 },
+  content: { paddingBottom: 112, paddingHorizontal: 16, paddingTop: 2 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', marginTop: 22, marginBottom: 9, paddingHorizontal: 4 },
   // 描边由 GlassSurface 内部统一出（见 Section 注释），此处不再叠 borderWidth/borderColor
   section: { overflow: 'hidden' },
   innerPad: { padding: 14 },
@@ -495,6 +490,7 @@ const styles = StyleSheet.create({
   rowValue: { flexShrink: 1, fontSize: 12, marginRight: 6, maxWidth: '48%', textAlign: 'right' },
   rowLabel: { fontSize: 12, lineHeight: 18, marginBottom: 6 },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 54 },
+  settingsDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 14 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: radiiAlias.button },
   chipText: { fontSize: 13, fontWeight: '700' },
@@ -525,7 +521,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
-  memberStatNum: { fontSize: 18, fontWeight: '900', textAlign: 'center' },
+  memberStatNum: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
   memberStatLabel: { fontSize: 11, marginTop: 4 },
   autoSyncRow: {
     flexDirection: 'row',
@@ -537,6 +533,7 @@ const styles = StyleSheet.create({
   },
   autoSyncText: { fontSize: 12, marginLeft: 8, fontWeight: '600' },
   note: { marginHorizontal: 14, marginTop: 10, marginBottom: 14, fontSize: 11, lineHeight: 16 },
+  inlineNote: { marginTop: 8, fontSize: 11, lineHeight: 16 },
   textInput: {
     marginTop: 8,
     borderRadius: 10,

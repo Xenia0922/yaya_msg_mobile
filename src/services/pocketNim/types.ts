@@ -84,7 +84,7 @@ export interface BarrageItem {
   text: string;
   nick: string;
   avatar: string;
-  userId: number;
+  userId: string;
   /** 角色：0 普通 / 1 成员 / 2 超管（官方 roleId 语义） */
   roleId: number;
   level: number;

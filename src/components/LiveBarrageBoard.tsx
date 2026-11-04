@@ -44,7 +44,7 @@ export interface LiveBarrageBoardProps {
   /** 列表可视高度 */
   height?: number;
   /** 外观：玻璃卡（页面内）/ 半透明浮层（叠在播放器上） */
-  variant?: 'glass' | 'plain';
+  variant?: 'glass' | 'plain' | 'pocket';
   /** 紧凑模式：隐藏标题行 */
   compact?: boolean;
   /** 只渲染输入条（弹幕本体已由视频上的滚动层展示） */
@@ -73,7 +73,8 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
   const lastFailedRef = useRef('');
   const [hint, setHint] = useState('');
 
-  const plain = variant === 'plain';
+  const plain = variant !== 'glass';
+  const pocket = variant === 'pocket';
   /**
    * 浮层（plain）下所有文字改走白色系：叠在视频上时 palette 的深色 label 会看不清。
    * 高亮（成员/礼物）仍用主色 tint，浅深底都可读。
@@ -147,13 +148,13 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
   );
 
   const inputRow = (
-    <View style={styles.inputRow}>
+    <View style={[styles.inputRow, pocket && styles.pocketInputRow]}>
       <View style={{ flex: 1 }}>
         <TextInput
-          style={[styles.input, { color: tone.primary, backgroundColor: tone.fieldBg, borderColor: tone.fieldBorder }]}
+          style={[styles.input, { color: tone.primary, backgroundColor: tone.fieldBg, borderColor: tone.fieldBorder }, pocket && styles.pocketInput]}
           value={draft}
           onChangeText={setDraft}
-          placeholder={ready ? t('发条弹幕...') : t('弹幕连接中...')}
+          placeholder={ready ? t(pocket ? '对成员说...' : '发条弹幕...') : t('弹幕连接中，点此重连')}
           placeholderTextColor={tone.tertiary}
           editable={ready && !sending}
           maxLength={60}
@@ -164,7 +165,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
           <Text style={[styles.counter, { color: tone.tertiary }]}>{draft.length}/60</Text>
         ) : null}
       </View>
-      <TouchableOpacity
+      {(!pocket || !!draft || sending) && <TouchableOpacity
         onPress={handleSend}
         disabled={!ready || sending || !draft.trim()}
         activeOpacity={0.85}
@@ -179,7 +180,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
             color={ready && draft.trim() ? palette.onTint : tone.tertiary}
           />
         )}
-      </TouchableOpacity>
+      </TouchableOpacity>}
     </View>
   );
 
@@ -212,7 +213,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
           </TouchableOpacity>
         </View>
       ) : null}
-      {ready ? null : (
+      {ready || pocket ? null : (
         <Text style={[styles.empty, { color: tone.tertiary, paddingVertical: 2 }]} numberOfLines={1}>
           {statusText}
         </Text>
@@ -241,7 +242,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
   );
 
   if (plain) {
-    return <View style={[styles.wrapPlain, style]}>{inner}</View>;
+    return <View style={[styles.wrapPlain, pocket && styles.wrapPocket, style]}>{inner}</View>;
   }
   return (
     <GlassSurface role="card" radius={16} style={[styles.wrap, style]}>
@@ -272,6 +273,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: 'rgba(0,0,0,0.42)',
   },
+  wrapPocket: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, backgroundColor: 'transparent' },
+  pocketInputRow: { paddingTop: 0 },
+  pocketInput: { minHeight: 44, borderRadius: 22, borderWidth: 0, backgroundColor: 'rgba(20,20,24,0.48)', paddingHorizontal: 16, fontSize: 16 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2, paddingBottom: 6 },
   headerText: { fontSize: 11, flexShrink: 1 },
   headerAction: { fontSize: 11, fontWeight: '700' },

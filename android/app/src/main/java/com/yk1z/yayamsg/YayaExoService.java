@@ -297,12 +297,19 @@ public class YayaExoService extends Service {
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
     if (intent == null) return START_NOT_STICKY;
+    // 任意命令都可能通过 startForegroundService 到达；即使播放器尚未创建，
+    // 也要先满足系统前台服务契约，再处理空服务或停止命令。
+    if (exo == null) {
+      try {
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, minimalFg(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+      } catch (Throwable ignored) {}
+    }
     String action = intent.getAction();
     if (ACTION_PLAY_QUEUE.equals(action)) {
       try {
         // ⚠️ startForegroundService 5s 契约：解析 JSON/建会话可能耗时，先占位进前台（防 RemoteServiceException）
         try {
-          startForeground(NOTIFICATION_ID, minimalFg(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+          ServiceCompat.startForeground(this, NOTIFICATION_ID, minimalFg(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
         } catch (Throwable ignored) {}
         String hJson = intent.getStringExtra("headers");
         Map<String, String> nh = new HashMap<>();
@@ -363,13 +370,13 @@ public class YayaExoService extends Service {
           if (playing && !exo.getPlayWhenReady()) exo.play();
           // else if (!playing && exo.getPlayWhenReady()) exo.pause();
         } else {
-          Log.i("YayaExo", "SET-ITEMS url=" + firstUrl + " posMs=" + posMs + " sameTrack=" + sameTrack + " curState=" + (exo.getPlaybackState()));
+          Log.i("YayaExo", "SET-ITEMS posMs=" + posMs + " sameTrack=" + sameTrack + " curState=" + (exo.getPlaybackState()));
           exo.setMediaItems(items, Math.max(0, Math.min(index, items.size() - 1)), posMs);
           exo.prepare();
           if (playing) exo.play();
         }
         startPolling();
-        startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
       } catch (Throwable t) {
         Map<String, Object> extra = new HashMap<>();
         extra.put("message", "queue err " + t.getMessage());
@@ -408,15 +415,13 @@ public class YayaExoService extends Service {
         if (exo != null) { try { exo.stop(); exo.clearMediaItems(); } catch (Throwable ignored) {} }
         musicActuallyPlaying = false;
         try {
-          startForeground(NOTIFICATION_ID, minimalFg(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+          ServiceCompat.startForeground(this, NOTIFICATION_ID, minimalFg(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
         } catch (Throwable ignored) {}
         stopServiceCleanly();
         return START_NOT_STICKY;
       }
       if (exo == null) {
-        try {
-          startForeground(NOTIFICATION_ID, minimalFg(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-        } catch (Throwable ignored) {}
+        stopServiceCleanly();
         return START_NOT_STICKY;
       }
       if ("pause".equals(cmd)) { exo.pause(); pushState(); }

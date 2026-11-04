@@ -39,7 +39,7 @@ interface Props extends PlayerScreenProps {
  *   onClose={() => ...}
  * />
  */
-export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, features = {}, extraActions = [], onClose, children, persistent = false, inline = false, onVideoSize, resumeAt, onRetry, barrageInput, chromeHidden = false }: Props) {
+export function PlayerScreen({ source, meta, pocket, danmaku = { type: 'none' }, features = {}, extraActions = [], onClose, children, persistent = false, inline = false, onVideoSize, resumeAt, onRetry, barrageInput, chromeHidden = false, liveTransitionKey = 0 }: Props) {
   // 播放错误自动重解析（假死/URL 失效场景）：RTMP 流 URL 带 wsSecret 且多为单次有效，
   // 原生重连同 URL 只会再拿一帧；有 onRetry（页面重新解析新地址）时自动触发，同源最多 2 次。
   const dbgState = usePlayerStore((s) => s.state);
@@ -47,6 +47,18 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
   /** onRetry 的最新引用：不放进 effect 依赖（父组件内联箭头每次渲染都变 → 定时器被反复重排饿死） */
   const onRetryRef = useRef(onRetry);
   onRetryRef.current = onRetry;
+  const lastTransition = useRef(liveTransitionKey);
+  useEffect(() => {
+    if (lastTransition.current === liveTransitionKey) return;
+    lastTransition.current = liveTransitionKey;
+    if (source.kind !== 'live') return;
+    const timer = setTimeout(() => {
+      if (usePlayerStore.getState().state === 'paused') return;
+      if (onRetryRef.current) onRetryRef.current();
+      else usePlayerStore.getState().requestKernelRebuild();
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [liveTransitionKey, source.kind]);
   useEffect(() => {
     autoRetryLeft.current = 2; // 换源（新 url）重置自动重试额度
   }, [source.url]);
@@ -79,6 +91,7 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
   const openTokenAtOpen = useRef(0);
   const sourceUrl = source.url || '';
   const fullscreen = usePlayerStore((s) => s.fullscreen);
+  const cleanScreen = usePlayerStore((s) => s.cleanScreen);
   const rotateDeg = usePlayerStore((s) => s.rotateDeg);
   const mirrorMode = usePlayerStore((s) => s.mirrorMode);
   const mediaTransform: any = [];
@@ -94,7 +107,7 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
     if (mp && mp.visible) mp.close();
     usePlayerStore.getState().open(source, meta, danmaku);
     openTokenAtOpen.current = usePlayerStore.getState().openToken;
-    try { logInfo(`[player] PlayerScreen open kind=${source.kind} url=${String(source.url).slice(0, 90)}`, 'player.screen'); } catch {}
+    try { logInfo(`[player] PlayerScreen open kind=${source.kind}`, 'player.screen'); } catch {}
     return () => {
       // 卸载时若全局播放器仍指向本页打开的源 → 关闭（persistent 页面关闭也应清干净，
       // 否则陈旧 source/state 残留可能干扰二次进入播放（首次能进、之后卡首帧））
@@ -137,8 +150,10 @@ export function PlayerScreen({ source, meta, danmaku = { type: 'none' }, feature
           <PlayerCore onVideoSize={onVideoSize} resumeAt={resumeAt} />
         </View>
       </View>
-      {children}
-      {!chromeHidden && <PlayerChrome features={features} extraActions={extraActions} onClose={onClose} inline={inline} onRetry={onRetry} barrageInput={barrageInput} />}
+      <View nativeID="yaya.pip.overlay" collapsable={false} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        {!cleanScreen && children}
+        {!chromeHidden && <PlayerChrome pocket={pocket} features={features} extraActions={extraActions} onClose={onClose} inline={inline} onRetry={onRetry} barrageInput={barrageInput} />}
+      </View>
       <FullscreenManager />
     </View>
   );

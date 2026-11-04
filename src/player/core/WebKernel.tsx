@@ -52,9 +52,9 @@ export const WebKernel = forwardRef<WebKernelHandle, Props>(function WebKernel(
   const html = useMemo(
     // showControls 恒 false：RN 控制层（PlayerChrome）已接管播放/进度/倍速，
     // 若 VOD 同时开 HTML 原生 controls 会出现「双进度条/双控制」互相打架（2026-10-03 修复）
-    () => getPlayerHtml(source.url, undefined, resumeOnce.current || 0, false, (source.headers || {}) as any, Number(source.volumeBoost) || 1),
+    () => getPlayerHtml(source.url, undefined, resumeOnce.current || 0, false, (source.headers || {}) as any, Number(source.volumeBoost) || 1, !!source.coverPortrait),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [source.url, source.headers],
+    [source.url, source.headers, source.coverPortrait],
   );
 
   return (

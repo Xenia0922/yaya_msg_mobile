@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { APP_VERSION } from '../constants';
+import { BUILD_CHANNEL, BUILD_TAG } from '../constants/buildChannel';
+
+/** 包身份：版本 + 渠道 + 出包标识。远程排障先看这一行，避免把公版日志当权限版分析。 */
+export function buildLabel(): string {
+  return BUILD_TAG || BUILD_CHANNEL;
+}
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'crash';
 
@@ -134,7 +140,7 @@ export async function clearLog() {
 export function exportLogText(entries?: LogEntry[]): string {
   const src = (entries ?? buffer).slice().reverse().map(redactEntry); // 与现有顺序保持一致（最新在前）
   const os = `${Platform.OS} ${String(Platform.Version)}`;
-  const header = `牙牙消息 v${APP_VERSION} · ${os} · 日志导出 ${new Date().toLocaleString()}\n${'='.repeat(40)}`;
+  const header = `牙牙消息 v${APP_VERSION} · ${buildLabel()} · ${os} · 日志导出 ${new Date().toLocaleString()}\n${'='.repeat(40)}`;
   const body = src
     .map((e) => {
       const d = new Date(e.t);
@@ -152,7 +158,7 @@ export async function initRuntimeLog() {
   if (loaded) {
     // 已初始化，仅补一个会话开始的标记
     const os = `${Platform.OS} ${String(Platform.Version)}`;
-    logInfo(`会话恢复 · 牙牙消息 v${APP_VERSION} · ${os}`);
+    logInfo(`会话恢复 · 牙牙消息 v${APP_VERSION} · ${buildLabel()} · ${os}`);
     return;
   }
   try {
@@ -173,7 +179,7 @@ export async function initRuntimeLog() {
     persist();
   }
   const os = `${Platform.OS} ${String(Platform.Version)}`;
-  logInfo(`会话开始 · 牙牙消息 v${APP_VERSION} · ${os}`);
+  logInfo(`会话开始 · 牙牙消息 v${APP_VERSION} · ${buildLabel()} · ${os}`);
   installConsoleCapture();
 }
 

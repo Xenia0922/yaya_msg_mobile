@@ -88,6 +88,11 @@ export function classifyMemberState(raw: any): string {
   return 'unknown';
 }
 
+/** 房间搜索排除数据库明确标记为离团或毕业的成员，未知状态保留。 */
+export function isRoomMember(member: Pick<Member, 'isInGroup' | 'state'>): boolean {
+  return member.isInGroup !== false && member.state !== 'left' && member.state !== 'graduated';
+}
+
 export function normalizeMember(raw: any): Member {
   return {
     ...raw,
@@ -106,6 +111,21 @@ export function normalizeMember(raw: any): Member {
     isInGroup: raw?.isInGroup !== false,
     state: classifyMemberState(raw),
   };
+}
+
+/** 把官方新增的 48 系成员加入现有成员库，不重复添加，也不混入其他团体。 */
+export function appendOfficialGroupMembers(members: Member[], official: any[]): Member[] {
+  const groups = new Set(['SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'SHY48']);
+  const ids = new Set(members.map((member) => String(member.id)));
+  const result = [...members];
+  for (const raw of official) {
+    if (!groups.has(String(raw?.groupName || ''))) continue;
+    const member = normalizeMember(raw);
+    if (!member.id || !member.ownerName || ids.has(member.id)) continue;
+    ids.add(member.id);
+    result.push(member);
+  }
+  return result;
 }
 
 export async function loadMembers(json?: any): Promise<Member[]> {

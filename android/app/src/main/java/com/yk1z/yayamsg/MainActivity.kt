@@ -11,6 +11,29 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
+  private var compactPlayerWindow = false
+  private val compactWindowListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+    val compact = isCompactPlayerWindow()
+    if (compact != compactPlayerWindow) {
+      compactPlayerWindow = compact
+      PipOverlayController.setHidden(this, compact)
+      PipModule.emitPipChanged(compact)
+    } else if (compact) {
+      // RN may mount a new overlay while the floating window is already visible.
+      PipOverlayController.setHidden(this, true)
+    }
+  }
+
+  private fun isCompactPlayerWindow(): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) return true
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+    return try {
+      val current = windowManager.currentWindowMetrics.bounds
+      val maximum = windowManager.maximumWindowMetrics.bounds
+      current.width() > 0 && current.height() > 0 && maximum.width() > 0 && maximum.height() > 0 &&
+        current.width() * 100L < maximum.width() * 70L && current.height() * 100L < maximum.height() * 80L
+    } catch (_: Throwable) { false }
+  }
   private val reassertHandler = android.os.Handler(android.os.Looper.getMainLooper())
   private val delayedReassert = object : Runnable {
     override fun run() { reassertExoSession() }
@@ -24,6 +47,7 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
+    window.decorView.addOnLayoutChangeListener(compactWindowListener)
     requestMaxRefreshRate()
   }
 
@@ -92,8 +116,8 @@ class MainActivity : ReactActivity() {
     // ⚠️ 且 SystemUI 的媒体卡/胶囊构建通常滞后 Home 键数百 ms~数秒——一次 onPause 重声明不够，
     // 需要在退后台后的延迟窗口内再补发几次（覆盖 ColorOS 懒构建/懒绑定），直到前台恢复才停。
     reassertExoSession()
+    reassertHandler.removeCallbacks(delayedReassert)
     for (d in reassertBackoff) {
-      reassertHandler.removeCallbacks(delayedReassert)
       reassertHandler.postDelayed(delayedReassert, d)
     }
   }
@@ -106,7 +130,10 @@ class MainActivity : ReactActivity() {
     // ⚠️ 补发 PiP 模式状态：用户从小窗展开回 App 时若 exit 事件丢失，
     // JS 侧「PiP 全屏盖层」(pipCover) 会卡在 true —— 主页被全屏视频盖住（用户实测截图）。
     // onResume 时 PiP 模式必已确定：在 PiP 中补 true，已展开补 false（盖层随之复位）。
-    PipModule.emitPipChanged(isInPictureInPictureMode)
+    compactPlayerWindow = isCompactPlayerWindow()
+    PipModule.emitPipChanged(compactPlayerWindow)
+    PipOverlayController.setHidden(this, compactPlayerWindow)
+    PipModule.refreshPipActions()
   }
 
   override fun onStop() {
@@ -118,11 +145,13 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onDestroy() {
+    window.decorView.removeOnLayoutChangeListener(compactWindowListener)
     super.onDestroy()
   }
 
   /** 前台恢复即重声明 Exo 媒体会话（服务未在播时自灭，不留多余通知/卡片） */
   private fun reassertExoSession() {
+    if (!YayaExoService.serviceAlive) return
     try {
       val i = android.content.Intent(this, YayaExoService::class.java)
           .setAction(YayaExoService.ACTION_REASSERT)
@@ -145,6 +174,19 @@ class MainActivity : ReactActivity() {
         PipModule.emitPipDenied("appops")
         return
       }
+      PipOverlayController.setHidden(this, true)
+      // Android 12+ 由预先设置的 autoEnter 接管，避免切后台后延迟调用被系统拒绝。
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        PipModule.emitPipChanged(true)
+        stopMusicIfIdle()
+        reassertHandler.postDelayed({
+          if (!isCompactPlayerWindow() && !isFinishing && !isDestroyed) {
+            PipOverlayController.setHidden(this, false)
+            PipModule.emitPipChanged(false)
+          }
+        }, 1200)
+        return
+      }
       try {
         // ⚠️ 在 enterPictureInPictureMode 之前通知 RN，让 JS 提前把"应用内小窗"盖层
         // 全屏化（系统 PiP 内容 = 整窗快照，若不盖页面，悬浮窗里看到的是"列表+小窗"脏画面）
@@ -165,7 +207,8 @@ class MainActivity : ReactActivity() {
           // 若 ROM 静默拒绝（不抛异常也不真正进 PiP），必须撤掉盖层，
           // 否则 JS 的 pipCover 卡在 true → 页面被全屏视频层盖死（2026-10-21）。
           android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            if (!isInPictureInPictureMode) {
+            if (!isCompactPlayerWindow()) {
+              PipOverlayController.setHidden(this, false)
               PipModule.emitPipChanged(false)
               PipModule.emitPipDenied("timeout")
             }
@@ -183,7 +226,7 @@ class MainActivity : ReactActivity() {
 
   /** 音乐服务只是"暂停残留"（无真实播放）则彻底停掉：撤前台通知、释放 MediaSession */
   private fun stopMusicIfIdle() {
-    if (YayaExoService.musicActuallyPlaying) return
+    if (!YayaExoService.serviceAlive || YayaExoService.musicActuallyPlaying) return
     try {
       startService(
         android.content.Intent(this, YayaExoService::class.java)
@@ -196,7 +239,17 @@ class MainActivity : ReactActivity() {
    *  AppState 'background' 在 PiP 下不会触发，必须靠 native → JS 事件才能在 PiP 进入瞬间同步。 */
   override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-    PipModule.emitPipChanged(isInPictureInPictureMode)
+    compactPlayerWindow = isInPictureInPictureMode || isCompactPlayerWindow()
+    PipOverlayController.setHidden(this, compactPlayerWindow)
+    PipModule.emitPipChanged(compactPlayerWindow)
+  }
+
+  override fun onPictureInPictureUiStateChanged(pipState: android.app.PictureInPictureUiState) {
+    super.onPictureInPictureUiStateChanged(pipState)
+    if (Build.VERSION.SDK_INT >= 35 && pipState.isTransitioningToPip) {
+      PipOverlayController.setHidden(this, true)
+      PipModule.emitPipChanged(true)
+    }
   }
 
   /**

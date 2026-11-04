@@ -10,7 +10,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  AppState,
   DeviceEventEmitter,
   PanResponder,
   StyleSheet,
@@ -106,6 +105,7 @@ export function MiniPlayer() {
     (navigation as any).navigate('Media', {
       mode: info.backTo.mode,
       playUrl: info.backTo.playUrl,
+      playLiveId: info.backTo.playLiveId,
       playTitle: info.backTo.playTitle,
       playCover: info.backTo.playCover,
       playNonce: ++navNonceRef.current,
@@ -179,16 +179,6 @@ export function MiniPlayer() {
   // 是否已渲染为"后台 PiP 盖层"（全屏纯媒体，盖住页面其它 UI，保证系统悬浮窗画面干净）
   const [pipCover, setPipCover] = useState(false);
 
-  // ⚠️ 看门狗（2026-10-03 修复）：pipCover 依赖 PipEnteredChanged(false) 事件复位，
-  // 一旦事件丢失，整个应用窗口会被媒体层覆盖、拖动层吞掉全部触摸 → 界面「假死」。
-  // App 回到前台时无条件复位兜底，代价为零。
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') setPipCover(false);
-    });
-    return () => sub.remove();
-  }, []);
-
   /** 按内容比例自适应小窗高度 + 同步系统 PiP 比例（原生回调与网页内核消息共用） */
   const applyContentSize = useCallback((w: number, h: number) => {
     if (!(w > 0 && h > 0)) return;
@@ -210,6 +200,7 @@ export function MiniPlayer() {
   useEffect(() => {
     setPipPlaying(visible && playing && !!info?.url, 'miniplayer');
   }, [visible, playing, info]);
+  useEffect(() => () => setPipPlaying(false, 'miniplayer'), []);
 
   // 切后台兜底：强制置 PiP 标志（防主播放器关闭时把标志覆盖成 false，导致小窗切后台不进悬浮窗）
   // + 同步渲染"全屏媒体盖层"：系统 PiP 的画面 = 整个 Activity 窗口快照，若不把页面盖住，
@@ -217,13 +208,13 @@ export function MiniPlayer() {
   // ⚠️ AppState 在 PiP 下不切 background（仍为 active），不能驱动此处的盖层；
   //    改用 MainActivity.onPictureInPictureModeChanged → DeviceEvent 'PipEnteredChanged' 通知。
   useEffect(() => {
-    const active = visible && playing && !!info?.url;
+    const active = visible && !!info?.url;
     const sub = DeviceEventEmitter.addListener('PipEnteredChanged', (entered: boolean) => {
       // 只在「进 PiP」方向兜底置位 videoPlaying；退出方向**不动**——
       // 否则：用户点 PiP 展开回 app → entered=false → videoPlaying 被误清为 false →
       // 之后再按 Home 时 onUserLeaveHint 看到 videoPlaying=false 直接 return，悬浮窗不弹。
       // videoPlaying 标志只应由真实播放态（上方 147 行 effect）管，不该被退出事件踩掉。
-      if (entered && active) setPipPlaying(true, 'miniplayer');
+      if (entered && active && playing) setPipPlaying(true, 'miniplayer');
       // 全屏盖层无条件：不管 pip_auto(自动)还是手动点 dock 小窗进入 PiP,
       // 只要真的进了系统 PiP, 快照就得是纯媒体, 不能是「页面+小窗」。
       setPipCover(entered && active);
@@ -484,7 +475,7 @@ export function MiniPlayer() {
         />
         {/* 底部标题（随控件显隐；PiP 盖层时隐藏，保证悬浮窗纯画面） */}
         {controlsVisible && !pipCover && !info.audioOnly ? (
-          <View style={styles.titleBar} pointerEvents="none">
+          <View nativeID="yaya.pip.overlay" collapsable={false} style={styles.titleBar} pointerEvents="none">
             <Text style={styles.title} numberOfLines={1}>{info.title}</Text>
           </View>
         ) : null}
@@ -492,6 +483,8 @@ export function MiniPlayer() {
 
       {/* 按钮层：返回全屏/关闭/缩小/暂停 全部随控件显隐（3s 自动隐藏，点画面唤出） */}
       <Animated.View
+        nativeID="yaya.pip.overlay"
+        collapsable={false}
         pointerEvents={pipCover ? 'none' : info.audioOnly ? 'auto' : 'box-none'}
         /* 胶囊的拖动/点按由这一层承担（它铺满整颗胶囊且是胶囊 UI 的父链，
            文字/按钮之外的地方触摸都会冒泡到这里 → PanResponder 能收到；

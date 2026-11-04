@@ -21,6 +21,7 @@ const imports = {
     __esModule: true,
     default: { getNimLoginInfo: () => new Promise((resolve) => requests.push(resolve)) },
   },
+  '../../constants/identityFeatures': { ALLOW_CUSTOM_IDENTITY_ROLES: false, ALLOW_CUSTOM_SENDER_PROFILE: false, ALLOW_CUSTOM_TEAM_LOGO: false },
   '../settings': { getSetting: async () => null },
   '../../store': { useSettingsStore: { getState: () => ({ settings: { p48Token: token } }) } },
   '../../utils/runtimeLog': { logInfo() {} },

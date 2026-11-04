@@ -121,7 +121,7 @@ export default function RoomRadioScreen() {
 
   /** 应用流地址并强制重建播放器（url 变化 → LiveExoView key 变化 → 热换流） */
   const applyStreamUrl = (url: string, member: Member, mode: 'big' | 'small') => {
-    console.warn(`[radio] ${member.ownerName} ${mode} 流地址=${String(url).slice(0, 160)} (rtmp=${isRtmpUrl(url)})`);
+    if (__DEV__) console.warn(`[radio] ${member.ownerName} ${mode} (rtmp=${isRtmpUrl(url)})`);
     // 播放互斥：电台开播 → 后台音乐自动暂停（后播者胜）
     try {
       const mst = useMusicPlayerStore.getState();
@@ -286,7 +286,7 @@ export default function RoomRadioScreen() {
 
       <FadeInView delay={60} duration={360} style={{ flex: 1 }}>
         <View style={styles.pickerWrap}>
-          <MemberPicker selectedMember={selectedMember} onSelect={startRadio} placeholder={t('选择成员获取上麦音频...')} />
+          <MemberPicker selectedMember={selectedMember} onSelect={startRadio} activeOnly placeholder={t('选择成员获取上麦音频...')} />
           <View style={styles.modeRow}>
             <Pill
               label={t('大房间')}

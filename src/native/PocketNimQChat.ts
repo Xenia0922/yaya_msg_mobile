@@ -14,6 +14,7 @@ import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 interface PocketNimQChatNative {
   connect(appKey: string, account: string, token: string): Promise<boolean>;
   send(serverId: string, channelId: string, text: string, extJson: string): Promise<string>;
+  sendCustom(serverId: string, channelId: string, attachment: string, extJson: string): Promise<string>;
   disconnect(): void;
 }
 
@@ -57,6 +58,11 @@ export async function qchatSend(
 
 export function qchatDisconnect(): void {
   native?.disconnect?.();
+}
+
+export async function qchatSendCustom(serverId: string, channelId: string, attachment: string, extJson: string): Promise<string> {
+  if (!native?.sendCustom) throw new Error('当前设备不支持发送表情包');
+  return native.sendCustom(serverId, channelId, attachment, extJson);
 }
 
 export function onQChatStatus(listener: (status: { state: string; detail: string }) => void): () => void {

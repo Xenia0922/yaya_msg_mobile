@@ -320,6 +320,12 @@ export interface AppSettings {
   meet48Auth?: Meet48Auth | null;
   /** 画中画（系统小窗）：视频播放中切后台自动弹系统悬浮窗。默认关——不主动调用不弹 App 外小窗 */
   pip_auto: boolean;
+  /** 个性装扮：头像框 pfUrl（留空 = 不带；相对路径自动补 source1.48.cn） */
+  yaya_send_pfurl: string;
+  /** 个性装扮：队标 teamLogo（留空 = 不带） */
+  yaya_send_teamlogo: string;
+  /** 个性装扮：勋章 badge（多个用逗号分隔；留空 = 不带） */
+  yaya_send_badge: string;
   /** 首页「私信」入口的未读红点角标。默认开 */
   yaya_pm_unread_badge: boolean;
 }

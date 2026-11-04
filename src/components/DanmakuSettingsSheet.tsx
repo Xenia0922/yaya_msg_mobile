@@ -13,10 +13,12 @@ import { Pill } from './Pill';
 import { Button } from './Button';
 import { GlassSurface } from '../components/GlassSurface';
 import { GlassSegmented } from '../components/GlassSegmented';
+import { usePlayerStore } from '../player/store/playerStore';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  staticFeed?: boolean;
 }
 
 const AREAS: { key: DanmakuArea; label: string }[] = [
@@ -41,7 +43,7 @@ const OPACITIES: { v: number; label: string }[] = [
   { v: 1, label: '高' },
 ];
 
-export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
+export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = false }: Props) {
   const palette = usePalette();
   const { t } = useI18n();
   const { enabled, area, speed, fontSize, opacity, set, reset } = useDanmakuSettings();
@@ -87,19 +89,19 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
               <Text style={[typography.subhead, { color: palette.label, fontWeight: '600' }]}>{t('显示弹幕')}</Text>
               <Switch
                 value={enabled}
-                onValueChange={(v) => set({ enabled: v })}
+                onValueChange={(v) => { set({ enabled: v }); if (staticFeed && v && !usePlayerStore.getState().danmakuOn) usePlayerStore.getState().toggleDanmaku(); }}
                 thumbColor={enabled ? palette.tint : palette.onTint}
                 trackColor={{ false: palette.fill2, true: palette.tint }}
               />
             </View>
 
             {/* 显示区域 */}
-            <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('显示区域')}</Text>
+            {!staticFeed && <><Text style={[styles.section, { color: palette.labelTertiary }]}>{t('显示区域')}</Text>
             {chipRow(AREAS.map((a) => ({ key: a.key, label: t(a.label), active: area === a.key, onPress: () => set({ area: a.key }) })))}
 
             {/* 速度 */}
             <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('滚动速度')}</Text>
-            {chipRow(SPEEDS.map((s) => ({ key: s.label, label: t(s.label), active: speed === s.v, onPress: () => set({ speed: s.v }) })))}
+            {chipRow(SPEEDS.map((s) => ({ key: s.label, label: t(s.label), active: speed === s.v, onPress: () => set({ speed: s.v }) })))}</>}
 
             {/* 字号 */}
             <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('字号')}</Text>
@@ -110,7 +112,7 @@ export default function DanmakuSettingsSheet({ visible, onClose }: Props) {
             {chipRow(OPACITIES.map((o) => ({ key: o.label, label: t(o.label), active: opacity === o.v, onPress: () => set({ opacity: o.v }) })))}
 
             <View style={styles.resetWrap}>
-              <Button title={t('恢复默认')} onPress={() => reset()} variant="plain" size="sm" />
+              <Button title={t('恢复默认')} onPress={() => { reset(); if (staticFeed && !usePlayerStore.getState().danmakuOn) usePlayerStore.getState().toggleDanmaku(); }} variant="plain" size="sm" />
             </View>
           </ScrollView>
         </GlassSurface>

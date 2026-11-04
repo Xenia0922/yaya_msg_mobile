@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
-import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect, useNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, useIsFocused, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Animated, BackHandler, DeviceEventEmitter, Easing, ImageBackground, Keyboard, StyleSheet, ToastAndroid, View } from 'react-native';
+import { Animated, BackHandler, DeviceEventEmitter, Easing, ImageBackground, Keyboard, Platform, StyleSheet, ToastAndroid, View } from 'react-native';
 import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
 import { setPipEnabled, listenPipToggle, listenPipDenied } from '../utils/pip';
 import { Palettes } from '../theme/colors';
 import { fixDataUriMime } from '../utils/dataUri';
 import { ensureMemberData } from '../services/memberData';
+import { refreshActiveRoomMappings } from '../services/roomMapCache';
 // 副作用导入：安装音乐引擎的全局桥（系统媒体控件动作 / 播完自动切歌 / 后台推流）
 import '../services/musicPlayer';
 import { RootStackParamList, TabParamList } from './types';
@@ -50,6 +51,8 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { ui } from '../theme/ui';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useI18n } from '../i18n';
+import { shouldHideTabBar } from './tabBarVisibility';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -71,24 +74,15 @@ function withPageMotion<T extends object>(
   Screen: React.ComponentType<T>,
   _duration = ui.motion.tabDuration,
   _distance = 8,
-  /** 二级屏（root stack 里 Main 之外的屏）传 true：进入即隐藏 dock，离开恢复。
-   *  必须用 focus 副作用驱动 —— root stack 的卡片是透明的、Main 仍挂在树上，
-   *  单靠 tabBar 自己的状态判断不到「被二级屏盖住」。 */
-  hideTabBar = false,
+  _hideTabBar = false,
 ) {
   return function PageMotionScreen(props: T) {
-    const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
-    // dock 显隐只由「当前获得焦点的屏」决定：
-    // 二级屏 true（隐藏），tab 屏 false（显示）。不做 cleanup，
-    // 否则下一屏 focus 之后旧屏的 cleanup 会把状态又拨回去（竞态 → dock 时隐时现）。
-    useFocusEffect(
-      React.useCallback(() => {
-        setTabBarHidden(hideTabBar);
-      }, [hideTabBar, setTabBarHidden]),
-    );
+    const focused = useIsFocused();
+    const autoKeyboard = _hideTabBar && Screen !== PrivateMessagesScreen && Screen !== OpenLiveScreen && Screen !== BilibiliLiveScreen;
+    const keyboardHeight = useKeyboardHeight(Platform.OS === 'android' && autoKeyboard && focused);
     return (
       <ErrorBoundary>
-        <Screen {...props} />
+        <View style={{ flex: 1, paddingBottom: keyboardHeight }}><Screen {...props} /></View>
       </ErrorBoundary>
     );
   };
@@ -168,14 +162,13 @@ function MainTabBar({
 }
 
 function MainTabs() {
-  const tabBarHidden = useUiStore((state) => state.tabBarHidden);
+  const hiddenByRoute = useUiStore((state) => state.tabBarHiddenByRoute);
+  const mainFocused = useIsFocused();
 
   return (
     <Tab.Navigator
       tabBar={(props) => (
-        // hidden 由 NavigationContainer.onStateChange 统一驱动：
-        // 二级屏（root stack 里 Main 之外的屏）打开时隐藏 dock
-        <MainTabBar {...props} hidden={tabBarHidden} />
+        <MainTabBar {...props} hidden={shouldHideTabBar(props.state.routes[props.state.index]?.name, mainFocused, hiddenByRoute)} />
       )}
       screenOptions={{
         headerShown: false,
@@ -308,6 +301,8 @@ export default function AppNavigator() {
   const palette = usePalette();
   const screenBackdrop = useUiStore((state) => state.screenBackdrop);
   const customBgRaw = useSettingsStore((state) => state.settings.customBackgroundFile?.trim() || '');
+  const pocketToken = useSettingsStore((state) => state.settings.p48Token);
+  const memberBootRef = useRef<Promise<void> | null>(null);
   /**
    * 渲染前修正 data URI 的 mime：历史数据里存在「声明 image/png、实际是 JPEG」的脏值，
    * 部分解码路径会信声明而解码失败 → 背景一片黑（用户反馈的「背景图没加载」）。
@@ -333,8 +328,16 @@ export default function AppNavigator() {
 
   // 启动即自动同步成员数据库（进入软件自动更新；失败静默忽略，不阻塞启动）
   useEffect(() => {
-    ensureMemberData().catch(() => {});
+    memberBootRef.current = ensureMemberData().catch(() => {});
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (pocketToken) void (memberBootRef.current || Promise.resolve()).then(() => {
+      if (active) return refreshActiveRoomMappings();
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [pocketToken]);
 
   // 启动静默检查版本更新（24h 限流；失败静默，有更新时设置页显示红点）
   useEffect(() => {

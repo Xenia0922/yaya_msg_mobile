@@ -45,6 +45,8 @@ export interface UserProfileTarget {
   memberId?: string;
   /** 已命中的成员记录（有则展示「成员 · 队伍」） */
   member?: any;
+  /** 数据源没有用户 ID 时说明原因。 */
+  missingIdMessage?: string;
 }
 
 export interface UserProfileSheetProps {
@@ -150,7 +152,7 @@ export function UserProfileSheet({ visible, target, onClose, onOpenChat, onFollo
       });
 
       if (!candidates.length) {
-        apply({ loading: false, error: t('该用户没有可加载的口袋48资料') });
+        apply({ loading: false, error: tg.missingIdMessage || t('该用户没有可加载的口袋48资料') });
         return;
       }
 

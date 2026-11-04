@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import pocketApi from '../api/pocket48';
-import { useMemberStore } from '../store';
+import { useMemberStore, useSettingsStore } from '../store';
+import { isRoomMember } from '../utils/members';
 import { logInfo, logWarn } from '../utils/runtimeLog';
 
 /**
@@ -26,24 +27,31 @@ export interface RoomMapEntry {
   updatedAt: number;
   /** 最近一次「小房间补齐尝试」时间：yklzId 为空时用它做 24h 退避，避免每次扫描重复请求 */
   yklzTriedAt?: number;
+  /** 最后一次通过官方频道详情核验的时间。 */
+  verifiedAt?: number;
 }
 
 let roomMap: Record<string, RoomMapEntry> = {};
 let hydrated = false;
+let hydration: Promise<void> | null = null;
 
 export async function hydrateRoomMap(): Promise<void> {
   if (hydrated) return;
-  try {
-    const raw = await AsyncStorage.getItem(ROOM_MAP_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') roomMap = parsed;
+  if (hydration) return hydration;
+  hydration = (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(ROOM_MAP_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') roomMap = parsed;
+      }
+    } catch {
+      roomMap = {};
     }
-  } catch {
-    roomMap = {};
-  }
-  hydrated = true;
-  logInfo(`[roomMap] 已加载房间映射缓存 ${Object.keys(roomMap).length} 条`, 'roomMap');
+    hydrated = true;
+    logInfo(`[roomMap] 已加载房间映射缓存 ${Object.keys(roomMap).length} 条`, 'roomMap');
+  })();
+  try { await hydration; } finally { hydration = null; }
 }
 
 export function getRoomMapEntry(memberId: string): RoomMapEntry | undefined {
@@ -104,6 +112,69 @@ export function parseSeineDetail(content: any): { channelId: string; yklzId: str
   const yklzId = String(small?.channelId || '');
   const serverId = String(content?.chatServerInfo?.serverId || '');
   return { channelId, yklzId, serverId };
+}
+
+/** 启动后限并发核验在团成员房间；失败时保留已有映射。 */
+export async function refreshActiveRoomMappings(): Promise<void> {
+  const token = useSettingsStore.getState().settings.p48Token;
+  if (!token) return;
+  await hydrateRoomMap();
+  let servers: Record<string, unknown>;
+  try {
+    const result = await pocketApi.getStarServerMap();
+    servers = result?.content?.userServerMap || result?.data?.userServerMap || {};
+  } catch {
+    return;
+  }
+  if (useSettingsStore.getState().settings.p48Token !== token) return;
+  const candidates = useMemberStore.getState().members.filter((member) => isRoomMember(member) && /^[1-9]\d*$/.test(String(servers[member.id] || '')));
+  let next = 0;
+  let failures = 0;
+  let changed = 0;
+  const patches = new Map<string, RoomMapEntry>();
+  const flush = () => {
+    if (!patches.size || useSettingsStore.getState().settings.p48Token !== token) return;
+    const updates = new Map(patches);
+    patches.clear();
+    const store = useMemberStore.getState();
+    store.setMembers(store.members.map((member) => {
+      const update = updates.get(String(member.id));
+      return update ? { ...member, serverId: update.serverId, channelId: update.channelId, yklzId: update.yklzId } : member;
+    }));
+    persistRoomMap();
+  };
+  const worker = async () => {
+    while (next < candidates.length && failures < 8 && useSettingsStore.getState().settings.p48Token === token) {
+      const member = candidates[next++];
+      const sid = String(servers[member.id]);
+      if (!Number.isSafeInteger(Number(sid))) continue;
+      try {
+        const result = await pocketApi.getSeineServerDetail(Number(sid));
+        if (useSettingsStore.getState().settings.p48Token !== token) return;
+        const parsed = parseSeineDetail(result?.content || result?.data || {});
+        if (!/^[1-9]\d*$/.test(parsed.channelId) || (parsed.serverId && parsed.serverId !== sid) || parsed.channelId === parsed.yklzId) throw new Error('房间映射无效');
+        failures = 0;
+        const previous = roomMap[String(member.id)];
+        const entry: RoomMapEntry = {
+          channelId: parsed.channelId,
+          yklzId: /^[1-9]\d*$/.test(parsed.yklzId) ? parsed.yklzId : (previous?.serverId === sid ? previous.yklzId : member.serverId === sid ? member.yklzId : '') || '',
+          serverId: sid,
+          updatedAt: Date.now(),
+          verifiedAt: Date.now(),
+        };
+        roomMap[String(member.id)] = entry;
+        patches.set(String(member.id), entry);
+        changed += 1;
+        if (changed % 20 === 0) persistRoomMap();
+      } catch {
+        failures += 1;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  flush();
+  logInfo(`[roomMap] 启动核验完成：${changed}/${candidates.length}`, 'roomMap');
 }
 
 /**

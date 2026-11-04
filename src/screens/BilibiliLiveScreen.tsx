@@ -482,7 +482,7 @@ export default function BilibiliLiveScreen() {
 
         {/* 登录画质提示：未登录时一次性告知（区别于换流提示，仅画质相关） */}
         {qualityHint ? (
-          <Animated.View style={styles.qualityHintWrap} pointerEvents="none">
+          <Animated.View nativeID="yaya.pip.overlay" collapsable={false} style={styles.qualityHintWrap} pointerEvents="none">
             <View style={styles.qualityHintPill}>
               <MaterialCommunityIcons name="account-key-outline" size={13} color="#ffd9e2" />
               <Text style={styles.qualityHintText} numberOfLines={2}>{qualityHint}</Text>

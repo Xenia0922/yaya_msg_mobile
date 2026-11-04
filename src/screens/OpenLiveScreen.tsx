@@ -3,8 +3,11 @@ import { PerfFlatList } from '../components/PerfFlatList';
 
 import {
   BackHandler,
+  ActivityIndicator,
   Image,
   Linking,
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -157,6 +160,7 @@ export default function OpenLiveScreen() {
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
+  const token = useSettingsStore((state) => state.settings.p48Token);
   const [member, setMember] = useState<Member | null>(null);
   const [items, setItems] = useState<OpenLiveItem[]>([]);
   const [query, setQuery] = useState('');
@@ -167,6 +171,8 @@ export default function OpenLiveScreen() {
   const [listError, setListError] = useState('');
   const [playing, setPlaying] = useState<{ url: string; title: string } | null>(null);
   const loadingRef = useRef(false);
+  const participantRequest = useRef(0);
+  const [participants, setParticipants] = useState<{ title: string; loading: boolean; error: string; rows: { id: string; name: string; avatar: string; team: string }[] } | null>(null);
 
   // 播放器生命周期已由统一 PlayerScreen/FullscreenManager 管理（横屏/竖屏/PiP/返回键）
 
@@ -256,6 +262,28 @@ export default function OpenLiveScreen() {
       showToast(t('已加入下载管理'));
     } catch (error) {
       showToast(t('下载失败：{error}', { error: errorMessage(error) }));
+    }
+  };
+
+  const showParticipants = async (item: OpenLiveItem) => {
+    const request = ++participantRequest.current;
+    setParticipants({ title: item.title, loading: true, error: '', rows: [] });
+    if (!token) {
+      setParticipants({ title: item.title, loading: false, error: t('登录后可查看参与成员'), rows: [] });
+      return;
+    }
+    try {
+      const res = await pocketApi.getOpenLiveMemberRank(item.liveId);
+      if (participantRequest.current !== request) return;
+      const rows = (Array.isArray(res?.content) ? res.content : []).map((entry: any) => ({
+        id: String(entry?.user?.userId || ''),
+        name: String(entry?.user?.userName || entry?.user?.nickName || '').trim(),
+        avatar: normalizeUrl(String(entry?.user?.userAvatar || '')),
+        team: String(entry?.userTeam?.teamName || ''),
+      })).filter((entry: { id: string; name: string }) => entry.name && /^[1-9]\d{0,31}$/.test(entry.id));
+      setParticipants({ title: item.title, loading: false, error: '', rows });
+    } catch (error) {
+      if (participantRequest.current === request) setParticipants({ title: item.title, loading: false, error: errorMessage(error), rows: [] });
     }
   };
 
@@ -369,10 +397,10 @@ export default function OpenLiveScreen() {
                   <Text style={[styles.meta, { color: palette.labelSecondary }]} numberOfLines={1}>{item.nickname || shortMemberName(member) || t('成员')}</Text>
                   <View style={styles.cardFoot}>
                     <Text style={[styles.time, { color: palette.labelSecondary }]}>{formatTimestamp(item.msgTime)}</Text>
-                    <View style={[styles.badge, { backgroundColor: palette.tintSoft }]}>
-                      <MaterialCommunityIcons name="play-circle-outline" size={12} color={palette.tint} />
-                      <Text style={[styles.badgeText, { color: palette.tint }]}>{t('可看')}</Text>
-                    </View>
+                    <TouchableOpacity accessibilityRole="button" onPress={(event) => { event.stopPropagation(); void showParticipants(item); }} style={[styles.badge, { backgroundColor: palette.tintSoft }]}>
+                      <MaterialCommunityIcons name="account-group-outline" size={12} color={palette.tint} />
+                      <Text style={[styles.badgeText, { color: palette.tint }]}>{t('参与成员')}</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} style={styles.chevron} />
@@ -381,6 +409,23 @@ export default function OpenLiveScreen() {
           )}
         />
       </FadeInView>
+      <Modal visible={!!participants} transparent animationType="fade" onRequestClose={() => { participantRequest.current++; setParticipants(null); }}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.participantsSheet, { backgroundColor: palette.surfaceGlassStrong }]}>
+            <View style={styles.participantsHeader}>
+              <Text style={[styles.cardTitle, { color: palette.label, flex: 1 }]} numberOfLines={1}>{participants?.title} · {t('参与成员')}</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('关闭')} onPress={() => { participantRequest.current++; setParticipants(null); }}><MaterialCommunityIcons name="close" size={24} color={palette.labelSecondary} /></TouchableOpacity>
+            </View>
+            {participants?.loading ? <ActivityIndicator color={palette.tint} style={{ margin: 24 }} /> : participants?.error ? <Text style={[styles.participantsMessage, { color: palette.labelSecondary }]}>{participants.error}</Text> : participants?.rows.length ? (
+              <ScrollView>{participants.rows.map((entry) => <View key={entry.id} style={styles.participantRow}>
+                {entry.avatar ? <Image source={{ uri: entry.avatar }} style={styles.participantAvatar} /> : <View style={[styles.participantAvatar, { backgroundColor: palette.fill2 }]} />}
+                <Text style={{ color: palette.label, flex: 1 }}>{entry.name}</Text>
+                {entry.team ? <Text style={{ color: palette.labelSecondary }}>{entry.team}</Text> : null}
+              </View>)}</ScrollView>
+            ) : <Text style={[styles.participantsMessage, { color: palette.labelSecondary }]}>{t('暂无参与成员数据')}</Text>}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -426,6 +471,12 @@ const styles = StyleSheet.create({
   playerRetryText: { fontSize: 13, fontWeight: '800' },
   externalBtn: { margin: 16, minHeight: 44, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   externalText: { fontWeight: '900' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  participantsSheet: { maxHeight: '70%', minHeight: 160, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18 },
+  participantsHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
+  participantsMessage: { textAlign: 'center', marginVertical: 24 },
+  participantRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
+  participantAvatar: { width: 36, height: 36, borderRadius: 18 },
   skeletonWrap: { padding: 4 },
   skeletonCard: {
     flexDirection: 'row',

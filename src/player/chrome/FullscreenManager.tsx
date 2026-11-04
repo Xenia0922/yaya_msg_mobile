@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { BackHandler } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { usePlayerStore } from '../store/playerStore';
@@ -9,7 +9,12 @@ import { setPipPlaying } from '../../utils/pip';
  * 唯一全屏/横屏/沉浸/PiP 管理器（重写核心）：
  * 替代现状 MediaScreen/BilibiliLiveScreen/FollowedRoomsScreen 三套独立实现。
  */
+let nextPipSource = 0;
+
 export function FullscreenManager() {
+  const pipSourceRef = useRef('');
+  if (!pipSourceRef.current) pipSourceRef.current = `fullscreen-${++nextPipSource}`;
+  const pipSource = pipSourceRef.current;
   const fullscreen = usePlayerStore((s) => s.fullscreen);
   const state = usePlayerStore((s) => s.state);
   const source = usePlayerStore((s) => s.source);
@@ -36,18 +41,19 @@ export function FullscreenManager() {
   //    进 PiP 不会重建 Activity，横屏状态可保留；PiP 窗口比例由 setPipAspect 控制。
   useEffect(() => {
     const on = !!source?.url && state === 'playing';
-    setPipPlaying(on, 'fullscreen');
+    setPipPlaying(on, pipSource);
     // 视频（非音乐）成为前台媒体时，若音乐服务只是"暂停残留"，可留待原生 PiP 入口统一清理
-  }, [source, state]);
+  }, [source, state, pipSource]);
 
   // 卸载（播放器关闭）兜底复位：防"最后置位 true 后页面已关，再按 Home 误进无内容悬浮窗"
-  useEffect(() => () => setPipPlaying(false, 'fullscreen'), []);
+  useEffect(() => () => setPipPlaying(false, pipSource), [pipSource]);
 
   // 返回键：先退全屏，再关闭播放器（R4：优先调页面 onClose 清理播放器页状态，
   // 避免 VideoLibrary/Bilibili 等"黑屏需按两次返回"）
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       const s = usePlayerStore.getState();
+      if (s.cleanScreen) { s.setCleanScreen(false); s.toggleControls(true); return true; }
       if (!s.source) return false;
       if (s.fullscreen) {
         s.setFullscreen(false);

@@ -49,7 +49,7 @@ export function readExt(msg: any): Record<string, any> {
       const text = raw.trim();
       if (!text || text[0] !== '{') continue;
       try {
-        const parsed = JSON.parse(text);
+        const parsed = JSON.parse(text.replace(/("(?:userId|uid|id)"\s*:\s*)(\d{16,})(?=\s*[,}])/g, '$1"$2"'));
         if (parsed && typeof parsed === 'object') return parsed;
       } catch {
         /* 非法 JSON 继续尝试下一个候选 */
@@ -101,10 +101,39 @@ function firstString(...values: any[]): string {
 
 function toNumber(...values: any[]): number {
   for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
     const num = Number(value);
     if (Number.isFinite(num)) return num;
   }
   return 0;
+}
+
+function toUserId(...values: any[]): string {
+  for (const value of values) {
+    if (typeof value === 'number' && !Number.isSafeInteger(value)) continue;
+    const id = String(value ?? '').trim();
+    if (/^[1-9]\d*$/.test(id)) return id;
+  }
+  return '';
+}
+
+export function isLiveStreamTransition(messageType: string): boolean {
+  return messageType === 'MICROPHONE_CONNECTION_AGREE_V2'
+    || messageType === 'MICROPHONE_CONNECTION_FINISH_V2'
+    || messageType === 'MULTI_MIC_PK_SUCCESS'
+    || messageType === 'MULTI_MIC_PK_FINISH';
+}
+
+export function parseLiveUpdate(msg: any): { audience?: string; rankAvatars?: string[] } | null {
+  const ext = readExt(msg);
+  if (ext.messageType !== 'LIVEUPDATE') return null;
+  const info = ext.liveUpdateInfo || ext;
+  const rawAudience = info.online;
+  const audience = rawAudience === undefined || rawAudience === null ? undefined : String(rawAudience);
+  const rankAvatars = Array.isArray(info.topList)
+    ? info.topList.slice(0, 3).map((row: any) => firstString(row?.user?.userAvatar, row?.user?.avatar, row?.userAvatar, row?.avatar)).filter(Boolean)
+    : undefined;
+  return { audience, rankAvatars };
 }
 
 /** 归一化一条云信聊天室消息；不认识的消息返回 null（例如协议层通知） */
@@ -116,14 +145,14 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
 
   const ext = readExt(msg);
   const messageType: string = firstString(ext.messageType, type === 'text' ? NimMsgType.TEXT : '');
-  const user = (ext.user && typeof ext.user === 'object' ? ext.user : {}) as Record<string, any>;
+  const user = (ext.user && typeof ext.user === 'object' ? ext.user : ext.userInfo && typeof ext.userInfo === 'object' ? ext.userInfo : {}) as Record<string, any>;
   const kind = toKind(messageType, ext);
 
-  const nick = firstString(user.nickName, user.nickname, msg.fromNick, msg.from);
-  const avatar = firstString(user.avatar, msg.fromAvatar);
-  const userId = toNumber(user.userId, user.id, user.uid);
+  const nick = firstString(user.nickName, user.nickname, user.userName, msg.fromNick, msg.from);
+  const avatar = firstString(user.avatar, user.userAvatar, user.headImg, user.headUrl, ext.avatar, ext.userAvatar, msg.fromAvatar);
+  const userId = toUserId(user.userId, user.id, user.uid, ext.userId);
   const roleId = toNumber(user.roleId);
-  const level = toNumber(user.level);
+  const level = toNumber(user.level, user.userLevel, ext.level, ext.userLevel);
 
   let text = firstString(ext.text, msg.text);
   let gift: BarrageItem['gift'];
@@ -154,7 +183,7 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
     text = `${nick} 进入直播间`;
   }
 
-  if (!text && kind !== 'gift') return null;
+  if (!text && kind !== 'gift' && !isLiveStreamTransition(messageType)) return null;
 
   return {
     id: firstString(msg.idClient, msg.idServer, msg.uuid, `${nick}-${msg.time}-${text}`),

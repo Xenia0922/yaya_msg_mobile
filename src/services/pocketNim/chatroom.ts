@@ -1,6 +1,6 @@
 
 
-import { buildLiveBarrageExt, parseChatroomMessage } from './codec';
+import { buildLiveBarrageExt, parseChatroomMessage, parseLiveUpdate } from './codec';
 import {
   isPocketNimChatroomAvailable,
   chatroomConnect,
@@ -8,6 +8,7 @@ import {
   chatroomDisconnect,
   onChatroomMessage,
   onChatroomStatus,
+  onChatroomOnline,
 } from '../../native/PocketNimChatroom';
 import { credentialsToProfile, loadNimSdk, NimCredentials, NIM_CHATROOM_ADDRESSES, NIM_APP_KEY } from './runtime';
 import { loadSelfProfile } from './credentials';
@@ -65,7 +66,7 @@ async function resolveChatroomAddresses(): Promise<string[]> {
 }
 
 /** 云信 SDK 内部日志开关（排障时临时改 true；日志经 console → logcat ReactNativeJS） */
-const NIM_DEBUG = true;
+const NIM_DEBUG = false;
 
 export interface LiveChatroomOptions {
   /** 聊天室 id（live 详情 content.roomId） */
@@ -77,6 +78,8 @@ export interface LiveChatroomOptions {
   module?: string;
   onMessages: (items: BarrageItem[]) => void;
   onStatus?: (status: ChatroomStatus, detail?: string) => void;
+  onLiveInfo?: (info: { audience?: string; rankAvatars?: string[] }) => void;
+  onOnlineCount?: (count: number) => void;
 }
 
 /**
@@ -209,6 +212,11 @@ export class LiveChatroom {
       })
     );
     this.nativeUnsubs.push(
+      onChatroomOnline((count) => {
+        if (!this.disposed) this.options.onOnlineCount?.(count);
+      })
+    );
+    this.nativeUnsubs.push(
       onChatroomMessage((message) => {
         if (this.disposed) return;
         // 组装成 Web SDK 的消息形态，复用同一套解析（readExt / parseChatroomMessage）
@@ -222,13 +230,15 @@ export class LiveChatroom {
           idClient: message.uuid,
           custom: message.ext,
         };
+        const info = parseLiveUpdate(shaped);
+        if (info) this.options.onLiveInfo?.(info);
         const item = parseChatroomMessage(shaped);
         if (item) this.options.onMessages([item]);
       })
     );
     try {
       // eslint-disable-next-line no-console
-      console.log('[nim] native chatroom connect roomId =', roomId, 'account =', credentials.accid);
+      console.log('[nim] native chatroom connecting');
       await chatroomConnect(NIM_APP_KEY, credentials.accid, credentials.token, roomId);
       // eslint-disable-next-line no-console
       console.log('[nim] native chatroom CONNECTED');
@@ -291,6 +301,8 @@ export class LiveChatroom {
           if (this.disposed || !Array.isArray(msgs)) return;
           const items: BarrageItem[] = [];
           for (const msg of msgs) {
+            const info = parseLiveUpdate(msg);
+            if (info) this.options.onLiveInfo?.(info);
             const item = parseChatroomMessage(msg);
             if (item) items.push(item);
           }

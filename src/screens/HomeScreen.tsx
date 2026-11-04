@@ -39,6 +39,7 @@ import { externalApi } from '../api/external';
 import bilibiliApi from '../api/bilibili';
 import { BilibiliLiveRoom } from '../types';
 import { normalizeUrl, pickText, unwrapList } from '../utils/data';
+import { privateUnreadCount } from '../utils/privateUnread';
 import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
@@ -245,6 +246,7 @@ export default function HomeScreen() {
   const [bannerIndex, setBannerIndex] = useState(0);
   /** 口袋私信未读数（红点角标）：进首页拉一次，失败静默为 0 */
   const [pmUnread, setPmUnread] = useState(0);
+  const pmUnreadTokenRef = useRef('');
   const fetchedRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -651,17 +653,26 @@ export default function HomeScreen() {
   // 私信未读红点：仅在已登录时拉取；失败静默（不打扰）
   useFocusEffect(useCallback(() => {
     // 设置里有开关（默认开）：关掉就不再拉取、不显示角标
-    if (!token || settings.yaya_pm_unread_badge === false) { setPmUnread(0); return; }
+    if (!token || settings.yaya_pm_unread_badge === false) { pmUnreadTokenRef.current = ''; setPmUnread(0); return; }
+    if (pmUnreadTokenRef.current !== token) { pmUnreadTokenRef.current = token; setPmUnread(0); }
     let alive = true;
-    pocketApi.getUnreadMessageCount()
-      .then((res: any) => {
-        if (!alive) return;
-        const c = res?.content ?? res?.data ?? {};
-        const n = Number(c.num ?? c.unreadNum ?? c.unread ?? c.count ?? c.total ?? 0);
-        setPmUnread(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
-      })
-      .catch(() => { if (alive) setPmUnread(0); });
-    return () => { alive = false; };
+    let fetching = false;
+    const refreshUnread = () => {
+      if (!alive || fetching || AppState.currentState !== 'active') return;
+      fetching = true;
+      pocketApi.getUnreadMessageCount()
+        .then((res: any) => {
+          if (!alive) return;
+          const count = privateUnreadCount(res);
+          if (count !== null) setPmUnread(count);
+        })
+        .catch(() => {})
+        .finally(() => { fetching = false; });
+    };
+    refreshUnread();
+    const timer = setInterval(refreshUnread, 30000);
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') refreshUnread(); });
+    return () => { alive = false; clearInterval(timer); sub.remove(); };
   }, [token, settings.yaya_pm_unread_badge]));
   const toolChips = TOOL_CHIPS.map((i) => ({ ...i, title: t(i.title) }));
 
@@ -882,14 +893,14 @@ export default function HomeScreen() {
                   pressedScale={0.94}
                   style={styles.quickCellInner}
                 >
-                    {/* ⚠️【性能】4 个快捷入口逐格玻璃 = 4 个 BlurView 常驻首页，改实底圆角 */}
+                    {/* 半透明底色让背景透出，避免为每个入口重复模糊。 */}
                     <View
-                      style={[styles.chip, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth }]}
+                      style={[styles.chip, { backgroundColor: palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)', borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)' }]}
                     >
                       <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
                         <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                       </View>
-                      <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>{item.title}</Text>
+                      <Text style={[styles.chipText, { color: palette.label }]} numberOfLines={1}>{item.title}</Text>
                       {/* 私信未读红点角标 */}
                       {item.route === 'PrivateMessagesScreen' && pmUnread > 0 && settings.yaya_pm_unread_badge !== false ? (
                         <View style={{
@@ -1006,15 +1017,15 @@ export default function HomeScreen() {
                   key={item.title}
                   onPress={() => handleNav(item)}
                   pressedScale={0.94}
+                  style={{ width: quickCellW }}
                 >
-                  {/* ⚠️【性能】横向工具条逐格玻璃 = N 个 BlurView，改实底圆角 */}
                   <View
-                    style={[styles.toolChip, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.innerStroke, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth }]}
+                    style={[styles.chip, { backgroundColor: palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)', borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)' }]}
                   >
-                    <View style={[styles.toolChipIcon, { backgroundColor: palette.tintSoft }]}>
+                    <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
                       <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                     </View>
-                    <Text style={[typography.footnote, { color: palette.label, fontWeight: '600' }]} numberOfLines={1}>{item.title}</Text>
+                    <Text style={[styles.chipText, { color: palette.label }]} numberOfLines={1}>{item.title}</Text>
                   </View>
                 </ScalePressable>
               ))}
@@ -1162,23 +1173,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 999,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingRight: 12,
-    paddingVertical: 7,
+    height: 46,
+    paddingHorizontal: 4,
+    gap: 4,
   },
   quickRow: { flexDirection: 'row', gap: 8 },
   quickCell: {},
   quickCellInner: { width: '100%' },
   chipIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
-    marginLeft: 6,
+    flexShrink: 0,
   },
+  chipText: { fontSize: 12, lineHeight: 16, fontWeight: '600', flexShrink: 1 },
   miniBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   musicCover: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   toolChipsContent: {
@@ -1188,23 +1200,5 @@ const styles = StyleSheet.create({
     // 防横向 ScrollView 高度塌缩：显式 minHeight + 垂直居中，保证图标不被截断
     alignItems: 'center',
     minHeight: 46,
-  },
-  // 工具 chips：与快捷入口胶囊(chip)完全同参 —— 圆角 20 / 图标 30 / 间距一致（风格统一）
-  toolChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingRight: 12,
-    paddingVertical: 7,
-  },
-  toolChipIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    marginLeft: 6,
   },
 });

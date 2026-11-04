@@ -22,6 +22,7 @@ export interface MiniPlayerInfo {
   backTo: {
     mode: 'live' | 'vod';
     playUrl: string;
+    playLiveId?: string;
     playTitle?: string;
     playCover?: string;
     /** 小窗→大窗续播位置（仅录播；MediaScreen 直接按此 seek） */
@@ -62,7 +63,8 @@ export const useMiniPlayerStore = create<MiniPlayerState>((set) => ({
         mst.setPlaybackState('paused');
       }
     } catch {}
-    set({ info, visible: true, playing: true, currentPos: 0 });
+    const position = info.position;
+    set({ info, visible: true, playing: true, currentPos: !info.isLive && position != null && Number.isFinite(position) ? Math.max(0, position) : 0 });
   },
   close: () => set({ visible: false, info: null, currentPos: 0 }),
   setPlaying: (playing) => set({ playing }),

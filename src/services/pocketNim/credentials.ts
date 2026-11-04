@@ -6,6 +6,7 @@
  */
 
 import pocketApi from '../../api/pocket48';
+import { ALLOW_CUSTOM_IDENTITY_ROLES, ALLOW_CUSTOM_SENDER_PROFILE, ALLOW_CUSTOM_TEAM_LOGO } from '../../constants/identityFeatures';
 import { getSetting } from '../settings';
 import { useSettingsStore } from '../../store';
 import { logInfo } from '../../utils/runtimeLog';
@@ -91,6 +92,15 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
   return request;
 }
 
+/** 头像框/队标/勋章图：与头像同源，空值原样返回 */
+function absFrame(a: string): string {
+  const v = String(a || '').trim();
+  if (!v) return '';
+  if (/^(https?:)?\/\//i.test(v)) return v.startsWith('//') ? `https:${v}` : v;
+  if (v.startsWith('avatar/') || v.startsWith('mediasource/') || v.startsWith('backstage')) return `https://source1.48.cn/${v}`;
+  return `https://source.48.cn${v.startsWith('/') ? v : `/${v}`}`;
+}
+
 /** 相对路径头像 → source.48.cn 绝对地址（App 内同款惯例） */function absAvatar(a: string): string {
   const v = String(a || '').trim();
   if (!v) return '';
@@ -109,8 +119,23 @@ export async function loadSelfProfile(force = false): Promise<NimSelfProfile | n
   invalidateChangedAccount(currentPocketToken());
   const requestGeneration = generation;
   const requestToken = currentPocketToken();
-  const profile = await resolveSelfProfile(force);
+  const resolvedProfile = await resolveSelfProfile(force);
+  const profile = resolvedProfile ? { ...resolvedProfile } : null;
   if (!profile || requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
+  // 个性装扮（头像框 / 勋章）：只改消息展示位，不动账号资料
+  try {
+    const [pfUrl, badge] = await Promise.all([
+      getSetting('yaya_send_pfurl'),
+      getSetting('yaya_send_badge'),
+    ]);
+    if (requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
+    if (pfUrl && pfUrl.trim()) profile.pfUrl = absFrame(pfUrl.trim());
+    if (badge && badge.trim()) {
+      profile.badge = badge.split(',').map((item: string) => absFrame(item.trim())).filter(Boolean);
+    }
+  } catch {
+    /* 设置读取失败不影响发送 */
+  }
   return profile;
 }
 
@@ -119,7 +144,6 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
   const requestToken = currentPocketToken();
   const base = await loadNimCredentials(force).then((c) => (c ? credentialsToProfile(c) : null));
   if (requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
-  if (base && base.nickName && base.avatar) return base;
   if (!force && selfProfileCache) return selfProfileCache;
   if (!selfProfileInflight) {
     let request!: Promise<NimSelfProfile | null>;
@@ -140,6 +164,8 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
           base.vip = u.vip === true || u.vip === 1;
           base.pfUrl = String(u.pfUrl || '');
           base.teamLogo = String(u.teamLogo || '');
+          const badge = Array.isArray(u.badge) && u.badge.length ? u.badge : u.seineBadge;
+          if (Array.isArray(badge)) base.badge = badge;
         }
         selfProfileCache = base;
         return base;

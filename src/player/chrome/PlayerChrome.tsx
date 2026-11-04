@@ -1,18 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, GestureResponderEvent, Keyboard, Modal, PanResponder, Platform, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, FlatList, GestureResponderEvent, Image, Keyboard, Linking, Modal, NativeModules, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { usePlayerStore } from '../store/playerStore';
-import { PlayerFeatures } from '../types';
+import { PlayerFeatures, PocketComment, PocketPlayerInfo } from '../types';
 import { useI18n } from '../../i18n';
 import { usePalette } from '../../theme';
 import { formatPlayTime } from './FullscreenManager';
 import { useSafeAreaInsets } from '../../hooks/useSafeAreaInsets';
 import { enqueueDownload } from '../../services/downloads';
 import { useUiStore } from '../../store';
-import { errorMessage } from '../../utils/data';
+import { errorMessage, normalizeUrl, pickText, unwrapList } from '../../utils/data';
+import pocketApi from '../../api/pocket48';
+import { clearGiftEffectQueue } from '../../services/giftEffect';
+import { useDanmakuSettings } from '../../store/danmakuSettings';
+import { replayDanmakuCount } from '../../utils/danmaku';
+import { getLiveUserAvatar, normalizeLiveAvatar } from '../../services/liveAvatarCache';
 
 interface Props {
+  pocket?: PocketPlayerInfo;
   features?: PlayerFeatures;
   extraActions?: Array<{
     key: string;
@@ -37,11 +43,76 @@ const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 /** 触控色（全屏黑底上固定亮色，不随主题） */
 const TINT = '#ff6f91';
 
+function RankAvatar({ uri, overlap }: { uri: string; overlap: boolean }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [uri]);
+  const style = [styles.pocketRankAvatar, overlap && { marginLeft: -9 }];
+  return failed || !uri
+    ? <View style={[style, styles.pocketRankAvatarFallback]}><MaterialCommunityIcons name="account" size={18} color="rgba(255,255,255,0.85)" /></View>
+    : <Image source={{ uri }} resizeMode="cover" onError={() => setFailed(true)} style={style} />;
+}
+
+function CommentAvatar({ uri, userId }: { uri?: string; userId?: string | number }) {
+  const normalized = normalizeLiveAvatar(uri);
+  const [failed, setFailed] = useState(false);
+  const [resolved, setResolved] = useState('');
+  const fallbackAttempted = useRef(false);
+  useEffect(() => { fallbackAttempted.current = false; setFailed(false); setResolved(''); }, [normalized, userId]);
+  useEffect(() => {
+    let active = true;
+    const id = String(userId || '');
+    if ((!normalized || failed) && !fallbackAttempted.current && /^\d+$/.test(id) && id !== '0') {
+      fallbackAttempted.current = true;
+      void getLiveUserAvatar(id, true).then((url) => { if (active && url && url !== normalized) { setResolved(url); setFailed(false); } });
+    }
+    return () => { active = false; };
+  }, [normalized, userId, failed]);
+  const url = resolved || normalized;
+  return url && !failed
+    ? <Image source={{ uri: url }} onError={() => setFailed(true)} style={styles.pocketCommentAvatar} />
+    : <View style={styles.pocketCommentAvatarFallback}><MaterialCommunityIcons name="account" size={13} color="rgba(255,255,255,0.85)" /></View>;
+}
+
+function PocketCommentFeed({ comments, onCommentPress, hideEnter, fontSize, opacity, bottom }: {
+  comments: PocketComment[];
+  onCommentPress?: (comment: PocketComment) => void;
+  hideEnter: boolean;
+  fontSize: number;
+  opacity: number;
+  bottom: number;
+}) {
+  const visible = useMemo(() => comments.filter((item) => !hideEnter || item.kind !== 'enter'), [comments, hideEnter]);
+  const newestFirst = useMemo(() => visible.slice().reverse(), [visible]);
+  const renderComment = (item: PocketComment) => (
+    <TouchableOpacity disabled={!onCommentPress || (!item.userId && !item.nick)} onPress={() => onCommentPress?.(item)} activeOpacity={0.8} style={[styles.pocketComment, (item.kind === 'member' || item.kind === 'superman') && styles.pocketCommentHighlight]}>
+      <CommentAvatar uri={item.avatar} userId={item.userId} />
+      {Number(item.level) > 0 && item.kind !== 'gift' && item.kind !== 'enter' ? <View style={styles.pocketCommentLevel}><Text allowFontScaling={false} style={styles.pocketCommentLevelText}>Lv.{Math.floor(Number(item.level))}</Text></View> : null}
+      <Text allowFontScaling={false} style={[styles.pocketCommentText, { fontSize: Math.max(10, Math.min(15, fontSize - 3)) }]}>{item.nick && item.kind !== 'gift' && item.kind !== 'enter' ? `${item.nick}：` : ''}{item.text}</Text>
+    </TouchableOpacity>
+  );
+  return (
+    <View style={[styles.pocketComments, { opacity, bottom }]} pointerEvents="box-none">
+        <FlatList
+          inverted
+          data={newestFirst}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => renderComment(item)}
+          style={styles.pocketHistoryList}
+          contentContainerStyle={styles.pocketHistoryContent}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 20 }}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+        />
+    </View>
+  );
+}
+
 /**
  * 唯一播放器控制层（重写核心）：渐变遮罩顶栏 + 悬浮底坞（可拖进度/倍速/弹幕/全屏）+ 更多面板。
  * 所有页面共用；能力按 features 声明渲染。
  */
-export function PlayerChrome({ features = {}, extraActions = [], onClose, inline = false, onRetry, barrageInput }: Props) {
+export function PlayerChrome({ pocket, features = {}, extraActions = [], onClose, inline = false, onRetry, barrageInput }: Props) {
   const { t } = useI18n();
   const palette = usePalette();
   const meta = usePlayerStore((s) => s.meta);
@@ -50,16 +121,59 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   const duration = usePlayerStore((s) => s.duration);
   const error = usePlayerStore((s) => s.error);
   const controlsVisible = usePlayerStore((s) => s.controlsVisible);
+  const cleanScreen = usePlayerStore((s) => s.cleanScreen);
   const fullscreen = usePlayerStore((s) => s.fullscreen);
   const source = usePlayerStore((s) => s.source);
   const useWebKernel = usePlayerStore((s) => s.useWebKernel);
   const danmakuOn = usePlayerStore((s) => s.danmakuOn);
+  const danmakuEnabled = useDanmakuSettings((s) => s.enabled);
+  const danmakuOpacity = useDanmakuSettings((s) => s.opacity);
+  const danmakuFontSize = useDanmakuSettings((s) => s.fontSize);
+  const hideEnter = usePlayerStore((s) => s.hideEnter);
+  const hideEffects = usePlayerStore((s) => s.hideEffects);
   const rate = usePlayerStore((s) => s.rate);
   const rotateDeg = usePlayerStore((s) => s.rotateDeg);
   const mirrorMode = usePlayerStore((s) => s.mirrorMode);
   const [moreVisible, setMoreVisible] = useState(false);
   const [rateSheetVisible, setRateSheetVisible] = useState(false);
+  const [rankAvatars, setRankAvatars] = useState<string[]>([]);
+  const pocketRef = useRef(pocket);
+  pocketRef.current = pocket;
+  useEffect(() => {
+    let active = true;
+    setRankAvatars([]);
+    const liveId = pocket?.liveId;
+    if (liveId && pocket?.onRankPress) {
+      pocketApi.getLiveRank(liveId).then((res: any) => {
+        const rows = unwrapList(res, ['content.rankList', 'content.userRankList', 'content.userRankingList', 'content.contributionList', 'content.list', 'content.data', 'content.data.list', 'content.data.rankList', 'data.rankList', 'data.userRankList', 'data.userRankingList', 'data.contributionList', 'data.list', 'rankList', 'userRankList', 'userRankingList', 'contributionList', 'list']);
+        const avatars = rows.slice(0, 3).map((row: any) => {
+          const avatar = pickText(row, ['avatar', 'userAvatar', 'headImg', 'picPath', 'userInfo.avatar', 'userInfo.userAvatar', 'user.avatar', 'user.userAvatar', 'memberInfo.avatar']);
+          return normalizeLiveAvatar(avatar);
+        });
+        if (active) setRankAvatars(avatars);
+        rows.slice(0, 3).forEach((row: any, index: number) => {
+          if (avatars[index]) return;
+          const userId = pickText(row, ['userId', 'uid', 'id', 'userInfo.userId', 'user.userId', 'memberInfo.userId']);
+          if (!userId || !active) return;
+          void getLiveUserAvatar(userId).then((url) => {
+            if (active && url) setRankAvatars((prev) => prev.map((value, i) => i === index ? url : value));
+          });
+        });
+      }).catch(() => {});
+    }
+    return () => { active = false; };
+  }, [pocket?.liveId]);
   const { width: screenW, height: screenH } = useWindowDimensions();
+  const [navigationInset, setNavigationInset] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (pocket && Platform.OS === 'android') {
+      NativeModules.PipController?.getNavigationInset?.().then((value: unknown) => {
+        if (active && typeof value === 'number' && value >= 0) setNavigationInset(value);
+      }).catch(() => {});
+    }
+    return () => { active = false; };
+  }, [!!pocket, screenW, screenH]);
   // 底坞纵向自适应：不再用一套固定间距（用户反馈「下半控件太高，像是写死高度」）
   const dockScale = Math.max(0.82, Math.min(1, screenH / 820));
   // 安全区：顶栏保留「系统通知栏」冗余（避免弹幕/标题压到状态栏），底坞避开手势导航条
@@ -160,7 +274,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
         return;
       }
       const s = usePlayerStore.getState();
-      if (s.state === 'playing') s.toggleControls(false);
+      if (s.state === 'playing' && !(pocketRef.current && s.source?.kind === 'live')) s.toggleControls(false);
     }, CONTROLS_HIDE_MS);
   }, []);
   showControlsRef.current = showControls;
@@ -256,9 +370,10 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
     && /^https?:/i.test(source.url)
     && !/\.m3u8/i.test(source.url);
   const moreActions = useMemo(() => {
-    if (!downloadAvailable) return extraActions;
-    return [{ key: 'download', icon: 'download', label: t('下载'), onPress: runDownload } as any, ...extraActions];
-  }, [downloadAvailable, extraActions, runDownload, t]);
+    const actions = pocket ? extraActions.filter((action) => action.key !== 'gift' && !(action.key === 'rank' && pocket.onRankPress)) : extraActions;
+    if (!downloadAvailable) return actions;
+    return [{ key: 'download', icon: 'download', label: t('下载'), onPress: runDownload } as any, ...actions];
+  }, [downloadAvailable, extraActions, runDownload, t, pocket]);
 
   // ⚠️ 必须声明在 `if (!source) return null` **之前**（2026-10-03 修复崩溃）：
   // 此前它声明在早退之后，当 source 首次渲染为空时该作用域根本没有这个变量，
@@ -266,6 +381,11 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   // "Cannot read property 'current' of undefined"（实测快速切换播放器必崩）。
   const progRaf = useRef(0);
   const pendingRatio = useRef(0);
+  const replayItems = pocket?.replayComments;
+  const replayCount = replayItems ? replayDanmakuCount(replayItems, position) : 0;
+  const replayComments = useMemo(() => replayItems?.slice(0, replayCount).map((item, index) => ({
+    id: `${item.time}-${index}`, text: item.text, nick: item.nick, userId: item.userId, avatar: item.avatar, level: item.level,
+  })), [replayItems, replayCount]);
 
   if (!source) return null;
 
@@ -273,13 +393,15 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   // 直播判定 = kind 或流形态（rtmp/rtmps/.flv 铁定直播）：防止 kind 误标成 vod 时直播
   // 出现可拖进度条（拖动 seek 直播流 → RNV 原生异常闪退）与错误的时间样式
   const _u = String((source && source.url) || '').toLowerCase();
-  const isLive = source.kind === 'live' || _u.startsWith('rtmp://') || _u.startsWith('rtmps://') || _u.includes('.flv');
+  const isLive = source.kind === 'live' || (source.kind !== 'vod' && (_u.startsWith('rtmp://') || _u.startsWith('rtmps://') || _u.includes('.flv')));
   // 卡片内嵌态（inline 且未全屏）：不叠任何控制坞，点击即进全屏
   const cardMode = inline && !fullscreen;
   const progRatio = duration > 0 ? Math.max(0, Math.min(1, position / duration)) : 0;
   // 拖动中显示本地预览比例与目标时间（跟手），不依赖高频 store 写入
   const shownRatio = dragRatio != null ? dragRatio : progRatio;
   const shownPos = dragRatio != null && duration > 0 ? dragRatio * duration : position;
+  let pocketComments = pocket?.comments || [];
+  if (replayComments) pocketComments = replayComments;
 
   const togglePlay = () => {
     const s = usePlayerStore.getState();
@@ -300,7 +422,12 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   };
 
   const toggleDanmaku = () => {
-    usePlayerStore.getState().toggleDanmaku();
+    if (pocket && !danmakuEnabled) {
+      useDanmakuSettings.getState().set({ enabled: true });
+      if (!danmakuOn) usePlayerStore.getState().toggleDanmaku();
+    } else {
+      usePlayerStore.getState().toggleDanmaku();
+    }
     showControls();
   };
 
@@ -359,10 +486,27 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
   // 让 PanResponder 经 ref 拿到本次渲染的最新实现（须在定义之后、早退之前赋值）
   progCtl.current = { down: onProgDown, move: onProgMove, up: onProgUp };
 
+  if (pocket && cleanScreen) {
+    return <Pressable accessibilityRole="button" accessibilityLabel={t('退出清屏')} style={StyleSheet.absoluteFill} onPress={() => { usePlayerStore.getState().setCleanScreen(false); showControls(); }} />;
+  }
+
   return (
     <>
       {/* 顶栏：常规/卡片全屏均显示（卡片全屏必须有返回钮，否则无法退出） */}
-      {!inline || fullscreen ? (
+      {pocket && (!inline || fullscreen) ? (
+        <Animated.View style={[styles.pocketTop, { opacity: controlsOpacity, top: insets.top + 4 }]} pointerEvents={controlsVisible ? 'box-none' : 'none'}>
+          <View style={styles.pocketIdentity}>
+            {pocket.avatar ? <Image source={{ uri: pocket.avatar }} style={styles.pocketAvatar} /> : <View style={styles.pocketAvatarFallback}><MaterialCommunityIcons name="account" size={18} color="#fff" /></View>}
+            <Text allowFontScaling={false} adjustsFontSizeToFit minimumFontScale={0.8} style={styles.pocketName} numberOfLines={1}>{pocket.name || meta.title}</Text>
+          </View>
+          <View style={{ flex: 1 }} />
+          {pocket.audience ? <View style={styles.pocketAudience}><MaterialCommunityIcons name="account-group-outline" size={16} color="#fff" /><Text allowFontScaling={false} numberOfLines={1} style={styles.pocketAudienceText}>{pocket.audience}</Text></View> : null}
+          {pocket.onRankPress ? <TouchableOpacity accessibilityLabel={t('贡献榜')} onPress={pocket.onRankPress} style={styles.pocketRank}>
+            {(pocket.rankAvatars?.length ? pocket.rankAvatars : rankAvatars).some(Boolean) ? (pocket.rankAvatars?.length ? pocket.rankAvatars : rankAvatars).filter(Boolean).map((avatar, index) => <RankAvatar key={`${avatar}-${index}`} uri={normalizeLiveAvatar(avatar)} overlap={index > 0} />) : <View style={styles.pocketRankFallback}><MaterialCommunityIcons name="trophy-outline" size={20} color="#fff" /></View>}
+          </TouchableOpacity> : null}
+          <TouchableOpacity accessibilityLabel={t('关闭')} style={[styles.pocketCircle, styles.pocketClose]} onPress={() => { if (inline && fullscreen) usePlayerStore.getState().setFullscreen(false); else if (onClose) onClose(); else usePlayerStore.getState().close(); }}><MaterialCommunityIcons name="close" size={20} color="#fff" /></TouchableOpacity>
+        </Animated.View>
+      ) : !inline || fullscreen ? (
         <Animated.View style={[styles.topWrap, { opacity: controlsOpacity, paddingTop: insets.top + 6 }]} pointerEvents={controlsVisible ? 'auto' : 'none'}>
           <LinearGradient colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']} style={StyleSheet.absoluteFill} />
           <TouchableOpacity
@@ -462,6 +606,9 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
           onVideoTap(x < screenW / 2 ? 'l' : 'r');
         }}
       />
+      {pocket && danmakuOn && danmakuEnabled && !cardMode && pocketComments.length ? (
+        <PocketCommentFeed key={source.liveId || source.url} comments={pocketComments} onCommentPress={pocket.onCommentPress} hideEnter={hideEnter} fontSize={danmakuFontSize} opacity={danmakuOpacity} bottom={Math.max(navigationInset ?? insets.bottom, 10) + (isLive ? 78 : 130) + kbHeight} />
+      ) : null}
       {!cardMode ? (
       <View style={StyleSheet.absoluteFill} pointerEvents={controlsVisible ? 'box-none' : 'none'}>
         <Animated.View pointerEvents="none" style={{ opacity: controlsOpacity }}>
@@ -470,7 +617,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
             style={styles.bottomShade}
           />
         </Animated.View>
-        <Animated.View style={[styles.dockWrap, { opacity: controlsOpacity, paddingBottom: Math.max(insets.bottom, Math.round(10 * dockScale)) + Math.round(4 * dockScale) + kbHeight }]} pointerEvents="box-none">
+        <Animated.View style={[styles.dockWrap, { opacity: controlsOpacity, paddingBottom: Math.max(pocket ? navigationInset ?? insets.bottom : insets.bottom, Math.round(10 * dockScale)) + Math.round(4 * dockScale) + kbHeight }]} pointerEvents="box-none">
           {/* 进度行：当前时间 —— 可拖进度 —— 总时间（直播仅显示 直播） */}
           {!isLive ? (
           <View style={styles.progressRow}>
@@ -493,9 +640,16 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
           </View>
           ) : null}
           {/* 直播弹幕输入条：与控制条同一个底坞容器 → 一起自动隐藏/呼出 */}
-          {barrageInput ? <View style={[styles.dockBarrageRow, { marginBottom: Math.round(8 * dockScale) }]}>{barrageInput}</View> : null}
+          {!pocket && barrageInput ? <View style={[styles.dockBarrageRow, { marginBottom: Math.round(8 * dockScale) }]}>{barrageInput}</View> : null}
           {/* 控制行：播放/暂停（主按钮）+ 右侧功能 */}
-          <View style={styles.ctrlRow}>
+          {pocket ? <View style={styles.pocketBottomRow}>
+            {isLive && barrageInput ? <View style={styles.pocketInputWrap}>{barrageInput}</View> : <>
+              <TouchableOpacity style={styles.pocketCircle} onPress={togglePlay} accessibilityLabel={playing ? t('暂停') : t('播放')}><MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={23} color="#fff" /></TouchableOpacity>
+              <View style={{ flex: 1 }} />
+            </>}
+            <TouchableOpacity style={styles.pocketCircle} onPress={() => setMoreVisible(true)} accessibilityLabel={t('更多')}><MaterialCommunityIcons name="dots-vertical" size={24} color="#fff" /></TouchableOpacity>
+            {isLive && extraActions.find((action) => action.key === 'gift') ? <TouchableOpacity style={styles.pocketCircle} onPress={() => extraActions.find((action) => action.key === 'gift')?.onPress()} accessibilityLabel={t('礼物')}><MaterialCommunityIcons name="gift-outline" size={24} color="#fff" /></TouchableOpacity> : !isLive ? <TouchableOpacity style={styles.pocketCircle} onPress={() => { clearGiftEffectQueue(); usePlayerStore.getState().setCleanScreen(true); }} accessibilityLabel={t('清屏播放')}><MaterialCommunityIcons name="eye-off-outline" size={23} color="#fff" /></TouchableOpacity> : null}
+          </View> : <View style={styles.ctrlRow}>
             <TouchableOpacity style={styles.playBtn} onPress={togglePlay} activeOpacity={0.85}>
               <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={24} color="#16181c" style={!playing ? { marginLeft: 3 } : undefined} />
             </TouchableOpacity>
@@ -537,7 +691,7 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
                 <MaterialCommunityIcons name={fullscreen ? 'fullscreen-exit' : 'fullscreen'} size={21} color="rgba(255,255,255,0.92)" />
               </TouchableOpacity>
             ) : null}
-          </View>
+          </View>}
         </Animated.View>
       </View>
       ) : null}
@@ -566,14 +720,23 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
       {/* 更多面板 */}
       <Modal visible={moreVisible} transparent animationType="slide" onRequestClose={() => setMoreVisible(false)}>
         <View style={styles.modalShade}>
-          <View style={[styles.morePanel, { backgroundColor: palette.surface }]}>
-            <View style={styles.moreHeader}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMoreVisible(false)} />
+          <View style={[styles.morePanel, { backgroundColor: pocket ? '#181923' : palette.surface }, pocket && { paddingBottom: Math.max(insets.bottom, 24) }]}>
+            {!pocket && <View style={styles.moreHeader}>
               <Text style={[styles.moreTitle, { color: palette.label }]}>{t('播放器功能')}</Text>
               <TouchableOpacity onPress={() => setMoreVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <MaterialCommunityIcons name="close" size={20} color={palette.labelSecondary} />
               </TouchableOpacity>
-            </View>
+            </View>}
+            <ScrollView style={{ maxHeight: screenH * 0.6 }}>
             <View style={styles.moreGrid}>
+              {pocket && features.danmaku ? <TouchableOpacity style={styles.moreItem} onPress={() => { toggleDanmaku(); setMoreVisible(false); }}><MaterialCommunityIcons name={danmakuOn && danmakuEnabled ? 'comment-off-outline' : 'comment-text-outline'} size={28} color={danmakuOn && danmakuEnabled ? '#fff' : '#9294a0'} /><Text style={[styles.moreLabel, styles.pocketMoreLabel]}>{t(danmakuOn && danmakuEnabled ? '屏蔽弹幕' : '显示弹幕')}</Text></TouchableOpacity> : null}
+              {pocket && isLive ? <TouchableOpacity style={styles.moreItem} onPress={() => { usePlayerStore.getState().toggleEnter(); setMoreVisible(false); }}><MaterialCommunityIcons name="account-arrow-right-outline" size={28} color={hideEnter ? '#9294a0' : '#fff'} /><Text style={[styles.moreLabel, styles.pocketMoreLabel]}>{t(hideEnter ? '显示进场' : '屏蔽进场')}</Text></TouchableOpacity> : null}
+              {pocket && isLive ? <TouchableOpacity style={styles.moreItem} onPress={() => { if (!hideEffects) clearGiftEffectQueue(); usePlayerStore.getState().toggleEffects(); setMoreVisible(false); }}><MaterialCommunityIcons name="creation" size={28} color={hideEffects ? '#9294a0' : '#fff'} /><Text style={[styles.moreLabel, styles.pocketMoreLabel]}>{t(hideEffects ? '显示特效' : '屏蔽特效')}</Text></TouchableOpacity> : null}
+              {pocket && Platform.OS === 'android' ? <TouchableOpacity style={styles.moreItem} onPress={() => { setMoreVisible(false); Linking.sendIntent('android.settings.CAST_SETTINGS').catch(() => Linking.sendIntent('android.settings.WIFI_DISPLAY_SETTINGS')).catch(() => showToast(t('当前设备无法打开系统投屏'))); }}><MaterialCommunityIcons name="cast" size={28} color="#fff" /><Text style={[styles.moreLabel, styles.pocketMoreLabel]}>{t('投屏')}</Text></TouchableOpacity> : null}
+              {pocket && isLive ? <TouchableOpacity style={styles.moreItem} onPress={() => { setMoreVisible(false); togglePlay(); }}><MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={28} color="#fff" /><Text style={[styles.moreLabel, styles.pocketMoreLabel]}>{t(playing ? '暂停' : '播放')}</Text></TouchableOpacity> : null}
+              {pocket && isLive ? <TouchableOpacity style={styles.moreItem} onPress={() => { setMoreVisible(false); clearGiftEffectQueue(); usePlayerStore.getState().setCleanScreen(true); }}><MaterialCommunityIcons name="eye-off-outline" size={28} color="#fff" /><Text style={[styles.moreLabel, styles.pocketMoreLabel]}>{t('清屏播放')}</Text></TouchableOpacity> : null}
+              {pocket && features.rate && !isLive && !useWebKernel ? <TouchableOpacity style={styles.moreItem} onPress={() => { setMoreVisible(false); setRateSheetVisible(true); }}><MaterialCommunityIcons name="speedometer" size={28} color="#fff" /><Text style={[styles.moreLabel, styles.pocketMoreLabel]}>{t('播放速度')} {rate}x</Text></TouchableOpacity> : null}
               {}
               <TouchableOpacity
                 style={styles.moreItem}
@@ -584,8 +747,8 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
                   showControls();
                 }}
               >
-                <MaterialCommunityIcons name="sync" size={22} color={palette.labelSecondary} />
-                <Text style={[styles.moreLabel, { color: palette.labelSecondary }]}>
+                <MaterialCommunityIcons name="sync" size={pocket ? 28 : 22} color={pocket ? '#fff' : palette.labelSecondary} />
+                <Text style={[styles.moreLabel, { color: pocket ? '#fff' : palette.labelSecondary }]}>
                   {rotateDeg ? t('旋转 {deg}°', { deg: rotateDeg }) : t('旋转')}
                 </Text>
               </TouchableOpacity>
@@ -599,8 +762,8 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
                   showControls();
                 }}
               >
-                <MaterialCommunityIcons name="flip-horizontal" size={22} color={palette.labelSecondary} />
-                <Text style={[styles.moreLabel, { color: palette.labelSecondary }]}>
+                <MaterialCommunityIcons name="flip-horizontal" size={pocket ? 28 : 22} color={pocket ? '#fff' : palette.labelSecondary} />
+                <Text style={[styles.moreLabel, { color: pocket ? '#fff' : palette.labelSecondary }]}>
                   {mirrorMode === 'none' ? t('镜像') : mirrorMode === 'horizontal' ? t('水平镜像') : t('垂直镜像')}
                 </Text>
               </TouchableOpacity>
@@ -610,24 +773,25 @@ export function PlayerChrome({ features = {}, extraActions = [], onClose, inline
                   style={styles.moreItem}
                   onPress={() => { setMoreVisible(false); action.onPress(); }}
                 >
-                  <MaterialCommunityIcons name={action.icon as any} size={22} color={action.active ? palette.tint : palette.labelSecondary} />
-                  <Text style={[styles.moreLabel, { color: action.active ? palette.tint : palette.labelSecondary }]}>{action.label}</Text>
+                  <MaterialCommunityIcons name={action.icon as any} size={pocket ? 28 : 22} color={action.active ? palette.tint : pocket ? '#fff' : palette.labelSecondary} />
+                  <Text style={[styles.moreLabel, { color: action.active ? palette.tint : pocket ? '#fff' : palette.labelSecondary }]}>{action.label}</Text>
                 </TouchableOpacity>
               ))}
-              {features.kernelSwitch ? (
+              {features.kernelSwitch && (!/^rtmps?:/i.test(source.url) || useWebKernel) ? (
                 <TouchableOpacity style={styles.moreItem} onPress={() => {
                   const s = usePlayerStore.getState();
                   s.setUseWebKernel(!s.useWebKernel);
                   s.clearError();
                   setMoreVisible(false);
                 }}>
-                  <MaterialCommunityIcons name="monitor" size={22} color={palette.labelSecondary} />
-                  <Text style={[styles.moreLabel, { color: palette.labelSecondary }]}>
+                  <MaterialCommunityIcons name="monitor" size={pocket ? 28 : 22} color={pocket ? '#fff' : palette.labelSecondary} />
+                  <Text style={[styles.moreLabel, { color: pocket ? '#fff' : palette.labelSecondary }]}>
                     {useWebKernel ? t('切回原生播放器') : t('切换网页播放器')}
                   </Text>
                 </TouchableOpacity>
               ) : null}
             </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -652,6 +816,33 @@ function LoadingHint() {
 }
 
 const styles = StyleSheet.create({
+  pocketTop: { position: 'absolute', left: 10, right: 10, zIndex: 35, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pocketIdentity: { maxWidth: '50%', minWidth: 0, flexShrink: 1, height: 34, flexDirection: 'row', alignItems: 'center', borderRadius: 18, paddingRight: 8, backgroundColor: 'rgba(20,20,24,0.42)' },
+  pocketAvatar: { flexShrink: 0, width: 32, height: 32, borderRadius: 16, marginRight: 4 },
+  pocketAvatarFallback: { flexShrink: 0, width: 32, height: 32, borderRadius: 16, marginRight: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },
+  pocketName: { color: '#fff', fontSize: 12, flexShrink: 1 },
+  pocketAudience: { flexShrink: 0, height: 32, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, borderRadius: 16, backgroundColor: 'rgba(20,20,24,0.42)' },
+  pocketAudienceText: { color: '#fff', fontSize: 12, flexShrink: 0 },
+  pocketRank: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', minHeight: 34 },
+  pocketRankAvatar: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' },
+  pocketRankAvatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,20,24,0.5)' },
+  pocketRankFallback: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,20,24,0.42)' },
+  pocketCircle: { flexShrink: 0, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,20,24,0.45)' },
+  pocketClose: { width: 36, height: 36, borderRadius: 18 },
+  pocketBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pocketInputWrap: { flex: 1, minWidth: 0 },
+  pocketComments: { position: 'absolute', left: 12, right: 12, zIndex: 25, alignItems: 'flex-start', gap: 5 },
+  pocketHistoryList: { height: 175, width: '100%' },
+  // Android 的 inverted 列表会同时翻转横纵方向，横向对齐需反转以保持屏幕左对齐。
+  pocketHistoryContent: { alignItems: Platform.OS === 'android' ? 'flex-end' : 'flex-start', gap: 5 },
+  pocketComment: { maxWidth: '100%', flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, backgroundColor: 'rgba(18,18,22,0.32)' },
+  pocketCommentHighlight: { backgroundColor: 'rgba(103,73,187,0.58)' },
+  pocketCommentAvatar: { width: 20, height: 20, borderRadius: 10, marginRight: 4 },
+  pocketCommentAvatarFallback: { width: 20, height: 20, borderRadius: 10, marginRight: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' },
+  pocketCommentLevel: { minHeight: 16, paddingHorizontal: 4, borderRadius: 8, marginRight: 4, marginTop: 2, justifyContent: 'center', backgroundColor: 'rgba(205,151,81,0.85)' },
+  pocketCommentLevelText: { color: '#fff', fontSize: 9, fontWeight: '700', includeFontPadding: false },
+  pocketCommentText: { color: '#fff', fontSize: 14, flexShrink: 1, flexWrap: 'wrap' },
+  pocketMoreLabel: { color: '#fff', fontSize: 12, marginTop: 8 },
   topWrap: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
     flexDirection: 'row', alignItems: 'center',

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Keyboard, KeyboardEvent, Platform } from 'react-native';
+import { AppState, Keyboard, KeyboardEvent, Platform } from 'react-native';
 
 /**
  * 键盘高度（px，含导航栏）。
@@ -12,20 +12,23 @@ import { Keyboard, KeyboardEvent, Platform } from 'react-native';
  * 用法：`const kb = useKeyboardHeight();` 然后给聊天页根容器 `paddingBottom: kb`。
  * iOS 用 willShow（跟手），Android 用 didShow（实际生效时机）。
  */
-export function useKeyboardHeight(): number {
+export function useKeyboardHeight(enabled = true): number {
   const [height, setHeight] = useState(0);
   useEffect(() => {
+    if (!enabled) { setHeight(0); return; }
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const show = Keyboard.addListener(showEvent, (e: KeyboardEvent) => {
       setHeight(Math.max(0, Math.round(e?.endCoordinates?.height ?? 0)));
     });
     const hide = Keyboard.addListener(hideEvent, () => setHeight(0));
+    const appState = AppState.addEventListener('change', (state) => { if (state !== 'active') setHeight(0); });
     return () => {
       show.remove();
       hide.remove();
+      appState.remove();
     };
-  }, []);
+  }, [enabled]);
   return height;
 }
 

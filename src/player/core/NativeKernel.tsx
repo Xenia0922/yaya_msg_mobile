@@ -1,5 +1,5 @@
-import React, { forwardRef, useImperativeHandle, useRef } from 'react';
-import { StyleSheet } from 'react-native';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import { StyleSheet, useWindowDimensions } from 'react-native';
 import Video from 'react-native-video';
 import { PlayerSource } from '../types';
 import { logInfo } from '../../utils/runtimeLog';
@@ -32,6 +32,9 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
   ref,
 ) {
   const videoRef = useRef<any>(null);
+  const window = useWindowDimensions();
+  const [videoSize, setVideoSize] = useState<{ url: string; width: number; height: number } | null>(null);
+  const cover = !!source.coverPortrait && window.width < window.height && videoSize?.url === source.url && videoSize.width < videoSize.height;
   useImperativeHandle(ref, () => ({
     seek: (t: number) => {
       try {
@@ -56,7 +59,7 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
         },
       }}
       style={StyleSheet.absoluteFill}
-      resizeMode="contain"
+      resizeMode={cover ? 'cover' : 'contain'}
       paused={paused}
       rate={rate}
       volume={volume}
@@ -67,6 +70,9 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
       onLoad={(e) => {
         try { logInfo(`[vod] NativeKernel onLoad dur=${Math.round(e.duration || 0)}`, 'player.native'); } catch {}
         const ns = e?.naturalSize;
+        if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) {
+          setVideoSize({ url: source.url, width: Number(ns.width), height: Number(ns.height) });
+        }
         onLoad(
           e.duration || 0,
           ns && Number(ns.width) > 0 && Number(ns.height) > 0

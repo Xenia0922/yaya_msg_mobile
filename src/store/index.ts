@@ -44,24 +44,26 @@ export const useMemberStore = create<MemberState>((set) => ({
 }));
 
 interface UiState {
-  tabBarHidden: boolean;
+  tabBarHiddenByRoute: { Media: boolean; Rooms: boolean };
   toastMessage: string;
   /**
    * 当前屏幕的「玻璃折射背景」：房间页打开时挂成员房间的背景图（+遮罩色），
    * 让房间里的玻璃折射房间背景而不是全局软件背景；离开屏幕清 null 还原全局。
    */
   screenBackdrop: { uri: string; scrim: string } | null;
-  setTabBarHidden: (hidden: boolean) => void;
+  setTabBarHidden: (hidden: boolean, route: 'Media' | 'Rooms') => void;
   showToast: (message: string) => void;
   hideToast: () => void;
   setScreenBackdrop: (v: { uri: string; scrim: string } | null) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  tabBarHidden: false,
+  tabBarHiddenByRoute: { Media: false, Rooms: false },
   toastMessage: '',
   screenBackdrop: null,
-  setTabBarHidden: (hidden) => set({ tabBarHidden: hidden }),
+  setTabBarHidden: (hidden, route) => set((state) => state.tabBarHiddenByRoute[route] === hidden
+    ? state
+    : { tabBarHiddenByRoute: { ...state.tabBarHiddenByRoute, [route]: hidden } }),
   showToast: (message) => set({ toastMessage: message }),
   hideToast: () => set({ toastMessage: '' }),
   setScreenBackdrop: (v) => set({ screenBackdrop: v }),

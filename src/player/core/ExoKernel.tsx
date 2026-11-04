@@ -68,6 +68,7 @@ export function ExoKernel({ source, onError }: Props) {
       style={StyleSheet.absoluteFill}
       url={source.url}
       audioOnly={source.audioOnly}
+      coverPortrait={source.coverPortrait}
       paused={paused}
       onSize={(e) => {
         // 首帧画面尺寸 = 已开始播放 → 结束 loading

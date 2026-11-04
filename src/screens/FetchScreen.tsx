@@ -130,7 +130,7 @@ export default function FetchScreen() {
 
       <FadeInView delay={60} duration={300} style={{ flex: 1 }}>
         <GlassSurface radius={20} role="card" style={[styles.panel, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
-          <MemberPicker selectedMember={selectedMember} onSelect={setSelectedMember} />
+          <MemberPicker selectedMember={selectedMember} onSelect={setSelectedMember} activeOnly />
 
           {/* 消息范围分段 */}
           <Text style={[styles.groupLabel, { color: palette.label }]}>{t('消息范围')}</Text>

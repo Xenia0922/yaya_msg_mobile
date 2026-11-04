@@ -366,12 +366,10 @@ export default function MusicLibraryScreen() {
    * 注释里"App 全局 MusicForegroundBridge 常驻处理"实际从未实现——这是用户反馈
    *「系统控件点恢复后回 App 黑胶转盘不转」的真因：原生已在播但 JS 侧 store 永远停在 paused。
    */
-  const lastMirroredPlayingRef = useRef<boolean | null>(null);
   // ⚠️ 系统卡 暂停/恢复/上一首/下一首/播完切歌 统一由 App 全局 MusicForegroundBridge 常驻处理
   // （页面无关；页面只做「下发 + 确认 + 降级」，不再私有处理 cmd/ended/pause-mirror——
   // 旧实现页面挂载时与 App 全局双监听，行为随导航状态漂移：音乐页在/不在，系统控件手感不一致）。
-  // 注：实际播放态镜像在本页 progress 分支按"边沿变化"补回 store（lastMirroredPlayingRef），
-  // 避免依赖一个不存在的全局桥——也保证 ColorOS 冻结后台 JS 后回前台进度事件到达时能立即同步。
+  // 页面只负责原生播放确认和降级；进度与播放态由全局桥统一更新。
 
   useEffect(() => subscribeExo((type, p: any) => {
     try {
@@ -381,19 +379,6 @@ export default function MusicLibraryScreen() {
         // 切歌竞态防护：旧曲心跳不写位置/时长，**也不得改写播放态**
         //（旧曲末尾那条 playing=false 心跳曾把新歌打成 paused → 用户看到「点卡片变暂停、不放」）
         const staleUrl = !!p?.url && !!st.url && String(p.url) !== String(st.url);
-        if (!staleUrl) {
-          // 播放态镜像（边沿触发）：系统控件/通知栏/锁屏点恢复后，原生 exo.play() 推的
-          // 第一次 progress.playing=true 会把 store 切到 playing → 转盘恢复转动；
-          // 反之点暂停把 store 切 paused。
-          // ⚠️ loading 期间不镜像：首次起播时原生还没出声，第一条 playing=false 心跳
-          // 会把 store 直接打成 paused（用户反馈「进音乐后第一次点卡片变暂停」）。
-          if (st.url && st.playbackState !== 'loading' && lastMirroredPlayingRef.current !== playingN) {
-            st.setPlaybackState(playingN ? 'playing' : 'paused');
-            lastMirroredPlayingRef.current = playingN;
-          }
-          if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
-          if (typeof p?.position === 'number') st.setPosition(p.position);
-        }
         if (playingN && !staleUrl) {
           lastProgressTsRef.current = Date.now();
           cancelArmTimer(); // 当前曲目确认后取消原生候选超时
@@ -443,7 +428,7 @@ export default function MusicLibraryScreen() {
       const st2 = useMusicPlayerStore.getState();
       if (!st2.url || st2.url !== playUrl || st2.playbackState !== 'playing') return;
       const progressAtArm = lastProgressTsRef.current;
-      console.warn(`[push-page] ${art ? 'art-refresh' : 'initial'} url=${String(playUrl).slice(0, 50)} resumeAt=${Number(st2.seekTarget) > 0 ? st2.seekTarget : 0}`);
+      if (__DEV__) console.warn(`[push-page] ${art ? 'art-refresh' : 'initial'} resumeAt=${Number(st2.seekTarget) > 0 ? st2.seekTarget : 0}`);
       // 起始位置只认 seekTarget：MusicEngine 切歌/点歌会清 0，resume(记忆续播)才写入位置；
       // 不能读 store.position —— 那是「上一首歌」的进度残留，会造成切歌从旧秒数开始（19:15 实测）
       const resumeAt = Number(st2.seekTarget) > 0 ? Number(st2.seekTarget) : 0;

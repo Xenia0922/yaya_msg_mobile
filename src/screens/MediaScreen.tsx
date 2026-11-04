@@ -39,13 +39,12 @@ import pocketApi from '../api/pocket48';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
 import PlayerScreen from '../player';
 import { usePlayerStore } from '../player/store/playerStore';
-import { DanmakuOverlay } from '../components/DanmakuOverlay';
 import { clearGiftEffectQueue, isGiftEffectSupported, playGiftEffect } from '../services/giftEffect';
 import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
 import { useLiveBarrage } from '../hooks/useLiveBarrage';
 import DanmakuSettingsSheet from '../components/DanmakuSettingsSheet';
 import DanmakuListSheet, { type DanmakuListEntry } from '../components/DanmakuListSheet';
-import { parseDanmaku, DanmakuItem } from '../utils/danmaku';
+import { enrichReplayDanmaku, parseDanmaku, replayBarrageToDanmaku, DanmakuItem } from '../utils/danmaku';
 import { memberSearchText } from '../utils/members';
 import { EmptyState } from '../components/StateViews';
 import { LoginPrompt } from '../components/LoginPrompt';
@@ -562,7 +561,8 @@ export default function MediaScreen() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
   const { t } = useI18n();
-  const setTabBarHidden = useUiStore((state) => state.setTabBarHidden);
+  const setDockHidden = useUiStore((state) => state.setTabBarHidden);
+  const setTabBarHidden = useCallback((hidden: boolean) => setDockHidden(hidden, 'Media'), [setDockHidden]);
   const showToast = useUiStore((state) => state.showToast);
   const members = useMemberStore((state) => state.members);
   const [tab, setTab] = useState<'live' | 'vod'>(route.params?.mode ?? 'live');
@@ -586,6 +586,9 @@ export default function MediaScreen() {
   // 用户是否手动切过方向：手动后 onLoad 不再自动覆盖（尊重用户选择）
   const manualOrientRef = useRef(false);
   const [playing, setPlaying] = useState<{ url: string; urls: string[]; title: string; cover?: string; item: any; isLive: boolean; needsVlc: boolean; resolving?: boolean; position?: number } | null>(null);
+  const playRequestRef = useRef(0);
+  const hidePlayerEffects = usePlayerStore((s) => s.hideEffects || s.cleanScreen);
+  const cleanScreen = usePlayerStore((s) => s.cleanScreen);
   /**
    * 直播弹幕（云信聊天室）—— 全页唯一一条连接：
    *   - 接收：推给 DanmakuOverlay 的 liveItems，直接飘在画面上
@@ -594,16 +597,9 @@ export default function MediaScreen() {
    */
   const liveBarrageId = playing?.isLive ? String(playing.item?.liveId || playing.item?.id || '') : '';
   const liveBarrage = useLiveBarrage({ liveId: liveBarrageId, enabled: !!liveBarrageId, module: 'live' });
-  const liveDanmakuItems = useMemo(
-    () =>
-      liveBarrage.items.map((item) => ({
-        key: item.id,
-        // 不额外拼「昵称：」前缀（普通弹幕只出正文）；
-        // 进场/礼物文案 codec 合成时已自带「昵称 进入直播间」「昵称 送给 主播 1个X」，原样保留。
-        text: item.text || '',
-      })),
-    [liveBarrage.items]
-  );
+  const liveBarrageReadyRef = useRef(false);
+  liveBarrageReadyRef.current = liveBarrage.ready;
+  const danmakuLiveIdRef = useRef('');
   /**
    * 全屏礼物特效（仅直播页）：PRESENT_FULLSCREEN(_TWO) 消息带 zipPath 时播 PAG 动画。
    * 别人送的与自己送的都走这条（服务端广播会回投给发送者）；按 item.id 去重防重播。
@@ -617,10 +613,10 @@ export default function MediaScreen() {
       const zip = item.gift?.zipPath;
       if (!zip || playedEffectsRef.current.has(item.id)) continue;
       playedEffectsRef.current.add(item.id);
-      playGiftEffect({ zipPath: zip, zipMd5: item.gift?.zipMd5, giftName: item.gift?.giftName });
+      if (!hidePlayerEffects) playGiftEffect({ zipPath: zip, zipMd5: item.gift?.zipMd5, giftName: item.gift?.giftName });
     }
     if (playedEffectsRef.current.size > 200) playedEffectsRef.current.clear();
-  }, [liveBarrage.items]);
+  }, [liveBarrage.items, hidePlayerEffects]);
   // 离开直播间清队列，避免下一场开播播上一场的特效
   useEffect(() => () => { clearGiftEffectQueue(); }, []);
 
@@ -681,14 +677,20 @@ export default function MediaScreen() {
     }
     const lid = String(playing.item?.liveId || playing.item?.id || '');
     if (!lid) { setDanmaku([]); setShowDanmaku(false); return; }
+    if (danmakuLiveIdRef.current !== lid) {
+      danmakuLiveIdRef.current = lid;
+      setDanmaku([]);
+      setShowDanmaku(false);
+    }
     let alive = true;
     const seenMsg = new Set<string>();
     const collect = (infos: any[]): DanmakuItem[] => {
       const flat: DanmakuItem[] = [];
       for (const b of infos) {
         const parsed = parseDanmaku(b.content);
-        if (parsed.length) flat.push(...parsed);
-        else flat.push({ time: Number(b.time) || 0, text: String(b.content || ''), ...(b.user ? { nick: b.user } : {}) });
+        const sender = { ...(b.userId ? { userId: b.userId } : {}), ...(b.avatar ? { avatar: b.avatar } : {}), ...(b.level ? { level: b.level } : {}) };
+        if (parsed.length) flat.push(...parsed.map((item) => ({ ...item, ...sender })));
+        else flat.push({ time: Number(b.time) || 0, text: String(b.content || ''), ...(b.user ? { nick: b.user } : {}), ...sender });
       }
       let items = flat.filter((d) => d && d.text) as DanmakuItem[];
       if (!items.length) return items;
@@ -720,33 +722,31 @@ export default function MediaScreen() {
       // 直播：轮询 barrage/list 累积实时弹幕
       // 功耗：后台/页面失焦时暂停（画面不可见时拉了也白拉），回前台立即补一次
       let pollId: ReturnType<typeof setInterval> | null = null;
+      let polling = false;
       const startPoll = () => { if (!pollId) pollId = setInterval(poll, 5000); };
       const stopPoll = () => { if (pollId) { clearInterval(pollId); pollId = null; } };
       const poll = async () => {
+        if (polling || !alive || AppState.currentState !== 'active' || !navigation.isFocused() || liveBarrageReadyRef.current) return;
+        polling = true;
         try {
           const infos = await pocketApi.getLiveBarrage(lid);
-          if (!alive) return;
-          const items = collect(infos);
+          if (!alive || AppState.currentState !== 'active' || !navigation.isFocused() || liveBarrageReadyRef.current) return;
+          const fresh = infos.filter((it, index) => {
+            const key = it.messageId || `${it.time}:${it.user}:${it.content}:${it.time ? '' : index}`;
+            if (seenMsg.has(key)) return false;
+            seenMsg.add(key);
+            if (seenMsg.size > 3000) { seenMsg.clear(); seenMsg.add(key); }
+            return true;
+          });
+          const items = collect(fresh);
           if (!items.length) return;
           setDanmaku((prev) => {
-            const merged = [...prev];
-            for (const it of items) {
-              const key = it.nick ? `${it.nick}:${it.text}` : it.text;
-              if (!seenMsg.has(key)) {
-                seenMsg.add(key);
-                // 长播防泄漏：去重集超出窗口后重建（最多短暂放行少量重复，避免无限增长直至 OOM）
-                if (seenMsg.size > 3000) {
-                  seenMsg.clear();
-                  seenMsg.add(key);
-                }
-                merged.push(it);
-              }
-            }
+            const merged = [...prev, ...items];
             merged.sort((a, b) => a.time - b.time);
             return merged.slice(-800);
           });
           setShowDanmaku(true);
-        } catch {}
+        } catch {} finally { polling = false; }
       };
       // 初始与前后台切换：前台+页面聚焦才轮询
       if (AppState.currentState === 'active' && navigation.isFocused()) { poll(); startPoll(); }
@@ -754,27 +754,37 @@ export default function MediaScreen() {
         if (next === 'active' && alive && navigation.isFocused()) { poll(); startPoll(); }
         else stopPoll();
       });
-      return () => { alive = false; sub.remove(); stopPoll(); };
+      const unsubFocus = navigation.addListener('focus', () => {
+        if (alive && AppState.currentState === 'active') { poll(); startPoll(); }
+      });
+      const unsubBlur = navigation.addListener('blur', stopPoll);
+      return () => { alive = false; sub.remove(); unsubFocus(); unsubBlur(); stopPoll(); };
     }
     // content.msgFilePath 指向的 LRC 文件，而非 barrage/list；格式 [hh:mm:ss.fff]昵称\t内容，
     // 已由 parseDanmaku 解析为「秒」对上 playbackTime）
+    const replayDetails = pocketApi.getLiveBarrage(lid);
     pocketApi.getLiveLrc(lid)
       .then((text) => {
         if (!alive) return;
         if (!text) {
-          setDanmaku([]);
-          setShowDanmaku(false);
-          showToast(t('该视频暂无弹幕'));
+          void replayDetails.then((rows) => {
+            if (!alive) return;
+            const items = replayBarrageToDanmaku(rows);
+            setDanmaku(items);
+            setShowDanmaku(items.length > 0);
+            showToast(items.length ? t('弹幕 {count} 条', { count: items.length }) : t('该视频暂无弹幕'));
+          });
           return;
         }
         const items = parseDanmaku(text);
         setDanmaku(items);
         setShowDanmaku(items.length > 0);
         showToast(items.length > 0 ? t('弹幕 {count} 条', { count: items.length }) : t('该视频暂无弹幕'));
+        void replayDetails.then((rows) => { if (alive && rows.length) setDanmaku(enrichReplayDanmaku(items, rows)); });
       })
       .catch(() => { if (alive) setDanmaku([]); });
     return () => { alive = false; };
-  }, [playing?.url, playing?.isLive]);
+  }, [playing?.url, playing?.isLive, liveBarrageId]);
 
   // R1: 弹幕时间轴统一由 playerStore.position 驱动（统一播放器接管后原生 onProgress 实时上报，
   //     无需本地插值；旧 useWebPlayer 插值路径已随内核切换删除）
@@ -813,7 +823,6 @@ export default function MediaScreen() {
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [playbackTime, setPlaybackTime] = useState(0);
   const danmakuClock = usePlayerStore((s) => s.position);
-  const playerDanmakuOn = usePlayerStore((s) => s.danmakuOn);
   // 播放器控制（哔哩哔哩风格自定义控制条）
   const videoRef = useRef<any>(null);
   const [duration, setDuration] = useState(0);
@@ -852,23 +861,16 @@ export default function MediaScreen() {
       time: item.time,
       nick: item.nick || '',
       text: item.text,
+      userId: item.userId,
+      avatar: item.avatar,
     }));
   }, [playing?.isLive, liveBarrage.items, danmaku]);
   const [moreVisible, setMoreVisible] = useState(false);
   // 播放器控制条（B站式沉浸：点击视频区显隐，播放中自动隐藏）
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
-  // 公告面板 top 偏移：顶栏可见时位于顶栏之下（不重叠），顶/底栏自动隐藏后平滑上滑贴近顶部
-  const announceTopAnim = useRef(new Animated.Value(96)).current;
-  /**
-   * 公告面板与顶栏的避让距离。
-   * ⚠️ 以前硬编码 96：没算安全区（刘海/挖孔屏 insets.top 可达 30~60），
-   * 面板正好压在顶栏的关闭按钮上 → 用户反馈「关闭按钮被挡住了」。
-   * 顶栏本身 paddingTop = insets.top + 6，按钮高约 40 → 避让值 = insets.top + 顶栏高。
-   */
+  // 公告始终位于播放器顶栏下方；播放器控制层自行显隐，不再用页面的旧动画状态推算位置。
   const insets = useSafeAreaInsets();
-  const ANNOUNCE_TOP_WITH_BAR = insets.top + 56;
-  const ANNOUNCE_TOP_NO_BAR = Math.max(insets.top, 10) + 4;
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pausedRef = useRef(paused);
   const seekLockRef = useRef(0);
@@ -876,27 +878,22 @@ export default function MediaScreen() {
   const showControls = useCallback((autoHide = true) => {
     setControlsVisible(true);
     Animated.timing(controlsOpacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
-    // 顶栏可见 → 公告面板停在顶栏之下（避开关闭按钮）
-    Animated.timing(announceTopAnim, { toValue: ANNOUNCE_TOP_WITH_BAR, duration: 180, useNativeDriver: true }).start();
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
     if (autoHide && !pausedRef.current) {
       hideControlsTimer.current = setTimeout(() => {
         setControlsVisible(false);
         Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
-        // 顶/底栏自动隐藏 → 公告面板上滑贴近顶部（仍避开状态栏/刘海）
-        Animated.timing(announceTopAnim, { toValue: ANNOUNCE_TOP_NO_BAR, duration: 180, useNativeDriver: true }).start();
       }, 3000);
     }
-  }, [controlsOpacity, ANNOUNCE_TOP_WITH_BAR, ANNOUNCE_TOP_NO_BAR]);
+  }, [controlsOpacity]);
   const toggleControls = useCallback(() => {
     if (controlsVisible) {
       setControlsVisible(false);
       Animated.timing(controlsOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start();
-      Animated.timing(announceTopAnim, { toValue: ANNOUNCE_TOP_NO_BAR, duration: 180, useNativeDriver: true }).start();
     } else {
       showControls();
     }
-  }, [controlsVisible, showControls, ANNOUNCE_TOP_NO_BAR]);
+  }, [controlsVisible, showControls]);
   // 新视频载入即显示控制条，播放中 3 秒无操作自动隐藏（B站式沉浸）
   useEffect(() => { if (playing?.url) showControls(true); }, [playing?.url, showControls]);
 
@@ -996,6 +993,7 @@ export default function MediaScreen() {
     const lid = route.params?.playLiveId;
     const directUrl = route.params?.playUrl;
     if (!lid && !directUrl) return;
+    const request = ++playRequestRef.current;
     const isLive = route.params?.mode !== 'vod';
     (async () => {
       try {
@@ -1034,7 +1032,9 @@ export default function MediaScreen() {
         });
         // 解析：详情接口 → 公开详情 → 直播/录播列表按 liveId 查找（多层兜底）
         let detail: any = await pocketApi.getLiveOne(lid).catch(() => null);
+        if (request !== playRequestRef.current) return;
         if (!detail) detail = await pocketApi.getOpenLiveOne(lid).catch(() => null);
+        if (request !== playRequestRef.current) return;
         const item = (detail?.content || detail?.data || detail || {}) as any;
         // ⚠️【公告修复】这条链路（首页/房间卡片直进播放器）以前只解析播放地址，
         // 从不读 announcement → 只有「在列表里点」才看得到公告。
@@ -1047,19 +1047,22 @@ export default function MediaScreen() {
           announceAutoShownRef.current = true;
         } else {
           // getLiveOne 没拿到 → 用公开详情兜底再试一次（上面 detail 可能是 getLiveOne 的结果）
-          const detail2 = await pocketApi.getOpenLiveOne(lid).catch(() => null);
-          const d2 = (detail2?.content || detail2?.data || detail2 || {}) as any;
-          const annText2 = String(d2?.announcement || '').trim();
-          if (annText2) {
-            setAnnouncement(annText2);
-            setAnnounceVisible(true);
-            setAnnounceExpandedPersisted(true);
-            announceAutoShownRef.current = true;
-          }
+          void pocketApi.getOpenLiveOne(lid).then((detail2: any) => {
+            if (request !== playRequestRef.current) return;
+            const d2 = (detail2?.content || detail2?.data || detail2 || {}) as any;
+            const annText2 = String(d2?.announcement || '').trim();
+            if (annText2) {
+              setAnnouncement(annText2);
+              setAnnounceVisible(true);
+              setAnnounceExpandedPersisted(true);
+              announceAutoShownRef.current = true;
+            }
+          }).catch(() => {});
         }
         let urls = pickPlayableUrls(item, isLive);
         if (!urls.length) {
           const found = await findLiveItemInLists(lid, isLive).catch(() => null);
+          if (request !== playRequestRef.current) return;
           if (found) urls = pickPlayableUrls(found, isLive);
         }
         const url = urls[0] || '';
@@ -1083,21 +1086,15 @@ export default function MediaScreen() {
         // Switch tab to match mode
         if (!isLive && tab !== 'vod') switchTab('vod');
       } catch (e) {
+        if (request !== playRequestRef.current) return;
         setPlayerError(errorMessage(e));
         setPlaying((p) => (p ? { ...p, resolving: false } : p));
       }
     })();
   }, [route.params?.playLiveId, route.params?.playUrl, route.params?.playNonce]);
 
-  useEffect(() => {
-    setTabBarHidden(!!playing);
-    return () => setTabBarHidden(false);
-  }, [playing, setTabBarHidden]);
-
-  // 从房间导航进来时，房间页失焦会把 tabBarHidden 重置为 false；
-  // 这里在获得焦点时兜底一次，确保播放状态下底部导航始终隐藏。
   useFocusEffect(useCallback(() => {
-    if (playing) setTabBarHidden(true);
+    setTabBarHidden(!!playing);
   }, [playing, setTabBarHidden]));
 
   useEffect(() => {
@@ -1108,6 +1105,7 @@ export default function MediaScreen() {
       if (!playing) return false;
       // 返回键的第一预期行为是收键盘（弹幕输入中）
       if (Keyboard.isVisible()) { Keyboard.dismiss(); return true; }
+      playRequestRef.current += 1;
       setIsFullscreen(false);
       setIsLandscape(false);
       setLiveImmersiveMode(false);
@@ -1350,6 +1348,7 @@ export default function MediaScreen() {
   }, [playing, isFullscreen, isLandscape]);
 
   const closePlayer = () => {
+    playRequestRef.current += 1;
     setIsFullscreen(false);
     setIsLandscape(false);
     setLiveImmersiveMode(false);
@@ -1385,6 +1384,7 @@ export default function MediaScreen() {
       backTo: {
         mode: cur.isLive ? 'live' : 'vod',
         playUrl: cur.url,
+        playLiveId: String(cur.item?.liveId || cur.item?.id || '') || undefined,
         playTitle: cur.title,
         playCover: cur.cover,
       },
@@ -1449,7 +1449,8 @@ export default function MediaScreen() {
     doFetch(tab, nextCursorRef.current, true, silent, mid || undefined);
   };
 
-  const startPlay = async (item: VODItem) => {
+  const startPlay = async (item: VODItem, forceLive = tab === 'live') => {
+    const request = ++playRequestRef.current;
     setError('');
     setPlayerError('');
     setUseWebPlayer(false);
@@ -1470,12 +1471,12 @@ export default function MediaScreen() {
       title: item.title || item.liveRoomTitle || t('直播 / 回放'),
       cover: item.liveCover || item.coverPath,
       item,
-      isLive: tab === 'live',
+      isLive: forceLive,
       needsVlc: false,
       resolving: true,
     });
     try {
-      let urls = pickPlayableUrls(item, tab === 'live');
+      let urls = pickPlayableUrls(item, forceLive);
       let detail: any = item;
       const initialUrl = urls[0] || '';
       if (initialUrl) {
@@ -1485,13 +1486,14 @@ export default function MediaScreen() {
           title: item.title || item.liveRoomTitle || t('直播 / 回放'),
           cover: item.liveCover || item.coverPath,
           item,
-          isLive: tab === 'live',
+          isLive: forceLive,
           needsVlc: streamNeedsProxy(initialUrl),
         });
       }
       if (item.liveId) {
         detail = await pocketApi.getLiveOne(item.liveId).catch(() => null);
-        urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];
+        if (request !== playRequestRef.current) return;
+        urls = [...pickPlayableUrls(detail, forceLive), ...urls];
         const d = (detail || {}) as any;
         const annText = d?.content?.announcement || d?.announcement || d?.data?.announcement || '';
         if (annText) {
@@ -1503,6 +1505,7 @@ export default function MediaScreen() {
         }
         else {
           const detail2 = await pocketApi.getOpenLiveOne(item.liveId).catch(() => null);
+          if (request !== playRequestRef.current) return;
           if (detail2) {
             const d2 = detail2 as any;
             const annText2 = d2?.content?.announcement || d2?.announcement || d2?.data?.announcement || '';
@@ -1516,7 +1519,8 @@ export default function MediaScreen() {
         }
         if (!urls.filter(Boolean).length) {
           detail = await pocketApi.getOpenLiveOne(item.liveId).catch(() => null);
-          urls = [...pickPlayableUrls(detail, tab === 'live'), ...urls];
+          if (request !== playRequestRef.current) return;
+          urls = [...pickPlayableUrls(detail, forceLive), ...urls];
         }
       }
       urls = Array.from(new Set(urls.filter(Boolean)));
@@ -1533,16 +1537,39 @@ export default function MediaScreen() {
         title: item.title || item.liveRoomTitle || t('直播 / 回放'),
         cover: item.liveCover || item.coverPath,
         item: { ...item, ...(detail?.content || detail?.data || detail) },
-        isLive: tab === 'live',
+        isLive: forceLive,
         needsVlc: streamNeedsProxy(baseUrl),
         resolving: false,
       });
     } catch (err) {
+      if (request !== playRequestRef.current) return;
       setError(errorMessage(err));
       setPlayerError(errorMessage(err));
       setPlaying((p) => (p ? { ...p, resolving: false } : p));
     } finally {
-      setLoading(false);
+      if (request === playRequestRef.current) setLoading(false);
+    }
+  };
+
+  const refreshLiveStream = async () => {
+    const current = playingRef.current;
+    if (!current?.isLive) return;
+    const id = String(current.item?.liveId || current.item?.id || '');
+    if (!id) { usePlayerStore.getState().requestKernelRebuild(); return; }
+    const request = ++playRequestRef.current;
+    let detail = await pocketApi.getLiveOne(id).catch(() => null);
+    if (request !== playRequestRef.current) return;
+    let urls = pickPlayableUrls(detail, true);
+    if (!urls.length) {
+      detail = await pocketApi.getOpenLiveOne(id).catch(() => null);
+      if (request !== playRequestRef.current) return;
+      urls = pickPlayableUrls(detail, true);
+    }
+    if (playingRef.current !== current) return;
+    if (urls[0] && urls[0] !== current.url) {
+      setPlaying({ ...current, url: urls[0], urls, needsVlc: streamNeedsProxy(urls[0]), item: { ...current.item, ...(detail?.content || detail?.data || detail) } });
+    } else {
+      usePlayerStore.getState().requestKernelRebuild();
     }
   };
 
@@ -1709,8 +1736,8 @@ export default function MediaScreen() {
   if (playing) {
     return (
       <View style={[styles.playerPage, isFullscreen && styles.playerPageFullscreen]}>
-        {announceExpanded && announceVisible && announcement && !inSystemPip ? (
-          <Animated.View style={[styles.announcePanel, { transform: [{ translateY: announceTopAnim }] }]}>
+        {announceExpanded && announceVisible && announcement && !inSystemPip && !cleanScreen ? (
+          <View nativeID="yaya.pip.overlay" collapsable={false} style={[styles.announcePanel, { top: insets.top + 64 }]}>
             <View style={styles.announcePanelTop}>
               {/* ⚠️ 标题组必须 flex:1 + minWidth:0，否则内层 title 的 flex:1 失效
                   （它撑的是这个 wrapper，而 wrapper 默认按内容宽）→ wrapper 撑满整行，
@@ -1731,7 +1758,7 @@ export default function MediaScreen() {
             <ScrollView style={styles.announcePanelBody}>
               <Text style={styles.announcePanelText}>{announcement}</Text>
             </ScrollView>
-          </Animated.View>
+          </View>
         ) : null}
 
         {/* 解析中/解析失败：url 未就绪时渲染播放器 shell 内提示（点击即进播放器的等待态） */}
@@ -1767,9 +1794,21 @@ export default function MediaScreen() {
               urls: playing.urls,
               liveId: String(playing.item?.liveId || playing.item?.id || ''),
               needsNativeExo: playing.needsVlc,
+              coverPortrait: true,
               headers: { 'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)', Referer: 'https://h5.48.cn/', Origin: 'https://h5.48.cn' },
             }}
             meta={{ title: playing.title, cover: playing.cover }}
+            pocket={{
+              name: liveBarrage.liveInfo.hostName || String(playing.item?.user?.userName || playing.item?.nickname || playing.item?.ownerName || playing.title),
+              avatar: normalizeUrl(liveBarrage.liveInfo.hostAvatar || pickText(playing.item, ['user.userAvatar', 'avatar', 'userInfo.avatar', 'user.avatar', 'headImg'])),
+              liveId: String(playing.item?.liveId || playing.item?.id || ''),
+              audience: playing.isLive ? liveBarrage.liveInfo.audience : undefined,
+              rankAvatars: liveBarrage.liveInfo.rankAvatars,
+              comments: playing.isLive ? (liveBarrage.items.length ? liveBarrage.items.slice().reverse().map((item) => ({ id: item.id, text: item.text, nick: item.nick, level: item.level, kind: item.kind, userId: item.userId, avatar: item.avatar })) : showDanmaku ? danmaku.map((item, index) => ({ id: `${item.time}-${index}`, text: item.text, nick: item.nick, userId: item.userId, avatar: item.avatar, level: item.level })) : []) : undefined,
+              replayComments: playing.isLive ? undefined : danmaku,
+              onRankPress: () => openRankPanel(),
+              onCommentPress: (item) => setDanmakuProfile({ nick: item.nick, avatar: item.avatar, userId: item.userId ? String(item.userId) : undefined, missingIdMessage: playing.isLive ? undefined : t('录播弹幕未提供用户 ID，无法加载完整资料') }),
+            }}
             onVideoSize={(w, h) => { if (w > 0 && h > 0) videoSizeRef.current = { w, h }; }}
             danmaku={playing.isLive ? { type: 'poll', liveId: String(playing.item?.liveId || playing.item?.id || '') } : { type: 'lrc', lrcUrl: '' }}
             features={{ rate: !playing.isLive, danmaku: true, kernelSwitch: true, resume: !playing.isLive }}
@@ -1789,22 +1828,16 @@ export default function MediaScreen() {
                 source={liveBarrage}
                 liveId={String(playing.item?.liveId || playing.item?.id || '')}
                 module="live"
-                variant="plain"
+                variant="pocket"
                 inputOnly
               />
             ) : undefined}
             onClose={() => { setPipPlaying(false, 'mediascreen'); closePlayer(); }}
             // 直播流地址有时效（wsSecret）：失败重试 = 重新解析（startPlay），而非重播同 URL
-            onRetry={() => startPlay(playing.item)}
+            onRetry={() => playing.isLive ? void refreshLiveStream() : void startPlay(playing.item, false)}
+            liveTransitionKey={liveBarrage.streamRevision}
             persistent
           >
-            <DanmakuOverlay
-              danmaku={danmaku}
-              currentTime={danmakuClock}
-              visible={playerDanmakuOn && showDanmaku && !!playing}
-              live={!!playing?.isLive}
-              liveItems={playing?.isLive ? liveDanmakuItems : undefined}
-            />
             {/* 弹幕列表抽屉（直播/录播通用）：列表 + 搜索 + 按发送者筛选 + 点击跳转 + 跟随播放 */}
             <DanmakuListSheet
               visible={showDanmakuList && !inSystemPip}
@@ -1922,7 +1955,7 @@ export default function MediaScreen() {
             </GlassSurface>
           </View>
         </Modal>
-        <DanmakuSettingsSheet visible={showDanmakuSettings} onClose={() => setShowDanmakuSettings(false)} />
+        <DanmakuSettingsSheet staticFeed visible={showDanmakuSettings} onClose={() => setShowDanmakuSettings(false)} />
       </View>
     );
   }

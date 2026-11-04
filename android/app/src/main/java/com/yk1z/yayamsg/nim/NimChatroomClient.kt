@@ -363,6 +363,7 @@ class NimChatroomClient(
   }
 
   private fun handleOnlineCount(packet: NimProtocol.Packet) {
+    if (packet.resultCode != 200) return
     val count = extractOnlineMemberNum(packet.body)
     if (count != null) post { listener.onOnlineCount(count) }
   }
@@ -414,7 +415,7 @@ fun extractOnlineMemberNum(buffer: ByteArray, depth: Int = 0): Int? {
   }
   properties[101]?.let { value ->
     val text = String(value, Charsets.UTF_8).trim()
-    if (text.matches(Regex("^\\d{1,10}$"))) return text.toInt()
+    if (text.matches(Regex("^\\d{1,10}$"))) text.toIntOrNull()?.let { return it }
   }
   for ((_, value) in properties) {
     extractOnlineMemberNum(value, depth + 1)?.let { return it }

@@ -108,7 +108,9 @@ export function onChatroomSendResult(
 
 export function onChatroomOnline(listener: (count: number) => void): () => void {
   const sub = DeviceEventEmitter.addListener('PocketNimChatroom:online', (e: any) => {
-    listener(Number(e?.count) || 0);
+    if (e?.count == null) return;
+    const count = Number(e.count);
+    if (Number.isInteger(count) && count >= 0) listener(count);
   });
   return () => sub.remove();
 }

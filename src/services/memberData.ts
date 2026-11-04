@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { parseMaybeJson } from '../utils/data';
-import { loadMembers, normalizeMember, classifyMemberState } from '../utils/members';
+import { loadMembers, normalizeMember, classifyMemberState, appendOfficialGroupMembers } from '../utils/members';
 import { Member } from '../types';
 import { useMemberStore } from '../store';
 import { MEMBERS_URL, MEMBERS_URL_SELF_LIST } from '../constants';
@@ -67,6 +67,7 @@ export interface MemberDataMeta {
   signature: string;
   count: number;
   source: 'bundle' | 'remote' | 'official' | 'cache';
+  sourceUpdatedAt?: number;
 }
 
 export async function loadCachedMemberData(): Promise<Member[] | null> {
@@ -92,6 +93,7 @@ export async function getMemberDataMeta(): Promise<MemberDataMeta | null> {
       signature: parsed.signature || '',
       count: parsed.count || 0,
       source: parsed.source || 'cache',
+      sourceUpdatedAt: typeof parsed.sourceUpdatedAt === 'number' ? parsed.sourceUpdatedAt : 0,
     };
   } catch {
     return null;
@@ -132,9 +134,10 @@ function sampleKeys(list: any[], label: string) {
  * 官方接口只给档案字段 + userId→serverId 字典，不给 channelId/yklzId；
  * 房间消息/大小房间切换必须靠本库的 channelId（大房间）/yklzId（小房间）/serverId。
  */
-async function fetchYk1zDb(): Promise<Member[]> {
+async function fetchYk1zDb(): Promise<{ members: Member[]; updatedAt: number }> {
   // 镜像多 CDN 端点依次重试，全失败才退上游 —— 单域名不可达时不再直接掉到官方目录
   const sources = [...MEMBERS_URL_SELF_LIST, MEMBERS_URL].filter(Boolean);
+  const previousUpdatedAt = (await getMemberDataMeta())?.sourceUpdatedAt || 0;
   let lastErr: any = null;
   for (const url of sources) {
     try {
@@ -144,6 +147,11 @@ async function fetchYk1zDb(): Promise<Member[]> {
       }, 15000);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = parseMaybeJson(await res.text());
+      const parsedTime = MEMBERS_URL_SELF_LIST.includes(url) ? Date.parse(String(json?.updatedAt || '')) : NaN;
+      const updatedAt = Number.isFinite(parsedTime) && parsedTime <= Date.now() + 86400000 ? parsedTime : 0;
+      if (previousUpdatedAt && (!updatedAt || updatedAt < previousUpdatedAt)) {
+        throw new Error('成员库版本早于本地缓存或缺少版本时间');
+      }
       const arr = Array.isArray(json) ? json : (json.roomId || json.data || json.members || json.list || []);
       const members = await loadMembers(arr);
       if (!members.length) throw new Error('成员库返回为空');
@@ -156,7 +164,7 @@ async function fetchYk1zDb(): Promise<Member[]> {
         if (raw && !raw.channelId) m.channelId = '';
       }
       logInfo(`[memberData] 成员库拉取成功：${members.length} 位（源 ${MEMBERS_URL_SELF_LIST.includes(url) ? '自建镜像' : '上游 yk1z'} · ${url.split('/')[2]}）`, 'memberData');
-      return members;
+      return { members, updatedAt };
     } catch (e: any) {
       lastErr = e;
       logWarn(`[memberData] 成员库源失败（${url}）：${e?.message || String(e)}`, 'memberData');
@@ -178,6 +186,7 @@ async function fetchYk1zDb(): Promise<Member[]> {
  */
 /** 上一次 fetchOfficialMembers 是否成功拿到 yk1z 成员库（房间映射的唯一权威源） */
 let lastDbSourceOk = true;
+let lastDbSourceUpdatedAt = 0;
 
 export async function fetchOfficialMembers(): Promise<Member[]> {
   // 并行拉取三源，任一失败不阻断整体（官方目录失败时退化为仅 yk1z 库）
@@ -187,8 +196,9 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     pocketApi.getStarServerMap(),
   ]);
   lastDbSourceOk = dbSettled.status === 'fulfilled';
+  lastDbSourceUpdatedAt = dbSettled.status === 'fulfilled' ? dbSettled.value.updatedAt : 0;
 
-  const dbMembers: Member[] = dbSettled.status === 'fulfilled' ? dbSettled.value : [];
+  const dbMembers: Member[] = dbSettled.status === 'fulfilled' ? dbSettled.value.members : [];
   if (dbSettled.status === 'rejected') {
     logWarn(`[memberData] yk1z 成员库拉取失败（房间映射缺失，大小房间可能不可用）：${dbSettled.reason?.message || String(dbSettled.reason)}`, 'memberData');
   } else {
@@ -227,9 +237,7 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     logWarn(`[memberData] getStarServerMap 失败（不阻断）：${mapSettled.reason?.message || String(mapSettled.reason)}`, 'memberData');
   }
 
-  // 双源合并（v2.7.4 修正版）：成员库 = yk1z 库全量（严格一致，官方独有成员不追加——
-  // 官方 starInfo 含虚拟偶像团 Error404Girls 等非真人，追加会污染成员库）。
-  // 官方只做：补库里缺失的档案字段（头像/期数/serverId）、用官方 status/队伍重算状态分类、关注消息反推 channelId。
+  // 保留现有房间映射，并补充官方目录中的 48 系新成员。
   let members: Member[] = [];
   if (dbMembers.length) {
     const officialById = new Map<string, any>();
@@ -258,7 +266,9 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
       // 只有杨添淩 1 人库 isInGroup=true 是在团），state 保持库语义
       return m;
     });
-    logInfo(`[memberData] 双源合并完成：成员库 = yk1z 库 ${members.length} 位（官方仅补缺口与分类）`, 'memberData');
+    const before = members.length;
+    members = appendOfficialGroupMembers(members, starInfo);
+    logInfo(`[memberData] 双源合并完成：${members.length} 位（新增官方成员 ${members.length - before} 位）`, 'memberData');
   } else {
     // yk1z 库拉取失败 → 退化为官方目录（房间映射会缺，日志警告）
     members = starInfo
@@ -368,7 +378,7 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
   return members;
 }
 
-async function persist(members: Member[], source: MemberDataMeta['source']) {
+async function persist(members: Member[], source: MemberDataMeta['source'], sourceUpdatedAt: number) {
   await AsyncStorage.setItem(
     CACHE_KEY,
     JSON.stringify({
@@ -377,6 +387,7 @@ async function persist(members: Member[], source: MemberDataMeta['source']) {
       savedAt: Date.now(),
       count: members.length,
       source,
+      sourceUpdatedAt,
     }),
   );
 }
@@ -384,7 +395,6 @@ async function persist(members: Member[], source: MemberDataMeta['source']) {
 /** 内部实现：真正的双源拉取 + 护栏 + 落盘。对外统一走下面的 updateMemberData()（带去重）。 */
 async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
   const members = await fetchOfficialMembers();
-  if (!members.length) throw new Error('成员数据为空');
 
   // ---- 防丢失护栏（历史教训：某次云端源退化/字段变少 → 直接覆盖缓存 → 大量成员房间映射丢失）----
   // 1) 字段回填：新数据缺失的映射字段（channelId/yklzId/serverId）用本地旧值补，避免「新源字段更少」造成退化
@@ -411,6 +421,8 @@ async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
       detail: `yk1z 库不可用（已跳过官方目录退化）｜本地 ${prev.length} 位`,
     };
   }
+
+  if (!members.length) throw new Error('成员数据为空');
 
   if (prev.length) {
     const prevById = new Map(prev.map((m) => [String(m.id), m]));
@@ -460,6 +472,13 @@ async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
     for (const m of members) {
       const e = getRoomMapEntry(String(m.id));
       if (!e) continue;
+      if (e.verifiedAt && e.channelId && e.serverId) {
+        m.channelId = e.channelId;
+        m.serverId = e.serverId;
+        if (e.yklzId) m.yklzId = e.yklzId;
+        overlayPatched += 1;
+        continue;
+      }
       if (!m.channelId && e.channelId) { m.channelId = e.channelId; overlayPatched += 1; }
       if (!m.yklzId && e.yklzId) { m.yklzId = e.yklzId; overlayPatched += 1; }
       if (!m.serverId && e.serverId) { m.serverId = e.serverId; overlayPatched += 1; }
@@ -470,7 +489,7 @@ async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
     // overlay 失败不影响主流程
   }
 
-  await persist(members, 'official');
+  await persist(members, 'official', lastDbSourceUpdatedAt);
   // 清理历史版本缓存行（防 AsyncStorage 6MB 上限被旧行撑爆 → SQLITE_FULL）
   try {
     await AsyncStorage.multiRemove(OLD_CACHE_KEYS);
@@ -491,6 +510,7 @@ async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
 
 /** 同步进行中的 Promise（去重：启动静默刷新与设置页「手动更新」可能并发） */
 let memberUpdateInFlight: Promise<MemberUpdateResult> | null = null;
+let memberUpdateGeneration = 0;
 
 /**
  * v2.7.4：成员库为双源合并——yk1z 数据库（权威房间映射）+ 官方接口（档案/花名册/serverId）。
@@ -499,6 +519,7 @@ let memberUpdateInFlight: Promise<MemberUpdateResult> | null = null;
  */
 export function updateMemberData(): Promise<MemberUpdateResult> {
   if (!memberUpdateInFlight) {
+    memberUpdateGeneration += 1;
     memberUpdateInFlight = runMemberDataUpdate().finally(() => {
       memberUpdateInFlight = null;
     });
@@ -513,9 +534,10 @@ export function updateMemberData(): Promise<MemberUpdateResult> {
  *   3. 缓存过期 → 在启动路径上等待双源拉取（失败静默保留缓存，但记日志）。
  */
 export async function ensureMemberData(): Promise<void> {
+  const generation = memberUpdateGeneration;
   try {
     const cached = await loadCachedMemberData();
-    if (cached && cached.length) {
+    if (cached && cached.length && generation === memberUpdateGeneration && !memberUpdateInFlight) {
       useMemberStore.getState().setMembers(cached);
       logInfo(`[memberData] 启动先用本地缓存展示 ${cached.length} 位`, 'memberData');
     } else {

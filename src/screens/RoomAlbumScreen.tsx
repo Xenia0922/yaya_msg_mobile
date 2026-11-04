@@ -348,6 +348,7 @@ export default function RoomAlbumScreen() {
 
       <View style={styles.top}>
         <MemberPicker
+              activeOnly
           selectedMember={member}
           onSelect={pickMember}
           placeholder={t('输入成员名搜索，如“柏欣妤”')}

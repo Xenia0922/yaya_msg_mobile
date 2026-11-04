@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Animated,
   PanResponder,
@@ -70,17 +70,12 @@ export function GlassSegmented<T extends string>({
   const idx = Math.max(0, options.findIndex((o) => o.key === value));
   const pad = 3;
   const cellW = trackW > 0 ? (trackW - pad * 2) / options.length : 0;
-  /**
-   * ⚠️ 双层位移结构（用户反馈：大小房间切换完成后胶囊抖动）：
-   *  - xTap（外层，native driver）：点击/外部 value 变化的 spring —— 原生线程驱动，
-   *    切换完成后的重渲染（聊天列表 N 个玻璃气泡）再忙也**不会卡住胶囊动画**；
-   *  - xDrag（内层，JS driver）：仅拖动时承载手指偏移（drag 需要 JS setValue，
-   *    单值无法既 native 又可 setValue —— 铁律见文件头）。
-   *  视觉位置 = xTap + xDrag（两层嵌套 transform 相加）。非拖动时 xDrag 恒 0。
-   */
-  const xDrag = useRef(new Animated.Value(0)).current;
-  const xTapRef = useRef(0);
+  // 点击、拖动和松手共用同一个位置，避免父级更新前先回到旧索引。
+  const position = useRef(new Animated.Value(0)).current;
+  const positionRef = useRef(0);
+  const dragStartRef = useRef(0);
   const draggingRef = useRef(false);
+  const rollbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ref 化最新值：PanResponder 只创建一次，闭包会捕到过期的 options/value
   const cellWRef = useRef(cellW);
@@ -92,46 +87,17 @@ export function GlassSegmented<T extends string>({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  /**
-   * 点击/外部变更吸附。
-   *
-   * ⚠️ 必须 JS 驱动（2026-10-18 修复「滑过去又弹回左边再滑回去」）：
-   * native driver 把值托管给原生后，JS 侧仍持有旧值；父级重渲染（列表/弹幕刷新）时
-   * RN 会用 JS 旧值重建该节点的 transform，随后原生动画再把它推回目标 →
-   * 视觉上就是「先到位 → 弹回原位 → 再滑到位」。
-   * 工程铁律同样适用于此：跟手/可被 JS 复位的值一律 useNativeDriver:false。
-   */
-  /** 松手/外部变更：清掉拖拽偏移，胶囊位置由 idx 直接决定（无位移动画） */
-  const settle = (_target: number) => {
-    xTapRef.current = _target;
-    xDrag.setValue(0);
+  const settle = (target: number) => {
+    positionRef.current = target;
+    position.setValue(target);
   };
-
-  /**
-   * 只在「页签真的变了」时做弹簧动画。
-   *
-   * ⚠️ 2026-10-18 修「胶囊滑过去又弹回左边再滑回来」：
-   * cellW 由 trackW 算出，首次布局（0 → 真实宽）或父级重排都会让它变一次；
-   * 之前无脑 `settle(idx*cellW)`，等于每次都从索引 0 的位置重新弹一遍 ——
-   * 视觉上就是「到位 → 弹回左边 → 又滑回右边」。
-   * 现在：布局变化（idx 未变）直接落位、不做动画；只有 idx 变化才 spring。
-   */
-  const lastIdxRef = useRef(idx);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (draggingRef.current) return;
-    if (cellW <= 0) return; // 还没量到宽度：什么都不做（避免 settle(0)）
-    const target = idx * cellW;
-    const idxChanged = idx !== lastIdxRef.current;
-    lastIdxRef.current = idx;
-    if (!idxChanged) {
-      // 仅布局宽度变化 → 瞬时落位
-      xTapRef.current = target;
-      xDrag.setValue(0);
-      return;
-    }
-    settle(target);
+    if (rollbackTimerRef.current) { clearTimeout(rollbackTimerRef.current); rollbackTimerRef.current = null; }
+    if (cellW > 0) settle(idx * cellW);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, cellW]);
+  useEffect(() => () => { if (rollbackTimerRef.current) clearTimeout(rollbackTimerRef.current); }, []);
 
   const pan = useRef(
     PanResponder.create({
@@ -140,29 +106,33 @@ export function GlassSegmented<T extends string>({
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
       onPanResponderGrant: () => {
         draggingRef.current = true;
-        // 拖动基准 = 逻辑吸附位（xTapRef 在 settle 时同步）。native 值无法从 JS 读取，
-        // 若在 spring 飞行中抓住会先吸附到逻辑位再跟手 —— 两格分段可接受的取舍。
-        xDrag.setValue(0);
+        if (rollbackTimerRef.current) { clearTimeout(rollbackTimerRef.current); rollbackTimerRef.current = null; }
+        dragStartRef.current = positionRef.current;
       },
       onPanResponderMove: (_, g) => {
         const n = optionsRef.current.length;
         const cw = cellWRef.current;
         if (!cw) return;
         const limit = Math.max(0, (n - 1) * cw);
-        const nx = Math.min(limit, Math.max(0, xTapRef.current + g.dx));
-        xDrag.setValue(nx - xTapRef.current);
+        const nx = Math.min(limit, Math.max(0, dragStartRef.current + g.dx));
+        settle(nx);
       },
       onPanResponderRelease: () => {
         draggingRef.current = false;
         const n = optionsRef.current.length;
         const cw = cellWRef.current;
         if (!cw) return;
-        const dragOff = Number((xDrag as any)._value || 0);
-        const pos = xTapRef.current + dragOff;
-        const h = Math.min(n - 1, Math.max(0, Math.round(pos / cw)));
+        const h = Math.min(n - 1, Math.max(0, Math.round(positionRef.current / cw)));
         settle(h * cw);
         const target = optionsRef.current[h];
-        if (target && target.key !== optionsRef.current[idxRef.current]?.key) onChangeRef.current(target.key);
+        if (target && target.key !== optionsRef.current[idxRef.current]?.key) {
+          onChangeRef.current(target.key);
+          // 父级拒绝切换时恢复当前值；正常更新由上面的 effect 取消此定时器。
+          rollbackTimerRef.current = setTimeout(() => {
+            rollbackTimerRef.current = null;
+            if (!draggingRef.current) settle(idxRef.current * cellWRef.current);
+          }, 1000);
+        }
       },
       onPanResponderTerminate: () => {
         draggingRef.current = false;
@@ -182,19 +152,12 @@ export function GlassSegmented<T extends string>({
         }}
       >
         {cellW > 0 ? (
-          /* ⚠️ 胶囊位置 = left: 3 + idx*cellW，**直接跟随选中的索引**，不做位移动画（2026-10-18 第三次修）。
-             前两版用 spring/timing 驱动 translateX，只要父级 value 在切换瞬间有回退
-             （点击 → 父级重渲染 → 旧值先回来 → 新值再到），胶囊就会「右边 → 弹回左边 → 再回右边」。
-             现在位移只由索引决定，父级怎么抖都不会产生二次位移动画；
-             拖拽跟手用内层 xDrag（Animated，JS 驱动）叠加，松手直接归零吸附到最近格。 */
-          <View
+          <Animated.View
             pointerEvents="none"
-            style={[styles.pillPos, { left: pad + idx * cellW, width: cellW, height: height - pad * 2 }]}
+            style={[styles.pillPos, { left: pad, width: cellW, height: height - pad * 2, transform: [{ translateX: position }] }]}
           >
-            <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: xDrag }] }]}>
-              <SelectorCapsule radius={(height - pad * 2) / 2} dark={palette.name === 'dark'} />
-            </Animated.View>
-          </View>
+            <SelectorCapsule radius={(height - pad * 2) / 2} dark={palette.name === 'dark'} />
+          </Animated.View>
         ) : null}
         {options.map((o) => {
           const active = o.key === value;
