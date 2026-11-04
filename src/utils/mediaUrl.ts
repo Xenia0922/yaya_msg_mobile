@@ -80,3 +80,36 @@ export function deepFindImageUrl(source: unknown, depth = 3): string {
   }
   return '';
 }
+
+/**
+ * 私信头像可能出现的字段（会话对象、消息发送者、成员库记录都适用）。
+ * 桌面版读的是 `item.user.avatar`，相对路径同样拼 source.48.cn。
+ */
+export const AVATAR_KEYS = [
+  'user.avatar', 'user.headImg', 'user.headImage', 'user.avatarUrl', 'user.picUrl',
+  'avatar', 'headImg', 'headImage', 'avatarUrl', 'picUrl',
+];
+
+function readPath(source: any, path: string): string {
+  let value: any = source;
+  for (const segment of path.split('.')) {
+    if (!value || typeof value !== 'object') return '';
+    value = value[segment];
+  }
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * 按优先级取私信对方头像：消息发送者 → 会话对象 → 成员库记录。
+ * 以前只查成员库，普通粉丝（非成员）私信永远没有头像，只剩一个首字母。
+ */
+export function resolvePrivateAvatar(...sources: any[]): string {
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+    for (const key of AVATAR_KEYS) {
+      const value = readPath(source, key);
+      if (value) return normalizePrivateMediaUrl(value, 'source');
+    }
+  }
+  return '';
+}

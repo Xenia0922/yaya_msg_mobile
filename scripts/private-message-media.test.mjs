@@ -8,7 +8,7 @@ const source = readFileSync(new URL('../src/utils/mediaUrl.ts', import.meta.url)
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
 const sandbox = { exports: {} };
 vm.runInNewContext(compiled, sandbox);
-const { normalizePrivateMediaUrl, deepFindImageUrl, isImageLikeUrl } = sandbox.exports;
+const { normalizePrivateMediaUrl, deepFindImageUrl, isImageLikeUrl, resolvePrivateAvatar } = sandbox.exports;
 
 // 绝对地址：原样（http 升级 https）
 assert.equal(normalizePrivateMediaUrl('https://source.48.cn/a/b.jpg', 'source'), 'https://source.48.cn/a/b.jpg');
@@ -44,4 +44,20 @@ assert.equal(
 // 带 query 的地址仍能按扩展名识别
 assert.ok(isImageLikeUrl('https://source.48.cn/a.jpg?x=1'));
 assert.ok(!isImageLikeUrl('https://source.48.cn/a.mp4'));
-console.log('私信图片解析（imgUrl / imageInfo / source 域名）测试通过');
+
+// 头像：消息发送者优先 → 会话对象 → 成员库；相对路径拼 source.48.cn
+assert.equal(resolvePrivateAvatar({ avatar: '/avatar/u1.jpg' }, null, null), 'https://source.48.cn/avatar/u1.jpg');
+assert.equal(
+  resolvePrivateAvatar({ avatar: '/avatar/msg.jpg' }, { user: { avatar: '/avatar/conv.jpg' } }, null),
+  'https://source.48.cn/avatar/msg.jpg',
+  '消息发送者头像优先',
+);
+assert.equal(
+  resolvePrivateAvatar(null, { user: { avatar: 'https://source.48.cn/avatar/conv.jpg' } }, { avatar: '/avatar/member.jpg' }),
+  'https://source.48.cn/avatar/conv.jpg',
+  '会话没有消息级头像时用会话头像',
+);
+assert.equal(resolvePrivateAvatar(null, {}, { avatar: '/avatar/member.jpg' }), 'https://source.48.cn/avatar/member.jpg', '成员库兜底');
+assert.equal(resolvePrivateAvatar({}, {}, {}), '', '都没有时返回空串');
+
+console.log('私信图片与头像解析（imgUrl / imageInfo / source 域名 / 头像优先级）测试通过');

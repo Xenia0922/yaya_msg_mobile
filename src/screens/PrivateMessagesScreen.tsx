@@ -25,10 +25,11 @@ import { usePalette, usePageBackground } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
-import { thumbUrl, AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
+import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import { NetworkImage } from '../components/NetworkImage';
 import ZoomImageModal from '../components/ZoomImageModal';
-import { MEDIA_INFO_KEYS, MEDIA_URL_KEYS, deepFindImageUrl, normalizePrivateMediaUrl } from '../utils/mediaUrl';
+import { UserProfileSheet, type UserProfileTarget } from '../components/UserProfileSheet';
+import { MEDIA_INFO_KEYS, MEDIA_URL_KEYS, deepFindImageUrl, normalizePrivateMediaUrl, resolvePrivateAvatar } from '../utils/mediaUrl';
 
 function convTargetId(conv: any): string {
   return String(conv?.targetUserId || conv?.user?.userId || conv?.userId || '');
@@ -36,6 +37,12 @@ function convTargetId(conv: any): string {
 function convName(conv: any): string {
   return pickText(conv, ['user.nickname', 'user.nickName', 'user.starName', 'user.realNickName', 'nickname', 'starName'], convTargetId(conv) || translate('私信'));
 }
+
+/** 对方头像：消息发送者 → 会话对象 → 成员库（普通粉丝也能有头像）。 */
+function peerAvatarUrl(conv: any, member?: any, message?: any): string {
+  return resolvePrivateAvatar(message?.user, conv, member);
+}
+
 function msgId(msg: any): string {
   const direct = msg.messageId || msg.msgId || msg.id || msg.clientMsgId || msg.uuid;
   if (direct) return String(direct);
@@ -449,6 +456,8 @@ export default function PrivateMessagesScreen() {
   const [playUrl, setPlayUrl] = useState('');
   /** 私信图片大图预览（点击气泡里的图片打开，微信式） */
   const [zoomUrl, setZoomUrl] = useState('');
+  /** 用户资料卡（点头像：列表头像 / 气泡头像 / 会话页头部头像） */
+  const [profileTarget, setProfileTarget] = useState<UserProfileTarget | null>(null);
   const requestIdRef = useRef(0);
   // 会话切换竞态防护：快速切换会话时丢弃慢响应，避免旧会话数据覆盖新会话
   const convRequestIdRef = useRef(0);
@@ -736,6 +745,39 @@ export default function PrivateMessagesScreen() {
 
   if (sel) {
     const targetId = convTargetId(sel);
+    /** 会话对象自带的昵称与头像（桌面版头部与气泡头像都从这里取） */
+    const peerName = convName(sel);
+    const peerAvatar = peerAvatarUrl(sel, member);
+    /** 点头像 → 用户资料卡（与房间消息一致：只有 `/user/api/v1/user/info/home` 一条数据源） */
+    const openPeerProfile = () => setProfileTarget({ userId: targetId, nick: peerName, avatar: peerAvatar });
+    /** 气泡头像：桌面版每条对方消息左侧一个头像，可点开资料卡 */
+    const renderPeerAvatar = (props?: any) => {
+      // 每条消息可能带自己的发送者头像（同一条会话里混入其他发送者时也能对上）
+      const url = peerAvatarUrl(sel, member, props?.currentMessage?.original) || peerAvatar;
+      const initial = peerName.trim().slice(0, 1).toUpperCase();
+      if (!url) {
+        return (
+          <ScalePressable
+            style={[styles.msgAvatar, { backgroundColor: palette.tintSoft }]}
+            onPress={openPeerProfile}
+            accessibilityLabel={t('查看资料')}
+          >
+            <Text style={[styles.msgAvatarText, { color: palette.tint }]}>{initial}</Text>
+          </ScalePressable>
+        );
+      }
+      return (
+        <ScalePressable onPress={openPeerProfile} accessibilityLabel={t('查看资料')}>
+          <NetworkImage
+            source={{ uri: url }}
+            style={styles.msgAvatar}
+            resizeMode="cover"
+            thumbnail={160}
+            fallbackIcon="account-outline"
+          />
+        </ScalePressable>
+      );
+    };
     // 聊天行数据：按天插入日期分隔条 + 3 分钟内同侧消息分组（组内连排小圆角）
     const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n));
     const dayKeyOf = (ts: number) => {
@@ -789,8 +831,8 @@ export default function PrivateMessagesScreen() {
       .map((row) => {
         const mine = isMineMessage(row.item, targetId, uid);
         const t = msgTimeNumber(row.item);
-        /** 对方头像：成员资料里的 avatar（会话页从 members 里按目标 id 取） */
-        const peerAvatar = (member as any)?.avatar || (member as any)?.avatarUrl || '';
+        /** 每条消息优先用消息自带的发送者头像，取不到再退回会话头像（普通粉丝也能有头像） */
+        const senderAvatar = peerAvatarUrl(sel, member, row.item) || peerAvatar;
         // 媒体只解析一次（以前同一行解析三遍，消息多时渲染明显变慢）
         const media = privateMessageMedia(row.item);
         return {
@@ -799,7 +841,7 @@ export default function PrivateMessagesScreen() {
           createdAt: new Date(t < 1e12 ? t * 1000 : t),
           user: {
             _id: mine ? 'SELF' : String(targetId || 'peer'),
-            ...(mine ? {} : { avatar: peerAvatar, name: convName(sel) }),
+            ...(mine ? {} : { avatar: senderAvatar, name: peerName }),
           },
           original: row.item,
           groupStart: row.groupStart,
@@ -947,7 +989,21 @@ export default function PrivateMessagesScreen() {
     return (
       <View style={styles.screenContainer}>
         <View style={[styles.screen, { backgroundColor: usePageBackground(), paddingBottom: keyboardHeight }]}>
-        <ScreenHeader title={convName(sel)} onBack={closeConv} />
+        <ScreenHeader
+          title={peerName}
+          onBack={closeConv}
+          leading={
+            <ScalePressable onPress={openPeerProfile} accessibilityLabel={t('查看资料')}>
+              {peerAvatar ? (
+                <NetworkImage source={{ uri: peerAvatar }} style={styles.headerAvatar} resizeMode="cover" thumbnail={120} fallbackIcon="account-outline" />
+              ) : (
+                <View style={[styles.headerAvatar, styles.headerAvatarFallback, { backgroundColor: palette.tintSoft }]}>
+                  <Text style={[styles.headerAvatarText, { color: palette.tint }]}>{peerName.trim().slice(0, 1).toUpperCase()}</Text>
+                </View>
+              )}
+            </ScalePressable>
+          }
+        />
         {/* 官方 demo 用法：只给 messages / user / onSend，其余全用库默认（气泡、日期、输入条） */}
         <View style={{ flex: 1 }}>
         <Chat
@@ -956,6 +1012,8 @@ export default function PrivateMessagesScreen() {
           theme={{ colors: { background: 'transparent' } }}
           locale="zh"
           renderBubble={renderEllipseGlassBubble}
+          // 对方头像（桌面版同款：每条对方消息左侧头像，点开用户资料卡）
+          renderAvatar={renderPeerAvatar}
           // 日期分隔（用户要求加回）：跨天消息只显示 HH:mm 会看反顺序，加 yyyy/mm/dd 分隔
           renderDay={renderDayLabel}
           isDayAnimationEnabled={false}
@@ -1034,6 +1092,14 @@ export default function PrivateMessagesScreen() {
         </View>
         {/* 大图预览：挂在会话页根层级（放进气泡里会被 FlatList 复用吞掉） */}
         {zoomUrl ? <ZoomImageModal url={zoomUrl} onClose={() => setZoomUrl('')} /> : null}
+        {/* 用户资料卡：点头像打开（与房间消息同一套资料卡，含关注 / 私信） */}
+        <UserProfileSheet
+          visible={!!profileTarget}
+          target={profileTarget}
+          onClose={() => setProfileTarget(null)}
+          // 已经在私信页里，「私信」按钮只收起资料卡
+          onOpenChat={() => setProfileTarget(null)}
+        />
       </View>
     );
   }
@@ -1065,10 +1131,10 @@ export default function PrivateMessagesScreen() {
             const unread = Number(conv.noreadNum);
             const latestTime = Number(conv.lastTime || conv.msgTime || 0);
             const isPinned = pinnedConvs.includes(convTargetId(conv));
-            // 真实成员头像：按会话目标 id 从成员库匹配；无头像时回落首字母
+            // 会话头像：会话对象自带 → 成员库；都没有才回落首字母
             const convTarget = String(convTargetId(conv));
             const convMember = members.find((m: any) => String(m.id || m.userId || m.memberId) === convTarget);
-            const convAvatarUrl = (convMember as any)?.avatar || (convMember as any)?.avatarUrl || '';
+            const convAvatarUrl = peerAvatarUrl(conv, convMember);
             return (
               <View style={styles.convRowWrap}>
                 <TouchableOpacity
@@ -1082,13 +1148,16 @@ export default function PrivateMessagesScreen() {
                   {/* ⚠️ 列表逐行禁止 GlassSurface（每行一个模糊层 → 长列表滚动掉帧）；
                       改为普通容器 + 外层 Touchable 的 border/bg 表达层次 */}
                   <View style={styles.convCardRow}>
-                  <View style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}>
+                  <ScalePressable
+                    style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}
+                    onPress={() => setProfileTarget({ userId: convTarget, nick: name, avatar: convAvatarUrl })}
+                  >
                     {convAvatarUrl ? (
-                      <Image source={{ uri: thumbUrl(convAvatarUrl, AVATAR_THUMB_WIDTH) }} style={styles.convAvatarImg} resizeMode="cover" />
+                      <NetworkImage source={{ uri: convAvatarUrl }} style={styles.convAvatarImg} resizeMode="cover" thumbnail={AVATAR_THUMB_WIDTH} fallbackIcon="account-outline" />
                     ) : (
                       <Text style={[styles.convAvatarText, { color: palette.tint }]}>{name.trim().slice(0, 1).toUpperCase()}</Text>
                     )}
-                  </View>
+                  </ScalePressable>
                   <View style={styles.convInfo}>
                     <View style={styles.convTitleRow}>
                       <Text style={[styles.convName, { color: palette.label }]} numberOfLines={1}>{name}</Text>
@@ -1162,6 +1231,17 @@ export default function PrivateMessagesScreen() {
           }
         />
       </FadeInView>
+      {/* 列表头像点开资料卡（会话页那份在另一个返回分支里） */}
+      <UserProfileSheet
+        visible={!!profileTarget}
+        target={profileTarget}
+        onClose={() => setProfileTarget(null)}
+        onOpenChat={({ id }) => {
+          setProfileTarget(null);
+          const conv = convs.find((c: any) => convTargetId(c) === String(id));
+          if (conv) openConv(conv);
+        }}
+      />
     </View>
   );
 }
@@ -1189,6 +1269,12 @@ const styles = StyleSheet.create({
   },
   convAvatarImg: { width: 44, height: 44, borderRadius: 999 },
   convAvatarText: { fontSize: 17, fontWeight: '800' },
+  /** 气泡旁头像 / 会话页头部头像 */
+  msgAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  msgAvatarText: { fontSize: 15, fontWeight: '800' },
+  headerAvatar: { width: 34, height: 34, borderRadius: 17 },
+  headerAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  headerAvatarText: { fontSize: 14, fontWeight: '800' },
   convInfo: { flex: 1, marginLeft: 12 },
   convTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   convName: { fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },

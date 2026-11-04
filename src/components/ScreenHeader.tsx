@@ -11,6 +11,8 @@ interface Props {
   title: string;
   onBack?: () => void;
   right?: React.ReactNode;
+  /** 标题左侧的额外元素（如私信会话页的对方头像），传了才占位 */
+  leading?: React.ReactNode;
   style?: ViewStyle;
   /** 图片背景页（如直播间）传 true：返回键用玻璃胶囊，标题加轻阴影保证可读 */
   overlay?: boolean;
@@ -19,7 +21,7 @@ interface Props {
 }
 
 
-export default function ScreenHeader({ title, onBack, right, style, overlay, hideBack }: Props) {
+export default function ScreenHeader({ title, onBack, right, leading, style, overlay, hideBack }: Props) {
   const navigation = useNavigation();
   const { t } = useI18n();
   const palette = usePalette();
@@ -41,6 +43,7 @@ export default function ScreenHeader({ title, onBack, right, style, overlay, hid
           </GlassSurface>
         </ScalePressable>
       ) : null}
+      {leading ? <View style={styles.leading}>{leading}</View> : null}
       <Text
         numberOfLines={1}
         style={[
@@ -69,6 +72,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sideRight: { minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' },
+  leading: { alignItems: 'center', justifyContent: 'center' },
   backBtn: {
     width: 36,
     height: 36,
