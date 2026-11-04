@@ -1,7 +1,7 @@
 {
-  "version": "20261103",
-  "updatedAt": "2026-11-03T22:28:08.457Z",
-  "contentHash": "9b31d8e5c57ec59c",
+  "version": "20261104",
+  "updatedAt": "2026-11-04T22:18:07.473Z",
+  "contentHash": "28c0fdd4ecfc3159",
   "count": 970,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -12,7 +12,7 @@
   "coverage": {
     "withName": 970,
     "channelId": 554,
-    "yklzId": 309,
+    "yklzId": 310,
     "serverId": 554
   },
   "members": [
@@ -27861,7 +27861,8 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/ccf5dsi9e712608ewuy3u24.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/nbp3mk3tegjts9jriydmh3a.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/kwmrj2725cu2nd68si3pr12.jpg",
-      "isInGroup": true
+      "isInGroup": true,
+      "yklzId": 41619733
     },
     {
       "id": 184483897,
