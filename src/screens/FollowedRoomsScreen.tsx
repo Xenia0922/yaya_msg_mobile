@@ -31,7 +31,7 @@ import { Member, RoomMessage } from '../types';
 import { formatTimestamp, toMs } from '../utils/format';
 import { findMediaDurationSeconds } from '../utils/mediaDuration';
 import { normalizeGiftList } from '../utils/giftList';
-import { ROOM_POLL_INTERVAL_MS, ROOM_REFRESH_LIMIT, ROOM_REJOIN_AFTER_MS } from '../services/roomLivePolicy';
+import { ROOM_AT_BOTTOM_OFFSET, ROOM_POLL_INTERVAL_MS, ROOM_REFRESH_LIMIT, ROOM_REJOIN_AFTER_MS, splitByFreezeAnchor } from '../services/roomLivePolicy';
 import { probeMediaDurationSeconds } from '../native/MediaProbe';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
@@ -1430,6 +1430,20 @@ export default function FollowedRoomsScreen() {
   const [playingMedia, setPlayingMedia] = useState<RoomMedia | null>(null);
   const [roomNextTime, setRoomNextTime] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  /**
+   * 是否贴着最新消息（inverted 列表 offset≈0）。
+   * false = 用户在上划看历史：**冻结列表数据**，新消息只计数不插进来，
+   * 这样才能像 QQ 那样「你翻你的，新消息等着你」，不会被 2s 轮询反复拽回底部。
+   */
+  const [roomAtBottom, setRoomAtBottom] = useState(true);
+  /**
+   * 冻结锚点：开始上划那一刻的「最新一条」消息 id。
+   * 只冻结比它**更新**的消息（列表头部），比它更旧的历史照常进列表 ——
+   * 这样上滑触发的「加载更多」不会被冻住看不到。
+   */
+  const [roomFreezeKey, setRoomFreezeKey] = useState<string | null>(null);
+  const roomLatestImsRef = useRef<any[]>([]);
+  const roomAtBottomRef = useRef(true);
   // 房间内展示：房间名（channelInfo.channelName）+ 背景图（channelInfo.bgImg）
   const [roomMeta, setRoomMeta] = useState<{ name: string; bg: string }>({ name: '', bg: '' });
   const roomMetaCache = useRef<Record<string, { name: string; bg: string }>>({});
@@ -2007,6 +2021,10 @@ export default function FollowedRoomsScreen() {
       if (!serverId || serverId === '0') throw new Error(t('缺少房间 serverId，无法发言'));
       if (activeRoomRef.current.channelId !== target.channelId) return;
       await sendRoomSticker({ serverId, channelId: target.channelId, bubbleId: sendBubbleId }, sticker);
+      // 自己发言后视口回到底部（否则冻结快照里看不到刚发的消息）
+      roomAtBottomRef.current = true;
+      setRoomAtBottom(true);
+      setRoomFreezeKey(null);
       setTimeout(() => refreshRoomMessagesRef.current?.(), 500);
       setTimeout(() => refreshRoomMessagesRef.current?.(), 1500);
     } catch (err) {
@@ -2385,6 +2403,10 @@ export default function FollowedRoomsScreen() {
     setRoomMsgError('');
     setRoomNextTime(0);
     setHasMoreMessages(false);
+    // 换房/换模式：视口重新贴底，清掉冻结快照与新消息计数
+    roomAtBottomRef.current = true;
+    setRoomAtBottom(true);
+    setRoomFreezeKey(null);
     setRoomMode(nextMode);
     setShowFanMessages(includeFans);
     try {
@@ -2928,9 +2950,19 @@ export default function FollowedRoomsScreen() {
     );
   }, [palette]);
 
+  /**
+   * IMessage 对象复用缓存：2s 轮询每次都会重建 chatRows / 新对象引用，
+   * 若每次都给库全新的 message 对象，FlatList 里所有行的 memo 全部失效 →
+   * 每 2 秒整屏重渲染（长会话明显掉帧）。这里按「行 key + 内容签名」复用旧对象，
+   * 内容没变的行引用不变，库那边直接跳过重渲染。
+   */
+  const roomImsCacheRef = useRef<Map<string, { sig: string; im: any }>>(new Map());
+
   const chatIms = useMemo(() => {
     if (!selectedRoom) return [];
-    return chatRows
+    const cache = roomImsCacheRef.current;
+    const nextCache = new Map<string, { sig: string; im: any }>();
+    const result = chatRows
       .filter((row: any) => row.type === 'msg' && row.item)
       .map((row: any) => {
         const item = row.item;
@@ -2945,20 +2977,101 @@ export default function FollowedRoomsScreen() {
           (mine ? currentUserId : 'peer'),
         );
         const prof = senderProfile(item, room);
-        return {
-          _id: String(row.key),
+        const text = messageText(item) || '';
+        const avatar = mine ? '' : String((prof as any)?.avatar || (room as any)?.avatar || '');
+        const name = mine ? '' : String((prof as any)?.name || '');
+        const key = String(row.key);
+        const sig = `${text}\u0001${senderId}\u0001${ms}\u0001${avatar}\u0001${name}\u0001${mine ? 1 : 0}\u0001${row.groupStart ? 1 : 0}`;
+        const hit = cache.get(key);
+        if (hit && hit.sig === sig) {
+          nextCache.set(key, hit);
+          return hit.im;
+        }
+        const im = {
+          _id: key,
           // 带回原始行：renderMessage 整行渲染要用（groupStart 决定是否显示头像/名字）
           __row: row,
-          text: messageText(item) || '',
+          text,
           createdAt: new Date(ms),
           user: {
             // 固定常量 SELF：与 <Chat user={{_id:'SELF'}}> 严格相等，库才判成右侧
             _id: mine ? 'SELF' : senderId,
-            ...(mine ? {} : { avatar: (prof as any)?.avatar || (room as any)?.avatar, name: (prof as any)?.name }),
+            ...(mine ? {} : { avatar, name }),
           },
         };
+        nextCache.set(key, { sig, im });
+        return im;
       });
+    roomImsCacheRef.current = nextCache;
+    return result;
   }, [chatRows, selectedRoom, showFanMessages, currentUserId, memberIdSet]);
+
+  roomLatestImsRef.current = chatIms;
+
+  /**
+   * inverted 列表：offset 0 = 最新消息。
+   * 门槛与「回到底部」气泡的 scrollToBottomOffset 保持一致（60px）：
+   * 过线即冻结并同时露出气泡，不会出现「已经冻结了但看不到按钮」的空窗。
+   */
+  const handleRoomListScroll = useCallback((event: any) => {
+    const y = Number(event?.nativeEvent?.contentOffset?.y) || 0;
+    const nearBottom = y <= ROOM_AT_BOTTOM_OFFSET;
+    if (nearBottom === roomAtBottomRef.current) return;
+    roomAtBottomRef.current = nearBottom;
+    setRoomAtBottom(nearBottom);
+  }, []);
+
+  /**
+   * 「加载更多历史」props（引用稳定）。
+   * 内联对象每次渲染都是新的 → 库里 ListHeaderComponent 跟着重建（列表顶部挂件反复重挂载）。
+   */
+  const roomLoadEarlierProps = useMemo(
+    () => ({
+      isAvailable: hasMoreMessages,
+      onPress: loadMoreRoomMessages,
+      isLoading: loading,
+      /**
+       * ⚠️ 上划到顶自动加载（用户反馈：到顶只出现按钮、还要再点一下，太别扭）。
+       * FlatList 的 onEndReached 在 inverted 列表里正好落在视觉顶部（最旧消息），
+       * 打开这个开关后接近顶部就会自动调 onPress；按钮保留作兜底。
+       * 防重入/去重由 loadMoreRoomMessages 自己的护栏保证，可安全重复触发。
+       */
+      isInfiniteScrollEnabled: true,
+    }),
+    [hasMoreMessages, loadMoreRoomMessages, loading],
+  );
+
+  /** Chat 列表 props（引用稳定，避免每次渲染重建 FlatList 的 props） */
+  const roomChatListProps = useMemo(
+    () => ({
+      style: { flex: 1, backgroundColor: 'transparent' },
+      // 滚动位置只用来判定「是否贴底」，100ms 足够，避免每帧过 JS 桥
+      scrollEventThrottle: 100,
+      onScroll: handleRoomListScroll,
+      // 新消息插入时钉住当前可见内容，进一步减少视口跳动
+      maintainVisibleContentPosition: { minIndexForVisible: 0 },
+    }),
+    [handleRoomListScroll],
+  );
+
+  // 上划离开底部 → 记住当时的最新消息作为锚点；回到底部 → 解冻
+  useEffect(() => {
+    if (roomAtBottom) {
+      setRoomFreezeKey(null);
+    } else {
+      setRoomFreezeKey((prev) => prev ?? (roomLatestImsRef.current[0]?._id ?? null));
+    }
+  }, [roomAtBottom]);
+
+  /**
+   * 传给 Chat 的数据：
+   * 冻结锚点之前的都是「比它更新」的新消息 —— 先按住不显示（只计数），
+   * 锚点及其之后（更旧的历史，含上滑新加载的）照常进列表。QQ 就是这个行为。
+   */
+  const { list: roomListIms, pending: roomPendingCount } = useMemo(
+    () => splitByFreezeAnchor(chatIms, roomFreezeKey),
+    [chatIms, roomFreezeKey],
+  );
 
   /**
    * 房间内「上麦」直接收听（用户要求：不跳转，当前页直接播放）。
@@ -4104,14 +4217,30 @@ export default function FollowedRoomsScreen() {
         <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
           {/* 官方 demo 用法：messages / user / onSend + 官方 loadEarlierMessagesProps */}
           <Chat
-            messages={chatIms}
+            // 上划看历史时用冻结快照，新消息只计数（QQ 行为），不会被拽回底部
+            messages={roomListIms}
             // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
             // ⚠️ OneUI/三星：只传 theme 仍可能被库/系统解析成深色底 → 同时传 darkTheme，
             //    并显式给列表容器透明，确保消息区不盖住房间背景图。
-            theme={{ colors: { background: 'transparent' } }}
-            darkTheme={{ colors: { background: 'transparent' } }}
-            messagesContainerStyle={{ backgroundColor: 'transparent' }}
-            listProps={{ style: { flex: 1, backgroundColor: 'transparent' } }}
+            theme={CHAT_THEME as any}
+            darkTheme={CHAT_THEME as any}
+            messagesContainerStyle={CHAT_MESSAGES_CONTAINER_STYLE as any}
+            // 「回到底部」气泡：QQ 式，离开底部才出现，带上新消息条数
+            isScrollToBottomEnabled
+            scrollToBottomOffset={60}
+            scrollToBottomContentStyle={[
+              styles.roomJumpBtn,
+              { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline },
+            ]}
+            scrollToBottomComponent={() => (
+              <View style={styles.roomJumpBtnInner}>
+                <MaterialCommunityIcons name="chevron-down" size={15} color={palette.tint} />
+                <Text style={[styles.roomJumpText, { color: palette.tint }]}>
+                  {roomPendingCount > 0 ? t('{count} 条新消息', { count: roomPendingCount }) : t('回到底部')}
+                </Text>
+              </View>
+            )}
+            listProps={roomChatListProps}
             locale="zh"
             // 日期分隔：纯数字「今天/昨天/x月x日」，居中显示（renderDayLabel）
             // 整行自定义：用页面既有的 renderChatItem —— 头像、气泡外的发送者名字、
@@ -4120,22 +4249,10 @@ export default function FollowedRoomsScreen() {
             renderMessage={renderChatMessage}
             renderDay={renderDayLabel}
             isDayAnimationEnabled={false}
-            user={{ _id: 'SELF' }}
-            onSend={() => {}}
-            renderInputToolbar={() => null}
-            loadEarlierMessagesProps={{
-              isAvailable: hasMoreMessages,
-              onPress: loadMoreRoomMessages,
-              isLoading: loading,
-              /**
-               * ⚠️ 上划到顶自动加载（用户反馈：到顶只出现按钮、还要再点一下，太别扭）。
-               * 库的 FlatList 已挂 onEndReached（threshold 0.1），inverted 列表的数据末端
-               * 正好是视觉顶部（最旧消息）—— 打开这个开关后，上划接近顶部就会自动调
-               * onPress（即 loadMoreRoomMessages），按钮保留作为兜底。
-               * 防重入/去重由 loadMoreRoomMessages 自己的护栏保证，可安全重复触发。
-               */
-              isInfiniteScrollEnabled: true,
-            }}
+            user={CHAT_USER as any}
+            onSend={NOOP_SEND}
+            renderInputToolbar={NO_INPUT_TOOLBAR}
+            loadEarlierMessagesProps={roomLoadEarlierProps}
           />
         </FadeInView>
 
@@ -4589,6 +4706,18 @@ export default function FollowedRoomsScreen() {
   );
 }
 
+/**
+ * Chat 的常量 props。
+ * 以前这些都写成内联字面量（`theme={{...}}`），父组件每 setState 一次
+ * （打字、收到弹幕、开面板）都会生成新对象 → Chat 整棵树重渲染。
+ */
+const CHAT_THEME = { colors: { background: 'transparent' } } as const;
+const CHAT_USER = { _id: 'SELF' } as const;
+const CHAT_MESSAGES_CONTAINER_STYLE = { backgroundColor: 'transparent' } as const;
+/** 房间页不用库的输入条：常量函数，避免每次渲染换引用 */
+const NO_INPUT_TOOLBAR = () => null;
+const NOOP_SEND = () => {};
+
 const styles = StyleSheet.create({
   // 直播弹幕面板（房间页内嵌直播时挂载）
   roomBarrageBoard: { marginHorizontal: 12, marginBottom: 6 },
@@ -4621,6 +4750,17 @@ const styles = StyleSheet.create({
   daySepWrap: { alignItems: 'center', marginVertical: 10 },
   daySep: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
   daySepText: { fontSize: 11, fontWeight: '600', alignSelf: 'center' },
+  /** 「回到底部 / N 条新消息」气泡（库给的容器是 40×40 圆形，这里改成胶囊） */
+  roomJumpBtn: {
+    width: 'auto',
+    minWidth: 44,
+    height: 34,
+    borderRadius: 17,
+    paddingHorizontal: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  roomJumpBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  roomJumpText: { fontSize: 12, fontWeight: '700' },
   chatToolsClip: { marginHorizontal: 12, marginBottom: 8, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   chatTools: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 6, borderRadius: 18 },
   segment: {

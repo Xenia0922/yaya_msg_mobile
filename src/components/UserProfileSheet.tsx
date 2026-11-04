@@ -106,6 +106,31 @@ interface CardState {
   detail: { name: string; avatar: string; level: string; signature: string; team: string; period: string; isStar: boolean };
 }
 
+/**
+ * 资料缓存（模块级，跨组件实例共享）。
+ *
+ * 用户反馈「来回点头像加载个人信息很卡」：每次打开都要重新打一次
+ * `user/info/home` + 重新解码头像，连点同一个人的头像等于反复打接口。
+ * 现在命中缓存直接上屏，TTL 内不再请求；关注状态变化会主动写回缓存。
+ */
+const PROFILE_CACHE_TTL = 5 * 60 * 1000;
+const profileCache = new Map<string, { detail: any; at: number }>();
+
+function readProfileCache(id: string) {
+  const hit = profileCache.get(id);
+  if (!hit) return null;
+  if (Date.now() - hit.at > PROFILE_CACHE_TTL) {
+    profileCache.delete(id);
+    return null;
+  }
+  return hit.detail;
+}
+
+function writeProfileCache(id: string, detail: any) {
+  if (!id) return;
+  profileCache.set(id, { detail, at: Date.now() });
+}
+
 export function UserProfileSheet({ visible, target, onClose, onOpenChat, onFollowChanged }: UserProfileSheetProps) {
   const palette = usePalette();
   const { t } = useI18n();
@@ -156,12 +181,29 @@ export function UserProfileSheet({ visible, target, onClose, onOpenChat, onFollo
         return;
       }
 
+      // 命中缓存：立刻上屏，TTL 内不再请求（连点头像不再反复打接口）
+      const cached = candidates.map((id) => readProfileCache(id)).find(Boolean);
+      if (cached) {
+        setCard((c) => (c && seqRef.current === seq
+          ? {
+              ...c,
+              loading: false,
+              error: '',
+              following: !!cached.following,
+              mutual: !!cached.mutual,
+              detail: { ...c.detail, ...cached },
+            }
+          : c));
+        return;
+      }
+
       void (async () => {
         for (const id of candidates) {
           try {
             const res = await pocketApi.getUserProfile(id);
             if (seqRef.current !== seq) return;
             const detail = userCardFromUserRes(res);
+            writeProfileCache(id, detail);
             setCard((c) =>
               c && seqRef.current === seq
                 ? { ...c, id, loading: false, error: '', following: detail.following, mutual: detail.mutual, detail: { ...c.detail, ...detail } }
@@ -198,6 +240,9 @@ export function UserProfileSheet({ visible, target, onClose, onOpenChat, onFollo
       if (next) await pocketApi.followMember(id);
       else await pocketApi.unfollowMember(id);
       setCard((c) => (c && c.id === id ? { ...c, following: next, mutual: next ? c.mutual : false, followBusy: false } : c));
+      // 关注态写回缓存：下次打开同一用户时按钮状态不会错
+      const cachedDetail = readProfileCache(id);
+      if (cachedDetail) writeProfileCache(id, { ...cachedDetail, following: next, mutual: next ? cachedDetail.mutual : false });
       onFollowChanged?.(id, next);
     } catch (err) {
       setCard((c) => (c && c.id === id ? { ...c, followBusy: false } : c));

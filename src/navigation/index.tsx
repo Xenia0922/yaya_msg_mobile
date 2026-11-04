@@ -175,6 +175,8 @@ function MainTabs() {
         sceneStyle: { backgroundColor: 'transparent' },
         // iPhone 26 底部 tab 切换无水平滑动（瞬切）；靠 TabCell spring pop 主导
         animation: 'none',
+        // 切走的 tab 冻结渲染（状态保留，只停重渲染）：快速来回切页不再整棵子树重算
+        freezeOnBlur: true,
       }}
     >
       <Tab.Screen name="Home" component={HomeTabScreen} options={{ tabBarLabel: '主页' }} />
@@ -397,6 +399,8 @@ export default function AppNavigator() {
             animation: 'none',
             cardOverlayEnabled: false,
             detachPreviousScreen: true,
+            // 被压住的页面冻结渲染：反复进出头像资料卡/二级页时不再重复跑重渲染
+            freezeOnBlur: true,
             cardStyle: { backgroundColor: 'transparent' },
           }}
         >

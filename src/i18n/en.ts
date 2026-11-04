@@ -951,4 +951,7 @@ export const en: Record<string, string> = {
   '房间送礼': 'Send room gift',
   '收礼：{name}': 'To: {name}',
   '（背包）': ' (bag)',
+  '回到底部': 'Back to latest',
+  '{count} 条新消息': '{count} new messages',
+  '查看资料': 'View profile',
 };

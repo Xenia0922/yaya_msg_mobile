@@ -342,11 +342,88 @@ function privateMessageMedia(msg: any): MediaInfo {
 function oldestFirst<T>(list: T[], timeOf: (item: T) => number): T[] { return list.slice().sort((a, b) => timeOf(a) - timeOf(b)); }
 
 function flipTypeName(value: any) { const id = Number(value); if (id === 1) return translate('文字'); if (id === 2) return translate('语音'); if (id === 3) return translate('视频'); return translate('类型{value}', { value: value || '' }); }
+/**
+ * 私信消息 → 聊天库 IMessage。
+ *
+ * 抽成纯函数 + useMemo 的原因：以前这段写在 render 里，每敲一个字（输入框 setState）
+ * 都会重建全部消息对象 → 整屏消息重渲染，长会话打字明显卡。现在只在消息/会话变化时才算。
+ *
+ * ⚠️ 两条必须遵守：
+ *   ① user._id 用真实发送者（库按它决定左右），自己的固定 'SELF'；
+ *   ② createdAt 归一化到毫秒（接口给秒，直接 new Date(秒) 会变成 1970）。
+ * 顺序：聊天库默认 inverted，数组第 0 项显示在最下面 → 必须「新的在前」。
+ */
+function buildPrivateIms(msgs: any[], targetId: string, uid: string, peerName: string, peerAvatar: string): any[] {
+  const out: any[] = [];
+  let prevMine: boolean | null = null;
+  let prevTs = 0;
+  let prevDay = '';
+  const dayOf = (ts: number) => {
+    const d = new Date(ts > 0 && ts < 1e12 ? ts * 1000 : ts);
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  };
+  [...msgs]
+    .sort((a: any, b: any) => {
+      const va = msgTimeNumber(a);
+      const vb = msgTimeNumber(b);
+      const ka = va > 0 && va < 1e12 ? va * 1000 : va;
+      const kb = vb > 0 && vb < 1e12 ? vb * 1000 : vb;
+      return kb - ka;
+    })
+    .forEach((item) => {
+      const ts = msgTimeNumber(item);
+      const mine = isMineMessage(item, targetId, uid);
+      const day = dayOf(ts);
+      if (day !== prevDay) {
+        prevDay = day;
+        prevMine = null;
+        prevTs = 0;
+      }
+      // 3 分钟内同侧消息并组（组内小圆角），换天 / 换人 / 断档都重新起组
+      const groupStart = prevMine === null || prevMine !== mine || ts - prevTs > 3 * 60 * 1000;
+      /** 每条消息优先用消息自带的发送者头像，取不到再退回会话头像（普通粉丝也能有头像） */
+      const senderAvatar = peerAvatarUrl(null, null, item) || peerAvatar;
+      // 媒体只解析一次（以前同一行解析三遍，消息多时渲染明显变慢）
+      const media = privateMessageMedia(item);
+      out.push({
+        _id: `m-${msgId(item)}`,
+        text: privateMessageText(item) || '',
+        createdAt: new Date(ts > 0 && ts < 1e12 ? ts * 1000 : ts),
+        user: {
+          _id: mine ? 'SELF' : String(targetId || 'peer'),
+          ...(mine ? {} : { avatar: senderAvatar, name: peerName }),
+        },
+        original: item,
+        groupStart,
+        isMine: mine,
+        // 交给库自带的媒体渲染
+        ...(media ? { [media.type]: media.url } : {}),
+      });
+      prevMine = mine;
+      prevTs = ts;
+    });
+  return out;
+}
+
 export default function PrivateMessagesScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const palette = usePalette();
   const { t } = useI18n();
   const members = useMemberStore((s) => s.members);
+  /**
+   * 成员索引：会话列表每行都要按目标 id 找成员，`members.find` 是 O(成员数)，
+   * 几百条会话 × 上千成员 = 每次渲染十几万次比较（列表滚动/未读刷新时明显掉帧）。
+   */
+  const memberById = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const item of members as any[]) {
+      for (const field of ['id', 'userId', 'memberId']) {
+        const key = String(item?.[field] ?? '').trim();
+        if (key) map.set(key, item);
+      }
+    }
+    return map;
+  }, [members]);
   const showToast = useUiStore((s) => s.showToast);
   const [convs, setConvs] = useState<any[]>([]);
   const [hasMoreConvs, setHasMoreConvs] = useState(false);
@@ -743,185 +820,131 @@ export default function PrivateMessagesScreen() {
     }
   };
 
-  if (sel) {
-    const targetId = convTargetId(sel);
-    /** 会话对象自带的昵称与头像（桌面版头部与气泡头像都从这里取） */
-    const peerName = convName(sel);
-    const peerAvatar = peerAvatarUrl(sel, member);
-    /** 点头像 → 用户资料卡（与房间消息一致：只有 `/user/api/v1/user/info/home` 一条数据源） */
-    const openPeerProfile = () => setProfileTarget({ userId: targetId, nick: peerName, avatar: peerAvatar });
-    /** 气泡头像：桌面版每条对方消息左侧一个头像，可点开资料卡 */
-    const renderPeerAvatar = (props?: any) => {
-      // 每条消息可能带自己的发送者头像（同一条会话里混入其他发送者时也能对上）
-      const url = peerAvatarUrl(sel, member, props?.currentMessage?.original) || peerAvatar;
-      const initial = peerName.trim().slice(0, 1).toUpperCase();
-      if (!url) {
-        return (
-          <ScalePressable
-            style={[styles.msgAvatar, { backgroundColor: palette.tintSoft }]}
-            onPress={openPeerProfile}
-            accessibilityLabel={t('查看资料')}
-          >
-            <Text style={[styles.msgAvatarText, { color: palette.tint }]}>{initial}</Text>
-          </ScalePressable>
-        );
-      }
+  /**
+   * 消息 → 库 IMessage（memo 化）。
+   * 以前这段在 render 里现算：输入框每敲一个字都重建全部消息对象，整屏重渲染。
+   */
+  const dmIms = useMemo(
+    () => (sel ? buildPrivateIms(msgs, convTargetId(sel), uid, convName(sel), peerAvatarUrl(sel, member)) : []),
+    [msgs, sel, uid, member],
+  );
+
+  /** 会话维度常量：顶层 useCallback，保证 render* 引用稳定（否则每次父渲染整屏消息重渲染） */
+  const dmTargetId = sel ? convTargetId(sel) : '';
+  const dmPeerName = sel ? convName(sel) : '';
+  const dmPeerAvatar = sel ? peerAvatarUrl(sel, member) : '';
+  const openPeerProfile = useCallback(() => {
+    if (!dmTargetId) return;
+    setProfileTarget({ userId: dmTargetId, nick: dmPeerName, avatar: dmPeerAvatar });
+  }, [dmTargetId, dmPeerName, dmPeerAvatar]);
+  /** 气泡头像：桌面版每条对方消息左侧一个头像，可点开资料卡 */
+  const renderPeerAvatar = useCallback((props?: any) => {
+    // 每条消息可能带自己的发送者头像（同一条会话里混入其他发送者时也能对上）
+    const url = peerAvatarUrl(sel, member, props?.currentMessage?.original) || dmPeerAvatar;
+    const initial = dmPeerName.trim().slice(0, 1).toUpperCase();
+    if (!url) {
       return (
-        <ScalePressable onPress={openPeerProfile} accessibilityLabel={t('查看资料')}>
-          <NetworkImage
-            source={{ uri: url }}
-            style={styles.msgAvatar}
-            resizeMode="cover"
-            thumbnail={160}
-            fallbackIcon="account-outline"
-          />
+        <ScalePressable
+          style={[styles.msgAvatar, { backgroundColor: palette.tintSoft }]}
+          onPress={openPeerProfile}
+          accessibilityLabel={t('查看资料')}
+        >
+          <Text style={[styles.msgAvatarText, { color: palette.tint }]}>{initial}</Text>
         </ScalePressable>
       );
-    };
-    // 聊天行数据：按天插入日期分隔条 + 3 分钟内同侧消息分组（组内连排小圆角）
-    const pad2 = (n: number) => (n < 10 ? `0${n}` : String(n));
-    const dayKeyOf = (ts: number) => {
-      const d = new Date(toMs(ts));
-      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-    };
-    const todayK = dayKeyOf(Date.now());
-    const yesterdayK = dayKeyOf(Date.now() - 86400000);
-    const dayLabel = (ts: number) => {
-      const k = dayKeyOf(ts);
-      if (k === todayK) return t('今天');
-      if (k === yesterdayK) return t('昨天');
-      return `${pad2(new Date(toMs(ts)).getMonth() + 1)}-${pad2(new Date(toMs(ts)).getDate())}`;
-    };
-    const chatRows: { type: 'date' | 'msg'; key: string; label?: string; item?: any; groupStart?: boolean }[] = [];
-    let prevDay = '';
-    let prevMine: boolean | null = null;
-    let prevTs = 0;
-    // 统一按时间正序（旧→新）喂给聊天库：接口返回可能是「新→旧」，
-    // 不排序会让最新一条回复跑到列表最上面（用户反馈「最新回复消息是反过来的」）
-    // ⚠️ 聊天库默认 inverted=true：FlatList 反转渲染，**数组第 0 项显示在最下面**。
-    // 所以 messages 必须是「新的在前（倒序）」——第十批我误改成 oldestFirst(正序)，
-    // 结果最旧的沉底、最新的跑到最上面（用户反馈「她的消息在我的消息上面」就是这个）。
-    // 排序键与 createdAt 用同一套「秒→毫秒」归一化，避免顺序与气泡显示的时间对不上。
-    [...msgs].sort((a: any, b: any) => {
-      const va = msgTimeNumber(a); const vb = msgTimeNumber(b);
-      const ka = va > 0 && va < 1e12 ? va * 1000 : va;
-      const kb = vb > 0 && vb < 1e12 ? vb * 1000 : vb;
-      return kb - ka;
-    }).forEach((item, i) => {
-      const ts = msgTimeNumber(item);
-      const mine = isMineMessage(item, targetId, uid);
-      const dk = dayKeyOf(ts);
-      if (dk !== prevDay) {
-        chatRows.push({ type: 'date', key: `d-${dk}`, label: dayLabel(ts) });
-        prevDay = dk;
-        prevMine = null;
-        prevTs = 0;
-      }
-      const groupStart = prevMine === null || prevMine !== mine || ts - prevTs > 3 * 60 * 1000;
-      chatRows.push({ type: 'msg', key: `m-${msgId(item)}`, item, groupStart });
-      prevMine = mine;
-      prevTs = ts;
-    });
-    // ── 聊天库接线（A+B）：行 → IMessage（original/groupStart 透传） ──
-    // 日期分隔交给聊天库自带（renderDay），这里只喂真实消息。
-    // ⚠️ 两个必须：① user._id 按真实发送者（库按它决定左右）② createdAt 归一化到毫秒
-    //（接口给的是秒，直接 new Date(秒) 会变成 1970）
-    const ims: any[] = chatRows
-      .filter((row) => row.type === 'msg')
-      .map((row) => {
-        const mine = isMineMessage(row.item, targetId, uid);
-        const t = msgTimeNumber(row.item);
-        /** 每条消息优先用消息自带的发送者头像，取不到再退回会话头像（普通粉丝也能有头像） */
-        const senderAvatar = peerAvatarUrl(sel, member, row.item) || peerAvatar;
-        // 媒体只解析一次（以前同一行解析三遍，消息多时渲染明显变慢）
-        const media = privateMessageMedia(row.item);
-        return {
-          _id: row.key,
-          text: privateMessageText(row.item) || '',
-          createdAt: new Date(t < 1e12 ? t * 1000 : t),
-          user: {
-            _id: mine ? 'SELF' : String(targetId || 'peer'),
-            ...(mine ? {} : { avatar: senderAvatar, name: peerName }),
-          },
-          original: row.item,
-          groupStart: row.groupStart,
-          isMine: mine,
-          // 交给库自带的媒体渲染
-          ...(media ? { [media.type]: media.url } : {}),
-        };
-      });
+    }
+    return (
+      <ScalePressable onPress={openPeerProfile} accessibilityLabel={t('查看资料')}>
+        <NetworkImage
+          source={{ uri: url }}
+          style={styles.msgAvatar}
+          resizeMode="cover"
+          thumbnail={160}
+          fallbackIcon="account-outline"
+        />
+      </ScalePressable>
+    );
+  }, [sel, member, dmPeerAvatar, dmPeerName, openPeerProfile, palette, t]);
 
-    /**
-     * 日期分隔：统一纯数字 yyyy/mm/dd（库自带的 zh 输出是「14 9月」这种不符合中文习惯的格式）
-     */
-    const renderDayLabel = ({ createdAt, date }: any) => {
-      // ⚠️ 库回调传的是 createdAt（DayAnimated/index.js: renderDay({...rest, createdAt, isAnimated})），
-      // 不是 date —— 只读 date 会得到 undefined → NaN → 返回 null → 日期分隔根本不显示。
-      const d = new Date(createdAt ?? date);
-      if (Number.isNaN(d.getTime())) return null;
-      const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
-      const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
-      // 用户要求：日期分隔**居中**（库的 Day 容器居中，但自定义 renderDay 的返回被塞进
-      return <Text style={[styles.dateSepText, { color: palette.labelTertiary, alignSelf: 'center' }]}>{label}</Text>;
-    };
+  /**
+   * 日期分隔：统一纯数字 yyyy/mm/dd（库自带的 zh 输出是「14 9月」这种不符合中文习惯的格式）
+   */
+  const renderDayLabel = useCallback(({ createdAt, date }: any) => {
+    // ⚠️ 库回调传的是 createdAt（DayAnimated/index.js: renderDay({...rest, createdAt, isAnimated})），
+    // 不是 date —— 只读 date 会得到 undefined → NaN → 返回 null → 日期分隔根本不显示。
+    const d = new Date(createdAt ?? date);
+    if (Number.isNaN(d.getTime())) return null;
+    const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
+    const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
+    // 用户要求：日期分隔**居中**（库的 Day 容器居中，但自定义 renderDay 的返回被塞进
+    return <Text style={[styles.dateSepText, { color: palette.labelTertiary, alignSelf: 'center' }]}>{label}</Text>;
+  }, [palette]);
 
-    /**
-     * 纯椭圆玻璃气泡（材质 = 全站同一套 GlassSurface）。
-     * 只做气泡本身：左右分列仍由库的 position 决定（不再包一层 row，避免阶梯错位）。
-     */
-    const renderEllipseGlassBubble = ({ currentMessage, position }: any) => {
-      const msg = currentMessage as any;
-      const item = msg.original;
-      const mine = position === 'right';
-      const t0 = msg.createdAt instanceof Date ? msg.createdAt : new Date(msg.createdAt);
-      const hh = Number.isNaN(t0.getTime()) ? '' : `${String(t0.getHours()).padStart(2, '0')}:${String(t0.getMinutes()).padStart(2, '0')}`;
-      // 语音/视频/图片消息：这个气泡原来只渲染 msg.text → 媒体消息只剩「[语音消息]」文字、点不动。
-      // 补上内联媒体：图片直显；语音/视频给播放键 + 内联 PlayerScreen。
-      const media = item ? privateMessageMedia(item) : null;
-      const hasText = !!msg.text && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(String(msg.text)) && msg.text !== '[空消息]';
-      const mediaLabel = media ? (formatDur(media.duration || 0) || (media.type === 'audio' ? t('语音') : t('视频'))) : '';
-      return (
-        <GlassSurface
-          role="chip"
-          radius={22}
-          tintColor={mine ? palette.tint : undefined}
-          onLongPress={mine && item ? () => confirmDeletePrivateMessage(item) : undefined}
-          style={styles.ellipseBubble}
-        >
-          {hasText ? (
-            <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>{msg.text}</Text>
-          ) : null}
-          {media ? (
-            media.type === 'image' ? (
-              <ScalePressable onPress={() => setZoomUrl(media.url)}>
-                <NetworkImage source={{ uri: media.url }} style={[styles.inlineImg, imageBox(media.width, media.height), { backgroundColor: palette.fill2 }]} resizeMode="cover" thumbnail={400} fallbackIcon="image-off-outline" />
-              </ScalePressable>
-            ) : (
-              <ScalePressable
-                style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]}
-                onPress={() => setPlayUrl((p) => (p === media.url ? '' : media.url))}
-              >
-                <Text style={[styles.mediaBtnText, mine && { color: palette.onTint }, !mine && { color: palette.tint }]}>
-                  {playUrl === media.url ? t('收起') : mediaLabel}
-                </Text>
-                {playUrl !== media.url ? <MaterialCommunityIcons name="play" size={14} color={mine ? palette.onTint : palette.tint} style={{ marginLeft: 4 }} /> : null}
-              </ScalePressable>
-            )
-          ) : null}
-          {media && playUrl === media.url ? (
-            <PlayerScreen
-              inline
-              source={{ kind: media.type === 'audio' ? 'audio' : 'vod', url: media.url }}
-              meta={{ title: t('消息媒体') }}
-              persistent
-            />
-          ) : null}
-          {hh ? (
-            <Text style={[styles.ellipseTime, { color: mine ? 'rgba(255,255,255,0.75)' : palette.labelTertiary }]}>{hh}</Text>
-          ) : null}
-        </GlassSurface>
-      );
-    };
+  /**
+   * 纯椭圆玻璃气泡（材质 = 全站同一套 GlassSurface）。
+   * 只做气泡本身：左右分列仍由库的 position 决定（不再包一层 row，避免阶梯错位）。
+   */
+  const renderEllipseGlassBubble = useCallback(({ currentMessage, position }: any) => {
+    const msg = currentMessage as any;
+    const item = msg.original;
+    const mine = position === 'right';
+    const t0 = msg.createdAt instanceof Date ? msg.createdAt : new Date(msg.createdAt);
+    const hh = Number.isNaN(t0.getTime()) ? '' : `${String(t0.getHours()).padStart(2, '0')}:${String(t0.getMinutes()).padStart(2, '0')}`;
+    // 语音/视频/图片消息：这个气泡原来只渲染 msg.text → 媒体消息只剩「[语音消息]」文字、点不动。
+    // 补上内联媒体：图片直显；语音/视频给播放键 + 内联 PlayerScreen。
+    const media = item ? privateMessageMedia(item) : null;
+    const hasText = !!msg.text && !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(String(msg.text)) && msg.text !== '[空消息]';
+    const mediaLabel = media ? (formatDur(media.duration || 0) || (media.type === 'audio' ? t('语音') : t('视频'))) : '';
+    return (
+      <GlassSurface
+        role="chip"
+        radius={22}
+        tintColor={mine ? palette.tint : undefined}
+        onLongPress={mine && item ? () => confirmDeletePrivateMessage(item) : undefined}
+        style={styles.ellipseBubble}
+      >
+        {hasText ? (
+          <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>{msg.text}</Text>
+        ) : null}
+        {media ? (
+          media.type === 'image' ? (
+            <ScalePressable onPress={() => setZoomUrl(media.url)}>
+              <NetworkImage source={{ uri: media.url }} style={[styles.inlineImg, imageBox(media.width, media.height), { backgroundColor: palette.fill2 }]} resizeMode="cover" thumbnail={400} fallbackIcon="image-off-outline" />
+            </ScalePressable>
+          ) : (
+            <ScalePressable
+              style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]}
+              onPress={() => setPlayUrl((p) => (p === media.url ? '' : media.url))}
+            >
+              <Text style={[styles.mediaBtnText, mine && { color: palette.onTint }, !mine && { color: palette.tint }]}>
+                {playUrl === media.url ? t('收起') : mediaLabel}
+              </Text>
+              {playUrl !== media.url ? <MaterialCommunityIcons name="play" size={14} color={mine ? palette.onTint : palette.tint} style={{ marginLeft: 4 }} /> : null}
+            </ScalePressable>
+          )
+        ) : null}
+        {media && playUrl === media.url ? (
+          <PlayerScreen
+            inline
+            source={{ kind: media.type === 'audio' ? 'audio' : 'vod', url: media.url }}
+            meta={{ title: t('消息媒体') }}
+            persistent
+          />
+        ) : null}
+        {hh ? (
+          <Text style={[styles.ellipseTime, { color: mine ? 'rgba(255,255,255,0.75)' : palette.labelTertiary }]}>{hh}</Text>
+        ) : null}
+      </GlassSurface>
+    );
+  }, [palette, t, playUrl, confirmDeletePrivateMessage]);
+
+  if (sel) {
+    // 会话维度常量都在组件顶层（useCallback/memo），这里只做别名，保持下面 JSX 不动
+    const targetId = dmTargetId;
+    const peerName = dmPeerName;
+    const peerAvatar = dmPeerAvatar;
+    const ims = dmIms;
+
 
     /** 玻璃气泡（沿用原实现：媒体内联 + 时间戳，「自己」用 tint 染色玻璃） */
     const renderGlassBubble = ({ currentMessage }: any) => {
@@ -1009,20 +1032,23 @@ export default function PrivateMessagesScreen() {
         <Chat
           messages={ims}
           // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
-          theme={{ colors: { background: 'transparent' } }}
+          theme={DM_CHAT_THEME as any}
           locale="zh"
           renderBubble={renderEllipseGlassBubble}
           // 对方头像（桌面版同款：每条对方消息左侧头像，点开用户资料卡）
           renderAvatar={renderPeerAvatar}
+          // 往上翻历史时给「回到底部」气泡（与房间页一致）
+          isScrollToBottomEnabled
+          scrollToBottomOffset={80}
           // 日期分隔（用户要求加回）：跨天消息只显示 HH:mm 会看反顺序，加 yyyy/mm/dd 分隔
           renderDay={renderDayLabel}
           isDayAnimationEnabled={false}
-          user={{ _id: 'SELF' }}
+          user={DM_CHAT_USER as any}
           onSend={(msgs) => {
             const outgoing = String((msgs as any)?.[0]?.text ?? '').trim();
             if (outgoing) void doSend(outgoing);
           }}
-          renderInputToolbar={() => null}
+          renderInputToolbar={DM_NO_INPUT_TOOLBAR}
         />
         </View>
         {member ? (
@@ -1133,7 +1159,7 @@ export default function PrivateMessagesScreen() {
             const isPinned = pinnedConvs.includes(convTargetId(conv));
             // 会话头像：会话对象自带 → 成员库；都没有才回落首字母
             const convTarget = String(convTargetId(conv));
-            const convMember = members.find((m: any) => String(m.id || m.userId || m.memberId) === convTarget);
+            const convMember = memberById.get(convTarget);
             const convAvatarUrl = peerAvatarUrl(conv, convMember);
             return (
               <View style={styles.convRowWrap}>
@@ -1245,6 +1271,10 @@ export default function PrivateMessagesScreen() {
     </View>
   );
 }
+
+const DM_CHAT_THEME = { colors: { background: 'transparent' } } as const;
+const DM_CHAT_USER = { _id: 'SELF' } as const;
+const DM_NO_INPUT_TOOLBAR = () => null;
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },

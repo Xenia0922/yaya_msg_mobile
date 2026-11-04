@@ -956,4 +956,7 @@ export const zhHant: Record<string, string> = {
   '房间送礼': '房間送禮',
   '收礼：{name}': '收禮：{name}',
   '（背包）': '（背包）',
+  '回到底部': '回到最底',
+  '{count} 条新消息': '{count} 則新訊息',
+  '查看资料': '查看資料',
 };
