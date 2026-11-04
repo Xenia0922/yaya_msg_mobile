@@ -31,6 +31,8 @@
 
 - 账号设置新增头像框 / 队标 / 勋章选择，选项取自官方接口，仅作用于当前登录账号。
 - 头像框提交走 `user/modify/picture/frame`。
+- 队标渲染修正：此前只有成员身份才画队标，普通账号选了队标也永远看不到；现在消息里带了
+  `ext.user.teamLogo` 就渲染，没带才回落到「成员空 / 粉丝等级胶囊」。
 
 **涉及文件**：`src/components/IdentityDecorations.tsx`、`src/api/pocket48.ts`
 
