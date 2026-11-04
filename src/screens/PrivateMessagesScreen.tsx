@@ -19,13 +19,16 @@ import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
 import { formatTimestamp , toMs } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
-import { errorMessage, messagePayload, messageText, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
+import { errorMessage, messagePayload, messageText, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 import { usePalette, usePageBackground } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
 import { thumbUrl, AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
+import { NetworkImage } from '../components/NetworkImage';
+import ZoomImageModal from '../components/ZoomImageModal';
+import { MEDIA_INFO_KEYS, MEDIA_URL_KEYS, deepFindImageUrl, normalizePrivateMediaUrl } from '../utils/mediaUrl';
 
 function convTargetId(conv: any): string {
   return String(conv?.targetUserId || conv?.user?.userId || conv?.userId || '');
@@ -126,7 +129,7 @@ function privateMessageText(msg: any): string {
     const p = payload && typeof payload === 'object' ? payload : {};
     const url = pickText(p, ['url', 'mediaUrl', 'audioUrl', 'videoUrl']);
     if (url) {
-      const type = String(msg.msgType || p?.msgType || p?.type || '').toUpperCase();
+      const type = messageTypeOf(msg, p, msg?.content);
       if (type.includes('AUDIO') || looksLikeAudioUrl(url)) return translate('[语音消息]');
       if (type.includes('VIDEO') || looksLikeVideoUrl(url)) return translate('[视频消息]');
       if (type.includes('IMAGE') || looksLikeImageUrl(url)) return translate('[图片消息]');
@@ -142,6 +145,20 @@ function looksLikeVideoUrl(url: string): boolean { return /\.(mp4|mov|m4v|3gp|we
 function looksLikeImageUrl(url: string): boolean { return /\.(jpe?g|png|webp|gif|bmp)(\?|$)/i.test(url.toLowerCase()); }
 function answerTypeFromContext(source: any): number {
   return Number(source?.answerType || source?.answerTypeConfig || source?.type || 0);
+}
+
+/**
+ * 消息类型字符串。桌面版读的是 `message.messageType` / `content.messageType`，
+ * 服务端私信也是这两个字段；我们以前只看 msgType，导致「IMAGE 但地址没扩展名」的图片消息判断不出来。
+ */
+function messageTypeOf(...sources: any[]): string {
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+    const raw = source.messageType || source.msgType || source.contentType || source.type;
+    const value = String(raw ?? '').trim().toUpperCase();
+    if (value) return value;
+  }
+  return '';
 }
 
 function extractDuration(source: any): number {
@@ -168,6 +185,13 @@ function collectPrivateMessageMediaCandidates(msg: any): any[] {
     if (!source || typeof source !== 'object') return;
     candidates.push(source);
     for (const key of flipKeys) { if (source[key]) candidates.push(parseMaybeJson(source[key])); }
+    // 桌面版同样把 imageInfo / voiceInfo 等外层单独当候选：图片信息常包在这层里，
+    // 只扫顶层字段会取不到 imgUrl（私信图片不显示的根因之一）
+    for (const key of MEDIA_INFO_KEYS) {
+      if (!source[key]) continue;
+      const parsed = parseMaybeJson(source[key]);
+      candidates.push(parsed && typeof parsed === 'object' ? parsed : source[key]);
+    }
     for (const k of ['text', 'messageText', 'body', 'content']) {
       if (typeof source[k] === 'string') { const p = parseMaybeJson(source[k]); if (p && typeof p === 'object') candidates.push(p); }
     }
@@ -213,18 +237,17 @@ function privateMessageMedia(msg: any): MediaInfo {
   const candidates = collectPrivateMessageMediaCandidates(msg);
 
   for (const item of candidates) {
-    let rawUrl = pickText(item, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'imageUrl', 'voiceUrl', 'mp4Url', 'playUrl', 'path', 'message.url', 'msg.url']);
+    let rawUrl = pickText(item, MEDIA_URL_KEYS);
     if (rawUrl) {
-      const answerType = answerTypeFromContext(item);
-      let url = normalizeUrl(rawUrl);
-      if (!/^https?:\/\//i.test(url)) url = `${looksLikeImageUrl(url) ? 'https://source3.48.cn' : 'https://mp4.48.cn'}/${url.replace(/^\//, '')}`;
-      if (looksLikeAudioUrl(url) || (answerType === 2 && !looksLikeVideoUrl(url) && !looksLikeImageUrl(url))) return makeMedia(url, 'audio', [item, msg, content]);
-      if (looksLikeVideoUrl(url) || (answerType === 3 && !looksLikeAudioUrl(url) && !looksLikeImageUrl(url))) return makeMedia(url, 'video', [item, msg, content]);
-      if (looksLikeImageUrl(url)) return makeMedia(url, 'image', [item]);
-      const type = String(msg.msgType || item?.msgType || item?.type || p?.msgType || p?.type || '').toUpperCase();
-      if (type.includes('AUDIO') || type.includes('VOICE')) return makeMedia(url, 'audio', [item, msg]);
-      if (type.includes('VIDEO')) return makeMedia(url, 'video', [item, msg]);
-      if (type.includes('IMAGE')) return makeMedia(url, 'image', [item]);
+      // 类型先判断、再按类型选宿主域名（桌面版：图片一律 source.48.cn，音视频 mp4.48.cn）。
+      // 以前是先按扩展名归一化再判类型 → 没扩展名的图片地址被拼到 mp4.48.cn，加载必失败。
+      const type = messageTypeOf(item, msg, content, p);
+      const answerType = answerTypeFromContext(item) || answerTypeFromContext(msg) || answerTypeFromContext(content);
+      const imageLike = looksLikeImageUrl(rawUrl) || type.includes('IMAGE') || type.includes('PIC');
+      const url = normalizePrivateMediaUrl(rawUrl, imageLike ? 'source' : 'mp4');
+      if (looksLikeAudioUrl(url) || type.includes('AUDIO') || type.includes('VOICE') || (answerType === 2 && !imageLike)) return makeMedia(url, 'audio', [item, msg, content]);
+      if (looksLikeVideoUrl(url) || type.includes('VIDEO') || (answerType === 3 && !imageLike)) return makeMedia(url, 'video', [item, msg, content]);
+      if (imageLike) return makeMedia(url, 'image', [item]);
       return makeMedia(url, 'image', []);
     }
 
@@ -232,14 +255,14 @@ function privateMessageMedia(msg: any): MediaInfo {
     if (answerRaw) {
       const parsed = typeof answerRaw === 'string' ? parseMaybeJson(answerRaw) : answerRaw;
       if (parsed && typeof parsed === 'object') {
-        rawUrl = pickText(parsed, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'voiceUrl', 'mp4Url']);
+        rawUrl = pickText(parsed, MEDIA_URL_KEYS);
         if (rawUrl) {
           const answerType = answerTypeFromContext(item) || answerTypeFromContext(parsed) || answerTypeFromContext(content) || answerTypeFromContext(msg);
-          let url2 = normalizeUrl(rawUrl);
-          if (!/^https?:\/\//i.test(url2)) url2 = `${looksLikeImageUrl(url2) ? 'https://source3.48.cn' : 'https://mp4.48.cn'}/${url2.replace(/^\//, '')}`;
-          if (answerType === 2 || looksLikeAudioUrl(url2)) return makeMedia(url2, 'audio', [parsed, item, msg]);
-          if (answerType === 3 || looksLikeVideoUrl(url2)) return makeMedia(url2, 'video', [parsed, item, msg]);
-          if (looksLikeImageUrl(url2)) return makeMedia(url2, 'image', [parsed]);
+          const parsedType = messageTypeOf(parsed, item, msg, content);
+          const imageLike = looksLikeImageUrl(rawUrl) || parsedType.includes('IMAGE') || parsedType.includes('PIC');
+          const url2 = normalizePrivateMediaUrl(rawUrl, imageLike ? 'source' : 'mp4');
+          if (answerType === 2 || looksLikeAudioUrl(url2) || parsedType.includes('AUDIO') || parsedType.includes('VOICE')) return makeMedia(url2, 'audio', [parsed, item, msg]);
+          if (answerType === 3 || looksLikeVideoUrl(url2) || parsedType.includes('VIDEO')) return makeMedia(url2, 'video', [parsed, item, msg]);
           return makeMedia(url2, 'image', [parsed]);
         }
       }
@@ -263,11 +286,10 @@ function privateMessageMedia(msg: any): MediaInfo {
   for (const ans of directAnswers) {
     const pda = typeof ans === 'string' ? parseMaybeJson(ans) : ans;
     if (pda && typeof pda === 'object') {
-      const daUrl = pickText(pda, ['url', 'mediaUrl', 'audioUrl', 'videoUrl', 'voiceUrl', 'mp4Url']);
+      const daUrl = pickText(pda, MEDIA_URL_KEYS);
       if (daUrl) {
         const daAt = answerTypeFromContext(pda) || answerTypeFromContext(msg) || answerTypeFromContext(content);
-        let daNorm = normalizeUrl(daUrl);
-        if (!/^https?:\/\//i.test(daNorm)) daNorm = `${looksLikeImageUrl(daNorm) ? 'https://source3.48.cn' : 'https://mp4.48.cn'}/${daNorm.replace(/^\//, '')}`;
+        const daNorm = normalizePrivateMediaUrl(daUrl, looksLikeImageUrl(daUrl) ? 'source' : 'mp4');
         if (daAt === 2 || looksLikeAudioUrl(daNorm)) return makeMedia(daNorm, 'audio', [pda, msg]);
         if (daAt === 3 || looksLikeVideoUrl(daNorm)) return makeMedia(daNorm, 'video', [pda, msg]);
         if (looksLikeImageUrl(daNorm)) return makeMedia(daNorm, 'image', [pda]);
@@ -275,6 +297,10 @@ function privateMessageMedia(msg: any): MediaInfo {
       }
     }
   }
+
+  // 兜底：字段名不认识（新版服务端/嵌套 JSON）时，按图片扩展名整棵对象扫一遍
+  const deepImage = deepFindImageUrl(msg) || deepFindImageUrl(content) || deepFindImageUrl(payload);
+  if (deepImage) return makeMedia(normalizePrivateMediaUrl(deepImage, 'source'), 'image', [msg]);
 
   return null;
 }
@@ -394,6 +420,8 @@ export default function PrivateMessagesScreen() {
   const [hasMore, setHasMore] = useState(false);
   const flatRef = useRef<FlatList>(null);
   const [playUrl, setPlayUrl] = useState('');
+  /** 私信图片大图预览（点击气泡里的图片打开，微信式） */
+  const [zoomUrl, setZoomUrl] = useState('');
   const requestIdRef = useRef(0);
   // 会话切换竞态防护：快速切换会话时丢弃慢响应，避免旧会话数据覆盖新会话
   const convRequestIdRef = useRef(0);
@@ -736,6 +764,8 @@ export default function PrivateMessagesScreen() {
         const t = msgTimeNumber(row.item);
         /** 对方头像：成员资料里的 avatar（会话页从 members 里按目标 id 取） */
         const peerAvatar = (member as any)?.avatar || (member as any)?.avatarUrl || '';
+        // 媒体只解析一次（以前同一行解析三遍，消息多时渲染明显变慢）
+        const media = privateMessageMedia(row.item);
         return {
           _id: row.key,
           text: privateMessageText(row.item) || '',
@@ -748,9 +778,7 @@ export default function PrivateMessagesScreen() {
           groupStart: row.groupStart,
           isMine: mine,
           // 交给库自带的媒体渲染
-          ...(privateMessageMedia(row.item)?.type === 'image' ? { image: privateMessageMedia(row.item)!.url } : {}),
-          ...(privateMessageMedia(row.item)?.type === 'audio' ? { audio: privateMessageMedia(row.item)!.url } : {}),
-          ...(privateMessageMedia(row.item)?.type === 'video' ? { video: privateMessageMedia(row.item)!.url } : {}),
+          ...(media ? { [media.type]: media.url } : {}),
         };
       });
 
@@ -796,7 +824,9 @@ export default function PrivateMessagesScreen() {
           ) : null}
           {media ? (
             media.type === 'image' ? (
-              <Image source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
+              <ScalePressable onPress={() => setZoomUrl(media.url)}>
+                <NetworkImage source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" thumbnail={400} fallbackIcon="image-off-outline" />
+              </ScalePressable>
             ) : (
               <ScalePressable
                 style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]}
@@ -860,7 +890,9 @@ export default function PrivateMessagesScreen() {
             {hasText ? <Text style={[styles.msgText, mine && { color: palette.onTint }, !mine && { color: palette.label }]}>{txt}</Text> : null}
             {media ? (
               media.type === 'image' ? (
-                <Image source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" />
+                <ScalePressable onPress={() => setZoomUrl(media.url)}>
+                  <NetworkImage source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" thumbnail={400} fallbackIcon="image-off-outline" />
+                </ScalePressable>
               ) : (
                 <ScalePressable style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
                   <Text style={[styles.mediaBtnText, mine && { color: palette.onTint }, !mine && { color: palette.tint }]}>{playUrl === media.url ? t('收起') : `${mediaLabel}`}</Text>
@@ -973,6 +1005,8 @@ export default function PrivateMessagesScreen() {
           </View>
         </GlassSurface>
         </View>
+        {/* 大图预览：挂在会话页根层级（放进气泡里会被 FlatList 复用吞掉） */}
+        {zoomUrl ? <ZoomImageModal url={zoomUrl} onClose={() => setZoomUrl('')} /> : null}
       </View>
     );
   }
