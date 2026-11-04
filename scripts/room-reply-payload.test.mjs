@@ -8,7 +8,7 @@ const source = readFileSync(new URL('../src/utils/data.ts', import.meta.url), 'u
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
 const sandbox = { exports: {}, require: () => ({ translate: (s) => s }) };
 vm.runInNewContext(compiled, sandbox);
-const { messagePayload, messageText } = sandbox.exports;
+const { messagePayload, messageText, humanizeRawMessageText } = sandbox.exports;
 
 // 实时推送（QChat）把官方 bodys 原文塞在 bodys.text 里：REPLY 是一整段 JSON。
 const replyBody = JSON.stringify({
@@ -50,4 +50,9 @@ const polled = { msgType: 'REPLY', bodys: replyBody };
 assert.ok(messagePayload(polled).replyInfo);
 assert.ok(!messageText(polled).includes('"replyInfo"'));
 
-console.log('房间 REPLY 消息解析（推送/轮询）测试通过');
+// 别人把 REPLY 原文当文本粘贴出来时，复制/引用不能再把整段 JSON 带出去。
+assert.equal(humanizeRawMessageText(replyBody), '超孝子佳霞！先突破4强');
+assert.equal(humanizeRawMessageText('普通文本'), '普通文本');
+assert.equal(humanizeRawMessageText('{坏JSON'), '{坏JSON');
+
+console.log('房间 REPLY 消息解析（推送/轮询/复制）测试通过');

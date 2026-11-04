@@ -136,6 +136,26 @@ export function messagePayload(item: any): any {
   return null;
 }
 
+/**
+ * 复制 / 引用用的兜底：如果拿到的仍是整段 JSON（别人把 REPLY 原文当文本粘出来了），
+ * 只取正文，别让 {"replyInfo":...} 继续被复制、引用、再发出去。
+ */
+export function humanizeRawMessageText(raw: string): string {
+  const text = String(raw || '').trim();
+  if (!text.startsWith('{')) return text;
+  try {
+    const body = JSON.parse(text);
+    const info = body?.replyInfo || body?.giftReplyInfo;
+    if (!info) return text;
+    const own = String(info.text || '').trim();
+    const quoted = String(info.replyText || '').trim();
+    const name = String(info.replyName || '').trim();
+    return own || (name ? `回复 ${name}：${quoted}` : quoted) || text;
+  } catch {
+    return text;
+  }
+}
+
 export function messageText(item: any): string {
   const body = messagePayload(item);
   const type = String(item?.msgType || body?.msgType || body?.messageType || body?.type || '').toUpperCase();

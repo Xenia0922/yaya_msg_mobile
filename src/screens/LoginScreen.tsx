@@ -8,7 +8,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Linking,
+  View, Text, TextInput, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Linking, TouchableOpacity,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -23,6 +23,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
 import { NetworkImage } from '../components/NetworkImage';
 import { saveSettings } from '../services/settings';
+import { listSavedAccounts, removeSavedAccount, saveCurrentAccount, switchSavedAccount, type SavedAccount } from '../services/accountVault';
 import { resetNimSession } from '../services/pocketNim/session';
 import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
@@ -260,6 +261,12 @@ export default function LoginScreen() {
   const [accountInfo, setAccountInfo] = useState<{ current: any; users: any[] }>({ current: null, users: [] });
   const accountRequestRef = useRef(0);
   const [switchingUserId, setSwitchingUserId] = useState('');
+  /** 快速切号：整账号（token + 登录身份）列表 */
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
+  const [switchingVaultId, setSwitchingVaultId] = useState('');
+  useEffect(() => {
+    void listSavedAccounts().then(setSavedAccounts).catch(() => undefined);
+  }, []);
   useEffect(() => {
     const seq = ++accountRequestRef.current;
     setAccountInfo({ current: null, users: [] });
@@ -288,6 +295,8 @@ export default function LoginScreen() {
       // 账号变了 → 立即重置云信会话（凭证/自身资料/QChat·聊天室登录态 + 原生连接）。
       // 否则切号后短时间内：弹幕与房间消息仍带旧号身份、且新旧 accid 不匹配导致连不上房间。
       resetNimSession('切换/保存口袋账号');
+      // 每次拿到新 token 自动进快速切号列表（同 token 只更新，不重复）
+      void saveCurrentAccount().then(setSavedAccounts).catch(() => undefined);
       setManualToken(clean);
       setStatus(message);
     } catch (error: any) {
@@ -391,6 +400,8 @@ export default function LoginScreen() {
     setStatus('');
     setSettings({ p48ClientProfile: next });
     try { await saveSettings({ p48ClientProfile: next }); } catch { /* 落盘失败仍按内存值走本次会话 */ }
+    // 身份也是账号的一部分：同步到快速切号列表，切回来时才能用对身份
+    void saveCurrentAccount().then(setSavedAccounts).catch(() => undefined);
   };
 
   const handleRegister = async () => {
@@ -468,6 +479,32 @@ export default function LoginScreen() {
     const ok = res?.success !== false && (res?.status === 200 || res?.success || res?.content || res?.data);
     if (seq === accountRequestRef.current && ok) setAccountInfo(parseAccountInfo(res));
     return { res, ok };
+  };
+
+  /** 快速切号：保存 / 切换 / 删除整个账号 */
+  const handleSaveCurrentAccount = async () => {
+    if (!String(settings.p48Token || '').trim()) { setStatus(t('当前没有 Token')); return; }
+    try {
+      const name = accountInfo.current ? accountName(accountInfo.current) : t('账号');
+      setSavedAccounts(await saveCurrentAccount(name));
+      showToast(t('当前账号已保存'));
+    } catch (error) { setStatus(errorMessage(error)); }
+  };
+  const handleSwitchSavedAccount = async (entry: SavedAccount) => {
+    if (String(settings.p48Token || '').trim() === entry.token) { showToast(t('已是当前账号')); return; }
+    setSwitchingVaultId(entry.id);
+    try {
+      await switchSavedAccount(entry);
+      setManualToken(entry.token);
+      const done = t('已切换到{name}', { name: entry.label });
+      setStatus(done);
+      await refreshAccountInfo().catch(() => undefined);
+      showToast(done);
+    } catch (error) { setStatus(t('切换账号失败：{msg}', { msg: errorMessage(error) })); }
+    finally { setSwitchingVaultId(''); }
+  };
+  const handleRemoveSavedAccount = async (id: string) => {
+    setSavedAccounts(await removeSavedAccount(id));
   };
 
   const handleCheckToken = async () => {
@@ -744,6 +781,64 @@ export default function LoginScreen() {
               </FadeInView>
             );
           }) : <Text style={[styles.accountEmpty, { color: palette.labelTertiary }]}>{t('登录后可刷新并切换账号')}</Text>}
+        </GlassSurface>
+
+        {/* 快速切号：换的是整个账号（Token + 登录身份），不是口袋大小号 */}
+        <GlassSurface radius={20} role="card" style={styles.card}>
+          <View style={styles.cardHead}>
+            <AccountSectionTitle icon="account-key-outline" title={t('快速切号')} compact />
+            <Button title={t('保存当前账号')} variant="tinted" size="sm" onPress={handleSaveCurrentAccount} />
+          </View>
+          <Text style={[styles.accountSummary, { color: palette.labelTertiary }]}>
+            {t('保存多个完整账号，点一行即整号切换，不用再粘贴 Token')}
+          </Text>
+          {savedAccounts.length ? savedAccounts.map((entry) => {
+            const isCurrent = String(settings.p48Token || '').trim() === entry.token;
+            return (
+              <ScalePressable
+                key={entry.id}
+                style={[
+                  styles.accountRow,
+                  isCurrent
+                    ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
+                    : { backgroundColor: palette.fill3, borderColor: 'transparent' },
+                ]}
+                onPress={() => handleSwitchSavedAccount(entry)}
+                disabled={isCurrent || switchingVaultId === entry.id}
+                activeOpacity={0.7}
+                pressedScale={0.985}
+              >
+                <View style={{ width: 34, alignItems: 'center' }}>
+                  <MaterialCommunityIcons name={entry.clientProfile === 'seine48' ? 'account-star-outline' : 'account-outline'} size={22} color={palette.tint} />
+                </View>
+                <View style={styles.accountTextWrap}>
+                  <Text style={[styles.accountName, { color: palette.label }]} numberOfLines={1}>{entry.label}</Text>
+                  <Text style={[styles.accountMeta, { color: palette.labelTertiary }]} numberOfLines={1}>
+                    {`${entry.clientProfile === 'seine48' ? t('塞纳河48') : t('口袋48')} · ${entry.token.slice(0, 4)}…${entry.token.slice(-4)}`}
+                  </Text>
+                </View>
+                {isCurrent ? (
+                  <View style={[styles.currentBadge, { backgroundColor: palette.tint }]}>
+                    <Text style={[styles.currentBadgeText, { color: palette.onTint }]}>{t('当前')}</Text>
+                  </View>
+                ) : (
+                  <Button
+                    title={switchingVaultId === entry.id ? t('切换中') : t('切换')}
+                    variant="filled"
+                    size="sm"
+                    onPress={() => handleSwitchSavedAccount(entry)}
+                    disabled={switchingVaultId === entry.id}
+                    loading={switchingVaultId === entry.id}
+                  />
+                )}
+                <TouchableOpacity onPress={() => handleRemoveSavedAccount(entry.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <MaterialCommunityIcons name="close-circle-outline" size={18} color={palette.labelTertiary} />
+                </TouchableOpacity>
+              </ScalePressable>
+            );
+          }) : (
+            <Text style={[styles.accountEmpty, { color: palette.labelTertiary }]}>{t('还没有保存的账号，先登录再点「保存当前账号」')}</Text>
+          )}
         </GlassSurface>
 
       </FadeInView>

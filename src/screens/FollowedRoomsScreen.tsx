@@ -40,6 +40,7 @@ import {
   errorMessage,
   getPath,
   messagePayload,
+  humanizeRawMessageText,
   messageText,
   normalizeUrl,
   parseMaybeJson,
@@ -3305,7 +3306,7 @@ export default function FollowedRoomsScreen() {
    */
   const openMessageActions = useCallback(
     (item: any, mine: boolean, senderName: string, media?: RoomMedia | null) => {
-      const text = String(messageText(item) || '').trim();
+      const text = humanizeRawMessageText(String(messageText(item) || '').trim());
       const replyMessageId = String(item?.msgIdClient || item?.uuid || item?.msgId || '');
       const isMedia = !!media;
       if (!isMedia && !text) {

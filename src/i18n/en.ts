@@ -963,4 +963,11 @@ export const en: Record<string, string> = {
   '回到底部': 'Back to latest',
   '{count} 条新消息': '{count} new messages',
   '查看资料': 'View profile',
+  '快速切号': 'Quick account switch',
+  '保存当前账号': 'Save current account',
+  '保存多个完整账号，点一行即整号切换，不用再粘贴 Token': 'Save full accounts (token + identity), tap a row to switch',
+  '当前账号已保存': 'Current account saved',
+  '已是当前账号': 'Already the current account',
+  '当前没有 Token': 'No token available',
+  '还没有保存的账号，先登录再点「保存当前账号」': 'No saved accounts yet. Log in, then tap Save current account.',
 };
