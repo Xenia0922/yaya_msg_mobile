@@ -236,6 +236,9 @@
 - 离开底部时露出「回到底部 / N 条新消息」气泡（库的 scrollToBottom 能力，改成胶囊样式）；
   点一下或手动滑回底部即解冻。换房间 / 自己发言会自动回到底部。
 - 私信页同样开了「回到底部」气泡。
+- 修正：聊天列表不再启用 `maintainVisibleContentPosition` —— 倒序列表在 offset=0 时本来就贴底，
+  而 MVCP 会把可见内容钉住（插入新消息后把 offset 推大），表现就是「点了回到底部也不跟新消息滚、
+  而且立刻又被判成不在底部」，与冻结逻辑互相打架。
 
 **涉及文件**：`src/services/roomLivePolicy.ts`（`splitByFreezeAnchor`）、`src/screens/FollowedRoomsScreen.tsx`、`src/screens/PrivateMessagesScreen.tsx`、`scripts/room-live-policy.test.mjs`
 

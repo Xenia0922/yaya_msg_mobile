@@ -3067,8 +3067,10 @@ export default function FollowedRoomsScreen() {
       // 滚动位置只用来判定「是否贴底」，100ms 足够，避免每帧过 JS 桥
       scrollEventThrottle: 100,
       onScroll: handleRoomListScroll,
-      // 新消息插入时钉住当前可见内容，进一步减少视口跳动
-      maintainVisibleContentPosition: { minIndexForVisible: 0 },
+      // ⚠️ 不要加 maintainVisibleContentPosition：
+      // 倒序列表本身在 offset=0 时新消息就是「贴底可见」的，而 MVCP 会把可见内容钉住
+      // （插入新消息后自动把 offset 推大），表现为「回到底部后不跟新消息滚动、
+      // 而且 offset 被推离底部 → 又被判成不在底部」，和上滑冻结互相打架。
     }),
     [handleRoomListScroll],
   );
