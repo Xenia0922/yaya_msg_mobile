@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   language: 'system',
   p48Token: '',
+  p48ClientProfile: 'pocket48',
   bilibiliCookie: '',
   bilibiliUserInfo: null,
   msg_sort_order: 'desc',

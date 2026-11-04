@@ -49,6 +49,15 @@ export const en: Record<string, string> = {
   背景图失败: 'Background failed',
   账号设置: 'Account Settings',
   口袋48验证码登录: 'Pocket48 SMS login',
+  登录身份: 'Login identity',
+  口袋48: 'Pocket48',
+  塞纳河48: 'Seine48',
+  塞纳河48验证码登录: 'Seine48 SMS login',
+  '塞纳河48 身份：按塞纳河客户端请求，用于在塞纳河注册的账号（此身份不支持注册）':
+    'Seine48 identity: requests are sent as the Seine48 client, for accounts registered there (registration is not supported under this identity).',
+  '口袋48 身份：默认身份，注册与登录都在此身份下完成':
+    'Pocket48 identity: the default. Both registration and login happen under it.',
+  '塞纳河48 身份不支持注册，请切换到口袋48': 'Seine48 identity does not support registration. Switch to Pocket48 first.',
   手机号: 'Phone number',
   短信验证码: 'SMS code',
   获取验证码: 'Send code',

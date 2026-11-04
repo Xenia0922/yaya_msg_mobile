@@ -228,6 +228,8 @@ export default function LoginScreen() {
   const showToast = useUiStore((state) => state.showToast);
   const palette = usePalette();
   const { t } = useI18n();
+  // 登录身份：口袋48 / 塞纳河48（对齐桌面端 v3.0，身份决定 appInfo 与 UA，登录后所有接口沿用）
+  const clientProfile: 'pocket48' | 'seine48' = settings.p48ClientProfile === 'seine48' ? 'seine48' : 'pocket48';
   const pollingRef = useRef(true);
   useEffect(() => { return () => { pollingRef.current = false; }; }, []);
   // 账号设置页固定竖屏：避免从横屏播放器进入时内容被横向挤压（布局按竖屏设计）
@@ -382,8 +384,21 @@ export default function LoginScreen() {
     finally { setLoading(false); }
   };
 
+  const handleClientProfileChange = async (value: string) => {
+    if (loading) return;
+    const next: 'pocket48' | 'seine48' = value === 'seine48' ? 'seine48' : 'pocket48';
+    setRegistration(null);
+    setStatus('');
+    setSettings({ p48ClientProfile: next });
+    try { await saveSettings({ p48ClientProfile: next }); } catch { /* 落盘失败仍按内存值走本次会话 */ }
+  };
+
   const handleRegister = async () => {
     if (!registration || registrationBusyRef.current) return;
+    if (clientProfile === 'seine48') {
+      setStatus(t('塞纳河48 身份不支持注册，请切换到口袋48'));
+      return;
+    }
     let { encrypted } = registration;
     if (registration.phase === 'new') {
       const problem = validateRegistrationPassword(password, confirmation);
@@ -733,6 +748,25 @@ export default function LoginScreen() {
 
       </FadeInView>
 
+      <FadeInView delay={20} duration={280} distance={8}>
+        <Text style={[styles.groupLabel, { color: palette.labelSecondary }]}>{t('登录身份')}</Text>
+        <GlassSegmented
+          options={[
+            { key: 'pocket48', label: t('口袋48') },
+            { key: 'seine48', label: t('塞纳河48') },
+          ]}
+          value={clientProfile}
+          onChange={handleClientProfileChange}
+          height={38}
+          style={{ marginBottom: 6 }}
+        />
+        <Text style={[styles.groupHint, { color: palette.labelTertiary }]}>
+          {t(clientProfile === 'seine48'
+            ? '塞纳河48 身份：按塞纳河客户端请求，用于在塞纳河注册的账号（此身份不支持注册）'
+            : '口袋48 身份：默认身份，注册与登录都在此身份下完成')}
+        </Text>
+      </FadeInView>
+
       <FadeInView delay={40} duration={280} distance={8}>
         <Text style={[styles.groupLabel, { color: palette.labelSecondary }]}>{t('登录方式')}</Text>
         {/* 登录方式分段控件：玻璃滑动选中（与全站一致） */}
@@ -749,7 +783,7 @@ export default function LoginScreen() {
         {/* 短信验证码登录 */}
         {mode === 'sms' ? (
           <GlassSurface radius={20} role="card" style={styles.card}>
-            <AccountSectionTitle icon="message-text-outline" title={t('口袋48验证码登录')} />
+            <AccountSectionTitle icon="message-text-outline" title={t(clientProfile === 'seine48' ? '塞纳河48验证码登录' : '口袋48验证码登录')} />
             <View style={styles.phoneRow}>
               <View style={[styles.field, styles.areaWrap, { backgroundColor: palette.fill2 }]}>
                 <Text style={[styles.areaPlus, { color: palette.label }]}>+</Text>
@@ -808,7 +842,7 @@ export default function LoginScreen() {
                   ].map(([label, url]) => <Text key={url} onPress={() => { void Linking.openURL(url).catch(() => setStatus(t('无法打开协议链接'))); }} style={{ color: palette.tint, fontSize: 12 }}>{t(label)}</Text>)}
                 </View>
               </> : <Text style={[styles.status, { color: palette.labelSecondary }]}>{t(registration.phase === 'uncertain' ? '注册结果未确认，请先尝试登录。' : '注册成功，请重试登录。')}</Text>}
-              <View style={styles.btnCol}><Button title={t(registration.phase === 'new' ? '注册并登录' : '重试登录')} variant="filled" size="md" onPress={handleRegister} disabled={loading} loading={loading} fullWidth /></View>
+              <View style={styles.btnCol}><Button title={t(registration.phase === 'new' ? '注册并登录' : '重试登录')} variant="filled" size="md" onPress={handleRegister} disabled={loading || (registration.phase === 'new' && clientProfile === 'seine48')} loading={loading} fullWidth /></View>
             </View> : <View style={styles.btnCol}>
               <Button title={t('获取验证码')} variant="tinted" size="md" onPress={() => handleSendSms()} disabled={loading} fullWidth />
               <Button title={t('登录')} variant="filled" size="md" onPress={handleLogin} disabled={loading} fullWidth />
@@ -942,6 +976,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingBottom: 32, paddingHorizontal: 16 },
   groupLabel: { fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 8, marginTop: 3 },
+  groupHint: { fontSize: 11, lineHeight: 16, marginLeft: 4, marginBottom: 12, marginTop: 2 },
   cardMargin: { marginHorizontal: 16, marginTop: 16 },
   // 分段控件
   segment: {

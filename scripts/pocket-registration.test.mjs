@@ -28,8 +28,9 @@ assert.equal(util.exports.validateRegistrationPassword('test-pass', 'test-pass')
 
 const calls = [];
 let response = { status: 200, success: true, content: {} };
+const mockedSettings = { p48Token: 'existing-session' };
 const api = load('../src/api/pocket48.ts', {
-  '../store': { useSettingsStore: { getState: () => ({ settings: { p48Token: 'existing-session' } }) } },
+  '../store': { useSettingsStore: { getState: () => ({ settings: mockedSettings }) } },
   '../auth': { initWasm: async () => {}, generatePaAsync: async () => 'mock-signature' },
   '../utils/network': { xhrPost: async (url, body, headers) => { calls.push({ url, body, headers }); return response; } },
   '../utils/data': {},
@@ -51,4 +52,22 @@ await api.loginByPassword('000000', 'mock-encrypted');
 assert.ok(calls[3].url.endsWith('/user/api/v1/login/app/mobile'));
 assert.equal(calls[3].body.loginType, 'MOBILE_PWD');
 assert.equal(calls[3].headers.token, undefined);
+
+// 登录身份：塞纳河48 身份下 appInfo / UA / 附加头按塞纳河客户端发，切回口袋48 再还原
+response = { status: 200, success: true, content: {} };
+mockedSettings.p48ClientProfile = 'seine48';
+await api.loginSendSms('000000', '86');
+const seineCall = calls[calls.length - 1];
+const seineInfo = JSON.parse(seineCall.headers.appInfo);
+assert.equal(seineInfo.appName, 'seine48');
+assert.equal(seineInfo.appVersion, '1.3.5');
+assert.equal(seineInfo.appBuild, 26102601);
+assert.equal(seineCall.headers['X-Custom-Device-Type'], 'ANDROID');
+assert.ok(seineCall.headers['User-Agent'].startsWith('PocketFans201807/1.3.5_26102601'));
+mockedSettings.p48ClientProfile = 'pocket48';
+await api.loginSendSms('000000', '86');
+const pocketCall = calls[calls.length - 1];
+assert.equal(JSON.parse(pocketCall.headers.appInfo).appName, 'pocket48');
+assert.equal(pocketCall.headers['X-Custom-Device-Type'], undefined);
+
 console.log('注册、密码协议和登录请求测试通过');

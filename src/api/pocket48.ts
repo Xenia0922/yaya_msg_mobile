@@ -9,8 +9,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const BASE = 'https://pocketapi.48.cn';
 const APP_VERSION = '7.0.41';
 const APP_BUILD = '24011601';
+// 塞纳河48 官方客户端身份（对齐桌面端 v3.0 pocket-client-profile.js，验证自官方 1.3.5 APK）
+const SEINE_APP_VERSION = '1.3.5';
+const SEINE_APP_BUILD = 26102601;
 
 type HeadersMap = Record<string, string>;
+
+/** 当前是否走塞纳河48 身份（登录页可选，持久化在 p48ClientProfile） */
+function isSeineProfile(): boolean {
+  return useSettingsStore.getState().settings.p48ClientProfile === 'seine48';
+}
 
 function createDeviceId(): string {
   const chars = 'QWERTYUIOPASDFGHJKLZXCVBNM1234567890';
@@ -51,6 +59,22 @@ async function ensureDeviceId(): Promise<string> {
 // --- App Info / Headers factories ---
 
 function appInfo(modern = false, deviceId = DEVICE_ID) {
+  // 塞纳河身份优先于 modern：身份由用户在登录页选择，不能被「现代接口」分支覆盖
+  if (isSeineProfile()) {
+    return {
+      IMEI: deviceId,
+      deviceId,
+      appName: 'seine48',
+      appVersion: SEINE_APP_VERSION,
+      appBuild: SEINE_APP_BUILD,
+      deviceName: 'SM-G9730',
+      osType: 'android',
+      osVersion: '12',
+      phoneName: 'SM-G9730',
+      phoneSystemVersion: '12',
+      vendor: 'Samsung',
+    };
+  }
   if (modern) {
     return {
       vendor: 'apple',
@@ -76,16 +100,20 @@ function appInfo(modern = false, deviceId = DEVICE_ID) {
 }
 
 function createHeaders(token?: string, pa?: string | null, modern = false, deviceId = DEVICE_ID): HeadersMap {
+  const seine = isSeineProfile();
   const headers: HeadersMap = {
     'Content-Type': 'application/json;charset=utf-8',
-    'User-Agent': modern
-      ? 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)'
-      : `PocketFans201807/${APP_VERSION} (iPhone; iOS 16.3.1; Scale/2.00)`,
+    'User-Agent': seine
+      ? `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`
+      : modern
+        ? 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)'
+        : `PocketFans201807/${APP_VERSION} (iPhone; iOS 16.3.1; Scale/2.00)`,
     Host: 'pocketapi.48.cn',
     'Accept-Language': 'zh-Hans-CN;q=1',
     Accept: '*/*',
     appInfo: JSON.stringify(appInfo(modern, deviceId)),
   };
+  if (seine) headers['X-Custom-Device-Type'] = 'ANDROID';
   if (token) headers.token = token;
   if (pa) headers.pa = pa;
   return headers;
@@ -93,6 +121,8 @@ function createHeaders(token?: string, pa?: string | null, modern = false, devic
 
 function createModernHeaders(token?: string, pa?: string | null): HeadersMap {
   const headers = createHeaders(token, pa, true);
+  // 塞纳河身份下保留 createHeaders 生成的 Android 1.3.5 头，不再改写成 iOS
+  if (isSeineProfile()) return headers;
   headers.appInfo = JSON.stringify({
     vendor: 'apple',
     deviceId: '7B93DFD0-472F-4736-A628-E85FAE086486',
@@ -138,6 +168,23 @@ function createPocketAndroidHeaders(token?: string, pa?: string | null): Headers
       vendor: 'Samsung',
     }),
   };
+  if (isSeineProfile()) {
+    headers['User-Agent'] = `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`;
+    headers['X-Custom-Device-Type'] = 'ANDROID';
+    headers.appInfo = JSON.stringify({
+      IMEI: '7b93dfd0472f4736a628e85fae086486',
+      appBuild: SEINE_APP_BUILD,
+      appName: 'seine48',
+      appVersion: SEINE_APP_VERSION,
+      deviceId: '7b93dfd0472f4736a628e85fae086486',
+      deviceName: 'SM-G9730',
+      osType: 'android',
+      osVersion: '12',
+      phoneName: 'SM-G9730',
+      phoneSystemVersion: '12',
+      vendor: 'Samsung',
+    });
+  }
   if (token) headers.token = token;
   if (pa) headers.pa = pa;
   return headers;
@@ -145,11 +192,18 @@ function createPocketAndroidHeaders(token?: string, pa?: string | null): Headers
 
 async function createPocketLoginHeaders(): Promise<HeadersMap> {
   const deviceId = Array.from((await ensureDeviceId()).replace(/[^a-z0-9]/gi, '').slice(0, 16), (c) => (c.charCodeAt(0) % 16).toString(16)).join('').padEnd(16, '0');
+  // 登录/注册身份：跟随登录页选择（塞纳河账号用塞纳河客户端身份登录）
+  const seine = isSeineProfile();
   return {
     'Content-Type': 'application/json; charset=UTF-8',
-    'User-Agent': 'PocketFans201807/7.1.45_26102701 (SM-G9730:Android 12;Samsung V417IR release-keys)',
+    'User-Agent': seine
+      ? `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`
+      : 'PocketFans201807/7.1.45_26102701 (SM-G9730:Android 12;Samsung V417IR release-keys)',
     'Accept-Language': 'zh-Hans-CN;q=1',
-    appInfo: JSON.stringify({ IMEI: deviceId, deviceId, appName: 'pocket48', appVersion: '7.1.45', appBuild: '26102701', deviceName: 'SM-G9730', osType: 'android', osVersion: '12', phoneName: 'SM-G9730', phoneSystemVersion: '12', vendor: 'Samsung' }),
+    ...(seine ? { 'X-Custom-Device-Type': 'ANDROID' } : {}),
+    appInfo: JSON.stringify(seine
+      ? { IMEI: deviceId, deviceId, appName: 'seine48', appVersion: SEINE_APP_VERSION, appBuild: SEINE_APP_BUILD, deviceName: 'SM-G9730', osType: 'android', osVersion: '12', phoneName: 'SM-G9730', phoneSystemVersion: '12', vendor: 'Samsung' }
+      : { IMEI: deviceId, deviceId, appName: 'pocket48', appVersion: '7.1.45', appBuild: '26102701', deviceName: 'SM-G9730', osType: 'android', osVersion: '12', phoneName: 'SM-G9730', phoneSystemVersion: '12', vendor: 'Samsung' }),
   };
 }
 

@@ -304,6 +304,8 @@ export interface AppSettings {
   theme: Theme;
   language: LanguageSetting;
   p48Token: string;
+  /** 登录/请求身份：pocket48 = 口袋48 客户端身份，seine48 = 塞纳河48 客户端身份（appInfo/UA 不同） */
+  p48ClientProfile: 'pocket48' | 'seine48';
   bilibiliCookie: string;
   bilibiliUserInfo: any;
   msg_sort_order: 'asc' | 'desc';
