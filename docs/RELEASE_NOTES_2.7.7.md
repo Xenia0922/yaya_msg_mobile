@@ -298,6 +298,18 @@
 
 **涉及文件**：`src/screens/RechargeScreen.tsx`、`src/screens/MusicLibraryScreen.tsx`、`src/components/LiveBarrageBoard.tsx`
 
+### 25. 云信连接改为按需接入（房间页 / 前台）
+
+**现象**：进入过房间后云信长连接一直挂着，和官方客户端或本机另一个账号同时在线会互相顶号。
+
+**改动**：
+
+- 房间消息的 QChat 连接只在「房间页 + 已选房间 + App 前台」保持；
+- 离开房间页、切到后台立即 `resetQChatSession()` 断开并清登录态；回到页面/前台按需重连；
+- 房间消息本来就有 2s 自适应轮询兜底，断开期间不会丢消息，回页面会补拉。
+
+**涉及文件**：`src/screens/FollowedRoomsScreen.tsx`
+
 ---
 
 ## 验证

@@ -4,7 +4,7 @@ import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
-import { deleteRoomMessage, observeRoomMessages, sendRoomSticker, sendRoomTextMessage, type RoomLiveMessage, type RoomSticker } from '../services/pocketNim/qchat';
+import { deleteRoomMessage, observeRoomMessages, resetQChatSession, sendRoomSticker, sendRoomTextMessage, type RoomLiveMessage, type RoomSticker } from '../services/pocketNim/qchat';
 import { getNimSessionEpoch, subscribeNimSession } from '../services/pocketNim/session';
 import { LiveBarrageBoard } from '../components/LiveBarrageBoard';
 import { NetworkImage } from '../components/NetworkImage';
@@ -2626,6 +2626,30 @@ export default function FollowedRoomsScreen() {
   }, [selectedRoom, refreshRoomMessages, navigation, rejoinActiveChannel]);
 
   /**
+   * 云信连接生命周期：只在「房间页 + 有房间 + 前台」保持。
+   *
+   * 云信同一 appKey 只认一条活跃会话，长连接常驻会和官方客户端 / 本机另一个账号互相顶号。
+   * 所以离开房间页、切到后台都主动断开；回到页面/前台再重建（房间消息有 2s 轮询兜底，不会丢）。
+   */
+  const [roomLinkTick, setRoomLinkTick] = useState(0);
+  useFocusEffect(useCallback(() => {
+    setRoomLinkTick((v) => v + 1);
+    return () => {
+      try { resetQChatSession('离开房间页'); } catch { /* 忽略 */ }
+    };
+  }, []));
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'background') {
+        try { resetQChatSession('切到后台'); } catch { /* 忽略 */ }
+      } else if (next === 'active') {
+        setRoomLinkTick((v) => v + 1);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  /**
    * 房间消息「实时」接收：云信圈组（QChat）推送。
    *
    * 实时消息主通道是云信圈组（QChat）推送，HTTP 轮询只做兜底（间隔自适应，见 roomLivePolicy）。
@@ -2663,16 +2687,11 @@ export default function FollowedRoomsScreen() {
         rejoinActiveChannel();
       })
       .catch(() => undefined);
-    const appStateSub = AppState.addEventListener('change', (next) => {
-      // 后台回来长连接可能已被回收，重新订阅一次（失败也无副作用）
-      if (next === 'active') rejoinActiveChannel();
-    });
     return () => {
       disposed = true;
-      appStateSub.remove();
       if (unsubscribe) unsubscribe();
     };
-  }, [selectedRoom, nimEpoch, rejoinActiveChannel]);
+  }, [selectedRoom, nimEpoch, rejoinActiveChannel, roomLinkTick]);
 
   /** 直播解析并开播（占位式）：点击即反馈，出地址后无缝换正式播放器 */
   const resolveLiveAndOpen = useCallback(async (media: RoomMedia) => {
