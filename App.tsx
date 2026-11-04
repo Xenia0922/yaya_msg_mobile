@@ -120,7 +120,9 @@ async function pushExoAfterSwitch() {
     const vol = /(gnz\.hk|gnz-music|music\.gnz)/i.test(url) ? 0.86 : 1;
     const rep = st.playMode === 'single' ? 1 : 0;
     const send = (art: string) => {
-      console.warn(`[push-global] ${art ? 'art-refresh' : 'initial'} url=${String(url).slice(0, 50)} resumeAt=${resumeAt}`);
+      // 正常路径诊断：每首歌会打两条（立即起播 + 封面补发）。dev 输出，release 编译期消除，
+      // 避免导出日志里被这类高频 WARN 淹没（用户会误以为出错了）。
+      if (__DEV__) console.warn(`[push-global] ${art ? 'art-refresh' : 'initial'} url=${String(url).slice(0, 50)} resumeAt=${resumeAt}`);
       exoPlayTrack({
         url,
         title: String(track.title || '音乐'),
