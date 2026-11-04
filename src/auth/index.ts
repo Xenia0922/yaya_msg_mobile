@@ -10,6 +10,22 @@ let _paGen: (() => string | null) | null = null;
 let _lastError = '';
 // 原生通道是否曾经成功（用于区分「原生不支持/失败」与「WebView 兜底未就绪」）
 let _nativeSucceeded = false;
+// Hermes 上原生 WASM 本就不可用，只提示一次，避免每个请求都刷一条 warn
+let _nativeWarned = false;
+// 签名失败日志节流：一次网络抖动会打出十几条一模一样的 ERROR，日志里看不出重点
+let _paFailLoggedAt = 0;
+let _paFailSuppressed = 0;
+function logPaFailure(message: string) {
+  const now = Date.now();
+  if (now - _paFailLoggedAt > 5000) {
+    const extra = _paFailSuppressed > 0 ? `（同一窗口内另有 ${_paFailSuppressed} 次相同失败已折叠）` : '';
+    console.error('[generatePaAsync] WebView PA generation FAILED:', `${message}${extra}`);
+    _paFailLoggedAt = now;
+    _paFailSuppressed = 0;
+    return;
+  }
+  _paFailSuppressed += 1;
+}
 
 export function getWasmError(): string {
   // 原生已成功但 pa 仍为空 → 真实阻塞点在 WebView 兜底，优先报 WebView 错误，避免把原生引导期的
@@ -52,7 +68,10 @@ export function initWasm(): Promise<void> {
       _lastError = e?.message || String(e);
       // Hermes 上原生 WASM 本就不可用，WebView 签名器才是实际通道；降级为 log 记录，
       // 不当作错误污染用户可见日志（getWasmError 在 WebView 就绪时已返回 ''）。
-      console.warn('[initWasm] Native WASM unavailable (Hermes), falling back to WebView signer:', _lastError);
+      if (!_nativeWarned) {
+        _nativeWarned = true;
+        console.warn('[initWasm] Native WASM unavailable (Hermes), falling back to WebView signer:', _lastError);
+      }
       // 失败不置 WASM_READY：原生通道可重试（下次调用重跑），generatePaAsync 仍会兜底 WebView。
     } finally {
       _initPromise = null;
@@ -154,7 +173,7 @@ export async function generatePaAsync(): Promise<string | null> {
     return webviewPa;
   } catch (e: any) {
     _lastError = e?.message || String(e);
-    console.error('[generatePaAsync] WebView PA generation FAILED:', _lastError);
+    logPaFailure(_lastError);
     return null;
   }
 }

@@ -1,4 +1,4 @@
-// 默认普通版；scripts/write-build-channel.js 在构建时写入所选渠道与出包标识。
-export const BUILD_CHANNEL: 'plus' | 'public' = 'public';
-/** 出包标识（渠道-MMDD-HHMM）。开发环境为空串，导出日志时省略。 */
-export const BUILD_TAG = '';
+// 由 scripts/write-build-channel.js 在构建时生成，请勿手工编辑。
+export const BUILD_CHANNEL: 'plus' | 'public' = 'plus';
+/** 出包标识（渠道-MMDD-HHMM），随日志导出，用于远程确认用户实际运行的包。 */
+export const BUILD_TAG = 'plus-1104-1041';
