@@ -156,7 +156,14 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
           onChangeText={setDraft}
           placeholder={ready ? t(pocket ? '对成员说...' : '发条弹幕...') : t('弹幕连接中，点此重连')}
           placeholderTextColor={tone.tertiary}
-          editable={ready && !sending}
+          /* 未连上时也允许点击：聚焦即触发重连（点弹幕输入框就自动重连，
+             而不是干等着「弹幕连接中」）。 */
+          editable={!sending}
+          onFocus={() => {
+            if (!ready) {
+              try { retry(); } catch { /* ignore */ }
+            }
+          }}
           maxLength={60}
           returnKeyType="send"
           onSubmitEditing={handleSend}

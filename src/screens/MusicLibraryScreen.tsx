@@ -811,7 +811,10 @@ export default function MusicLibraryScreen() {
           }}
         />
       )}
-      {/* Video 常驻（width:0 height:0），不做条件卸载，彻底消除 source+paused 同步翻转崩溃 */}
+      {/* 原生 Exo 通道可用时**完全不挂载** Video：ReactExoplayerView 挂载即 prepare 并向系统
+          请求音频焦点 → 与 YayaExoService 的 Exo 互相判失焦、双方都暂停（现象：没声音 +
+          App 进度条不动 + 系统进度条一秒归零再跳回）。降级是单向的，这里只会有一次挂载。 */}
+      {nativeDisabled ? (
       <Video
         ref={videoRef}
         source={{
@@ -900,6 +903,7 @@ export default function MusicLibraryScreen() {
           }
         }}
       />
+      ) : null}
       <MiniPlayerBar onOpenFullScreen={() => setShowFullScreen(true)} />
       <FullScreenPlayer visible={showFullScreen} onClose={() => setShowFullScreen(false)} />
     </View>
