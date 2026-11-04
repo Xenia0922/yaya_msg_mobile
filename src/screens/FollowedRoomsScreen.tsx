@@ -3068,10 +3068,17 @@ export default function FollowedRoomsScreen() {
    * 冻结锚点之前的都是「比它更新」的新消息 —— 先按住不显示（只计数），
    * 锚点及其之后（更旧的历史，含上滑新加载的）照常进列表。QQ 就是这个行为。
    */
-  const { list: roomListIms, pending: roomPendingCount } = useMemo(
-    () => splitByFreezeAnchor(chatIms, roomFreezeKey),
-    [chatIms, roomFreezeKey],
-  );
+  const roomListImsRef = useRef<any[]>([]);
+  const { list: roomListIms, pending: roomPendingCount } = useMemo(() => {
+    const sliced = splitByFreezeAnchor(chatIms, roomFreezeKey);
+    // 冻结期间 chatIms 每轮都是新数组（元素引用没变）：沿用旧数组，
+    // FlatList 的 data 引用不变 → 一行都不重渲染，滚动更稳。
+    const prev = roomListImsRef.current;
+    const same = prev.length === sliced.list.length && sliced.list.every((m: any, i: number) => m === prev[i]);
+    const list = same ? prev : sliced.list;
+    roomListImsRef.current = list;
+    return { list, pending: sliced.pending };
+  }, [chatIms, roomFreezeKey]);
 
   /**
    * 房间内「上麦」直接收听（用户要求：不跳转，当前页直接播放）。
