@@ -138,7 +138,7 @@ function privateMessageText(msg: any): string {
   return text || translate('[空消息]');
 }
 
-type MediaInfo = { url: string; type: 'audio' | 'video' | 'image'; title: string; duration?: number } | null;
+type MediaInfo = { url: string; type: 'audio' | 'video' | 'image'; title: string; duration?: number; width?: number; height?: number } | null;
 
 function looksLikeAudioUrl(url: string): boolean { return /\.(mp3|m4a|aac|amr|wav|ogg)(\?|$)/i.test(url.toLowerCase()); }
 function looksLikeVideoUrl(url: string): boolean { return /\.(mp4|mov|m4v|3gp|webm)(\?|$)/i.test(url.toLowerCase()) || url.includes('.m3u8') || url.includes('.flv'); }
@@ -227,7 +227,34 @@ function collectPrivateMessageMediaCandidates(msg: any): any[] {
 function makeMedia(url: string, type: 'audio' | 'video' | 'image', durSources: any[] = []): MediaInfo {
   const d = durSources.reduce((best, src) => best || extractDuration(src), 0);
   const titleMap: Record<string, string> = { audio: translate('语音消息'), video: translate('视频消息'), image: translate('图片消息') };
-  return { url, type, title: titleMap[type] || translate('媒体消息'), ...(d > 0 ? { duration: d } : {}) };
+  const size = type === 'image' ? pickImageSize(durSources) : { width: 0, height: 0 };
+  return {
+    url,
+    type,
+    title: titleMap[type] || translate('媒体消息'),
+    ...(d > 0 ? { duration: d } : {}),
+    ...(size.width > 0 && size.height > 0 ? { width: size.width, height: size.height } : {}),
+  };
+}
+
+/** 图片原始尺寸（桌面版 <img width height> 同源字段），用于按比例摆放气泡图片。 */
+function pickImageSize(sources: any[]): { width: number; height: number } {
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue;
+    const width = Number(src.imgWidth || src.width || src.imageWidth || src.picWidth || 0);
+    const height = Number(src.imgHeight || src.height || src.imageHeight || src.picHeight || 0);
+    if (width > 0 && height > 0) return { width, height };
+  }
+  return { width: 0, height: 0 };
+}
+
+/** 气泡内图片展示盒：最宽 200、最高 260，等比缩放，避免长图被裁成方块。 */
+function imageBox(width?: number, height?: number) {
+  const w = Number(width) || 0;
+  const h = Number(height) || 0;
+  if (w <= 0 || h <= 0) return { width: 200, height: 200 };
+  const scale = Math.min(200 / w, 260 / h);
+  return { width: Math.max(96, Math.round(w * scale)), height: Math.max(96, Math.round(h * scale)) };
 }
 
 function privateMessageMedia(msg: any): MediaInfo {
@@ -247,8 +274,8 @@ function privateMessageMedia(msg: any): MediaInfo {
       const url = normalizePrivateMediaUrl(rawUrl, imageLike ? 'source' : 'mp4');
       if (looksLikeAudioUrl(url) || type.includes('AUDIO') || type.includes('VOICE') || (answerType === 2 && !imageLike)) return makeMedia(url, 'audio', [item, msg, content]);
       if (looksLikeVideoUrl(url) || type.includes('VIDEO') || (answerType === 3 && !imageLike)) return makeMedia(url, 'video', [item, msg, content]);
-      if (imageLike) return makeMedia(url, 'image', [item]);
-      return makeMedia(url, 'image', []);
+      if (imageLike) return makeMedia(url, 'image', [item, msg, content]);
+      return makeMedia(url, 'image', [item, msg, content]);
     }
 
     const answerRaw = item.answer || item.answerContent || '';
@@ -263,7 +290,7 @@ function privateMessageMedia(msg: any): MediaInfo {
           const url2 = normalizePrivateMediaUrl(rawUrl, imageLike ? 'source' : 'mp4');
           if (answerType === 2 || looksLikeAudioUrl(url2) || parsedType.includes('AUDIO') || parsedType.includes('VOICE')) return makeMedia(url2, 'audio', [parsed, item, msg]);
           if (answerType === 3 || looksLikeVideoUrl(url2) || parsedType.includes('VIDEO')) return makeMedia(url2, 'video', [parsed, item, msg]);
-          return makeMedia(url2, 'image', [parsed]);
+          return makeMedia(url2, 'image', [parsed, msg, content]);
         }
       }
     }
@@ -275,7 +302,7 @@ function privateMessageMedia(msg: any): MediaInfo {
     const url3 = urlMatch[0];
     if (looksLikeAudioUrl(url3)) return makeMedia(url3, 'audio', [msg]);
     if (looksLikeVideoUrl(url3)) return makeMedia(url3, 'video', [msg]);
-    if (looksLikeImageUrl(url3)) return makeMedia(url3, 'image', []);
+    if (looksLikeImageUrl(url3)) return makeMedia(url3, 'image', [msg, content]);
   }
 
   const directAnswers = [
@@ -300,7 +327,7 @@ function privateMessageMedia(msg: any): MediaInfo {
 
   // 兜底：字段名不认识（新版服务端/嵌套 JSON）时，按图片扩展名整棵对象扫一遍
   const deepImage = deepFindImageUrl(msg) || deepFindImageUrl(content) || deepFindImageUrl(payload);
-  if (deepImage) return makeMedia(normalizePrivateMediaUrl(deepImage, 'source'), 'image', [msg]);
+  if (deepImage) return makeMedia(normalizePrivateMediaUrl(deepImage, 'source'), 'image', [msg, content, payload]);
 
   return null;
 }
@@ -825,7 +852,7 @@ export default function PrivateMessagesScreen() {
           {media ? (
             media.type === 'image' ? (
               <ScalePressable onPress={() => setZoomUrl(media.url)}>
-                <NetworkImage source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" thumbnail={400} fallbackIcon="image-off-outline" />
+                <NetworkImage source={{ uri: media.url }} style={[styles.inlineImg, imageBox(media.width, media.height), { backgroundColor: palette.fill2 }]} resizeMode="cover" thumbnail={400} fallbackIcon="image-off-outline" />
               </ScalePressable>
             ) : (
               <ScalePressable
@@ -891,7 +918,7 @@ export default function PrivateMessagesScreen() {
             {media ? (
               media.type === 'image' ? (
                 <ScalePressable onPress={() => setZoomUrl(media.url)}>
-                  <NetworkImage source={{ uri: media.url }} style={[styles.inlineImg, { backgroundColor: palette.fill2 }]} resizeMode="cover" thumbnail={400} fallbackIcon="image-off-outline" />
+                  <NetworkImage source={{ uri: media.url }} style={[styles.inlineImg, imageBox(media.width, media.height), { backgroundColor: palette.fill2 }]} resizeMode="cover" thumbnail={400} fallbackIcon="image-off-outline" />
                 </ScalePressable>
               ) : (
                 <ScalePressable style={[styles.mediaBtn, { backgroundColor: mine ? palette.tintSoft : palette.fill2 }]} onPress={() => setPlayUrl((p) => p === media.url ? '' : media.url)}>
@@ -1184,7 +1211,7 @@ const styles = StyleSheet.create({
   msgTime: { fontSize: 10, marginTop: 4 },
   mediaBtn: { marginTop: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' },
   mediaBtnText: { fontSize: 12, fontWeight: '800' },
-  inlineImg: { width: 200, height: 200, marginTop: 4, borderRadius: 14 },
+  inlineImg: { marginTop: 4, borderRadius: 14 },
   audio: { height: 48, minWidth: 200, marginTop: 4, borderRadius: 10 },
   video: { height: 150, minWidth: 200, marginTop: 4, backgroundColor: '#000', borderRadius: 10 },
   flipBar: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
