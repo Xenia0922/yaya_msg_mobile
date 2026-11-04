@@ -120,7 +120,18 @@ export function messagePayload(item: any): any {
   const body = parseMaybeJson(raw);
   if (body?.message) return parseMaybeJson(body.message);
   if (body?.msg) return parseMaybeJson(body.msg);
-  if (body) return body;
+  if (body && typeof body === 'object') {
+    // 实时推送把官方 bodys 原文塞进了 bodys.text（JSON 字符串）。不解析的话，
+    // REPLY 消息在气泡里会原样显示 {"replyInfo":{...},"messageType":"REPLY"}。
+    const inlineText = typeof body.text === 'string' ? body.text.trim() : '';
+    if (inlineText.startsWith('{')) {
+      const inner = parseMaybeJson(inlineText);
+      if (inner && typeof inner === 'object' && (inner.replyInfo || inner.giftReplyInfo || inner.messageType)) {
+        return { ...body, ...inner };
+      }
+    }
+    return body;
+  }
   if (typeof raw === 'string') return raw;
   return null;
 }
