@@ -288,6 +288,14 @@
 
 **涉及文件**：`src/api/pocket48.ts`、`src/screens/LoginScreen.tsx`、`src/types/index.ts`、`src/services/settings.ts`、`src/i18n/*`、`scripts/pocket-registration.test.mjs`
 
+### 24. 充值页 / 音乐播放 / 弹幕重连
+
+- **充值页**：去掉顶部余额卡（该接口 token 过期时恒返回 401003，卡片退化成空壳还占掉近 1/4 屏幕），改为全屏官方充值页 + 预填口袋ID + 15s 加载兜底；导航栏刷新 = 重载页面。
+- **音乐**：原生 Exo 通道可用时**完全不挂载** RNV Video —— 此前 Video 常驻占位，挂载即请求音频焦点，与原生 Exo 互相判失焦、双方都暂停（现象：没声音、进度条不动）。
+- **直播弹幕**：未连上时输入框也可点击，**聚焦即重连**，不再只能干等「弹幕连接中」。
+
+**涉及文件**：`src/screens/RechargeScreen.tsx`、`src/screens/MusicLibraryScreen.tsx`、`src/components/LiveBarrageBoard.tsx`
+
 ---
 
 ## 验证
