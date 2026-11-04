@@ -64,14 +64,16 @@ export function UserDecorRow({ decor, size = 14 }: { decor?: UserDecor | null; s
   if (!decor) return null;
   const isMember = !!decor.isStar || [2, 3, 4, 5].includes(Number(decor.roleId));
   const teamLogo = absUrl(String(decor.teamLogo || ''));
-  if (isMember) {
-    if (!teamLogo) return null;
+  // 队标优先且不再限定成员身份：消息里带了 teamLogo 就画。
+  // （此前只有成员会渲染队标，普通账号在「个性装扮」里选了队标也永远看不到效果）
+  if (teamLogo) {
     return (
       <View style={styles.row}>
         <Image source={{ uri: teamLogo }} style={{ width: size * 1.6, height: size }} resizeMode="contain" />
       </View>
     );
   }
+  if (isMember) return null;
   const n = levelBadgeNumber(decor.level);
   if (!n) return null;
   return (
