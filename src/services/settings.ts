@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // 个性装扮（消息 ext.user.pfUrl / teamLogo / badge），留空 = 不带
   yaya_send_pfurl: '',
   yaya_send_teamlogo: '',
+  yaya_send_is_star: '',
   yaya_send_badge: '',
   yaya_send_bubble_id: '0',
   yaya_pm_unread_badge: true,

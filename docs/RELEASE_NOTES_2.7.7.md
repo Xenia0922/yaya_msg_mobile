@@ -33,6 +33,9 @@
 - 头像框提交走 `user/modify/picture/frame`。
 - 队标渲染修正：此前只有成员身份才画队标，普通账号选了队标也永远看不到；现在消息里带了
   `ext.user.teamLogo` 就渲染，没带才回落到「成员空 / 粉丝等级胶囊」。
+- 队标「官方客户端可见」开关：官方客户端是按 `isStar` 二选一渲染的（成员→队标，普通用户→等级图标），
+  只带 `teamLogo` 官方永远走 else 分支。勾选后 `ext.user` 同时带 `isStar: true` 并把 `roleId` 抬到 2，
+  官方端才会画队标；默认关闭，属于自报身份，风险自担。
 
 **涉及文件**：`src/components/IdentityDecorations.tsx`、`src/api/pocket48.ts`
 

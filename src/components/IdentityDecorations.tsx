@@ -26,8 +26,8 @@ const TEAM_LOGOS: Array<[string, string]> = [
   ['预备生', '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png'],
 ];
 
-export default function IdentityDecorations({ accountKey, frame, teamLogo, badges, bubbleId, onChange }: {
-  accountKey: string; frame: string; teamLogo: string; badges: string; bubbleId: string;
+export default function IdentityDecorations({ accountKey, frame, teamLogo, badges, bubbleId, isStar, onChange }: {
+  accountKey: string; frame: string; teamLogo: string; badges: string; bubbleId: string; isStar: string;
   onChange: (patch: Record<string, string>) => void;
 }) {
   const palette = usePalette();
@@ -174,6 +174,21 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
       {decorationRow('队标', teams.find((item) => normalizeUrl(item.url) === normalizeUrl(teamLogo))?.name || '跟随账号 · 点击选择', 'shield-star-outline', teamLogo, () => setPicker('team'))}
       {!teams.length ? <Text style={[styles.hint, { color: palette.labelTertiary }]}>成员数据暂未提供队标图片</Text> : null}
       {teamLogo ? <View style={styles.actions}>{actionButton('恢复账号队标', 'restore', () => onChange({ yaya_send_teamlogo: '' }))}</View> : null}
+      {teamLogo ? (
+        <TouchableOpacity
+          onPress={() => onChange({ yaya_send_is_star: isStar === 'on' ? '' : 'on' })}
+          activeOpacity={0.8}
+          style={[styles.decorationRow, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}
+        >
+          <MaterialCommunityIcons name={isStar === 'on' ? 'checkbox-marked' : 'checkbox-blank-outline'} size={20} color={palette.tint} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.decorationTitle, { color: palette.label }]}>在官方客户端也显示队标</Text>
+            <Text style={[styles.decorationSubtitle, { color: palette.labelSecondary }]} numberOfLines={2}>
+              开启后以成员身份（isStar）发送；官方可能校验，风险自担
+            </Text>
+          </View>
+        </TouchableOpacity>
+      ) : null}
       </> : null}
 
       {ALLOW_CUSTOM_SENDER_PROFILE ? <Text style={[styles.section, { color: palette.label }]}>个性装扮</Text> : null}

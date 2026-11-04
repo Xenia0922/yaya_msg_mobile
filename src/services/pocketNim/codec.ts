@@ -237,6 +237,7 @@ export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<st
       vip: self.vip === true,
       pfUrl: self.pfUrl || '',
       teamLogo: self.teamLogo ?? null,
+      isStar: self.isStar === true,
       badge: Array.isArray(self.badge) ? self.badge : [],
     },
     config: buildConfig(),

@@ -196,6 +196,7 @@ export function buildChannelExt(target: RoomMessageTarget, self: NimSelfProfile)
       userId: self.userId,
       nickName: self.nickName,
       teamLogo: self.teamLogo || '',
+      isStar: self.isStar === true,
       avatar: self.avatar,
       level: self.level ?? 0,
       roleId: self.roleId ?? 0,

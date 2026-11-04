@@ -326,6 +326,8 @@ export interface AppSettings {
   yaya_send_pfurl: string;
   /** 个性装扮：队标 teamLogo（留空 = 不带） */
   yaya_send_teamlogo: string;
+  /** 'on' = 自定义队标同时以成员身份（isStar）发送，官方客户端才会画队标；空 = 不伪装 */
+  yaya_send_is_star: string;
   /** 个性装扮：勋章 badge（多个用逗号分隔；留空 = 不带） */
   yaya_send_badge: string;
   /** 口袋官方聊天气泡 id（0=默认）；发房间消息时随 bubbleId 发送 */
