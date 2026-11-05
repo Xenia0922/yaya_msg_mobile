@@ -36,6 +36,12 @@
 - 修复账号设置页输入框被键盘遮挡
 - 修复歌词显示制作名单
 - 修复首页工具入口文字截断
+- 修复私信发送后整屏闪烁
+- 修复媒体页关闭播放器后卡骨架屏
+- 修复送礼连点重复扣费
+- 修复私信会话时间分组错误
+- 修复资料卡第二次打开关注失败
+- 修复非中文界面错误提示失效
 
 **优化**
 
@@ -392,6 +398,21 @@ git diff --check
 | 首页「最近播放」的歌词显示「如果有你在 - SNH48 Team HII」「词：张鹏鹏」「录音：夏甄尧」 | LRC 头部的制作名单与「歌名 - 歌手」标题行时间戳同为 00:00，`parseLrc` 只判非空，全部当正文歌词；另外一行多时间戳（`[00:20][00:40]副歌`）只取第一个，第二个以字面量残留在歌词里 | `parseLrc` 增加制作信息白名单过滤（词/曲/编曲/录音/混音/母带/OP/SP…）与首行「歌名 - 歌手」过滤；改为逐行提取全部时间戳各生成一行；新增 `scripts/lyrics-parse.test.mjs`（并入 `test:core`） |
 
 **涉及文件**：`android/app/src/main/AndroidManifest.xml`、`MainActivity.kt`、`PipModule.java`、`NativeDiag.java`、`src/utils/pip.ts`、`src/components/{PerfFlatList,MiniPlayer}.tsx`、`src/navigation/index.tsx`、`src/utils/lyrics.ts`、`scripts/lyrics-parse.test.mjs`
+
+## 附四：细节巡检（2026-11-05 深夜同步）
+
+| 现象 | 根因 | 改动 |
+| --- | --- | --- |
+| 私信每发一条整屏闪一下 | 发送成功后 `openConv()` 清空消息并重新拉取 | `openConv` 增加静默参数，发送后只增量合并 |
+| 媒体页关掉播放器后列表卡在骨架屏 | `startPlay` 里 `setLoading(true)`，`finally` 只在请求序号未变时复位；`closePlayer` 先自增序号 → 永不复位 | 关闭时强制复位 loading，并解除上拉加载锁 |
+| 送礼连点重复扣鸡腿 | `sendGift` 没有在途锁 | 加 `giftSending` 状态 + 按钮禁用 + 数量输入过滤/上限 |
+| 私信会话全部归到「更早」 | 分组计算用秒级时间戳直接减 86400000（毫秒） | 先统一转毫秒再比较 |
+| 资料卡第二次打开同一人关注失败 | 缓存命中分支没把 `card.id` 纠正成实际命中的候选 id | 命中时写回真实 id |
+| 非中文界面错误提示不变红、没有「重试」 | 用 `/失败\|错误/` 中文正则反推错误态 | 音乐库、B站扫码改用显式状态位 |
+| 媒体页/翻牌页/抓取页文字被截断 | 固定 `width` 的文字格在大字号下放不下 | 文字容器改 `minWidth`，数值加 `adjustsFontSizeToFit` |
+| 输入法不自动收起 | 全项目从未设置 `keyboardDismissMode` | 房间/私信/列表/登录页统一 `on-drag` + `keyboardShouldPersistTaps` |
+
+**涉及文件**：`src/screens/{MediaScreen,PrivateMessagesScreen,MusicLibraryScreen,LoginScreen,FollowedRoomsScreen,FlipScreen,AnalysisScreen}.tsx`、`src/components/{UserDecor,UserProfileSheet}.tsx`
 
 ## 已知问题
 
