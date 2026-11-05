@@ -63,6 +63,11 @@ export default function FetchScreen() {
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  /**
+   * 状态是「错误」还是「信息」：以前靠 `/失败|错误/.test(status)` 反推，切到英文/繁體
+   * 就失效（错误提示被染成主题色）。改成显式状态，文案随语言变也不影响配色。
+   */
+  const [statusError, setStatusError] = useState(false);
 
   const fetchOnce = async (member: Member, targetRoomMode: RoomMode, nextTime = 0) => {
     const channelId = getChannelId(member, targetRoomMode);
@@ -78,10 +83,12 @@ export default function FetchScreen() {
 
   const startFetch = async () => {
     if (!selectedMember) {
+      setStatusError(true);
       setStatus(t('请先选择成员'));
       return;
     }
     setLoading(true);
+    setStatusError(false);
     setStatus(t('抓取中...'));
     try {
       // 循环抓取全部历史（成员消息模式同样分页，避免只取一页漏数据）
@@ -94,6 +101,7 @@ export default function FetchScreen() {
         guard += 1;
         const { list, next } = await fetchOnce(selectedMember, usedRoomMode, cursor);
         if (!list.length && usedRoomMode === 'big' && selectedMember.yklzId && all.length === 0) {
+          setStatusError(false);
           setStatus(t('大房间没有返回消息，正在尝试小房间...'));
           usedRoomMode = 'small';
           cursor = 0;
@@ -108,16 +116,18 @@ export default function FetchScreen() {
         all = all.concat(fresh);
         if (!next || next <= cursor || fresh.length === 0) break;
         cursor = next;
-        if (guard % 5 === 0) setStatus(t('已抓取 {count} 条，继续...', { count: all.length }));
+        if (guard % 5 === 0) { setStatusError(false); setStatus(t('已抓取 {count} 条，继续...', { count: all.length })); }
       }
 
       setResults(all);
+      setStatusError(false);
       setStatus(t('抓取完成：{count} 条消息 · {room} · {mode}', {
         count: all.length,
         room: usedRoomMode === 'small' ? t('小房间') : t('大房间'),
         mode: messageMode === 'all' ? t('全部消息') : t('成员消息'),
       }));
     } catch (error) {
+      setStatusError(true);
       setStatus(t('抓取失败：{error}', { error: errorMessage(error) }));
     } finally {
       setLoading(false);
@@ -169,7 +179,7 @@ export default function FetchScreen() {
 
           {/* 状态胶囊条 */}
           {status ? (
-            /失败|错误/.test(status) ? (
+            statusError ? (
               <View style={[styles.statusCapsule, { backgroundColor: 'rgba(255,59,48,0.12)' }]}>
                 <Text style={[styles.statusText, { color: palette.danger }]}>{status}</Text>
               </View>

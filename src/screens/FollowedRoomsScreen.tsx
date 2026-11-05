@@ -1782,6 +1782,8 @@ export default function FollowedRoomsScreen() {
   followBusyRef.current = followBusy;
   // loadFollowed 定义在 toggleFollow 之后，用 ref 持有以避免前向引用报错
   const loadFollowedRef = useRef<(silent?: boolean) => void>(() => {});
+  /** loadFollowed 在途序号（并发时只认最新一次的结果） */
+  const loadFollowedSeqRef = useRef(0);
 
 
   useFocusEffect(useCallback(() => {
@@ -2192,6 +2194,12 @@ export default function FollowedRoomsScreen() {
   }, []);
 
   const loadFollowed = useCallback(async (silent = false) => {
+    /**
+     * 在途序号：手动刷新、30s 轮询、切账号都会并发触发 loadFollowed，
+     * 慢响应回来时会用旧数据覆盖新数据（列表倒退/闪回）。
+     * 每次调用自增，回到主线程后比对，不是最新就直接丢弃。
+     */
+    const seq = ++loadFollowedSeqRef.current;
     if (!token) {
       setFollowed([]);
       return;
@@ -2199,6 +2207,7 @@ export default function FollowedRoomsScreen() {
     setFollowedLoading(true);
     try {
       const idsRes = await pocketApi.getFollowedIds();
+      if (seq !== loadFollowedSeqRef.current) return;
       const idsArr = unwrapList(idsRes, ['content.data', 'content', 'data', 'list']).map(String);
       setFollowedIds(new Set(idsArr));
       const followedMembers = idsArr.map((id: string) => {
@@ -2211,6 +2220,7 @@ export default function FollowedRoomsScreen() {
       const smallRoomIds = followedMembers.map((item: any) => Number(item.member?.yklzId || 0)).filter((id: number) => id > 0);
       const queryIds = Array.from(new Set([...serverIds, ...smallRoomIds]));
       const lastMsgsRes = queryIds.length ? await pocketApi.getLastMessages(queryIds) : null;
+      if (seq !== loadFollowedSeqRef.current) return;
       const lastMsgs = unwrapList(lastMsgsRes, ['content.lastMsgList', 'content.data', 'data', 'lastMsgList']);
       setFollowed(followedMembers.map((item: any) => ({
         ...item,
@@ -2243,15 +2253,17 @@ export default function FollowedRoomsScreen() {
           const nick = String(it.nickname || it.nickName || it.userInfo?.nickname || it.userInfo?.starName || '').replace(/^(SNH48|GNZ48|BEJ48|CKG48|CGT48)-/i, '').trim().toLowerCase();
           if (nick) names.add(nick);
         });
+        if (seq !== loadFollowedSeqRef.current) return;
         setLiveNow({ ids, names });
       }).catch(() => {});
       if (!silent) showToast(t('已加载 {count} 个房间', { count: followedMembers.length }));
       setFollowedError('');
     } catch (e) {
+      if (seq !== loadFollowedSeqRef.current) return;
       setFollowedError(errorMessage(e));
       if (!silent) showToast(t('加载失败：{msg}', { msg: errorMessage(e) }));
     }
-    finally { setFollowedLoading(false); }
+    finally { if (seq === loadFollowedSeqRef.current) setFollowedLoading(false); }
   }, [members, showToast, t, token]);
   loadFollowedRef.current = loadFollowed;
 
@@ -3943,7 +3955,8 @@ export default function FollowedRoomsScreen() {
           }}
         />
         {/* 用户资料卡（房间内点非成员头像）：口袋48 user/info 拉昵称/头像/等级/签名 */}
-        <Modal visible={!!userCard} transparent animationType="slide" onRequestClose={() => setUserCard(null)}>
+        {userCard ? (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setUserCard(null)}>
           <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setUserCard(null)}>
             <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.userCardWrap}>
               <GlassSurface radius={22} role="card" style={[styles.userCardPanel, { backgroundColor: 'transparent' }]}>
@@ -4071,6 +4084,7 @@ export default function FollowedRoomsScreen() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+        ) : null}
         {/* 精华消息：工具条 ⭐ 打开。成员在官方端设为精华、全员可见（服务端接口）。
             挂载短路：抽屉关闭时不做 roomEssences.map（每条精华都要跑 senderProfile/messageBody/
             roomMedia 深解析，40+ 条 × 每次房间重渲染 = JS 抖动，用户感知为「消息在闪」） */}
@@ -4368,7 +4382,8 @@ export default function FollowedRoomsScreen() {
           </View>
         ) : null}
       {/* 消息长按操作面板：圆角玻璃卡，与成员菜单同一套视觉（替代原生 Alert） */}
-      <Modal visible={!!msgMenu} transparent animationType="fade" onRequestClose={() => setMsgMenu(null)}>
+      {msgMenu ? (
+      <Modal visible transparent animationType="fade" onRequestClose={() => setMsgMenu(null)}>
         <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={() => setMsgMenu(null)}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.roomMenuWrap}>
             <GlassSurface radius={22} role="card" style={[styles.roomMenuPanel, { backgroundColor: 'transparent' }]}>
@@ -4421,6 +4436,7 @@ export default function FollowedRoomsScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+        ) : null}
         </View>
       </View>
     );
@@ -4445,7 +4461,8 @@ export default function FollowedRoomsScreen() {
 
 
       {/* 房间长按快捷菜单（自研 Modal：Android 的 Alert 只显示前 3 个按钮） */}
-      <Modal visible={!!roomMenu} transparent animationType="fade" onRequestClose={closeRoomMenu}>
+      {roomMenu ? (
+      <Modal visible transparent animationType="fade" onRequestClose={closeRoomMenu}>
         <TouchableOpacity style={styles.roomModalShade} activeOpacity={1} onPress={closeRoomMenu}>
           <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.roomMenuWrap}>
             <GlassSurface radius={22} role="card" style={[styles.roomMenuPanel, { backgroundColor: 'transparent' }]}>
@@ -4472,6 +4489,7 @@ export default function FollowedRoomsScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      ) : null}
 
       {searchOpen ? (
         <View style={[styles.searchBar, { backgroundColor: palette.fill2, borderColor: palette.hairline }]}>

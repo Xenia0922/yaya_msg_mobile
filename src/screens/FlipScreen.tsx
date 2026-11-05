@@ -214,6 +214,12 @@ export default function FlipScreen() {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [status, setStatus] = useState('');
+  /**
+   * 状态是「错误」还是「信息」：以前靠 `/失败|错误/.test(status)` 反推，切到英文/繁體
+   * 就失效（错误提示被染成主题色、重试按钮也不出现）。改成显式状态。
+   * 公版没有 flashStatus（那是 plus 的自动消失方案），这里只维护配色/重试用的标记。
+   */
+  const [statusError, setStatusError] = useState(false);
   const pageRef = useRef(1);
   const loadingRef = useRef(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -250,6 +256,7 @@ export default function FlipScreen() {
         setStatus(t('已加载 {count} 条翻牌记录', { count: list.length }));
       }
     } catch (error) {
+      setStatusError(true);
       setStatus(t('加载翻牌记录失败：{err}', { err: errorMessage(error) }));
     } finally {
       loadingRef.current = false;
@@ -291,6 +298,7 @@ export default function FlipScreen() {
     setCost('');
     setStatus('');
     if (!useSettingsStore.getState().settings.p48Token) {
+      setStatusError(true);
       setStatus(t('未登录口袋账号，无法获取翻牌配置'));
       return;
     }
@@ -302,7 +310,7 @@ export default function FlipScreen() {
       setAnswerType(list[0]?.answerType ?? null);
       setStatus(list.length ? t('已加载 {count} 种回复形式', { count: list.length }) : t('该成员暂未开放翻牌'));
     } catch (error) {
-      if (requestId === priceRequestRef.current) setStatus(t('加载翻牌配置失败：{err}', { err: errorMessage(error) }));
+      if (requestId === priceRequestRef.current) { setStatusError(true); setStatus(t('加载翻牌配置失败：{err}', { err: errorMessage(error) })); }
     }
   };
 
@@ -331,6 +339,7 @@ export default function FlipScreen() {
     }
 
     setLoading(true);
+    setStatusError(false);
     setStatus(t('正在发送翻牌...'));
     try {
       await pocketApi.sendFlipQuestion({
@@ -343,6 +352,7 @@ export default function FlipScreen() {
       setContent('');
       setStatus(t('发送成功，已提交到口袋翻牌'));
     } catch (error) {
+      setStatusError(true);
       setStatus(t('发送翻牌失败：{err}', { err: errorMessage(error) }));
     } finally {
       setLoading(false);
@@ -597,7 +607,7 @@ export default function FlipScreen() {
 
           <View style={styles.sendFooter}>
             <Button title={t('发送翻牌')} variant="filled" size="lg" onPress={sendFlip} disabled={loading} loading={loading} fullWidth />
-            {status ? <Text style={[styles.statusText, { color: /失败|错误/.test(status) ? palette.danger : palette.tint }]}>{status}</Text> : null}
+            {status ? <Text style={[styles.statusText, { color: statusError ? palette.danger : palette.tint }]}>{status}</Text> : null}
           </View>
         </FadeInView>
       </ScrollView>
@@ -610,8 +620,8 @@ export default function FlipScreen() {
       <ScreenHeader title={t('翻牌统计')} right={
         <HeaderAction label={t('发送翻牌')} onPress={() => navigation.navigate('FlipScreen', { mode: 'send' })} />
       } />
-      {status ? <Text style={[styles.statusText, { color: /失败|错误/.test(status) ? palette.danger : palette.tint }]}>{status}</Text> : null}
-      {/失败|错误/.test(status) ? (
+      {status ? <Text style={[styles.statusText, { color: statusError ? palette.danger : palette.tint }]}>{status}</Text> : null}
+      {statusError ? (
         <View style={styles.retryWrap}>
           <Button title={t('重试')} variant="filled" size="sm" onPress={() => loadFlips(1, true)} />
         </View>
@@ -776,7 +786,7 @@ export default function FlipScreen() {
               // 首屏/切页在数据回来前就显示「暂无翻牌记录」，用户以为没数据（2026-10-03 修复）
               : loading
                 ? <CenterSpinner />
-                : /失败|错误/.test(status)
+                : statusError
                   ? <ErrorState title={t('加载失败')} hint={status} onAction={() => loadFlips(1, true)} />
                   : <EmptyState icon="card-text-outline" title={t('暂无翻牌记录')} hint={t('去发送翻牌查询历史记录')} />
           }

@@ -323,6 +323,17 @@ npm run test:core   # 23 项，全通过
 git diff --check
 ```
 
+## 附：本轮收尾修复
+
+| 现象 | 根因 | 改动 |
+| --- | --- | --- |
+| 账号设置页底部输入框被键盘盖住 | Android edge-to-edge 下 `KeyboardAvoidingView` 的 `behavior` 为 undefined（完全不补偿），系统 `requestRectangleOnScreen` 也不会把输入框滚到键盘之上 | `App.tsx` 挂 `KeyboardProvider`；账号设置页改用 `KeyboardAwareScrollView`（原生 WindowInsetsAnimation 跟手），`bottomOffset=24` 避开输入法工具条 |
+| 房间列表偶发「倒退」/旧数据覆盖新数据 | 手动刷新、30s 轮询、切账号并发触发加载，慢响应后到先赢 | 加在途序号，两处 `await` 与 `catch`/`finally` 校验后再落状态 |
+| 房间页偶发整页闪一下 | 三个 Modal 常驻挂载（`visible={!!x}`），每次重渲染都 flush Modal 窗口 | 改为 `{x ? <Modal visible …> : null}` 按需挂载 |
+| 英文/繁體下错误提示不变红、「重试」不出现 | 用 `/失败|错误/.test(status)` 反推错误态 | 翻牌页、抓取页改为显式 `statusError` |
+
+**涉及文件**：`App.tsx`、`src/screens/{LoginScreen,FollowedRoomsScreen,FlipScreen,FetchScreen}.tsx`
+
 ## 已知问题
 
 - `node-forge` 仅用于注册/密码登录的 AES-ECB，若后续体积敏感可换成内置实现。
