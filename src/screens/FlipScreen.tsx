@@ -434,15 +434,15 @@ export default function FlipScreen() {
     <View style={styles.statsWrap}>
       <GlassSurface radius={20} role="card" style={styles.statsOverview}>
         <View style={styles.statCell}>
-          <Text style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.totalCount}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.totalCount}</Text>
           <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总翻牌数')}</Text>
         </View>
         <View style={styles.statCell}>
-          <Text style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.totalCost}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.totalCost}</Text>
           <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总鸡腿')}</Text>
         </View>
         <View style={styles.statCell}>
-          <Text style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.avgStr}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.statValue, { color: palette.tint }]}>{flipStatsView.avgStr}</Text>
           <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('平均回复')}</Text>
         </View>
       </GlassSurface>
@@ -631,6 +631,9 @@ export default function FlipScreen() {
           data={flipRows}
           keyExtractor={(row) => row.key}
           ListHeaderComponent={statsHeader}
+          // 末条不再贴死屏幕底（手势导航条会压住最后一行文字）
+          contentContainerStyle={{ paddingBottom: 32 }}
+          keyboardDismissMode="on-drag"
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
@@ -841,12 +844,13 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, marginTop: 2 },
   statsGroup: { padding: 14, marginHorizontal: 16, marginVertical: 6, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
   typeRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
-  typeRowLabel: { width: 34, fontSize: 12 },
+  // ⚠️ 文字格一律 minWidth 不用 width：系统字体放大后固定宽度会把「文字/语音/视频」裁掉半个字
+  typeRowLabel: { minWidth: 34, fontSize: 12 },
   typeTrack: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', marginHorizontal: 8 },
   typeFill: { height: 8, borderRadius: 4 },
-  typeCount: { width: 30, fontSize: 11, textAlign: 'right' },
+  typeCount: { minWidth: 30, fontSize: 11, textAlign: 'right' },
   rankRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
-  rankNo: { width: 22, fontSize: 12, fontWeight: '900' },
+  rankNo: { minWidth: 22, fontSize: 12, fontWeight: '900' },
   rankName: { flex: 1, fontSize: 13 },
   rankVal: { fontSize: 12, marginLeft: 8 },
   sectionTitle: { fontSize: 12, marginHorizontal: 16, marginTop: 12, marginBottom: 4 },

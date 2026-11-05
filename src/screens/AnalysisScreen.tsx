@@ -892,7 +892,8 @@ const styles = StyleSheet.create({
   rankTrack: { flex: 1, height: 10, borderRadius: 3, overflow: 'hidden', backgroundColor: 'transparent' },
   rankBar: { height: 10, borderRadius: 3 },
   rankBarAbs: { position: 'absolute', top: 0, left: 0, height: 10, borderRadius: 3 },
-  rankRowCount: { fontSize: 11, width: 28, textAlign: 'right', marginLeft: 8 },
+  // minWidth：数量到 5 位数或系统字体放大时不会被裁
+  rankRowCount: { fontSize: 11, minWidth: 28, textAlign: 'right', marginLeft: 8 },
   // 成员翻牌榜行右侧数值 + 迷你进度条
   flipRankVal: { alignItems: 'flex-end', maxWidth: 110 },
   miniTrack: { height: 3, borderRadius: 2, overflow: 'hidden', width: 60, marginTop: 4 },

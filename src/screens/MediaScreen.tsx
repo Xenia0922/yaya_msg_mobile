@@ -616,6 +616,8 @@ export default function MediaScreen() {
   const [gifts, setGifts] = useState<any[]>([]);
   const [selectedGift, setSelectedGift] = useState<any | null>(null);
   const [giftNum, setGiftNum] = useState('1');
+  /** 送礼在途：无此锁时连点「送出」会并发发多次请求 —— 真实重复扣鸡腿 */
+  const [giftSending, setGiftSending] = useState(false);
   const [giftStatus, setGiftStatus] = useState('');
   const [balance, setBalance] = useState('');
   const [hasMore, setHasMore] = useState(true);
@@ -1090,6 +1092,9 @@ export default function MediaScreen() {
       // 返回键的第一预期行为是收键盘（弹幕输入中）
       if (Keyboard.isVisible()) { Keyboard.dismiss(); return true; }
       playRequestRef.current += 1;
+      // 中断解析中的请求后必须显式复位 loading：startPlay 的 finally 只在请求号未变时
+      // setLoading(false)，取消后请求号已递增 → 永不复位 → 列表一直卡在骨架屏、上拉也失效。
+      setLoading(false);
       setIsFullscreen(false);
       setIsLandscape(false);
       setLiveImmersiveMode(false);
@@ -1333,6 +1338,8 @@ export default function MediaScreen() {
 
   const closePlayer = () => {
     playRequestRef.current += 1;
+    // 同返回键：取消在途解析后显式复位 loading，否则列表永远停在骨架屏
+    setLoading(false);
     setIsFullscreen(false);
     setIsLandscape(false);
     setLiveImmersiveMode(false);
@@ -1594,6 +1601,8 @@ export default function MediaScreen() {
   };
 
   const sendGift = async () => {
+    // 在途锁：连点「送出」会并发发多次请求（每次真实扣鸡腿），必须先拦住
+    if (giftSending) return;
     if (!playing || !selectedGift) {
       setGiftStatus(t('请先选择礼物'));
       return;
@@ -1604,6 +1613,7 @@ export default function MediaScreen() {
       setGiftStatus(t('无法获取主播 ID，不能送礼'));
       return;
     }
+    setGiftSending(true);
     setGiftStatus(t('正在发送...'));
     try {
       // 直播详情里的 crm（DES 加密的聊天室 id）——服务端靠它把礼物广播进直播间，缺失则成员端无感知
@@ -1624,6 +1634,8 @@ export default function MediaScreen() {
       if (money?.content?.moneyTotal !== undefined) setBalance(String(money.content.moneyTotal));
     } catch (err) {
       setGiftStatus(t('送礼失败：{error}', { error: errorMessage(err) }));
+    } finally {
+      setGiftSending(false);
     }
   };
 
@@ -1893,11 +1905,20 @@ export default function MediaScreen() {
                   style={[styles.giftNum, { color: palette.label, borderColor: palette.hairline, backgroundColor: palette.fill2 }]}
                   keyboardType="numeric"
                   value={giftNum}
-                  onChangeText={setGiftNum}
+                  maxLength={3}
+                  // 只留数字：非数字输入会让 Number() 落回 1，用户看不出自己输错了
+                  onChangeText={(s) => setGiftNum(String(s).replace(/\D/g, '').slice(0, 3))}
                 />
-                <TouchableOpacity style={[styles.sendGiftBtn, { backgroundColor: palette.tint }]} onPress={sendGift} activeOpacity={0.85}>
-                  <Text style={[styles.sendGiftText, { color: palette.onTint }]}>
-                    {selectedGift ? t('送出 · {count}', { count: selectedGiftTotal }) : t('选择礼物')}
+                <TouchableOpacity
+                  style={[styles.sendGiftBtn, { backgroundColor: selectedGift && !giftSending ? palette.tint : palette.fill3 }]}
+                  onPress={sendGift}
+                  disabled={!selectedGift || giftSending}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.sendGiftText, { color: selectedGift && !giftSending ? palette.onTint : palette.labelTertiary }]}>
+                    {giftSending
+                      ? t('发送中...')
+                      : selectedGift ? t('送出 · {count}', { count: selectedGiftTotal }) : t('选择礼物')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -2061,6 +2082,9 @@ export default function MediaScreen() {
       <View style={{ flex: 1 }}>
         <PerfFlatList
           key={tab === 'vod' ? 'vod-1col' : 'live-2col'}
+          // 滑动即收键盘：顶部有搜索框，滑列表时键盘不该一直压着半屏
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           // 直播页去宣传栏（banner）：统一双列网格，即使只有 1 条直播也保持双列
           data={tab === 'vod' ? (vodRows ?? []) as any : list}
           keyExtractor={(item: any, index) => {

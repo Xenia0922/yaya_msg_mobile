@@ -29,6 +29,8 @@ import pocketApi from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, normalizeUrl, pickText } from '../utils/data';
 import { logWarn } from '../utils/runtimeLog';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
 import { translate, useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -230,6 +232,15 @@ export default function LoginScreen() {
   const showToast = useUiStore((state) => state.showToast);
   const palette = usePalette();
   const { t } = useI18n();
+  /**
+   * 键盘避让：Android 侧 edgeToEdgeEnabled=true，系统忽略 adjustResize（窗口不缩），
+   * 而 KeyboardAvoidingView 在本页 Android 分支的 behavior 是 undefined（完全不补偿）——
+   * 「发言身份 / 等级 / roleId / sessionRole」这组底部输入框会被键盘直接盖住。
+   * 改成和其它聊天页同一套：手动把容器底部抬起。
+   */
+  const keyboardHeight = useKeyboardHeight();
+  const insets = useSafeAreaInsets();
+  const pageSafeBottom = Math.max(10, Math.min(insets.bottom, 24));
   // 登录身份：口袋48 / 塞纳河48（对齐桌面端 v3.0，身份决定 appInfo 与 UA，登录后所有接口沿用）
   const clientProfile: 'pocket48' | 'seine48' = settings.p48ClientProfile === 'seine48' ? 'seine48' : 'pocket48';
   const pollingRef = useRef(true);
@@ -255,6 +266,12 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [biliStatus, setBiliStatus] = useState('');
+  /**
+   * 二维码是否进入「需要重新获取」的终态（过期/超时）。
+   * 原来靠 `/过期|超时|失败/.test(biliStatus)` 判断：en/ja/ko 界面下 t() 把文案翻掉后
+   * 正则不命中 → 「点击刷新」入口不出现，用户只能退出页面重进。
+   */
+  const [biliExpired, setBiliExpired] = useState(false);
   const [qrHtml, setQrHtml] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
@@ -519,7 +536,16 @@ export default function LoginScreen() {
     setStatus(t('正在检查Token'));
     try {
       const { res, ok } = await refreshAccountInfo();
-      setStatus(ok ? t('Token有效') : t('Token无效：{msg}', { msg: res?.msg || res?.message || JSON.stringify(res).slice(0, 160) }));
+      // 不要把 JSON.stringify(res) 甩给用户（原来失败时整段裸 JSON 显示在状态行）
+      const reason = String(
+        (res as any)?.msg
+        || (res as any)?.message
+        || (res as any)?.content?.msg
+        || (res as any)?.content?.message
+        || (res as any)?.error
+        || '',
+      ).trim();
+      setStatus(ok ? t('Token有效') : t('Token无效：{msg}', { msg: reason || t('Token 已失效，请重新获取') }));
     } catch (error) {
       setStatus(t('Token无效：{msg}', { msg: errorMessage(error) }));
     } finally {
@@ -596,7 +622,7 @@ export default function LoginScreen() {
           return;
         }
         if (res.data.code === 86038) {
-          setBiliStatus(t('二维码已过期请刷新'));
+          setBiliStatus(t('二维码已过期请刷新')); setBiliExpired(true);
           return;
         }
       } catch (e) {
@@ -606,11 +632,12 @@ export default function LoginScreen() {
         }
       }
     }
-    setBiliStatus(t('B站登录超时'));
+    setBiliStatus(t('B站登录超时')); setBiliExpired(true);
   };
 
   const handleBiliQr = async () => {
     setLoading(true);
+    setBiliExpired(false);
     setBiliStatus(t('正在获取B站二维码'));
     try {
       const res = await bilibiliApi.generateQrCode();
@@ -1027,7 +1054,7 @@ export default function LoginScreen() {
                 fullWidth
               />
             </View>
-            {/过期|超时|失败/.test(biliStatus) ? (
+            {biliExpired ? (
               <ScalePressable onPress={handleBiliQr} pressedScale={0.96} style={styles.qrRetry} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <MaterialCommunityIcons name="refresh" color={palette.tint} size={16} />
                 <Text style={[styles.qrRetryText, { color: palette.tint }]}>{t('二维码已过期，点击刷新')}</Text>

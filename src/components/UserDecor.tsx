@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, View, StyleSheet, Text } from 'react-native';
 
 /**
@@ -59,6 +59,24 @@ function LevelChip({ level, size }: { level?: number | string; size: number }) {
   );
 }
 
+/**
+ * 队标图片：加载失败就整块不渲染。
+ * 原来裸 Image 没 onError —— 队标地址 404 时会在名字旁留一块 size*1.6 宽的透明占位，
+ * 看起来像「头像/名字被挤开」，且等级徽章也不会回落。
+ */
+function TeamLogoImage({ uri, size }: { uri: string; size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <Image
+      source={{ uri }}
+      style={{ width: size * 1.6, height: size }}
+      resizeMode="contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 /** 队标（成员）/ 等级胶囊（粉丝）。尺寸：队标 18 高；等级胶囊按 size 缩放 */
 export function UserDecorRow({ decor, size = 14 }: { decor?: UserDecor | null; size?: number }) {
   if (!decor) return null;
@@ -69,7 +87,7 @@ export function UserDecorRow({ decor, size = 14 }: { decor?: UserDecor | null; s
   if (teamLogo) {
     return (
       <View style={styles.row}>
-        <Image source={{ uri: teamLogo }} style={{ width: size * 1.6, height: size }} resizeMode="contain" />
+        <TeamLogoImage uri={teamLogo} size={size} />
       </View>
     );
   }

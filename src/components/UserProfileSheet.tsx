@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from './GlassSurface';
+import { NetworkImage } from './NetworkImage';
 import { ScalePressable } from './Motion';
 import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
@@ -182,11 +183,16 @@ export function UserProfileSheet({ visible, target, onClose, onOpenChat, onFollo
       }
 
       // 命中缓存：立刻上屏，TTL 内不再请求（连点头像不再反复打接口）
-      const cached = candidates.map((id) => readProfileCache(id)).find(Boolean);
-      if (cached) {
+      // ⚠️ 必须把 card.id 纠正成「真正命中的那个候选 id」：candidates 里第一个往往是云信 accid，
+      //    缓存命中若沿用它，后续「关注/私信」会拿 accid 发请求 → 直接失败（第二次打开才复现）。
+      const cachedHit = candidates.map((id) => ({ id, data: readProfileCache(id) })).find((x) => x.data);
+      if (cachedHit?.data) {
+        const cached = cachedHit.data;
+        const cachedId = cachedHit.id;
         setCard((c) => (c && seqRef.current === seq
           ? {
               ...c,
+              id: cachedId,
               loading: false,
               error: '',
               following: !!cached.following,
@@ -265,7 +271,13 @@ export function UserProfileSheet({ visible, target, onClose, onOpenChat, onFollo
 
             <View style={styles.head}>
               {cardAvatar ? (
-                <Image source={{ uri: cardAvatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} />
+                // NetworkImage：头像地址失效时回退成浅灰底 + 人形图标，不再留一个白圆
+                <NetworkImage
+                  source={{ uri: cardAvatar }}
+                  style={[styles.avatar, { backgroundColor: palette.fill2 }]}
+                  fallbackIcon="account"
+                  thumbnail={160}
+                />
               ) : (
                 <View style={[styles.avatar, { backgroundColor: palette.fill2, alignItems: 'center', justifyContent: 'center' }]}>
                   <MaterialCommunityIcons name="account" size={30} color={palette.labelTertiary} />
@@ -321,11 +333,13 @@ export function UserProfileSheet({ visible, target, onClose, onOpenChat, onFollo
                 </Text>
               </ScalePressable>
               <ScalePressable
-                style={[styles.btn, { backgroundColor: palette.fill2, opacity: canFollow || card?.id ? 1 : 0.5 }]}
+                // 私信同样要求纯数字 userId：card.id 可能是云信 accid（字母数字），
+                // 带过去会被私信页当成非法 targetUserId，点了等于没反应。
+                style={[styles.btn, { backgroundColor: palette.fill2, opacity: canFollow ? 1 : 0.5 }]}
                 pressedScale={0.95}
                 activeOpacity={0.85}
-                disabled={!card?.id}
-                onPress={() => card && onOpenChat?.({ id: card.id, name: cardName })}
+                disabled={!canFollow}
+                onPress={() => card && canFollow && onOpenChat?.({ id: card.id, name: cardName })}
               >
                 <MaterialCommunityIcons name="message-text-outline" size={14} color={palette.tint} />
                 <Text style={[styles.btnText, { color: palette.tint }]}>{t('私信')}</Text>

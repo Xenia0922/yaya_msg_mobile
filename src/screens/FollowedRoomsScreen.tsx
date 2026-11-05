@@ -3080,6 +3080,9 @@ export default function FollowedRoomsScreen() {
       // 滚动位置只用来判定「是否贴底」，100ms 足够，避免每帧过 JS 桥
       scrollEventThrottle: 100,
       onScroll: handleRoomListScroll,
+      // 滑消息列表即收键盘（微信/QQ 行为）。此前没设，键盘弹着时滑历史一直挡半屏。
+      keyboardDismissMode: 'on-drag' as const,
+      keyboardShouldPersistTaps: 'handled' as const,
       // ⚠️ 不要加 maintainVisibleContentPosition：
       // 倒序列表本身在 offset=0 时新消息就是「贴底可见」的，而 MVCP 会把可见内容钉住
       // （插入新消息后自动把 offset 推大），表现为「回到底部后不跟新消息滚动、
@@ -3867,8 +3870,12 @@ export default function FollowedRoomsScreen() {
                 <TextInput
                   style={[styles.rgNum, { color: palette.label, borderColor: palette.hairline, backgroundColor: palette.fill2 }]}
                   keyboardType="numeric"
-                  value={String(giftNum)}
-                  onChangeText={(s) => setGiftNum(Math.min(999, Math.max(1, Math.floor(Number(String(s).replace(/\D/g, '')) || 1))))}
+                  value={giftNum ? String(giftNum) : ''}
+                  // 允许清空：原来 `|| 1` 会把空串立刻回填成 1，想输「5」会变成「15」（1 打底再拼 5）
+                  onChangeText={(s) => {
+                    const digits = String(s).replace(/\D/g, '').slice(0, 3);
+                    setGiftNum(digits ? Math.min(999, Number(digits)) : 0);
+                  }}
                 />
                 <TouchableOpacity
                   style={[styles.rgSendBtn, { backgroundColor: giftSel ? palette.tint : palette.fill3 }]}

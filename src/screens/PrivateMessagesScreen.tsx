@@ -4,6 +4,7 @@ import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 
 import {Platform, FlatList, Image, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -477,7 +478,9 @@ export default function PrivateMessagesScreen() {
       const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
       const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       if (key === todayStr) return 'today';
-      const y = new Date(ts - 86400000);
+      // 必须用归一化后的毫秒值再减：原来用原始 ts（可能是秒级）减 86400000 毫秒，
+      // 秒级时间戳算出来的「昨天」会落到 1970 年前，所有历史会话被误归到「更早」。
+      const y = new Date(toMs(ts) - 86400000);
       const yKey = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
       return key === yKey ? 'yesterday' : 'more';
     };
@@ -513,6 +516,15 @@ export default function PrivateMessagesScreen() {
   // 让「消息列表 + 输入框」整体上移（与房间页共用同一 hook）。
   // ⚠️ 必须挂在组件顶层 —— 之前误放进条件分支（列表/会话两个 return），钩子数量随分支变化直接崩
   const keyboardHeight = useKeyboardHeight();
+  const insets = useSafeAreaInsets();
+  /**
+   * 输入栏底部安全区（键盘收起时）。
+   * 用户反馈「私信输入框太低」：原来 paddingBottom 直接取 keyboardHeight，
+   * 键盘收起时是 0 → 输入栏贴死屏幕底，被手势导航条压住。
+   * 兜底 hook 的 bottom 是 48（虚拟按键口径），手势条实际约 24，
+   * 所以夹到 [10,24]：手势机型留 24，虚拟按键机型也不至于把面板顶太高。
+   */
+  const inputBarSafeBottom = Math.max(10, Math.min(insets.bottom, 24));
   const [msgs, setMsgs] = useState<any[]>([]);
   const [text, setText] = useState('');
   const [uid, setUid] = useState('');
@@ -624,11 +636,21 @@ export default function PrivateMessagesScreen() {
     }
   };
 
-  const openConv = async (c: any) => {
+  /**
+   * 打开会话。
+   * silent=true：只后台拉最新，不清空列表、不显示 loading、不滚到底。
+   * 发送成功后必须走这个 —— 原来每次发送都 `openConv(selectedConv)`，
+   * 等于「清空 → 骨架屏 → 回填」，发一条消息整屏闪一下（用户反馈卡顿的主要来源）。
+   */
+  const openConv = async (c: any, opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
     const requestId = ++convRequestIdRef.current;
-    setSel(c); setMsgs([]); setNextTime(0); setHasMore(false); setFlipType(0); setPlayUrl('');
-    setLoading(true);
-    if (scrollTimerRef.current) { clearTimeout(scrollTimerRef.current); scrollTimerRef.current = null; }
+    setSel(c);
+    if (!silent) {
+      setMsgs([]); setNextTime(0); setHasMore(false); setFlipType(0); setPlayUrl('');
+      setLoading(true);
+      if (scrollTimerRef.current) { clearTimeout(scrollTimerRef.current); scrollTimerRef.current = null; }
+    }
     try {
       if (!uid) {
         const info = await pocketApi.getNimLoginInfo().catch(() => null);
@@ -753,7 +775,7 @@ export default function PrivateMessagesScreen() {
       });
       if (requestId !== convRequestIdRef.current) return;
       showToast(t('已发送'));
-      await openConv(selectedConv);
+      await openConv(selectedConv, { silent: true });
     } catch (e) {
       if (requestId === convRequestIdRef.current) showToast(t('发送图片失败：{msg}', { msg: errorMessage(e) }));
     } finally {
@@ -809,7 +831,7 @@ export default function PrivateMessagesScreen() {
         await pocketApi.sendPrivateMessageReply(convTargetId(selectedConv), txt);
         if (requestId !== convRequestIdRef.current) return;
         showToast(t('已发送'));
-        await openConv(selectedConv);
+        await openConv(selectedConv, { silent: true });
       }
       if (requestId !== convRequestIdRef.current) return;
       if (!override) setText('');
@@ -1011,7 +1033,7 @@ export default function PrivateMessagesScreen() {
 
     return (
       <View style={styles.screenContainer}>
-        <View style={[styles.screen, { backgroundColor: usePageBackground(), paddingBottom: keyboardHeight }]}>
+        <View style={[styles.screen, { backgroundColor: usePageBackground(), paddingBottom: keyboardHeight || inputBarSafeBottom }]}>
         <ScreenHeader
           title={peerName}
           onBack={closeConv}
@@ -1049,6 +1071,9 @@ export default function PrivateMessagesScreen() {
             if (outgoing) void doSend(outgoing);
           }}
           renderInputToolbar={DM_NO_INPUT_TOOLBAR}
+          // 滚动消息列表即收键盘（微信行为）：此前全项目没设过 keyboardDismissMode，
+          // 用户滑列表时键盘一直挂着挡住半屏（用户反馈「输入法不会自动隐藏」）。
+          listProps={{ keyboardDismissMode: 'on-drag', keyboardShouldPersistTaps: 'handled' }}
         />
         </View>
         {member ? (
@@ -1110,8 +1135,15 @@ export default function PrivateMessagesScreen() {
               onChangeText={setText}
               multiline
             />
-            <ScalePressable style={[styles.sendBtn, { backgroundColor: palette.tint }]} onPress={() => { void doSend(); }} disabled={loading || !text.trim()}>
-              <Text style={[styles.sendT, { color: palette.onTint }]}>{loading ? '..' : flipType ? t('翻牌') : t('发送')}</Text>
+            <ScalePressable
+              style={[styles.sendBtn, { backgroundColor: loading || !text.trim() ? palette.fill3 : palette.tint }]}
+              onPress={() => { void doSend(); }}
+              disabled={loading || !text.trim()}
+            >
+              {/* 禁用/在途要有可分辨的视觉态：原来恒为主色实底，空输入看着能点、加载中文字变成「..」 */}
+              <Text style={[styles.sendT, { color: loading || !text.trim() ? palette.labelTertiary : palette.onTint }]}>
+                {loading ? t('发送中') : flipType ? t('翻牌') : t('发送')}
+              </Text>
             </ScalePressable>
           </View>
         </GlassSurface>
@@ -1138,6 +1170,9 @@ export default function PrivateMessagesScreen() {
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={convRows}
+          // 滚动即收键盘：会话列表上方有搜索框，滑列表不该让键盘一直挡着
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           // 滚动锚点（B6）：刷新/置顶重排后保持可见位置
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyExtractor={(item) => item.key}

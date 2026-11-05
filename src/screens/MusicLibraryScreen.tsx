@@ -151,6 +151,12 @@ export default function MusicLibraryScreen() {
   const onQueryChange = (q: string) => { setQuery(q); };
   const onGroupChange = (g: string) => { setGroup(g); };
   const [status, setStatus] = useState('');
+  /**
+   * 状态条是否为错误态。
+   * 原来用 `/失败|错误/.test(status)` 判断，英文/日文/韩文界面下 t() 会把文案翻掉，
+   * 正则不命中 → 加载失败时不显示「重试」按钮，只剩一条不可点的信息条。
+   */
+  const [statusIsError, setStatusIsError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const loadingRef = useRef(false);
@@ -210,7 +216,7 @@ export default function MusicLibraryScreen() {
     if (loadingRef.current) return;
     loadingRef.current = true;
     if (!songs.length) setLoading(true);
-    setStatus('');
+    setStatus(''); setStatusIsError(false);
     try {
       const [officialRes, r2Res] = await Promise.allSettled([
         loadOfficialSiteMusic(force),
@@ -259,10 +265,10 @@ export default function MusicLibraryScreen() {
       setHasMore(false);
       // 静默提示各源状态（不打扰）：仅当 R2 失败时提示「官方源可用」，双失败已在上面抛错
       if (r2Res.status === 'rejected' && officialRes.status === 'fulfilled') {
-        setStatus(t('官方音乐已加载（R2 源暂不可用）'));
+        setStatus(t('官方音乐已加载（R2 源暂不可用）')); setStatusIsError(false);
       }
     } catch (error) {
-      setStatus(t('加载失败：{msg}', { msg: errorMessage(error) }));
+      setStatus(t('加载失败：{msg}', { msg: errorMessage(error) })); setStatusIsError(true);
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -377,6 +383,15 @@ export default function MusicLibraryScreen() {
   const armSeqRef = useRef(0);
   const setNativeState = (v: boolean) => { nativeOkRef.current = v; setNativeOk(v); };
   const cancelArmTimer = () => { if (armTimer.current) { clearTimeout(armTimer.current); armTimer.current = null; } };
+  /**
+   * 卸载时取消「原生候选 4s 降级」定时器。
+   * 原来只在 playbackState 回到 idle 时清理：用户起播后 4s 内切到别的页面，
+   * 定时器仍会在后台触发 → 全局 setNativeExoDisabled(true) 并弹「已切换兼容播放器」，
+   * 之后所有歌曲都走兼容内核。属于跨页面的隐性状态污染。
+   */
+  useEffect(() => () => {
+    if (armTimer.current) { clearTimeout(armTimer.current); armTimer.current = null; }
+  }, []);
   /** 已在原生下发的曲目 url（暂停/恢复同曲不重推）；idle/切歌时清空 */
   const armedUrlRef = useRef('');
   /** 最近一次收到原生 progress 的时间戳（判断原生活跃度，失联 >8s 允许重推） */
@@ -660,7 +675,7 @@ export default function MusicLibraryScreen() {
       </View>
       )}
       {status ? (
-        /失败|错误/.test(status) ? (
+        statusIsError ? (
           <ErrorState title={t('加载失败')} hint={status} onAction={() => loadAll()} />
         ) : (
           <View pointerEvents="none" style={styles.statusInfo}>
@@ -708,6 +723,8 @@ export default function MusicLibraryScreen() {
           data={albums}
           keyExtractor={(item) => item.key}
           numColumns={2}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listContent}
           removeClippedSubviews={false}
           renderItem={({ item }) => (
@@ -742,6 +759,8 @@ export default function MusicLibraryScreen() {
           // extraData：FlatList 为 PureComponent，data 引用不变时不重渲染 renderItem——
           // 切歌/收藏后 active 高亮与爱心状态需随 currentIndex/favorites 变化刷新
           extraData={`${currentIndex}:${favorites.length}`}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item, index) => `${item.groupKey || ''}-${item.musicId || item.id || ''}-${index}`}
           numColumns={2}
           // 不自定义 columnWrapperStyle（避免 width:'48%' + space-between + aspectRatio:1 的
