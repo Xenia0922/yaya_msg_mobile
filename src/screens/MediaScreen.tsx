@@ -623,6 +623,8 @@ export default function MediaScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [rankVisible, setRankVisible] = useState(false);
   const [rankRows, setRankRows] = useState<any[]>([]);
+  /** 贡献榜点某一行 → 用户资料卡（与弹幕发送者同一套） */
+  const [rankProfile, setRankProfile] = useState<UserProfileTarget | null>(null);
 
   // 续播 key 用稳定 id（liveId）而非播放 URL：URL 换线路/带签名/拼接参数会变，
   // 用 URL 做 key 会导致同一视频换线路后续播进度丢失
@@ -1947,19 +1949,43 @@ export default function MediaScreen() {
               <Text style={[styles.giftStatus, { color: palette.labelSecondary }]}>{rankStatus}</Text>
               <ScrollView style={styles.rankList} nestedScrollEnabled overScrollMode="never" showsVerticalScrollIndicator>
                 {rankRows.map((row, index) => (
-                  <View key={String(row.userId || row.id || index)} style={[styles.rankRow, { borderBottomColor: palette.hairline }]}>
+                  <TouchableOpacity
+                    key={String(row.userId || row.id || index)}
+                    // 点名字/头像 → 资料卡（用户要求）。整行可点，命中区更大；
+                    // 没有 userId 的行给一句说明而不是点了没反应。
+                    activeOpacity={0.7}
+                    onPress={() => setRankProfile({
+                      userId: row.userId ? String(row.userId) : undefined,
+                      nick: row.name,
+                      avatar: row.avatar,
+                      missingIdMessage: t('该用户没有可加载的口袋资料'),
+                    })}
+                    style={[styles.rankRow, { borderBottomColor: palette.hairline }]}
+                  >
                     <Text style={[styles.rankNo, { color: palette.tint }]}>{row.rank || index + 1}</Text>
                     {row.avatar ? <Image source={{ uri: row.avatar }} style={[styles.rankAvatar, { backgroundColor: palette.fill3 }]} /> : <View style={[styles.rankAvatar, { backgroundColor: palette.fill3 }]} />}
                     <View style={styles.rankInfo}>
                       <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>{row.name}</Text>
                       <Text style={[styles.rankValue, { color: palette.labelSecondary }]} numberOfLines={1}>{row.value ? t('贡献 {value}', { value: row.value }) : t('贡献用户')}</Text>
                     </View>
-                  </View>
+                    <MaterialCommunityIcons name="chevron-right" size={16} color={palette.labelTertiary} />
+                  </TouchableOpacity>
                 ))}
               </ScrollView>
             </GlassSurface>
           </View>
         </Modal>
+        {/* 贡献榜用户资料卡：挂在排行榜 Modal 之后 → 层级在其上，关掉回到榜单 */}
+        <UserProfileSheet
+          visible={!!rankProfile}
+          target={rankProfile}
+          onClose={() => setRankProfile(null)}
+          onOpenChat={({ id, name }) => {
+            setRankProfile(null);
+            setRankVisible(false);
+            navigation.navigate('PrivateMessagesScreen', { targetUserId: id, targetName: name });
+          }}
+        />
         <DanmakuSettingsSheet staticFeed visible={showDanmakuSettings} onClose={() => setShowDanmakuSettings(false)} />
       </View>
     );

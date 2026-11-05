@@ -60,6 +60,7 @@ import ZoomImageModal from '../components/ZoomImageModal';
 import { enqueueDownload } from '../services/downloads';
 import { memberSearchText, isRoomMember } from '../utils/members';
 import { getBgDisplayUri, ensureBgCached } from '../services/roomBgCache';
+import { loadRoomMetaCache, setRoomMetaCached } from '../services/roomMetaCache';
 import { thumbUrl, AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
@@ -1448,6 +1449,24 @@ export default function FollowedRoomsScreen() {
   // 房间内展示：房间名（channelInfo.channelName）+ 背景图（channelInfo.bgImg）
   const [roomMeta, setRoomMeta] = useState<{ name: string; bg: string }>({ name: '', bg: '' });
   const roomMetaCache = useRef<Record<string, { name: string; bg: string }>>({});
+  /**
+   * 把上次持久化的房间名/背景灌进内存缓存。
+   * 原来这份映射纯内存，App 重启后再进房间标题是空的、背景先白一下 —— 用户反馈
+   * 「房间背景和名字应该本地缓存」。灌进去之后进房间第一帧就有名字和背景（图本体在 roomBgCache 里）。
+   * 只补空缺：本次已拉到的（更新）优先。
+   */
+  useEffect(() => {
+    let alive = true;
+    loadRoomMetaCache()
+      .then((saved) => {
+        if (!alive) return;
+        Object.keys(saved).forEach((cid) => {
+          if (roomMetaCache.current[cid] === undefined) roomMetaCache.current[cid] = saved[cid];
+        });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
   // 背景图渐显：新背景 uri 变化时重置为 0，ImageBackground onLoad 后淡入到 1，消除「从无到有硬跳变」
   /**
    * 背景图 **双层常驻 crossfade**（用户反馈：大小房间切换底图会闪一下）。
@@ -2463,16 +2482,18 @@ export default function FollowedRoomsScreen() {
         if (cachedMeta.bg) ensureBgCached(cachedMeta.bg); // 后台补齐/校验本地副本
       } else {
         roomMetaCache.current[channelId] = { name: '', bg: '' };
+        setRoomMetaCached(channelId, { name: '', bg: '' }); // 负结果也落盘：避免每次进房间都白拉一次
         // 小房间 room/info 服务端 2001 无权限（实测）→ 塞纳河 server/detail 拿 channelInfoList 房间名 + 背景墙图
         pocketApi.getRoomMeta(channelId, nextMode === 'small' ? room.channelId : undefined, room.serverId)
           .then((meta) => {
             // Y22: 期间已切房（seq 过期或 channelId 变化）则丢弃，避免旧房间标题/背景覆盖
             if (openSeq !== roomSeqRef.current || activeChannelRef.current !== channelId) return;
             roomMetaCache.current[channelId] = meta;
+            setRoomMetaCached(channelId, meta); // 落盘：下次启动进房间秒显名字/背景
             setRoomMeta({ ...meta, bg: getBgDisplayUri(meta.bg) });
             if (meta.bg) ensureBgCached(meta.bg); // 后台落盘，下次进房间直接本地显示
           })
-          .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; });
+          .catch(() => { roomMetaCache.current[channelId] = { name: '', bg: '' }; setRoomMetaCached(channelId, { name: '', bg: '' }); });
       }
       // 进入房间后立即检测该成员上麦状态（驱动房间内上麦按钮；单成员扫描不影响其它成员）
       const ocChannel = roomChannelId(room, nextMode);
