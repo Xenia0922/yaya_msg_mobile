@@ -721,7 +721,9 @@ export default function LoginScreen() {
     { key: 'sms', label: t('验证码'), icon: 'message-text-outline' },
     { key: 'password', label: t('密码'), icon: 'lock-outline' },
     { key: 'token', label: t('Token'), icon: 'key-variant' },
-    { key: 'bilibili', label: t('B站二维码'), icon: 'qrcode' },
+    // 「B站二维码」5 字在等分分段控件里放不下（每格约 63dp 文字宽度，实测被截成「B站二维...」）
+    // 缩成「B站扫码」：信息不丢，卡片标题本来就是「B站登录」
+    { key: 'bilibili', label: t('B站扫码'), icon: 'qrcode' },
   ];
 
   return (

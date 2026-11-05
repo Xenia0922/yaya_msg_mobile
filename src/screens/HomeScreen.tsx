@@ -1012,15 +1012,19 @@ export default function HomeScreen() {
               contentContainerStyle={styles.toolChipsContent}
               style={{ marginHorizontal: -spacing.md }}
             >
+              {/* ⚠️ 工具 chip 不能用快捷入口的固定格宽（quickCellW）：
+                  360dp 屏 quickCellW=76，扣掉图标 28 + gap 4 + 上下左右 padding 8 只剩 36dp，
+                  而 12px 中文三字正好 36dp —— 零余量，实测「鸡腿榜 / 数据库」会被 ellipsize 成「鸡腿…」。
+                  宽度改为内容自适应 + 最小宽度，横排本来就可滚动，宽一点不影响布局。 */}
               {toolChips.map((item) => (
                 <ScalePressable
                   key={item.title}
                   onPress={() => handleNav(item)}
                   pressedScale={0.94}
-                  style={{ width: quickCellW }}
+                  style={{ minWidth: Math.round(quickCellW * 0.8) }}
                 >
                   <View
-                    style={[styles.chip, { backgroundColor: palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)', borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)' }]}
+                    style={[styles.chip, styles.toolChip, { backgroundColor: palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)', borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)' }]}
                   >
                     <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
                       <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
@@ -1179,6 +1183,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     gap: 4,
   },
+  /** 工具 chip：左右留白更大 + 不压缩文字，保证「鸡腿榜 / 数据库」完整显示 */
+  toolChip: { paddingHorizontal: 10, justifyContent: 'flex-start' },
   quickRow: { flexDirection: 'row', gap: 8 },
   quickCell: {},
   quickCellInner: { width: '100%' },
