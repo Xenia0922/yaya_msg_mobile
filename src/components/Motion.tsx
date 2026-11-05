@@ -17,6 +17,13 @@ import {
   ViewProps,
   ViewStyle,
 } from 'react-native';
+import Reanimated, {
+  Easing as REasing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 
 /**
  * Apple 家族强 ease-out（UI 进出场默认）。
@@ -45,45 +52,37 @@ export function FadeInView({
   style,
   pointerEvents,
 }: FadeInViewProps) {
-  const value = useRef(new Animated.Value(0)).current;
+  /**
+   * 入场进度 0→1。
+   *
+   * ⚠️【掉帧修复】这里用 reanimated 的 shared value（跑在 UI 线程），不是 RN Animated：
+   * 进房间要挂载 Chat（几百条消息 + 玻璃气泡）、退房间要卸载 Chat 并重建整个房间列表，
+   * 这几百毫秒里 JS 线程是满载的。JS 驱动的 opacity 动画只能排队等 JS 空档，
+   * 肉眼看到的就是「渐入一顿一顿」。shared value 由 UI 线程推进，JS 再忙也不影响帧率。
+   *
+   * 为什么不用 RN 的 useNativeDriver: true —— 见 f30c1c0：原生动画在转场/切后台/
+   * screens 冻结时会被系统中断且 setValue 救不回来，整块内容停在 opacity 0（丢界面）。
+   * reanimated 的值由 UI 线程持有，冻结后恢复会继续推进，不存在这个问题。
+   */
+  const progress = useSharedValue(0);
 
   useEffect(() => {
-    value.setValue(0);
-    const animation = Animated.timing(value, {
-      toValue: 1,
-      duration,
-      delay,
-      easing: EASE_OUT,
-      // ⚠️【丢界面修复 2026-10-20】必须用 JS 驱动：
-      // native driver 的原生动画在「页面转场 / 切后台 / react-native-screens 冻结」时会被系统
-      // 中断，值停在 0 且不再恢复 → 整块内容透明（用户反馈：设置页 / 账号设置页随机空白）。
-      // 入场只是 delay+duration 的装饰动画，JS 驱动足够，且不会被系统暂停吞掉。
-      useNativeDriver: false,
-    });
-    animation.start(({ finished }) => {
-      // 动画被中途 stop（切页/中断）时强制可见
-      if (!finished) value.setValue(1);
-    });
-    // 兜底二：无论动画状态如何，delay+duration 后一定可见
-    const guard = setTimeout(() => value.setValue(1), delay + duration + 120);
-    return () => { animation.stop(); clearTimeout(guard); };
-  }, [delay, duration, value]);
+    progress.value = 0;
+    progress.value = withDelay(delay, withTiming(1, { duration, easing: REasing.bezier(0.23, 1, 0.32, 1) }));
+    // 兜底：万一 UI 线程动画没推进（异常/被回收），到点直接置 1，绝不留透明块
+    const guard = setTimeout(() => { progress.value = 1; }, delay + duration + 200);
+    return () => clearTimeout(guard);
+  }, [delay, duration, progress]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: distance * (1 - progress.value) }],
+  }));
 
   return (
-    <Animated.View
-      pointerEvents={pointerEvents}
-      style={[
-        style,
-        {
-          opacity: value,
-          transform: [{
-            translateY: value.interpolate({ inputRange: [0, 1], outputRange: [distance, 0] }),
-          }],
-        },
-      ]}
-    >
+    <Reanimated.View pointerEvents={pointerEvents} style={[style, animatedStyle]}>
       {children}
-    </Animated.View>
+    </Reanimated.View>
   );
 }
 

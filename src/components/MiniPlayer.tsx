@@ -43,6 +43,8 @@ const SCALE_LARGE = 1.18;
 const TAP_SLOP = 10;
 /** 控件自动隐藏时长（ms） */
 const CONTROLS_HIDE_MS = 3000;
+/** 双击判定窗口（ms）：双击画面空白处 = 切换小窗大小 */
+const DOUBLE_TAP_MS = 260;
 
 export function MiniPlayer() {
   const { t } = useI18n();
@@ -67,6 +69,8 @@ export function MiniPlayer() {
   // 小窗播放错误：onError 不再静默 close，显示在小窗上让用户能看到
   const [errorMsg, setErrorMsg] = useState('');
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 上一次「空白处点击」的时间戳（双击判定） */
+  const lastTapAt = useRef(0);
 
   // 实际渲染尺寸（等比缩放）
   const boxW = Math.round(W * scale);
@@ -91,7 +95,10 @@ export function MiniPlayer() {
       seekedRef.current = false;
     }
     showControls();
-    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
+    return () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      lastTapAt.current = 0;
+    };
   }, [showControls, visible]);
 
   /** 回全屏的导航序号：必须自增 —— 毫秒时间戳在同毫秒连点两次时会重复，导致「大窗不播」 */
@@ -114,6 +121,10 @@ export function MiniPlayer() {
     });
   }, [info, close, navigation]);
 
+  /** 缩放档位循环：默认 1 → 放大 1.18 → 缩小 0.74 → 1
+   *  触发方式：双击画面空白处（原来是右上角那颗 resize 按钮，用户要求去掉） */
+  const cycleScale = useCallback(() => setScale((sv) => (sv >= 1.1 ? SCALE_SMALL : sv < 0.9 ? 1 : SCALE_LARGE)), []);
+
   const pan = useMemo(
     () =>
       PanResponder.create({
@@ -131,8 +142,19 @@ export function MiniPlayer() {
           pos.setValue({ x: basePos.current.x + g.dx, y: basePos.current.y + g.dy });
         },
         onPanResponderRelease: (_e, g) => {
-          // 几乎没动 → 视为点击：唤出/隐藏控件组（不再直接回放，避免误触）
+          // 几乎没动 → 视为点击
           if (Math.abs(g.dx) < TAP_SLOP && Math.abs(g.dy) < TAP_SLOP) {
+            const now = Date.now();
+            // 双击空白处 = 切换小窗大小（1 → 1.18 → 0.74 循环；纯音频胶囊尺寸固定，不参与）
+            if (now - lastTapAt.current < DOUBLE_TAP_MS) {
+              lastTapAt.current = 0;
+              if (!info?.audioOnly) cycleScale();
+              showControls();
+              return;
+            }
+            lastTapAt.current = now;
+            // 单击 = 显隐控件组（立即响应，不做双击延时 —— 关闭/全屏已常显，
+            // 双击时只有正中的播放按钮会闪一下，代价比「点一下要等」小得多）
             setControlsVisible((v) => {
               const next = !v;
               if (next) showControls();
@@ -173,7 +195,7 @@ export function MiniPlayer() {
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [info, winW, winH, navigation, showControls, boxW],
+    [info, winW, winH, navigation, showControls, boxW, cycleScale],
   );
 
   // 是否已渲染为"后台 PiP 盖层"（全屏纯媒体，盖住页面其它 UI，保证系统悬浮窗画面干净）
@@ -260,7 +282,7 @@ export function MiniPlayer() {
     }
   };
   // 缩放档位循环：默认 1 → 放大 1.18 → 缩小 0.74 → 1
-  const cycleScale = () => setScale((sv) => (sv >= 1.1 ? SCALE_SMALL : sv < 0.9 ? 1 : SCALE_LARGE));
+  // 触发方式：双击画面空白处（原来是右上角一颗 resize 按钮，用户要求去掉）
   // 缩放后夹紧在屏内（放大时不超出右/下边缘）
   useEffect(() => {
     const maxX = Math.max(6, winW - boxW - 6);
@@ -512,44 +534,41 @@ export function MiniPlayer() {
             </TouchableOpacity>
           </View>
         ) : null}
-        {controlsVisible && !pipCover && !info.audioOnly ? (
+        {/* 关闭（左上角）/ 返回全屏（右上角）：**常显**，不随控件自动隐藏 ——
+            小窗只有 180×104，把「关闭」藏进 3 秒自动隐藏里等于每次关窗都要多点一次；
+            参考图里这两颗也是常驻的。 */}
+        {!pipCover && !info.audioOnly ? (
           <>
-            {/* 返回全屏（右上角） */}
-            <TouchableOpacity
-              style={styles.expandBtn}
-              onPress={backToFull}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialCommunityIcons name="arrow-expand" size={10} color="#fff" />
-              <Text style={styles.expandTxt}>全屏</Text>
-            </TouchableOpacity>
-            {/* 关闭（左上角） */}
             <TouchableOpacity
               style={styles.closeBtn}
               onPress={close}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <MaterialCommunityIcons name="close" size={13} color="#FF7A7A" />
+              <MaterialCommunityIcons name="close" size={14} color="#fff" />
             </TouchableOpacity>
-            {/* 缩小/还原（右上角第二颗，循环切换尺寸档位） */}
             <TouchableOpacity
-              style={styles.shrinkBtn}
-              onPress={cycleScale}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.expandBtn}
+              onPress={backToFull}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              {/* 缩小/还原（右上角第二颗，循环切换尺寸档位）
-                  用户反馈：这颗与「全屏」图标曾经一模一样（都是 arrow-expand），只靠颜色区分不够 → 换成 resize */}
-              <MaterialCommunityIcons name="resize" size={12} color="rgba(255,255,255,0.92)" />
+              {/* crop-free = 四角括号，与参考图的「全屏」图标一致（原来的
+                  「arrow-expand + 全屏文字」胶囊已去掉，太占地方） */}
+              <MaterialCommunityIcons name="crop-free" size={13} color="#fff" />
             </TouchableOpacity>
-            {/* 暂停/继续（右下角） */}
+          </>
+        ) : null}
+        {/* 播放/暂停（正中）：原来挤在右下角、与关闭/全屏不成体系。
+            随控件显隐（3s 自动隐藏），点画面唤出。 */}
+        {controlsVisible && !pipCover && !info.audioOnly ? (
+          <View style={styles.centerRow} pointerEvents="box-none">
             <TouchableOpacity
               style={styles.playBtn}
               onPress={handlePlayToggle}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={13} color="#fff" />
+              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={16} color="#fff" />
             </TouchableOpacity>
-          </>
+          </View>
         ) : null}
       </Animated.View>
     </>
@@ -601,62 +620,48 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   title: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  // 四个角按钮按「语义」区分（2026-10-18 用户反馈混淆）：
-  // 放大=主操作（品牌色实底）、关闭=危险（红底）、缩放=次要（淡底）、播放/暂停=主操作（品牌色+更大）
-  /** 「全屏」胶囊内文字 */
-  expandTxt: { color: '#fff', fontSize: 9, fontWeight: '800', marginLeft: 2 },
-  expandBtn: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    paddingHorizontal: 5,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(255,111,145,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
-  },
+  // 三角按钮语义（2026-11-05 按参考图重排）：
+  // 左上角关闭（X）、右上角返回全屏（四角括号）、正中播放/暂停；
+  // 尺寸切换不再是按钮 —— 双击画面空白处循环「小 → 大 → 原尺寸」。
   closeBtn: {
     position: 'absolute',
     top: 4,
     left: 4,
-    /* 方形圆角（非圆形）：与右侧「全屏」胶囊、下方「缩放」圆点在形状上直接可辨 */
-    width: 18,
-    height: 18,
-    borderRadius: 5,
-    backgroundColor: 'rgba(214,60,60,0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shrinkBtn: {
+  expandBtn: {
     position: 'absolute',
-    top: 26,
+    top: 4,
     right: 4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: 'rgba(0,0,0,0.42)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: 'rgba(255,255,255,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /** 居中层：铺满小窗，把播放按钮摆到正中（pointerEvents box-none，空白处仍可拖/双击） */
+  centerRow: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
   playBtn: {
-    position: 'absolute',
-    bottom: 18,
-    right: 6,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,111,145,0.95)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.44)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.75)',
+    borderColor: 'rgba(255,255,255,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
   },
