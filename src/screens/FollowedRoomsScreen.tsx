@@ -4589,6 +4589,9 @@ export default function FollowedRoomsScreen() {
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyExtractor={(item: any, index) => String(item.memberId)}
           contentContainerStyle={styles.listContent}
+          // 房间列表页顶部有搜索框：滑列表时收键盘，否则键盘一直压着大半个列表（用户截图现象）
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => {
             const fid = String(item.member?.id || item.memberId);
             const isFollowing = followedIds.has(fid);
