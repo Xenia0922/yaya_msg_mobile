@@ -44,7 +44,12 @@
         <action android:name="android.intent.action.MEDIA_BUTTON"/>
       </intent-filter>
     </receiver>
-    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait" android:supportsPictureInPicture="true" android:resizeableActivity="true">
+    <!-- ⚠️ 不能锁 screenOrientation="portrait"：与 supportsPictureInPicture 冲突。
+         Android 12+ 上锁定方向的 Activity 进 PiP 时 enterPictureInPictureMode 会返回 false
+         （系统 dump 里 pictureInPictureParams=null，PiP 被静默拒绝）→「有概率唤不出系统小窗」。
+         竖屏/横屏方向已由 JS 侧 expo-screen-orientation 的 lockAsync 全量接管
+         （各页面 lockAsync(PORTRAIT_UP)、全屏播放 lockAsync(LANDSCAPE)），manifest 无需再锁。 -->
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:supportsPictureInPicture="true" android:resizeableActivity="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>

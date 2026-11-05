@@ -1,5 +1,5 @@
 import React, { forwardRef } from 'react';
-import { FlatList, FlatListProps, Platform } from 'react-native';
+import { FlatList, FlatListProps } from 'react-native';
 
 /**
  * 性能化虚拟列表封装。
@@ -14,7 +14,10 @@ const PERF_DEFAULTS = {
   maxToRenderPerBatch: 8,
   updateCellsBatchingPeriod: 50,
   windowSize: 16,
-  removeClippedSubviews: Platform.OS === 'android',
+  // ⚠️ Fabric（新架构）下 removeClippedSubviews 会快速卸载/挂载离屏子视图，与挂载指令
+  // 队列产生竞态 → RetryableMountingLayerException（"Unable to find viewState for tag"）
+  // 真机 native-crash。默认关掉；个别超长列表如需虚拟化裁剪，由调用方显式开回。
+  removeClippedSubviews: false,
   showsVerticalScrollIndicator: false,
 };
 

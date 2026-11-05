@@ -175,7 +175,12 @@ function MainTabs() {
         sceneStyle: { backgroundColor: 'transparent' },
         // iPhone 26 底部 tab 切换无水平滑动（瞬切）；靠 TabCell spring pop 主导
         animation: 'none',
-        // 切走的 tab 冻结渲染（状态保留，只停重渲染）：快速来回切页不再整棵子树重算
+        // 切走的 tab 必须冻结渲染：否则失焦 tab 的整棵子树仍留在原生视图树里，
+        // 会直接透在当前 tab 上面（用户截图：房间列表页上浮着首页的置顶/公演直播/
+        // 快捷入口 chips/工具 chips，文字互相叠一起）。
+        // ✅ 这个 freeze 是 react-freeze（React Suspense，纯 JS 挂起子树），
+        //    **不是** screens 的原生 detach/re-attach，因此不会造成
+        //    Fabric「同一事务 detach+attach」崩溃。
         freezeOnBlur: true,
       }}
     >
@@ -398,8 +403,12 @@ export default function AppNavigator() {
             headerShown: false,
             animation: 'none',
             cardOverlayEnabled: false,
+            // 被压住的页面必须 detach：否则上一个页面仍留在原生视图树里，会透在
+            // 新推入的页面上面（与 tab 的 freezeOnBlur 同一个道理）。
             detachPreviousScreen: true,
-            // 被压住的页面冻结渲染：反复进出头像资料卡/二级页时不再重复跑重渲染
+            // 冻结渲染：反复进出头像资料卡/二级页时不再重复跑重渲染。
+            // ✅ 走 react-freeze（Suspense，纯 JS），不是原生 detach/re-attach，
+            //    不会引入 Fabric「同一事务 detach+attach」的崩溃。
             freezeOnBlur: true,
             cardStyle: { backgroundColor: 'transparent' },
           }}

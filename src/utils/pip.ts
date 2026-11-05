@@ -15,12 +15,36 @@ const Pip = (NativeModules as any)?.PipController;
  */
 const pipSources = new Map<string, boolean>();
 
+/**
+ * 关断去抖（ms）：videoPlaying true→false 时不立即下发原生，而是延迟一拍；
+ * 期间若又变回 true 就取消。目的：播放器起播/切源时 state 会经历
+ * playing→buffering→playing 抖动，FullscreenManager 每次都 setPipPlaying(false)，
+ * 而原生侧 setVideoPlaying(false) 会同步把 setAutoEnterEnabled(false) 刷进
+ * setPictureInPictureParams —— 用户若恰在抖动的 false 窗口按 Home，Android 12+
+ * 的 autoEnter 分支不弹系统小窗（「有概率唤不出」的根因）。
+ * 滞后关断把这些抖动吸收掉；false→true 仍立即下发（起播要能马上切小窗）。
+ */
+let falseTimer: ReturnType<typeof setTimeout> | null = null;
+const FALSE_SETTLE_MS = 800;
+
 function syncPipPlaying() {
   if (Platform.OS !== 'android' || !Pip?.setVideoPlaying) return;
   const any = Array.from(pipSources.values()).some(Boolean);
-  try {
-    Pip.setVideoPlaying(any);
-  } catch { /* ignore */ }
+  if (any) {
+    // 有任意一路在播：取消待定的关断，立即置 true（起播即时可切小窗）
+    if (falseTimer) { clearTimeout(falseTimer); falseTimer = null; }
+    try { Pip.setVideoPlaying(true); } catch { /* ignore */ }
+    return;
+  }
+  // 全部停播：滞后一拍再关，吸收 state 抖动（见上注释）
+  if (falseTimer) return;
+  falseTimer = setTimeout(() => {
+    falseTimer = null;
+    // 到点再复核一次：可能期间又被置 true（此时 falseTimer 已被清，不会走到这）
+    if (!Array.from(pipSources.values()).some(Boolean)) {
+      try { Pip.setVideoPlaying(false); } catch { /* ignore */ }
+    }
+  }, FALSE_SETTLE_MS);
 }
 
 /** 标记当前是否有视频/音频在播：切后台时 MainActivity 据此自动进悬浮窗 */

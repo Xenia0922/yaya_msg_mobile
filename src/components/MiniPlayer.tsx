@@ -495,9 +495,14 @@ export function MiniPlayer() {
           pointerEvents={info.audioOnly ? 'none' : 'auto'}
           style={styles.dragLayer}
         />
-        {/* 底部标题（随控件显隐；PiP 盖层时隐藏，保证悬浮窗纯画面） */}
-        {controlsVisible && !pipCover && !info.audioOnly ? (
-          <View nativeID="yaya.pip.overlay" collapsable={false} style={styles.titleBar} pointerEvents="none">
+        {/* 底部标题：常驻挂载，只用 opacity 显隐（条件卸载会引发 Fabric detach/attach 同事务崩溃） */}
+        {!info.audioOnly ? (
+          <View
+            nativeID="yaya.pip.overlay"
+            collapsable={false}
+            style={[styles.titleBar, controlsVisible && !pipCover ? null : styles.hiddenLayer]}
+            pointerEvents="none"
+          >
             <Text style={styles.title} numberOfLines={1}>{info.title}</Text>
           </View>
         ) : null}
@@ -519,10 +524,17 @@ export function MiniPlayer() {
             : { left: 0, top: 0, width: info.audioOnly ? CAPSULE_W : boxW, height: info.audioOnly ? CAPSULE_H : boxHNow, zIndex: 1002, elevation: 24, transform: pos.getTranslateTransform() },
         ]}
       >
-        {!pipCover && info.audioOnly ? (
+        {/* ⚠️ 下面三组控件**常驻挂载**，只切 opacity / pointerEvents，**不做条件卸载**：
+             条件卸载会在同一帧里产生「删子视图 + 加子视图」= Fabric detach/attach 同事务，
+             触发 RetryableMountingLayerException（Unable to find viewState for tag）真机崩溃。
+             pipCover 切换时尤其危险（切后台那一刻 screens 也在冻结/摘除视图树）。 */}
+        {info.audioOnly ? (
           /* ⚠️ pointerEvents="box-none" 必须保留：这一行铺满整颗胶囊，若默认 auto 会吃掉
              空白处的触摸 → 胶囊只有按钮能点、拖不动（用户反馈「拖动判定区域不对应」） */
-          <View style={styles.capsuleRow} pointerEvents="box-none">
+          <View
+            style={[styles.capsuleRow, pipCover ? styles.hiddenLayer : null]}
+            pointerEvents={pipCover ? 'none' : 'box-none'}
+          >
             <MaterialCommunityIcons name="microphone" size={12} color={palette.tint} />
             <Text style={[styles.capsuleTitle, { color: palette.label }]} numberOfLines={1}>{info.title}</Text>
             <TouchableOpacity onPress={handlePlayToggle} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}>
@@ -537,17 +549,19 @@ export function MiniPlayer() {
         {/* 关闭（左上角）/ 返回全屏（右上角）：**常显**，不随控件自动隐藏 ——
             小窗只有 180×104，把「关闭」藏进 3 秒自动隐藏里等于每次关窗都要多点一次；
             参考图里这两颗也是常驻的。 */}
-        {!pipCover && !info.audioOnly ? (
+        {!info.audioOnly ? (
           <>
             <TouchableOpacity
-              style={styles.closeBtn}
+              style={[styles.closeBtn, pipCover ? styles.hiddenLayer : null]}
+              disabled={pipCover}
               onPress={close}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <MaterialCommunityIcons name="close" size={14} color="#fff" />
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.expandBtn}
+              style={[styles.expandBtn, pipCover ? styles.hiddenLayer : null]}
+              disabled={pipCover}
               onPress={backToFull}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -559,8 +573,11 @@ export function MiniPlayer() {
         ) : null}
         {/* 播放/暂停（正中）：原来挤在右下角、与关闭/全屏不成体系。
             随控件显隐（3s 自动隐藏），点画面唤出。 */}
-        {controlsVisible && !pipCover && !info.audioOnly ? (
-          <View style={styles.centerRow} pointerEvents="box-none">
+        {!info.audioOnly ? (
+          <View
+            style={[styles.centerRow, controlsVisible && !pipCover ? null : styles.hiddenLayer]}
+            pointerEvents={controlsVisible && !pipCover ? 'box-none' : 'none'}
+          >
             <TouchableOpacity
               style={styles.playBtn}
               onPress={handlePlayToggle}
@@ -578,6 +595,8 @@ export function MiniPlayer() {
 const styles = StyleSheet.create({
   capsuleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 },
   capsuleTitle: { flex: 1, fontSize: 11, fontWeight: '600' },
+  /** 只隐藏不卸载：避免 Fabric 同一事务里 detach + attach（→ RetryableMountingLayerException） */
+  hiddenLayer: { opacity: 0 },
   wrap: {
     position: 'absolute',
     borderRadius: 14,

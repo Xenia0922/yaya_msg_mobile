@@ -4745,7 +4745,9 @@ export default function FollowedRoomsScreen() {
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
-          removeClippedSubviews
+          // removeClippedSubviews 已移除：Fabric 新架构下会快速卸载/挂载离屏子视图，
+          // 与 addViewAt 挂载指令竞态 → RetryableMountingLayerException 真机崩溃。
+          // PerfFlatList 默认已关闭该项，这里不再显式传。
         />
         )}
       </FadeInView>

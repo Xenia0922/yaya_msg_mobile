@@ -164,25 +164,127 @@ class MainActivity : ReactActivity() {
    * 自动进入画中画悬浮窗；开关关闭则绝不弹 App 外系统小窗（用户没主动要小窗就不加载）。
    * （RN 侧在播放器 onLoad 时 setVideoPlaying(true)，onEnd/onError/暂停时置 false）
    */
+  /**
+   * 探针：AOSP 里 Activity.enterPictureInPictureMode 的第一道门是
+   * `Window.setPictureInPictureParams(params)`（@hide，返回 boolean），
+   * 它内部有 `if (!mIsFloating) return false` —— 失败时**不会走到 AMS，也不会有任何系统日志**，
+   * 正好解释我们看到的「enterPictureInPictureMode 返回 false 且系统侧零日志」。
+   * 这里用反射把 mIsFloating / Window.setPictureInPictureParams 的真实结果打出来。
+   */
+  private fun probeWindowPipGate(params: android.app.PictureInPictureParams) {
+    try {
+      val w = window
+      val cls = w.javaClass
+      var m: java.lang.reflect.Field? = null
+      var c: Class<*>? = cls
+      while (c != null) {
+        try { m = c.getDeclaredField("mIsFloating"); break } catch (_: Throwable) { c = c.superclass }
+      }
+      if (m != null) {
+        m.isAccessible = true
+        PipModule.diag("INFO", "probe Window.mIsFloating=" + m.get(w))
+      } else {
+        PipModule.diag("INFO", "probe mIsFloating 字段未找到（可能被隐藏 API 限制）")
+      }
+      try {
+        val method = cls.getMethod("setPictureInPictureParams", android.app.PictureInPictureParams::class.java)
+        val r = method.invoke(w, params)
+        PipModule.diag("INFO", "probe Window.setPictureInPictureParams=" + r)
+      } catch (e: Throwable) {
+        PipModule.diag("WARN", "probe Window.setPictureInPictureParams 调用失败: " + e)
+      }
+    } catch (e: Throwable) {
+      PipModule.diag("WARN", "probe 失败: " + e)
+    }
+  }
+
   override fun onUserLeaveHint() {
     super.onUserLeaveHint()
+    android.util.Log.i(
+      "YayaPip",
+      "onUserLeaveHint vp=${PipModule.videoPlaying} pe=${PipModule.pipEnabled} " +
+        "inPip=$isInPictureInPictureMode canUse=${PipModule.canUsePip(this)} sdk=${Build.VERSION.SDK_INT}"
+    )
+    PipModule.diag("INFO", "onUserLeaveHint vp=${PipModule.videoPlaying} pe=${PipModule.pipEnabled} inPip=$isInPictureInPictureMode canUse=${PipModule.canUsePip(this)} sdk=${Build.VERSION.SDK_INT}")
     if (!PipModule.videoPlaying || !PipModule.pipEnabled) return
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
         && !isInPictureInPictureMode) {
       // ColorOS/MIUI 把画中画当独立 AppOps 权限：被关时调用会静默失败 → 提前判定并回报 JS
       if (!PipModule.canUsePip(this)) {
+        PipModule.diag("WARN", "appops 拒绝：系统未授予画中画权限")
         PipModule.emitPipDenied("appops")
         return
       }
       PipOverlayController.setHidden(this, true)
-      // Android 12+ 由预先设置的 autoEnter 接管，避免切后台后延迟调用被系统拒绝。
+      // Android 12+ 手动进入 PiP 的正确姿势（真机 Android 15 / sdk 37 实测定位）：
+      //
+      // ⚠️ AOSP ActivityTaskManagerService.enterPictureInPictureMode 里有一条硬规则：
+      //   if (fromClient && r.isState(PAUSING) && params.isAutoEnterEnabled()) {
+      //       Slog.w(TAG, "Skip client enterPictureInPictureMode request while pausing," +
+      //               " auto-enter-pip is enabled");
+      //       return false;
+      //   }
+      // 按 Home 切后台的那一刻 activity 正是 PAUSING 状态，而我们的参数之前带着
+      // autoEnter=true → 每次都被这条规则挡掉，enterPictureInPictureMode 恒返回 false，
+      // 且系统侧没有任何其它日志（此前一直查不到原因就是这个）。
+      //
+      // 所以：**手动进入时参数必须 autoEnter=false**。
+      // 常驻参数（setPictureInPictureParams）仍保留 autoEnter，供「启动别的 Activity
+      // 时自动缩进小窗」那条路径（ActivityRecord.canAutoEnterPip）使用。
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         PipModule.emitPipChanged(true)
         stopMusicIfIdle()
+        try {
+          if (!isInPictureInPictureMode && !isFinishing && !isDestroyed) {
+            val params = PipModule.buildPipParams(false)
+            PipModule.diag("INFO", "手动进入 PiP：autoEnter=false aspect=${params.aspectRatio}")
+            if (!enterPictureInPictureMode(params)) {
+              android.util.Log.w("YayaPip", "enterPictureInPictureMode(autoEnter=false) 返回 false")
+              PipModule.diag("WARN", "enterPictureInPictureMode(autoEnter=false) 返回 false")
+              // 重试策略：
+              //  第 2 次(+150ms)：同参数再试 —— 可能是系统还没把
+              //    supportsEnterPipOnTaskSwitch 置 true（启动器任务切前台是异步的）
+              //  第 3 次(+450ms)：最小参数（去掉比例/actions）兜底
+              android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                try {
+                  if (isInPictureInPictureMode || isFinishing || isDestroyed) return@postDelayed
+                  val retry = PipModule.buildPipParams(false)
+                  val ok2 = enterPictureInPictureMode(retry)
+                  android.util.Log.i("YayaPip", "第 2 次 enterPictureInPictureMode(+150ms)=$ok2")
+                  PipModule.diag(if (ok2) "INFO" else "WARN", "第 2 次 enterPictureInPictureMode(+150ms)=$ok2")
+                  if (ok2) return@postDelayed
+                  android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try {
+                      if (isInPictureInPictureMode || isFinishing || isDestroyed) return@postDelayed
+                      val minimal = android.app.PictureInPictureParams.Builder().build()
+                      val ok3 = enterPictureInPictureMode(minimal)
+                      android.util.Log.i("YayaPip", "第 3 次（最小参数）enterPictureInPictureMode=$ok3")
+                      PipModule.diag(if (ok3) "INFO" else "ERROR", "第 3 次（最小参数）enterPictureInPictureMode=$ok3")
+                      if (!ok3) PipModule.emitPipDenied("enter-failed")
+                    } catch (e: Exception) {
+                      android.util.Log.w("YayaPip", "第 3 次 enterPictureInPictureMode 抛异常: " + e)
+                      PipModule.emitPipDenied("enter-failed")
+                    }
+                  }, 300)
+                } catch (e: Exception) {
+                  android.util.Log.w("YayaPip", "第 2 次 enterPictureInPictureMode 抛异常: " + e)
+                  PipModule.emitPipDenied("enter-failed")
+                }
+              }, 150)
+            }
+          }
+        } catch (e: Exception) {
+          android.util.Log.w("YayaPip", "enterPictureInPictureMode 抛异常: " + e)
+          PipModule.emitPipDenied("enter-failed")
+        }
+        // 兜底回滚：若上面主动进入 + autoEnter 都没生效（ROM 静默拒绝），撤掉盖层
         reassertHandler.postDelayed({
           if (!isCompactPlayerWindow() && !isFinishing && !isDestroyed) {
+            android.util.Log.w("YayaPip", "PiP 未生效（1.2s 后仍不在 PiP）→ 回滚盖层")
+            PipModule.diag("ERROR", "PiP 未生效（1.2s 后仍不在 PiP）→ 回滚盖层")
             PipOverlayController.setHidden(this, false)
             PipModule.emitPipChanged(false)
+            PipModule.emitPipDenied("timeout")
           }
         }, 1200)
         return
@@ -239,6 +341,8 @@ class MainActivity : ReactActivity() {
    *  AppState 'background' 在 PiP 下不会触发，必须靠 native → JS 事件才能在 PiP 进入瞬间同步。 */
   override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    android.util.Log.i("YayaPip", "onPipModeChanged inPip=$isInPictureInPictureMode vp=${PipModule.videoPlaying} pe=${PipModule.pipEnabled}")
+    PipModule.diag(if (isInPictureInPictureMode) "INFO" else "WARN", "onPipModeChanged inPip=$isInPictureInPictureMode")
     compactPlayerWindow = isInPictureInPictureMode || isCompactPlayerWindow()
     PipOverlayController.setHidden(this, compactPlayerWindow)
     PipModule.emitPipChanged(compactPlayerWindow)
