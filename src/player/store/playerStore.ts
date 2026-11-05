@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlayerSource, PlayerMeta, DanmakuSource } from '../types';
 // 播放互斥（单向）：playerStore 开播(直播/录播/视频/电台经此)时暂停后台音乐；
 // 反向（音乐开播停 playerStore 媒体）在 MusicEngine.playTrack/resume 内处理。
@@ -232,8 +233,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   })),
   requestKernelRebuild: () => set((s) => ({ rebuildNonce: s.rebuildNonce + 1 })),
   toggleDanmaku: () => set((s) => ({ danmakuOn: !s.danmakuOn })),
-  toggleEnter: () => set((s) => ({ hideEnter: !s.hideEnter })),
-  toggleEffects: () => set((s) => ({ hideEffects: !s.hideEffects })),
+  toggleEnter: () => set((s) => {
+    const hideEnter = !s.hideEnter;
+    persistPrefs(hideEnter, s.hideEffects);
+    return { hideEnter };
+  }),
+  toggleEffects: () => set((s) => {
+    const hideEffects = !s.hideEffects;
+    persistPrefs(s.hideEnter, hideEffects);
+    return { hideEffects };
+  }),
   nextCandidate: () => {
     let switched = false;
     set((s) => {
@@ -252,5 +261,36 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return switched;
   },
 }));
+
+/**
+ * 直播偏好（屏蔽进场 / 屏蔽特效）持久化。
+ *
+ * 用户要求「状态要记住」：原来两者只活在内存里，App 重启或进程被杀后回到默认（都显示），
+ * 每次进直播间都得重新点一遍「更多 → 屏蔽特效 / 屏蔽进场」。
+ *
+ * 只有用户显式改过才写盘；读取在 App 启动时（进直播间之前）完成，避免先进直播再闪一次特效。
+ */
+const PREFS_KEY = 'yaya_player_prefs_v1';
+let prefsHydrated = false;
+
+function persistPrefs(hideEnter: boolean, hideEffects: boolean) {
+  AsyncStorage.setItem(PREFS_KEY, JSON.stringify({ hideEnter, hideEffects })).catch(() => {});
+}
+
+export async function loadPlayerPrefs() {
+  if (prefsHydrated) return;
+  prefsHydrated = true;
+  try {
+    const raw = await AsyncStorage.getItem(PREFS_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    usePlayerStore.setState({
+      ...(typeof p?.hideEnter === 'boolean' ? { hideEnter: p.hideEnter } : null),
+      ...(typeof p?.hideEffects === 'boolean' ? { hideEffects: p.hideEffects } : null),
+    });
+  } catch {
+    // 读不到就用默认（不显示屏蔽），不影响播放
+  }
+}
 
 export default usePlayerStore;

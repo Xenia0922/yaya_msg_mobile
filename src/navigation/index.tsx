@@ -39,7 +39,6 @@ import BilibiliLiveScreen from '../screens/BilibiliLiveScreen';
 import VideoLibraryScreen from '../screens/VideoLibraryScreen';
 import MusicLibraryScreen from '../screens/MusicLibraryScreen';
 import AudioProgramsScreen from '../screens/AudioProgramsScreen';
-import AnalysisScreen from '../screens/AnalysisScreen';
 import DownloadScreen from '../screens/DownloadScreen';
 import DatabaseScreen from '../screens/DatabaseScreen';
 import MeleeRankScreen from '../screens/MeleeRankScreen';
@@ -108,7 +107,6 @@ const BilibiliLiveStackScreen = withPageMotion(BilibiliLiveScreen, ui.motion.sta
 const VideoLibraryStackScreen = withPageMotion(VideoLibraryScreen, ui.motion.stackDuration, 10, true);
 const MusicLibraryStackScreen = withPageMotion(MusicLibraryScreen, ui.motion.stackDuration, 10, true);
 const AudioProgramsStackScreen = withPageMotion(AudioProgramsScreen, ui.motion.stackDuration, 10, true);
-const AnalysisStackScreen = withPageMotion(AnalysisScreen, ui.motion.stackDuration, 10, true);
 const DownloadStackScreen = withPageMotion(DownloadScreen, ui.motion.stackDuration, 10, true);
 const DatabaseStackScreen = withPageMotion(DatabaseScreen, ui.motion.stackDuration, 10, true);
 const MeleeRankStackScreen = withPageMotion(MeleeRankScreen, ui.motion.stackDuration, 10, true);
@@ -429,7 +427,6 @@ export default function AppNavigator() {
           <Stack.Screen name="VideoLibraryScreen" component={VideoLibraryStackScreen} />
           <Stack.Screen name="MusicLibraryScreen" component={MusicLibraryStackScreen} />
           <Stack.Screen name="AudioProgramsScreen" component={AudioProgramsStackScreen} />
-          <Stack.Screen name="AnalysisScreen" component={AnalysisStackScreen} />
           <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
           <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
           <Stack.Screen name="MeleeRankScreen" component={MeleeRankStackScreen} />

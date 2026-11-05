@@ -79,7 +79,6 @@ const QUICK: NavItem[] = [
 const TOOL_CHIPS: NavItem[] = [
   { title: '翻牌', desc: '', route: 'FlipScreen', icon: ICONS.FlipSend },
   { title: '上麦', desc: '', route: 'OnMicScreen', icon: ICONS.OnMic },
-  { title: '统计', desc: '', route: 'AnalysisScreen', icon: ICONS.Analysis },
   { title: '下载', desc: '', route: 'DownloadScreen', icon: ICONS.Download },
   { title: '账号', desc: '', route: 'LoginScreen', icon: ICONS.Login },
   { title: '设置', desc: '', route: 'Settings', icon: ICONS.Settings },

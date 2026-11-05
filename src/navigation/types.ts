@@ -18,7 +18,6 @@ export type RootStackParamList = {
   VideoLibraryScreen: undefined;
   MusicLibraryScreen: undefined;
   AudioProgramsScreen: undefined;
-  AnalysisScreen: undefined;
   DownloadScreen: undefined;
   DatabaseScreen: undefined;
   MeleeRankScreen: undefined;

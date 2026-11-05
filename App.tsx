@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AppNavigator from './src/navigation';
 import { loadSettings } from './src/services/settings';
+import { loadPlayerPrefs } from './src/player/store/playerStore';
 import { useResolvedTheme } from './src/hooks/useAppTheme';
 import { useSettingsStore, useMemberStore, useAnnouncementStore, useUpdateStore } from './src/store';
 import { loadMembers } from './src/utils/members';
@@ -560,6 +561,8 @@ export default function App() {
       try {
         const settings = await loadSettings();
         useSettingsStore.getState().setSettings(settings);
+        // 直播偏好（屏蔽进场/屏蔽特效）在进直播间之前恢复，避免先进直播再闪一次特效/进场
+        await loadPlayerPrefs();
       } catch (error: any) {
         if (mounted) setMessage(`设置加载失败：${error?.message || String(error)}`);
       }

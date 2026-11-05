@@ -253,7 +253,7 @@ export default function FlipScreen() {
       if (list.length === 0 && replace) {
         setStatus('');
       } else if (replace) {
-        setStatus(t('已加载 {count} 条翻牌记录', { count: list.length }));
+        flashStatus(t('已加载 {count} 条翻牌记录', { count: list.length }));
       }
     } catch (error) {
       setStatusError(true);
@@ -308,7 +308,7 @@ export default function FlipScreen() {
       const list = normalizePriceList(res);
       setPrices(list);
       setAnswerType(list[0]?.answerType ?? null);
-      setStatus(list.length ? t('已加载 {count} 种回复形式', { count: list.length }) : t('该成员暂未开放翻牌'));
+      flashStatus(list.length ? t('已加载 {count} 种回复形式', { count: list.length }) : t('该成员暂未开放翻牌'));
     } catch (error) {
       if (requestId === priceRequestRef.current) { setStatusError(true); setStatus(t('加载翻牌配置失败：{err}', { err: errorMessage(error) })); }
     }
@@ -317,23 +317,23 @@ export default function FlipScreen() {
   const sendFlip = async () => {
     const finalCost = toNumber(cost);
     if (!selectedMember) {
-      setStatus(t('请先选择成员'));
+      flashStatus(t('请先选择成员'));
       return;
     }
     if (!answerType || !selectedPrice) {
-      setStatus(t('请选择文字、语音或视频翻牌'));
+      flashStatus(t('请选择文字、语音或视频翻牌'));
       return;
     }
     if (!content.trim()) {
-      setStatus(t('请输入翻牌内容'));
+      flashStatus(t('请输入翻牌内容'));
       return;
     }
     if (!minCost) {
-      setStatus(t('{type}翻牌的{privacy}设置暂未开放', { type: t(answerTypeLabel(answerType)), privacy: t(privacyLabel(privacyType)) }));
+      flashStatus(t('{type}翻牌的{privacy}设置暂未开放', { type: t(answerTypeLabel(answerType)), privacy: t(privacyLabel(privacyType)) }));
       return;
     }
     if (finalCost < minCost) {
-      setStatus(t('鸡腿数不能低于官方底价 {min}', { min: minCost }));
+      flashStatus(t('鸡腿数不能低于官方底价 {min}', { min: minCost }));
       setCost(String(minCost));
       return;
     }
@@ -350,7 +350,7 @@ export default function FlipScreen() {
         answerType,
       });
       setContent('');
-      setStatus(t('发送成功，已提交到口袋翻牌'));
+      flashStatus(t('发送成功，已提交到口袋翻牌'));
     } catch (error) {
       setStatusError(true);
       setStatus(t('发送翻牌失败：{err}', { err: errorMessage(error) }));
