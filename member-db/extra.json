@@ -15,5 +15,94 @@
       }
     ]
   },
-  "members": []
+  "members": [
+    {
+      "id": "187367575",
+      "ownerName": "姜又荣",
+      "groupName": "SNH48",
+      "team": "预备生",
+      "periodName": "SNH48 二十五期生",
+      "avatar": "https://www.snh48.com/images/member/zp_10381.jpg?v=1793347200020",
+      "pinyin": "Jiang YouRong",
+      "isInGroup": true,
+      "_onlyIfMissing": true
+    },
+    {
+      "id": "187367576",
+      "ownerName": "刘珈希",
+      "groupName": "SNH48",
+      "team": "预备生",
+      "periodName": "SNH48 二十五期生",
+      "avatar": "https://www.snh48.com/images/member/zp_10382.jpg?v=1793347250537",
+      "pinyin": "Liu JiaXi",
+      "isInGroup": true,
+      "_onlyIfMissing": true
+    },
+    {
+      "id": "187367577",
+      "ownerName": "李茵茵",
+      "groupName": "SNH48",
+      "team": "预备生",
+      "periodName": "SNH48 二十五期生",
+      "avatar": "https://www.snh48.com/images/member/zp_10383.jpg?v=1793347269227",
+      "pinyin": "Li YinYin",
+      "isInGroup": true,
+      "_onlyIfMissing": true
+    },
+    {
+      "id": "187367578",
+      "ownerName": "任亿宸",
+      "groupName": "SNH48",
+      "team": "预备生",
+      "periodName": "SNH48 二十五期生",
+      "avatar": "https://www.snh48.com/images/member/zp_10384.jpg?v=1793347277415",
+      "pinyin": "Ren YiChen",
+      "isInGroup": true,
+      "_onlyIfMissing": true
+    },
+    {
+      "id": "187367579",
+      "ownerName": "孙瑾",
+      "groupName": "SNH48",
+      "team": "预备生",
+      "periodName": "SNH48 二十五期生",
+      "avatar": "https://www.snh48.com/images/member/zp_10385.jpg?v=1793347291803",
+      "pinyin": "Sun Jin",
+      "isInGroup": true,
+      "_onlyIfMissing": true
+    },
+    {
+      "id": "187367580",
+      "ownerName": "吴妮珊",
+      "groupName": "SNH48",
+      "team": "预备生",
+      "periodName": "SNH48 二十五期生",
+      "avatar": "https://www.snh48.com/images/member/zp_10386.jpg?v=1793347303282",
+      "pinyin": "Wu NiShan",
+      "isInGroup": true,
+      "_onlyIfMissing": true
+    },
+    {
+      "id": "187367581",
+      "ownerName": "周司燚",
+      "groupName": "SNH48",
+      "team": "预备生",
+      "periodName": "SNH48 二十五期生",
+      "avatar": "https://www.snh48.com/images/member/zp_10387.jpg?v=1793347324094",
+      "pinyin": "Zhou SiYi",
+      "isInGroup": true,
+      "_onlyIfMissing": true
+    },
+    {
+      "id": "187367582",
+      "ownerName": "朱迅",
+      "groupName": "SNH48",
+      "team": "预备生",
+      "periodName": "SNH48 二十五期生",
+      "avatar": "https://www.snh48.com/images/member/zp_10388.jpg?v=1793347331437",
+      "pinyin": "Zhu Xun",
+      "isInGroup": true,
+      "_onlyIfMissing": true
+    }
+  ]
 }

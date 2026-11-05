@@ -1,5 +1,22 @@
 # member-db · 自建成员库（上游镜像 + 自有覆盖）
 
+## 独立官方成员目录
+
+`official/members.json` 由 `node member-db/fetch-official.mjs` 直接请求口袋 48 官方
+`group_team_star` 接口生成，不依赖 yk1z。GitHub Actions 每日尝试更新，也可以手动运行。
+`fetchedAt` 表示本文件数据发生变化时的抓取时间；`count` 是接口返回的档案总数，
+包含历史档案及接口中的其他团体，不能直接当作当前在团人数。
+
+官方目录不提供大小房间及服务器映射，因此这个独立快照暂不替换下面的 App 成员库；
+现有 App 更新流程和房间功能仍依赖原来的映射源。
+
+`official/rooms.json` 是独立调用口袋 48 官方服务器映射与 Seine 房间详情接口得到的
+房间快照，只保存成员 ID、服务器 ID 和大小房间 ID，不保存消息或登录信息。
+抓取器使用标准输入接收登录会话；例如本地设置环境变量后执行
+`printf '%s' "$POCKET48_TOKEN" | node member-db/fetch-official-rooms.mjs`。
+这两个接口目前需要有效登录；房间快照不会由无登录会话的 GitHub Actions 自动刷新。
+官方接口未返回的房间不会被猜测或填充，且不应用此部分数据直接替换完整历史房间库。
+
 **目的**：不再完全依赖 yk1z 上游库（`data.gnz.hk/members.json`），而是**自建一份可维护的成员库**：
 每日自动同步上游更新 → 叠加我们自己的修正/补充 → 产出 `dist/members.json` 供 App 拉取。
 

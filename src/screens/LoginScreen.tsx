@@ -1079,6 +1079,11 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  sendIdChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+  },
   container: { flex: 1 },
   content: { paddingBottom: 32, paddingHorizontal: 16 },
   groupLabel: { fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 8, marginTop: 3 },
