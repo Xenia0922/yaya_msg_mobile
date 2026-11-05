@@ -1,7 +1,7 @@
 # v2.7.7 发布说明（公开发行版）
 
-- 日期：2026-11-03
-- 批次提交：`2027fdf`（本文档随后单独提交）
+- 日期：2026-11-05（首发 2026-11-03，11-05 补小窗/崩溃/导航/歌词四项）
+- 批次提交：`2027fdf`（首发）、`a867d60`（小窗/崩溃/导航）、`14372bc`（歌词）
 - 版本号：2.7.7 / versionCode 3000010
 
 ---
@@ -344,6 +344,17 @@ git diff --check
 | 小窗四个角按钮语义混乱、缩放按钮难发现 | 全屏是「图标+文字」胶囊、关闭红色方块、缩放圆点、播放挤在右下角 | 左上角关闭、右上角返回全屏（四角括号图标）**常显**；播放/暂停移到正中（随控件 3s 隐藏）；删掉缩放按钮，改为**双击画面空白处**循环切换大小（1 → 1.18 → 0.74） |
 
 **涉及文件**：`src/components/Motion.tsx`、`src/components/MiniPlayer.tsx`、`src/screens/HomeScreen.tsx`、`src/screens/LoginScreen.tsx`
+
+## 附三：小窗 / 崩溃 / 导航 / 歌词（2026-11-05 晚间）
+
+| 现象 | 根因 | 改动 |
+| --- | --- | --- |
+| 播放中按 Home 唤不出系统小窗；有时「小窗没出来，App 反而闪退」 | ① 起播瞬间 `playing → buffering → playing` 抖动，43ms 内把 `setAutoEnterEnabled(false)` 刷进系统，正好落在按 Home 的窗口里；② manifest 里 `screenOrientation="portrait"` 与 PiP 冲突，Android 12+ 锁方向的 Activity 调 `enterPictureInPictureMode` 直接返回 false；③ AOSP `ActivityTaskManagerService` 硬规则：**手动**调用时若参数 `autoEnter=true` 且 Activity 处于 PAUSING（按 Home 那一刻），直接拒绝且不打日志 | 去掉 manifest 方向锁（方向已由 JS 侧 `expo-screen-orientation` 全量接管）；手动进入传 `buildPipParams(false)`，常驻参数仍带 autoEnter；`syncPipPlaying` true→false 加 800ms 滞后去抖；三级重试（0ms 同参 → +150ms → +450ms 最小参数）；新增 `NativeDiag` 原生日志落盘，JS 启动并入运行日志，用户导出日志即可远程定位 |
+| 进出房间、上下滚动时偶发闪退（`RetryableMountingLayerException: Unable to find viewState for tag …`） | Fabric 新架构下，同一事务里「摘除父视图 + 挂载子视图」→ `addViewAt` 找不到父 viewState。三处命中：列表 `removeClippedSubviews` 快速卸载离屏子视图；`react-native-screens` 的 `freezeOnBlur/detachPreviousScreen`；小窗浮层用条件卸载切换控件 | `PerfFlatList` 默认关闭 `removeClippedSubviews`；MiniPlayer 三组控件与标题条改为常驻挂载，只切 `opacity/disabled`；崩溃日志补进运行日志 |
+| 房间列表页上浮着首页内容（置顶直播、快捷入口 chips、最近播放卡全部叠在房间行上） | 上一轮为排查崩溃把 Tab/Stack 的 `freezeOnBlur` 关掉。失焦 tab 不再冻结，整棵子树仍留在原生视图树里，卡片带 elevation 会盖在当前 tab 上。注意这里的 freeze 是 react-freeze（React Suspense，纯 JS 挂起），**不是** screens 的原生 detach，不会引入 Fabric 竞态 | Tab/Stack `freezeOnBlur` 与 Stack `detachPreviousScreen` 恢复 true；`removeClippedSubviews` 与小窗常驻挂载的修复保留 |
+| 首页「最近播放」的歌词显示「如果有你在 - SNH48 Team HII」「词：张鹏鹏」「录音：夏甄尧」 | LRC 头部的制作名单与「歌名 - 歌手」标题行时间戳同为 00:00，`parseLrc` 只判非空，全部当正文歌词；另外一行多时间戳（`[00:20][00:40]副歌`）只取第一个，第二个以字面量残留在歌词里 | `parseLrc` 增加制作信息白名单过滤（词/曲/编曲/录音/混音/母带/OP/SP…）与首行「歌名 - 歌手」过滤；改为逐行提取全部时间戳各生成一行；新增 `scripts/lyrics-parse.test.mjs`（并入 `test:core`） |
+
+**涉及文件**：`android/app/src/main/AndroidManifest.xml`、`MainActivity.kt`、`PipModule.java`、`NativeDiag.java`、`src/utils/pip.ts`、`src/components/{PerfFlatList,MiniPlayer}.tsx`、`src/navigation/index.tsx`、`src/utils/lyrics.ts`、`scripts/lyrics-parse.test.mjs`
 
 ## 已知问题
 
