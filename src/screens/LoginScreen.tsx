@@ -8,7 +8,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Linking, TouchableOpacity,
+  View, Text, TextInput, StyleSheet, Linking, TouchableOpacity,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -38,6 +38,7 @@ import IdentityDecorations from '../components/IdentityDecorations';
 import { ALLOW_CUSTOM_IDENTITY_ROLES, ALLOW_CUSTOM_SENDER_PROFILE } from '../constants/identityFeatures';
 import { getLiveUserAvatar, normalizeLiveAvatar } from '../services/liveAvatarCache';
 import { encryptPocketPassword, validateRegistrationPassword } from '../utils/pocketRegistration';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 function AccountSectionTitle({ icon, title, compact = false }: { icon: string; title: string; compact?: boolean }) {
   const palette = usePalette();
@@ -724,11 +725,20 @@ export default function LoginScreen() {
   ];
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
+    /**
+     * 键盘避让：Android 侧 edgeToEdgeEnabled=true，`KeyboardAvoidingView` 的
+     * `behavior` 在 Android 分支是 undefined（完全不补偿），底部输入框（账号设置·
+     * 个性装扮等）会被键盘直接盖住，且系统自带的 requestRectangleOnScreen 不会
+     * 把聚焦输入框滚进可见区。
+     * 改用 KeyboardAwareScrollView（原生 WindowInsetsAnimation 跟手）：
+     * 按真实 insets 补底部空间，并在键盘动画结束时校验聚焦项没被挡住。
+     */
+    <KeyboardAwareScrollView
+      style={[styles.container, { backgroundColor: usePageBackground() }]}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      bottomOffset={24}
     >
-    <ScrollView style={[styles.container, { backgroundColor: usePageBackground() }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <ScreenHeader title={t('账号设置')} />
 
       <FadeInView delay={40} duration={280} distance={8}>
@@ -1062,8 +1072,7 @@ export default function LoginScreen() {
           <Button title={t('打开官方充值页')} variant="filled" size="md" onPress={() => (navigation as any).navigate('RechargeScreen')} fullWidth />
         </GlassSurface>
       </FadeInView>
-    </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -38,6 +38,7 @@ import { useSafeAreaInsets } from './src/hooks/useSafeAreaInsets';
 // 本工程已在 autolinking 排除 react-native-safe-area-context（无原生 Provider），
 // 因此在顶层提供纯 JS 经验值上下文，让 react-navigation 走「已有 insets → 普通 View」分支。
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 // v2.6.5: 给 react-navigation 提供安全区上下文（纯 JS 经验值，无原生依赖）
 function SafeAreaBridge({ children }: { children: React.ReactNode }) {
@@ -618,6 +619,12 @@ export default function App() {
     : null;
 
   const content = (
+    /**
+     * KeyboardProvider：react-native-keyboard-controller 的根上下文。
+     * 键盘位置/高度改由原生 WindowInsetsAnimation 提供（RN 自带的 keyboardDidShow
+     * 在 edge-to-edge 下上报的高度可能远大于真实值，不能直接拿来算布局）。
+     */
+    <KeyboardProvider>
     <View style={{ flex: 1, backgroundColor: backgroundSource ? 'transparent' : palette.background }}>
       <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
       {backgroundLoadError ? (
@@ -670,6 +677,7 @@ export default function App() {
         </View>
       </Modal>
     </View>
+    </KeyboardProvider>
   );
 
   return (
