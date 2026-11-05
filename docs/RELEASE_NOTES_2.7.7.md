@@ -334,6 +334,17 @@ git diff --check
 
 **涉及文件**：`App.tsx`、`src/screens/{LoginScreen,FollowedRoomsScreen,FlipScreen,FetchScreen}.tsx`
 
+## 附二：动效 / 小窗 / 截字（2026-11-05 下午）
+
+| 现象 | 根因 | 改动 |
+| --- | --- | --- |
+| 点进房间、退出房间回列表时的渐入动画一顿一顿 | `FadeInView` 由 JS 驱动（`useNativeDriver:false`）。进房要挂载 Chat（几百条消息 + 玻璃气泡）、退房要卸载 Chat 并重建整个房间列表，这几百毫秒 JS 线程满载，opacity/translateY 只能排队等 JS 空档 | 改用 reanimated `useSharedValue` + `useAnimatedStyle`，动画在 UI 线程推进；保留「delay+duration+200ms 兜底置 1」，避免任何情况下停在透明 |
+| 首页工具行「鸡腿榜 / 数据库」显示成「鸡腿…」「数据…」 | 工具 chip 仍在套快捷入口固定格宽 `quickCellW`：360dp 屏 = 76dp，扣掉图标 28 + gap 4 + padding 8 只剩 36dp，而 12px 中文三字正好 36dp（零余量） | 宽度改 `minWidth: quickCellW * 0.8` + `toolChip` 增大左右留白、`justifyContent:'flex-start'`，让 chip 按内容自适应（横排本就可滚动） |
+| 登录方式分段控件「B站二维码」被截成「B站二维...」 | 4 等分，每格文字宽约 63dp，「B站二维码」约 65dp | 文案改「B站扫码」（卡片标题本就是「B站登录」，信息不丢） |
+| 小窗四个角按钮语义混乱、缩放按钮难发现 | 全屏是「图标+文字」胶囊、关闭红色方块、缩放圆点、播放挤在右下角 | 左上角关闭、右上角返回全屏（四角括号图标）**常显**；播放/暂停移到正中（随控件 3s 隐藏）；删掉缩放按钮，改为**双击画面空白处**循环切换大小（1 → 1.18 → 0.74） |
+
+**涉及文件**：`src/components/Motion.tsx`、`src/components/MiniPlayer.tsx`、`src/screens/HomeScreen.tsx`、`src/screens/LoginScreen.tsx`
+
 ## 已知问题
 
 - `node-forge` 仅用于注册/密码登录的 AES-ECB，若后续体积敏感可换成内置实现。
