@@ -3114,6 +3114,11 @@ export default function FollowedRoomsScreen() {
       // 滚动位置只用来判定「是否贴底」，100ms 足够，避免每帧过 JS 桥
       scrollEventThrottle: 100,
       onScroll: handleRoomListScroll,
+      // 库里 `{...listProps} onScroll={scrollHandler}` 会把 onScroll 换成自己的 Reanimated
+      // handler，惯性滑动结束那一下不一定回传；补 drag / momentum 结束兜底，
+      // 否则「回到底部」浮层的显隐会卡在旧状态（用户反馈：按钮不出来）。
+      onScrollEndDrag: handleRoomListScroll,
+      onMomentumScrollEnd: handleRoomListScroll,
       // 滑消息列表即收键盘（微信/QQ 行为）。此前没设，键盘弹着时滑历史一直挡半屏。
       keyboardDismissMode: 'on-drag' as const,
       keyboardShouldPersistTaps: 'handled' as const,
