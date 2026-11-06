@@ -5,7 +5,7 @@ import { normalizeUrl } from '../utils/data';
 import { parseLrc } from '../utils/lyrics';
 import { getLyricsMatcher } from '../utils/lyricsIndex';
 import { fetchWithTimeout } from '../utils/network';
-import { exoGetPlaybackSnapshot, exoPlayTrack, ExoPlaybackSnapshot, isNativeExoDisabled, subscribeExo } from '../native/RadioExo';
+import { exoGetPlaybackSnapshot, exoPlayTrack, exoControl, ExoPlaybackSnapshot, isNativeExoDisabled, subscribeExo } from '../native/RadioExo';
 import { onRadioControlRequested } from '../native/LivePlayer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -471,6 +471,7 @@ export const MusicEngine = {
     if (nextTrack && after.queue.length > 0) {
       await this.playTrack(nextTrack, after.queue);
     } else {
+      exoControl('stop');
       useMusicPlayerStore.setState({ url: '', playbackState: 'idle', position: 0, duration: 0, lyrics: [] });
     }
   },
@@ -538,6 +539,18 @@ export const MusicEngine = {
     if (willPlay && s.queue[s.currentIndex] && (!s.lyrics || s.lyrics.length === 0)) {
       this._fetchLyrics(s.queue[s.currentIndex]);
     }
+  },
+
+  /**
+   * 彻底停止：停原生 Exo + 清空会话。
+   * ⚠️ 只清 store 不会让原生 Exo 停声（首页兜底推流走的是 YayaExoService），
+   * 用户点了「×」还会继续播 —— 必须显式 control('stop')。
+   */
+  stop() {
+    this._playSeq++; // 作废在途解析，避免刚停就被异步回调重新起播
+    exoControl('stop');
+    useMusicPlayerStore.getState().setPlaybackState('idle');
+    useMusicPlayerStore.setState({ url: '', position: 0, duration: 0, seekTarget: 0, lyrics: [] });
   },
 
   cycleMode() {
@@ -774,7 +787,12 @@ function installMusicBridge() {
   let lastPushedUrl = '';
   useMusicPlayerStore.subscribe((st, prev) => {
     try {
-      if (!st.url || st.playbackState === 'idle') { lastPushedUrl = ''; return; }
+      if (!st.url || st.playbackState === 'idle') {
+        // 任何入口把会话清成 idle，都要顺手停原生，否则「×」后还在响
+        if (lastPushedUrl) exoControl('stop');
+        lastPushedUrl = '';
+        return;
+      }
       if (st.playbackState === 'loading' && prev.playbackState !== 'loading') lastPushedUrl = '';
       if (MusicEngine.screenAttached) return;
       if (isNativeExoDisabled()) return; // 原生已降级：声音交给页面内的 Video，别抢

@@ -634,14 +634,8 @@ export default function HomeScreen() {
   const handleStopMusic = useCallback(() => {
     const s = useMusicPlayerStore.getState();
     if (!s.queue.length || s.playbackState === 'idle') return;
-    useMusicPlayerStore.setState({
-      url: '',
-      playbackState: 'idle',
-      position: 0,
-      duration: 0,
-      seekTarget: 0,
-      lyrics: [],
-    });
+    // ⚠️ 不能只 setState：原生 Exo 的声源不受 store 控制，清了状态还会继续播
+    MusicEngine.stop();
   }, []);
 
   const hour = new Date().getHours();
