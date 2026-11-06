@@ -1,7 +1,7 @@
 {
-  "version": "20261104",
-  "updatedAt": "2026-11-04T22:18:07.473Z",
-  "contentHash": "28c0fdd4ecfc3159",
+  "version": "20261106",
+  "updatedAt": "2026-11-06T22:20:12.148Z",
+  "contentHash": "e8101534a27973f7",
   "count": 970,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -12,7 +12,7 @@
   "coverage": {
     "withName": 970,
     "channelId": 554,
-    "yklzId": 310,
+    "yklzId": 311,
     "serverId": 554
   },
   "members": [
@@ -28383,7 +28383,8 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10382_2.jpg?v=1793347250537",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10382_3.jpg?v=1793347250537",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10382_4.jpg?v=1793347250537",
-      "isInGroup": true
+      "isInGroup": true,
+      "yklzId": 41554408
     },
     {
       "id": 187367577,
