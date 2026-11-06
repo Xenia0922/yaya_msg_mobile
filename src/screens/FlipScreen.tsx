@@ -220,6 +220,21 @@ export default function FlipScreen() {
    * 公版没有 flashStatus（那是 plus 的自动消失方案），这里只维护配色/重试用的标记。
    */
   const [statusError, setStatusError] = useState(false);
+  /**
+   * 成功/信息类状态的自动消失定时器。
+   * 状态行在 FlatList 之外，常驻会一直占一行高度，列表滚动时内容从它下面经过，
+   * 顶部那条会被切掉一半（用户反馈「功能被挡住字」）。错误态仍然常驻（要配重试按钮）。
+   */
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashStatus = useCallback((text: string, ms = 2600) => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    setStatusError(false);
+    setStatus(text);
+    statusTimerRef.current = setTimeout(() => { setStatus(''); statusTimerRef.current = null; }, ms);
+  }, []);
+  useEffect(() => () => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+  }, []);
   const pageRef = useRef(1);
   const loadingRef = useRef(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
