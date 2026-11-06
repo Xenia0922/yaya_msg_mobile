@@ -271,7 +271,7 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 - **现象**：相册功能缺失（`0ee880f` 曾以「有问题未实现」删除）
 - **根因**：当年删除时**唯一硬伤**是 `import PlayerScreen, { buildPocketHeaders } from '../player'` —— 播放器重写后 `player/index` 不再导出该符号（实际在 `resolve/streamResolver`）。接口与 API 层（`getRoomAlbum`）**从未被删**，与旧版实现 `room-album-feature.js` 完全一致
 - **改动**：
-  - 恢复页面，并按**现行玻璃规范**重做风格：大/小房间改用全站标准 `GlassSegmented`（替换手搓 TouchableOpacity 分段；小房间仅在成员有 `yklzId` 时出现）；网格卡圆角对齐 token（`radiiAlias.cardCompact`）、banner 对齐 `radiiAlias.card`；网格卡保持**实底**（遵守「列表/网格逐卡禁玻璃」）
+  - 恢复页面，并按**现行玻璃规范**重做风格：大/小房间改用全站标准 `GlassSegmented`（替换手搓 TouchableOpacity 分段；小房间仅在成员有 `yklzId` 时出现）；网格卡圆角使用 token（`radiiAlias.cardCompact`）、banner 使用 `radiiAlias.card`；网格卡保持**实底**（遵守「列表/网格逐卡禁玻璃」）
   - 重新接回：navigation types + Stack.Screen + 首页工具「相册」入口
   - 补 4 语言包 i18n key `{mode} · {name}`
 - **涉及**：`src/screens/RoomAlbumScreen.tsx`、`src/navigation/*`、`src/screens/HomeScreen.tsx`、`src/i18n/*`
@@ -376,8 +376,8 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 
 ### 28. 鸡腿榜：去掉年榜 + 成员贡献页 UI 优化
 - **改动**：
-  - 移除年榜页签与 `getMeleeYearRankPage` API（对齐上游只保留周榜/成员贡献），i18n 四语言清「年榜」相关键
-  - 成员贡献页新增头部 summary 卡（查询成员 / **总贡献值**（`totalCharm` 累加，对齐上游 `queryPersonMeleeRankData`）/ 贡献人数）
+  - 移除年榜页签与 `getMeleeYearRankPage` API（只保留周榜/成员贡献），i18n 四语言清「年榜」相关键
+  - 成员贡献页新增头部 summary 卡（查询成员 / **总贡献值**（`totalCharm` 累加，同 `queryPersonMeleeRankData`）/ 贡献人数）
   - 贡献卡：前三名 tint 实底徽标 + mini 进度条（除零保护）
 - **涉及**：`src/screens/MeleeRankScreen.tsx`、`src/api/pocket48.ts`、`src/i18n/{en,ja,ko,zh-Hant}.ts`
 

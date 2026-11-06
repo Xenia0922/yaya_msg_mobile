@@ -70,7 +70,7 @@
 7. **保留**：ScreenHeader（新样式）、导航结构、业务逻辑、i18n key —— 一律不动
 8. **禁止**：新增 npm 依赖、改 android/ 原生、改 store/api、动播放器覆盖层（半透明保留）
 
-## 4. 参考实现（照抄模式）
+## 4. 统一实现约定
 
 - 列表行范式 → `src/screens/FollowedRoomsScreen.tsx` 的房间列表 renderItem
 - 网格范式 → `src/screens/MusicLibraryScreen.tsx` 的 songItem

@@ -241,7 +241,7 @@ export default function LoginScreen() {
   const keyboardHeight = useKeyboardHeight();
   const insets = useSafeAreaInsets();
   const pageSafeBottom = Math.max(10, Math.min(insets.bottom, 24));
-  // 登录身份：口袋48 / 塞纳河48（对齐桌面端 v3.0，身份决定 appInfo 与 UA，登录后所有接口沿用）
+  // 登录身份：口袋48 / 塞纳河48（身份决定 appInfo 与 UA，登录后所有接口沿用）
   const clientProfile: 'pocket48' | 'seine48' = settings.p48ClientProfile === 'seine48' ? 'seine48' : 'pocket48';
   const pollingRef = useRef(true);
   useEffect(() => { return () => { pollingRef.current = false; }; }, []);

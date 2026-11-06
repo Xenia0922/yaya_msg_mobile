@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const BASE = 'https://pocketapi.48.cn';
 const APP_VERSION = '7.0.41';
 const APP_BUILD = '24011601';
-// 塞纳河48 官方客户端身份（对齐桌面端 v3.0 pocket-client-profile.js，验证自官方 1.3.5 APK）
+// 塞纳河48 官方客户端身份（取值实测自官方 1.3.5 APK）
 const SEINE_APP_VERSION = '1.3.5';
 const SEINE_APP_BUILD = 26102601;
 
@@ -1301,7 +1301,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   async sendGift(params: { giftId: string; liveId: string; acceptUserId: string; giftNum?: number; crm?: string; businessCode?: number }) {
-    // 成员直播送礼（协议对齐官方 GiftManager.m57278 → C7246.m30090 + C9430.m34072）：
+    // 成员直播送礼（协议见官方 GiftManager.m57278 → C7246.m30090 + C9430.m34072）：
     // - businessCode 默认 0（LivePlay 场景）；liveType=5（公演直播）是 7，由调用方按 liveType 动态下发
     // - crm 必须透传「直播详情」里的值：它是 DES(key=TT^3m$b#) 加密的聊天室 id，
     //   服务端靠它把礼物广播进直播间聊天室。缺失 → 只计贡献、成员端零感知（2026-10-17 实测）；
@@ -1344,7 +1344,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
    * 3) /gift/api/v1/gift/list {memberId, businessCode:5}（房间场景 businessCode 固定 5）
    *    + /gift/api/v1/gift/get_receive_gift_state {moduleType:2, starIds, msgType}（receiveGiftStatus!==1 → 不能收礼，文案取 receiveGiftTips）
    *    + /user/api/v1/user/money（余额）
-   * 返回前对礼物做清洗（对齐上游）：跳过 typeId=888 / 投票礼物 / 口袋礼物无库存 / 价格非法。
+   * 返回前对礼物做清洗（清洗规则）：跳过 typeId=888 / 投票礼物 / 口袋礼物无库存 / 价格非法。
    */
   async getMemberRoomGiftContext(params: { serverId: string; channelId: string; bigChannelId?: string; memberId?: string }) {
     const serverId = String(params.serverId || '');

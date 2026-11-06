@@ -1718,7 +1718,7 @@ export default function FollowedRoomsScreen() {
   );
   // 房间发言（云信圈组）：草稿 + 发送中 + 错误提示
   const [roomDraft, setRoomDraft] = useState('');
-  /** 回复目标：长按消息 → 回复；发送后清空（字段与官方 replyInfo 对齐） */
+  /** 回复目标：长按消息 → 回复；发送后清空（字段同官方 replyInfo） */
   const [replyTarget, setReplyTarget] = useState<{ replyMessageId: string; replyName: string; replyText: string } | null>(null);
   /** 房间精华消息（成员在官方端设为精华，服务端存储，全员可见） */
   const [roomEssences, setRoomEssences] = useState<any[]>([]);
@@ -5251,7 +5251,7 @@ const styles = StyleSheet.create({
   roomRankHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   roomRankClose: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   roomRankTitle: { fontSize: 18, fontWeight: '900' },
-  // 送礼面板（对齐 MediaScreen 直播礼物网格：图片 + 名称 + 价格）
+  // 送礼面板（同 MediaScreen 直播礼物网格：图片 + 名称 + 价格）
   rgPanel: { maxHeight: '82%', borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet, padding: 14 },
   rgHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   rgTitle: { fontSize: 18, fontWeight: '800' },

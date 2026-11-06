@@ -430,7 +430,6 @@ export const en: Record<string, string> = {
   '最低 {min}': 'Min {min}',
   '最高排名': 'Best ranking',
   '服务器': 'Server',
-  '状态分类（对齐 yk1z 库）': 'Member state (aligned with yk1z DB)',
   '团体分布': 'Group distribution',
   '队伍分布': 'Team distribution',
   '房间映射覆盖': 'Room mapping coverage',

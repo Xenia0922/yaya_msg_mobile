@@ -100,7 +100,7 @@ android/.../PocketImModule.java             原生：init / login / sendChannelT
 
 - 房间内直播时挂 `LiveBarrageBoard`（实时弹幕，收 + 发）
 - 底部「房间发言」输入条 → `sendRoomTextMessage`（圈组发送）
-- 打开房间时订阅 `observeRoomMessages` → **圈组实时推送**（`qchatToRoomMessage` 对齐 HTTP 历史字段后走既有
+- 打开房间时订阅 `observeRoomMessages` → **圈组实时推送**（`qchatToRoomMessage` 与 HTTP 历史字段一致后走既有
   `mergeMessages` 合并）；原 15s HTTP 轮询保留为降级兜底（原生桥不可用 / 未登录 / 非 Android 时自动静默）
 
 ## 6. 已验证 / 未验证
@@ -198,7 +198,7 @@ App 内的呈现（都已做）：
 | 弹幕 LBS | `lbs/chat.jsp` | — | `lbs/chat.jsp` |
 | 圈组 NIM 链接入 | `lbs/conf.jsp` | **直连 `link.netease.im:8080`** | `lbs/conf.jsp` |
 | 聊天室 SDK 版本 | 92110 | 92110 | 92110 |
-| 圈组链 SDK 版本 | **91701** | **92110** | 91701（照抄桌面） |
+| 圈组链 SDK 版本 | **91701** | **92110** | 91701（实测取值） |
 | 包名伪装 | 2/2 属性 25 = `com.seine48.app`；**24/2 不带包名** | 2/2 属性 25 + **24/2 属性 32** | 同桌面 |
 | 圈组订阅 | **无** | **`25/7` 订阅 serverIds** | 无 |
 | 发弹幕 / 发房间消息 | 13/6 · 24/10 | 13/6 · 24/10 | 13/6 · 24/10 |
@@ -222,7 +222,7 @@ Go bot 的 pa = `base64("ts,rand,md5hex(ts+rand+secret),")`，secret `40F1065D8E
 补充事实：桌面/我方只在 `login-send-sms` / `login-by-code` 带 pa；Go bot 是**所有**请求带 pa + `P-Sign-Type: V0`。
 
 
-### 10.1 本轮三方对齐结果（2026-09-17 二轮逐字段核对）
+### 10.1 三方核对结果（2026-09-17 二轮逐字段核对）
 
 逐字段核对桌面 `nim-commonlink-chatroom.js` / `nim-commonlink-qchat.js` 与 Go bot `android-chatroom.mjs` / `android-qchat.mjs` 后修掉：
 

@@ -570,7 +570,7 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
 });
 
 /**
- * 成员贡献头部 summary（对齐上游 queryPersonMeleeRankData 输出）：
+ * 成员贡献头部 summary（同 queryPersonMeleeRankData 输出）：
  * 查询成员 + 总贡献值 + 贡献人数，一眼看到头部格局。
  */
 const PersonSummary = React.memo(function PersonSummary({ member, total, count }: { member: Member; total: number | null; count: number }) {
