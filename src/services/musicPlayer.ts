@@ -115,6 +115,7 @@ function applyNativeSnapshot(snapshot: ExoPlaybackSnapshot): { active: boolean; 
   if (!st.queue.length || !snapshot.url) return { active: true, matched: false };
   const index = findNativeTrackIndex(st.queue, snapshot, st.currentIndex);
   if (index < 0) return { active: true, matched: false };
+  const trackChanged = index !== st.currentIndex;
   useMusicPlayerStore.setState({
     currentIndex: index,
     url: snapshot.url,
@@ -124,10 +125,17 @@ function applyNativeSnapshot(snapshot: ExoPlaybackSnapshot): { active: boolean; 
     seekTarget: 0,
     seekNonce: 0,
     seekFrom: snapshot.position,
+    // 回前台/小窗恢复时若原生已切到另一首，旧歌词必须丢掉，否则会出现
+    // 「上一个曲目的歌词还在滚」的错位（2026-11-06 用户反馈：换出系统小窗后歌词异常）
+    ...(trackChanged ? { lyrics: [] } : {}),
     seekIssuedAt: 0,
     error: null,
   });
   flushMusicPlayerStorage();
+  if (trackChanged) {
+    const tr = useMusicPlayerStore.getState().queue[index];
+    if (tr) void MusicEngine._fetchLyrics(tr);
+  }
   return { active: true, matched: true };
 }
 
