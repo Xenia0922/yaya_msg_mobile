@@ -1446,6 +1446,8 @@ export default function FollowedRoomsScreen() {
   const [roomFreezeKey, setRoomFreezeKey] = useState<string | null>(null);
   const roomLatestImsRef = useRef<any[]>([]);
   const roomAtBottomRef = useRef(true);
+  /** 「回到底部」气泡：列表 ref（按下即滚，不依赖库内部状态） */
+  const roomListRef = useRef<any>(null);
   // 房间内展示：房间名（channelInfo.channelName）+ 背景图（channelInfo.bgImg）
   const [roomMeta, setRoomMeta] = useState<{ name: string; bg: string }>({ name: '', bg: '' });
   const roomMetaCache = useRef<Record<string, { name: string; bg: string }>>({});
@@ -3075,6 +3077,17 @@ export default function FollowedRoomsScreen() {
   }, []);
 
   /**
+   * 「回到底部」气泡：ScalePressable 自身给按压反馈；按下即解冻并滚到底。
+   * 不等 onScroll 回调 —— 解冻晚一拍会看到「点了没反应」。
+   */
+  const roomJumpOut = useCallback(() => {
+    roomAtBottomRef.current = true;
+    setRoomAtBottom(true);
+    setRoomFreezeKey(null);
+    try { roomListRef.current?.scrollToOffset?.({ offset: 0, animated: true }); } catch { /* 忽略 */ }
+  }, []);
+
+  /**
    * 「加载更多历史」props（引用稳定）。
    * 内联对象每次渲染都是新的 → 库里 ListHeaderComponent 跟着重建（列表顶部挂件反复重挂载）。
    */
@@ -4296,21 +4309,11 @@ export default function FollowedRoomsScreen() {
             theme={CHAT_THEME as any}
             darkTheme={CHAT_THEME as any}
             messagesContainerStyle={CHAT_MESSAGES_CONTAINER_STYLE as any}
-            // 「回到底部」气泡：QQ 式，离开底部才出现，带上新消息条数
-            isScrollToBottomEnabled
-            scrollToBottomOffset={60}
-            scrollToBottomContentStyle={[
-              styles.roomJumpBtn,
-              { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline },
-            ]}
-            scrollToBottomComponent={() => (
-              <View style={styles.roomJumpBtnInner}>
-                <MaterialCommunityIcons name="chevron-down" size={15} color={palette.tint} />
-                <Text style={[styles.roomJumpText, { color: palette.tint }]}>
-                  {roomPendingCount > 0 ? t('{count} 条新消息', { count: roomPendingCount }) : t('回到底部')}
-                </Text>
-              </View>
-            )}
+            // ⚠️ 不用库自带的「回到底部」气泡：它渲染在列表**内部**，
+            //    安卓 ScrollView 在惯性滑动时会拦截触摸（第一下只停止滚动），
+            //    表现为「滑消息时按回到底部很难按」。改用页面自绘浮层（见下方 roomJumpBtn）。
+            isScrollToBottomEnabled={false}
+            messagesContainerRef={roomListRef}
             listProps={roomChatListProps}
             locale="zh"
             // 日期分隔：纯数字「今天/昨天/x月x日」，居中显示（renderDayLabel）
@@ -4325,6 +4328,22 @@ export default function FollowedRoomsScreen() {
             renderInputToolbar={NO_INPUT_TOOLBAR}
             loadEarlierMessagesProps={roomLoadEarlierProps}
           />
+          {/* 「回到底部 / N 条新消息」浮层：挂在 Chat 之外（列表之上的兄弟节点），
+              惯性滑动时按下也能立即命中——库自带的按钮在列表内部会被 ScrollView 吃掉第一下触摸。 */}
+          {(!roomAtBottom || roomPendingCount > 0) ? (
+            <ScalePressable
+              onPress={roomJumpOut}
+              pressedScale={0.92}
+              activeOpacity={0.9}
+              hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
+              style={[styles.roomJumpBtn, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}
+            >
+              <MaterialCommunityIcons name="chevron-down" size={15} color={palette.tint} />
+              <Text style={[styles.roomJumpText, { color: palette.tint }]}>
+                {roomPendingCount > 0 ? t('{count} 条新消息', { count: roomPendingCount }) : t('回到底部')}
+              </Text>
+            </ScalePressable>
+          ) : null}
         </FadeInView>
 
         {/* 直播中的实时弹幕（云信聊天室）：与录播弹幕（LRC）是两条独立链路 */}
@@ -4830,14 +4849,20 @@ const styles = StyleSheet.create({
   daySepWrap: { alignItems: 'center', marginVertical: 10 },
   daySep: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
   daySepText: { fontSize: 11, fontWeight: '600', alignSelf: 'center' },
-  /** 「回到底部 / N 条新消息」气泡（库给的容器是 40×40 圆形，这里改成胶囊） */
+  /** 「回到底部 / N 条新消息」胶囊浮层：挂在列表外层，惯性滑动时也能一击命中 */
   roomJumpBtn: {
-    width: 'auto',
+    position: 'absolute',
+    right: 12,
+    bottom: 24,
+    zIndex: 20,
     minWidth: 44,
     height: 34,
     borderRadius: 17,
     paddingHorizontal: 12,
     borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   roomJumpBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   roomJumpText: { fontSize: 12, fontWeight: '700' },
