@@ -364,7 +364,7 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
                       </TouchableOpacity>
                     );
                   })}
-                </View> : !loading && !accountKey ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>请先登录口袋账号</Text> : !loading && status.includes('官方气泡') ? <TouchableOpacity onPress={() => setReload((value) => value + 1)}><Text style={[styles.hint, { color: palette.tint }]}>官方气泡加载失败，点击重试</Text></TouchableOpacity> : !loading ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>暂无官方气泡</Text> : null}
+                </View> : !loading && status.includes('官方气泡') ? <TouchableOpacity onPress={() => setReload((value) => value + 1)}><Text style={[styles.hint, { color: palette.tint }]}>官方气泡加载失败，点击重试</Text></TouchableOpacity> : !loading ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>暂无官方气泡</Text> : null}
                 {status && !status.includes('官方气泡') ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>{status}</Text> : null}
                 {loading ? <ActivityIndicator size="small" color={palette.tint} /> : null}
                 <Text style={[styles.hint, { color: palette.labelTertiary }]}>带锁的气泡账号未拥有，仍可发送；对方客户端是否渲染取决于官方校验。选择后同步到口袋账号，发言消息也携带气泡 ID。</Text>
@@ -381,7 +381,6 @@ export default function IdentityDecorations({ accountKey, frame, teamLogo, badge
                 {loading ? <ActivityIndicator size="small" color={palette.tint} /> : null}
                 <Text style={[styles.hint, { color: palette.labelTertiary }]}>直播弹幕气泡作用在直播间发言上，选中即同步到口袋账号；未拥有/已下架的气泡官方会返回「无权限设置该气泡」。</Text>
               </> : null}
-              {picker !== 'team' && picker !== 'bubble' && picker !== 'liveEffect' && picker !== 'liveBubble' && !loading && !(picker === 'frame' ? frames.length : badgeOptions.length) ? <Text style={[styles.hint, { color: palette.labelSecondary }]}>{accountKey ? '暂无可选图标，请刷新后重试' : '请先登录口袋账号'}</Text> : null}
             </ScrollView>
           </View>
         </View>
