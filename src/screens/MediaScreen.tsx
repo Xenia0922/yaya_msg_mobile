@@ -1691,6 +1691,11 @@ export default function MediaScreen() {
 
   // 画面旋转（翻转）：旋转 90° 时交换容器宽高，使视频填满屏幕且不裁剪
   const screen = useWindowDimensions();
+  // 小窗比例跟随窗口方向：竖屏页面 9:16、横屏全屏 16:9。
+  // ⚠️ 不使用视频 naturalSize：口袋竖屏内容常是横屏编码，会把小窗带横（用户反馈 2026-11-06）。
+  useEffect(() => {
+    if (screen.width > 0 && screen.height > 0) setPipAspect(Math.round(screen.width), Math.round(screen.height));
+  }, [screen.width, screen.height]);
   const videoRotated = videoRotate === 90 || videoRotate === 270;
   const videoBoxW = videoRotated ? screen.height : screen.width;
   const videoBoxH = videoRotated ? screen.width : screen.height;
@@ -1723,13 +1728,9 @@ export default function MediaScreen() {
     if (!ns) return;
     const w = Number(ns.width) || 0;
     const h = Number(ns.height) || 0;
-    // 口袋直播一律按竖屏处理：部分流上报的是横屏编码尺寸，跟着它会横过来
-    if (playingRef.current?.isLive) {
-      setPipAspectLive(false);
-      return;
-    }
-    // 同步 PiP 窗口比例（切后台悬浮窗跟随内容方向）
-    if (w > 0 && h > 0) setPipAspect(w, h);
+    // 小窗比例统一由「窗口方向」维护（见下方 pipAspect effect），这里只决定页面是否横屏。
+    // 口袋直播一律按竖屏处理：部分流上报横屏编码尺寸，跟着它会横过来。
+    if (playingRef.current?.isLive) return;
     if (manualOrientRef.current) return;
     if (w > 0 && h > 0 && w !== h) {
       setIsLandscape(w > h);
