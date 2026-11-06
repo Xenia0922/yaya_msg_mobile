@@ -1329,7 +1329,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   /**
-   * 房间（非直播）送礼上下文 —— 协议对齐桌面版 v2.14 fetchMemberRoomGiftContext：
+   * 房间（非直播）送礼上下文 —— 协议按官方客户端实现 v2.14 fetchMemberRoomGiftContext：
    * 1) /im/api/v1/im/team/room/info {channelId} → channelInfo：ownerId 即收礼成员；
    *    serverType=0 是队伍房间（官方不支持选人送礼）；userFunction.sendGift===false 时该账号在此房间不能送礼
    * 2) /user/api/v1/user/info/reload → userRole（官方身份 2-5 时 get_receive_gift_state 的 msgType 用 2，否则 1）
@@ -1420,7 +1420,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   /**
-   * 房间送礼（协议对齐桌面版 v2.14 sendMemberRoomGift）：
+   * 房间送礼（协议按官方客户端实现 v2.14 sendMemberRoomGift）：
    * - businessCode=5、businessId=serverId、sendToRoomId=channelId（房间场景固定）
    * - 发送前二次校验：收礼成员未变化、礼物仍可用、价格未变、口袋礼物查库存 / 鸡腿查余额
    * - 响应 content.giftNum 存在且 <1 → 官方未确认有效赠送（未扣款），按失败处理

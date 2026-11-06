@@ -267,9 +267,9 @@ Exo 首帧不再覆盖用户暂停、失焦 tab 不再抢返回键、返回键�
 - **备注**：官方 APK 里**根本没有** `getMeleeWeekRank` 这个接口（官方只有 `getMeleeYearRank` 与 `getPersonMeleeRankPage`），官方自己的周贡献榜是 H5 页面 `/session/devoterank`
 - **commit**：`1753f83`
 
-### 14. 恢复「房间相册」（对照桌面版 yayamsg）
+### 14. 恢复「房间相册」（对照旧版实现）
 - **现象**：相册功能缺失（`0ee880f` 曾以「有问题未实现」删除）
-- **根因**：当年删除时**唯一硬伤**是 `import PlayerScreen, { buildPocketHeaders } from '../player'` —— 播放器重写后 `player/index` 不再导出该符号（实际在 `resolve/streamResolver`）。接口与 API 层（`getRoomAlbum`）**从未被删**，与桌面版 `room-album-feature.js` 完全一致
+- **根因**：当年删除时**唯一硬伤**是 `import PlayerScreen, { buildPocketHeaders } from '../player'` —— 播放器重写后 `player/index` 不再导出该符号（实际在 `resolve/streamResolver`）。接口与 API 层（`getRoomAlbum`）**从未被删**，与旧版实现 `room-album-feature.js` 完全一致
 - **改动**：
   - 恢复页面，并按**现行玻璃规范**重做风格：大/小房间改用全站标准 `GlassSegmented`（替换手搓 TouchableOpacity 分段；小房间仅在成员有 `yklzId` 时出现）；网格卡圆角对齐 token（`radiiAlias.cardCompact`）、banner 对齐 `radiiAlias.card`；网格卡保持**实底**（遵守「列表/网格逐卡禁玻璃」）
   - 重新接回：navigation types + Stack.Screen + 首页工具「相册」入口

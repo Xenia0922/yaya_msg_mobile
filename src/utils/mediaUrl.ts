@@ -1,7 +1,7 @@
 /**
- * 私信媒体 URL 解析（对齐桌面版 private-message-formatters-feature.js）。
+ * 私信媒体 URL 解析（按官方客户端实现 private-message-formatters-feature.js）。
  *
- * 桌面版的做法：
+ * 旧版实现的做法：
  *  - 图片字段优先 imgUrl（口袋私信图片就是这个词），再 imageUrl / pictureUrl / picUrl / photoUrl / cover / url / path
  *  - 地址归一化：相对路径 → source.48.cn（图片）/ mp4.48.cn（音视频），/mediasource、/imagesource → source.48.cn
  *  - 类型判断：扩展名优先，其次看 messageType 里的 IMAGE / AUDIO / VIDEO
@@ -9,7 +9,7 @@
 
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|bmp|heic|avif)$/i;
 
-/** 媒体 URL 可能出现的字段名（顺序与桌面版一致，imgUrl 在前）。 */
+/** 媒体 URL 可能出现的字段名（顺序与旧版实现一致，imgUrl 在前）。 */
 export const MEDIA_URL_KEYS = [
   'imgUrl', 'imageUrl', 'pictureUrl', 'picUrl', 'photoUrl', 'cover', 'coverUrl', 'url', 'path',
   'mediaUrl', 'imgPath', 'picPath', 'imagePath',
@@ -17,7 +17,7 @@ export const MEDIA_URL_KEYS = [
   'message.url', 'msg.url',
 ];
 
-/** 图片消息里可能包着图片信息的外层字段（桌面版会单独作为候选）。 */
+/** 图片消息里可能包着图片信息的外层字段（旧版实现会单独作为候选）。 */
 export const MEDIA_INFO_KEYS = [
   'imageInfo', 'imgInfo', 'pictureInfo', 'voiceInfo', 'audioInfo', 'videoInfo', 'replyInfo',
 ];
@@ -83,7 +83,7 @@ export function deepFindImageUrl(source: unknown, depth = 3): string {
 
 /**
  * 私信头像可能出现的字段（会话对象、消息发送者、成员库记录都适用）。
- * 桌面版读的是 `item.user.avatar`，相对路径同样拼 source.48.cn。
+ * 旧版实现读的是 `item.user.avatar`，相对路径同样拼 source.48.cn。
  */
 export const AVATAR_KEYS = [
   'user.avatar', 'user.headImg', 'user.headImage', 'user.avatarUrl', 'user.picUrl',

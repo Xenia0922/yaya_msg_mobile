@@ -241,11 +241,11 @@
 
 **现象**：对方发来的图片私信只显示一行 `[图片消息]`，气泡里没有图；自己发出的图片消息同样不显示。
 
-**根因**（四处叠加，都在 `PrivateMessagesScreen` 的媒体解析）：① 判定类型读的是 `msg.msgType`，而服务端私信字段是 `messageType`（桌面版读的也是 `messageType`/`content.messageType`），类型兜底永远不生效；② 相对路径统一拼 `mp4.48.cn`，图片实际在 `source.48.cn`，域名错 → 必然 404；③ `imageInfo`/`pictureInfo` 这类外层包裹没有单独作为候选，`imgUrl` 埋在里层时取不到；④ 气泡里的 `<Image>` 没有失败回退，加载失败就是一块空白。
+**根因**（四处叠加，都在 `PrivateMessagesScreen` 的媒体解析）：① 判定类型读的是 `msg.msgType`，而服务端私信字段是 `messageType`（服务端实际字段是 `messageType`/`content.messageType`），类型兜底永远不生效；② 相对路径统一拼 `mp4.48.cn`，图片实际在 `source.48.cn`，域名错 → 必然 404；③ `imageInfo`/`pictureInfo` 这类外层包裹没有单独作为候选，`imgUrl` 埋在里层时取不到；④ 气泡里的 `<Image>` 没有失败回退，加载失败就是一块空白。
 
 **改动**：
-- 新增 `src/utils/mediaUrl.ts`，与桌面版 `private-message-formatters-feature.js` 对齐：`imgUrl → imageUrl → pictureUrl → picUrl → photoUrl → cover → url → path` 的字段顺序、`/mediasource|/imagesource → source.48.cn`、图片走 source / 音视频走 mp4 的宿主规则。
-- 解析顺序改为「先判类型、再按类型选宿主」；类型取 `messageType/msgType/contentType/type`，与桌面版一致。
+- 新增 `src/utils/mediaUrl.ts`，按官方客户端字段顺序整理：`imgUrl → imageUrl → pictureUrl → picUrl → photoUrl → cover → url → path` 的字段顺序、`/mediasource|/imagesource → source.48.cn`、图片走 source / 音视频走 mp4 的宿主规则。
+- 解析顺序改为「先判类型、再按类型选宿主」；类型取 `messageType/msgType/contentType/type`。
 - `pushBody` 增加 `imageInfo/imgInfo/pictureInfo/voiceInfo/audioInfo/videoInfo/replyInfo` 候选层。
 - 兜底：字段名不认识时按图片扩展名整棵对象深扫（跳过 `user/avatar/starInfo/badge` 等身份字段，否则纯文字私信会被渲染成对方头像）。
 - 气泡图片换 `NetworkImage`（缩略图 + 失败占位 + 原图兜底），点击打开 `ZoomImageModal` 大图预览。
@@ -255,12 +255,12 @@
 
 ### 18. 私信头像与用户资料卡
 
-**现象**：私信里对方头像不显示（只剩一个首字母），点头像也没有任何反应；桌面版每条对方消息左侧都有头像，点开是用户主页。
+**现象**：私信里对方头像不显示（只剩一个首字母），点头像也没有任何反应；点开对方消息左侧的头像应能看资料。
 
 **根因**：会话页头像只从成员库取（按 targetUserId 匹配成员），普通粉丝不是成员 → 永远取不到；聊天库默认头像只认 `currentMessage.user.avatar`，我们传的是空串，所以只剩首字母；也没接 `renderAvatar` 与资料卡入口。
 
 **改动**：
-- 新增 `resolvePrivateAvatar()`（`src/utils/mediaUrl.ts`）：消息发送者 `user.avatar` → 会话对象 `user.avatar/headImg/avatarUrl/picUrl` → 成员库，相对路径按桌面版拼 `source.48.cn`。
+- 新增 `resolvePrivateAvatar()`（`src/utils/mediaUrl.ts`）：消息发送者 `user.avatar` → 会话对象 `user.avatar/headImg/avatarUrl/picUrl` → 成员库，相对路径统一拼 `source.48.cn`。
 - 会话列表头像改用该函数（原来是成员库独占），列表头像可点开资料卡。
 - 会话页 `renderAvatar` 接管气泡头像：36dp 圆形、`NetworkImage` 缩略图 + 失败占位，点击打开 `UserProfileSheet`。
 - 会话页标题左侧新增对方头像（`ScreenHeader` 新增可选 `leading` 插槽），同样可点开资料卡。

@@ -156,7 +156,7 @@ function answerTypeFromContext(source: any): number {
 }
 
 /**
- * 消息类型字符串。桌面版读的是 `message.messageType` / `content.messageType`，
+ * 消息类型字符串。旧版实现读的是 `message.messageType` / `content.messageType`，
  * 服务端私信也是这两个字段；我们以前只看 msgType，导致「IMAGE 但地址没扩展名」的图片消息判断不出来。
  */
 function messageTypeOf(...sources: any[]): string {
@@ -193,7 +193,7 @@ function collectPrivateMessageMediaCandidates(msg: any): any[] {
     if (!source || typeof source !== 'object') return;
     candidates.push(source);
     for (const key of flipKeys) { if (source[key]) candidates.push(parseMaybeJson(source[key])); }
-    // 桌面版同样把 imageInfo / voiceInfo 等外层单独当候选：图片信息常包在这层里，
+    // 旧版实现同样把 imageInfo / voiceInfo 等外层单独当候选：图片信息常包在这层里，
     // 只扫顶层字段会取不到 imgUrl（私信图片不显示的根因之一）
     for (const key of MEDIA_INFO_KEYS) {
       if (!source[key]) continue;
@@ -245,7 +245,7 @@ function makeMedia(url: string, type: 'audio' | 'video' | 'image', durSources: a
   };
 }
 
-/** 图片原始尺寸（桌面版 <img width height> 同源字段），用于按比例摆放气泡图片。 */
+/** 图片原始尺寸（旧版实现 <img width height> 同源字段），用于按比例摆放气泡图片。 */
 function pickImageSize(sources: any[]): { width: number; height: number } {
   for (const src of sources) {
     if (!src || typeof src !== 'object') continue;
@@ -274,7 +274,7 @@ function privateMessageMedia(msg: any): MediaInfo {
   for (const item of candidates) {
     let rawUrl = pickText(item, MEDIA_URL_KEYS);
     if (rawUrl) {
-      // 类型先判断、再按类型选宿主域名（桌面版：图片一律 source.48.cn，音视频 mp4.48.cn）。
+      // 类型先判断、再按类型选宿主域名（旧版实现：图片一律 source.48.cn，音视频 mp4.48.cn）。
       // 以前是先按扩展名归一化再判类型 → 没扩展名的图片地址被拼到 mp4.48.cn，加载必失败。
       const type = messageTypeOf(item, msg, content, p);
       const answerType = answerTypeFromContext(item) || answerTypeFromContext(msg) || answerTypeFromContext(content);
@@ -859,7 +859,7 @@ export default function PrivateMessagesScreen() {
     if (!dmTargetId) return;
     setProfileTarget({ userId: dmTargetId, nick: dmPeerName, avatar: dmPeerAvatar });
   }, [dmTargetId, dmPeerName, dmPeerAvatar]);
-  /** 气泡头像：桌面版每条对方消息左侧一个头像，可点开资料卡 */
+  /** 气泡头像：旧版实现每条对方消息左侧一个头像，可点开资料卡 */
   const renderPeerAvatar = useCallback((props?: any) => {
     // 每条消息可能带自己的发送者头像（同一条会话里混入其他发送者时也能对上）
     const url = peerAvatarUrl(sel, member, props?.currentMessage?.original) || dmPeerAvatar;
@@ -1057,7 +1057,7 @@ export default function PrivateMessagesScreen() {
           theme={DM_CHAT_THEME as any}
           locale="zh"
           renderBubble={renderEllipseGlassBubble}
-          // 对方头像（桌面版同款：每条对方消息左侧头像，点开用户资料卡）
+          // 对方头像（旧版实现同款：每条对方消息左侧头像，点开用户资料卡）
           renderAvatar={renderPeerAvatar}
           // 往上翻历史时给「回到底部」气泡（与房间页一致）
           isScrollToBottomEnabled
