@@ -35,6 +35,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   yaya_send_is_star: '',
   yaya_send_badge: '',
   yaya_send_bubble_id: '0',
+  // 直播装扮：进场特效 / 弹幕气泡（账号级，选中即同步到口袋）
+  yaya_live_effect_id: '',
+  yaya_live_effect_name: '',
+  yaya_live_bubble_id: '',
+  yaya_live_bubble_name: '',
   yaya_pm_unread_badge: true,
 };
 

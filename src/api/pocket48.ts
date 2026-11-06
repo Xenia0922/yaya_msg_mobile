@@ -415,6 +415,14 @@ async function pocketPost(url: string, data: any, options: { tokenRequired?: boo
   return assertPocketOk(res, options.fallback);
 }
 
+/** GET 版口袋接口（直播装扮类目录接口只接受 GET，POST 会返回 405） */
+async function pocketGet(url: string, options: { modern?: boolean; fallback?: string } = {}) {
+  const token = requireToken();
+  const headers = await createSignedHeaders(token, !!options.modern, {});
+  const res = await requestJson<any>(url, { method: 'GET', headers, timeout: 15000 });
+  return assertPocketOk(res, options.fallback);
+}
+
 async function publicMediaPost(url: string, data: any, fallback: string) {
   const res = await requestJson<any>(url, {
     method: 'POST',
@@ -1591,6 +1599,42 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   async setRoomBubble(bubbleId: string) {
     return pocketPost(`${BASE}/im/api/v1/room/chooseBubble`, { bubbleId: String(bubbleId) }, {
       modern: true, fallback: '设置口袋官方消息气泡失败',
+    });
+  },
+
+  // --- 直播装扮（进场特效 / 弹幕气泡）：官方 `/live/*` 目录接口只接受 GET ---
+
+  /** 直播进场特效全量目录（含预览图 specialEffectsImgUrl + zip 资源） */
+  async getLiveAllSpecialEffects() {
+    return pocketGet(`${BASE}/live/api/v1/live/get/all/specialeffects`, {
+      fallback: '获取直播进场特效失败',
+    });
+  },
+
+  /**
+   * 设置账号使用的直播进场特效。
+   * 写入格式：`{ operation: 1|0, specialEffectId }`；
+   * 关闭必须 operation=0 且带上原特效 id。id 走字符串：Long 超出 JS 安全整数范围，
+   * 转 Number 会改尾数导致「特效已过期」。
+   */
+  async setLiveSpecialEffect(specialEffectsId: string, enabled = true) {
+    return pocketPost(`${BASE}/live/api/v1/live/update/user/use/specialeffect`, {
+      operation: enabled ? 1 : 0,
+      specialEffectId: String(specialEffectsId),
+    }, { fallback: '设置直播进场特效失败' });
+  },
+
+  /** 直播弹幕气泡全量目录（含预览图 liveBubbleUrl） */
+  async getLiveAllBubbles() {
+    return pocketGet(`${BASE}/live/api/v1/live/get_live_all_bubble`, {
+      fallback: '获取直播弹幕气泡失败',
+    });
+  },
+
+  /** 设置账号使用的直播弹幕气泡 */
+  async setLiveBubble(bubbleId: string) {
+    return pocketPost(`${BASE}/live/api/v1/live/edit_live_my_bubble`, { bubbleId: String(bubbleId) }, {
+      fallback: '设置直播弹幕气泡失败',
     });
   },
 

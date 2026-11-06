@@ -332,6 +332,14 @@ export interface AppSettings {
   yaya_send_badge: string;
   /** 口袋官方聊天气泡 id（0=默认）；发房间消息时随 bubbleId 发送 */
   yaya_send_bubble_id: string;
+  /** 直播进场特效 id（选中即同步账号；空=不使用） */
+  yaya_live_effect_id: string;
+  /** 直播进场特效名称（仅展示用） */
+  yaya_live_effect_name: string;
+  /** 直播弹幕气泡 id（选中即同步账号；空=不使用） */
+  yaya_live_bubble_id: string;
+  /** 直播弹幕气泡名称（仅展示用） */
+  yaya_live_bubble_name: string;
   /** 首页「私信」入口的未读红点角标。默认开 */
   yaya_pm_unread_badge: boolean;
 }
