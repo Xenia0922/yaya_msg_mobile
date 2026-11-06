@@ -556,6 +556,9 @@ export const MusicEngine = {
    */
   stop() {
     this._playSeq++; // 作废在途解析，避免刚停就被异步回调重新起播
+    // 双发：先 pause 立刻静音（部分 ROM 上 service 收到 stop 前后会被前台服务重建），
+    // 再 stop 收掉 service 与通知。
+    exoControl('pause');
     exoControl('stop');
     useMusicPlayerStore.getState().setPlaybackState('idle');
     useMusicPlayerStore.setState({ url: '', position: 0, duration: 0, seekTarget: 0, lyrics: [] });

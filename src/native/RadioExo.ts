@@ -68,10 +68,19 @@ export function exoPlayTrack(
 }
 
 export function exoControl(cmd: 'pause' | 'resume' | 'seek' | 'stop' | 'next' | 'prev' | 'repeat', positionSec = 0) {
-  if (Platform.OS !== 'android' || !M?.control) return;
+  if (Platform.OS !== 'android') return;
+  // ⚠️ 不能只依赖模块加载时抓到的 M：启动早期 NativeModules 可能尚未就绪，
+  // 那之后所有控制（尤其 stop）都会静默失效 —— 声音停不下来。
+  const mod: any = NativeModules.RadioExoModule || M;
+  if (!mod?.control) {
+    console.warn('[exo] control unavailable:', cmd);
+    return;
+  }
   try {
-    M.control(cmd, Number(positionSec) || 0);
-  } catch {}
+    mod.control(cmd, Number(positionSec) || 0);
+  } catch (e) {
+    console.warn('[exo] control failed:', cmd, e);
+  }
 }
 
 /**
