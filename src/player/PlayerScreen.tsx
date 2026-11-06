@@ -7,7 +7,7 @@ import { PlayerChrome } from './chrome/PlayerChrome';
 import { FullscreenManager } from './chrome/FullscreenManager';
 import { PlayerScreenProps } from './types';
 import { logInfo } from '../utils/runtimeLog';
-import { setPipAspect } from '../utils/pip';
+import { setPipAspectLive } from '../utils/pip';
 
 interface Props extends PlayerScreenProps {
   /** 弹幕 overlay 等附加层插槽（由页面挂 DanmakuOverlay） */
@@ -93,12 +93,12 @@ export function PlayerScreen({ source, meta, pocket, danmaku = { type: 'none' },
   const sourceUrl = source.url || '';
   const fullscreen = usePlayerStore((s) => s.fullscreen);
   const cleanScreen = usePlayerStore((s) => s.cleanScreen);
-  // 小窗比例跟随当前窗口方向：竖屏页面 = 9:16，横屏全屏 = 16:9。
+  // 小窗比例跟随当前窗口方向：竖屏页面固定 9:16、横屏全屏固定 16:9（不用屏幕原始比例，超长屏会出竖条）。
   // ⚠️ 不能只用视频 naturalSize：口袋竖屏视频常是横屏编码（1920×1080），
   //    跟随它会让小窗变横、画面两侧大黑边（用户反馈 2026-11-06）。
   const win = useWindowDimensions();
   useEffect(() => {
-    if (win.width > 0 && win.height > 0) setPipAspect(Math.round(win.width), Math.round(win.height));
+    if (win.width > 0 && win.height > 0) setPipAspectLive(win.width > win.height);
   }, [win.width, win.height]);
 
   const rotateDeg = usePlayerStore((s) => s.rotateDeg);

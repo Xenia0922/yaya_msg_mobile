@@ -1691,10 +1691,10 @@ export default function MediaScreen() {
 
   // 画面旋转（翻转）：旋转 90° 时交换容器宽高，使视频填满屏幕且不裁剪
   const screen = useWindowDimensions();
-  // 小窗比例跟随窗口方向：竖屏页面 9:16、横屏全屏 16:9。
+  // 小窗比例跟随窗口方向：竖屏页面固定 9:16、横屏全屏固定 16:9（不用屏幕原始比例，超长屏会出竖条）。
   // ⚠️ 不使用视频 naturalSize：口袋竖屏内容常是横屏编码，会把小窗带横（用户反馈 2026-11-06）。
   useEffect(() => {
-    if (screen.width > 0 && screen.height > 0) setPipAspect(Math.round(screen.width), Math.round(screen.height));
+    if (screen.width > 0 && screen.height > 0) setPipAspectLive(screen.width > screen.height);
   }, [screen.width, screen.height]);
   const videoRotated = videoRotate === 90 || videoRotate === 270;
   const videoBoxW = videoRotated ? screen.height : screen.width;
