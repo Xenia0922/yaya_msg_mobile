@@ -4,7 +4,7 @@ import { LiveExoView, onLiveFirstFrame, onLiveNativeError } from '../../native/L
 import { usePlayerStore } from '../store/playerStore';
 import { PlayerSource } from '../types';
 import { logInfo } from '../../utils/runtimeLog';
-import { setPipAspect } from '../../utils/pip';
+import { setPipAspect, setPipAspectLive } from '../../utils/pip';
 
 interface Props {
   source: PlayerSource;
@@ -41,7 +41,9 @@ export function ExoKernel({ source, onError }: Props) {
       // 无条件置 playing 会「自动恢复播放」覆盖用户暂停。仅在加载/空闲态才升级（2026-10-03 修复）。
       const cur = usePlayerStore.getState();
       if (cur.state === 'loading' || cur.state === 'idle') cur.setState('playing');
-      setPipAspect(p.width, p.height);
+      // 直播（原生内核只跑直播/FLV）：按竖屏处理，避免横屏编码尺寸把小窗带横
+      if (usePlayerStore.getState().source?.kind === 'live') setPipAspectLive(false);
+      else setPipAspect(p.width, p.height);
     });
     const offError = onLiveNativeError((p) => {
       if (p.url && p.url !== url) return;

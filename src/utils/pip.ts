@@ -115,3 +115,15 @@ export function setPipAspect(w: number | string, h: number | string) {
     } catch { /* ignore */ }
   }
 }
+
+/**
+ * 直播场景的小窗比例。
+ *
+ * ⚠️ 不能跟随 naturalSize：部分成员直播流上报的是「横屏编码尺寸」（1080p 的 1920×1080，
+ * 画面本身是竖的），跟随它就会出现「竖屏直播进小窗变横屏、画面两侧大黑边」。
+ * 统一按来源判定：原生直播（手机推流）= 竖屏 9:16；网页内核直播（B站/公演）= 横屏 16:9。
+ */
+export function setPipAspectLive(landscape: boolean) {
+  if (landscape) setPipAspect(16, 9);
+  else setPipAspect(9, 16);
+}

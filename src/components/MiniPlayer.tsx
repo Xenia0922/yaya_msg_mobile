@@ -302,8 +302,11 @@ export function MiniPlayer() {
    * 此前一直停在默认 180×104，竖屏内容被 cover 裁得只剩中间（用户反馈「没自适应/空间不对」）。
    */
   useEffect(() => {
-    const w = Number(info?.aspectW || 0);
-    const h = Number(info?.aspectH || 0);
+    // ⚠️ 直播不接受 naturalSize：部分成员直播上报横屏编码尺寸（1920×1080），
+    //    跟着它会「竖屏直播进小窗变横屏」。直播一律走下面的来源判定分支。
+    const liveFixed = !!info?.isLive && !info?.audioOnly;
+    const w = liveFixed ? 0 : Number(info?.aspectW || 0);
+    const h = liveFixed ? 0 : Number(info?.aspectH || 0);
     if (!(w > 0 && h > 0)) {
       // ⚠️ 不再一律假定竖屏 9:16（2026-10-03 修复）：横屏 rtmp 直播（B站/公演网页内核）
       // 会被当成竖屏 → 小窗变竖条、画面被压。按来源区分：网页内核直播多为横屏，

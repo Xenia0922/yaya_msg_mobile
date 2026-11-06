@@ -26,7 +26,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
-import { setPipPlaying, setPipAspect } from '../utils/pip';
+import { setPipPlaying, setPipAspect, setPipAspectLive } from '../utils/pip';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import ScreenHeader from '../components/ScreenHeader';
 import { VODItem, Member } from '../types';
@@ -1723,6 +1723,11 @@ export default function MediaScreen() {
     if (!ns) return;
     const w = Number(ns.width) || 0;
     const h = Number(ns.height) || 0;
+    // 口袋直播一律按竖屏处理：部分流上报的是横屏编码尺寸，跟着它会横过来
+    if (playingRef.current?.isLive) {
+      setPipAspectLive(false);
+      return;
+    }
     // 同步 PiP 窗口比例（切后台悬浮窗跟随内容方向）
     if (w > 0 && h > 0) setPipAspect(w, h);
     if (manualOrientRef.current) return;
