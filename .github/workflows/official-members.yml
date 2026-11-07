@@ -5,8 +5,9 @@ name: Update official member directory
 # GitHub Actions 出口 IP（Azure 机房段）请求 pocketapi.48.cn 恒返回 403，
 # 与 member-db-sync 同一个坑：加 UA / Referer 均无效。
 # 2026-11-03 ~ 11-07 连续 5 天 schedule 失败，日志只有「官方接口 HTTP 403」。
-# 官方成员快照改由境内网络手动执行 fetch-official.mjs 后提交；需要时可在
-# 能访问官方接口的环境跑 workflow_dispatch（本机/境内机），别再挂 schedule。
+# 官方成员快照改由境内中继每日 04:23 更新：
+#   /root/member_db_relay/run-official.sh（带签名头 + egress_guard 出口代理）
+# 需要时也可在能访问官方接口的环境跑 workflow_dispatch，别再挂 schedule。
 on:
   workflow_dispatch:
 
