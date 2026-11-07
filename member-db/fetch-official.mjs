@@ -9,14 +9,22 @@ const endpoint = 'https://pocketapi.48.cn/user/api/v1/client/update/group_team_s
 const output = path.join(path.dirname(fileURLToPath(import.meta.url)), 'official', 'members.json');
 
 async function main() {
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json;charset=utf-8', 'User-Agent': 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)' },
-    body: '{}',
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!response.ok) throw new Error(`官方接口 HTTP ${response.status}`);
-  const result = await response.json();
+  // 境内中继走代理下载（Node 全局 fetch 不支持 HTTP 代理），把响应写到文件后用
+  // OFFICIAL_JSON_FILE 传进来；本机 / workflow_dispatch 仍可直连。
+  const inputFile = process.env.OFFICIAL_JSON_FILE || '';
+  let result;
+  if (inputFile) {
+    result = JSON.parse(await readFile(inputFile, 'utf8'));
+  } else {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json;charset=utf-8', 'User-Agent': 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)' },
+      body: '{}',
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!response.ok) throw new Error(`官方接口 HTTP ${response.status}`);
+    result = await response.json();
+  }
   const members = result?.content?.starInfo;
   if (result?.status !== 200 || !Array.isArray(members) || members.length < 500) {
     throw new Error('官方接口返回失败或成员数量异常，保留原有数据');
