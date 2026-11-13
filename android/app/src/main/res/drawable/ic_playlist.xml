@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 系统媒体控件「播放列表」按钮图标 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path android:fillColor="#FFFFFF" android:pathData="M3,10h11v2H3zM3,6h11v2H3zM3,14h7v2H3zM16,13v6.5c-0.4,-0.3 -0.9,-0.5 -1.5,-0.5c-1.4,0 -2.5,1.1 -2.5,2.5s1.1,2.5 2.5,2.5s2.5,-1.1 2.5,-2.5V16h5v-3z" />
+</vector>

@@ -1,0 +1,131 @@
+name: Android APK
+
+# 云打包：不再占用本地机器（本地全量 4 ABI + Compose dexing 约 15 分钟）。
+# 手动触发：Actions → Android APK → Run workflow（可选 ABI）。
+# 也可以在 push 到下面这些分支时自动出包。
+on:
+  # 推 ci-build 分支即自动出包（专用出包分支，不干扰日常开发分支）
+  push:
+    branches:
+      - ci-build
+  workflow_dispatch:
+    inputs:
+      abis:
+        description: 'ABI 列表（逗号分隔：x86_64 / arm64-v8a / armeabi-v7a）'
+        required: true
+        default: 'x86_64'
+      universal:
+        description: '是否额外打 universal 包（体积大、慢）'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # push 触发时没有 inputs，用默认值（x86_64 单 ABI，最快）
+      # push 触发默认同时出 x86_64（MuMu）+ arm64-v8a（真机）两个包，一次构建代价几乎不变
+      ABIS: ${{ github.event.inputs.abis || 'x86_64,arm64-v8a' }}
+      UNIVERSAL: ${{ github.event.inputs.universal || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # GitHub 托管 runner 自带 Android SDK（ANDROID_HOME 已设好），
+      # 不再用 android-actions/setup-android（v3 的 cmdline-tools-version 在 runner 上会
+      # 报 "Failed to find package 'tools'" 直接挂掉）。
+      - name: Accept licenses & preinstall SDK / NDK
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDKMGR="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" > /dev/null 2>&1 || true
+          echo "ANDROID_HOME=$SDK"
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund --legacy-peer-deps || npm install --no-audit --no-fund --legacy-peer-deps
+
+      # 渠道必须由构建期写入：私有出包仓库 → plus，公开仓库 → public。
+      # 漏掉这一步会让 plus 包按公开渠道运行（权限功能全关、应用内更新被打开）。
+      - name: Select build channel
+        run: node scripts/write-build-channel.js
+
+      # Gradle 缓存：首次约 18 分钟，之后能省掉大部分依赖下载/编译
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle', 'android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # debug.keystore 不在仓库里；用于无发布签名密钥时生成可安装的测试包。
+      - name: Ensure debug keystore
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore android/app/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA -keysize 2048 -validity 10000
+          fi
+          ls -la android/app/debug.keystore
+
+      - name: Restore release keystore
+        env:
+          RELEASE_STORE_BASE64: ${{ secrets.RELEASE_STORE_BASE64 }}
+        run: |
+          if [ -n "$RELEASE_STORE_BASE64" ]; then
+            echo "$RELEASE_STORE_BASE64" | base64 --decode > android/app/release.keystore
+            echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android/app/release.keystore" >> "$GITHUB_ENV"
+          fi
+
+      - name: Assemble release APK
+        working-directory: android
+        env:
+          NODE_ENV: production
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease \
+            -Pyaya.abis="$ABIS" \
+            -Pyaya.universal="$UNIVERSAL" \
+            -Dorg.gradle.parallel=false \
+            --no-daemon
+
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          find android/app/build/outputs/apk/release -name "*.apk" -exec cp {} out/ \;
+          ls -la out
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: yaya-msg-apk-${{ github.run_number }}
+          path: out/*.apk
+          retention-days: 14

@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
+
+const ts = createRequire(import.meta.url)('typescript');
+const screen = readFileSync(new URL('../src/screens/FlipScreen.tsx', import.meta.url), 'utf8');
+const start = screen.indexOf('function flipDeadline(');
+const end = screen.indexOf('\n}', start) + 2;
+assert.ok(start >= 0 && end > start);
+const format = readFileSync(new URL('../src/utils/format.ts', import.meta.url), 'utf8');
+const timeStart = format.indexOf('export function toMs(');
+const timeEnd = format.indexOf('\n}', timeStart) + 2;
+assert.ok(timeStart >= 0 && timeEnd > timeStart);
+const code = ts.transpileModule(`${format.slice(timeStart, timeEnd)}\n${screen.slice(start, end)}\nexports.flipDeadline = flipDeadline;`, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const exports = {};
+vm.runInNewContext(code, { exports });
+const startMs = 1700000000000;
+assert.equal(exports.flipDeadline(startMs) - startMs, 8 * 86400000);
+assert.equal(exports.flipDeadline(startMs / 1000), startMs + 8 * 86400000);
+assert.equal(exports.flipDeadline(0), 0);
+console.log('翻牌八天期限与时间戳格式测试通过');
