@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
+
+const require = createRequire(import.meta.url);
+const ts = require('typescript');
+const source = readFileSync(new URL('../src/navigation/tabBarVisibility.ts', import.meta.url), 'utf8');
+const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const module = { exports: {} };
+vm.runInNewContext(compiled, { module, exports: module.exports });
+const { shouldHideTabBar } = module.exports;
+const hidden = { Media: true, Rooms: false };
+assert.equal(shouldHideTabBar('Media', true, hidden), true, '直播播放器中隐藏');
+assert.equal(shouldHideTabBar('Settings', true, hidden), false, '后台直播不得隐藏设置页底栏');
+hidden.Rooms = true;
+assert.equal(shouldHideTabBar('Settings', true, hidden), false, '后台房间不得隐藏设置页底栏');
+assert.equal(shouldHideTabBar('Rooms', true, hidden), true, '房间中隐藏');
+assert.equal(shouldHideTabBar('Home', false, hidden), true, '进入二级页面时隐藏');
+hidden.Rooms = false;
+assert.equal(shouldHideTabBar('Rooms', true, hidden), false, '离开房间后恢复');
+console.log('底栏按当前页面隔离与二级页面显隐测试通过');

@@ -1,0 +1,1203 @@
+/**
+ * HomeScreen · 内容仪表盘 v2.6 布局重做
+ * - 问候区（大标题 + 副标题，区块标题统一「4×18 tint 竖条 + headline」）
+ * - 未登录提示卡
+ * - 正在直播 banner 轮播（crossfade/位移动画 + 指示点随动）+ 直播行列表（52 封面圆角12 + 标题/昵称/chevron）
+ * - 快捷入口 4 格胶囊
+ * - 最近播放续播卡
+ * - 工具 chips 横向滚动
+ * - 首屏加载 Skeleton 占位
+ * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局结构。
+ */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, AppState, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { CompositeNavigationProp } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
+import { RootStackParamList, TabParamList } from '../navigation/types';
+import { useSettingsStore } from '../store';
+import { useMusicPlayerStore } from '../store/musicPlayerStore';
+import { MusicEngine } from '../services/musicPlayer';
+import { usePalette, spacing, usePageBackground } from '../theme';
+import { makeShadows } from '../theme/shadows';
+import { typography } from '../theme/typography';
+import ScreenHeader from '../components/ScreenHeader';
+import { GlassCard } from '../components/GlassCard';
+import { Pill } from '../components/Pill';
+import { Button } from '../components/Button';
+import { Skeleton } from '../components/Skeleton';
+import { FadeInView, ScalePressable } from '../components/Motion';
+import { NetworkImage } from '../components/NetworkImage';
+import { MarqueeText } from '../components/MarqueeText';
+import { useI18n } from '../i18n';
+import { pocketApi } from '../api/pocket48';
+import { externalApi } from '../api/external';
+import bilibiliApi from '../api/bilibili';
+import { BilibiliLiveRoom } from '../types';
+import { normalizeUrl, pickText, unwrapList } from '../utils/data';
+import { privateUnreadCount } from '../utils/privateUnread';
+import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GlassSurface } from '../components/GlassSurface';
+
+type HomeNavProp = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList, 'Home'>,
+  StackNavigationProp<RootStackParamList>
+>;
+
+interface NavItem {
+  title: string;
+  desc: string;
+  route: string;
+  params?: any;
+  icon: string;
+}
+
+/** MaterialCommunityIcons 图标（统一视觉语言，替代 emoji） */
+const ICONS: Record<string, string> = {
+  LiveRoom: 'video', Vod: 'play-box-multiple', RoomRadio: 'radio', Bilibili: 'broadcast',
+  Rooms: 'message-text', PrivateMessages: 'email-outline', RoomAlbum: 'image-multiple', OpenLive: 'theater',
+  FlipSend: 'comment-question-outline', FlipHistory: 'history', Analysis: 'chart-bar',
+  Profile: 'account', MemberDynamic: 'star-circle', MemberWeibo: 'web', Trip: 'briefcase',
+  VideoLibrary: 'play-box', MusicLibrary: 'music-note', AudioPrograms: 'podcast',
+  MeleeRank: 'trophy', Database: 'database', Login: 'key-variant', Download: 'download', Invoice: 'file-document-outline', Settings: 'cog',
+  Community: 'forum', OnMic: 'microphone',
+};
+
+const QUICK: NavItem[] = [
+  { title: '直播', desc: '', route: 'Media', params: { mode: 'live' }, icon: ICONS.LiveRoom },
+  { title: '回放', desc: '', route: 'Media', params: { mode: 'vod' }, icon: ICONS.Vod },
+  { title: '音乐', desc: '', route: 'MusicLibraryScreen', icon: ICONS.MusicLibrary },
+  { title: '私信', desc: '', route: 'PrivateMessagesScreen', icon: ICONS.PrivateMessages },
+];
+
+/** 工具：单行横向 chips（翻牌/统计/下载/账号/设置…） */
+const TOOL_CHIPS: NavItem[] = [
+  { title: '翻牌', desc: '', route: 'FlipScreen', icon: ICONS.FlipSend },
+  { title: '上麦', desc: '', route: 'OnMicScreen', icon: ICONS.OnMic },
+  { title: '下载', desc: '', route: 'DownloadScreen', icon: ICONS.Download },
+  { title: '账号', desc: '', route: 'LoginScreen', icon: ICONS.Login },
+  { title: '设置', desc: '', route: 'Settings', icon: ICONS.Settings },
+  { title: '公演', desc: '', route: 'OpenLiveScreen', icon: ICONS.OpenLive },
+  { title: 'B站', desc: '', route: 'BilibiliLiveScreen', icon: ICONS.Bilibili },
+  { title: '鸡腿榜', desc: '', route: 'MeleeRankScreen', icon: ICONS.MeleeRank },
+  { title: '相册', desc: '', route: 'RoomAlbumScreen', icon: ICONS.RoomAlbum },
+  { title: '数据库', desc: '', route: 'DatabaseScreen', icon: ICONS.Database },
+  { title: '发票', desc: '', route: 'InvoiceScreen', icon: ICONS.Invoice },
+];
+
+interface LiveCardItem {
+  liveId: string;
+  title: string;
+  nickname: string;
+  cover: string;
+  /** 主播用户 id（用于关注/置顶优先排序；接口字段多态） */
+  userId: string;
+}
+
+/** 成员直播排序：已关注+置顶 → 已关注未置顶 → 其他（保持原顺序） */
+function sortLivesByPreference(list: LiveCardItem[], followedIds: Set<string>, pinnedIds: string[]) {
+  if (!followedIds.size && !pinnedIds.length) return list;
+  const pinSet = new Set(pinnedIds);
+  const rank = (it: LiveCardItem) => {
+    if (followedIds.has(it.userId)) return pinSet.has(it.userId) ? 0 : 1;
+    return 2;
+  };
+  return [...list].sort((a, b) => rank(a) - rank(b));
+}
+
+/** 首页直播列表缓存（stale-while-revalidate：冷启动秒显上次内容） */
+const LIVES_CACHE_KEY = 'yaya_home_lives_cache_v1';
+
+/** 公演直播（B站开播状态）缓存：B站接口不稳定，冷启动秒显上次检测结果，后台刷新 */
+const GONGYAN_CACHE_KEY = 'yaya_home_gongyan_cache_v1';
+
+/** B站单请求短超时：开播检测只需状态，6s 未回视为失败，避免拖慢首页骨架 */
+const BILI_FAST_TIMEOUT = 6000;
+
+/** Promise 竞速超时：返回 null 表示超时（不 abort，仅放弃等待） */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    p,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
+function isAppForeground(): boolean {
+  return AppState.currentState !== 'background' && AppState.currentState !== 'inactive';
+}
+
+function normalizeLiveList(res: any): LiveCardItem[] {
+  const source = unwrapList(res, [
+    'content.liveList', 'content.list', 'content.data', 'content.records',
+    'data.liveList', 'liveList', 'list', 'data',
+  ]);
+  return source
+    .map((raw: any, index: number) => ({
+      liveId: String(pickText(raw, ['liveId', 'id', 'live_id', 'roomId'], String(index))),
+      title: pickText(raw, ['title', 'liveTitle', 'liveRoomTitle', 'roomName', 'subject'], ''),
+      nickname: pickText(raw, ['nickname', 'nickName', 'userInfo.nickname', 'userInfo.nickName', 'ownerName'], ''),
+      cover: normalizeUrl(pickText(raw, ['liveCover', 'coverPath', 'cover', 'coverUrl', 'picPath', 'picturePath', 'imageUrl', 'poster', 'thumb', 'userInfo.avatar'], '')),
+      userId: String(pickText(raw, ['userId', 'ownerId', 'memberId', 'hostId', 'account', 'userInfo.userId', 'userInfo.id', 'owner.userId', 'memberInfo.userId', 'user.userId'], '')),
+    }))
+    .filter((item: LiveCardItem) => item.title)
+    .slice(0, 8);
+}
+
+/** 区块标题：4×18 tint 竖条 + headline 标题 + 可选「全部 ›」 */
+function SectionHeader({ title, action_label, onAction }: { title: string; action_label?: string; onAction?: () => void }) {
+  const palette = usePalette();
+  return (
+    <View style={styles.sectionHead}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={[styles.sectionDot, { backgroundColor: palette.tint }]} />
+        <Text style={[typography.headline, { color: palette.label, marginLeft: 8 }]}>{title}</Text>
+      </View>
+      {action_label && onAction ? (
+        <ScalePressable onPress={onAction} pressedScale={0.94}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={[typography.footnote, { color: palette.tint, fontWeight: '700' }]}>{action_label}</Text>
+            <MaterialCommunityIcons name="chevron-right" color={palette.tint} size={16} />
+          </View>
+        </ScalePressable>
+      ) : null}
+    </View>
+  );
+}
+
+/** 首页全宽沉浸直播 banner（16:9）：渐变 + 白字上浮 + 直播中红标 */
+function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void }) {
+  const { t } = useI18n();
+  const palette = usePalette();
+  const [broken, setBroken] = useState(false);
+  const retriedRef = useRef(false);
+  // B3 修复：封面失败 3s 后自动重试一次（封面 URL 偶发 403/超时），再次失败才保持兜底
+  const handleCoverError = () => {
+    if (!retriedRef.current) {
+      retriedRef.current = true;
+      setBroken(true);
+      setTimeout(() => setBroken(false), 3000);
+    } else {
+      setBroken(true);
+    }
+  };
+  return (
+    <ScalePressable style={styles.liveBanner} onPress={onPress} pressedScale={0.98}>
+      <View style={[styles.liveBannerWrap, { backgroundColor: palette.fill3, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+        {!broken && item.cover ? (
+          <NetworkImage
+            source={{ uri: item.cover }}
+            style={styles.liveBannerCover}
+            resizeMode="cover"
+            fallback={false}
+            // 16:9 全宽横幅：显示约 1080×609px（480dpi），请求「装进 1080 盒子」即可
+            // —— 服务端等比 contain，3:4 竖图会回 ~810×1080，不放大也不损失清晰度，
+            // 体积却从原图 ~780KB 降到约 1/8（此前不传 thumbnail = 每张都下原图）
+            thumbnail={1080}
+            onError={handleCoverError}
+          />
+        ) : (
+          <View style={styles.liveBannerFallback}>
+            <MaterialCommunityIcons name="video" color={palette.labelTertiary} size={44} />
+          </View>
+        )}
+        {/* 底部平滑渐变（顶部透明 → 底部 0.68 黑），替代多层色阶遮罩；0.68 保证浅色封面下白字可读 */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.68)']}
+          style={styles.liveBannerShade}
+        />
+        <View style={[styles.liveBadge, styles.liveBannerBadge]}>
+          <Text style={styles.liveBadgeText}>{t('直播中')}</Text>
+        </View>
+        <View style={styles.liveBannerInfo}>
+          <Text style={styles.liveBannerTitle} numberOfLines={2}>{item.title}</Text>
+          <Text style={styles.liveBannerNick} numberOfLines={1}>{item.nickname}</Text>
+        </View>
+      </View>
+    </ScalePressable>
+  );
+}
+
+export default function HomeScreen() {
+  const navigation = useNavigation<HomeNavProp>();
+  const isFocused = useIsFocused();
+  const focusedRef = useRef(isFocused);
+  focusedRef.current = isFocused;
+  const settings = useSettingsStore((state) => state.settings);
+  const palette = usePalette();
+  const shadows = makeShadows(palette.name === 'dark');
+  const insets = useSafeAreaInsets();
+  const { t } = useI18n();
+  const token = settings.p48Token;
+  // 屏幕宽度驱动快捷入口像素宽度：横竖屏切换（如 B 站直播自动横屏后返回）时立即重算，
+  // 避免 flexBasis 百分比在旋转后残留横屏宽度（按钮被拉长不恢复）
+  const { width: winW } = useWindowDimensions();
+  const quickCellW = (winW - spacing.md * 2 - 24) / 4;
+
+  const [lives, setLives] = useState<LiveCardItem[]>([]);
+  const [livesOk, setLivesOk] = useState(false);
+  const [livesError, setLivesError] = useState('');
+  const [bannerIndex, setBannerIndex] = useState(0);
+  /** 口袋私信未读数（红点角标）：进首页拉一次，失败静默为 0 */
+  const [pmUnread, setPmUnread] = useState(0);
+  const pmUnreadTokenRef = useRef('');
+  const fetchedRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+  const livesRetryRef = useRef(0);
+  /** 最新成员直播列表快照（供失败分支判断"当前是否已有可展示数据"，避免空壳响应误清列表） */
+  const livesRef = useRef<LiveCardItem[]>([]);
+  useEffect(() => { livesRef.current = lives; }, [lives]);
+
+  // 公演直播：B站直播间开播检测（仅五个团 SNH48/GNZ48/BEJ48/CGT48/CKG48，其余直播间不展示）
+  const GONGYAN_ROOMS = useMemo(
+    () => ['SNH48', 'GNZ48', 'BEJ48', 'CGT48', 'CKG48'],
+    [],
+  );
+  const [gongyanRooms, setGongyanRooms] = useState<BilibiliLiveRoom[]>([]);
+  const [gongyanLive, setGongyanLive] = useState<Record<string, boolean>>({});
+  const [gongyanInfo, setGongyanInfo] = useState<Record<string, { title: string; cover: string }>>({});
+  const [gongyanOk, setGongyanOk] = useState(false);
+  const [gongyanError, setGongyanError] = useState('');
+  const gongyanTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const gongyanRetryRef = useRef(0);
+  const gongyanHasDataRef = useRef(false);
+  /** 上一轮开播判定快照：B站单房间请求偶发失败/超时时保留上次状态（防在播行随单次失败闪没/重现"抽风"） */
+  const gongyanLiveRef = useRef<Record<string, boolean>>({});
+  /** 上一轮房间信息快照：info 请求失败时保留旧封面/标题（防封面闪回占位） */
+  const gongyanInfoRef = useRef<Record<string, { title: string; cover: string }>>({});
+  useEffect(() => { gongyanLiveRef.current = gongyanLive; }, [gongyanLive]);
+  useEffect(() => { gongyanInfoRef.current = gongyanInfo; }, [gongyanInfo]);
+
+  const fetchGongyanStatus = useCallback(async () => {
+    if (!focusedRef.current || !isAppForeground()) return;
+    try {
+      const rooms = await externalApi.fetchBilibiliConfig();
+      // 五团固定顺序（按 GONGYAN_ROOMS 序，非 B站接口返回序 —— 接口顺序跨轮不稳会导致行顺序跳动"抽风"）
+      const filtered = GONGYAN_ROOMS
+        .map((name) => rooms.find((room) => String(room.name || '').trim() === name))
+        .filter((room): room is BilibiliLiveRoom => !!room);
+      // 并行检测开播状态（每请求 6s 竞速超时：B站接口不稳，单请求挂起不应拖住整个公演区）
+      const results = await Promise.allSettled(
+        filtered.map((room) => withTimeout(bilibiliApi.getRoomInit(room.roomId), BILI_FAST_TIMEOUT)),
+      );
+      const prevLive = gongyanLiveRef.current;
+      const next: Record<string, boolean> = {};
+      filtered.forEach((room, index) => {
+        const r = results[index];
+        if (r.status === 'fulfilled' && r.value) {
+          next[room.roomId] = Number(r.value?.data?.live_status) === 1;
+        } else {
+          // 单轮失败/超时：保留上次判定 —— 已开播的房间不因一次抖动被判"下播"而整行闪烁
+          next[room.roomId] = !!prevLive[room.roomId];
+        }
+      });
+      // 在播房间并行抓取封面 + 直播标题（公演行展示真实封面与场次标题；6s 竞速超时）
+      const liveIds = filtered.filter((room) => next[room.roomId]).map((room) => room.roomId);
+      const infoResults = await Promise.allSettled(liveIds.map((id) => withTimeout(bilibiliApi.getRoomInfo(id), BILI_FAST_TIMEOUT)));
+      const prevInfo = gongyanInfoRef.current;
+      const infoMap: Record<string, { title: string; cover: string }> = {};
+      infoResults.forEach((r, index) => {
+        const rid = liveIds[index];
+        if (r.status === 'fulfilled' && r.value) {
+          const d = r.value;
+          infoMap[rid] = {
+            title: String(d.title || ''),
+            cover: normalizeUrl(String(d.cover || d.user_cover || '')),
+          };
+        } else {
+          // info 单轮失败：保留旧封面/标题（防在播行封面闪成占位图标）
+          infoMap[rid] = prevInfo[rid] || { title: '', cover: '' };
+        }
+      });
+      if (!focusedRef.current || !isAppForeground()) return;
+      setGongyanLive(next);
+      setGongyanInfo(infoMap);
+      setGongyanRooms(filtered);
+      setGongyanOk(true);
+      setGongyanError('');
+      gongyanRetryRef.current = 0;
+      gongyanHasDataRef.current = true;
+      // 持久化成功结果：冷启动秒显上次开播状态（B站接口慢时骨架不空转）
+      AsyncStorage.setItem(
+        GONGYAN_CACHE_KEY,
+        JSON.stringify({ rooms: filtered, live: next, info: infoMap }),
+      ).catch(() => {});
+    } catch (e: any) {
+      if (!focusedRef.current) return;
+      // 刷新失败：保留旧数据继续展示（不闪骨架）；完全无数据时才记错误态
+      if (!gongyanHasDataRef.current) setGongyanError(e?.message || String(e));
+      // 初次失败 5s 后自动重试（最多 2 次），不必干等 60s 轮询
+      if (gongyanRetryRef.current < 2) {
+        gongyanRetryRef.current += 1;
+        setTimeout(() => {
+          if (!mountedRef.current || !focusedRef.current) return;
+          if (isAppForeground()) fetchGongyanStatus();
+        }, 5000);
+      }
+    }
+  }, [GONGYAN_ROOMS]);
+
+  // 冷启动秒显公演缓存（stale-while-revalidate）
+  useEffect(() => {
+    AsyncStorage.getItem(GONGYAN_CACHE_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          const cached = JSON.parse(raw);
+          if (Array.isArray(cached?.rooms) && cached.rooms.length) {
+            setGongyanRooms(cached.rooms);
+            setGongyanLive(cached.live || {});
+            setGongyanInfo(cached.info || {});
+            setGongyanOk(true);
+            gongyanHasDataRef.current = true;
+          }
+        } catch { /* ignore */ }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    fetchGongyanStatus();
+    gongyanTimer.current = setInterval(() => {
+      // 切到后台时暂停轮询，回前台立即补一次（省电 + 不占后台网络）
+      if (AppState.currentState !== 'active') return;
+      fetchGongyanStatus();
+    }, 60 * 1000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') fetchGongyanStatus();
+    });
+    return () => {
+      if (gongyanTimer.current) clearInterval(gongyanTimer.current);
+      sub.remove();
+    };
+  }, [fetchGongyanStatus, isFocused]);
+
+  const liveGongyanRooms = useMemo(
+    () => gongyanRooms.filter((room) => !!gongyanLive[room.roomId]),
+    [gongyanRooms, gongyanLive],
+  );
+
+  // banner crossfade 位移动画
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // 成员直播排序偏好：已关注（getFollowedIds）+ 置顶（yaya_pinned_rooms）优先
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  useEffect(() => {
+    AsyncStorage.getItem('yaya_pinned_rooms')
+      .then((v) => { try { const a = JSON.parse(v || '[]'); if (Array.isArray(a)) setPinnedIds(a.map(String)); } catch { /* ignore */ } })
+      .catch(() => {});
+    if (!token) return;
+    pocketApi.getFollowedIds()
+      .then((res: any) => {
+        const ids = unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String);
+        setFollowedIds(new Set(ids));
+      })
+      .catch(() => {});
+  }, [token]);
+
+  const fetchLives = useCallback(() => {
+    if (!focusedRef.current || !isAppForeground()) return;
+    // 秒显上次缓存（stale-while-revalidate）：冷启动立即有内容，后台刷新
+    AsyncStorage.getItem(LIVES_CACHE_KEY)
+      .then((raw) => {
+        if (!raw || !focusedRef.current) return;
+        try {
+          const cached = JSON.parse(raw);
+          if (Array.isArray(cached) && cached.length && !fetchedRef.current) {
+            setLives(sortLivesByPreference(cached, followedIds, pinnedIds));
+            setLivesOk(true);
+          }
+        } catch { /* ignore */ }
+      })
+      .catch(() => {});
+    withTimeout(
+      pocketApi.getLiveList({ groupId: 0, liveType: 0, next: 0, record: false }),
+      10000,
+    )
+      .then((res: any) => {
+        if (!focusedRef.current || !isAppForeground()) return;
+        if (!res) throw new Error('timeout');
+        // 空壳防护：官方接口偶发返回 success/200 但 content 无 liveList 字段（限流/风控/异常），
+        // 此时 normalizeLiveList 会解出空数组 → 误把"有直播"显示成"暂无成员直播"。
+        // 判定规则：结构里确实没有 liveList 数组 = 视为请求异常（保留旧数据走 catch），
+        // 只有结构完整且 liveList 真为空（此时无人开播）才落空态。
+        const rawList = (res?.content ?? res?.data ?? res)?.liveList;
+        if (!Array.isArray(rawList)) throw new Error('live list empty shell');
+        const list = sortLivesByPreference(normalizeLiveList(res), followedIds, pinnedIds);
+        setLives(list);
+        fetchedRef.current = true;
+        setLivesOk(true);
+        setLivesError('');
+        livesRetryRef.current = 0;
+        AsyncStorage.setItem(LIVES_CACHE_KEY, JSON.stringify(list)).catch(() => {});
+      })
+      .catch((e: any) => {
+        if (!focusedRef.current) return;
+        // 有缓存/已有列表时网络失败不打断展示（保留内容，仅静默）；
+        // 无任何数据时：记错误态 + 5s 后自动重试（最多 3 次，网络抖动自愈，不必等手动点重试）。
+        // 判断依据是当前无可展示数据，避免首屏失败后只剩 60s 轮询兜底。
+        if (livesRef.current.length === 0) {
+          setLivesError(e?.message || String(e));
+          if (livesRetryRef.current < 3) {
+            livesRetryRef.current += 1;
+            setTimeout(() => {
+              if (!mountedRef.current || !focusedRef.current) return;
+              if (isAppForeground()) fetchLives();
+            }, 5000);
+          }
+        }
+      });
+  }, [followedIds, pinnedIds]);
+
+  // 关注/置顶数据到达后：已有列表立即按新偏好重排（不重新请求，幂等）
+  useEffect(() => {
+    setLives((prev) => (prev.length ? sortLivesByPreference(prev, followedIds, pinnedIds) : prev));
+  }, [followedIds, pinnedIds]);
+
+  // 仅首页可见时请求和轮询；重新进入首页立即刷新。
+  const wasFocusedRef = useRef(false);
+  useEffect(() => {
+    if (!isFocused) { wasFocusedRef.current = false; return; }
+    if (!wasFocusedRef.current) {
+      wasFocusedRef.current = true;
+      fetchLives();
+    }
+    const id = setInterval(() => {
+      if (AppState.currentState === 'active') fetchLives();
+    }, 60 * 1000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') fetchLives();
+    });
+    return () => { clearInterval(id); sub.remove(); };
+  }, [fetchLives, isFocused]);
+
+  // banner 轮播：2.5s 自动切换下一条（最多轮前 4 条），切换带 crossfade + 位移动画。
+  // 与直播/公演轮询一致，仅首页可见且 App 前台时切换。
+  const bannerCount = Math.min(4, lives.length);
+  // B4 修复：渲染期安全下标 —— 轮询把 lives 变短（主播下播）时，bannerIndex 可能暂时越界；
+  // 仅靠 effect 收敛会先渲染一帧 lives[idx]=undefined → banner 整块消失 → 下方列表跳位“抽风”。
+  // 渲染期直接夹取，保证任何一帧 banner 都存在（dots 也跟随安全下标）。
+  const safeBannerIndex = bannerCount > 0 ? Math.min(bannerIndex, bannerCount - 1) : 0;
+  useEffect(() => {
+    if (!isFocused || bannerCount <= 1) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let transition: Animated.CompositeAnimation | null = null;
+    const startLoop = () => {
+      if (timer || !isAppForeground()) return;
+      timer = setInterval(() => {
+        if (!isAppForeground()) return;
+        transition = Animated.parallel([
+          Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+          Animated.timing(slideAnim, { toValue: 10, duration: 150, useNativeDriver: true }),
+        ]);
+        transition.start(({ finished }) => {
+          if (!finished || !focusedRef.current || !isAppForeground()) return;
+          setBannerIndex((i) => ((i < 0 ? 0 : Math.min(i, bannerCount - 1)) + 1) % bannerCount);
+          // 退场结束后再回弹，避免两个动画同时驱动 slideAnim。
+          transition = Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 240, useNativeDriver: true }),
+            Animated.spring(slideAnim, { toValue: 0, speed: 26, bounciness: 5, useNativeDriver: true }),
+          ]);
+          transition.start(() => { transition = null; });
+        });
+      }, 2500);
+    };
+    const stopLoop = () => {
+      if (timer) { clearInterval(timer); timer = null; }
+      transition?.stop();
+      transition = null;
+      fadeAnim.setValue(1);
+      slideAnim.setValue(0);
+    };
+    startLoop();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') startLoop();
+      else stopLoop();
+    });
+    return () => { sub.remove(); stopLoop(); };
+  }, [bannerCount, fadeAnim, slideAnim, isFocused]);
+
+  // B2 修复：lives 数量变化（60s 轮询）后 bannerIndex 收敛到有效范围（dots 点击/轮播前进以渲染期安全值为主）
+  useEffect(() => {
+    if (bannerCount > 0) {
+      setBannerIndex((i) => Math.min(i, bannerCount - 1));
+    }
+  }, [bannerCount]);
+
+  // 原子化订阅：queue 引用仅在队列变化时更新，position 高频写入不触发首页重渲染
+  const musicQueue = useMusicPlayerStore((s) => s.queue);
+  const musicIndex = useMusicPlayerStore((s) => s.currentIndex);
+  const musicPlaybackState = useMusicPlayerStore((s) => s.playbackState);
+  const currentTrack = musicQueue[musicIndex] || null;
+  /**
+   * 当前歌词行：selector 返回字符串（Object.is 比较），position 高频更新时
+   * 只有「行文本变化」才触发首页重渲染，避免每 250ms 刷整页。
+   */
+  /**
+   * minibar 歌词行（2026-10-18 重做）。
+   *
+   * 此前直接按 store.position 取行：一旦位置心跳停更（页面不在 / 原生心跳丢失），
+   * 歌词永远停在第一句（用户看到一直显示「如果有你在 -」这种版权信息行）。
+   *
+   * 现在：不订阅 position（避免 4 次/秒整页重渲染），改成 500ms 本地 ticker：
+   *  - 记录「最近一次 store.position + 对应时刻」作为锚点；
+   *  - 播放中时按墙上时钟补时（锚点 + 已过秒数），与 store.position 取较大值；
+   *  - 只在「命中的行号变化」时才 setState，渲染开销可忽略。
+   */
+  const lyricsList = useMusicPlayerStore((s) => s.lyrics);
+  const playbackForLyric = useMusicPlayerStore((s) => s.playbackState);
+  const [lyricIdx, setLyricIdx] = useState(-1);
+  const lyricAnchor = useRef({ pos: 0, at: Date.now(), last: -1 });
+
+  useEffect(() => {
+    if (!isFocused) return;
+    const tick = () => {
+      const st = useMusicPlayerStore.getState();
+      const list = st.lyrics;
+      const pos = Number(st.position) || 0;
+      const a = lyricAnchor.current;
+      if (pos !== a.last) lyricAnchor.current = { pos, at: Date.now(), last: pos };
+      const playing = st.playbackState === 'playing' || st.playbackState === 'loading';
+      const anchorNow = lyricAnchor.current;
+      const est = playing ? anchorNow.pos + (Date.now() - anchorNow.at) / 1000 : pos;
+      const use = Math.max(pos, est);
+      if (!list.length) {
+        setLyricIdx((v) => (v === -1 ? v : -1));
+        return;
+      }
+      let lo = 0;
+      let hi = list.length - 1;
+      let hit = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid].time <= use) { hit = mid; lo = mid + 1; } else { hi = mid - 1; }
+      }
+      setLyricIdx((v) => (v === hit ? v : hit));
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [lyricsList, playbackForLyric, isFocused]);
+
+  const lyricLine = lyricIdx >= 0 ? (lyricsList[lyricIdx]?.text || '') : '';
+
+  const handleNav = useCallback((item: NavItem) => {
+    if (item.params) (navigation as any).navigate(item.route, item.params);
+    else (navigation as any).navigate(item.route);
+  }, [navigation]);
+
+  /**
+   * 进音乐功能（最近播放卡面/播放中胶囊）：只导航进音乐库，不触发播放——
+   *  - 外部正在播 → 保持原声连续（不再二次 resume：重复解析+seekTo 会造成"暂停一下再加载"的中断感）
+   *  - 外部暂停/停止 → 保持暂停态进入，不自动开播（用户要求：没在播时进音乐功能不得自动续播）
+   */
+  const openMusicLibrary = useCallback(() => {
+    handleNav({ title: '', desc: '', route: 'MusicLibraryScreen', icon: '' });
+  }, [handleNav]);
+
+  /**
+   * 继续播放（仅显式点击胶囊时）：从记忆进度续播（position→seekTarget，resume 保留进度）。
+   * 播放中/加载中点胶囊只进音乐页（避免重启播放链路）。
+   */
+  const handleResumeMusic = useCallback(() => {
+    const s = useMusicPlayerStore.getState();
+    if (!s.queue[s.currentIndex]) return;
+    if (s.playbackState === 'playing' || s.playbackState === 'loading') {
+      openMusicLibrary();
+      return;
+    }
+    void MusicEngine.resume().catch(() => {});
+    openMusicLibrary();
+  }, [openMusicLibrary]);
+
+  /** minibar：上一首 / 下一首 / 暂停播放 */
+  const handleMusicPrev = useCallback(() => { void MusicEngine.prev(); }, []);
+  const handleMusicNext = useCallback(() => { void MusicEngine.next(); }, []);
+  const handleMusicToggle = useCallback(() => {
+    const s = useMusicPlayerStore.getState();
+    if (!s.queue[s.currentIndex]) return;
+    if (s.playbackState === 'idle') { void MusicEngine.resume().catch(() => {}); return; }
+    MusicEngine.togglePause();
+  }, []);
+
+  /** 关闭音乐：清播放上下文（queue 保留以便再播），idle → 停 Exo 服务与系统媒体通知 */
+  const handleStopMusic = useCallback(() => {
+    const s = useMusicPlayerStore.getState();
+    if (!s.queue.length || s.playbackState === 'idle') return;
+    // ⚠️ 不能只 setState：原生 Exo 的声源不受 store 控制，清了状态还会继续播
+    MusicEngine.stop();
+  }, []);
+
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 5 ? t('夜深了') : hour < 11 ? t('早上好') : hour < 14 ? t('中午好') : hour < 18 ? t('下午好') : t('晚上好');
+
+  const quick = QUICK.map((i) => ({ ...i, title: t(i.title) }));
+
+  // 私信未读红点：仅在已登录时拉取；失败静默（不打扰）
+  useFocusEffect(useCallback(() => {
+    // 设置里有开关（默认开）：关掉就不再拉取、不显示角标
+    if (!token || settings.yaya_pm_unread_badge === false) { pmUnreadTokenRef.current = ''; setPmUnread(0); return; }
+    if (pmUnreadTokenRef.current !== token) { pmUnreadTokenRef.current = token; setPmUnread(0); }
+    let alive = true;
+    let fetching = false;
+    const refreshUnread = () => {
+      if (!alive || fetching || AppState.currentState !== 'active') return;
+      fetching = true;
+      pocketApi.getUnreadMessageCount()
+        .then((res: any) => {
+          if (!alive) return;
+          const count = privateUnreadCount(res);
+          if (count !== null) setPmUnread(count);
+        })
+        .catch(() => {})
+        .finally(() => { fetching = false; });
+    };
+    refreshUnread();
+    const timer = setInterval(refreshUnread, 30000);
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') refreshUnread(); });
+    return () => { alive = false; clearInterval(timer); sub.remove(); };
+  }, [token, settings.yaya_pm_unread_badge]));
+  const toolChips = TOOL_CHIPS.map((i) => ({ ...i, title: t(i.title) }));
+
+  const banner = lives[safeBannerIndex];
+  const trackTitle = currentTrack?.title || '';
+  const trackArtist = currentTrack?.artist || currentTrack?.joinMemberNames || '';
+  // F3 修复：续播卡随播放状态显示「播放中/加载中/继续播放」，R2 曲目 URL 异步解析时用户有反馈
+  const resumeLabel = musicPlaybackState === 'playing'
+    ? t('播放中')
+    : musicPlaybackState === 'loading'
+      ? t('加载中')
+      : t('继续播放');
+
+  const openLive = useCallback((item: LiveCardItem) => {
+    (navigation as any).navigate('Media', {
+      mode: 'live',
+      playLiveId: item.liveId,
+      playTitle: item.title,
+      playCover: item.cover,
+      playNonce: Date.now(),
+    });
+  }, [navigation]);
+
+  return (
+    <View style={[styles.outer, { backgroundColor: usePageBackground() }]}>
+      {}
+      <ScreenHeader title={t('牙牙消息')} hideBack />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingTop: 4,
+          // 底部滚动空间：让 footer 可滚动到悬浮 dock 上方完全可见
+          paddingBottom: 92 + insets.bottom,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* 问候区：一行问候 */}
+        <View style={{ paddingHorizontal: spacing.md }}>
+          {/* 问候：随手机当前时间变化（v2.7 字号缩小） */}
+          <Text style={[typography.footnote, { color: palette.labelSecondary, marginBottom: spacing.md }]}>
+            {greeting}
+          </Text>
+
+          {!token ? (
+            <ScalePressable style={{ marginBottom: spacing.xl }} onPress={() => handleNav({ title: '', desc: '', route: 'LoginScreen', icon: '' })} pressedScale={0.98}>
+              <GlassCard strong padding={14} radius={20} style={{ borderColor: palette.danger }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={[styles.loginBadge, { backgroundColor: palette.tintSoft }]}>
+                    <MaterialCommunityIcons name="key-variant" color={palette.tint} size={20} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[typography.headline, { color: palette.label }]}>{t('未登录口袋账号')}</Text>
+                    <Text style={[typography.footnote, { color: palette.labelSecondary, marginTop: 3, lineHeight: 18 }]}>
+                      {t('消息、私信、翻牌需要登录；点此粘贴 token')}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={20} />
+                </View>
+              </GlassCard>
+            </ScalePressable>
+          ) : null}
+        </View>
+
+        {/* 正在直播：首条全宽 banner 轮播 + 其余直播行 */}
+        <View style={styles.sectionOuter}>
+          <SectionHeader
+            title={t('成员直播')}
+            action_label={t('全部')}
+            onAction={() => handleNav({ title: '', desc: '', route: 'Media', icon: '' })}
+          />
+
+          {/* 加载中渲染骨架（此前是 null → 首屏该区块只有标题、下方空白，弱网下像坏了） */}
+          {!livesOk && !livesError ? (
+            <Skeleton width="100%" height={148} radius={20} style={{ marginTop: 12 }} />
+          ) : livesError && !livesOk ? (
+            <GlassSurface
+              radius={20}
+              role="card"
+              style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
+            >
+              <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
+              <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
+                {t('直播列表加载失败')}
+              </Text>
+              <Button title={t('重试')} variant="tinted" size="sm" onPress={fetchLives} />
+            </GlassSurface>
+          ) : livesOk && lives.length === 0 ? (
+            <GlassSurface
+              radius={20}
+              role="card"
+              style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
+            >
+              <MaterialCommunityIcons name="video-off" size={20} color={palette.labelTertiary} />
+              <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('此时段暂无成员直播')}</Text>
+            </GlassSurface>
+          ) : livesOk ? (
+            <FadeInView delay={0} duration={320}>
+              {banner ? (
+                <View style={{ marginBottom: 12 }}>
+                  {/* crossfade + 位移动画包裹 banner */}
+                  <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}>
+                    <LiveBanner
+                      key={banner.liveId}
+                      item={banner}
+                      onPress={() => openLive(banner)}
+                    />
+                  </Animated.View>
+                  {bannerCount > 1 ? (
+                    <View style={styles.bannerDots}>
+                      {lives.slice(0, bannerCount).map((live, i) => (
+                        <AnimatedDots
+                          key={live.liveId}
+                          active={i === safeBannerIndex}
+                          color={palette.tint}
+                          idle={palette.fill3}
+                          onPress={() => setBannerIndex(i)}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </FadeInView>
+          ) : null}
+        </View>
+
+        {/* 公演直播：B站直播间开播检测（在播才显示） */}
+        <View style={styles.sectionOuter}>
+          <SectionHeader
+            title={t('公演直播')}
+            action_label={t('全部')}
+            onAction={() => handleNav({ title: '', desc: '', route: 'BilibiliLiveScreen', icon: '' })}
+          />
+          {!gongyanOk && !gongyanError ? null : gongyanError && !gongyanOk ? (
+            <FadeInView delay={0} duration={300}>
+              <GlassSurface
+                radius={20}
+                role="card"
+                style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
+              >
+                <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
+                <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
+                  {t('公演直播加载失败')}
+                </Text>
+                <Button title={t('重试')} variant="tinted" size="sm" onPress={() => { setGongyanError(''); fetchGongyanStatus(); }} />
+              </GlassSurface>
+            </FadeInView>
+          ) : liveGongyanRooms.length === 0 ? (
+            <FadeInView delay={0} duration={320}>
+              <GlassSurface
+                radius={20}
+                role="card"
+                style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
+              >
+                <MaterialCommunityIcons name="broadcast-off" size={20} color={palette.labelTertiary} />
+                <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('此时段暂无公演直播')}</Text>
+              </GlassSurface>
+            </FadeInView>
+          ) : (
+            <FadeInView delay={0} duration={320}>
+              {liveGongyanRooms.map((room, index) => (
+                <FadeInView key={room.roomId} delay={0} duration={160} distance={10}>
+                  <ScalePressable
+                    onPress={() => (navigation as any).navigate('BilibiliLiveScreen', { roomId: room.roomId, roomName: room.name })}
+                    pressedScale={0.97}
+                    style={{ marginBottom: 8 }}
+                  >
+                    {/* ⚠️【性能】列表逐卡不要用 GlassSurface —— 每张卡一个 BlurView，
+                        滚动时逐帧重算 RenderEffect 模糊，三星等模糊较慢的机型直接掉帧。
+                        项目铁律：列表/网格用实底圆角 + 细描边（surfaceGlassStrong）。 */}
+                    <View
+                      style={[styles.liveRow, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+                    >
+                      <View style={[styles.liveRowThumb, { backgroundColor: palette.tintSoft }]}>
+                        {gongyanInfo[room.roomId]?.cover ? (
+                          <NetworkImage
+                            source={{ uri: gongyanInfo[room.roomId].cover }}
+                            style={styles.liveRowThumb}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <MaterialCommunityIcons name="television-classic" color={palette.tint} size={22} />
+                        )}
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
+                        <Text style={[styles.liveRowTitle, { color: palette.label }]} numberOfLines={1}>
+                          {gongyanInfo[room.roomId]?.title || room.name || t('房间号：{id}', { id: room.roomId })}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                          <View style={[styles.gongyanDotWrap, { backgroundColor: palette.success }]}>
+                            <View style={[styles.gongyanDot, { backgroundColor: palette.success }]} />
+                          </View>
+                          <Text style={[styles.liveRowNick, { color: palette.success, marginTop: 0, marginLeft: 5 }]}>{t('直播中')}</Text>
+                          {room.name ? (
+                            <Text style={[styles.liveRowNick, { color: palette.labelTertiary, marginTop: 0, marginLeft: 8 }]} numberOfLines={1}>
+                              {room.name}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={18} />
+                    </View>
+                  </ScalePressable>
+                </FadeInView>
+              ))}
+            </FadeInView>
+          )}
+        </View>
+
+        {/* 快捷入口：单行 4 个胶囊 */}
+        <View style={styles.sectionOuter}>
+          <SectionHeader title={t('快捷入口')} />
+          <View style={styles.quickRow}>
+            {quick.map((item, index) => (
+              <FadeInView key={item.title} delay={0} duration={160} distance={8} style={[styles.quickCell, { width: quickCellW }]}>
+                <ScalePressable
+                  onPress={() => handleNav(item)}
+                  pressedScale={0.94}
+                  style={styles.quickCellInner}
+                >
+                    {/* 半透明底色让背景透出，避免为每个入口重复模糊。 */}
+                    <View
+                      style={[styles.chip, { backgroundColor: palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)', borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)' }]}
+                    >
+                      <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
+                        <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
+                      </View>
+                      <Text style={[styles.chipText, { color: palette.label }]} numberOfLines={1}>{item.title}</Text>
+                      {/* 私信未读红点角标 */}
+                      {item.route === 'PrivateMessagesScreen' && pmUnread > 0 && settings.yaya_pm_unread_badge !== false ? (
+                        <View style={{
+                          position: 'absolute', top: -4, right: -4, minWidth: 17, height: 17, borderRadius: 9,
+                          backgroundColor: palette.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+                        }}>
+                          <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>{pmUnread > 99 ? '99+' : String(pmUnread)}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </ScalePressable>
+                </FadeInView>
+              ))}
+            </View>
+        </View>
+
+        {/* 最近播放 */}
+        {currentTrack && trackTitle ? (
+          <View style={styles.sectionOuter}>
+            <SectionHeader title={t('最近播放')} />
+            <FadeInView delay={0} duration={320}>
+              {/* 音乐 minibar：封面 + 标题 + 当前一句歌词 + 上一首/暂停/下一首，状态与正在播放的音乐同步 */}
+              <GlassCard strong padding={10} radius={20}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <ScalePressable onPress={openMusicLibrary} pressedScale={0.94} hitSlop={4}>
+                    <View style={[styles.musicCover, { backgroundColor: palette.tintSoft }]}>
+                      {currentTrack?.coverUrl || currentTrack?.cover ? (
+                        <NetworkImage
+                          source={{ uri: (currentTrack.coverUrl || currentTrack.cover || '') as string }}
+                          style={styles.musicCover}
+                          resizeMode="cover"
+                          thumbnail={AVATAR_THUMB_WIDTH}
+                        />
+                      ) : (
+                        <MaterialCommunityIcons name="music-note" color={palette.tint} size={22} />
+                      )}
+                    </View>
+                  </ScalePressable>
+                  <ScalePressable onPress={openMusicLibrary} pressedScale={0.98} style={{ flex: 1, marginHorizontal: 8, minWidth: 0 }}>
+                    <Text style={[typography.headline, { color: palette.label }]} numberOfLines={1}>{trackTitle}</Text>
+                    <Text style={[typography.footnote, { color: palette.labelSecondary, marginTop: 2 }]} numberOfLines={1}>
+                      {trackArtist || resumeLabel}
+                    </Text>
+                  </ScalePressable>
+                  {/* 控制区：主按钮（播放/暂停）实心高对比，切歌为次级描边，视觉层级分明 */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <ScalePressable
+                      onPress={handleMusicPrev}
+                      pressedScale={0.9}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                      style={[styles.miniBtn, { backgroundColor: 'rgba(128,128,128,0.14)' }]}
+                    >
+                      <MaterialCommunityIcons name="skip-previous" color={palette.label} size={20} />
+                    </ScalePressable>
+                    <ScalePressable
+                      onPress={handleMusicToggle}
+                      pressedScale={0.9}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                      style={[styles.miniBtn, { backgroundColor: palette.tint }]}
+                    >
+                      <MaterialCommunityIcons
+                        name={musicPlaybackState === 'playing' ? 'pause' : musicPlaybackState === 'loading' ? 'dots-horizontal' : 'play'}
+                        color={palette.onTint}
+                        size={22}
+                      />
+                    </ScalePressable>
+                    <ScalePressable
+                      onPress={handleMusicNext}
+                      pressedScale={0.9}
+                      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                      style={[styles.miniBtn, { backgroundColor: 'rgba(128,128,128,0.14)' }]}
+                    >
+                      <MaterialCommunityIcons name="skip-next" color={palette.label} size={20} />
+                    </ScalePressable>
+                    {musicPlaybackState === 'playing' || musicPlaybackState === 'paused' ? (
+                      <ScalePressable
+                        onPress={handleStopMusic}
+                        pressedScale={0.85}
+                        hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                        style={{ width: 16, height: 30, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <MaterialCommunityIcons name="close" color={palette.labelTertiary} size={15} />
+                      </ScalePressable>
+                    ) : null}
+                  </View>
+                </View>
+                {/* 歌词独占一行、整卡宽：窄列里跑马灯只能看到 7-9 个字，怎么滚都像被截断 */}
+                <ScalePressable onPress={openMusicLibrary} pressedScale={0.99} style={{ marginTop: 6 }}>
+                  <MarqueeText
+                    text={lyricLine || t('暂无歌词')}
+                    style={[typography.footnote, { color: palette.labelSecondary }]}
+                    containerStyle={{ minHeight: 17 }}
+                    speed={22}
+                    pause={1400}
+                  />
+                </ScalePressable>
+              </GlassCard>
+            </FadeInView>
+          </View>
+        ) : null}
+
+        {/* 工具：单行横向 chips */}
+        <View style={styles.sectionOuter}>
+          <SectionHeader title={t('工具')} />
+          <FadeInView delay={0} duration={320}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.toolChipsContent}
+              style={{ marginHorizontal: -spacing.md }}
+            >
+              {/* ⚠️ 工具 chip 不能用快捷入口的固定格宽（quickCellW）：
+                  360dp 屏 quickCellW=76，扣掉图标 28 + gap 4 + 上下左右 padding 8 只剩 36dp，
+                  而 12px 中文三字正好 36dp —— 零余量，实测「鸡腿榜 / 数据库」会被 ellipsize 成「鸡腿…」。
+                  宽度改为内容自适应 + 最小宽度，横排本来就可滚动，宽一点不影响布局。 */}
+              {toolChips.map((item) => (
+                <ScalePressable
+                  key={item.title}
+                  onPress={() => handleNav(item)}
+                  pressedScale={0.94}
+                  style={{ minWidth: Math.round(quickCellW * 0.8) }}
+                >
+                  <View
+                    style={[styles.chip, styles.toolChip, { backgroundColor: palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)', borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)' }]}
+                  >
+                    <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
+                      <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
+                    </View>
+                    <Text style={[styles.chipText, { color: palette.label }]} numberOfLines={1}>{item.title}</Text>
+                  </View>
+                </ScalePressable>
+              ))}
+            </ScrollView>
+          </FadeInView>
+        </View>
+
+        <Text
+          style={[
+            typography.caption1,
+            { color: palette.labelTertiary, textAlign: 'center', marginTop: spacing.xl, marginBottom: 24 },
+          ]}
+        >
+          {t('Presented by Xenia')}
+        </Text>
+      </ScrollView>
+    </View>
+  );
+}
+
+
+function AnimatedDots({ active, color, idle, onPress }: { active: boolean; color: string; idle: string; onPress?: () => void }) {
+  const w = useRef(new Animated.Value(active ? 16 : 6)).current;
+  const c = useRef(new Animated.Value(active ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(w, { toValue: active ? 16 : 6, duration: 220, useNativeDriver: false }).start();
+    // 颜色不逐帧动画（JS driver 开销），直接切换；宽度脉冲已提供动效反馈
+    c.setValue(active ? 1 : 0);
+  }, [active, w, c]);
+  return (
+    <ScalePressable style={styles.dotSlot} onPress={onPress} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }} pressedScale={0.85} activeOpacity={0.7}>
+      <Animated.View
+        style={{
+          height: 6,
+          borderRadius: 3,
+          width: w,
+          backgroundColor: c.interpolate({
+            inputRange: [0, 1],
+            outputRange: [idle, color],
+          }),
+        }}
+      />
+    </ScalePressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  outer: { flex: 1 },
+  /** 区块外层：统一水平留白 + 区块间距 16（v2.7 压缩，原 24 偏宽） */
+  sectionOuter: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  sectionDot: { width: 4, height: 18, borderRadius: 2 },
+  loginBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    gap: 4,
+  },
+  liveBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  // 首页全宽直播 banner（16:9 沉浸）
+  liveBanner: { width: '100%' },
+  liveBannerWrap: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  liveBannerCover: { width: '100%', height: '100%' },
+  liveBannerFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  liveBannerShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '58%' },
+  liveBannerBadge: { top: 12, left: 12 },
+  liveBannerInfo: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingBottom: 12 },
+  liveBannerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', lineHeight: 24, textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  liveBannerNick: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 3, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  bannerDots: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 8 },
+  /** 指示点等宽槽位：active 横条与小点中心距均匀（防止横条与相邻点视觉错位） */
+  dotSlot: { width: 16, alignItems: 'center' },
+  liveList: { gap: 8 },
+  /** 直播行卡：surface + hairline 圆角 16 */
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  liveRowThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveRowThumbFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  liveRowTitle: { fontSize: 14, fontWeight: '700', lineHeight: 18 },
+  liveRowNick: { fontSize: 12, marginTop: 3, lineHeight: 16 },
+  // 公演直播：呼吸状态点（直播中 success 呼吸）
+  gongyanDotWrap: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gongyanDot: { width: 8, height: 8, borderRadius: 4 },
+  liveStateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  liveStateText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  // 快捷入口胶囊
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 46,
+    paddingHorizontal: 4,
+    gap: 4,
+  },
+  /** 工具 chip：左右留白更大 + 不压缩文字，保证「鸡腿榜 / 数据库」完整显示 */
+  toolChip: { paddingHorizontal: 10, justifyContent: 'flex-start' },
+  quickRow: { flexDirection: 'row', gap: 8 },
+  quickCell: {},
+  quickCellInner: { width: '100%' },
+  chipIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  chipText: { fontSize: 12, lineHeight: 16, fontWeight: '600', flexShrink: 1 },
+  miniBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  musicCover: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  toolChipsContent: {
+    paddingRight: 8,
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    // 防横向 ScrollView 高度塌缩：显式 minHeight + 垂直居中，保证图标不被截断
+    alignItems: 'center',
+    minHeight: 46,
+  },
+});

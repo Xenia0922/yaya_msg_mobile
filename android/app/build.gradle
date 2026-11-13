@@ -1,0 +1,310 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
+
+def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+
+/**
+ * This is the configuration block to customize your React Native Android app.
+ * By default you don't need to apply any configuration, just uncomment the lines you need.
+ */
+react {
+    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
+    reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+    // RN 0.83 起 hermesc 由独立的 hermes-compiler 包提供，会按 PathUtils 的解析顺序自动找到
+    // （node_modules/react-native/sdks/hermesc 已不再随包发布）。
+    // 此处**不要**显式指定 hermesCommand —— Expo 54 模板留下的旧路径会导致
+    // 「Copying asset files → 系统找不到指定的路径」而打包失败。
+    codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+
+    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
+    // Use Expo CLI to bundle the app, this ensures the Metro config
+    // works correctly with Expo projects.
+    cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
+    bundleCommand = "export:embed"
+    extraPackagerArgs = ["--max-workers", "2"]
+
+    /* Folders */
+     //   The root of your project, i.e. where "package.json" lives. Default is '../..'
+    // root = file("../../")
+    //   The folder where the react-native NPM package is. Default is ../../node_modules/react-native
+    // reactNativeDir = file("../../node_modules/react-native")
+    //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
+    // codegenDir = file("../../node_modules/@react-native/codegen")
+
+    /* Variants */
+    //   The list of variants to that are debuggable. For those we're going to
+    //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
+    //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
+    // debuggableVariants = ["liteDebug", "prodDebug"]
+
+    /* Bundling */
+    //   A list containing the node command and its flags. Default is just 'node'.
+    // nodeExecutableAndArgs = ["node"]
+
+    //
+    //   The path to the CLI configuration file. Default is empty.
+    // bundleConfig = file(../rn-cli.config.js)
+    //
+    //   The name of the generated asset file containing your JS bundle
+    // bundleAssetName = "MyApplication.android.bundle"
+    //
+    //   The entry file for bundle generation. Default is 'index.android.js' or 'index.js'
+    // entryFile = file("../js/MyApplication.android.js")
+    //
+    //   A list of extra flags to pass to the 'bundle' commands.
+    //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
+    // extraPackagerArgs = []
+
+    /* Hermes Commands */
+    //   The hermes compiler command to run. By default it is 'hermesc'
+    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    //
+    //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
+    // hermesFlags = ["-O", "-output-source-map"]
+
+    /* Autolinking */
+    autolinkLibrariesWithApp()
+}
+
+/**
+ * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
+ */
+def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
+def releaseStoreFile = findProperty('RELEASE_STORE_FILE') ?: System.getenv('RELEASE_STORE_FILE')
+def releaseStorePassword = findProperty('RELEASE_STORE_PASSWORD') ?: System.getenv('RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = findProperty('RELEASE_KEY_ALIAS') ?: System.getenv('RELEASE_KEY_ALIAS')
+def releaseKeyPassword = findProperty('RELEASE_KEY_PASSWORD') ?: System.getenv('RELEASE_KEY_PASSWORD')
+def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { value ->
+    value != null && value.toString().trim()
+}
+def requireReleaseSigning = (findProperty('yaya.requireReleaseSigning') ?: 'false').toString().toBoolean()
+if (requireReleaseSigning && !hasReleaseSigning) {
+    throw new GradleException('Release signing is required but RELEASE_* signing values are incomplete.')
+}
+
+/**
+ * The preferred build flavor of JavaScriptCore (JSC)
+ *
+ * For example, to use the international variant, you can use:
+ * `def jscFlavor = 'org.webkit:android-jsc-intl:+'`
+ *
+ * The international variant includes ICU i18n library and necessary data
+ * allowing to use e.g. `Date.toLocaleString` and `String.localeCompare` that
+ * give correct results when using with locales other than en-US. Note that
+ * this variant is about 6MiB larger per architecture than default.
+ */
+def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+
+// 本地快速验证：-Pyaya.abis=x86_64（只出一个 ABI，约 1-2 分钟而不是 15 分钟）。
+// 注意必须同时收紧 ndk.abiFilters —— AGP 会在"splits 与 abiFilters 不一致"时直接报错。
+def yayaAbiOverride = (findProperty('yaya.abis') ?: '').toString()
+  .split(',').collect { it.trim() }.findAll { it }
+def yayaAbis = yayaAbiOverride ?: ['armeabi-v7a', 'arm64-v8a', 'x86_64']
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
+    namespace 'com.yk1z.yayamsg'
+    defaultConfig {
+        applicationId 'com.yk1z.yayamsg'
+        // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
+        minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 3000010
+        versionName "2.7.7"
+
+        // 真机架构 + 模拟器架构。MuMu 等安卓模拟器为 x86_64，缺此 ABI 会导致 libhermes 等原生库
+        // 无法加载（UnsatisfiedLinkError），表现为「启动即闪退进不去」。为兼容模拟器测试必须保留。
+        ndk {
+            // ⚠️ 用 splits 指定 ABI 时 **不能再设 abiFilters**（AGP 直接报
+            // "Conflicting configuration ... cannot be present when splits abi filters are set"）。
+            // 所以快速模式（-Pyaya.abis=…）下交给 splits 决定；常规模式保留原 4 ABI 过滤。
+            if (!yayaAbiOverride) {
+                abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            }
+        }
+
+        buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+    }
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+            // minSdk>23 时 AGP 默认关闭 v1 签名，导致 APK 仅 v2/v3 可签名：
+            // 大文件经 QQ/微信/网盘转存截断后整包无法解析。强制开启 v1 兜底。
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile.toString())
+                storePassword releaseStorePassword.toString()
+                keyAlias releaseKeyAlias.toString()
+                keyPassword releaseKeyPassword.toString()
+                v1SigningEnabled true
+                v2SigningEnabled true
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // 本地未提供 release 签名参数时保留 debug 兜底，方便开发构建；
+            // 正式出包必须通过 Gradle properties / CI secrets 提供 RELEASE_* 参数。
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            if (!hasReleaseSigning) {
+                println("WARNING: RELEASE_* signing properties are missing; release APK uses debug signing.")
+            }
+            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
+            shrinkResources enableShrinkResources.toBoolean()
+            minifyEnabled enableMinifyInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
+            crunchPngs enablePngCrunchInRelease.toBoolean()
+        }
+    }
+    packagingOptions {
+        jniLibs {
+            def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'
+            useLegacyPackaging enableLegacyPackaging.toBoolean()
+        }
+    }
+    androidResources {
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+
+    // v2.6.4: 按 ABI 分包，规避 99MB 大包下载截断导致的「解析包时出现问题」。
+    // 排除 x86(32位)：x86 分包不完整；x86_64 保留给模拟器。
+    splits {
+        abi {
+            enable true
+            reset()
+            // 本地快速验证只打一个 ABI：gradlew assembleRelease -Pyaya.abis=x86_64
+            // （全 4 包 + Compose dexing 约 15 分钟；单 ABI 约 1-2 分钟）
+            // 注意：AGP 的 include 只吃 varargs，不能直接传 List
+            yayaAbis.each { abiName -> include(abiName) }
+            universalApk((findProperty('yaya.universal') ?: 'true').toString().toBoolean())
+        }
+    }
+}
+
+// Apply static values from `gradle.properties` to the `android.packagingOptions`
+// Accepts values in comma delimited lists, example:
+// android.packagingOptions.pickFirsts=/LICENSE,**/picasa.ini
+["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
+    // Split option: 'foo,bar' -> ['foo', 'bar']
+    def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",");
+    // Trim all elements in place.
+    for (i in 0..<options.size()) options[i] = options[i].trim();
+    // `[] - ""` is essentially `[""].filter(Boolean)` removing all empty strings.
+    options -= ""
+
+    if (options.length > 0) {
+        println "android.packagingOptions.$prop += $options ($options.length)"
+        // Ex: android.packagingOptions.pickFirsts += '**/SCCS/**'
+        options.each {
+            android.packagingOptions[prop] += it
+        }
+    }
+}
+
+/**
+ * 强制剥离 reanimated 的 .so —— 体积红线（分包 ≤50MB）的关键一步。
+ *
+ * 背景：react-native-reanimated/android/build.gradle 里写了 `doNotStrip "** /** /*.so"`，
+ * 使它的 RelWithDebInfo 未剥离库直接进包：libreanimated.so 单文件在 arm64/x86_64 上
+ * 高达 34MB（剥离后仅 1MB 级），直接顶爆分包红线。
+ * AGP 的 stripReleaseDebugSymbols 会尊重 doNotStrip，所以这里在它跑完后补一刀。
+ */
+tasks.matching { it.name == 'stripReleaseDebugSymbols' }.configureEach { t ->
+    t.doLast {
+        def isWin = org.gradle.internal.os.OperatingSystem.current().isWindows()
+        def stripName = isWin ? 'llvm-strip.exe' : 'llvm-strip'
+        def ndk = android.ndkDirectory
+        def stripExe = new File(ndk, "toolchains/llvm/prebuilt/${isWin ? 'windows-x86_64' : 'linux-x86_64'}/bin/${stripName}")
+        if (!stripExe.exists()) {
+            println "WARNING: llvm-strip not found at ${stripExe}; APK may ship unstripped reanimated libs"
+            return
+        }
+        def outRoot = new File(project.buildDir, 'intermediates/stripped_native_libs/release/stripReleaseDebugSymbols/out/lib')
+        if (!outRoot.exists()) return
+        def stripped = 0
+        outRoot.eachDir { abiDir ->
+            abiDir.eachFile { f ->
+                if (f.name.endsWith('.so') && f.length() > 4 * 1024 * 1024) {
+                    try {
+                        exec { commandLine stripExe.absolutePath, '--strip-unneeded', f.absolutePath }
+                        stripped++
+                    } catch (Exception e) {
+                        println "WARNING: strip failed for ${f.name}: ${e.message}"
+                    }
+                }
+            }
+        }
+        if (stripped > 0) println "stripped ${stripped} oversized .so (reanimated doNotStrip workaround)"
+    }
+}
+
+dependencies {
+    // The version of react-native is set by the React Native Gradle Plugin
+    implementation("com.facebook.react:react-android")
+    // 手动链接（自动链接漏掉）：聊天库内部要用它的原生 SafeAreaProvider
+    implementation project(':react-native-safe-area-context')
+    // 与 react-android 同版 okhttp：MainApplication 用其 Interceptor 覆写 bilibili 请求的桌面 UA
+    implementation("com.squareup.okhttp3:okhttp:4.9.2")
+    // 口袋48 消息通道：云信官方 Android SDK（basesdk 负责登录/基础消息，qchat 负责圈组房间消息）。
+    // 官方 App 用的就是同一套（appKey 632feff1f4c838541ab75195d1ceb3fa）。
+    // 圈组只有 Android/iOS 官方 SDK 支持，Web/RN 版 SDK 没有收发命令 → 房间消息必须走原生。
+    implementation("com.netease.nimlib:basesdk:10.9.11")
+    implementation("com.netease.nimlib:qchat:10.9.11")
+    // iOS 26 液态玻璃：由 react-native-liquid-glassmorphism 自带 AGSL 实现（无第三方 AAR）
+    implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
+    implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
+    implementation("com.google.android.exoplayer:extension-rtmp:2.19.1")
+    // exo-native-music：原生 ExoPlayer + media3 会话（OPPO/ColorOS 系统媒体卡正解）
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
+    implementation("androidx.media3:media3-datasource:1.8.0")
+    implementation("androidx.media3:media3-session:1.8.0")
+    // 礼物全屏特效：腾讯 libpag（服务端下发 giftpag.pag）
+    implementation("com.tencent.tav:libpag:4.5.98")
+
+    def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
+    def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
+    def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";
+
+    if (isGifEnabled) {
+        // For animated gif support
+        implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
+    }
+
+    if (isWebpEnabled) {
+        // For webp support
+        implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
+        if (isWebpAnimatedEnabled) {
+            // Animated webp support
+            implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
+        }
+    }
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
+}

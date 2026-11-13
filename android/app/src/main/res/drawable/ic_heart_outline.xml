@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 系统媒体控件「收藏」按钮（未收藏态：空心） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:fillColor="#00000000"
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="1.8"
+      android:pathData="M12,20.4l-1.2,-1.1C6.4,15.2 3.6,12.6 3.6,9.4C3.6,6.8 5.6,4.8 8.2,4.8c1.5,0 2.9,0.7 3.8,1.8c0.9,-1.1 2.3,-1.8 3.8,-1.8c2.6,0 4.6,2 4.6,4.6c0,3.2 -2.8,5.8 -7.2,9.9L12,20.4z" />
+</vector>

@@ -1,0 +1,180 @@
+import { DeviceEventEmitter, NativeModules, Platform, requireNativeComponent, ViewProps } from 'react-native';
+import { t } from '../i18n';
+import { isNativeExoDisabled } from './RadioExo';
+
+const { LivePlayerModule, RadioServiceModule } = NativeModules;
+
+export interface LivePlayerOptions {
+  liveId?: string;
+  acceptUserId?: string;
+  urls?: string[];
+}
+
+export function openNativeLivePlayer(url: string, title: string, options: LivePlayerOptions = {}) {
+  if (Platform.OS !== 'android' || !LivePlayerModule?.open) {
+    throw new Error('Android native live player is not available');
+  }
+  LivePlayerModule.open(url.trim(), title || 'Pocket48 Live', {
+    ...options,
+    labels: {
+      back: t('返回'),
+      rotate: t('横屏'),
+      refresh: t('刷新'),
+      gift: t('礼物'),
+      failTitle: t('直播播放失败'),
+      retry: t('重试'),
+      close: t('关闭'),
+      giftHintTitle: t('提示'),
+      giftHintMsg: t('缺少 liveId，无法打开礼物面板'),
+      giftOk: t('确定'),
+    },
+  });
+}
+
+export function setLiveImmersiveMode(enabled: boolean) {
+  if (Platform.OS === 'android' && LivePlayerModule?.setImmersive) {
+    LivePlayerModule.setImmersive(enabled);
+  }
+}
+
+/** onSize 事件负载：视频实际宽高（小窗据此适配横竖屏容器） */
+export interface LiveSizeEventData {
+  width: number;
+  height: number;
+}
+
+export const LiveExoView = Platform.OS === 'android'
+  ? requireNativeComponent<ViewProps & {
+      url: string;
+      /** 纯音频模式：不渲染视频画面，仅解码音频（上麦/电台流） */
+      audioOnly?: boolean;
+      coverPortrait?: boolean;
+      /** 暂停/恢复（原生 Exo 播放控制，统一播放器控制条使用） */
+      paused?: boolean;
+      onSize?: (e: { nativeEvent: LiveSizeEventData }) => void;
+      /** 原生重试耗尽后回调：播放失败/断流（message 为失败原因） */
+      onError?: (e: { nativeEvent: { message: string } }) => void;
+    }>('LiveExoView')
+  : null;
+
+/**
+ * 直播首帧尺寸（NativeModule 事件通道）。
+ *
+ * 为什么与 onSize 双通道：only-new-architecture（bridgeless）下 LiveExoView 的
+ * View 事件经 UIManagerModule 派发，而该模块在新架构不存在 → 事件被静默丢弃，
+ * 「画面已经在播但一直显示加载中」就是这么来的。原生侧现在同时走
+ * NativeModule 的 RCTDeviceEventEmitter（bridgeless 可用）且首帧后补发两次。
+ */
+export function onLiveFirstFrame(
+  cb: (payload: { url: string; width: number; height: number }) => void
+): () => void {
+  if (Platform.OS !== 'android') return () => {};
+  const sub = DeviceEventEmitter.addListener('LivePlayer:size', (e: any) => {
+    cb({
+      url: String(e?.url || ''),
+      width: Number(e?.width) || 0,
+      height: Number(e?.height) || 0,
+    });
+  });
+  return () => sub.remove();
+}
+
+/** 直播内核重试耗尽（NativeModule 事件通道，与 onError 互为兜底） */
+export function onLiveNativeError(
+  cb: (payload: { url: string; message: string }) => void
+): () => void {
+  if (Platform.OS !== 'android') return () => {};
+  const sub = DeviceEventEmitter.addListener('LivePlayer:error', (e: any) => {
+    cb({ url: String(e?.url || ''), message: String(e?.message || '') });
+  });
+  return () => sub.remove();
+}
+
+/** 媒体通知数据（MediaStyle：标题/封面/歌手/专辑/歌词/播放态/进度） */
+export interface RadioMediaInfo {
+  title: string;
+  cover?: string;
+  /** 歌手/团体（通知副标题第一段） */
+  artist?: string;
+  /** 专辑名（通知副标题第二段） */
+  album?: string;
+  /** 当前歌词行（展开通知显示；行变化用 updateRadioLyric 独立高频通道） */
+  lyric?: string;
+  isPlaying: boolean;
+  position?: number;
+  duration?: number;
+}
+
+/** 开播/更新媒体通知：启动前台保活服务（MediaStyle 通知栏控制 + WAKE_LOCK，后台/锁屏续播） */
+/** 高频真实进度同步（仅位置；服务端不重建通知） */
+export function syncRadioPosition(positionSec: number) {
+  // Exo 原生会话接管系统卡后，旧自管服务必须保持停用（防双会话/竞态重启导致
+  // startForegroundService 5s 未 startForeground → RemoteServiceException 崩溃，20:41 实测）
+  if (!isNativeExoDisabled()) return;
+  if (Platform.OS !== 'android') return;
+  try {
+    (RadioServiceModule as any).syncPosition(Number(positionSec) || 0);
+  } catch {}
+}
+
+export function startRadioForeground(info: string | RadioMediaInfo, force = false) {
+  if (Platform.OS !== 'android' || !RadioServiceModule?.updateMedia) return;
+  // Exo 激活时禁止旧服务启动（force=true 仅供电台 RoomRadio 使用——电台播时 Exo 已被互斥暂停）
+  if (!force && !isNativeExoDisabled()) return;
+  if (typeof info === 'string') {
+    RadioServiceModule.updateMedia(info, '', false, 0, 0);
+    return;
+  }
+  const fn = RadioServiceModule.updateMediaEx || RadioServiceModule.updateMedia;
+  fn(
+    info.title || '',
+    info.cover || '',
+    info.artist || '',
+    info.album || '',
+    !!info.isPlaying,
+    Number(info.position) || 0,
+    Number(info.duration) || 0,
+  );
+}
+
+/**
+ * 歌词行更新（通知展开区歌词随播放滚动）。
+ * 独立于 5s 节流的元数据通道：只在歌词行切换时调用（每秒最多几次，开销极小）。
+ */
+export function updateRadioLyric(text: string) {
+  if (!isNativeExoDisabled()) return; // 同 guard：Exo 会话接管时不碰旧服务
+  if (Platform.OS !== 'android' || !RadioServiceModule?.updateLyric) return;
+  RadioServiceModule.updateLyric(String(text || ''));
+}
+
+/** 停播电台：结束前台保活服务并移除通知 */
+export function stopRadioForeground() {
+  if (Platform.OS === 'android' && RadioServiceModule?.end) {
+    RadioServiceModule.end();
+  }
+}
+
+/** 通知栏「停止」回调：返回解绑函数 */
+export function onRadioStopRequested(cb: () => void): () => void {
+  if (Platform.OS !== 'android') return () => {};
+  const sub = DeviceEventEmitter.addListener('RadioStopRequested', cb);
+  return () => sub.remove();
+}
+
+/** 媒体通知控制回调（播放/暂停、上一首、下一首、停止）：返回解绑函数 */
+export function onRadioControlRequested(cb: (action: 'play' | 'pause' | 'play_pause' | 'prev' | 'next' | 'stop' | 'seek' | 'favorite' | 'playlist', value?: number) => void): () => void {
+  if (Platform.OS !== 'android') return () => {};
+  const sub = DeviceEventEmitter.addListener('RadioControlRequested', (e: any) => {
+    const a = String(e?.action || '');
+    // 白名单必须与原生 emit 的动作一致：早期只放了传输控制，
+    // favorite/playlist 被过滤掉 → 系统卡上点了没反应（2026-10-18 修复）
+    if (
+      a === 'play' || a === 'pause' || a === 'play_pause' || a === 'prev'
+      || a === 'next' || a === 'stop' || a === 'seek'
+      || a === 'favorite' || a === 'playlist'
+    ) {
+      cb(a as any, Number(e?.value) || 0);
+    }
+  });
+  return () => sub.remove();
+}

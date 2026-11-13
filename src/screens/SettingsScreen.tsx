@@ -1,0 +1,546 @@
+/**
+ * SettingsScreen · 设置 v2.6 布局重做
+ * - 全页 inset 分组：每个 Section 圆角 16 卡片，Section 内行式条目（28 圆角图标底 + 标题 15/600 + 右侧 chevron/状态文字）
+ * - 关于区 hero 卡（logo 52 圆角 16 + 名称 + 版本 chip + 红点）
+ * - 成员数据统计 2 列卡
+ * - 区块直接显示，避免频繁切换时闪烁
+ * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
+ */
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { showDialog } from '../components/AppDialog';
+import { toMs } from '../utils/format';
+import {Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { StackNavigationProp } from '@react-navigation/stack';
+import {Image} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { RootStackParamList, TabParamList } from '../navigation/types';
+import { useSettingsStore, useUiStore, useMemberStore, useUpdateStore } from '../store';
+import { saveSettings } from '../services/settings';
+import { setPipEnabled } from '../utils/pip';
+import ScreenHeader from '../components/ScreenHeader';
+import { Button } from '../components/Button';
+import { ScalePressable } from '../components/Motion';
+import RuntimeLogViewer from '../components/RuntimeLogViewer';
+import UpdateInstaller from '../components/UpdateInstaller';
+import { isApkUpdaterAvailable } from '../native/ApkUpdater';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { APP_VERSION } from '../constants';
+import { IS_PLUS_BUILD } from '../constants/channel';
+import { getMemberDataMeta, MemberDataMeta, updateMemberData } from '../services/memberData';
+import { usePalette, radii, radiiAlias, usePageBackground } from '../theme';
+import { typography } from '../theme/typography';
+import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
+import { GlassSurface } from '../components/GlassSurface';
+import { GlassSegmented, GlassSegmentedScroll } from '../components/GlassSegmented';
+import { sniffImageBase64Mime } from '../utils/dataUri';
+
+type SettingsNavProp = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList, 'Settings'>,
+  StackNavigationProp<RootStackParamList>
+>;
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const palette = usePalette();
+  return (
+    <View>
+      {title ? (
+        <Text style={[styles.sectionTitle, { color: palette.label }]}>{title}</Text>
+      ) : null}
+      {/*
+        ⚠️【描边修复】不要在这里再传 borderWidth / borderColor。
+        GlassSurface 内部已有一层随主题走的描边（MATERIAL.stroke：浅色 rgba(255,255,255,0.66)
+        / 深色 rgba(255,255,255,0.10)），且渲染在 children 之前；
+        外层再叠一道 palette.hairline 会形成「双层描边」——两条线错位、颜色互搏，
+        观感就是用户反馈的「描边没描好」（深浅色主题下都明显）。
+        玻璃的唯一出口是 GlassSurface，描边交给它统一出。
+      */}
+      <GlassSurface radius={20} role="card" style={styles.section}>
+        {children}
+      </GlassSurface>
+    </View>
+  );
+}
+
+/** Section 内行式条目：28 圆角图标底 + 标题 15/600 + 右侧 chevron/状态文字 */
+function Row({
+  icon,
+  title,
+  value,
+  onPress,
+  danger,
+  withChevron = true,
+  wrapValue = false,
+}: {
+  icon: string;
+  title: string;
+  value?: string;
+  onPress?: () => void;
+  danger?: boolean;
+  withChevron?: boolean;
+  /** value 完整显示（允许换行）——仓库地址等长文本用，默认仍单行截断 */
+  wrapValue?: boolean;
+}) {
+  const palette = usePalette();
+  return (
+    <ScalePressable
+      style={styles.row}
+      onPress={onPress}
+      pressedScale={0.98}
+      activeOpacity={0.9}
+      disabled={!onPress}
+    >
+      <View style={[styles.rowIcon, { backgroundColor: danger ? 'rgba(255,59,48,0.12)' : palette.tintSoft }]}>
+        <MaterialCommunityIcons name={icon} color={danger ? palette.danger : palette.tint} size={16} />
+      </View>
+      <Text style={[styles.rowTitle, { color: danger ? palette.danger : palette.label }]} numberOfLines={1}>{title}</Text>
+      {value ? (
+        wrapValue ? (
+          <Text style={[styles.rowValue, styles.rowValueWrap, { color: palette.labelTertiary }]}>{value}</Text>
+        ) : (
+          <Text style={[styles.rowValue, { color: palette.labelTertiary }]} numberOfLines={1}>{value}</Text>
+        )
+      ) : null}
+      {withChevron ? (
+        <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={20} />
+      ) : null}
+    </ScalePressable>
+  );
+}
+
+function ChipRow<T>({ options, value, onChange }: { options: { label: string; value: T }[]; value: T; onChange: (value: T) => void }) {
+  const segs = options.map((o, i) => ({ key: String(i), label: o.label }));
+  const idx = String(options.findIndex((o) => o.value === value));
+  // 选项多或标签长（如语言：跟随系统/简体中文/繁體中文/English/日本語/한국어）用可滚动版，
+  // 等分版会把文字压到看不清
+  const needScroll = options.length > 4 || options.some((o) => o.label.length > 4);
+  if (needScroll) {
+    return (
+      <GlassSegmentedScroll
+        options={segs}
+        value={idx}
+        onChange={(k) => onChange(options[Number(k)].value)}
+        height={34}
+      />
+    );
+  }
+  return (
+    <GlassSegmented
+      options={segs}
+      value={idx}
+      onChange={(k) => onChange(options[Number(k)].value)}
+      height={34}
+    />
+  );
+}
+
+function formatTime(ts: number): string {
+  if (!ts) return '';
+  const d = new Date(toMs(ts));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export default function SettingsScreen() {
+  const navigation = useNavigation<SettingsNavProp>();
+  const palette = usePalette();
+  const settings = useSettingsStore((state) => state.settings);
+  const setSettings = useSettingsStore((state) => state.setSettings);
+  const showToast = useUiStore((state) => state.showToast);
+  const memberCount = useMemberStore((state) => state.members.length);
+  const { t } = useI18n();
+  const hasUpdate = useUpdateStore((s) => s.hasUpdate);
+  const [meta, setMeta] = useState<MemberDataMeta | null>(null);
+  const [logVisible, setLogVisible] = useState(false);
+  const [updateVisible, setUpdateVisible] = useState(false);
+  const latestVersion = useUpdateStore((s) => s.latestVersion);
+  const [memberSyncing, setMemberSyncing] = useState(false);
+  // 卸载守卫：手动同步耗时较长，期间用户可能退出设置页 → 避免卸载后 setState / 弹 toast
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
+  useEffect(() => {
+    getMemberDataMeta().then(setMeta).catch(() => {});
+  }, []);
+
+  /** 手动更新成员数据库（双源: yk1z 库 + 官方接口） */
+  const manualSyncMembers = useCallback(async () => {
+    if (memberSyncing || !mountedRef.current) return;
+    setMemberSyncing(true);
+    try {
+      const res = await updateMemberData();
+      if (!mountedRef.current) return;
+      const fresh = await getMemberDataMeta();
+      if (!mountedRef.current) return;
+      setMeta(fresh);
+      showToast(res?.detail ? t('更新成功：{detail}', { detail: res.detail }) : t('成员数据已更新'));
+    } catch (e: any) {
+      if (!mountedRef.current) return;
+      showToast(t('更新失败：{msg}（已保留本地数据）', { msg: e?.message || String(e) }));
+    } finally {
+      if (mountedRef.current) setMemberSyncing(false);
+    }
+  }, [memberSyncing, t, showToast]);
+
+  const backgroundValue = settings.customBackgroundFile?.trim() || '';
+  const backgroundInfo = (() => {
+    if (!backgroundValue) return t('未设置');
+    if (backgroundValue.startsWith('data:')) return t('本地图片已保存，约 {size}KB', { size: Math.round(backgroundValue.length / 1024) });
+    return backgroundValue.length > 60 ? `${backgroundValue.slice(0, 60)}...` : backgroundValue;
+  })();
+
+  const THEME_OPTIONS = [
+    { label: t('跟随系统'), value: 'system' },
+    { label: t('浅色'), value: 'light' },
+    { label: t('深色'), value: 'dark' },
+  ];
+
+
+  const update = async (key: string, value: any, extra: any = {}) => {
+    const patch = { [key]: value, ...extra };
+    setSettings(patch);
+    try {
+      await saveSettings(patch);
+      showToast(t('设置已保存'));
+    } catch (error: any) {
+      showToast(t('保存失败：{msg}', { msg: error?.message || String(error) }));
+    }
+  };
+
+  const pickBg = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { showDialog(t('需要相册权限')); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, base64: true } as any);
+      if (result.canceled) return;
+      const base64 = result.assets?.[0]?.base64;
+      if (!base64) { showDialog(t('未获取到图片数据')); return; }
+      /**
+       * ⚠️ MIME 必须按**真实字节**判定，不能信 picker 给的 `mimeType`。
+       * 实测踩坑：用户存的背景图是 `data:image/png;base64,/9j/4AAQSkZJRgAB…`
+       * —— 声明 PNG，实际是 JPEG（FFD8FFE0）。部分解码路径会信这个声明，
+       * 直接解码失败 → 背景层什么都没画出来，透出下层黑底
+       * （用户反馈的「背景图没加载」）。
+       * 这里嗅探 base64 头部魔数，写对真实类型。
+       */
+      const mime = sniffImageBase64Mime(base64) || result.assets?.[0]?.mimeType || 'image/jpeg';
+      await update('customBackgroundFile', `data:${mime};base64,${base64}`, { customBackgroundUpdatedAt: Date.now() });
+    } catch (error: any) {
+      showDialog(t('背景图失败'), error?.message || String(error));
+    }
+  };
+
+  // 有更新时优先走应用内下载安装（下载对应 ABI 分包 → 系统安装器）；
+  // 原生桥不可用（如 iOS / 旧包）才退回打开下载页。
+  const openUpdate = (url: string) => {
+    // 自用权限版：绝不走应用内更新（更新源是公版，装上去会把权限版覆盖掉）
+    if (IS_PLUS_BUILD) {
+      showToast(t('自用版不提供在线更新，请用本地构建包覆盖安装'));
+      return;
+    }
+    if (isApkUpdaterAvailable) setUpdateVisible(true);
+    else if (url) Linking.openURL(url).catch(() => {});
+  };
+
+  const checkVersion = () => {
+    const { hasUpdate: up, latestUrl } = useUpdateStore.getState();
+    if (up && latestUrl) {
+      openUpdate(latestUrl);
+    } else {
+      // force=true：绕过 24h 限流立即请求（否则冷启静默检查后 24h 内手动检查会直接跳过）；
+      // 检查不到更新（含网络失败，视为无更新）统一提示「已是最新版本」
+      useUpdateStore.getState().checkUpdate(true).then((has) => {
+        const next = useUpdateStore.getState();
+        if (has && next.hasUpdate && next.latestUrl) openUpdate(next.latestUrl);
+        else showToast(t('已是最新版本'));
+      }).catch(() => showToast(t('已是最新版本')));
+    }
+  };
+
+  return (
+    <>
+      <View style={[styles.container, { backgroundColor: usePageBackground() }]}>
+        <ScreenHeader title={t('设置')} hideBack />
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+        {/* 关于 hero 卡 */}
+        <Section title={t('关于')}>
+          <View style={styles.aboutHero}>
+            <View style={[styles.aboutLogoWrap, { backgroundColor: palette.fill3 }]}>
+              <Image source={require('../../assets/logo.jpg')} style={styles.aboutLogoImg} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Text style={[styles.aboutName, { color: palette.label }]}>{t('牙牙消息')}</Text>
+              <Text style={[styles.aboutSub, { color: palette.labelSecondary }]} numberOfLines={1}>{t('Yaya Message · 口袋48 第三方客户端')}</Text>
+            </View>
+            <View style={styles.verChipWrap}>
+              <TouchableOpacity
+                style={[styles.verChip, { backgroundColor: palette.tintSoft }]}
+                onPress={checkVersion}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.verChipText, { color: palette.tint }]}>v{APP_VERSION}</Text>
+              </TouchableOpacity>
+              {hasUpdate && !IS_PLUS_BUILD ? <View style={[styles.verDot, { backgroundColor: palette.danger, borderColor: palette.surface }]} /> : null}
+            </View>
+          </View>
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          <Row
+            icon="github"
+            title={t('本项目仓库')}
+            value="Xenia0922/yaya_msg_mobile"
+            onPress={() => Linking.openURL('https://github.com/Xenia0922/yaya_msg_mobile').catch(() => {})}
+          />
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          <Row
+            icon="github"
+            title={t('桌面端项目')}
+            value="yk1z/yaya_msg"
+            onPress={() => Linking.openURL('https://github.com/yk1z/yaya_msg').catch(() => {})}
+          />
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          <Row
+            icon="download-circle"
+            title={t('下载页')}
+            value="gnz48.tech/app"
+            onPress={() => Linking.openURL('https://gnz48.tech/app/').catch(() => {})}
+          />
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          {/* 010 推送：同属「外部链接」，紧跟下载页 —— 用户找下载页时顺手能看到配套推送服务 */}
+          <Row
+            icon="bell-ring-outline"
+            title={t('010 推送')}
+            value="gnz48.tech"
+            onPress={() => Linking.openURL('https://gnz48.tech/').catch(() => {})}
+          />
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          <Row
+            icon="book-open-page-variant"
+            title={t('开源协议')}
+            value={t('GPL-3.0 · 本地缓存')}
+            onPress={() => { showToast(t('基于 GPL-3.0 协议开源，仅供学习交流')); }}
+          />
+        </Section>
+
+        {/* 账号 */}
+        <Section title={t('账号')}>
+          <Row
+            icon="account-key"
+            title={t('进入账号管理')}
+            value={t('登录 / 切换 / 修改资料')}
+            onPress={() => navigation.navigate('LoginScreen')}
+          />
+        </Section>
+
+        {/* 外观 */}
+        <Section title={t('外观')}>
+          <View style={styles.innerPad}>
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('主题')}</Text>
+            <ChipRow options={THEME_OPTIONS} value={settings.theme} onChange={(v) => update('theme', v)} />
+          </View>
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          <Row
+            icon="image"
+            title={t('背景图')}
+            value={backgroundInfo}
+            onPress={pickBg}
+          />
+          {backgroundValue ? (
+            <>
+              <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+              <Row
+                icon="restore"
+                title={t('恢复默认背景')}
+                danger
+                withChevron={false}
+                onPress={() => {
+                  showDialog(t('恢复默认背景'), t('将移除当前背景图，确定？'), [
+                    { text: t('取消'), style: 'cancel' },
+                    { text: t('恢复默认'), style: 'destructive', onPress: () => update('customBackgroundFile', '', { customBackgroundUpdatedAt: Date.now() }) },
+                  ]);
+                }}
+              />
+            </>
+          ) : null}
+        </Section>
+
+        {/* 语言 */}
+        <Section title={t('语言')}>
+          <View style={styles.innerPad}>
+            <ChipRow options={LANGUAGE_OPTIONS.map((o) => ({ ...o, label: o.value === 'system' ? t(o.label) : o.label }))} value={settings.language || 'system'} onChange={(v) => update('language', v)} />
+          </View>
+        </Section>
+
+        {/* 使用偏好 */}
+        <Section title={t('使用偏好')}>
+          <View style={styles.innerPad}>
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('切到后台自动弹出系统小窗')}</Text>
+            <ChipRow
+              options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]}
+              value={settings.pip_auto}
+              onChange={(v) => {
+                setPipEnabled(!!v);
+                update('pip_auto', v);
+              }}
+            />
+            <Text style={[styles.inlineNote, { color: palette.labelTertiary }]}>
+              {t('开启后，视频切到后台时自动进入系统小窗')}
+            </Text>
+          </View>
+          <View style={[styles.settingsDivider, { backgroundColor: palette.innerStroke }]} />
+          <View style={styles.innerPad}>
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('首页「私信」入口显示未读红点')}</Text>
+            <ChipRow
+              options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]}
+              value={settings.yaya_pm_unread_badge}
+              onChange={(v) => update('yaya_pm_unread_badge', v)}
+            />
+            <Text style={[styles.inlineNote, { color: palette.labelTertiary }]}>
+              {t('关闭后首页不再拉取私信未读数，也不显示红点角标')}
+            </Text>
+          </View>
+          <View style={[styles.settingsDivider, { backgroundColor: palette.innerStroke }]} />
+          <View style={styles.innerPad}>
+            <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('自动签到')}</Text>
+            <ChipRow options={[{ label: t('关闭'), value: false as any }, { label: t('开启'), value: true as any }]} value={settings.yaya_auto_checkin_enabled} onChange={(v) => update('yaya_auto_checkin_enabled', v)} />
+            {settings.yaya_auto_checkin_enabled ? (
+              <Text style={[styles.rowLabel, { color: palette.labelSecondary, marginTop: 10 }]}>
+                {t('上次签到：{date}', { date: settings.yaya_auto_checkin_last_date || t('尚未执行') })}
+              </Text>
+            ) : null}
+          </View>
+        </Section>
+
+        {/* 工具 */}
+        <Section title={t('工具')}>
+          <Row
+            icon="download"
+            title={t('下载管理')}
+            onPress={() => navigation.navigate('DownloadScreen')}
+          />
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          <Row
+            icon="text-box-search-outline"
+            title={t('运行日志')}
+            onPress={() => setLogVisible(true)}
+          />
+        </Section>
+
+        {/* 成员数据 */}
+        <Section title={t('成员数据')}>
+          <View style={styles.memberStatRow}>
+            <View style={[styles.memberStatCard, { backgroundColor: palette.fill3 }]}>
+              <Text style={[styles.memberStatNum, { color: palette.label }]}>{memberCount}</Text>
+              <Text style={[styles.memberStatLabel, { color: palette.labelSecondary }]}>{t('位成员')}</Text>
+            </View>
+            <View style={[styles.memberStatCard, { backgroundColor: palette.fill3 }]}>
+              <Text style={[styles.memberStatNum, { color: palette.label }]}>{meta ? formatTime(meta.savedAt) : t('尚未同步')}</Text>
+              <Text style={[styles.memberStatLabel, { color: palette.labelSecondary }]}>{t('最近更新')}</Text>
+            </View>
+          </View>
+          <View style={[styles.autoSyncRow, { backgroundColor: palette.tintSoft }]}>
+            <MaterialCommunityIcons name="sync" size={16} color={palette.tint} />
+            <Text style={[styles.autoSyncText, { color: palette.labelSecondary }]}>{t('进入软件时自动同步成员数据')}</Text>
+          </View>
+          <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
+          <Row
+            icon="cloud-download"
+            title={t('手动更新成员数据')}
+            value={memberSyncing ? t('更新中…') : t('立即同步')}
+            onPress={manualSyncMembers}
+          />
+          <Text style={[styles.note, { color: palette.labelTertiary }]}>
+            {t('成员数据共 {count} 位，数据来源于 yk1z 数据库（yk1z/yaya_msg），进入软件时自动同步最新。', { count: memberCount })}
+          </Text>
+        </Section>
+
+        <Text style={[styles.footer, { color: palette.labelTertiary }]}>{t('Version {v}', { v: APP_VERSION })}</Text>
+        </ScrollView>
+      </View>
+      <RuntimeLogViewer visible={logVisible} onClose={() => setLogVisible(false)} />
+      <UpdateInstaller visible={updateVisible} version={latestVersion} onClose={() => setUpdateVisible(false)} />
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  content: { paddingBottom: 112, paddingHorizontal: 16, paddingTop: 2 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', marginTop: 22, marginBottom: 9, paddingHorizontal: 4 },
+  // 描边由 GlassSurface 内部统一出（见 Section 注释），此处不再叠 borderWidth/borderColor
+  section: { overflow: 'hidden' },
+  innerPad: { padding: 14 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  rowIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  rowTitle: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: '600' },
+  rowValueWrap: { flex: 1, textAlign: 'right', flexWrap: 'wrap' },
+  rowValue: { flexShrink: 1, fontSize: 12, marginRight: 6, maxWidth: '48%', textAlign: 'right' },
+  rowLabel: { fontSize: 12, lineHeight: 18, marginBottom: 6 },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 54 },
+  settingsDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 14 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: radiiAlias.button },
+  chipText: { fontSize: 13, fontWeight: '700' },
+  // 关于 hero
+  aboutHero: { flexDirection: 'row', alignItems: 'center', padding: 14 },
+  aboutLogoWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  aboutLogoImg: { width: 52, height: 52, borderRadius: 20 },
+  aboutName: { fontSize: 20, fontWeight: '800' },
+  aboutSub: { fontSize: 12, marginTop: 4 },
+  verChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radiiAlias.button },
+  verChipWrap: { alignItems: 'flex-end' },
+  verDot: { position: 'absolute', top: -2, right: -2, width: 9, height: 9, borderRadius: 5, borderWidth: 1.5 },
+  verChipText: { fontSize: 12, fontWeight: '800' },
+  // 成员数据
+  memberStatRow: { flexDirection: 'row', gap: 10, padding: 14 },
+  memberStatCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  memberStatNum: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  memberStatLabel: { fontSize: 11, marginTop: 4 },
+  autoSyncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radiiAlias.card,
+  },
+  autoSyncText: { fontSize: 12, marginLeft: 8, fontWeight: '600' },
+  note: { marginHorizontal: 14, marginTop: 10, marginBottom: 14, fontSize: 11, lineHeight: 16 },
+  inlineNote: { marginTop: 8, fontSize: 11, lineHeight: 16 },
+  textInput: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+  },
+  footer: { textAlign: 'center', fontSize: 12, marginTop: 24 },
+});

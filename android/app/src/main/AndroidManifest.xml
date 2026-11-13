@@ -1,0 +1,59 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.VIBRATE"/>
+  <!-- 后台播放：防止切后台后 CPU 睡眠中断音频/视频 -->
+  <uses-permission android:name="android.permission.WAKE_LOCK"/>
+  <!-- 电台前台保活服务：startForeground 必需（缺失会 SecurityException 闪退）；
+       mediaPlayback 是 Android 14+ 必填的前台服务类型 -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+  <!-- Android 13+ 通知权限：缺失时前台服务通知不显示（后台播放无通知栏控制/停止入口） -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <!-- 应用内更新：下载 APK 后拉起系统安装器（Android 8+ 还需用户在系统里授权「安装未知应用」） -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW"/>
+      <category android:name="android.intent.category.BROWSABLE"/>
+      <data android:scheme="https"/>
+    </intent>
+  </queries>
+  <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:theme="@style/AppTheme" android:supportsRtl="true" android:usesCleartextTraffic="true" android:enableOnBackInvokedCallback="false">
+    <!-- 应用内更新：cacheDir/updates 下的 APK 通过 content:// 交给系统安装器 -->
+    <provider
+      android:name="androidx.core.content.FileProvider"
+      android:authorities="${applicationId}.fileprovider"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>
+    </provider>
+    <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+    <activity android:name=".LivePlayerActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:exported="false" android:hardwareAccelerated="true" android:launchMode="singleTop" android:screenOrientation="sensor"/>
+    <!-- 电台前台保活服务：纯音频模式下后台/锁屏续播 + 通知栏停止按钮 -->
+    <service android:name=".RadioForegroundService" android:exported="false" android:stopWithTask="true" android:foregroundServiceType="mediaPlayback"/>
+    <receiver android:name=".RadioMediaReceiver" android:exported="false"/>
+    <!-- 音乐：真实 ExoPlayer + 单一 framework MediaSession（OPPO 命令全通 + 每秒通知助推刷新） -->
+    <service android:name=".YayaExoService" android:exported="false" android:foregroundServiceType="mediaPlayback"/>
+    <!-- framework 会话的媒体键接收标记（让 ColorOS 把面板/媒体键路由给本会话） -->
+    <receiver android:name=".MediaButtonProxyReceiver" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MEDIA_BUTTON"/>
+      </intent-filter>
+    </receiver>
+    <!-- ⚠️ 不能锁 screenOrientation="portrait"：与 supportsPictureInPicture 冲突。
+         Android 12+ 上锁定方向的 Activity 进 PiP 时 enterPictureInPictureMode 会返回 false
+         （系统 dump 里 pictureInPictureParams=null，PiP 被静默拒绝）→「有概率唤不出系统小窗」。
+         竖屏/横屏方向已由 JS 侧 expo-screen-orientation 的 lockAsync 全量接管
+         （各页面 lockAsync(PORTRAIT_UP)、全屏播放 lockAsync(LANDSCAPE)），manifest 无需再锁。 -->
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:supportsPictureInPicture="true" android:resizeableActivity="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

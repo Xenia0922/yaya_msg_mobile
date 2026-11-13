@@ -1,0 +1,40 @@
+name: member-db sync
+
+# 定时同步已停用：GitHub Actions 的出口 IP 请求上游数据源会被 WAF 拦截。
+# 需要更新成员库时，在可正常访问上游的网络环境中手动触发本 workflow。
+# App 读取的 jsDelivr URL 会随仓库提交自动更新，客户端无需改动。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Sync members
+        run: node member-db/sync.mjs
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f member-db/dist/members.json  # dist/ 在 .gitignore 中，需 -f
+          if git diff --staged --quiet; then
+            echo "无变化，跳过提交"
+          else
+            git commit -m "chore(member-db): 同步上游成员库 $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Purge jsDelivr cache
+        if: always()
+        run: |
+          curl -sS "https://purge.jsdelivr.net/gh/Xenia0922/yaya_msg_mobile@main/member-db/dist/members.json" | head -c 300 || true

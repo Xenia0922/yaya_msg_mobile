@@ -1,0 +1,96 @@
+import React, { useCallback } from 'react';
+import { Platform, StatusBar, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useI18n } from '../i18n';
+import { usePalette } from '../theme';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { ScalePressable } from './Motion';
+import { GlassSurface } from './GlassSurface';
+
+interface Props {
+  title: string;
+  onBack?: () => void;
+  right?: React.ReactNode;
+  /** 标题左侧的额外元素（如私信会话页的对方头像），传了才占位 */
+  leading?: React.ReactNode;
+  style?: ViewStyle;
+  /** 图片背景页（如直播间）传 true：返回键用玻璃胶囊，标题加轻阴影保证可读 */
+  overlay?: boolean;
+  /** tab 根页传 true：不渲染返回键，但保留左槽位，标题位置与二级页完全一致 */
+  hideBack?: boolean;
+}
+
+
+export default function ScreenHeader({ title, onBack, right, leading, style, overlay, hideBack }: Props) {
+  const navigation = useNavigation();
+  const { t } = useI18n();
+  const palette = usePalette();
+  const goBack = useCallback(onBack || (() => navigation.goBack()), [onBack, navigation]);
+  const topPad = Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 24) + 10;
+
+  return (
+    <View style={[styles.header, { paddingTop: topPad }, style]}>
+      {!hideBack ? (
+        <ScalePressable
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel={t('返回')}
+          pressedScale={0.9}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <GlassSurface role="chip" radius={999} style={styles.backBtn}>
+            <MaterialCommunityIcons name="chevron-left" color={palette.label} size={26} />
+          </GlassSurface>
+        </ScalePressable>
+      ) : null}
+      {leading ? <View style={styles.leading}>{leading}</View> : null}
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.title,
+          {
+            color: palette.label,
+            textShadowColor: overlay ? 'rgba(0,0,0,0.30)' : 'transparent',
+          },
+        ]}
+      >
+        {title}
+      </Text>
+      <View style={styles.sideRight}>{right}</View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    marginBottom: 2,
+    gap: 8,
+  },
+  sideRight: { minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' },
+  leading: { alignItems: 'center', justifyContent: 'center' },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // 不要 borderWidth：RN 里 borderWidth 不给 borderColor 会画默认黑边，
+    // 而描边本来就由 GlassSurface 的材质描边负责（白 0.66），叠黑边会显脏。
+  },
+  title: {
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'left',
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+});

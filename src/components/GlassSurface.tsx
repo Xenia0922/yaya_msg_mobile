@@ -1,0 +1,338 @@
+/**
+ * GlassSurface · 全站液态玻璃基元（唯一玻璃出口）
+ *
+ * ══ 引擎换成 expo-blur（Android = Dimezis BlurView + 硬件 RenderEffect）══
+ * 弃用 react-native-liquid-glassmorphism 的原因：
+ *   它的 Android 实现每帧对整个 root 做一次 `rootView.draw(canvas)` 软件重绘抓背景位图，
+ *   N 块玻璃 = N 份全屏 ARGB 位图 + N 遍 AGSL，实例一多必然掉帧（实测"非常卡"），
+ *   而且它只排除"玻璃视图自己"、把兄弟内容折射进来（正是"折射卡片自己的内容"根因）。
+ *   expo-blur 走 SurfaceFlinger/RenderEffect 硬件模糊管线，没有每帧整屏软件抓图。
+ *
+ * ══ 材质（按 Apple Liquid Glass 的 Regular 变体）══
+ *   浅色 = 白系磨砂（blur + 约 40% 白纱 + 顶部高光带 + 1px 描边）→ 深色文字可读
+ *   深色 = 深系磨砂（blur + 约 46% 深纱）→ 官方"深色模式降低通透度、提升对比度"
+ *   强调控件 = tintColor 染色
+ *
+ * ══ 使用铁律 ══
+ *   内容作为 children 放进玻璃里（玻璃负责底、内容在上层清晰渲染）。
+ *   可调参数只有 role/radius/intensity/tintColor，不要自创。
+ */
+import React from 'react';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  type StyleProp,
+  type ViewProps,
+  type ViewStyle,
+} from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LiquidGlassView, useGlassSupport } from 'react-native-liquid-glassmorphism';
+import { LinearGradient } from 'expo-linear-gradient';
+import { NavigationContext } from '@react-navigation/native';
+import { usePalette } from '../theme';
+import { GLASS_BACKDROP_ID, useBlurTarget } from './BlurTarget';
+
+/** 语义角色 —— 决定用哪组材质 */
+export type GlassRole =
+  | 'card' // 内容卡
+  | 'chip' // 胶囊 / 小控件
+  | 'bar' // 悬浮底栏
+  | 'header' // 页头 / 导航栏
+  | 'selector' // 底栏选中态
+  | 'toast' // 短提示
+  | 'modal' // 弹层 / 面板
+  | 'hero'; // 装饰性主视觉
+
+interface Material {
+  /** BlurView 强度（1–100） */
+  intensity: number;
+  
+  reduction: number;
+  /** expo-blur 的 tint（决定模糊结果的底色走向） */
+  blurTint: 'light' | 'dark';
+  /** 叠在模糊之上的一层纱（底色） */
+  overlay: string;
+  /** 1px 描边 */
+  stroke: string;
+  /** 顶部高光带起始不透明度 */
+  highlight: number;
+}
+
+/**
+ * 模糊「降采样系数」：模糊在 1/N 分辨率上计算，再放大铺回。
+ *
+ * ⚠️【功耗/卡顿】这是全站模糊开销的唯一总闸门（96 处 GlassSurface 共用）。
+ *   系数 4 → 6：模糊像素数降到约 44%（(4/6)²），RenderEffect 负载与功耗同比例下降，
+ *   而玻璃是**大半径柔和模糊**，降采样到 1/6 后肉眼几乎无差别（不是锐利投影）。
+ *
+ * 为什么专门为 Android 调：Android 走 `dimezisBlurViewSdk31Plus`（RenderEffect 路线），
+ *   而三星 One UI 的 RenderEffect 实现明显慢于同代高通/联发科机型 ——
+ *   同一份代码在别家满帧、在三星就掉帧，瓶颈就是这个系数。
+ *   iOS 走系统 `UIVisualEffectView`，成本不在 JS/GPU 这一侧，保持原值即可。
+ */
+const BLUR_REDUCTION = Platform.OS === 'android' ? 6 : 4;
+
+/** Apple Regular 材质：浅色白系磨砂 / 深色深系磨砂 */
+const MATERIAL: { light: Material; dark: Material } = {
+  light: {
+    // Apple Regular(浅色)：强模糊 + 淡白纱 —— 模糊负责可读，纱淡才透得出去
+    intensity: 64,
+    reduction: BLUR_REDUCTION,
+    blurTint: 'light',
+    overlay: 'rgba(255,255,255,0.30)',
+    stroke: 'rgba(255,255,255,0.66)',
+    highlight: 0.24,
+  },
+  dark: {
+    // 官方：深色模式降低通透度、提升对比度
+    intensity: 70,
+    reduction: BLUR_REDUCTION,
+    blurTint: 'dark',
+    overlay: 'rgba(20,20,26,0.40)',
+    stroke: 'rgba(255,255,255,0.10)',
+    highlight: 0.10,
+  },
+};
+
+/**
+ * 选中态（压在底栏玻璃上那块）。
+ * 静止时保持低调（浅灰而非亮白）—— 变化留给交互：拖动时由原生 AGSL 出边缘色散/透镜，
+ * 加上 AppTabBar 的液化拉伸。静止就很白会显得「一块贴纸」而不是玻璃。
+ */
+const SELECTOR: { light: Material; dark: Material } = {
+  light: { ...MATERIAL.light, overlay: 'rgba(232,232,238,0.55)', intensity: 44, stroke: 'rgba(255,255,255,0.45)', highlight: 0.10 },
+  dark: { ...MATERIAL.dark, overlay: 'rgba(255,255,255,0.12)', intensity: 52 },
+};
+
+/**
+ * 焦点感知：AGSL 分支在非活跃屏要 paused（旧库性能规则：Android 感知不到离屏玻璃）。
+ * 用 NavigationContext 而不是 useIsFocused()：后者在没有导航容器时会抛错。
+ */
+function useGlassFocused(): boolean {
+  const nav = React.useContext(NavigationContext);
+  const [focused, setFocused] = React.useState(true);
+  React.useEffect(() => {
+    if (!nav) return;
+    setFocused(nav.isFocused());
+    const onFocus = nav.addListener('focus', () => setFocused(true));
+    const onBlur = nav.addListener('blur', () => setFocused(false));
+    return () => {
+      onFocus();
+      onBlur();
+    };
+  }, [nav]);
+  return focused;
+}
+
+export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
+  /** 语义角色（选材质），默认 card */
+  role?: GlassRole;
+  /** 圆角（dp） */
+  radius?: number;
+  /** 纯背景层模式：铺满父容器、不吃触摸 */
+  asBackground?: boolean;
+  /** 触摸交互（预留给按压高光；当前仅作语义标记） */
+  interactive?: boolean;
+  /** 覆盖模糊强度 1–100 */
+  intensity?: number;
+  /** 强调染色（叠在模糊上的颜色） */
+  tintColor?: string;
+  /** 兼容旧签名（AGSL 时代的色散强度），新引擎忽略 */
+  iridescence?: number;
+  /** 可点：给了就在内部渲染 TouchableOpacity/Pressable（玻璃自己就是按压容器） */
+  onPress?: () => void;
+  onLongPress?: () => void;
+  activeOpacity?: number;
+  /** 兼容 ScalePressable 的按下缩放（仅作语义标记，避免类型报错） */
+  pressedScale?: number;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  children?: React.ReactNode;
+}
+
+export function GlassSurface({
+  role = 'card',
+  radius = 20,
+  asBackground = false,
+  interactive: _interactive,
+  intensity,
+  tintColor,
+  iridescence: _iridescence,
+  onPress,
+  onLongPress,
+  activeOpacity,
+  pressedScale: _pressedScale,
+  disabled,
+  style,
+  children,
+  ...rest
+}: GlassSurfaceProps) {
+  const palette = usePalette();
+  const isDark = palette.name === 'dark';
+  const { tier } = useGlassSupport();
+  const focused = useGlassFocused();
+  const blurTarget = useBlurTarget();
+  const m =
+    role === 'selector'
+      ? isDark
+        ? SELECTOR.dark
+        : SELECTOR.light
+      : isDark
+          ? MATERIAL.dark
+          : MATERIAL.light;
+
+  // ── 双引擎 ──
+  // dock 类（底栏 + 选中态）用 AGSL：真·边缘透镜折射 + 色散，苹果的核心观感就在这两处，
+  // 且实例极少（≤2），旧库"每帧整屏抓一次背景"的成本可控（全实例共享同一张位图）。
+  // 其余大面积元素（卡片/胶囊）走 expo-blur 的硬件模糊，避免 N 实例 × 整屏重绘。
+  // ⚠️ 实测（MuMu API35）：AGSL dock = janky 10% / p50 25ms；expo-blur = janky 0% / p50 5ms。
+  // 旧库每帧用「软件 Canvas」把整个 root 重绘进 Bitmap，成本 20ms/帧，给不了"真折射 + 满帧"。
+  // 要真边缘折射必须自写原生视图：抓目标进 **RenderNode（硬件录制）** + AGSL 链式 RenderEffect
+  // （blur → lens/dispersion），Dimezis BlurView 走的就是 RenderNode 路线，实测 0% janky。
+  // 自写原生 AGSL 视图（RenderNode 硬件录制 + 链式 RenderEffect）—— 真边缘折射/色散，
+  // 且不用软件 Canvas，成本可控。仅 dock 类角色（实例 ≤2）使用。
+  const isDock = role === 'bar' || role === 'selector';
+  // 旧 AGSL 库（软件 Canvas 路线，实测 janky 10%）默认关闭，仅作对照
+  const useAgsL = false && isDock && tier !== 'none';
+
+  const r = radius;
+
+  /**
+   * ⚠️【描边唯一出口】调用方若在 style 里传了 borderWidth / borderColor，
+   * 把它们**接管**到内部描边层渲染，而不是让外层盒子再画一道。
+   *
+   * 旧行为：外层 View 的 style 直接带 borderWidth+borderColor → 内层 absoluteFill 也画一道
+   * → 两条线叠加、圆角处错位、深浅色主题下颜色互搏，观感就是「描边没描好」。
+   * 全站曾有 10+ 处 GlassSurface 调用这样写（SettingsScreen / LoginScreen / DownloadScreen …）。
+   *
+   * 这样改的好处：调用方写法完全不用动、观感自动统一；不传时仍用材质自带描边。
+   */
+  const incoming = StyleSheet.flatten(style) as ViewStyle | undefined;
+  const strokeWidth = incoming?.borderWidth ?? 1;
+  const strokeColor = (incoming?.borderColor as string) ?? m.stroke;
+  /** 外层盒子：剥离 borderWidth / borderColor（改由内层描边层统一画） */
+  const outerStyle: StyleProp<ViewStyle> = incoming
+    ? (() => {
+        const { borderWidth: _bw, borderColor: _bc, ...restStyles } = incoming;
+        return restStyles as StyleProp<ViewStyle>;
+      })()
+    : style;
+  const outerBoxStyle: StyleProp<ViewStyle> = asBackground
+    ? [StyleSheet.absoluteFill, { borderRadius: r, overflow: 'hidden' }, outerStyle]
+    : [{ borderRadius: r, overflow: 'hidden' }, outerStyle];
+
+  if (useAgsL) {
+    return (
+      <LiquidGlassView
+        variant={role === 'selector' ? 'clear' : 'regular'}
+        intensity={role === 'selector' ? 45 : 50}
+        borderRadius={r}
+        tintColor={tintColor ?? (isDark ? 'rgba(20,20,26,0.30)' : 'rgba(255,255,255,0.34)')}
+        iridescence={role === 'selector' ? 0.6 : 0.25}
+        paused={!focused}
+        style={[
+          { borderRadius: r, overflow: 'hidden' },
+          asBackground ? StyleSheet.absoluteFill : null,
+          style,
+        ]}
+        {...rest}
+      >
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: r,
+              borderWidth: strokeWidth,
+              borderColor: strokeColor,
+              overflow: 'hidden',
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={
+              isDark
+                ? [`rgba(255,255,255,${m.highlight})`, 'transparent']
+                : [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.04)', 'transparent']
+            }
+            style={{ height: '42%' }}
+          />
+        </View>
+        {children}
+      </LiquidGlassView>
+    );
+  }
+
+  const inner = (
+    <>
+      {/* 底层：硬件模糊（Android 31+ = RenderEffect / Dimezis BlurView） */}
+      <BlurView
+        // 不吃触摸：absoluteFill 的模糊层会挡住子元素里的按钮（tap 切换全失效的根因）
+        pointerEvents="none"
+        // blurTarget = 只包背景层的 BlurTargetView（内部无 BlurView → 不会 RenderNode 互相嵌套）
+        blurTarget={blurTarget ?? undefined}
+        intensity={intensity ?? m.intensity}
+        tint={m.blurTint}
+        blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
+        blurReductionFactor={m.reduction}
+        style={[StyleSheet.absoluteFill, { borderRadius: r }]}
+      />
+      {/* 中层：底色纱 + 描边（调用方传的 borderWidth/borderColor 在此渲染，外层不再重复画） */}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            borderRadius: r,
+            backgroundColor: tintColor ?? m.overlay,
+            borderWidth: strokeWidth,
+            borderColor: strokeColor,
+            overflow: 'hidden',
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={
+            isDark
+              ? [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.02)', 'transparent']
+              : [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.06)', 'transparent']
+          }
+          style={{ height: '42%' }}
+        />
+      </View>
+      {children}
+    </>
+  );
+
+  // 可点玻璃：内部渲染 TouableOpacity/Pressable，玻璃本身就是按压容器
+  if ((onPress || onLongPress) && !asBackground) {
+    if (activeOpacity != null) {
+      return (
+        <TouchableOpacity
+          style={outerBoxStyle}
+          onPress={onPress}
+          onLongPress={onLongPress}
+          activeOpacity={activeOpacity}
+          disabled={disabled}
+          {...(rest as any)}
+        >
+          {inner}
+        </TouchableOpacity>
+      );
+    }
+    return (
+      <Pressable style={outerBoxStyle} onPress={onPress} onLongPress={onLongPress} disabled={disabled} {...(rest as any)}>
+        {inner}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View pointerEvents={asBackground ? 'none' : 'auto'} style={outerBoxStyle} {...rest}>
+      {inner}
+    </View>
+  );
+}
