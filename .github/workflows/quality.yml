@@ -1,0 +1,33 @@
+name: Quality
+
+on:
+  push:
+    # 开发实际发生在 plus / public-* 分支，只监听 main 等于门禁从不校验业务代码
+    branches: [main, plus, 'public-*']
+  pull_request:
+    branches: [main, plus, 'public-*']
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Typecheck and version gate
+        run: npm run typecheck
+
+      - name: Core tests
+        run: npm run test:core
+
+      - name: Diff check
+        run: git diff --check
