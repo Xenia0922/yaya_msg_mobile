@@ -1,7 +1,7 @@
 {
-  "version": "20261106",
-  "updatedAt": "2026-11-06T22:20:12.148Z",
-  "contentHash": "e8101534a27973f7",
+  "version": "20261116",
+  "updatedAt": "2026-11-16T16:32:25.170Z",
+  "contentHash": "942f53d9d353222b",
   "count": 970,
   "source": {
     "upstream": "https://data.gnz.hk/members.json",
@@ -12,7 +12,7 @@
   "coverage": {
     "withName": 970,
     "channelId": 554,
-    "yklzId": 311,
+    "yklzId": 312,
     "serverId": 554
   },
   "members": [
@@ -26380,8 +26380,9 @@
       "periodName": "GNZ48 二十期生",
       "teamId": 1207,
       "team": "预备生",
-      "serverId": 30659413,
-      "channelId": 37966775,
+      "serverId": 33723338,
+      "channelId": 41734436,
+      "yklzId": 41734865,
       "account": "20260208111845_90md88w30qdp0ks",
       "birthday": "2004/6/28",
       "birthplace": "北京",
@@ -26401,7 +26402,7 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0206/9kxbda7jjfyxw5z6yt8b09k.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0206/o1yukfnuq82iey95298vrb0.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0206/3vj0cfn5xr1uv25w4frz1bg.jpg",
-      "isInGroup": false
+      "isInGroup": true
     },
     {
       "id": 169934919,
@@ -27029,8 +27030,8 @@
       "groupName": "SNH48",
       "periodId": 1024,
       "periodName": "SNH48 二十四期生",
-      "teamId": 1002,
-      "team": "TEAM NII",
+      "teamId": 1007,
+      "team": "预备生",
       "serverId": 31461450,
       "channelId": 39047472,
       "yklzId": 39129144,
@@ -27844,6 +27845,7 @@
       "team": "预备生",
       "serverId": 32985554,
       "channelId": 40932204,
+      "yklzId": 41619733,
       "account": "20260917212815_ggut1bmq27vx7kj",
       "birthday": "2004/9/7",
       "birthplace": "北京",
@@ -27861,8 +27863,7 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/ccf5dsi9e712608ewuy3u24.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/nbp3mk3tegjts9jriydmh3a.jpg",
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/kwmrj2725cu2nd68si3pr12.jpg",
-      "isInGroup": true,
-      "yklzId": 41619733
+      "isInGroup": true
     },
     {
       "id": 184483897,
@@ -28369,6 +28370,7 @@
       "team": "预备生",
       "serverId": 33558887,
       "channelId": 41570758,
+      "yklzId": 41554408,
       "birthday": "2005/5/31",
       "birthplace": "天津",
       "jtime": "2026/10/31",
@@ -28383,8 +28385,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10382_2.jpg?v=1793347250537",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10382_3.jpg?v=1793347250537",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10382_4.jpg?v=1793347250537",
-      "isInGroup": true,
-      "yklzId": 41554408
+      "isInGroup": true
     },
     {
       "id": 187367577,
@@ -28398,6 +28399,7 @@
       "team": "预备生",
       "serverId": 33542926,
       "channelId": 41554203,
+      "yklzId": 41587405,
       "birthday": "2009/7/12",
       "birthplace": "上海",
       "jtime": "2026/10/31",
@@ -28412,8 +28414,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10383_2.jpg?v=1793347269227",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10383_3.jpg?v=1793347269227",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10383_4.jpg?v=1793347269227",
-      "isInGroup": true,
-      "yklzId": 41587405
+      "isInGroup": true
     },
     {
       "id": 187367578,
@@ -28456,6 +28457,7 @@
       "team": "预备生",
       "serverId": 33575283,
       "channelId": 41538062,
+      "yklzId": 41489402,
       "birthday": "2005/8/27",
       "birthplace": "山东 青岛",
       "jtime": "2026/10/31",
@@ -28470,8 +28472,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10385_2.jpg?v=1793347291803",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10385_3.jpg?v=1793347291803",
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10385_4.jpg?v=1793347291803",
-      "isInGroup": true,
-      "yklzId": 41489402
+      "isInGroup": true
     },
     {
       "id": 187367580,
