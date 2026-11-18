@@ -51,7 +51,6 @@ node scripts/build-apk.js
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `YAYA_APK_OUTPUT` | 仓库同级 `APK/` | APK 输出目录 |
-| `YAYA_FLAVOR` | 自动推断 | `plus`（自用权限版）或 `public`（公版） |
 | `YAYA_ABIS` | `arm64-v8a,x86_64` | 逗号分隔的 ABI |
 | `YAYA_UNIVERSAL` | `true` | 是否额外构建 universal 包 |
 
