@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NetworkImage } from '../components/NetworkImage';
 import {
   View,
@@ -6,7 +6,6 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -19,7 +18,6 @@ import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOnMicStore, OnMicEntry } from '../store/onMicStore';
-import { Member } from '../types';
 import { GlassSurface } from '../components/GlassSurface';
 
 export default function OnMicScreen() {
@@ -34,7 +32,7 @@ export default function OnMicScreen() {
   const scanDone = useOnMicStore((state: any) => state.done);
   const [error, setError] = useState('');
 
-  //  - 过滤条件含 yklzId：只有小房间的成员此前被 (channelId || serverId) 漏掉
+  // - 过滤条件含 yklzId：只有小房间的成员此前被 (channelId || serverId) 漏掉
   const buildInputs = useCallback(() => {
     return members
       .map((item: any) => {
@@ -42,7 +40,8 @@ export default function OnMicScreen() {
         // 「在团」判定（用户要求：上麦只扫在团成员）：
         // 库里 isInGroup 未标 false，且状态不是 退团(left)/毕业(graduated)/暂休(paused)。
         // state 由 memberData 用官方+库重算（官方优先），未知(unknown)仍保留，避免漏扫。
-        const inGroup = item.isInGroup !== false && st !== 'left' && st !== 'graduated' && st !== 'paused';
+        const inGroup =
+          item.isInGroup !== false && st !== 'left' && st !== 'graduated' && st !== 'paused';
         return {
           memberId: String(item.id || item.userId || ''),
           name: String(item.ownerName || item.realName || item.id || ''),
@@ -53,13 +52,18 @@ export default function OnMicScreen() {
           isInGroup: inGroup,
         };
       })
-      .filter((m: any) => m.memberId && m.isInGroup && (m.channelId || m.serverId || m.smallChannelId));
+      .filter(
+        (m: any) => m.memberId && m.isInGroup && (m.channelId || m.serverId || m.smallChannelId),
+      );
   }, [members]);
 
-  const scan = useCallback((opts?: { force?: boolean }) => {
-    const inputs = buildInputs();
-    if (inputs.length) useOnMicStore.getState().scan(inputs, opts);
-  }, [buildInputs]);
+  const scan = useCallback(
+    (opts?: { force?: boolean }) => {
+      const inputs = buildInputs();
+      if (inputs.length) useOnMicStore.getState().scan(inputs, opts);
+    },
+    [buildInputs],
+  );
 
   // 进入页面强制扫描一次全部成员（force 绕过 60s 节流）
   useEffect(() => {
@@ -88,21 +92,40 @@ export default function OnMicScreen() {
     }, [scan]),
   );
 
-  const entries: OnMicEntry[] = members
-    .map((m: any) => onMic[String(m.id || m.userId || '')])
-    .filter((e: OnMicEntry | undefined): e is OnMicEntry => !!e);
+  // 成员 id → 成员：避免 renderItem 内每行 members.find 造成 O(n²)
+  const membersById = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const m of members as any[]) {
+      const id = String(m?.id || m?.userId || '');
+      if (id) map.set(id, m);
+    }
+    return map;
+  }, [members]);
+
+  const entries: OnMicEntry[] = useMemo(
+    () =>
+      members
+        .map((m: any) => onMic[String(m.id || m.userId || '')])
+        .filter((e: OnMicEntry | undefined): e is OnMicEntry => !!e),
+    [members, onMic],
+  );
 
   const renderItem = ({ item, index }: { item: OnMicEntry; index: number }) => {
-    const member = members.find((m: any) => String(m.id || m.userId) === item.memberId);
+    const member = membersById.get(item.memberId);
     return (
       <View style={{ marginHorizontal: 16, marginTop: index === 0 ? 12 : 8 }}>
         <TouchableOpacity
-          onPress={() => member && navigation.navigate('RoomRadioScreen', {
-            member,
-            initialMode: item.smallVoice ? 'small' : 'big',
-            streamUrl: item.streamUrl || '',
-          })}
+          onPress={() =>
+            member &&
+            navigation.navigate('RoomRadioScreen', {
+              member,
+              initialMode: item.smallVoice ? 'small' : 'big',
+              streamUrl: item.streamUrl || '',
+            })
+          }
           activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel={item.name}
         >
           {/* 列表逐卡不用玻璃：滚动时每帧都要重算模糊 → 掉帧（全站铁律）。
               与直播/录播网格、房间列表同款做法：实底圆角 + hairline 描边 */}
@@ -116,30 +139,34 @@ export default function OnMicScreen() {
               },
             ]}
           >
-          {member?.avatar ? (
-            <NetworkImage source={{ uri: member.avatar }} style={styles.avatar} thumbnail={96} />
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: palette.tintSoft }]} />
-          )}
-          <View style={styles.info}>
-            <Text style={[styles.name, { color: palette.label }]} numberOfLines={1}>{item.name}</Text>
-            <View style={styles.tagRow}>
-              <View style={[styles.tag, { backgroundColor: palette.tint }]}>
-                <MaterialCommunityIcons name="microphone" size={11} color={palette.onTint} />
-                <Text style={styles.tagText}>{t('上麦中')}</Text>
-              </View>
-              {item.hasRadio ? (
-                <View style={[styles.tag, { backgroundColor: palette.tintSoft }]}>
-                  <MaterialCommunityIcons name="radio" size={11} color={palette.tint} />
-                  <Text style={[styles.tagText, { color: palette.tint }]}>{t('电台')}</Text>
+            {member?.avatar ? (
+              <NetworkImage source={{ uri: member.avatar }} style={styles.avatar} thumbnail={96} />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: palette.tintSoft }]} />
+            )}
+            <View style={styles.info}>
+              <Text style={[styles.name, { color: palette.label }]} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <View style={styles.tagRow}>
+                <View style={[styles.tag, { backgroundColor: palette.tint }]}>
+                  <MaterialCommunityIcons name="microphone" size={11} color={palette.onTint} />
+                  <Text style={styles.tagText}>{t('上麦中')}</Text>
                 </View>
-              ) : null}
-              {item.onMicCount > 1 ? (
-                <Text style={[styles.count, { color: palette.labelSecondary }]}>{t('{n} 人在麦', { n: item.onMicCount })}</Text>
-              ) : null}
+                {item.hasRadio ? (
+                  <View style={[styles.tag, { backgroundColor: palette.tintSoft }]}>
+                    <MaterialCommunityIcons name="radio" size={11} color={palette.tint} />
+                    <Text style={[styles.tagText, { color: palette.tint }]}>{t('电台')}</Text>
+                  </View>
+                ) : null}
+                {item.onMicCount > 1 ? (
+                  <Text style={[styles.count, { color: palette.labelSecondary }]}>
+                    {t('{n} 人在麦', { n: item.onMicCount })}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-          </View>
-          <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
+            <MaterialCommunityIcons name="chevron-right" size={20} color={palette.labelTertiary} />
           </View>
         </TouchableOpacity>
       </View>
@@ -154,26 +181,54 @@ export default function OnMicScreen() {
       <ScreenHeader
         title={t('上麦')}
         // 手动强制重扫（绕过 store 的 60s 节流 + 预算制增量）：解决「有概率扫不出来」
-        right={<HeaderAction label={t('刷新')} onPress={() => scan({ force: true })} loading={scanning} disabled={scanning} />}
+        right={
+          <HeaderAction
+            label={t('刷新')}
+            onPress={() => scan({ force: true })}
+            loading={scanning}
+            disabled={scanning}
+          />
+        }
       />
       {scanning ? (
-        <GlassSurface radius={22} role="card" style={[styles.scanBar, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+        <GlassSurface
+          radius={22}
+          role="card"
+          style={[
+            styles.scanBar,
+            { backgroundColor: 'transparent', borderColor: palette.hairline },
+          ]}
+        >
           <ActivityIndicator size="small" color={palette.tint} style={{ marginRight: 8 }} />
           <Text style={[styles.scanBarText, { color: palette.labelSecondary }]}>
             {/* ⚠️ 分子分母必须同一口径：done 是「探测任务数」（大/小房间各一个任务），
                 以前分母用成员数（memberTotal）→ 数字会涨到 2 倍成员数，看起来像出错 */}
-            {t('正在扫描全部成员上麦状态 {done}/{total}...', { done: Math.min(scanDone, scanTotal), total: scanTotal || scanMemberTotal })}
+            {t('正在扫描全部成员上麦状态 {done}/{total}...', {
+              done: Math.min(scanDone, scanTotal),
+              total: scanTotal || scanMemberTotal,
+            })}
           </Text>
         </GlassSurface>
       ) : null}
       {error && entries.length === 0 ? (
-        <EmptyState icon="alert-circle-outline" title={t('加载失败')} hint={error} onAction={() => scan({ force: true })} />
+        <EmptyState
+          icon="alert-circle-outline"
+          title={t('加载失败')}
+          hint={error}
+          onAction={() => scan({ force: true })}
+        />
       ) : entries.length === 0 && scanning ? (
         /* 扫描中且尚无结果：显示加载态 —— 以前这里直接落进「暂无成员上麦」空态，
            看起来像扫完了没结果（用户反馈的「加载显示有问题」） */
         <CenterSpinner text={t('正在扫描上麦状态…')} />
       ) : entries.length === 0 ? (
-        <EmptyState icon="microphone-off" title={t('暂无成员上麦')} hint={t('当前没有成员在语音麦上，可点下方重新扫描')} onAction={() => scan({ force: true })} actionLabel={t('重新扫描')} />
+        <EmptyState
+          icon="microphone-off"
+          title={t('暂无成员上麦')}
+          hint={t('当前没有成员在语音麦上，可点下方重新扫描')}
+          onAction={() => scan({ force: true })}
+          actionLabel={t('重新扫描')}
+        />
       ) : (
         <FlatList
           data={entries}

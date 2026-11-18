@@ -6,7 +6,10 @@ let m;
 const rows = [];
 while ((m = re.exec(raw))) {
   const t = m[1];
-  const g = (n) => { const x = t.match(new RegExp(n + '="([^"]*)"')); return x ? x[1] : null; };
+  const g = (n) => {
+    const x = t.match(new RegExp(n + '="([^"]*)"'));
+    return x ? x[1] : null;
+  };
   const txt = (g('text') || '').trim();
   const b = g('bounds');
   if (!b) continue;

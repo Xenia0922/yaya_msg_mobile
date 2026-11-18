@@ -8,9 +8,18 @@ const require = createRequire(import.meta.url);
 const ts = require('typescript');
 function load(path, imports) {
   const source = readFileSync(new URL(path, import.meta.url), 'utf8');
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true } }).outputText;
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+  }).outputText;
   const module = { exports: {} };
-  vm.runInNewContext(compiled, { module, exports: module.exports, require: (id) => imports[id], setTimeout, clearTimeout, console });
+  vm.runInNewContext(compiled, {
+    module,
+    exports: module.exports,
+    require: (id) => imports[id],
+    setTimeout,
+    clearTimeout,
+    console,
+  });
   return { exports: module.exports, source };
 }
 
@@ -20,7 +29,10 @@ assert.ok(protocolKey);
 for (const input of ['test-pass', 'abcdefghabcdefgh', '测试用密码123']) {
   const cipher = createCipheriv('aes-128-ecb', Buffer.from(protocolKey), null);
   const expected = Buffer.concat([cipher.update(input, 'utf8'), cipher.final()]).toString('base64');
-  assert.ok(util.exports.encryptPocketPassword(input) === expected, '密码协议与标准 AES-ECB 不一致');
+  assert.ok(
+    util.exports.encryptPocketPassword(input) === expected,
+    '密码协议与标准 AES-ECB 不一致',
+  );
 }
 assert.ok(util.exports.validateRegistrationPassword('short', 'short'));
 assert.ok(util.exports.validateRegistrationPassword('test-pass', 'different'));
@@ -29,12 +41,26 @@ assert.equal(util.exports.validateRegistrationPassword('test-pass', 'test-pass')
 const calls = [];
 let response = { status: 200, success: true, content: {} };
 const mockedSettings = { p48Token: 'existing-session' };
+const storageMock = {
+  __esModule: true,
+  default: { getItem: async () => null, setItem: async () => {} },
+};
+const pocketHeaders = load('../src/api/pocketHeaders.ts', {
+  '../store': { useSettingsStore: { getState: () => ({ settings: mockedSettings }) } },
+  '@react-native-async-storage/async-storage': storageMock,
+}).exports;
 const api = load('../src/api/pocket48.ts', {
   '../store': { useSettingsStore: { getState: () => ({ settings: mockedSettings }) } },
   '../auth': { initWasm: async () => {}, generatePaAsync: async () => 'mock-signature' },
-  '../utils/network': { xhrPost: async (url, body, headers) => { calls.push({ url, body, headers }); return response; } },
+  '../utils/network': {
+    xhrPost: async (url, body, headers) => {
+      calls.push({ url, body, headers });
+      return response;
+    },
+  },
   '../utils/data': {},
-  '@react-native-async-storage/async-storage': { __esModule: true, default: { getItem: async () => null, setItem: async () => {} } },
+  './pocketHeaders': pocketHeaders,
+  '@react-native-async-storage/async-storage': storageMock,
 }).exports.pocketApi;
 await api.loginSendSms('000000', '86');
 assert.ok(calls[0].url.endsWith('/user/api/v2/sms/send_sms'));

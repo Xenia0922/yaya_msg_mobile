@@ -121,19 +121,12 @@ android {
         // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3000011
-        versionName "2.7.8"
+        versionCode 3000014
+        versionName "2.8.0"
 
-        // 真机架构 + 模拟器架构。MuMu 等安卓模拟器为 x86_64，缺此 ABI 会导致 libhermes 等原生库
-        // 无法加载（UnsatisfiedLinkError），表现为「启动即闪退进不去」。为兼容模拟器测试必须保留。
-        ndk {
-            // ⚠️ 用 splits 指定 ABI 时 **不能再设 abiFilters**（AGP 直接报
-            // "Conflicting configuration ... cannot be present when splits abi filters are set"）。
-            // 所以快速模式（-Pyaya.abis=…）下交给 splits 决定；常规模式保留原 4 ABI 过滤。
-            if (!yayaAbiOverride) {
-                abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-            }
-        }
+        // ABI 统一由下方 splits.abi 控制（真机 armeabi-v7a/arm64-v8a + 模拟器 x86_64）。
+        // 不要同时设置 ndk.abiFilters：与 splits 冲突时 AGP 会直接报
+        // "Conflicting configuration ... cannot be present when splits abi filters are set"。
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -150,6 +143,10 @@ android {
         }
         if (hasReleaseSigning) {
             release {
+                // 历史发布包（v2.7.5～v2.7.8）均由 android/app/debug.keystore
+                // 的 CN=Android Debug 证书签名；为保证老用户可覆盖升级，
+                // 发布签名必须显式传入同一 keystore（本地 release-signing.properties）。
+                // 不要换用新证书，否则 Android 会拒绝覆盖安装。
                 storeFile file(releaseStoreFile.toString())
                 storePassword releaseStorePassword.toString()
                 keyAlias releaseKeyAlias.toString()
@@ -164,11 +161,17 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // 本地未提供 release 签名参数时保留 debug 兜底，方便开发构建；
-            // 正式出包必须通过 Gradle properties / CI secrets 提供 RELEASE_* 参数。
-            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            // 缺少 RELEASE_* 时显式失败（-Pyaya.requireReleaseSigning=true，
+            // 发布脚本/CI 均启用），绝不静默产出未签名 APK。
+            // 注意：release 签名使用传入的 keystore，不自动回退到 debug；
+            // 本地历史兼容签名通过 release-signing.properties 显式指向
+            // android/app/debug.keystore（历史版本同证书）。
+            signingConfig hasReleaseSigning ? signingConfigs.release : null
             if (!hasReleaseSigning) {
-                println("WARNING: RELEASE_* signing properties are missing; release APK uses debug signing.")
+                if (requireReleaseSigning) {
+                    throw new GradleException('Release signing is required but RELEASE_* signing values are incomplete.')
+                }
+                println("WARNING: RELEASE_* signing properties are missing; release APK will be UNSIGNED (never debug-signed).")
             }
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()

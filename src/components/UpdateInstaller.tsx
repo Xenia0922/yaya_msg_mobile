@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   AppState,
   Modal,
-  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -32,7 +31,7 @@ type Phase = 'checking' | 'ready' | 'perm' | 'downloading' | 'installing' | 'err
  *
  * 流程上的两个坑（都在这里兜住）：
  * 1. Android 8+ 安装 APK 需要「安装未知应用」授权。未授权时先跳系统设置，
- *    回到 App 后用 AppState 复查权限，再继续安装（**不重新下载 66MB**）。
+ * 回到 App 后用 AppState 复查权限，再继续安装（**不重新下载 66MB**）。
  * 2. 下载失败（GitHub 404 / 网络中断）给出重试与「打开下载页」两条退路。
  */
 export default function UpdateInstaller({
@@ -55,22 +54,41 @@ export default function UpdateInstaller({
   const apkPathRef = useRef('');
   const abiRef = useRef('');
   const unsubRef = useRef<(() => void) | null>(null);
+  /** 下载单飞锁：快速双击 / 连点重试只允许一个下载流程 */
+  const downloadInFlightRef = useRef(false);
+  /** 供「重新打开弹窗」判断阶段（effect 不依赖 phase，避免阶段变化触发重置） */
+  const phaseRef = useRef<Phase>('checking');
+  phaseRef.current = phase;
 
-  const asset = buildApkAsset(version, abiRef.current, IS_PLUS_BUILD ? 'plus' : 'public');
+  // version 为空（尚未检查到更新）时不能在这里抛错：该组件是常驻挂载的，
+  // buildApkAsset 的校验异常会直接让整个设置页被 ErrorBoundary 接管。
+  let asset: ReturnType<typeof buildApkAsset> | null = null;
+  if (version) {
+    try {
+      asset = buildApkAsset(version, abiRef.current, IS_PLUS_BUILD ? 'plus' : 'public');
+    } catch {
+      asset = null;
+    }
+  }
 
   const cleanup = useCallback(() => {
     unsubRef.current?.();
     unsubRef.current = null;
   }, []);
 
-  // 打开时准备：设备 ABI + 安装权限
+  // 打开时准备：设备 ABI + 安装权限。
+  // 隐藏不取消下载、也不清理进度监听：用户点「后台下载」收起弹窗后下载继续；
+  // 重新打开时若仍在下载/安装/等权限，直接沿用后台状态，不再重置回 ready。
   useEffect(() => {
-    if (!visible) {
-      // 注意：这里不取消下载 —— 「后台下载」按钮会把弹窗收起、下载继续；
-      // 真正的取消走「取消下载」按钮（cancelApkDownload）。
-      cleanup();
+    if (!visible) return;
+    const current = phaseRef.current;
+    if (
+      current === 'downloading' ||
+      current === 'installing' ||
+      current === 'perm' ||
+      current === 'error'
+    )
       return;
-    }
     let alive = true;
     setPhase('checking');
     setPercent(0);
@@ -89,7 +107,10 @@ export default function UpdateInstaller({
     return () => {
       alive = false;
     };
-  }, [visible, cleanup]);
+  }, [visible]);
+
+  // 仅组件卸载时释放进度监听；隐藏弹窗不算卸载（后台下载要继续更新状态）
+  useEffect(() => () => cleanup(), [cleanup]);
 
   // 从「安装未知应用」设置页返回：复查权限，若已授权且包已下载则直接安装
   useEffect(() => {
@@ -114,28 +135,34 @@ export default function UpdateInstaller({
   }, [visible, phase]);
 
   const startDownload = useCallback(async () => {
-    const a = buildApkAsset(version, abiRef.current, IS_PLUS_BUILD ? 'plus' : 'public');
-    // 境内直连 GitHub 的下载链路经常不通：自建源（gnz48.tech）有同名包就优先，GitHub 兜底
-    let primary = a.primaryUrl;
-    let fallback = a.fallbackUrl;
-    const selfUrl = await findSelfHostedUrl(a.assetName);
-    if (selfUrl) {
-      fallback = primary;
-      primary = selfUrl;
-    }
-    setPhase('downloading');
-    setPercent(0);
-    setReceived(0);
-    setTotal(0);
-    cleanup();
-    unsubRef.current = onApkProgress((p) => {
-      const tot = Number(p?.total) || 0;
-      const rec = Number(p?.received) || 0;
-      setReceived(rec);
-      setTotal(tot);
-      setPercent(tot > 0 ? Math.min(100, Math.round((rec / tot) * 100)) : 0);
-    });
+    // 单飞：双击/连点「立即更新」或错误页连点「重试」只跑一个下载流程
+    if (downloadInFlightRef.current) return;
+    downloadInFlightRef.current = true;
     try {
+      // 先进入 checking：findSelfHostedUrl 最长会等 10 秒，期间必须禁用主按钮，
+      // 否则界面仍显示「立即更新」，用户会误以为没响应。
+      setPhase('checking');
+      const a = buildApkAsset(version, abiRef.current, IS_PLUS_BUILD ? 'plus' : 'public');
+      // 境内直连 GitHub 的下载链路经常不通：自建源（gnz48.tech）有同名包就优先，GitHub 兜底
+      let primary = a.primaryUrl;
+      let fallback = a.fallbackUrl;
+      const selfUrl = await findSelfHostedUrl(a.assetName);
+      if (selfUrl) {
+        fallback = primary;
+        primary = selfUrl;
+      }
+      setPhase('downloading');
+      setPercent(0);
+      setReceived(0);
+      setTotal(0);
+      cleanup();
+      unsubRef.current = onApkProgress((p) => {
+        const tot = Number(p?.total) || 0;
+        const rec = Number(p?.received) || 0;
+        setReceived(rec);
+        setTotal(tot);
+        setPercent(tot > 0 ? Math.min(100, Math.round((rec / tot) * 100)) : 0);
+      });
       const path = await downloadApk(primary, fallback, a.fileName);
       apkPathRef.current = path;
       cleanup();
@@ -156,10 +183,12 @@ export default function UpdateInstaller({
         setPhase('ready');
         return;
       }
-      setError(e?.message || t('下载失败'));
+      setError(e?.message || '');
       setPhase('error');
+    } finally {
+      downloadInFlightRef.current = false;
     }
-  }, [version, cleanup, t]);
+  }, [version, cleanup]);
 
   const onPrimary = useCallback(async () => {
     if (phase === 'downloading') {
@@ -198,16 +227,28 @@ export default function UpdateInstaller({
             : t('立即更新');
 
   const busy = phase === 'downloading' || phase === 'installing' || phase === 'checking';
-  const sizeText = total > 0
-    ? `${(received / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB`
-    : received > 0
-      ? `${(received / 1024 / 1024).toFixed(1)} MB`
-      : '';
+  const sizeText =
+    total > 0
+      ? `${(received / 1024 / 1024).toFixed(1)} MB / ${(total / 1024 / 1024).toFixed(1)} MB`
+      : received > 0
+        ? `${(received / 1024 / 1024).toFixed(1)} MB`
+        : '';
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={busy ? () => {} : onClose} statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={busy ? () => {} : onClose}
+      statusBarTranslucent
+    >
       <View style={styles.backdrop}>
-        <View style={[styles.card, { backgroundColor: palette.surfaceElevated, borderColor: palette.hairline }]}>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: palette.surfaceElevated, borderColor: palette.hairline },
+          ]}
+        >
           <View style={styles.head}>
             <View style={[styles.iconWrap, { backgroundColor: palette.tintSoft }]}>
               <MaterialCommunityIcons name="cellphone-arrow-down" size={22} color={palette.tint} />
@@ -217,14 +258,25 @@ export default function UpdateInstaller({
                 {t('发现新版本 {v}', { v: version })}
               </Text>
               <Text style={[styles.sub, { color: palette.labelSecondary }]} numberOfLines={1}>
-                {t('当前 v{v} · {abi}', { v: APP_VERSION, abi: asset.abiTag === 'v8a' ? 'arm64-v8a' : asset.abiTag })}
+                {t('当前 v{v} · {abi}', {
+                  v: APP_VERSION,
+                  abi: asset?.abiTag === 'v8a' ? 'arm64-v8a' : asset?.abiTag || 'universal',
+                })}
               </Text>
             </View>
           </View>
 
           {/* 进度 */}
           <View style={[styles.track, { backgroundColor: palette.fill2 }]}>
-            <View style={[styles.fill, { backgroundColor: palette.tint, width: `${phase === 'downloading' ? Math.max(percent, 2) : phase === 'installing' ? 100 : 0}%` }]} />
+            <View
+              style={[
+                styles.fill,
+                {
+                  backgroundColor: palette.tint,
+                  width: `${phase === 'downloading' ? Math.max(percent, 2) : phase === 'installing' ? 100 : 0}%`,
+                },
+              ]}
+            />
           </View>
           <Text style={[styles.meta, { color: palette.labelTertiary }]} numberOfLines={1}>
             {phase === 'downloading'
@@ -234,7 +286,7 @@ export default function UpdateInstaller({
                 : phase === 'perm'
                   ? t('需要「安装未知应用」权限才能安装')
                   : phase === 'error'
-                    ? error && `${t('下载失败')}：${error}`
+                    ? error || t('下载失败')
                     : t('APK 会安装到当前应用，数据不会丢失')}
           </Text>
 
@@ -251,7 +303,11 @@ export default function UpdateInstaller({
               activeOpacity={0.8}
             >
               <Text style={[styles.btnText, { color: palette.label }]}>
-                {phase === 'downloading' ? t('后台下载') : phase === 'installing' ? t('完成') : t('稍后')}
+                {phase === 'downloading'
+                  ? t('后台下载')
+                  : phase === 'installing'
+                    ? t('完成')
+                    : t('稍后')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -269,7 +325,9 @@ export default function UpdateInstaller({
           </View>
 
           {phase === 'installing' ? (
-            <Text style={[styles.footnote, { color: palette.labelTertiary }]}>{t('安装包已交给系统，安装完成后重新打开应用即可')}</Text>
+            <Text style={[styles.footnote, { color: palette.labelTertiary }]}>
+              {t('安装包已交给系统，安装完成后重新打开应用即可')}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -278,10 +336,28 @@ export default function UpdateInstaller({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 28 },
-  card: { width: '100%', maxWidth: 420, borderRadius: radiiAlias.card, borderWidth: StyleSheet.hairlineWidth, padding: 18 },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: radiiAlias.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 18,
+  },
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  iconWrap: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { fontSize: 16, fontWeight: '800' },
   sub: { fontSize: 12, marginTop: 3 },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
@@ -289,7 +365,13 @@ const styles = StyleSheet.create({
   meta: { fontSize: 12, marginTop: 8, lineHeight: 17 },
   tip: { fontSize: 12, marginTop: 8, lineHeight: 18 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  btn: { flex: 1, height: 44, borderRadius: radiiAlias.button, alignItems: 'center', justifyContent: 'center' },
+  btn: {
+    flex: 1,
+    height: 44,
+    borderRadius: radiiAlias.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   btnPrimary: { flex: 1.25 },
   btnText: { fontSize: 14, fontWeight: '700' },
   footnote: { fontSize: 11, marginTop: 12, textAlign: 'center' },

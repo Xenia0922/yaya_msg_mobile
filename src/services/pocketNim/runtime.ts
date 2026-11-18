@@ -6,19 +6,14 @@
  * push-notification-ios 两个外部依赖，后者用空实现替换，理由见代码注释）。
  */
 
-import {
-  NIM_APP_KEY,
-  NIM_CHATROOM_ADDRESSES,
-  NimCredentials,
-  NimSelfProfile,
-} from './types';
+import { NIM_APP_KEY, NIM_CHATROOM_ADDRESSES, NimCredentials, NimSelfProfile } from './types';
 
 let sdkRef: any = null;
 
 /** 懒加载内置 SDK（避免 App 启动即解析 1MB 包体） */
 export function loadNimSdk(): any {
   if (sdkRef) return sdkRef;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+
   const mod = require('../../third_party/nim/NIM_Web_SDK_rn.js');
   sdkRef = mod && mod.default ? mod.default : mod;
   return sdkRef;
@@ -31,15 +26,23 @@ export function normalizeCredentials(raw: any): NimCredentials | null {
   if (!content || typeof content !== 'object') return null;
 
   const userInfo = content.userInfo || content.user || {};
-  const accid = String(content.accid || content.accId || content.imUserId || userInfo.accid || userInfo.imUserId || '');
+  const accid = String(
+    content.accid || content.accId || content.imUserId || userInfo.accid || userInfo.imUserId || '',
+  );
   const token = String(content.pwd || content.token || content.imPwd || userInfo.imPwd || '');
   if (!accid || !token) return null;
 
-  const userId = Number(content.userId || userInfo.userId || 0);
+  // 64 位 userId 可能是 19 位字符串：直接 Number 会超过 2^53 丢精度（发出去的身份 id 就错了）。
+  // 安全整数范围内保持 number（兼容既有逻辑），超出则原样保留字符串。
+  const rawUserId = content.userId ?? userInfo.userId ?? 0;
+  const rawUserIdText = String(rawUserId).trim();
+  const numericUserId = Number(rawUserIdText);
+  const userId: number | string =
+    rawUserIdText && Number.isSafeInteger(numericUserId) ? numericUserId : rawUserIdText || 0;
   return {
     accid,
     token,
-    userId: Number.isFinite(userId) ? userId : 0,
+    userId,
     nickName: String(userInfo.nickName || userInfo.nickname || content.nickName || ''),
     avatar: String(userInfo.avatar || content.avatar || ''),
     level: Number(userInfo.level || 0) || 0,

@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getPlayerHtml } from '../../components/media/player';
 import { setPipAspect } from '../../utils/pip';
@@ -51,10 +51,19 @@ export const WebKernel = forwardRef<WebKernelHandle, Props>(function WebKernel(
   const resumeOnce = useRef<number>(resumeAt || 0);
   const html = useMemo(
     // showControls 恒 false：RN 控制层（PlayerChrome）已接管播放/进度/倍速，
-    // 若 VOD 同时开 HTML 原生 controls 会出现「双进度条/双控制」互相打架（2026-10-03 修复）
-    () => getPlayerHtml(source.url, undefined, resumeOnce.current || 0, false, (source.headers || {}) as any, Number(source.volumeBoost) || 1, !!source.coverPortrait),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [source.url, source.headers, source.coverPortrait],
+    // 若 VOD 同时开 HTML 原生 controls 会出现「双进度条/双控制」互相打架（修复）
+    () =>
+      getPlayerHtml(
+        source.url,
+        undefined,
+        resumeOnce.current || 0,
+        false,
+        (source.headers || {}) as any,
+        Number(source.volumeBoost) || 1,
+        !!source.coverPortrait,
+      ),
+
+    [source.url, source.headers, source.coverPortrait, source.volumeBoost],
   );
 
   return (
@@ -82,7 +91,7 @@ export const WebKernel = forwardRef<WebKernelHandle, Props>(function WebKernel(
             onError(String(data.error || '').slice(0, 160) || '网页播放器错误');
           } else if (data.type === 'duration') {
             // 时长回传：网页内核此前从不上报 duration → store.duration 恒 0，
-            // RN 进度条显示 0:00 且**完全拖不动**（2026-10-03 修复）
+            // RN 进度条显示 0:00 且**完全拖不动**（修复）
             const dur = Number(data.duration) || 0;
             if (Number.isFinite(dur) && dur > 0) usePlayerStore.getState().setDuration(dur);
           } else if (data.type === 'videosize') {
@@ -94,7 +103,10 @@ export const WebKernel = forwardRef<WebKernelHandle, Props>(function WebKernel(
         } catch {}
       }}
       onError={(syntheticEvent) => {
-        onError(String(syntheticEvent?.nativeEvent?.description || '').slice(0, 160) || '网页播放器加载失败');
+        onError(
+          String(syntheticEvent?.nativeEvent?.description || '').slice(0, 160) ||
+            '网页播放器加载失败',
+        );
       }}
     />
   );

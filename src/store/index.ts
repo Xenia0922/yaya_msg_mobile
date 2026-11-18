@@ -12,17 +12,22 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   settings: { ...DEFAULT_SETTINGS },
-  setSettings: (patch) =>
-    set((state) => ({ settings: { ...state.settings, ...patch } })),
+  setSettings: (patch) => set((state) => ({ settings: { ...state.settings, ...patch } })),
 }));
 
 interface MemberState {
   members: Member[];
   membersLoaded: boolean;
   setMembers: (members: Member[]) => void;
-  updateMemberRoomIds: (channelId: string, patch: Partial<Pick<Member, 'serverId' | 'channelId' | 'yklzId'>>) => void;
+  updateMemberRoomIds: (
+    channelId: string,
+    patch: Partial<Pick<Member, 'serverId' | 'channelId' | 'yklzId'>>,
+  ) => void;
   /** 按 userId 回写房间映射（seine 解析结果），供 roomMapCache 使用 */
-  patchMemberByUserId: (memberId: string, patch: Partial<Pick<Member, 'serverId' | 'channelId' | 'yklzId' | 'roomId' | 'liveRoomId'>>) => void;
+  patchMemberByUserId: (
+    memberId: string,
+    patch: Partial<Pick<Member, 'serverId' | 'channelId' | 'yklzId' | 'roomId' | 'liveRoomId'>>,
+  ) => void;
 }
 
 export const useMemberStore = create<MemberState>((set) => ({
@@ -61,9 +66,12 @@ export const useUiStore = create<UiState>((set) => ({
   tabBarHiddenByRoute: { Media: false, Rooms: false },
   toastMessage: '',
   screenBackdrop: null,
-  setTabBarHidden: (hidden, route) => set((state) => state.tabBarHiddenByRoute[route] === hidden
-    ? state
-    : { tabBarHiddenByRoute: { ...state.tabBarHiddenByRoute, [route]: hidden } }),
+  setTabBarHidden: (hidden, route) =>
+    set((state) =>
+      state.tabBarHiddenByRoute[route] === hidden
+        ? state
+        : { tabBarHiddenByRoute: { ...state.tabBarHiddenByRoute, [route]: hidden } },
+    ),
   showToast: (message) => set({ toastMessage: message }),
   hideToast: () => set({ toastMessage: '' }),
   setScreenBackdrop: (v) => set({ screenBackdrop: v }),
@@ -110,7 +118,8 @@ AsyncStorage.getItem(ANNOUNCEMENT_SEEN_KEY)
 
 // --- 版本更新检测 ---
 
-const GITHUB_RELEASES_URL = 'https://api.github.com/repos/Xenia0922/yaya_msg_mobile/releases/latest';
+const GITHUB_RELEASES_URL =
+  'https://api.github.com/repos/Xenia0922/yaya_msg_mobile/releases/latest';
 // 降级源：GitHub release 页面 HTML（无 API 匿名限流；共享出口 IP 触发 403 时自动切换）
 const GITHUB_RELEASES_PAGE = 'https://github.com/Xenia0922/yaya_msg_mobile/releases/latest';
 // 更新跳转链接：统一指向用户自建下载页（夸克网盘 + GitHub 双渠道，可随时改页内链接无需发版）
@@ -171,16 +180,25 @@ export const useUpdateStore = create<UpdateState>((set) => ({
     // 并发锁：静默检查进行中时，普通调用直接跳过；force（手动检查）必须继续，
     // 否则启动静默检查未结束时手动点「检查更新」会被吞 → 误报「已是最新版本」
     if (updateChecking && !force) return false;
+    // 先占锁再做任何 await：原实现把锁放在 AsyncStorage.getItem 之后，并发点按可同时穿透
+    updateChecking = true;
     const { lastCheckedAt } = useUpdateStore.getState();
     // 合并内存与持久化的检查时间：非强制且 24h 内已查过则直接跳过（启动静默限流）
     const persisted = await AsyncStorage.getItem(UPDATE_LAST_CHECK_KEY).catch(() => null);
     const persistedTs = persisted ? Number(persisted) || 0 : 0;
     const lastTs = Math.max(lastCheckedAt, persistedTs);
-    if (!force && lastTs && Date.now() - lastTs < UPDATE_CHECK_INTERVAL) return false;
-    updateChecking = true;
+    if (!force && lastTs && Date.now() - lastTs < UPDATE_CHECK_INTERVAL) {
+      updateChecking = false;
+      return false;
+    }
     const finish = (has: boolean, tag: string, url: string) => {
       const now = Date.now();
-      set({ hasUpdate: has, latestVersion: has ? tag : '', latestUrl: has ? url : '', lastCheckedAt: now });
+      set({
+        hasUpdate: has,
+        latestVersion: has ? tag : '',
+        latestUrl: has ? url : '',
+        lastCheckedAt: now,
+      });
       AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, String(now)).catch(() => {});
     };
     try {
@@ -188,18 +206,25 @@ export const useUpdateStore = create<UpdateState>((set) => ({
       let tag = '';
       try {
         const res = await Promise.race([
-          fetch(GITHUB_RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'yaya-msg-mobile' } }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT)),
+          fetch(GITHUB_RELEASES_URL, {
+            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'yaya-msg-mobile' },
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT),
+          ),
         ]);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: any = parseMaybeJson(await res.text());
         tag = String(data.tag_name || data.name || '');
       } catch {
         // 源2：GitHub release 页面 HTML（无 API 匿名限流）：重定向 URL 提取 tag
-        const UA = 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36';
+        const UA =
+          'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36';
         const page = await Promise.race([
           fetch(GITHUB_RELEASES_PAGE, { headers: { 'User-Agent': UA } }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT + 2000)),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), UPDATE_TIMEOUT + 2000),
+          ),
         ]);
         if (!page.ok) throw new Error(`HTTP ${page.status}`);
         const finalUrl = page.url || GITHUB_RELEASES_PAGE;

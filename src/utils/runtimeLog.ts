@@ -44,12 +44,22 @@ function trim(arr: LogEntry[]): LogEntry[] {
 }
 
 function redactSensitive(value: string): string {
-  return value
-    .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [REDACTED]')
-    .replace(/\b(SESSDATA|bili_jct|DedeUserID__ckMd5|bilibiliCookie|p48Token|access[_-]?token|refresh[_-]?token|authorization|cookie|ticket|token)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi, '$1$2[REDACTED]')
-    // 云信/流地址凭据：accid（云信账号）、nimToken、以及播放地址里的 wsSecret（等同播放密钥）
-    .replace(/\b(accid|nimToken|imToken|nimPwd)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi, '$1$2[REDACTED]')
-    .replace(/([?&](?:wsSecret|wsTime|wSecret)=)[^&\s"']+/gi, '$1[REDACTED]');
+  return (
+    value
+      .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [REDACTED]')
+      // Cookie/Set-Cookie 头常见形式是分号串，先整行脱敏，避免只掩盖第一个键值。
+      .replace(/\b(?:Set-)?Cookie\b\s*[:=]\s*[^\r\n]+/gi, 'Cookie: [REDACTED]')
+      .replace(
+        /\b(SESSDATA|bili_jct|DedeUserID__ckMd5|bilibiliCookie|p48Token|access[_-]?token|refresh[_-]?token|authorization|cookie|ticket|token)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi,
+        '$1$2[REDACTED]',
+      )
+      // 云信/流地址凭据：accid（云信账号）、nimToken、以及播放地址里的 wsSecret（等同播放密钥）
+      .replace(
+        /\b(accid|nimToken|imToken|nimPwd)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi,
+        '$1$2[REDACTED]',
+      )
+      .replace(/([?&](?:wsSecret|wsTime|wSecret)=)[^&\s"']+/gi, '$1[REDACTED]')
+  );
 }
 
 function redactEntry(entry: LogEntry): LogEntry {
@@ -90,10 +100,16 @@ function extractStack(args: unknown[]): string | undefined {
 // ===== 对外 API =====
 
 /** console.debug 转发：logcat（ReactNativeJS tag）可见，且不被 installConsoleCapture 捕获 → 不重复 */
-function tee(level: 'info' | 'warn' | 'error', tag: string | undefined, msg: string, stack?: string) {
+function tee(
+  level: 'info' | 'warn' | 'error',
+  tag: string | undefined,
+  msg: string,
+  stack?: string,
+) {
   try {
     const line = redactSensitive(tag ? `[${tag}] ${msg}` : msg);
-    if (level === 'error') console.debug(`[ERR] ${line}${stack ? `\n${redactSensitive(stack)}` : ''}`);
+    if (level === 'error')
+      console.debug(`[ERR] ${line}${stack ? `\n${redactSensitive(stack)}` : ''}`);
     else console.debug(line);
   } catch {
     /* 忽略 */
@@ -186,7 +202,7 @@ export async function initRuntimeLog() {
   installConsoleCapture();
 }
 
-// 接管 console.* ，让全应用已有的 console.warn/error 自动入日志
+// 接管 console.*，让全应用已有的 console.warn/error 自动入日志
 function installConsoleCapture() {
   if (consoleInstalled) return;
   consoleInstalled = true;

@@ -2,24 +2,46 @@
  * 私信媒体 URL 解析（按官方客户端实现 private-message-formatters-feature.js）。
  *
  * 旧版实现的做法：
- *  - 图片字段优先 imgUrl（口袋私信图片就是这个词），再 imageUrl / pictureUrl / picUrl / photoUrl / cover / url / path
- *  - 地址归一化：相对路径 → source.48.cn（图片）/ mp4.48.cn（音视频），/mediasource、/imagesource → source.48.cn
- *  - 类型判断：扩展名优先，其次看 messageType 里的 IMAGE / AUDIO / VIDEO
+ * - 图片字段优先 imgUrl（口袋私信图片就是这个词），再 imageUrl / pictureUrl / picUrl / photoUrl / cover / url / path
+ * - 地址归一化：相对路径 → source.48.cn（图片）/ mp4.48.cn（音视频），/mediasource、/imagesource → source.48.cn
+ * - 类型判断：扩展名优先，其次看 messageType 里的 IMAGE / AUDIO / VIDEO
  */
 
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|bmp|heic|avif)$/i;
 
 /** 媒体 URL 可能出现的字段名（顺序与旧版实现一致，imgUrl 在前）。 */
 export const MEDIA_URL_KEYS = [
-  'imgUrl', 'imageUrl', 'pictureUrl', 'picUrl', 'photoUrl', 'cover', 'coverUrl', 'url', 'path',
-  'mediaUrl', 'imgPath', 'picPath', 'imagePath',
-  'audioUrl', 'voiceUrl', 'videoUrl', 'mp4Url', 'playUrl',
-  'message.url', 'msg.url',
+  'imgUrl',
+  'imageUrl',
+  'pictureUrl',
+  'picUrl',
+  'photoUrl',
+  'cover',
+  'coverUrl',
+  'url',
+  'path',
+  'mediaUrl',
+  'imgPath',
+  'picPath',
+  'imagePath',
+  'audioUrl',
+  'voiceUrl',
+  'videoUrl',
+  'mp4Url',
+  'playUrl',
+  'message.url',
+  'msg.url',
 ];
 
 /** 图片消息里可能包着图片信息的外层字段（旧版实现会单独作为候选）。 */
 export const MEDIA_INFO_KEYS = [
-  'imageInfo', 'imgInfo', 'pictureInfo', 'voiceInfo', 'audioInfo', 'videoInfo', 'replyInfo',
+  'imageInfo',
+  'imgInfo',
+  'pictureInfo',
+  'voiceInfo',
+  'audioInfo',
+  'videoInfo',
+  'replyInfo',
 ];
 
 /**
@@ -27,9 +49,33 @@ export const MEDIA_INFO_KEYS = [
  * 不是本条消息的媒体。不跳过的话，纯文字私信会被渲染成对方的头像图片。
  */
 const NON_MEDIA_KEYS = new Set([
-  'user', 'userinfo', 'userInfo', 'sender', 'senderInfo', 'fromUser', 'toUser', 'targetUser', 'targetUserInfo',
-  'starInfo', 'star', 'member', 'memberInfo', 'profile', 'avatar', 'headImage', 'headImg', 'headerImg',
-  'badge', 'badgeInfo', 'medal', 'medalInfo', 'levelInfo', 'giftInfo', 'gift', 'rank', 'roomInfo',
+  'user',
+  'userinfo',
+  'userInfo',
+  'sender',
+  'senderInfo',
+  'fromUser',
+  'toUser',
+  'targetUser',
+  'targetUserInfo',
+  'starInfo',
+  'star',
+  'member',
+  'memberInfo',
+  'profile',
+  'avatar',
+  'headImage',
+  'headImg',
+  'headerImg',
+  'badge',
+  'badgeInfo',
+  'medal',
+  'medalInfo',
+  'levelInfo',
+  'giftInfo',
+  'gift',
+  'rank',
+  'roomInfo',
 ]);
 
 function pathnameOf(value: string): string {
@@ -44,12 +90,16 @@ export function isImageLikeUrl(value: unknown): boolean {
  * 相对路径补全。
  * @param preferredHost 'source' = 图片（source.48.cn），其它 = 音视频（mp4.48.cn）
  */
-export function normalizePrivateMediaUrl(raw: unknown, preferredHost: 'source' | 'mp4' = 'mp4'): string {
+export function normalizePrivateMediaUrl(
+  raw: unknown,
+  preferredHost: 'source' | 'mp4' = 'mp4',
+): string {
   const value = String(raw ?? '').trim();
   if (!value) return '';
   if (value.startsWith('//')) return `https:${value}`;
   if (/^https?:\/\//i.test(value)) return value.replace(/^http:\/\//i, 'https://');
-  if (value.startsWith('/mediasource/') || value.startsWith('/imagesource/')) return `https://source.48.cn${value}`;
+  if (value.startsWith('/mediasource/') || value.startsWith('/imagesource/'))
+    return `https://source.48.cn${value}`;
   const base = preferredHost === 'source' ? 'https://source.48.cn' : 'https://mp4.48.cn';
   return `${base}${value.startsWith('/') ? '' : '/'}${value}`;
 }
@@ -86,8 +136,16 @@ export function deepFindImageUrl(source: unknown, depth = 3): string {
  * 旧版实现读的是 `item.user.avatar`，相对路径同样拼 source.48.cn。
  */
 export const AVATAR_KEYS = [
-  'user.avatar', 'user.headImg', 'user.headImage', 'user.avatarUrl', 'user.picUrl',
-  'avatar', 'headImg', 'headImage', 'avatarUrl', 'picUrl',
+  'user.avatar',
+  'user.headImg',
+  'user.headImage',
+  'user.avatarUrl',
+  'user.picUrl',
+  'avatar',
+  'headImg',
+  'headImage',
+  'avatarUrl',
+  'picUrl',
 ];
 
 function readPath(source: any, path: string): string {

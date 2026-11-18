@@ -36,7 +36,10 @@ for (const l of ['zh-Hant', 'en', 'ja', 'ko']) {
   const keys = [];
   for (const line of s.split(/\r?\n/)) {
     let m = line.match(/^\s*'([^']*)'\s*:/);
-    if (m) { keys.push(m[1]); continue; }
+    if (m) {
+      keys.push(m[1]);
+      continue;
+    }
     m = line.match(/^\s*([^'":][^:\n]*?)\s*:/);
     if (m) keys.push(m[1]);
   }
@@ -49,7 +52,9 @@ console.log('used keys:', used.size);
 let missing = 0;
 const missingList = [];
 for (const k of [...used].sort()) {
-  const miss = Object.entries(langs).filter(([, set]) => !set.has(k)).map(([n]) => n);
+  const miss = Object.entries(langs)
+    .filter(([, set]) => !set.has(k))
+    .map(([n]) => n);
   if (miss.length) {
     missing++;
     missingList.push({ k, miss });
@@ -57,6 +62,14 @@ for (const k of [...used].sort()) {
   }
 }
 console.log('missing total:', missing);
-fs.writeFileSync(path.join(root, '..', 'coverage-report.txt'),
-  'used keys: ' + used.size + '\nmissing total: ' + missing + '\n\n' +
-  missingList.map((m) => JSON.stringify(m.k)).join('\n') + '\n', 'utf8');
+fs.writeFileSync(
+  path.join(root, '..', 'coverage-report.txt'),
+  'used keys: ' +
+    used.size +
+    '\nmissing total: ' +
+    missing +
+    '\n\n' +
+    missingList.map((m) => JSON.stringify(m.k)).join('\n') +
+    '\n',
+  'utf8',
+);

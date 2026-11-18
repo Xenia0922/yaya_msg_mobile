@@ -1,11 +1,11 @@
 /**
  * MiniPlayerBar · iOS 26 Liquid Glass 浮层
- *  - 玻璃感悬浮胶囊（顶部浮出 + 阴影）
- *  - 圆角 28，大封面旋转动画
- *  - 进度条可拖动
- *  - 上下手势：下滑隐藏、上滑复位
- *  - 弹簧按压反馈
- *  - 所有音乐控制逻辑（play/pause/next/mode/seek）保持原状
+ * - 玻璃感悬浮胶囊（顶部浮出 + 阴影）
+ * - 圆角 28，大封面旋转动画
+ * - 进度条可拖动
+ * - 上下手势：下滑隐藏、上滑复位
+ * - 弹簧按压反馈
+ * - 所有音乐控制逻辑（play/pause/next/mode/seek）保持原状
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -126,49 +126,92 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
       onPanResponderMove: (e: GestureResponderEvent) => onProgMove(e.nativeEvent.pageX),
       onPanResponderRelease: () => onProgRelease(),
       onPanResponderTerminate: () => onProgRelease(),
-    })
+    }),
   ).current;
 
   // 唱片旋转：模块级单例（见 useVinylSpin）——跨详情页重进有记忆，切歌归零，暂停冻结。
-  const spinValue = useVinylSpin(track?.id, playbackState === 'playing' || playbackState === 'loading');
+  const spinValue = useVinylSpin(
+    track?.id,
+    playbackState === 'playing' || playbackState === 'loading',
+  );
   const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 8,
-      onPanResponderMove: (_, gs) => { if (Math.abs(gs.dy) > 8) translateY.setValue(gs.dy); },
-      onPanResponderRelease: (_, gs) => {
-        // 仅回弹复位：去掉「下滑隐藏」（隐藏后无恢复入口 = 半成品手势）
-        Animated.spring(translateY, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: true }).start();
+      onPanResponderMove: (_, gs) => {
+        if (Math.abs(gs.dy) > 8) translateY.setValue(gs.dy);
       },
-    })
+      onPanResponderRelease: (_, _gs) => {
+        // 仅回弹复位：去掉「下滑隐藏」（隐藏后无恢复入口 = 半成品手势）
+        Animated.spring(translateY, {
+          toValue: 0,
+          ...motion.spring.bouncy,
+          useNativeDriver: true,
+        }).start();
+      },
+    }),
   ).current;
 
-  const pressIn = () => Animated.spring(scaleAnim, { toValue: 0.94, ...motion.spring.bouncy, useNativeDriver: true }).start();
-  const pressOut = () => Animated.spring(scaleAnim, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: true }).start();
+  const pressIn = () =>
+    Animated.spring(scaleAnim, {
+      toValue: 0.94,
+      ...motion.spring.bouncy,
+      useNativeDriver: true,
+    }).start();
+  const pressOut = () =>
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      ...motion.spring.bouncy,
+      useNativeDriver: true,
+    }).start();
 
   const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
-  const coverUri = rawCover ? (rawCover.startsWith('http') ? rawCover : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`) : '';
+  const coverUri = rawCover
+    ? rawCover.startsWith('http')
+      ? rawCover
+      : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`
+    : '';
 
   // ⚠️ 不可在此处加 isPlayableHost(playUrl) 门卫：记忆恢复/暂停态 url=''（url 不持久化），
   // 门卫会静默拦截 → MiniBar 点播放"概率不触发"；FullScreenPlayer 无此门卫故正常。
-  // togglePause() 内部已含完整保护：url 非法/空→禁止翻转，url 空且有当前曲→重新解析开播。
+  // togglePause 内部已含完整保护：url 非法/空→禁止翻转，url 空且有当前曲→重新解析开播。
   const handleToggle = useCallback(() => {
     try {
+      // loading 时 MusicEngine.togglePause 内部会直接 return（防重复解析），
+      // 导致小窗的暂停按钮看似失效；这里显式停止本次加载，给出可感知结果。
+      if (useMusicPlayerStore.getState().playbackState === 'loading') {
+        MusicEngine.stop();
+        return;
+      }
       MusicEngine.togglePause();
     } catch {}
   }, []);
 
-  const handlePrev = useCallback(() => { try { MusicEngine.prev(); } catch {} }, []);
-  const handleNext = useCallback(() => { try { MusicEngine.next(); } catch {} }, []);
-  const handleMode = useCallback(() => { try { MusicEngine.cycleMode(); } catch {} }, []);
+  const handlePrev = useCallback(() => {
+    try {
+      MusicEngine.prev();
+    } catch {}
+  }, []);
+  const handleNext = useCallback(() => {
+    try {
+      MusicEngine.next();
+    } catch {}
+  }, []);
+  const handleMode = useCallback(() => {
+    try {
+      MusicEngine.cycleMode();
+    } catch {}
+  }, []);
 
   // B3 修复：显隐仅由「有曲目且非 idle」决定——url 未就绪（R2 FLAC 解析慢/记忆恢复）
   // 时 bar 保持可见（按钮由 togglePause 内部保护），不再闪烁消失
   if (!track || playbackState === 'idle') return null;
 
   return (
-    <GlassSurface radius={22} role="card"
+    <GlassSurface
+      radius={22}
+      role="card"
       // 提高不透明度：此前太透，后面卡片的爱心/封面会透出来（用户反馈「有点乱」）
       tintColor={palette.name === 'dark' ? 'rgba(22,22,26,0.90)' : 'rgba(255,255,255,0.90)'}
       style={[
@@ -194,7 +237,9 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
           const w = e.nativeEvent.layout.width;
           setProgWidth(w);
           progWidthRef.current = w;
-          progRef.current?.measureInWindow?.((x) => { progXRef.current = x; });
+          progRef.current?.measureInWindow?.((x) => {
+            progXRef.current = x;
+          });
         }}
         {...progPanMini.panHandlers}
       >
@@ -202,7 +247,11 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
         <Animated.View
           style={[
             styles.progressFill,
-            { backgroundColor: palette.tint, transform: [{ scaleX: displayPos }], transformOrigin: 'left' },
+            {
+              backgroundColor: palette.tint,
+              transform: [{ scaleX: displayPos }],
+              transformOrigin: 'left',
+            },
           ]}
         />
         <Animated.View style={[styles.progressThumbWrap, { transform: [{ translateX: thumbX }] }]}>
@@ -217,39 +266,81 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
 
       <Pressable onPress={onOpenFullScreen} style={styles.row}>
         <Animated.View style={[styles.cover, { transform: [{ rotate: spin }] }]}>
-          <CoverArt key={coverUri || track.title || '♪'} uri={coverUri || undefined} title={track.title || '♪'} size={48} round />
+          <CoverArt
+            key={coverUri || track.title || '♪'}
+            uri={coverUri || undefined}
+            title={track.title || '♪'}
+            size={48}
+            round
+          />
         </Animated.View>
         <View style={styles.info}>
           <Text
             numberOfLines={1}
-            style={[typography.subhead, { color: palette.label, fontWeight: '700', lineHeight: 20 }]}
+            style={[
+              typography.subhead,
+              { color: palette.label, fontWeight: '700', lineHeight: 20 },
+            ]}
           >
             {track.title || t('未知')}
           </Text>
           <Text
             numberOfLines={1}
-            style={[typography.caption1, { color: palette.labelTertiary, lineHeight: 14, marginTop: 2 }]}
+            style={[
+              typography.caption1,
+              { color: palette.labelTertiary, lineHeight: 14, marginTop: 2 },
+            ]}
           >
             {joinMeta([track.groupLabel, track.artist, track.album]) || t('官方音乐')}
           </Text>
         </View>
         <View style={styles.actions}>
-          <Pressable onPress={handleMode} onPressIn={pressIn} onPressOut={pressOut} style={styles.modeBtn}>
+          <Pressable
+            onPress={handleMode}
+            onPressIn={pressIn}
+            onPressOut={pressOut}
+            style={styles.modeBtn}
+          >
             <Icon
-              name={playMode === 'single' ? 'repeat-once' : playMode === 'random' ? 'shuffle-variant' : 'repeat'}
+              name={
+                playMode === 'single'
+                  ? 'repeat-once'
+                  : playMode === 'random'
+                    ? 'shuffle-variant'
+                    : 'repeat'
+              }
               size={18}
               color={palette.labelSecondary}
             />
           </Pressable>
-          <Pressable onPress={handlePrev} onPressIn={pressIn} onPressOut={pressOut} style={styles.smallCtrlBtn}>
+          <Pressable
+            onPress={handlePrev}
+            onPressIn={pressIn}
+            onPressOut={pressOut}
+            style={styles.smallCtrlBtn}
+          >
             <Icon name="skip-previous" size={26} color={palette.label} />
           </Pressable>
           <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <Pressable onPress={handleToggle} onPressIn={pressIn} onPressOut={pressOut} style={styles.playBtn}>
-              <Icon name={showPause ? 'pause-circle' : 'play-circle'} size={36} color={palette.tint} />
+            <Pressable
+              onPress={handleToggle}
+              onPressIn={pressIn}
+              onPressOut={pressOut}
+              style={styles.playBtn}
+            >
+              <Icon
+                name={showPause ? 'pause-circle' : 'play-circle'}
+                size={36}
+                color={palette.tint}
+              />
             </Pressable>
           </Animated.View>
-          <Pressable onPress={handleNext} onPressIn={pressIn} onPressOut={pressOut} style={styles.smallCtrlBtn}>
+          <Pressable
+            onPress={handleNext}
+            onPressIn={pressIn}
+            onPressOut={pressOut}
+            style={styles.smallCtrlBtn}
+          >
             <Icon name="skip-next" size={26} color={palette.label} />
           </Pressable>
         </View>
@@ -281,10 +372,34 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 4, paddingRight: 4 },
-  cover: { width: 48, height: 48, borderRadius: 22, backgroundColor: '#1a1a1a', overflow: 'hidden' },
+  cover: {
+    width: 48,
+    height: 48,
+    borderRadius: 22,
+    backgroundColor: '#1a1a1a',
+    overflow: 'hidden',
+  },
   info: { flex: 1, minWidth: 0 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 0 },
-  playBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20 },
-  smallCtrlBtn: { width: 34, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 20 },
-  modeBtn: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18 },
+  playBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+  },
+  smallCtrlBtn: {
+    width: 34,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+  },
+  modeBtn: {
+    width: 34,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+  },
 });

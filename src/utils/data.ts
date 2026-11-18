@@ -64,8 +64,9 @@ export function normalizeUrl(value: any): string {
   if (raw.startsWith('//')) return `https:${raw}`;
   // ⚠️ 相对路径按「宿主」拼，不能一律拼 source.48.cn：
   // 48 图床（avatar/mediasource/backstage…）→ source.48.cn；
-  // 用户徽章/头像框等资源实际在 source1.48.cn（拼错域名 → 勋章框加载 404/不渲染，2026-10-19 用户反馈）。
-  if (raw.startsWith('/')) return `https://${/^(avatar|mediasource|backstage)\b/i.test(raw.slice(1)) ? 'source.48.cn' : 'source1.48.cn'}${raw}`;
+  // 用户徽章/头像框等资源实际在 source1.48.cn（拼错域名 → 勋章框加载 404/不渲染；用户反馈）。
+  if (raw.startsWith('/'))
+    return `https://${/^(avatar|mediasource|backstage)\b/i.test(raw.slice(1)) ? 'source.48.cn' : 'source1.48.cn'}${raw}`;
   return raw;
 }
 
@@ -74,16 +75,22 @@ export function parseMaybeJson(value: any): any {
   if (typeof value === 'object') return value;
   if (typeof value !== 'string') return null;
   // ⚠️ 必须先替换长数字再 parse：JSON.parse 对 15+ 位数字**不会失败**，只会静默丢精度，
-  // 「先 parse 失败再修」的写法永远走不到修复分支（2026-10-19 审计 D3）。
+  // 「先 parse 失败再修」的写法永远走不到修复分支（审计 D3）。
   const fixed = value.replace(/:\s*([0-9]{15,})/g, ':"$1"');
-  try { return JSON.parse(fixed); } catch {
+  try {
+    return JSON.parse(fixed);
+  } catch {
     // 替换后仍失败 → 按原始文本再试一次（可能是转义/编码问题，非长数字导致）
-    try { return JSON.parse(value); } catch { return null; }
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
   }
 }
 
 // 表情映射：官方 PopoEmoticons 107 tag → 本地表情图（require 资源，与官方客户端同款表情）。
-// 文本里的 [xx] 标签渲染为表情图片而非 unicode 近似字符（[发呆] 等此前直接漏渲染，2026-10-19 用户反馈）。
+// 文本里的 [xx] 标签渲染为表情图片而非 unicode 近似字符（[发呆] 等此前直接漏渲染；用户反馈）。
 // 映射表见 ./emojiMap（生成自官方 emoji.xml Tag↔File）。
 import EMOJI_MAP from './emojiMap';
 
@@ -127,8 +134,25 @@ export function messagePayload(item: any): any {
     const inlineText = typeof body.text === 'string' ? body.text.trim() : '';
     if (inlineText.startsWith('{')) {
       const inner = parseMaybeJson(inlineText);
-      if (inner && typeof inner === 'object' && (inner.replyInfo || inner.giftReplyInfo || inner.messageType)) {
+      if (
+        inner &&
+        typeof inner === 'object' &&
+        (inner.replyInfo ||
+          inner.giftReplyInfo ||
+          inner.reply ||
+          inner.replay ||
+          inner.replyGiftInfo ||
+          inner.voiceInfo ||
+          inner.audioInfo ||
+          inner.messageType)
+      ) {
         return { ...body, ...inner };
+      }
+    }
+    if (typeof body.attachment === 'string' && body.attachment.trim().startsWith('{')) {
+      const parsedAttach = parseMaybeJson(body.attachment);
+      if (parsedAttach && typeof parsedAttach === 'object') {
+        return { ...body, ...parsedAttach };
       }
     }
     return body;
@@ -159,14 +183,32 @@ export function humanizeRawMessageText(raw: string): string {
 
 function messageTextRaw(item: any): string {
   const body = messagePayload(item);
-  const type = String(item?.msgType || body?.msgType || body?.messageType || body?.type || '').toUpperCase();
+  const type = String(
+    item?.msgType || body?.msgType || body?.messageType || body?.type || '',
+  ).toUpperCase();
 
   // Media types: don't return raw body (file names, URLs) — let media card handle it
-  if (type === 'AUDIO' || type === 'VIDEO' || type === 'IMAGE' || type === 'LIVEPUSH' || type === 'SHARE_LIVE' || type === 'EXPRESSIMAGE' || type === 'EXPRESS') {
+  if (
+    type === 'AUDIO' ||
+    type === 'AUDIO_REPLY' ||
+    type === 'AUDIO_GIFT_REPLY' ||
+    type === 'FLIPCARD_AUDIO' ||
+    type === 'VIDEO' ||
+    type === 'IMAGE' ||
+    type === 'LIVEPUSH' ||
+    type === 'SHARE_LIVE' ||
+    type === 'EXPRESSIMAGE' ||
+    type === 'EXPRESS'
+  ) {
     // Only return text if there's a meaningful caption alongside the media
     if (body && typeof body === 'object') {
-      const caption = (body as any).text || (body as any).caption || (body as any).description || '';
-      if (typeof caption === 'string' && caption.trim() && !/^(https?:\/\/|voice_|video_|img_|live_)/i.test(caption)) {
+      const caption =
+        (body as any).text || (body as any).caption || (body as any).description || '';
+      if (
+        typeof caption === 'string' &&
+        caption.trim() &&
+        !/^(https?:\/\/|voice_|video_|img_|live_)/i.test(caption)
+      ) {
         return replaceEmojiText(caption);
       }
     }
@@ -178,7 +220,12 @@ function messageTextRaw(item: any): string {
   // last/message/get 返回的 lastMsgList[] 只有 msgContent（无 bodys/msgType）——
   // 房间列表大/小房间预览走的就是这条，缺这段兜底会导致「有最新消息但预览空白」
   const lastPreview = item?.msgContent ?? item?.content ?? item?.message;
-  if (typeof lastPreview === 'string' && lastPreview.trim() && !lastPreview.startsWith('{') && !lastPreview.startsWith('[')) {
+  if (
+    typeof lastPreview === 'string' &&
+    lastPreview.trim() &&
+    !lastPreview.startsWith('{') &&
+    !lastPreview.startsWith('[')
+  ) {
     return replaceEmojiText(lastPreview);
   }
 
@@ -189,7 +236,8 @@ function messageTextRaw(item: any): string {
       if (t) return replaceEmojiText(String(t));
     }
     // Fallback: try raw fields on item directly
-    const raw = item?.bodys ?? item?.body ?? item?.msgContent ?? item?.content ?? item?.message ?? '';
+    const raw =
+      item?.bodys ?? item?.body ?? item?.msgContent ?? item?.content ?? item?.message ?? '';
     if (typeof raw === 'string' && raw.trim() && !raw.startsWith('{') && !raw.startsWith('[')) {
       return replaceEmojiText(raw);
     }
@@ -201,14 +249,29 @@ function messageTextRaw(item: any): string {
     }
   }
 
-  const giftInfo = body?.giftInfo || body?.giftReplyInfo?.giftInfo || body?.bodys?.giftInfo;
-  const isGift = type.includes('GIFT') || (giftInfo && !type.includes('LIVE')) || String(item?.msgType) === '7';
+  const giftReplyInfo = (body?.giftReplyInfo ||
+    (body?.bodys as any)?.giftReplyInfo ||
+    {}) as Record<string, any>;
+  const giftInfo =
+    body?.giftInfo ||
+    giftReplyInfo?.giftInfo ||
+    giftReplyInfo?.replyGiftInfo ||
+    body?.bodys?.giftInfo;
+  // 只认明确的礼物类型或真实礼物载荷，不能把普通文本的 msgType=7 当礼物。
+  const hasGiftPayload = Boolean(giftInfo || body?.giftName || body?.giftId || body?.giftNum);
+  const isGift = type.includes('GIFT') || (hasGiftPayload && !type.includes('LIVE'));
+  const isGiftReplyType = type.includes('GIFT') && (type.includes('REPLY') || !!giftReplyInfo);
 
-  const replyInfo = body?.replyInfo || body?.giftReplyInfo || (body?.bodys as any)?.replyInfo || (body?.bodys as any)?.giftReplyInfo;
+  const replyInfo =
+    body?.replyInfo ||
+    body?.giftReplyInfo ||
+    (body?.bodys as any)?.replyInfo ||
+    (body?.bodys as any)?.giftReplyInfo;
   const isReply = type.includes('REPLY') || !!replyInfo;
-  if (isReply) {
+  if (isReply && !isGiftReplyType) {
     const rName = replyInfo?.replyName || '';
-    const replyText = replyInfo?.text || pickText(body, ['text', 'body.text', 'content', 'replyContent']);
+    const replyText =
+      replyInfo?.text || pickText(body, ['text', 'body.text', 'content', 'replyContent']);
     if (rName && replyText) return `回复 ${rName}：${replyText}`;
     if (replyText) return replyText;
     if (rName) return `回复 ${rName}`;
@@ -216,11 +279,29 @@ function messageTextRaw(item: any): string {
 
   if (isGift) {
     const source = giftInfo || body || {};
-    const giftName = pickText(source, ['giftName', 'name', 'giftInfo.giftName'], translate('礼物'));
-    const giftNum = pickText(source, ['giftNum', 'num', 'count', 'giftInfo.giftNum'], '1');
-    const gr = body?.giftReplyInfo || {};
-    const replyText = gr.replyName || body?.replyName || body?.text || body?.body || '';
-    const prefix = replyText && typeof replyText === 'string' && replyText.trim() ? `${replyText.trim()} · ` : '';
+    const giftName = pickText(
+      source,
+      ['giftName', 'name', 'giftInfo.giftName', 'replyGiftInfo.giftName'],
+      translate('礼物'),
+    );
+    const giftNum = pickText(
+      source,
+      ['giftNum', 'num', 'count', 'giftInfo.giftNum', 'replyGiftInfo.giftNum'],
+      '1',
+    );
+    const replyText =
+      giftReplyInfo.text ||
+      body?.text ||
+      (typeof body?.body === 'string' && !body.body.startsWith('{') ? body.body : '');
+    // 礼物回复（GIFTREPLY / AUDIO_GIFT_REPLY）没有独立正文时保持为空，
+    // 交给房间页的礼物卡/语音卡渲染；绝不能把 replyName（送礼人）当正文。
+    if (isGiftReplyType) {
+      return typeof replyText === 'string' ? replyText.trim() : '';
+    }
+    const prefix =
+      replyText && typeof replyText === 'string' && replyText.trim()
+        ? `${replyText.trim()} · `
+        : '';
     return `${prefix}${translate('送出礼物')}：${giftName} x${giftNum}`;
   }
   const text = pickText(body, [
@@ -235,7 +316,13 @@ function messageTextRaw(item: any): string {
   if (!text && body && typeof body === 'object') {
     // search deeper for text in nested objects
     for (const [_key, val] of Object.entries(body as Record<string, any>)) {
-      if (typeof val === 'string' && val.trim() && !val.startsWith('http') && !val.startsWith('{') && val.length < 500) {
+      if (
+        typeof val === 'string' &&
+        val.trim() &&
+        !val.startsWith('http') &&
+        !val.startsWith('{') &&
+        val.length < 500
+      ) {
         return replaceEmojiText(val);
       }
       if (val && typeof val === 'object') {
@@ -256,12 +343,17 @@ function messageTextRaw(item: any): string {
   if (text) return replaceEmojiText(String(text));
   const url = pickText(body, ['url', 'message.url', 'msg.url', 'audioUrl', 'videoUrl', 'imageUrl']);
   if (url) {
-    if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return translate('[语音消息]');
-    if (type.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return translate('[视频消息]');
-    if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return translate('[图片消息]');
+    if (type.includes('AUDIO') || /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url))
+      return translate('[语音消息]');
+    if (type.includes('VIDEO') || /\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url))
+      return translate('[视频消息]');
+    if (type.includes('IMAGE') || /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url))
+      return translate('[图片消息]');
     return translate('[链接消息]');
   }
-  return item?.msgType && !/^(LIVE|SHARE|TEXT)$/i.test(String(item.msgType)) ? `[${item.msgType}]` : '';
+  return item?.msgType && !/^(LIVE|SHARE|TEXT)$/i.test(String(item.msgType))
+    ? `[${item.msgType}]`
+    : '';
 }
 
 /** 对外入口：先做 HTML 清洗（官方富文本消息不再把 <div>/<span> 当文字显示） */
@@ -271,13 +363,7 @@ export function messageText(item: any): string {
 
 export function messageImageUrl(item: any): string {
   const body = messagePayload(item);
-  return normalizeUrl(pickText(body, [
-    'url',
-    'message.url',
-    'msg.url',
-    'imageUrl',
-    'cover',
-  ]));
+  return normalizeUrl(pickText(body, ['url', 'message.url', 'msg.url', 'imageUrl', 'cover']));
 }
 
 export function errorMessage(error: any): string {

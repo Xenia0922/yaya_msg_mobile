@@ -12,7 +12,10 @@ const format = readFileSync(new URL('../src/utils/format.ts', import.meta.url), 
 const timeStart = format.indexOf('export function toMs(');
 const timeEnd = format.indexOf('\n}', timeStart) + 2;
 assert.ok(timeStart >= 0 && timeEnd > timeStart);
-const code = ts.transpileModule(`${format.slice(timeStart, timeEnd)}\n${screen.slice(start, end)}\nexports.flipDeadline = flipDeadline;`, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const code = ts.transpileModule(
+  `${format.slice(timeStart, timeEnd)}\n${screen.slice(start, end)}\nexports.flipDeadline = flipDeadline;`,
+  { compilerOptions: { module: ts.ModuleKind.CommonJS } },
+).outputText;
 const exports = {};
 vm.runInNewContext(code, { exports });
 const startMs = 1700000000000;

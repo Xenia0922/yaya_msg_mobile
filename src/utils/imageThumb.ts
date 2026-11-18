@@ -1,5 +1,3 @@
-
-
 /** 缩略图专用域名（官方 App 同款） */
 const THUMB_HOST = 'https://source1.48.cn';
 

@@ -8,7 +8,7 @@ import { usePalette } from '../theme';
  * 筛选 chips 公共件（C3）。
  *
  * - `wrap`（默认 false）：横向滚动 + 右缘渐隐（适合分团/日期等长列表）；
- *   传 `wrap` 则自动换行（适合数量少、希望一眼看全的成员筛选）。
+ * 传 `wrap` 则自动换行（适合数量少、希望一眼看全的成员筛选）。
  * - 选中态由 `Pill` 统一为「半透明 tint 玻璃 + tint 描边」。
  */
 export function FilterChips({
@@ -30,7 +30,12 @@ export function FilterChips({
     return (
       <View style={[styles.wrap, style]}>
         {items.map((item) => (
-          <Pill key={item.key} label={item.label} selected={item.key === value} onPress={() => onSelect(item.key)} />
+          <Pill
+            key={item.key}
+            label={item.label}
+            selected={item.key === value}
+            onPress={() => onSelect(item.key)}
+          />
         ))}
       </View>
     );
@@ -38,9 +43,18 @@ export function FilterChips({
 
   return (
     <View style={[styles.rowWrap, style]}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         {items.map((item) => (
-          <Pill key={item.key} label={item.label} selected={item.key === value} onPress={() => onSelect(item.key)} />
+          <Pill
+            key={item.key}
+            label={item.label}
+            selected={item.key === value}
+            onPress={() => onSelect(item.key)}
+          />
         ))}
       </ScrollView>
       <LinearGradient

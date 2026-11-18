@@ -25,19 +25,67 @@ export const BUILD_TAG = '';
 
 function currentBranch() {
   try {
-    return execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot }).toString().trim();
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot })
+      .toString()
+      .trim();
+    if (branch && branch !== 'HEAD') return branch;
+  } catch {
+    /* 继续走 detached HEAD 兜底 */
+  }
+  // CI 的 detached checkout 由环境变量提供 ref 名。
+  const ciRef = String(
+    process.env.GITHUB_HEAD_REF ||
+      process.env.GITHUB_REF_NAME ||
+      process.env.CI_COMMIT_REF_NAME ||
+      '',
+  )
+    .trim()
+    .replace(/^refs\/heads\//, '')
+    .replace(/^origin\//, '');
+  if (ciRef) return ciRef;
+  // 本地 detached HEAD：git name-rev 会给出最近的 ref，如 plus~12 / origin/public~3。
+  try {
+    const name = execSync('git name-rev --name-only HEAD', { cwd: projectRoot })
+      .toString()
+      .trim()
+      .replace(/^remotes\/[^/]+\//, '');
+    const first = name.split(/[~^]/)[0];
+    if (first && first !== 'undefined') return first;
+  } catch {
+    /* 无 git 或浅克隆时忽略 */
+  }
+  return '';
+}
+
+function originRepoName() {
+  try {
+    const url = execSync('git remote get-url origin', { cwd: projectRoot }).toString().trim();
+    return (
+      url
+        .replace(/\.git$/i, '')
+        .split(/[/\\:]/)
+        .filter(Boolean)
+        .pop() || ''
+    );
   } catch {
     return '';
   }
 }
 
-/** 渠道推断顺序：显式环境变量 → CI 仓库名 → 本地分支。 */
+/** 渠道推断顺序：显式环境变量 → 仓库名（CI 或本地 origin）→ 分支。 */
 function detectFlavor() {
-  const fromEnv = String(process.env.YAYA_FLAVOR || '').trim().toLowerCase();
+  const fromEnv = String(process.env.YAYA_FLAVOR || '')
+    .trim()
+    .toLowerCase();
   if (fromEnv) return fromEnv;
-  // 私有出包仓库固定 plus；同名 ci-build 分支在公开仓库里仍是公版
-  if (/yaya_msg_mobile_plus$/i.test(String(process.env.GITHUB_REPOSITORY || '').trim())) return 'plus';
-  if (currentBranch() === 'plus') return 'plus';
+  // 私有出包仓库（仓库名以 _plus 结尾）固定 plus，与分支是 plus/ci-build/分离 HEAD 无关；
+  // 公开仓库的 ci-build 分支仍按公版处理。
+  const repo = String(process.env.GITHUB_REPOSITORY || originRepoName()).trim();
+  if (/yaya_msg_mobile_plus$/i.test(repo)) return 'plus';
+  const branch = currentBranch();
+  if (branch === 'plus') return 'plus';
+  // 没有 remote 的本地仓库无法从仓库名判渠道；专用出包分支 ci-build 按 plus 处理。
+  if (branch === 'ci-build' && !repo) return 'plus';
   return 'public';
 }
 
@@ -47,7 +95,9 @@ function stamp(date = new Date()) {
 }
 
 function writeBuildChannel(flavor) {
-  const normalized = String(flavor || '').trim().toLowerCase();
+  const normalized = String(flavor || '')
+    .trim()
+    .toLowerCase();
   if (!['plus', 'public'].includes(normalized)) {
     throw new Error(`构建渠道必须为 plus 或 public，收到：${flavor}`);
   }

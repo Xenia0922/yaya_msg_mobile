@@ -5,12 +5,13 @@ export const API_BASE = 'https://pocketapi.48.cn';
 export const BILIBILI_API = 'https://api.bilibili.com';
 
 // 成员数据权威源：数据发布于 data.gnz.hk（GNZ48 团站数据库镜像）。
-// 进入软件由 AppNavigator 调用 ensureMemberData() 无条件同步最新。
+// 进入软件由 AppNavigator 调用 ensureMemberData 无条件同步最新。
 /**
  * 自建镜像成员库（推荐源）：GitHub Action 每日同步上游 + 应用本地 overrides/extra 后产出。
  * 见 member-db/README.md。换成自建域名时只改这一行。
  */
-export const MEMBERS_URL_SELF = 'https://cdn.jsdelivr.net/gh/Xenia0922/yaya_msg_mobile@main/member-db/dist/members.json';
+export const MEMBERS_URL_SELF =
+  'https://cdn.jsdelivr.net/gh/Xenia0922/yaya_msg_mobile@main/member-db/dist/members.json';
 
 /**
  * 镜像的多 CDN 端点（按顺序重试，前一个失败才试下一个）。
@@ -29,7 +30,7 @@ export const MEMBERS_URL_SELF_LIST = [
 /** 上游 yk1z 库：自建源不可用时的回退（保证不全依赖自建可用性） */
 export const MEMBERS_URL = 'https://data.gnz.hk/members.json';
 
-export const APP_VERSION = '2.7.8';
+export const APP_VERSION = '2.8.0';
 
 export const MEMBER_DATA_SOURCE_URL = 'https://github.com/yk1z/yaya_msg';
 
@@ -43,7 +44,8 @@ export const NOTICE_URL = 'https://yaya-data.pages.dev/notice.json';
 
 export const YK1Z_URL = 'https://yaya-data.pages.dev/yk1z.json';
 
-export const USER_AGENT = 'PocketFans201807/7.0.41 (iPhone; iOS 17.0; Scale/3.00)';
+/** 口袋48 客户端 UA 的统一来源（此前 20+ 处手写同一字符串且版本不一致）。 */
+export const USER_AGENT = 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)';
 
 export const POCKET_GIFT_DATA: GiftItem[] = [
   { id: '1', name: '荧光棒', cost: 5 },
@@ -104,7 +106,7 @@ export const TEAM_COLORS: Record<string, string> = {
   'TEAM C': '#9C27B0',
   'TEAM K': '#FF9800',
   CII: '#9C27B0',
-  '预备生': '#757575',
+  预备生: '#757575',
 };
 
 export const GROUP_NAMES = ['SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'IDFT'];

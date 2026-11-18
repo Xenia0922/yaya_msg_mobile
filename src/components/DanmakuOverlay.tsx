@@ -1,16 +1,16 @@
 /**
  * 弹幕 overlay —— 在回放 WebView / 原生播放器之上叠加滚动弹幕。
  * 哔哩哔哩风格：
- *   - 多泳道 + 每条「占位到上一条完全离屏 + 安全间隔」才复用泳道，彻底杜绝重叠
- *   - 同屏同刻多条时按泳道最早空闲者排队，未轮到的延迟入场（不会挤在一起）
- *   - 颜色统一白色（弹幕更干净，也避免花花绿绿看不清）
- *   - 设置（不透明度 / 速度 / 显示区域 / 字号 / 总开关）来自 useDanmakuSettings，记忆持久化
- *   - 纯 RN Animated 实现，零额外依赖
+ * - 多泳道 + 每条「占位到上一条完全离屏 + 安全间隔」才复用泳道，彻底杜绝重叠
+ * - 同屏同刻多条时按泳道最早空闲者排队，未轮到的延迟入场（不会挤在一起）
+ * - 颜色统一白色（弹幕更干净，也避免花花绿绿看不清）
+ * - 设置（不透明度 / 速度 / 显示区域 / 字号 / 总开关）来自 useDanmakuSettings，记忆持久化
+ * - 纯 RN Animated 实现，零额外依赖
  * 性能：单条弹幕抽成 memo 子组件——新弹幕入池只挂载新组件，
- *       旧弹幕（anim/位置均未变）被 memo 拦截不重渲染，避免整屏 4Hz 全量 reconcile 卡顿。
+ * 旧弹幕（anim/位置均未变）被 memo 拦截不重渲染，避免整屏 4Hz 全量 reconcile 卡顿。
  */
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, useWindowDimensions } from 'react-native';
+import { Animated, StyleSheet, useWindowDimensions } from 'react-native';
 import { DanmakuItem } from '../utils/danmaku';
 import { useDanmakuSettings } from '../store/danmakuSettings';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
@@ -47,10 +47,7 @@ const Bullet = memo(function Bullet({
   const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [w, -w * 0.72] });
   return (
     <Animated.Text
-      style={[
-        styles.bullet,
-        { top, fontSize: fs, transform: [{ translateX }], color: '#ffffff' },
-      ]}
+      style={[styles.bullet, { top, fontSize: fs, transform: [{ translateX }], color: '#ffffff' }]}
     >
       {text}
     </Animated.Text>
@@ -72,7 +69,14 @@ export interface DanmakuOverlayProps {
   liveItems?: Array<{ key: string; text: string }>;
 }
 
-export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, opacity: opacityProp, liveItems }: DanmakuOverlayProps) {
+export function DanmakuOverlay({
+  danmaku,
+  currentTime,
+  visible,
+  live = false,
+  opacity: opacityProp,
+  liveItems,
+}: DanmakuOverlayProps) {
   const { enabled, opacity: sOpacity, speed, area, fontSize } = useDanmakuSettings();
   const [active, setActive] = useState<ActiveDanmaku[]>([]);
   const lastTime = useRef(0);
@@ -87,8 +91,10 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
   // 显示区域 → 泳道数（顶部少、全屏多）
   const rowH = fontSize + 10;
   let laneCount = Math.max(8, Math.floor(((screenH - topOffset) * 0.92) / rowH));
-  if (area === 'top') laneCount = Math.max(4, Math.min(6, Math.floor(((screenH - topOffset) * 0.4) / rowH)));
-  else if (area === 'half') laneCount = Math.max(6, Math.floor(((screenH - topOffset) * 0.55) / rowH));
+  if (area === 'top')
+    laneCount = Math.max(4, Math.min(6, Math.floor(((screenH - topOffset) * 0.4) / rowH)));
+  else if (area === 'half')
+    laneCount = Math.max(6, Math.floor(((screenH - topOffset) * 0.55) / rowH));
   // 区域 / 字号变化时同步泳道数组长度
   useEffect(() => {
     if (laneFreeAt.current.length !== laneCount) laneFreeAt.current = new Array(laneCount).fill(0);
@@ -99,7 +105,12 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
       lastTime.current = currentTime;
       // 失效时清空残留弹幕：先 stop 动画（防隐藏后 native driver 动画仍在跑）
       setActive((prev) => {
-        if (prev.length) prev.forEach((a) => { try { a.anim.stopAnimation(); } catch {} });
+        if (prev.length)
+          prev.forEach((a) => {
+            try {
+              a.anim.stopAnimation();
+            } catch {}
+          });
         return [];
       });
       laneFreeAt.current = laneFreeAt.current.map(() => 0);
@@ -113,7 +124,17 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
     const deltaMs = (to - from) * 1000;
     // 大步快进 / 拖动：清空当前屏弹幕，不补发历史，避免「拖一下蹦出一大片之前的弹幕」
     if (deltaMs > SEEK_FORWARD_MS) {
-      setActive([]);
+      // 快进/拖动：停掉在屏弹幕动画并清空泳道占用，否则旧动画会继续飘、新弹幕也排不进来。
+      setActive((prev) => {
+        if (prev.length)
+          prev.forEach((a) => {
+            try {
+              a.anim.stopAnimation();
+            } catch {}
+          });
+        return [];
+      });
+      laneFreeAt.current = laneFreeAt.current.map(() => 0);
       return;
     }
 
@@ -131,7 +152,7 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
       // 1) 泳道空闲延迟：上一条还没离屏则延后入场
       const laneDelay = Math.max(0, (laneFreeAt.current[lane] - to) * 1000);
       // 2) 子秒级错峰（仅录播）：按「本条真实发送时刻 - 窗口起点」错峰入场，
-      //    解决「同一秒左右发的弹幕被强制同时飘屏」——让它们按真实时刻依次出现。
+      // 解决「同一秒左右发的弹幕被强制同时飘屏」——让它们按真实时刻依次出现。
       const entryDelay = live ? 0 : Math.max(0, (d.time - from) * 1000);
       const startDelay = Math.max(laneDelay, entryDelay);
       // 预留：本条完全离屏 + 安全间隔 后才释放泳道
@@ -195,7 +216,10 @@ export function DanmakuOverlay({ danmaku, currentTime, visible, live = false, op
   const opacity = opacityProp ?? sOpacity;
 
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, { opacity, zIndex: 30, pointerEvents: 'none' }]} pointerEvents="none">
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { opacity, zIndex: 30, pointerEvents: 'none' }]}
+      pointerEvents="none"
+    >
       {active.map((a) => (
         <Bullet
           key={a.key}

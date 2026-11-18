@@ -68,6 +68,8 @@ class NimChatroomClient(
   private var decryptor: NimProtocol.Rc4Stream? = null
   private val pending = mutableMapOf<Int, PendingSend>()
   private var worker: Thread? = null
+  /** 工作线程代号：stop/start 后旧线程看到代号变化即退出，避免双 worker 并发读写 socket */
+  @Volatile private var workerGeneration = 0
 
   private class PendingSend(val idClient: String, val deadline: Long)
 
@@ -82,25 +84,46 @@ class NimChatroomClient(
   }
 
   fun start() {
-    if (!stopped) return
-    stopped = false
-    reconnectAttempt = 0
-    worker = Thread({ runLoop() }, "nim-chatroom").also { it.isDaemon = true; it.start() }
+    var generation = 0
+    synchronized(lock) {
+      if (!stopped) return
+      stopped = false
+      reconnectAttempt = 0
+      workerGeneration += 1
+      generation = workerGeneration
+    }
+    worker = Thread({ runLoop(generation) }, "nim-chatroom").also { it.isDaemon = true; it.start() }
   }
 
   fun stop() {
     stopped = true
     connected = false
+    var oldWorker: Thread? = null
+    var abandoned: List<PendingSend> = emptyList()
     synchronized(lock) {
+      workerGeneration += 1 // 让旧线程即使观察到 stopped=false 也不再继续
       try { socket?.close() } catch (_: Throwable) {}
       socket = null
       output = null
+      oldWorker = worker
+      worker = null
+      abandoned = pending.values.toList()
+      pending.clear()
+    }
+    // join 限时：等待旧 worker 退出，避免 stop→start 瞬间两个线程并存
+    if (oldWorker != null && oldWorker !== Thread.currentThread()) {
+      try { oldWorker.join(2_000) } catch (_: InterruptedException) {}
+    }
+    // 断开时清空待回执：否则 sendPromise 永远悬挂
+    for (p in abandoned) {
+      post { listener.onSendResult(p.idClient, false, "聊天室已断开") }
     }
     post { listener.onStatus("disconnected", null) }
   }
 
-  /** 发弹幕；返回 idClient（发送结果经 [Listener.onSendResult] 回来） */
-  fun sendText(text: String, custom: JSONObject): String {
+  /** 发弹幕；返回 idClient（发送结果经 [Listener.onSendResult] 回来）。
+   *  [beforeWrite] 在写入 socket 之前回调，供调用方先登记 idClient→Promise，避免服务端回执过快导致丢 Promise。 */
+  fun sendText(text: String, custom: JSONObject, beforeWrite: ((String) -> Unit)? = null): String {
     val out = output ?: throw IllegalStateException("聊天室尚未连接")
     val enc = encryptor ?: throw IllegalStateException("聊天室尚未连接")
     if (!connected) throw IllegalStateException("聊天室尚未连接")
@@ -124,8 +147,15 @@ class NimChatroomClient(
       )
     )
     val packet = NimProtocol.makePacket(13, 6, nextSerial(), body)
+    val serial = serialOf(packet)
     synchronized(lock) {
-      pending[serialOf(packet)] = PendingSend(idClient, System.currentTimeMillis() + 12_000)
+      pending[serial] = PendingSend(idClient, System.currentTimeMillis() + 12_000)
+      try {
+        beforeWrite?.invoke(idClient)
+      } catch (t: Throwable) {
+        pending.remove(serial)
+        throw t
+      }
       out.write(enc.apply(packet))
       out.flush()
     }
@@ -141,26 +171,26 @@ class NimChatroomClient(
 
   // ---------------- 主循环 ----------------
 
-  private fun runLoop() {
-    while (!stopped) {
+  private fun runLoop(generation: Int) {
+    while (!stopped && generation == workerGeneration) {
       try {
         post { listener.onStatus("connecting", null) }
-        openConnection()
+        openConnection(generation)
         // openConnection 正常返回意味着连接已断开
       } catch (t: Throwable) {
-        if (!stopped) post { listener.onStatus("error", t.message ?: t.javaClass.simpleName) }
+        if (!stopped && generation == workerGeneration) post { listener.onStatus("error", t.message ?: t.javaClass.simpleName) }
       }
-      if (stopped) break
+      if (stopped || generation != workerGeneration) break
       connected = false
       post { listener.onStatus("reconnecting", null) }
       val delay = min(30_000L, 1000L * (1 shl min(reconnectAttempt, 5)))
       reconnectAttempt += 1
       try { Thread.sleep(delay) } catch (_: InterruptedException) { break }
     }
-    post { listener.onStatus("disconnected", null) }
+    if (generation == workerGeneration) post { listener.onStatus("disconnected", null) }
   }
 
-  private fun openConnection() {
+  private fun openConnection(generation: Int) {
     val (host, port) = requestAddress()
     val deviceId = UUID.randomUUID().toString()
     val rc4Key = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
@@ -173,6 +203,10 @@ class NimChatroomClient(
     sock.tcpNoDelay = true
     sock.keepAlive = true
     sock.connect(InetSocketAddress(host, port), 20_000)
+    if (stopped || generation != workerGeneration) {
+      try { sock.close() } catch (_: Throwable) {}
+      return
+    }
     socket = sock
     val out = sock.getOutputStream()
     output = out
@@ -188,7 +222,7 @@ class NimChatroomClient(
     // 进房后立刻取一次在线人数，之后每 ONLINE_REFRESH_MS 一次（桌面 danmaku-service 同节奏）
     var lastOnlineRequest = 0L
 
-    while (!stopped) {
+    while (!stopped && generation == workerGeneration) {
       // 心跳（15s）：serviceId=1, commandId=2
       val now = System.currentTimeMillis()
       if (now - lastHeartbeat >= 15_000) {

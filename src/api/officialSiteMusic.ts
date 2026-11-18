@@ -1,14 +1,14 @@
 // 官方音乐库（口袋48官网源）
 // 一次性全量、无 token。关键修正：
-//   - ix_mp3list_xxx 每首只有 mp3/artist/title，且 artist 字段其实是「专辑名」（全都写成"热恋专属 Love Ver."），
-//     所以不能直接拿 artist 当专辑/歌手。
-//   - 真实专辑名来自两条路径：
-//       (a) SNH 用 mp3 文件名前缀 → 专辑名 的硬编码映射（SNH_ALBUM_BY_AUDIO_GROUP）；
-//       (b) GNZ 用 歌名 → 专辑名 的硬编码映射（GNZ_ALBUM_BY_TITLE）；
-//       (c) 兜底：同一音频分组（mp3 前缀）里第一首歌的标题当作专辑名，再去 records 里模糊匹配。
-//   - 真实封面与演唱者（team）来自 records_xxx：按专辑名匹配到 record，record.image 是封面、
-//     record.team 是演唱者（SNH48 / 袁一琦 / 7SENSES / 鞠婧祎 …）。
-//   - 现在不再要求 record.image 非空才保留元数据 —— 无封面时 coverUrl=''，交给 CoverArt 渐变兜底。
+// - ix_mp3list_xxx 每首只有 mp3/artist/title，且 artist 字段其实是「专辑名」（全都写成"热恋专属 Love Ver."），
+// 所以不能直接拿 artist 当专辑/歌手。
+// - 真实专辑名来自两条路径：
+// (a) SNH 用 mp3 文件名前缀 → 专辑名 的硬编码映射（SNH_ALBUM_BY_AUDIO_GROUP）；
+// (b) GNZ 用 歌名 → 专辑名 的硬编码映射（GNZ_ALBUM_BY_TITLE）；
+// (c) 兜底：同一音频分组（mp3 前缀）里第一首歌的标题当作专辑名，再去 records 里模糊匹配。
+// - 真实封面与演唱者（team）来自 records_xxx：按专辑名匹配到 record，record.image 是封面、
+// record.team 是演唱者（SNH48 / 袁一琦 / 7SENSES / 鞠婧祎 …）。
+// - 现在不再要求 record.image 非空才保留元数据 —— 无封面时 coverUrl=''，交给 CoverArt 渐变兜底。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithTimeout } from '../utils/network';
 
@@ -38,11 +38,46 @@ export interface OfficialSiteTrack {
 }
 
 const GROUPS = [
-  { key: 'SNH', label: 'SNH48', script: 'json_data_snh.js', listVar: 'ix_mp3list_snh', recordsVar: 'records_snh', songsVar: 'ix_songs_snh' },
-  { key: 'GNZ', label: 'GNZ48', script: 'json_data_gnz.js', listVar: 'ix_mp3list_gnz', recordsVar: 'records_gnz', songsVar: 'ix_songs_gnz' },
-  { key: 'BEJ', label: 'BEJ48', script: 'json_data_bej.js', listVar: 'ix_mp3list_bej', recordsVar: 'records_bej', songsVar: 'ix_songs_bej' },
-  { key: 'CKG', label: 'CKG48', script: 'json_data_ckg.js', listVar: 'ix_mp3list_ckg', recordsVar: 'records_ckg', songsVar: 'ix_songs_ckg' },
-  { key: 'CGT', label: 'CGT48', script: 'json_data_cgt.js', listVar: 'ix_mp3list_cgt', recordsVar: 'records_cgt', songsVar: 'ix_songs_cgt' },
+  {
+    key: 'SNH',
+    label: 'SNH48',
+    script: 'json_data_snh.js',
+    listVar: 'ix_mp3list_snh',
+    recordsVar: 'records_snh',
+    songsVar: 'ix_songs_snh',
+  },
+  {
+    key: 'GNZ',
+    label: 'GNZ48',
+    script: 'json_data_gnz.js',
+    listVar: 'ix_mp3list_gnz',
+    recordsVar: 'records_gnz',
+    songsVar: 'ix_songs_gnz',
+  },
+  {
+    key: 'BEJ',
+    label: 'BEJ48',
+    script: 'json_data_bej.js',
+    listVar: 'ix_mp3list_bej',
+    recordsVar: 'records_bej',
+    songsVar: 'ix_songs_bej',
+  },
+  {
+    key: 'CKG',
+    label: 'CKG48',
+    script: 'json_data_ckg.js',
+    listVar: 'ix_mp3list_ckg',
+    recordsVar: 'records_ckg',
+    songsVar: 'ix_songs_ckg',
+  },
+  {
+    key: 'CGT',
+    label: 'CGT48',
+    script: 'json_data_cgt.js',
+    listVar: 'ix_mp3list_cgt',
+    recordsVar: 'records_cgt',
+    songsVar: 'ix_songs_cgt',
+  },
 ];
 
 function normalizeMusicUrl(url: string): string {
@@ -59,7 +94,10 @@ function normalizeLookupUrl(url: string): string {
 }
 
 function normalizeAlbumName(name: string): string {
-  return String(name || '').trim().toLowerCase().replace(/[\s（）()【】\[\]！!?？.,·、]/g, '');
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s（）()【】\[\]！!?？.,·、]/g, '');
 }
 
 // 从官网 JS 脚本里切出某个变量（数组/对象）的值并 JSON.parse。
@@ -68,7 +106,8 @@ function extractAssignedValue(scriptText: string, variableName: string): any {
   if (assignmentIndex < 0) return null;
   const objectStart = scriptText.indexOf('{', assignmentIndex);
   const arrayStart = scriptText.indexOf('[', assignmentIndex);
-  const valueStart = arrayStart >= 0 && (objectStart < 0 || arrayStart < objectStart) ? arrayStart : objectStart;
+  const valueStart =
+    arrayStart >= 0 && (objectStart < 0 || arrayStart < objectStart) ? arrayStart : objectStart;
   if (valueStart < 0) return null;
   const stack: string[] = [];
   let inString = false;
@@ -143,10 +182,15 @@ function findRecordForAlbum(recordsMap: Map<string, any>, album: string): any {
   const exact = recordsMap.get(album) || recordsMap.get(normalizedAlbum);
   if (exact) return exact;
   const records: any[] = recordsMap.get('__records') || [];
-  return records.find((record: any) => {
-    const normalizedTitle = normalizeAlbumName(record.title);
-    return normalizedTitle && (normalizedAlbum.includes(normalizedTitle) || normalizedTitle.includes(normalizedAlbum));
-  }) || null;
+  return (
+    records.find((record: any) => {
+      const normalizedTitle = normalizeAlbumName(record.title);
+      return (
+        normalizedTitle &&
+        (normalizedAlbum.includes(normalizedTitle) || normalizedTitle.includes(normalizedAlbum))
+      );
+    }) || null
+  );
 }
 
 /** 用歌曲标题做词级模糊匹配 records（比 findRecordForAlbum 的 includes 更精准） */
@@ -169,12 +213,24 @@ function findRecordByTitleFuzzy(recordsMap: Map<string, any>, title: string): an
     if (!rn) continue;
     const recordWords = rn.split(/[\s\-_·、，,.·]+/).filter((w) => w.length >= 2);
     // 计算共有词数
-    const common = titleWords.filter((tw) => recordWords.some((rw) => rw.includes(tw) || tw.includes(rw)));
+    const common = titleWords.filter((tw) =>
+      recordWords.some((rw) => rw.includes(tw) || tw.includes(rw)),
+    );
     const score = common.length;
     // 放宽：至少 1 个词匹配，或唯一长词（≥4字符）精确包含在 record 名中
-    if (score >= 1 && score > bestScore) { bestScore = score; best = r; }
-    else if (score === 1 && titleWords.length === 1 && titleWords[0].length >= 4 && rn.includes(titleWords[0])) {
-      if (1 > bestScore) { bestScore = 1; best = r; }
+    if (score >= 1 && score > bestScore) {
+      bestScore = score;
+      best = r;
+    } else if (
+      score === 1 &&
+      titleWords.length === 1 &&
+      titleWords[0].length >= 4 &&
+      rn.includes(titleWords[0])
+    ) {
+      if (1 > bestScore) {
+        bestScore = 1;
+        best = r;
+      }
     }
   }
   return best;
@@ -182,7 +238,10 @@ function findRecordByTitleFuzzy(recordsMap: Map<string, any>, title: string): an
 
 // 由 mp3 文件名前缀推断「音频分组键」，用于 SNH 的 前缀→专辑 映射
 function getAudioGroupKey(url: string, groupKey = ''): string {
-  const fileName = String(url || '').split('/').pop() || '';
+  const fileName =
+    String(url || '')
+      .split('/')
+      .pop() || '';
   const baseName = fileName.replace(/\.mp3$/i, '');
   const numericGroup = baseName.replace(/_?\d+$/i, '');
   if (numericGroup !== baseName) return numericGroup || baseName;
@@ -207,7 +266,9 @@ function buildAudioGroups(list: any[], groupKey = ''): Map<string, any> {
 }
 
 function parseTrackDuration(durationText: string): number {
-  const parts = String(durationText || '').split(':').map((part) => Number(part));
+  const parts = String(durationText || '')
+    .split(':')
+    .map((part) => Number(part));
   if (parts.some((p) => !Number.isFinite(p))) return 0;
   return parts.reduce((acc, p) => acc * 60 + p, 0);
 }
@@ -437,7 +498,8 @@ function buildTracks(
         mp3,
         coverUrl,
         recordUrl: record && record.url ? record.url : '',
-        duration: (exactSongMeta && exactSongMeta.duration ? parseTrackDuration(exactSongMeta.duration) : 0),
+        duration:
+          exactSongMeta && exactSongMeta.duration ? parseTrackDuration(exactSongMeta.duration) : 0,
       };
     })
     .filter(Boolean) as OfficialSiteTrack[];
@@ -452,7 +514,13 @@ export async function loadOfficialSiteMusic(force = false): Promise<OfficialSite
       const raw = await AsyncStorage.getItem(CACHE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.t && Date.now() - parsed.t < CACHE_TTL && Array.isArray(parsed.list) && parsed.list.length) {
+        if (
+          parsed &&
+          parsed.t &&
+          Date.now() - parsed.t < CACHE_TTL &&
+          Array.isArray(parsed.list) &&
+          parsed.list.length
+        ) {
           return parsed.list as OfficialSiteTrack[];
         }
       }
@@ -467,8 +535,16 @@ export async function loadOfficialSiteMusic(force = false): Promise<OfficialSite
       const list = extractAssignedValue(text, group.listVar);
       let recordsMap = new Map<string, any>();
       let songRecordMap = new Map<string, any>();
-      try { recordsMap = buildRecordMap(extractAssignedValue(text, group.recordsVar)); } catch { /* ignore */ }
-      try { songRecordMap = buildSongRecordMap(extractAssignedValue(text, group.songsVar)); } catch { /* ignore */ }
+      try {
+        recordsMap = buildRecordMap(extractAssignedValue(text, group.recordsVar));
+      } catch {
+        /* ignore */
+      }
+      try {
+        songRecordMap = buildSongRecordMap(extractAssignedValue(text, group.songsVar));
+      } catch {
+        /* ignore */
+      }
       return { group, list, recordsMap, songRecordMap };
     }),
   );

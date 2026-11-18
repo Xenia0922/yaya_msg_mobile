@@ -5,9 +5,10 @@
  */
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { USER_AGENT } from '../constants';
 
 const HEADERS = {
-  'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
+  'User-Agent': USER_AGENT,
   Referer: 'https://h5.48.cn/',
   Origin: 'https://h5.48.cn',
 };

@@ -31,7 +31,8 @@ export function Pill({ label, selected, onPress, accent, style }: PillProps) {
       style={[
         typography.footnote,
         { fontWeight: '600' },
-        { color: solid || selectedGlass ? '#fff' : palette.label },
+        // 选中玻璃底是浅粉半透明：白字对比度过低（≈1.5:1），改用主文字色保证可读
+        { color: solid ? palette.onTint : palette.label },
       ]}
     >
       {label}
@@ -44,6 +45,9 @@ export function Pill({ label, selected, onPress, accent, style }: PillProps) {
       <Pressable
         onPress={onPress}
         disabled={!onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ selected: !!selected, disabled: !onPress }}
         style={[styles.box, { backgroundColor: palette.tint }, style]}
       >
         {content}
@@ -52,7 +56,14 @@ export function Pill({ label, selected, onPress, accent, style }: PillProps) {
   }
 
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={style}>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: !!selected, disabled: !onPress }}
+      style={style}
+    >
       <GlassSurface
         role="chip"
         radius={999}

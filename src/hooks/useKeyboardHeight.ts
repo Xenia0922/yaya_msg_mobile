@@ -9,20 +9,25 @@ import { AppState, Keyboard, KeyboardEvent, Platform } from 'react-native';
  * 把承载「消息列表 + 输入框」的容器底部抬起，才能实现「整页随键盘上移、最新消息一起
  * 顶上去」（像微信等原生聊天软件），而不是只把输入框单独顶起来。
  *
- * 用法：`const kb = useKeyboardHeight();` 然后给聊天页根容器 `paddingBottom: kb`。
+ * 用法：`const kb = useKeyboardHeight;` 然后给聊天页根容器 `paddingBottom: kb`。
  * iOS 用 willShow（跟手），Android 用 didShow（实际生效时机）。
  */
 export function useKeyboardHeight(enabled = true): number {
   const [height, setHeight] = useState(0);
   useEffect(() => {
-    if (!enabled) { setHeight(0); return; }
+    if (!enabled) {
+      setHeight(0);
+      return;
+    }
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const show = Keyboard.addListener(showEvent, (e: KeyboardEvent) => {
       setHeight(Math.max(0, Math.round(e?.endCoordinates?.height ?? 0)));
     });
     const hide = Keyboard.addListener(hideEvent, () => setHeight(0));
-    const appState = AppState.addEventListener('change', (state) => { if (state !== 'active') setHeight(0); });
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') setHeight(0);
+    });
     return () => {
       show.remove();
       hide.remove();

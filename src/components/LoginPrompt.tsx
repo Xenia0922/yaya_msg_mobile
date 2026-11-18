@@ -5,9 +5,9 @@
  * 用户可一键跳转登录/粘贴 Token 页面（LoginScreen 兼容两种入口）。
  *
  * 设计原则：
- *  - 文案 i18n 化，调用方可覆盖 hint
- *  - 用 EmptyState 复用图标/排版（StateViews）
- *  - 不接管页面渲染，只是一个 View，可放 ScrollView 内或独立
+ * - 文案 i18n 化，调用方可覆盖 hint
+ * - 用 EmptyState 复用图标/排版（StateViews）
+ * - 不接管页面渲染，只是一个 View，可放 ScrollView 内或独立
  */
 import React from 'react';
 import { useNavigation } from '@react-navigation/native';
@@ -30,7 +30,13 @@ export function LoginPrompt({ hint, title }: LoginPromptProps) {
       title={title || t('需要登录口袋48')}
       hint={hint || t('登录后才能查看此内容')}
       actionLabel={t('去登录 / 粘贴 Token')}
-      onAction={() => { try { navigation.navigate('LoginScreen'); } catch { /* noop */ } }}
+      onAction={() => {
+        try {
+          navigation.navigate('LoginScreen');
+        } catch {
+          /* noop */
+        }
+      }}
     />
   );
 }

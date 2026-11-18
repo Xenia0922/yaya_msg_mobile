@@ -65,6 +65,9 @@ class NimCommonlinkSession(
   fun destroy() {
     stopped = true
     loggedIn = false
+    val w = worker
+    worker = null
+    try { w?.interrupt() } catch (_: Throwable) {}
     synchronized(lock) {
       try { socket?.close() } catch (_: Throwable) {}
       socket = null

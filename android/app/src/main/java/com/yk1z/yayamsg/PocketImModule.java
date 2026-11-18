@@ -27,6 +27,7 @@ import com.netease.nimlib.sdk.qchat.QChatMessageService;
 import com.netease.nimlib.sdk.qchat.QChatServiceObserver;
 import com.netease.nimlib.sdk.qchat.model.QChatMessage;
 import com.netease.nimlib.sdk.qchat.model.QChatMessageAntiSpamOption;
+import com.netease.nimlib.sdk.qchat.model.QChatSystemNotification;
 import com.netease.nimlib.sdk.qchat.param.QChatSendMessageParam;
 import com.netease.nimlib.sdk.qchat.result.QChatSendMessageResult;
 
@@ -53,12 +54,20 @@ import java.util.Map;
  */
 public class PocketImModule extends ReactContextBaseJavaModule {
   private static final String TAG = "PocketIm";
+
+  /** JS number 只能精确表示 ±(2^53-1)；超出后 (long) 强转会静默丢精度，必须提前拒绝。 */
+  private static boolean isSafeJsLong(double value) {
+    return !Double.isNaN(value) && !Double.isInfinite(value)
+        && value >= 0 && value <= 9007199254740991.0
+        && value == Math.floor(value);
+  }
   /** 与官方一致的云信 appKey（NIMStrategy.getOptions 明文） */
   private static final String DEFAULT_APP_KEY = "632feff1f4c838541ab75195d1ceb3fa";
 
   private static volatile boolean inited = false;
   private final Handler main = new Handler(Looper.getMainLooper());
   private Observer<List<QChatMessage>> messageObserver;
+  private Observer<List<QChatSystemNotification>> systemObserver;
 
   PocketImModule(ReactApplicationContext reactContext) {
     super(reactContext);
@@ -243,6 +252,10 @@ public class PocketImModule extends ReactContextBaseJavaModule {
    */
   @ReactMethod
   public void joinChannel(final double serverIdD, final double channelIdD, final Promise promise) {
+    if (!isSafeJsLong(serverIdD) || !isSafeJsLong(channelIdD)) {
+      promise.reject("E_PARAM", "serverId/channelId 超出 JS 安全整数范围（2^53-1），请升级客户端使用字符串 ID");
+      return;
+    }
     main.post(new Runnable() {
       @Override
       public void run() {
@@ -322,6 +335,10 @@ public class PocketImModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void sendChannelText(final double serverId, final double channelId, final String text,
                               final String extJson, final Promise promise) {
+    if (!isSafeJsLong(serverId) || !isSafeJsLong(channelId)) {
+      promise.reject("E_PARAM", "serverId/channelId 超出 JS 安全整数范围（2^53-1），请升级客户端使用字符串 ID");
+      return;
+    }
     final String content = text == null ? "" : text.trim();
     if (content.isEmpty()) {
       promise.reject("E_PARAM", "内容不能为空");
@@ -397,6 +414,10 @@ public class PocketImModule extends ReactContextBaseJavaModule {
                     item.putString("fromNick", msg.getFromNick());
                     item.putDouble("time", msg.getTime());
                     item.putString("content", msg.getContent());
+                    item.putString("msgType", String.valueOf(msg.getMsgType()));
+                    // 圈组自定义消息（TEAM_VOICE 等）的 attachment 在 attachStr 里；
+                    // 旧实现只转 content/extension，导致 48 官方的上下麦事件在 JS 侧丢失。
+                    item.putString("attachment", msg.getAttachStr() == null ? "" : msg.getAttachStr());
                     Map<String, Object> ext = msg.getRemoteExtension();
                     item.putString("extension", ext == null ? "{}" : new JSONObject(ext).toString());
                     array.pushMap(item);
@@ -405,10 +426,37 @@ public class PocketImModule extends ReactContextBaseJavaModule {
                 }
               };
             }
+            if (systemObserver == null) {
+              systemObserver = new Observer<List<QChatSystemNotification>>() {
+                @Override
+                public void onEvent(List<QChatSystemNotification> notifications) {
+                  if (notifications == null || notifications.isEmpty()) return;
+                  WritableArray array = Arguments.createArray();
+                  for (QChatSystemNotification notice : notifications) {
+                    if (notice == null) continue;
+                    WritableMap item = Arguments.createMap();
+                    item.putString("uuid", notice.getMsgIdClient() == null ? String.valueOf(notice.getMsgIdServer()) : notice.getMsgIdClient());
+                    item.putDouble("serverId", notice.getServerId());
+                    item.putDouble("channelId", notice.getChannelId());
+                    item.putString("fromAccount", notice.getFromAccount());
+                    item.putString("fromNick", notice.getFromNick());
+                    item.putDouble("time", notice.getTime());
+                    item.putString("content", notice.getBody());
+                    item.putString("msgType", String.valueOf(notice.getType()));
+                    item.putString("attachment", notice.getAttach() == null ? "" : notice.getAttach());
+                    item.putString("extension", notice.getExtension() == null ? "{}" : notice.getExtension());
+                    array.pushMap(item);
+                  }
+                  if (array.size() > 0) emit("PocketIm:message", array);
+                }
+              };
+            }
             observer.observeReceiveMessage(messageObserver, true);
+            observer.observeReceiveSystemNotification(systemObserver, true);
             promise.resolve(true);
           } else {
             if (messageObserver != null) observer.observeReceiveMessage(messageObserver, false);
+            if (systemObserver != null) observer.observeReceiveSystemNotification(systemObserver, false);
             promise.resolve(false);
           }
         } catch (Throwable t) {

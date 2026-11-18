@@ -1,7 +1,7 @@
 /**
  * 富文本消息清洗。
  *
- * 背景（2026-11-07 用户截图）：房间消息里存在官方下发的 HTML 富文本
+ * 背景（用户截图）：房间消息里存在官方下发的 HTML 富文本
  * （形如 `<div><span style="color:#ffffff">欢迎</span>…<img src="/backstage/…webp"/></div>`），
  * 原实现直接把整串当纯文本渲染 → 气泡里出现原始标签。
  *
@@ -15,14 +15,17 @@
  */
 
 /** 是否是「像 HTML」的串
- *  判定从严，避免把 `a<b 且 c>d` 这类普通文本误当标签：
- *  满足任一即为 HTML —— ① 含明确块级/媒体标签；② 含闭合标签；③ 含带属性的标签（`<x k="v">`）；
- *  单独的 `<b>`、`<i>` 这类含义模糊的短标签不单独作为依据。
+ * 判定从严，避免把 `a<b 且 c>d` 这类普通文本误当标签：
+ * 满足任一即为 HTML —— ① 含明确块级/媒体标签；② 含闭合标签；③ 含带属性的标签（`<x k="v">`）；
+ * 单独的 `<b>`、`<i>` 这类含义模糊的短标签不单独作为依据。
  */
 export function looksLikeHtml(text: string): boolean {
   if (!text) return false;
   const s = String(text);
-  const blockOrMedia = /<\s*\/?\s*(div|span|p|br|img|table|thead|tbody|tr|td|li|ul|ol|h[1-6]|font|strong|em|iframe|video|audio)\b/i.test(s);
+  const blockOrMedia =
+    /<\s*\/?\s*(div|span|p|br|img|table|thead|tbody|tr|td|li|ul|ol|h[1-6]|font|strong|em|iframe|video|audio)\b/i.test(
+      s,
+    );
   const closingTag = /<\s*\/\s*[a-z][a-z0-9]*\s*>/i.test(s);
   const attrTag = /<\s*[a-z][a-z0-9]*\s+[a-z_:][-a-z0-9_:.]*\s*=/i.test(s);
   return blockOrMedia || closingTag || attrTag;

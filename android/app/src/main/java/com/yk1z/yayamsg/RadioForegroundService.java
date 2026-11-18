@@ -39,7 +39,8 @@ import java.util.concurrent.Executors;
 public class RadioForegroundService extends Service {
   // v2：渠道重要性 LOW→DEFAULT 后须换 ID（旧渠道被系统缓存不升级，ColorOS 仍按旧 LOW 折叠）
   private static final String CHANNEL_ID = "yaya_radio_v2";
-  private static final int NOTIFICATION_ID = 2024;
+  // P2-P12：与 YayaExoService 的 2024 分开，避免两个前台服务通知互相覆盖
+  private static final int NOTIFICATION_ID = 2025;
 
   private PowerManager.WakeLock wakeLock;
   private MediaSession mediaSession;
@@ -60,6 +61,7 @@ public class RadioForegroundService extends Service {
   private final Handler progressHandler = new Handler(Looper.getMainLooper());
   private boolean tickerRunning = false;
   private long lastNotifyMs = 0;
+  private long lastWakeRenewMs = 0;
   private final Runnable progressTicker = new Runnable() {
     @Override
     public void run() {
@@ -67,13 +69,22 @@ public class RadioForegroundService extends Service {
         position += 500; // 500ms 步进
         pushSessionState(); // 先会话
         long now = System.currentTimeMillis();
+        // P2-P13：wakeLock 用带超时的 acquire，并在播放期间每分钟续期，避免异常路径永久持锁
+        if (wakeLock != null && wakeLock.isHeld() && now - lastWakeRenewMs >= 60000) {
+          try {
+            wakeLock.acquire(10 * 60 * 1000L);
+            lastWakeRenewMs = now;
+          } catch (Throwable ignored) {
+          }
+        }
         // 每 1s 重建通知（完整推送 metadata+MediaStyle token+art）：
         // ColorOS 疑似只重绘"最新一次完整通知+会话"（三星无需，OPPO 需要）
         if (now - lastNotifyMs >= 1000) {
           lastNotifyMs = now;
           try {
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm != null) nm.notify(NOTIFICATION_ID, buildNotification());
+            Notification n = buildNotification();
+            if (nm != null && n != null) nm.notify(NOTIFICATION_ID, n);
           } catch (Throwable ignored) {
           }
         }
@@ -123,6 +134,9 @@ public class RadioForegroundService extends Service {
   @Override
   public void onCreate() {
     super.onCreate();
+    // P1-P8：通知渠道必须在首个 startForeground 之前创建（旧实现只在 buildNotification 里建，
+    // 而首次占位通知走 buildMinimalNotification → 渠道不存在时 build 失败 → 5s 契约崩溃）
+    ensureChannel();
     PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
     if (pm != null) {
       wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "yaya:radio");
@@ -181,13 +195,19 @@ public class RadioForegroundService extends Service {
     if (intent != null) {
       // ⚠️ startForegroundService 5s 契约：解析/封面 decode 可能耗时，先占位进前台
       // （旧实现解析完才 startForeground → buildNotification/解码慢或抛错即 RemoteServiceException 崩溃）
-      try {
-        if (Build.VERSION.SDK_INT >= 29) {
-          startForeground(NOTIFICATION_ID, buildMinimalNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-        } else {
-          startForeground(NOTIFICATION_ID, buildMinimalNotification());
-        }
-      } catch (Throwable ignored) {}
+      Notification placeholder = buildMinimalNotification();
+      if (placeholder == null) {
+        try { placeholder = buildNotification(); } catch (Throwable ignored) {}
+      }
+      if (placeholder != null) {
+        try {
+          if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(NOTIFICATION_ID, placeholder, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+          } else {
+            startForeground(NOTIFICATION_ID, placeholder);
+          }
+        } catch (Throwable ignored) {}
+      }
       if (intent.hasExtra("title")) title = intent.getStringExtra("title") == null ? "" : intent.getStringExtra("title");
       if (intent.hasExtra("artist")) artist = intent.getStringExtra("artist") == null ? "" : intent.getStringExtra("artist");
       if (intent.hasExtra("album")) album = intent.getStringExtra("album") == null ? "" : intent.getStringExtra("album");
@@ -199,37 +219,37 @@ public class RadioForegroundService extends Service {
         String nextCover = intent.getStringExtra("cover") == null ? "" : intent.getStringExtra("cover");
         if (!nextCover.equals(coverUrl)) {
           coverUrl = nextCover;
-          if (coverUrl.startsWith("file://")) {
-            // 本地文件（RN 下载）：decodeFile 同步，最稳路径
-            try {
-              coverBitmap = BitmapFactory.decodeFile(coverUrl.replace("file://", ""));
-            } catch (Throwable ignored) {
-              coverBitmap = null;
-            }
-          } else if (coverUrl.startsWith("data:image")) {
-            // dataURI 同步解码：buildNotification 当次即带封面（避免异步 renotify 时序/丢失）
-            coverBitmap = decodeDataUri(coverUrl);
-          } else {
-            coverBitmap = null;
-          }
-          if (coverBitmap == null && !coverUrl.isEmpty()) loadCover(coverUrl);
+          coverBitmap = null;
+          // 封面解码全部移到 coverLoader 后台线程，主线程不再做 decodeFile/decodeDataUri
+          if (!coverUrl.isEmpty()) loadCover(coverUrl);
         }
       }
     }
-    if (Build.VERSION.SDK_INT >= 29) {
-      startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-    } else {
+    Notification foreground = null;
+    try { foreground = buildNotification(); } catch (Throwable ignored) {}
+    if (foreground == null) foreground = buildMinimalNotification();
+    if (foreground != null) {
+      try {
+        if (Build.VERSION.SDK_INT >= 29) {
+          startForeground(NOTIFICATION_ID, foreground, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        } else {
+          startForeground(NOTIFICATION_ID, foreground);
+        }
+      } catch (Throwable ignored) {}
+    }
+    if (Build.VERSION.SDK_INT < 29) {
       Log.i("RadioFg", "start: play=" + isPlaying + " posMs=" + position + " durMs=" + duration
         + " cover=" + (coverUrl == null || coverUrl.isEmpty() ? "EMPTY" : coverUrl)
         + " title=" + title + " art=" + (coverBitmap != null ? "Y" : "N"));
-    startForeground(NOTIFICATION_ID, buildNotification());
     }
     // ⚠️ 唤醒锁只在真正播放时持有：暂停态（isPlaying=false）立即释放，
     // 否则「暂停的音乐/电台」一直持 PARTIAL_WAKE_LOCK → 后台持续耗电（曾泄漏到 onDestroy 才放）。
     if (wakeLock != null) {
       try {
         if (isPlaying) {
-          if (!wakeLock.isHeld()) wakeLock.acquire();
+          // 带超时：异常路径下最多持锁 10 分钟，播放中由 progressTicker 每分钟续期
+          wakeLock.acquire(10 * 60 * 1000L);
+          lastWakeRenewMs = System.currentTimeMillis();
         } else {
           if (wakeLock.isHeld()) wakeLock.release();
         }
@@ -237,6 +257,24 @@ public class RadioForegroundService extends Service {
       }
     }
     return START_NOT_STICKY;
+  }
+
+  /** 创建/复用通知渠道（幂等；首个 startForeground 前必须已存在） */
+  private void ensureChannel() {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
+          // IMPORTANCE_DEFAULT：ColorOS 等把 LOW 当"不重要通知"折叠→不投喂媒体中心/锁屏
+          NotificationChannel channel = new NotificationChannel(
+              CHANNEL_ID, "后台播放", NotificationManager.IMPORTANCE_DEFAULT);
+          channel.setDescription("播放音乐/电台时保持后台运行");
+          channel.setSound(null, null);
+          channel.enableVibration(false);
+          nm.createNotificationChannel(channel);
+        }
+      }
+    } catch (Throwable ignored) {}
   }
 
   /** 5s 契约占位通知（无封面/歌词，最快构建） */
@@ -265,38 +303,36 @@ public class RadioForegroundService extends Service {
     }
   }
 
-  /** 后台下载封面图（4s 超时，失败静默保留无图态） */
+  /** 后台下载/解码封面图（4s 超时，失败静默保留无图态） */
   private void loadCover(final String url) {
     if (url == null || url.isEmpty()) return;
-    coverLoader.execute(() -> {
-      // data: URI（RN 侧已把图片拉成 base64，绕开 Java 网络在个别 ROM 被压制/失败的问题）
-      if (url.startsWith("data:image")) {
-        try {
-          int comma = url.indexOf(',');
-          String b64 = comma >= 0 ? url.substring(comma + 1) : url;
-          byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
-          BitmapFactory.Options opt = new BitmapFactory.Options();
-          Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opt);
-          if (bmp != null) {
-            coverBitmap = bmp;
-            Log.i("RadioFg", "cover OK dataURI " + bmp.getWidth() + "x" + bmp.getHeight());
-            renotify();
-            return;
-          }
-        } catch (Throwable t) {
-          Log.i("RadioFg", "cover dataURI decode ERR " + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
+    try {
+      coverLoader.execute(() -> {
+        // 队列里过期的请求直接丢弃（快速连续换封面时不再为旧 URL 解码）
+        if (!url.equals(coverUrl)) return;
+        // 本地文件（RN 下载）：后台线程采样解码，不阻塞主线程
+        if (url.startsWith("file://")) {
+          Bitmap bmp = decodeSampledFile(url.substring("file://".length()));
+          if (bmp != null) applyCover(url, bmp);
+          return;
         }
-        return;
-      }
-      // 独立三连试：原样 → 强制160 → 强制500（snh48 resize 仅部分规格存在；不因"已是 resize"跳过）
-      String[] tries = { url, variantResize(url, "160x160"), variantResize(url, "500x500") };
-      java.util.LinkedHashSet<String> uniq = new java.util.LinkedHashSet<>();
-      for (String t : tries) if (t != null && !t.isEmpty()) uniq.add(t);
-      for (String t : uniq) {
-        if (tryLoadCoverOnce(t)) return;
-      }
-      Log.i("RadioFg", "cover ALL FAIL");
-    });
+        // data: URI（RN 侧已把图片拉成 base64，绕开 Java 网络在个别 ROM 被压制/失败的问题）
+        if (url.startsWith("data:image")) {
+          Bitmap bmp = decodeDataUri(url);
+          if (bmp != null) applyCover(url, bmp);
+          return;
+        }
+        // 独立三连试：原样 → 强制160 → 强制500（snh48 resize 仅部分规格存在；不因"已是 resize"跳过）
+        String[] tries = { url, variantResize(url, "160x160"), variantResize(url, "500x500") };
+        java.util.LinkedHashSet<String> uniq = new java.util.LinkedHashSet<>();
+        for (String t : tries) if (t != null && !t.isEmpty()) uniq.add(t);
+        for (String t : uniq) {
+          if (!url.equals(coverUrl)) return; // 期间已切封面
+          if (tryLoadCoverOnce(t)) return;
+        }
+        Log.i("RadioFg", "cover ALL FAIL");
+      });
+    } catch (Throwable ignored) {}
   }
 
   /** 生成指定尺寸缩略：替换已有 /resize_xxx/ 或插到路径首 */
@@ -313,7 +349,7 @@ public class RadioForegroundService extends Service {
     }
   }
 
-  /** 同步解码 data:image URI（RN 拉取→base64） */
+  /** 解码 data:image URI（RN 拉取→base64；采样解码，避免超大图 OOM） */
   private Bitmap decodeDataUri(String u) {
     try {
       if (u == null || !u.startsWith("data:image")) return null;
@@ -329,10 +365,73 @@ public class RadioForegroundService extends Service {
         }
       }
       if (bytes == null || bytes.length == 0) return null;
-      return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+      return decodeSampled(bytes, 1024);
     } catch (Throwable t) {
       return null;
     }
+  }
+
+  /** 采样解码本地封面文件（最长边 1024，避免主线程/后台整图解码 OOM） */
+  private Bitmap decodeSampledFile(String path) {
+    try {
+      BitmapFactory.Options bounds = new BitmapFactory.Options();
+      bounds.inJustDecodeBounds = true;
+      BitmapFactory.decodeFile(path, bounds);
+      if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+      BitmapFactory.Options opts = new BitmapFactory.Options();
+      opts.inSampleSize = calcInSampleSize(bounds.outWidth, bounds.outHeight, 1024);
+      return BitmapFactory.decodeFile(path, opts);
+    } catch (Throwable t) {
+      return null;
+    }
+  }
+
+  private static Bitmap decodeSampled(byte[] data, int maxDim) {
+    try {
+      BitmapFactory.Options bounds = new BitmapFactory.Options();
+      bounds.inJustDecodeBounds = true;
+      BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
+      if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+      BitmapFactory.Options opts = new BitmapFactory.Options();
+      opts.inSampleSize = calcInSampleSize(bounds.outWidth, bounds.outHeight, maxDim);
+      return BitmapFactory.decodeByteArray(data, 0, data.length, opts);
+    } catch (Throwable t) {
+      return null;
+    }
+  }
+
+  private static int calcInSampleSize(int width, int height, int maxDim) {
+    int sample = 1;
+    int longest = Math.max(width, height);
+    while (longest / sample > maxDim) sample *= 2;
+    return sample;
+  }
+
+  /** 封面请求是否仍是当前（原 URL 或它的两个 resize 变体） */
+  private boolean isCurrentCover(String candidate) {
+    String current = coverUrl;
+    if (current == null || current.isEmpty() || candidate == null) return false;
+    if (current.equals(candidate)) return true;
+    return variantResize(current, "160x160").equals(candidate)
+        || variantResize(current, "500x500").equals(candidate);
+  }
+
+  /** 后台线程解码完成 → 主线程校验 URL 竞态后应用（P2-P13） */
+  private void applyCover(final String requestUrl, final Bitmap bmp) {
+    if (bmp == null) return;
+    progressHandler.post(() -> {
+      if (!isCurrentCover(requestUrl)) {
+        bmp.recycle();
+        return;
+      }
+      Bitmap old = coverBitmap;
+      coverBitmap = bmp;
+      if (old != null && old != bmp && !old.isRecycled()) {
+        try { old.recycle(); } catch (Throwable ignored) {}
+      }
+      Log.i("RadioFg", "cover OK " + bmp.getWidth() + "x" + bmp.getHeight());
+      renotify();
+    });
   }
 
   private byte[] readAll(InputStream is) throws java.io.IOException {
@@ -359,28 +458,21 @@ public class RadioForegroundService extends Service {
         Log.i("RadioFg", "cover http " + code);
         return false;
       }
+      // P2-P13：请求期间封面可能已切换，旧 URL 不再落盘到状态
+      if (!isCurrentCover(url)) return false;
       // ⚠️ 同一条连接只读一次流（旧实现读两遍 → 第二遍为空 → 解码 null → OPPO 封面=logo）
       byte[] bytes = readAll(conn.getInputStream());
       if (bytes == null || bytes.length == 0) {
         Log.i("RadioFg", "cover empty body");
         return false;
       }
-      BitmapFactory.Options bounds = new BitmapFactory.Options();
-      bounds.inJustDecodeBounds = true;
-      BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
-      BitmapFactory.Options opt = new BitmapFactory.Options();
-      int longest = Math.max(bounds.outWidth, bounds.outHeight);
-      opt.inSampleSize = longest > 1024
-          ? (int) Math.pow(2, Math.ceil(Math.log(longest / 1024.0) / Math.log(2)))
-          : 1;
-      Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, opt);
+      if (!isCurrentCover(url)) return false;
+      Bitmap bmp = decodeSampled(bytes, 1024);
       if (bmp == null) {
         Log.i("RadioFg", "cover decode null");
         return false;
       }
-      coverBitmap = bmp;
-      Log.i("RadioFg", "cover OK " + bmp.getWidth() + "x" + bmp.getHeight());
-      renotify();
+      applyCover(url, bmp);
       return true;
     } catch (Throwable t) {
       Log.i("RadioFg", "cover ERR");
@@ -399,23 +491,14 @@ public class RadioForegroundService extends Service {
   private void renotify() {
     try {
       NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-      if (nm != null) nm.notify(NOTIFICATION_ID, buildNotification());
+      Notification n = buildNotification();
+      if (nm != null && n != null) nm.notify(NOTIFICATION_ID, n);
     } catch (Throwable ignored) {
     }
   }
 
   private Notification buildNotification() {
-    NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
-      // IMPORTANCE_DEFAULT：ColorOS 等把 LOW 当"不重要通知"折叠→不投喂媒体中心/锁屏
-      // （MuMu/AOSP 无此问题，实测 session 正常；OPPO 需渠道够级别才显示媒体卡片）
-      NotificationChannel channel = new NotificationChannel(
-          CHANNEL_ID, "后台播放", NotificationManager.IMPORTANCE_DEFAULT);
-      channel.setDescription("播放音乐/电台时保持后台运行");
-      channel.setSound(null, null);
-      channel.enableVibration(false);
-      nm.createNotificationChannel(channel);
-    }
+    ensureChannel();
     String subLine = String.format("%s%s%s",
         artist == null || artist.isEmpty() ? "" : artist,
         (artist != null && !artist.isEmpty() && album != null && !album.isEmpty()) ? " · " : "",

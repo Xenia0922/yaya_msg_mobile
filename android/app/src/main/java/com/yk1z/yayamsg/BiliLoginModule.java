@@ -7,6 +7,8 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 
+import java.net.URL;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
@@ -49,6 +51,20 @@ public class BiliLoginModule extends ReactContextBaseJavaModule {
     return "BiliLoginModule";
   }
 
+  /** 只允许 B 站 passport 的 crossDomain 换票地址，防止该原生方法被当成任意 URL 的 SSRF/凭据读取器。 */
+  private static boolean isAllowedTicketUrl(String raw) {
+    try {
+      URL url = new URL(raw);
+      if (!"https".equalsIgnoreCase(url.getProtocol())) return false;
+      String host = url.getHost() == null ? "" : url.getHost().toLowerCase(Locale.ROOT);
+      if (!host.equals("passport.biligame.com") && !host.equals("passport.bilibili.com")) return false;
+      String path = url.getPath() == null ? "" : url.getPath().toLowerCase(Locale.ROOT);
+      return path.startsWith("/x/passport-login/web/crossdomain");
+    } catch (Throwable t) {
+      return false;
+    }
+  }
+
   /**
    * 访问 ticket crossDomain url（不跟随 302），把响应里的所有 Set-Cookie 头拼成 "k=v; k=v" 返回。
    * 无论 302/200，都只取首个响应的 Set-Cookie（cookie 就在这包上）。
@@ -57,6 +73,10 @@ public class BiliLoginModule extends ReactContextBaseJavaModule {
   public void fetchTicket(String ticketUrl, Promise promise) {
     if (ticketUrl == null || ticketUrl.isEmpty()) {
       promise.reject("E_TICKET_URL", "ticket url empty");
+      return;
+    }
+    if (!isAllowedTicketUrl(ticketUrl)) {
+      promise.reject("E_TICKET_URL", "ticket url not allowed");
       return;
     }
     final Request request = new Request.Builder()

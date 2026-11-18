@@ -24,7 +24,9 @@ for (const file of files) {
 
   // 从后往前处理，避免行号漂移
   for (let i = lines.length - 1; i >= 0; i--) {
-    const gm = lines[i].match(/^(\s*)<GlassBackground radius=\{(\d+)\}(?:\s+refract=\{false\})?\s*\/>\s*$/);
+    const gm = lines[i].match(
+      /^(\s*)<GlassBackground radius=\{(\d+)\}(?:\s+refract=\{false\})?\s*\/>\s*$/,
+    );
     if (!gm) continue;
     const glassIndent = indentOf(lines[i]);
     const radius = gm[2];

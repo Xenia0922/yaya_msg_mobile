@@ -83,7 +83,7 @@ public class RadioServiceModule extends ReactContextBaseJavaModule {
     intent.putExtra("position", position);
     intent.putExtra("tickOnly", true);
     // 服务已在前台：纯 startService（不触发 startForeground 5s 看门狗；媒体播放豁免后台启动限制）
-    context.startService(intent);
+    startServiceSafely(context, intent, false);
   }
 
   /** 开播/更新：启动前台保活服务并展示媒体通知（幂等，重复调用仅更新通知） */
@@ -107,11 +107,7 @@ public class RadioServiceModule extends ReactContextBaseJavaModule {
     intent.putExtra("isPlaying", isPlaying);
     intent.putExtra("position", position);
     intent.putExtra("duration", duration);
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      context.startForegroundService(intent);
-    } else {
-      context.startService(intent);
-    }
+    startServiceSafely(context, intent, true);
   }
 
   /** 歌词行更新：更新通知展开区歌词文本并重发通知（行切换才调用，频率极低） */
@@ -120,11 +116,7 @@ public class RadioServiceModule extends ReactContextBaseJavaModule {
     ReactApplicationContext context = getReactApplicationContext();
     Intent intent = new Intent(context, RadioForegroundService.class);
     intent.putExtra("lyric", text == null ? "" : text);
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      context.startForegroundService(intent);
-    } else {
-      context.startService(intent);
-    }
+    startServiceSafely(context, intent, true);
   }
 
   /** 兼容旧调用：仅更新标题 */
@@ -133,10 +125,27 @@ public class RadioServiceModule extends ReactContextBaseJavaModule {
     updateMedia(title, "", false, 0, 0);
   }
 
+  /** 统一捕获 Android 12+ 后台启动前台服务限制（ForegroundServiceStartNotAllowedException） */
+  private static void startServiceSafely(ReactApplicationContext context, Intent intent, boolean foreground) {
+    try {
+      if (foreground && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(intent);
+      } else {
+        context.startService(intent);
+      }
+    } catch (Throwable t) {
+      android.util.Log.w("RadioServiceModule", "start service failed foreground=" + foreground, t);
+    }
+  }
+
   /** 停播：结束前台保活服务并移除通知 */
   @ReactMethod
   public void end() {
     ReactApplicationContext context = getReactApplicationContext();
-    context.stopService(new Intent(context, RadioForegroundService.class));
+    try {
+      context.stopService(new Intent(context, RadioForegroundService.class));
+    } catch (Throwable t) {
+      android.util.Log.w("RadioServiceModule", "stop service failed", t);
+    }
   }
 }

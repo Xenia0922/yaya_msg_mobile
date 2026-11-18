@@ -12,7 +12,9 @@ function cacheKey(token: string): string {
   return `${CACHE_PREFIX}_${Math.abs(hash)}`;
 }
 
-export async function readFollowedIdsCache(token: string): Promise<{ ids: string[]; cached: boolean }> {
+export async function readFollowedIdsCache(
+  token: string,
+): Promise<{ ids: string[]; cached: boolean }> {
   if (!token) return { ids: [], cached: false };
   try {
     const raw = await AsyncStorage.getItem(cacheKey(token));
@@ -29,7 +31,10 @@ export async function readFollowedIdsCache(token: string): Promise<{ ids: string
 export async function writeFollowedIdsCache(token: string, ids: string[]): Promise<void> {
   if (!token) return;
   try {
-    await AsyncStorage.setItem(cacheKey(token), JSON.stringify({ savedAt: Date.now(), ids: ids.map(String) }));
+    await AsyncStorage.setItem(
+      cacheKey(token),
+      JSON.stringify({ savedAt: Date.now(), ids: ids.map(String) }),
+    );
   } catch {
     /* cache is best-effort */
   }

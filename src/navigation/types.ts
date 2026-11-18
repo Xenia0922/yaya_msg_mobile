@@ -1,4 +1,5 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
+import type { Member } from '../types';
 
 export type RootStackParamList = {
   Main: NavigatorScreenParams<TabParamList>;
@@ -8,9 +9,10 @@ export type RootStackParamList = {
   FetchScreen: undefined;
   FlipScreen: { mode?: 'view' | 'send' } | undefined;
   // 成员档案：支持从房间/消息点头像直接带成员进来（自动加载档案，无需再搜索）
-  ProfileScreen: { memberId?: string; member?: any; nonce?: number } | undefined;
+  ProfileScreen: { memberId?: string; member?: Member; nonce?: number } | undefined;
   PhotosScreen: undefined;
-  RoomRadioScreen: { member?: any; initialMode?: 'big' | 'small'; streamUrl?: string } | undefined;
+  RoomRadioScreen:
+    { member?: Member; initialMode?: 'big' | 'small'; streamUrl?: string } | undefined;
   OpenLiveScreen: undefined;
   OnMicScreen: undefined;
   PrivateMessagesScreen: { targetUserId?: string; targetName?: string } | undefined;
@@ -31,7 +33,18 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Home: undefined;
-  Media: { mode?: 'live' | 'vod'; playLiveId?: string; playTitle?: string; playCover?: string; playUrl?: string; playNonce?: number; fromRoom?: boolean; playPosition?: number } | undefined;
+  Media:
+    | {
+        mode?: 'live' | 'vod';
+        playLiveId?: string;
+        playTitle?: string;
+        playCover?: string;
+        playUrl?: string;
+        playNonce?: number;
+        fromRoom?: boolean;
+        playPosition?: number;
+      }
+    | undefined;
   Rooms: undefined;
   Settings: undefined;
 };

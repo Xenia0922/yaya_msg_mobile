@@ -1,6 +1,6 @@
 {
   "name": "yaya_msg-mobile",
-  "version": "2.7.8",
+  "version": "2.8.0",
   "description": "口袋48 第三方 React Native 移动客户端",
   "homepage": "https://github.com/Xenia0922/yaya_msg_mobile",
   "repository": {
@@ -25,12 +25,23 @@
     "start": "expo start",
     "android": "expo run:android",
     "web": "expo start --web",
-    "build:android": "cd android && gradlew assembleRelease -Dorg.gradle.daemon=true -Dorg.gradle.parallel=false",
+    "build:android": "node scripts/build-apk.js --no-copy",
     "build:android:copy": "node scripts/build-apk.js",
     "gen:wasm": "node scripts/gen-wasm-base64.mjs",
     "verify:version": "node scripts/verify-version.js",
-    "test:core": "node scripts/melee-parse.test.mjs && node scripts/network-request.test.mjs && node scripts/nim-credentials.test.mjs && node scripts/runtime-log.test.mjs && node scripts/downloads.test.mjs && node scripts/official-members.test.mjs && node scripts/member-data-update.test.mjs && node scripts/pocket-replay-comments.test.mjs && node scripts/pocket-live-transition.test.mjs && node scripts/dock-visibility.test.mjs && node scripts/mini-player-position.test.mjs && node scripts/private-unread.test.mjs && node scripts/flip-answer-status.test.mjs && node scripts/flip-deadline.test.mjs && node scripts/live-online-count.test.mjs && node scripts/room-flip-user.test.mjs && node scripts/room-map-refresh.test.mjs && node scripts/room-live-policy.test.mjs && node scripts/private-message-media.test.mjs && node scripts/pocket-registration.test.mjs && node scripts/room-reply-payload.test.mjs && node scripts/lyrics-parse.test.mjs && node --no-warnings scripts/html-text.test.mjs",
-    "typecheck": "tsc --noEmit && node scripts/verify-version.js"
+    "test:core": "node scripts/melee-parse.test.mjs && node scripts/network-request.test.mjs && node scripts/nim-credentials.test.mjs && node scripts/runtime-log.test.mjs && node scripts/downloads.test.mjs && node scripts/official-members.test.mjs && node scripts/member-data-update.test.mjs && node scripts/pocket-replay-comments.test.mjs && node scripts/pocket-live-transition.test.mjs && node scripts/dock-visibility.test.mjs && node scripts/mini-player-position.test.mjs && node scripts/private-unread.test.mjs && node scripts/flip-answer-status.test.mjs && node scripts/flip-deadline.test.mjs && node scripts/live-online-count.test.mjs && node scripts/room-flip-user.test.mjs && node scripts/room-map-refresh.test.mjs && node scripts/room-live-policy.test.mjs && node scripts/private-message-media.test.mjs && node scripts/pocket-registration.test.mjs && node scripts/room-reply-payload.test.mjs && node scripts/lyrics-parse.test.mjs && node scripts/home-lives.test.mjs && node scripts/voice-event.test.mjs && node --no-warnings scripts/html-text.test.mjs",
+    "lint": "eslint src --max-warnings=585",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit && npm run typecheck:scripts && node scripts/verify-version.js",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
+    "check": "npm run check:hooks && npm run check:i18n && npm run check:dup-i18n && npm run check:unused-styles",
+    "check:hooks": "node scripts/check-hooks-order.js",
+    "check:i18n": "node scripts/check-i18n-coverage.js --fail",
+    "check:dup-i18n": "node scripts/dup-check.js --fail",
+    "check:unused-styles": "node scripts/unused-styles-check.js --fail",
+    "check:unused-styles:strict": "node scripts/unused-styles-check.js --fail"
   },
   "dependencies": {
     "@kesha-antonov/react-native-chat": "^5.0.0",
@@ -51,7 +62,7 @@
     "expo-screen-orientation": "~55.0.20",
     "expo-sharing": "~55.0.25",
     "expo-status-bar": "~55.0.6",
-    "node-forge": "^1.4.2",
+    "node-forge": "^1.4.3",
     "pako": "^3.0.1",
     "qrcode": "^1.5.4",
     "react": "19.2.0",
@@ -70,10 +81,17 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@react-native-community/cli": "^20.1.3",
     "@react-native/metro-config": "^0.83.10",
     "@types/qrcode": "^1.5.6",
     "@types/react": "~19.2.10",
-    "typescript": "~5.9.2"
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.10.1",
+    "typescript": "~5.9.2",
+    "typescript-eslint": "^8.72.2"
   }
 }

@@ -38,7 +38,7 @@ export const useDanmakuSettings = create<DanmakuSettings>()(
       name: 'yaya_danmaku_settings_v1',
       version: 3,
       storage: createJSONStorage(() => AsyncStorage),
-      // v1 默认 15 不在档位中（显示为「小」但实际 15）→ 迁移到「中」16
+      // v1/v2 的旧「中」档为 16；当前「中」档已调整为 15，旧持久化值 16 迁移到 15。
       migrate: (persisted: any) => ({
         ...(persisted || {}),
         fontSize: Number(persisted?.fontSize) === 16 ? 15 : persisted?.fontSize,

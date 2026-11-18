@@ -2,9 +2,9 @@
  * 云信聊天室（直播弹幕）原生桥 —— commonlink 协议版。
  *
  * 原生实现：android/app/src/main/java/com/yk1z/yayamsg/nim/
- *   NimProtocol.kt（包编解码 + RC4 + RSA 握手）
- *   NimChatroomClient.kt（LBS → TCP → 进房 → 心跳 → 收/发弹幕）
- *   PocketNimChatroomModule.kt（RN 模块）
+ * NimProtocol.kt（包编解码 + RC4 + RSA 握手）
+ * NimChatroomClient.kt（LBS → TCP → 进房 → 心跳 → 收/发弹幕）
+ * PocketNimChatroomModule.kt（RN 模块）
  *
  * 与 JS 侧云信 Web SDK 的区别：**登录包里的客户端包名由自己填**，
  * 因此能过口袋48 appKey 的服务端标识校验（Web SDK 带浏览器标识 → 403）。
@@ -25,7 +25,8 @@ export function isPocketNimChatroomAvailable(): boolean {
   return Platform.OS === 'android' && !!native;
 }
 
-export type ChatroomNativeState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
+export type ChatroomNativeState =
+  'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
 
 export interface ChatroomNativeStatus {
   state: ChatroomNativeState;
@@ -49,7 +50,7 @@ export async function chatroomConnect(
   appKey: string,
   account: string,
   token: string,
-  roomId: string
+  roomId: string,
 ): Promise<void> {
   if (!native) throw new Error('当前平台不支持原生聊天室通道');
   await native.connect(appKey, account, token, roomId);
@@ -65,14 +66,21 @@ export function chatroomDisconnect(): void {
   native?.disconnect?.();
 }
 
-export async function chatroomStatus(): Promise<{ state: string; detail: string; connected: boolean }> {
+export async function chatroomStatus(): Promise<{
+  state: string;
+  detail: string;
+  connected: boolean;
+}> {
   if (!native) return { state: 'unavailable', detail: '', connected: false };
   return native.status();
 }
 
 export function onChatroomStatus(listener: (status: ChatroomNativeStatus) => void): () => void {
   const sub = DeviceEventEmitter.addListener('PocketNimChatroom:status', (e: any) => {
-    listener({ state: String(e?.state || 'idle') as ChatroomNativeState, detail: String(e?.detail || '') });
+    listener({
+      state: String(e?.state || 'idle') as ChatroomNativeState,
+      detail: String(e?.detail || ''),
+    });
   });
   return () => sub.remove();
 }
@@ -94,7 +102,7 @@ export function onChatroomMessage(listener: (message: ChatroomNativeMessage) => 
 }
 
 export function onChatroomSendResult(
-  listener: (result: { idClient: string; ok: boolean; detail: string }) => void
+  listener: (result: { idClient: string; ok: boolean; detail: string }) => void,
 ): () => void {
   const sub = DeviceEventEmitter.addListener('PocketNimChatroom:sendResult', (e: any) => {
     listener({

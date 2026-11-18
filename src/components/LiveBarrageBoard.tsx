@@ -5,17 +5,17 @@
  * （见 src/services/pocketNim）。
  *
  * 两个导出：
- *   - `LiveBarragePanel`：自带连接（内部 useLiveBarrage），用于页面内独立面板
- *   - `LiveBarrageBoard`：纯展示（连接由调用方持有），用于播放器内共用同一条连接
+ * - `LiveBarragePanel`：自带连接（内部 useLiveBarrage），用于页面内独立面板
+ * - `LiveBarrageBoard`：纯展示（连接由调用方持有），用于播放器内共用同一条连接
  *
  * 两种外观：
- *   - variant='glass'（默认）：玻璃卡，用于页面内的独立面板
- *   - variant='plain'        ：半透明深色浮层，用于直接叠在播放器画面上
- *     （播放器区域每帧都在变，玻璃的 RenderEffect 抓背景代价高且会糊画面，
- *       这里沿用播放器覆盖层的既有做法使用半透明底）
+ * - variant='glass'（默认）：玻璃卡，用于页面内的独立面板
+ * - variant='plain'：半透明深色浮层，用于直接叠在播放器画面上
+ * （播放器区域每帧都在变，玻璃的 RenderEffect 抓背景代价高且会糊画面，
+ * 这里沿用播放器覆盖层的既有做法使用半透明底）
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Keyboard,
@@ -33,6 +33,9 @@ import { useLiveBarrage, type UseLiveBarrageResult } from '../hooks/useLiveBarra
 import { BarrageItem } from '../services/pocketNim/types';
 import { useI18n } from '../i18n';
 import { usePalette } from '../theme';
+
+/** 弹幕行最小高度：lineHeight 17 + 上下 padding 4；实际高度按文本自动折行增长。 */
+const BARRAGE_ROW_MIN_HEIGHT = 21;
 
 export interface LiveBarrageBoardProps {
   /** 弹幕数据源（由调用方持有连接） */
@@ -70,7 +73,6 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
   const palette = usePalette();
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-  const lastFailedRef = useRef('');
   const [hint, setHint] = useState('');
 
   const plain = variant !== 'glass';
@@ -87,7 +89,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
       fieldBg: plain ? 'rgba(255,255,255,0.16)' : palette.fill2,
       fieldBorder: plain ? 'rgba(255,255,255,0.22)' : palette.hairline,
     }),
-    [plain, palette]
+    [plain, palette],
   );
 
   const statusText = useMemo(() => {
@@ -117,7 +119,7 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
           return tone.primary;
       }
     },
-    [palette, tone]
+    [palette, tone],
   );
 
   const handleSend = useCallback(async () => {
@@ -137,33 +139,87 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
   }, [draft, sending, send, t]);
 
   const listRef = useRef<FlatList<BarrageItem>>(null);
+  const followLatestRef = useRef(true);
+  const [followLatest, setFollowLatest] = useState(true);
+  // useLiveBarrage 内部是「新→旧」；列表按「旧→新」渲染，和塞纳河48
+  // RecyclerView 的 stackFromEnd 行为一致：新消息追加到末尾，底部就是最新。
+  const listItems = useMemo(() => items.slice().reverse(), [items]);
+  const lastItemId = listItems.length ? listItems[listItems.length - 1]?.id : '';
+  const scrollScheduledRef = useRef(false);
+
+  /**
+   * 滚到最新一条。
+   * 弹幕行已支持多行折行，行高不再是固定值，不能用 BARRAGE_ROW_HEIGHT 估算 offset；
+   * 直接 scrollToEnd 让 FlatList 按真实布局定位，避免长弹幕把底部越推越偏。
+   */
+  const scrollToLatest = useCallback(() => {
+    if (!followLatestRef.current || !listItems.length) return;
+    if (scrollScheduledRef.current) return;
+    scrollScheduledRef.current = true;
+    requestAnimationFrame(() => {
+      scrollScheduledRef.current = false;
+      listRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [listItems.length]);
+
+  useEffect(() => {
+    if (!items.length) {
+      followLatestRef.current = true;
+      setFollowLatest(true);
+      return;
+    }
+    scrollToLatest();
+  }, [items.length, lastItemId, scrollToLatest]);
+
+  const handleScrollBegin = useCallback(() => {
+    // 只有用户主动拖动才关闭自动跟随；内容增长/程序化定位不能误判成上滑。
+    followLatestRef.current = false;
+    setFollowLatest(false);
+  }, []);
+
+  const handleScrollEnd = useCallback((e: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const distanceToEnd = contentSize.height - layoutMeasurement.height - (contentOffset.y || 0);
+    if (distanceToEnd <= 24) {
+      followLatestRef.current = true;
+      setFollowLatest(true);
+    }
+  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: BarrageItem }) => (
       <View style={styles.row}>
-        <Text style={[styles.rowText, { color: itemColor(item.kind) }]} numberOfLines={1}>
-          {item.text}
-        </Text>
+        <Text style={[styles.rowText, { color: itemColor(item.kind) }]}>{item.text}</Text>
       </View>
     ),
-    [itemColor]
+    [itemColor],
   );
 
   const inputRow = (
     <View style={[styles.inputRow, pocket && styles.pocketInputRow]}>
       <View style={{ flex: 1 }}>
         <TextInput
-          style={[styles.input, { color: tone.primary, backgroundColor: tone.fieldBg, borderColor: tone.fieldBorder }, pocket && styles.pocketInput]}
+          style={[
+            styles.input,
+            { color: tone.primary, backgroundColor: tone.fieldBg, borderColor: tone.fieldBorder },
+            pocket && styles.pocketInput,
+          ]}
           value={draft}
           onChangeText={setDraft}
-          placeholder={ready ? t(pocket ? '对成员说...' : '发条弹幕...') : t('弹幕连接中，点此重连')}
+          placeholder={
+            ready ? t(pocket ? '对成员说...' : '发条弹幕...') : t('弹幕连接中，点此重连')
+          }
           placeholderTextColor={tone.tertiary}
           /* 未连上时也允许点击：聚焦即触发重连（点弹幕输入框就自动重连，
              而不是干等着「弹幕连接中」）。 */
           editable={!sending}
           onFocus={() => {
             if (!ready) {
-              try { retry(); } catch { /* ignore */ }
+              try {
+                retry();
+              } catch {
+                /* ignore */
+              }
             }
           }}
           maxLength={60}
@@ -174,56 +230,74 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
           <Text style={[styles.counter, { color: tone.tertiary }]}>{draft.length}/60</Text>
         ) : null}
       </View>
-      {(!pocket || !!draft || sending) && <TouchableOpacity
-        onPress={handleSend}
-        disabled={!ready || sending || !draft.trim()}
-        activeOpacity={0.85}
-        style={[styles.sendBtn, { backgroundColor: ready && draft.trim() && !sending ? palette.tint : tone.fieldBg }]}
-      >
-        {sending ? (
-          <Text style={[styles.sendText, { color: tone.tertiary }]}>··</Text>
-        ) : (
-          <MaterialCommunityIcons
-            name="send"
-            size={16}
-            color={ready && draft.trim() ? palette.onTint : tone.tertiary}
-          />
-        )}
-      </TouchableOpacity>}
+      {(!pocket || !!draft || sending) && (
+        <TouchableOpacity
+          onPress={handleSend}
+          disabled={!ready || sending || !draft.trim()}
+          activeOpacity={0.85}
+          style={[
+            styles.sendBtn,
+            { backgroundColor: ready && draft.trim() && !sending ? palette.tint : tone.fieldBg },
+          ]}
+        >
+          {sending ? (
+            <Text style={[styles.sendText, { color: tone.tertiary }]}>··</Text>
+          ) : (
+            <MaterialCommunityIcons
+              name="send"
+              size={16}
+              color={ready && draft.trim() ? palette.onTint : tone.tertiary}
+            />
+          )}
+        </TouchableOpacity>
+      )}
     </View>
   );
 
-  const header = compact || inputOnly ? null : (
-    <View style={styles.header}>
-      <MaterialCommunityIcons name="message-text-outline" size={14} color={tone.secondary} />
-      <Text style={[styles.headerText, { color: tone.secondary }]} numberOfLines={1}>
-        {statusText}
-      </Text>
-      {status === 'error' ? (
-        <TouchableOpacity onPress={retry} hitSlop={styles.hit} activeOpacity={0.7}>
-          <Text style={[styles.headerAction, { color: palette.tint }]}>{t('重连')}</Text>
-        </TouchableOpacity>
-      ) : null}
-      {items.length ? <Text style={[styles.count, { color: tone.tertiary }]}>{items.length}</Text> : null}
-    </View>
-  );
+  const header =
+    compact || inputOnly ? null : (
+      <View style={styles.header}>
+        <MaterialCommunityIcons name="message-text-outline" size={14} color={tone.secondary} />
+        <Text style={[styles.headerText, { color: tone.secondary }]} numberOfLines={1}>
+          {statusText}
+        </Text>
+        {status === 'error' ? (
+          <TouchableOpacity onPress={retry} hitSlop={styles.hit} activeOpacity={0.7}>
+            <Text style={[styles.headerAction, { color: palette.tint }]}>{t('重连')}</Text>
+          </TouchableOpacity>
+        ) : null}
+        {items.length ? (
+          <Text style={[styles.count, { color: tone.tertiary }]}>{items.length}</Text>
+        ) : null}
+      </View>
+    );
 
   const inner = inputOnly ? (
     <>
       {hint ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={[styles.hint, { color: palette.tint, flex: 1 }]} numberOfLines={1}>{hint}</Text>
+          <Text style={[styles.hint, { color: palette.tint, flex: 1 }]} numberOfLines={1}>
+            {hint}
+          </Text>
           <TouchableOpacity
-            onPress={() => { setHint(''); handleSend(); }}
+            onPress={() => {
+              setHint('');
+              handleSend();
+            }}
             hitSlop={styles.hit}
             activeOpacity={0.7}
           >
-            <Text style={{ color: palette.tint, fontSize: 12, fontWeight: '700' }}>{t('重试')}</Text>
+            <Text style={{ color: palette.tint, fontSize: 12, fontWeight: '700' }}>
+              {t('重试')}
+            </Text>
           </TouchableOpacity>
         </View>
       ) : null}
       {ready || pocket ? null : (
-        <Text style={[styles.empty, { color: tone.tertiary, paddingVertical: 2 }]} numberOfLines={1}>
+        <Text
+          style={[styles.empty, { color: tone.tertiary, paddingVertical: 2 }]}
+          numberOfLines={1}
+        >
           {statusText}
         </Text>
       )}
@@ -234,12 +308,20 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
       {header}
       <FlatList
         ref={listRef}
-        data={items}
+        data={listItems}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         style={[styles.list, { height }]}
         contentContainerStyle={[styles.listContent, { flexGrow: 1, justifyContent: 'flex-end' }]}
         keyboardShouldPersistTaps="handled"
+        initialNumToRender={16}
+        maxToRenderPerBatch={16}
+        windowSize={5}
+        removeClippedSubviews={false}
+        onScrollBeginDrag={handleScrollBegin}
+        onScrollEndDrag={handleScrollEnd}
+        onMomentumScrollEnd={handleScrollEnd}
+        scrollEventThrottle={100}
         ListEmptyComponent={
           <Text style={[styles.empty, { color: tone.tertiary }]}>
             {status === 'connected' ? t('暂无弹幕') : statusText}
@@ -247,14 +329,20 @@ export function LiveBarrageBoard(props: LiveBarrageBoardProps) {
         }
       />
 
-      <TouchableOpacity
-        style={[styles.scrollBottomBtn, { backgroundColor: palette.tint }]}
-        onPress={() => listRef.current?.scrollToEnd({ animated: true })}
-        activeOpacity={0.85}
-        accessibilityLabel={t('回到底部')}
-      >
-        <MaterialCommunityIcons name="chevron-down" size={22} color={palette.onTint} />
-      </TouchableOpacity>
+      {!followLatest ? (
+        <TouchableOpacity
+          style={[styles.scrollBottomBtn, { backgroundColor: palette.tint }]}
+          onPress={() => {
+            followLatestRef.current = true;
+            setFollowLatest(true);
+            scrollToLatest();
+          }}
+          activeOpacity={0.85}
+          accessibilityLabel={t('回到底部')}
+        >
+          <MaterialCommunityIcons name="chevron-down" size={22} color={palette.onTint} />
+        </TouchableOpacity>
+      ) : null}
       {hint ? <Text style={[styles.hint, { color: palette.tint }]}>{hint}</Text> : null}
       {hideInput ? null : inputRow}
     </>
@@ -277,7 +365,12 @@ export interface LiveBarragePanelProps extends Omit<LiveBarrageBoardProps, 'sour
   enabled?: boolean;
 }
 
-export function LiveBarragePanel({ liveId, enabled = true, module = 'live', ...rest }: LiveBarragePanelProps) {
+export function LiveBarragePanel({
+  liveId,
+  enabled = true,
+  module = 'live',
+  ...rest
+}: LiveBarragePanelProps) {
   const source = useLiveBarrage({ liveId, enabled, module });
   return <LiveBarrageBoard source={source} liveId={liveId} module={module} {...rest} />;
 }
@@ -292,19 +385,48 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: 'rgba(0,0,0,0.42)',
   },
-  wrapPocket: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, backgroundColor: 'transparent' },
+  wrapPocket: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    backgroundColor: 'transparent',
+  },
   pocketInputRow: { paddingTop: 0 },
-  pocketInput: { minHeight: 44, borderRadius: 22, borderWidth: 0, backgroundColor: 'rgba(20,20,24,0.48)', paddingHorizontal: 16, fontSize: 16 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2, paddingBottom: 6 },
+  pocketInput: {
+    minHeight: 44,
+    borderRadius: 22,
+    borderWidth: 0,
+    backgroundColor: 'rgba(20,20,24,0.48)',
+    paddingHorizontal: 16,
+    fontSize: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 2,
+    paddingBottom: 6,
+  },
   headerText: { fontSize: 11, flexShrink: 1 },
   headerAction: { fontSize: 11, fontWeight: '700' },
   count: { fontSize: 11, marginLeft: 'auto' },
   list: { width: '100%' },
-  scrollBottomBtn: { position: 'absolute', right: 12, bottom: 58, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', elevation: 4 },
+  scrollBottomBtn: {
+    position: 'absolute',
+    right: 12,
+    bottom: 58,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+  },
   listContent: { paddingVertical: 2 },
-  row: { paddingVertical: 2 },
-  // 单行显示：一条弹幕占一行，不换行（超出省略），避免一条弹幕撑成两三行
-  rowText: { fontSize: 12, lineHeight: 17 },
+  // 行高随文本折行增长；minHeight 保证短弹幕仍是紧凑单行
+  row: { minHeight: BARRAGE_ROW_MIN_HEIGHT, paddingVertical: 2 },
+  // 多行折行展示（用户要求）：不再 numberOfLines={1} 截断
+  rowText: { fontSize: 12, lineHeight: 17, flexShrink: 1 },
   empty: { fontSize: 11, textAlign: 'center', paddingVertical: 12 },
   hint: { fontSize: 11, paddingHorizontal: 2, paddingTop: 4 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 6 },
@@ -320,7 +442,13 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
     includeFontPadding: false,
   },
-  sendBtn: { height: 34, width: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  sendBtn: {
+    height: 34,
+    width: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   counter: { position: 'absolute', right: 8, bottom: -14, fontSize: 10 },
   sendText: { fontSize: 13, fontWeight: '700' },
   hit: { top: 6, bottom: 6, left: 6, right: 6 },

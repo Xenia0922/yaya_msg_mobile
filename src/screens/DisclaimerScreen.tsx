@@ -6,7 +6,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ScreenHeader from '../components/ScreenHeader';
 import { useI18n } from '../i18n';
-import { usePalette, usePageBackground } from '../theme';
+import { usePalette, getPageBackground } from '../theme';
 
 const DISCLAIMER = `1. 本应用为第三方非官方客户端，与上海丝芭文化传媒集团有限公司及其关联公司（含 SNH48、GNZ48、BEJ48、CKG48、CGT48 等）不存在任何隶属、授权、合作或关联关系。
 
@@ -25,7 +25,7 @@ export default function DisclaimerScreen() {
   const palette = usePalette();
   const { t } = useI18n();
   return (
-    <View style={[styles.container, { backgroundColor: usePageBackground() }]}>
+    <View style={[styles.container, { backgroundColor: getPageBackground() }]}>
       <ScreenHeader title={t('免责声明')} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={[styles.title, { color: palette.label }]}>{t('免责声明')}</Text>

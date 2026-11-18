@@ -1,6 +1,6 @@
-import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
-import { StyleSheet, useWindowDimensions } from 'react-native';
-import Video from 'react-native-video';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { DeviceEventEmitter, StyleSheet, useWindowDimensions } from 'react-native';
+import Video, { ViewType } from 'react-native-video';
 import { PlayerSource } from '../types';
 import { logInfo } from '../../utils/runtimeLog';
 
@@ -28,13 +28,38 @@ interface Props {
 
 /** RNV 内核：HLS/mp4/mp3/flac 等 ExoPlayer 支持的流 */
 export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function NativeKernel(
-  { source, paused, rate, volume = 1, resumeAt, onLoad, onProgress, onEnd, onError, onFirstFrame, onBufferChange },
+  {
+    source,
+    paused,
+    rate,
+    volume = 1,
+    resumeAt,
+    onLoad,
+    onProgress,
+    onEnd,
+    onError,
+    onFirstFrame,
+    onBufferChange,
+  },
   ref,
 ) {
   const videoRef = useRef<any>(null);
   const window = useWindowDimensions();
-  const [videoSize, setVideoSize] = useState<{ url: string; width: number; height: number } | null>(null);
-  const cover = !!source.coverPortrait && window.width < window.height && videoSize?.url === source.url && videoSize.width < videoSize.height;
+  const [videoSize, setVideoSize] = useState<{ url: string; width: number; height: number } | null>(
+    null,
+  );
+  const [inPip, setInPip] = useState(false);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('PipEnteredChanged', (entered: boolean) =>
+      setInPip(!!entered),
+    );
+    return () => sub.remove();
+  }, []);
+  const cover =
+    !!source.coverPortrait &&
+    window.width < window.height &&
+    videoSize?.url === source.url &&
+    videoSize.width < videoSize.height;
   useImperativeHandle(ref, () => ({
     seek: (t: number) => {
       try {
@@ -49,17 +74,21 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
       source={{
         uri: source.url,
         ...(source.headers ? { headers: source.headers } : {}),
-        // AWS/CDN 流播放中偶发缓冲耗尽卡顿：加大 Exo 缓冲池 + 30s 回看缓冲
-        bufferConfig: {
-          minBufferMs: 15000,
-          maxBufferMs: 60000,
-          bufferForPlaybackMs: 5000,
-          bufferForPlaybackAfterRebufferMs: 10000,
-          backBufferDurationMs: 30000,
-        },
+      }}
+      // AWS/CDN 流播放中偶发缓冲耗尽卡顿：加大 Exo 缓冲池 + 30s 回看缓冲。
+      // ⚠️ react-native-video v6 要求 bufferConfig 是顶层 prop，放进 source 内不会生效。
+      bufferConfig={{
+        minBufferMs: 15000,
+        maxBufferMs: 60000,
+        bufferForPlaybackMs: 5000,
+        bufferForPlaybackAfterRebufferMs: 10000,
+        backBufferDurationMs: 30000,
       }}
       style={StyleSheet.absoluteFill}
-      resizeMode={cover ? 'cover' : 'contain'}
+      // 系统 PiP 从 SurfaceView 切 TextureView：避免进入/双击缩放小窗时长时间黑屏。
+      viewType={ViewType.TEXTURE}
+      // 系统小窗内始终 contain：Android 双击放大/缩小时不能被 cover 裁掉画面边缘。
+      resizeMode={inPip ? 'contain' : cover ? 'cover' : 'contain'}
       paused={paused}
       rate={rate}
       volume={volume}
@@ -68,7 +97,9 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
       playInBackground
       playWhenInactive
       onLoad={(e) => {
-        try { logInfo(`[vod] NativeKernel onLoad dur=${Math.round(e.duration || 0)}`, 'player.native'); } catch {}
+        try {
+          logInfo(`[vod] NativeKernel onLoad dur=${Math.round(e.duration || 0)}`, 'player.native');
+        } catch {}
         const ns = e?.naturalSize;
         if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) {
           setVideoSize({ url: source.url, width: Number(ns.width), height: Number(ns.height) });
@@ -88,7 +119,9 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
       onProgress={(e) => onProgress(e.currentTime || 0)}
       onEnd={onEnd}
       onReadyForDisplay={() => {
-        try { logInfo('[vod] first frame onReadyForDisplay', 'player.native'); } catch {}
+        try {
+          logInfo('[vod] first frame onReadyForDisplay', 'player.native');
+        } catch {}
         onFirstFrame?.();
       }}
       onBuffer={(e) => {
@@ -97,9 +130,14 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
       onError={(event: any) => {
         try {
           const raw = event?.error || event;
-          const msg = String(raw?.message || raw?.errorType || raw?.type || raw?.code || raw?.cause?.message || '');
+          const msg = String(
+            raw?.message || raw?.errorType || raw?.type || raw?.code || raw?.cause?.message || '',
+          );
           const full = JSON.stringify(raw || {}).slice(0, 1400);
-          logInfo(`[vod] onError msg=${msg.slice(0, 260)} full=${full.slice(0, 1000)}`, 'player.native');
+          logInfo(
+            `[vod] onError msg=${msg.slice(0, 260)} full=${full.slice(0, 1000)}`,
+            'player.native',
+          );
         } catch {}
         onError(JSON.stringify(event?.error || event).slice(0, 220));
       }}

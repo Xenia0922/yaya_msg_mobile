@@ -14,10 +14,10 @@ const RECHARGE_URL = 'https://live.48.cn/Recharge/';
 /**
  * 鸡腿充值：直接全屏打开官方充值页。
  *
- * 历史包袱（2026-10-25 删除）：原实现顶部挂了一张「余额卡」——
- *   - 调 /user/api/v1/user/money 拉余额，但该接口在 token 过期时恒返回 401003，
- *     卡片退化成「一个图标 + 刷新」的空壳，还占掉近 1/4 屏幕把充值页挤成一条；
- *   - 官方充值页本身就有账户/余额/套餐的完整界面，重复展示没有意义。
+ * 历史包袱（删除）：原实现顶部挂了一张「余额卡」——
+ * - 调 /user/api/v1/user/money 拉余额，但该接口在 token 过期时恒返回 401003，
+ * 卡片退化成「一个图标 + 刷新」的空壳，还占掉近 1/4 屏幕把充值页挤成一条；
+ * - 官方充值页本身就有账户/余额/套餐的完整界面，重复展示没有意义。
  * 现在只保留「全屏官方页 + 预填口袋ID + 15s 加载兜底」，导航栏刷新 = 重载充值页。
  */
 export default function RechargeScreen() {
@@ -25,7 +25,7 @@ export default function RechargeScreen() {
   const { t } = useI18n();
   const [webError, setWebError] = useState('');
   /** 官方充值页（live.48.cn/Recharge/）本身无自动登录态：它要用户手输「口袋ID」。
-   *  App 已持有登录态，这里把自身 id 取出来预填，省一步。 */
+   * App 已持有登录态，这里把自身 id 取出来预填，省一步。 */
   const [selfPocketId, setSelfPocketId] = useState('');
   const [webSlow, setWebSlow] = useState(false);
   const webViewRef = useRef<WebView>(null);
@@ -48,8 +48,10 @@ export default function RechargeScreen() {
       }
     })();
     armSlowTimer();
-    return () => { if (slowTimer.current) clearTimeout(slowTimer.current); };
-  }, []);
+    return () => {
+      if (slowTimer.current) clearTimeout(slowTimer.current);
+    };
+  }, [armSlowTimer]);
 
   const reloadWeb = () => {
     setWebError('');
@@ -60,9 +62,10 @@ export default function RechargeScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title={t('鸡腿充值')} right={
-        <HeaderAction label={t('刷新')} onPress={reloadWeb} />
-      } />
+      <ScreenHeader
+        title={t('鸡腿充值')}
+        right={<HeaderAction label={t('刷新')} onPress={reloadWeb} />}
+      />
 
       {/* 官方充值页全屏（原先顶部还有一张余额卡，见文件头注释） */}
       <View style={[styles.webCard, { borderColor: palette.hairline, overflow: 'hidden' }]}>
@@ -77,9 +80,11 @@ export default function RechargeScreen() {
           startInLoadingState
           userAgent="Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 PocketFans201807"
           /* 页面内容加载前把自身口袋 id 塞进 window，页面就绪后填入 #pocket_id */
-          injectedJavaScriptBeforeContentLoaded={selfPocketId
-            ? `window.__POCKET_ID__ = ${JSON.stringify(selfPocketId)}; true;`
-            : undefined}
+          injectedJavaScriptBeforeContentLoaded={
+            selfPocketId
+              ? `window.__POCKET_ID__ = ${JSON.stringify(selfPocketId)}; true;`
+              : undefined
+          }
           injectedJavaScript={`
             (function () {
               try {
@@ -96,9 +101,16 @@ export default function RechargeScreen() {
           )}
           onError={(event) => {
             if (slowTimer.current) clearTimeout(slowTimer.current);
-            setWebError(t('充值页加载失败：{msg}', { msg: String(event.nativeEvent.description).slice(0, 160) }));
+            setWebError(
+              t('充值页加载失败：{msg}', {
+                msg: String(event.nativeEvent.description).slice(0, 160),
+              }),
+            );
           }}
-          onLoadEnd={() => { if (slowTimer.current) clearTimeout(slowTimer.current); setWebSlow(false); }}
+          onLoadEnd={() => {
+            if (slowTimer.current) clearTimeout(slowTimer.current);
+            setWebSlow(false);
+          }}
         />
         {webError || webSlow ? (
           <View style={[styles.webErrorWrap, { backgroundColor: palette.background }]}>
@@ -127,12 +139,22 @@ const styles = StyleSheet.create({
   },
   web: { flex: 1, backgroundColor: '#FFFFFF' },
   webLoading: {
-    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   webErrorWrap: {
-    position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 32,
   },
 });

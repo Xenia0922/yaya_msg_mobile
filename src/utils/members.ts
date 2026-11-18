@@ -1,7 +1,7 @@
 import { Member } from '../types';
 
 let memberDatabase: Member[] = [];
-let memberMap: Map<string, Member> = new Map();
+const memberMap: Map<string, Member> = new Map();
 
 function text(value: any): string {
   if (value === undefined || value === null) return '';
@@ -10,18 +10,18 @@ function text(value: any): string {
 
 function fallbackMemberId(raw: any): string {
   return text(
-    raw?.id
-      || raw?.memberId
-      || raw?.userId
-      || raw?.starId
-      || raw?.channelId
-      || raw?.roomId
-      || raw?.yklzId
-      || raw?.smallRoomId
-      || raw?.account
-      || raw?.ownerName
-      || raw?.starName
-      || raw?.name,
+    raw?.id ||
+      raw?.memberId ||
+      raw?.userId ||
+      raw?.starId ||
+      raw?.channelId ||
+      raw?.roomId ||
+      raw?.yklzId ||
+      raw?.smallRoomId ||
+      raw?.account ||
+      raw?.ownerName ||
+      raw?.starName ||
+      raw?.name,
   );
 }
 
@@ -41,8 +41,14 @@ export function memberSearchText(member: Member): string {
   // split camelCase: "BaoYuXin" → ["Bao","Yu","Xin"]; "baoyuxin" → ["baoyuxin"]
   const camelParts = rawPinyin.split(/(?=[A-Z])/).filter(Boolean);
   const pinyinLower = rawPinyin.toLowerCase();
-  const initials = camelParts.map((p) => p[0]).join('').toLowerCase();
-  const initialsSpaced = camelParts.map((p) => p[0]).join(' ').toLowerCase();
+  const initials = camelParts
+    .map((p) => p[0])
+    .join('')
+    .toLowerCase();
+  const initialsSpaced = camelParts
+    .map((p) => p[0])
+    .join(' ')
+    .toLowerCase();
   return [
     member.ownerName,
     short,
@@ -52,9 +58,10 @@ export function memberSearchText(member: Member): string {
     member.team || '',
     member.groupName || '',
     String(member.id || ''),
-  ].join(' ').toLowerCase();
+  ]
+    .join(' ')
+    .toLowerCase();
 }
-
 
 export function classifyMemberState(raw: any): string {
   if (raw?.state) return raw.state;
@@ -66,7 +73,7 @@ export function classifyMemberState(raw: any): string {
       if (status === 1) return 'graduated';
       if (status === 2) return 'left';
       if (status === 3) return 'paused';
-      // ⚠️ 上游（data.gnz.hk）自 2026-09-27 起不再返回 status / roomId / liveRoomId 字段，
+      // ⚠️ 上游（data.gnz.hk）自 起不再返回 status / roomId / liveRoomId 字段，
       // 无 status 时旧逻辑返回 'unknown' → 资料卡状态栏空白、按状态分组的地方全丢。
       // 改为按「已毕业」兜底：库判 isInGroup=false 的成员绝大多数是已毕业/已离团。
       // 注意上麦页不依赖 state 判定在团（它用 isInGroup !== false），故无副作用。
@@ -135,7 +142,9 @@ export async function loadMembers(json?: any): Promise<Member[]> {
     arr = json.roomId || json.data || json.content || json.list || json.members || [];
   }
   memberDatabase = arr
-    .filter((m: any) => m && (m.id || m.memberId || m.userId || m.ownerName || m.starName || m.name))
+    .filter(
+      (m: any) => m && (m.id || m.memberId || m.userId || m.ownerName || m.starName || m.name),
+    )
     .map(normalizeMember)
     .filter((m) => m.id && m.ownerName);
   memberMap.clear();
@@ -151,13 +160,21 @@ export async function loadMembers(json?: any): Promise<Member[]> {
 export function searchMembers(query: string, limit = 20): Member[] {
   if (!query?.trim()) return memberDatabase.slice(0, limit);
   const q = query.trim().toLowerCase();
-  return memberDatabase.filter((m) => {
-    const name = m.ownerName.toLowerCase();
-    const pn = (m.pinyin || '').toLowerCase();
-    const initials = pinyinInitials(m.pinyin);
-    const team = (m.team || '').toLowerCase();
-    return name.includes(q) || pn.includes(q) || initials.includes(q) || team.includes(q) || m.id.includes(q);
-  }).slice(0, limit);
+  return memberDatabase
+    .filter((m) => {
+      const name = m.ownerName.toLowerCase();
+      const pn = (m.pinyin || '').toLowerCase();
+      const initials = pinyinInitials(m.pinyin);
+      const team = (m.team || '').toLowerCase();
+      return (
+        name.includes(q) ||
+        pn.includes(q) ||
+        initials.includes(q) ||
+        team.includes(q) ||
+        m.id.includes(q)
+      );
+    })
+    .slice(0, limit);
 }
 
 export function findMember(idOrName: string): Member | undefined {
@@ -171,11 +188,15 @@ export function findMemberByChannelId(channelId: string): Member | undefined {
   return memberDatabase.find((m) => m.channelId === channelId || m.yklzId === channelId);
 }
 
-export function getAllMembers(): Member[] { return memberDatabase; }
+export function getAllMembers(): Member[] {
+  return memberDatabase;
+}
 
 export function getMembersByGroup(group: string): Member[] {
   if (group === 'all') return memberDatabase;
   return memberDatabase.filter((m) => m.groupName === group);
 }
 
-export function getMemberCount(): number { return memberDatabase.length; }
+export function getMemberCount(): number {
+  return memberDatabase.length;
+}

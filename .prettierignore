@@ -1,0 +1,24 @@
+# 依赖与构建产物
+node_modules
+android
+ios
+.expo
+dist
+APK
+
+# 文档、资源与内部资料（任务要求排除）
+docs
+assets
+_internal
+*.md
+
+# GitHub Issue 模板是 YAML frontmatter + Markdown 混合格式，Prettier 无法解析
+.github/ISSUE_TEMPLATE
+
+# 第三方 vendored SDK，不参与格式化
+src/third_party
+
+# 数据/脚本目录，避免对历史产物做格式化
+member-db
+scratch
+package-lock.json

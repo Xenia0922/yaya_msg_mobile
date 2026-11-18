@@ -1,6 +1,6 @@
 // 表情包资源索引（PopoEmoticons 107 个；资源拷自参考实现 assets/emoji/default，MIT/自用）
 // 生成来源：emoji.xml Tag ↔ File 映射。require 必须字面量（Metro 静态收集）。
-/* eslint-disable global-require, @typescript-eslint/no-var-requires */
+
 const EMOJI_FILES: Record<string, any> = {
   '[呲牙]': require('../../assets/emoji/f_static_000.png'),
   '[调皮]': require('../../assets/emoji/f_static_001.png'),

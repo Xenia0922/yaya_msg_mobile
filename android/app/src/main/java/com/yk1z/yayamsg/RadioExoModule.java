@@ -58,10 +58,16 @@ public class RadioExoModule extends ReactContextBaseJavaModule {
 
   private void send(Intent i) {
     ReactApplicationContext ctx = getReactApplicationContext();
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      ctx.startForegroundService(i);
-    } else {
-      ctx.startService(i);
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        ctx.startForegroundService(i);
+      } else {
+        ctx.startService(i);
+      }
+    } catch (Throwable t) {
+      // Android 12+ 后台启动前台服务会抛 ForegroundServiceStartNotAllowedException；
+      // 不能让它打断 RN 调用链（旧实现直接抛出导致 JS 侧红屏/未捕获 Promise）。
+      android.util.Log.w("RadioExoModule", "start service failed action=" + i.getAction(), t);
     }
   }
 

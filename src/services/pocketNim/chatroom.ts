@@ -1,5 +1,3 @@
-
-
 import { buildLiveBarrageExt, parseChatroomMessage, parseLiveUpdate } from './codec';
 import {
   isPocketNimChatroomAvailable,
@@ -10,12 +8,17 @@ import {
   onChatroomStatus,
   onChatroomOnline,
 } from '../../native/PocketNimChatroom';
-import { credentialsToProfile, loadNimSdk, NimCredentials, NIM_CHATROOM_ADDRESSES, NIM_APP_KEY } from './runtime';
+import {
+  credentialsToProfile,
+  loadNimSdk,
+  NimCredentials,
+  NIM_CHATROOM_ADDRESSES,
+  NIM_APP_KEY,
+} from './runtime';
 import { loadSelfProfile } from './credentials';
 import { BarrageItem, NimModule } from './types';
 
 export type ChatroomStatus = 'connecting' | 'connected' | 'reconnecting' | 'closed' | 'error';
-
 
 let lbsAddresses: string[] | null = null;
 let lbsInflight: Promise<string[]> | null = null;
@@ -49,7 +52,9 @@ async function resolveChatroomAddresses(): Promise<string[]> {
         const chat = list.filter((x) => x.startsWith('chatwl'));
         const web = list.filter((x) => x.startsWith('weblink'));
         const rest = list.filter((x) => !x.startsWith('chatwl') && !x.startsWith('weblink'));
-        const merged = (chat.length || web.length ? [...chat, ...web, ...rest] : FALLBACK_LBS).slice(0, 5);
+        const merged = (
+          chat.length || web.length ? [...chat, ...web, ...rest] : FALLBACK_LBS
+        ).slice(0, 5);
         // eslint-disable-next-line no-console
         console.log('[nim] LBS chatroom addresses =', merged.join(' , ') || '(empty)');
         if (merged.length) {
@@ -100,14 +105,15 @@ function friendlyAuthError(reason: string): string {
   return reason || '弹幕连接失败';
 }
 
-
 /**
  * Web/RN 侧 IM 登录探针。
  *
  * 官方 App 进聊天室是「非独立模式」：先完成 IM 登录，聊天室鉴权依赖 IM 会话；
  * 我们此前聊天室裸登（account+token 直连聊天室服务）被 403，可能就是缺这个前置。
  */
-export async function webImLoginProbe(credentials: NimCredentials): Promise<{ ok: boolean; detail: string }> {
+export async function webImLoginProbe(
+  credentials: NimCredentials,
+): Promise<{ ok: boolean; detail: string }> {
   const SDK = loadNimSdk();
   return new Promise((resolve) => {
     let settled = false;
@@ -115,7 +121,11 @@ export async function webImLoginProbe(credentials: NimCredentials): Promise<{ ok
     const finish = (ok: boolean, detail: string) => {
       if (settled) return;
       settled = true;
-      try { inst && inst.destroy && inst.destroy(); } catch { /* 忽略 */ }
+      try {
+        inst && inst.destroy && inst.destroy();
+      } catch {
+        /* 忽略 */
+      }
       resolve({ ok, detail });
     };
     try {
@@ -128,7 +138,8 @@ export async function webImLoginProbe(credentials: NimCredentials): Promise<{ ok
         dbLog: false,
         onconnect: () => finish(true, 'connected'),
         onerror: (err: any) => finish(false, String(err?.message || err?.code || err || 'error')),
-        ondisconnect: (err: any) => finish(false, `disconnect:${String(err?.message || err?.code || '')}`),
+        ondisconnect: (err: any) =>
+          finish(false, `disconnect:${String(err?.message || err?.code || '')}`),
       });
       setTimeout(() => finish(false, 'timeout'), 12000);
     } catch (e: any) {
@@ -137,7 +148,7 @@ export async function webImLoginProbe(credentials: NimCredentials): Promise<{ ok
   });
 }
 
-/** 单个直播间弹幕连接。dispose() 一定要在离开直播间时调用。 */
+/** 单个直播间弹幕连接。dispose 一定要在离开直播间时调用。 */
 export class LiveChatroom {
   private readonly options: LiveChatroomOptions;
   private instance: any = null;
@@ -172,7 +183,6 @@ export class LiveChatroom {
     }
   }
 
-  
   /** 当前使用的接入点（LBS 解析结果；解析完成前为旧默认） */
   private addresses: string[] = NIM_CHATROOM_ADDRESSES;
 
@@ -209,12 +219,12 @@ export class LiveChatroom {
         else if (status.state === 'reconnecting') this.setStatus('reconnecting');
         else if (status.state === 'disconnected') this.setStatus('closed');
         else if (status.state === 'error') this.setStatus('error', status.detail);
-      })
+      }),
     );
     this.nativeUnsubs.push(
       onChatroomOnline((count) => {
         if (!this.disposed) this.options.onOnlineCount?.(count);
-      })
+      }),
     );
     this.nativeUnsubs.push(
       onChatroomMessage((message) => {
@@ -234,15 +244,25 @@ export class LiveChatroom {
         if (info) this.options.onLiveInfo?.(info);
         const item = parseChatroomMessage(shaped);
         if (item) this.options.onMessages([item]);
-      })
+      }),
     );
     try {
       // eslint-disable-next-line no-console
       console.log('[nim] native chatroom connecting');
       await chatroomConnect(NIM_APP_KEY, credentials.accid, credentials.token, roomId);
+      // await 期间可能已 dispose：此时不能留下一条已建立的连接/订阅
+      if (this.disposed) {
+        try {
+          chatroomDisconnect();
+        } catch {
+          /* 忽略 */
+        }
+        return;
+      }
       // eslint-disable-next-line no-console
       console.log('[nim] native chatroom CONNECTED');
     } catch (error: any) {
+      if (this.disposed) return;
       const detail = String(error?.message || error);
       // eslint-disable-next-line no-console
       console.log('[nim] native chatroom FAILED:', detail);
@@ -267,6 +287,8 @@ export class LiveChatroom {
         // eslint-disable-next-line no-console
         console.log('[nim] web IM login probe...');
         const probeResult = await webImLoginProbe(credentials);
+        // await 期间可能已 dispose：不得再创建 Chatroom 实例/定时器（P1-C10）
+        if (this.disposed) return;
         // eslint-disable-next-line no-console
         console.log('[nim] web IM login probe result =', probeResult.ok, probeResult.detail);
         if (!probeResult.ok) {
@@ -278,7 +300,14 @@ export class LiveChatroom {
         ? { isAnonymous: true, chatroomNick: anonNick, chatroomAvatar: '' }
         : { account: credentials.accid, token: credentials.token };
       // eslint-disable-next-line no-console
-      console.log('[nim] chatroom connect attempt =', attempt, 'anonymous =', anonymous, 'roomId =', roomId);
+      console.log(
+        '[nim] chatroom connect attempt =',
+        attempt,
+        'anonymous =',
+        anonymous,
+        'roomId =',
+        roomId,
+      );
       this.instance = SDK.Chatroom.getInstance({
         appKey: NIM_APP_KEY,
         chatroomId: roomId,
@@ -309,7 +338,8 @@ export class LiveChatroom {
           if (items.length) this.options.onMessages(items);
         },
         onerror: (err: any) => {
-          const detail = err && (err.message || err.code) ? String(err.message || err.code) : '聊天室连接错误';
+          const detail =
+            err && (err.message || err.code) ? String(err.message || err.code) : '聊天室连接错误';
           // eslint-disable-next-line no-console
           console.log('[nim] chatroom ERROR attempt =', attempt, detail);
           this.fallback(detail);
@@ -335,7 +365,11 @@ export class LiveChatroom {
       }, 8000);
     } catch (error: any) {
       // eslint-disable-next-line no-console
-      console.log('[nim] chatroom connect THREW attempt =', attempt, String(error?.message || error));
+      console.log(
+        '[nim] chatroom connect THREW attempt =',
+        attempt,
+        String(error?.message || error),
+      );
       this.fallback(String(error?.message || error));
     }
   }
@@ -433,10 +467,18 @@ export class LiveChatroom {
     this.clearTimer();
     if (this.useNative) {
       this.nativeUnsubs.forEach((off) => {
-        try { off(); } catch { /* 忽略 */ }
+        try {
+          off();
+        } catch {
+          /* 忽略 */
+        }
       });
       this.nativeUnsubs = [];
-      try { chatroomDisconnect(); } catch { /* 忽略 */ }
+      try {
+        chatroomDisconnect();
+      } catch {
+        /* 忽略 */
+      }
     }
     this.destroyInstance();
     this.setStatus('closed');

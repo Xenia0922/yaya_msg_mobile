@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
-import { Platform, StatusBar, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../i18n';
 import { usePalette } from '../theme';
 import { typography } from '../theme/typography';
@@ -21,13 +22,24 @@ interface Props {
   hideBack?: boolean;
 }
 
-
-export default function ScreenHeader({ title, onBack, right, leading, style, overlay, hideBack }: Props) {
+export default function ScreenHeader({
+  title,
+  onBack,
+  right,
+  leading,
+  style,
+  overlay,
+  hideBack,
+}: Props) {
   const navigation = useNavigation();
   const { t } = useI18n();
   const palette = usePalette();
-  const goBack = useCallback(onBack || (() => navigation.goBack()), [onBack, navigation]);
-  const topPad = Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 24) + 10;
+  const insets = useSafeAreaInsets();
+  const goBack = useCallback(() => {
+    if (onBack) onBack();
+    else navigation.goBack();
+  }, [onBack, navigation]);
+  const topPad = insets.top + 10;
 
   return (
     <View style={[styles.header, { paddingTop: topPad }, style]}>

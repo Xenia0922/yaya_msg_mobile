@@ -2,14 +2,20 @@
 export type NormLevel = 'strict' | 'medium' | 'loose';
 
 function removeBrackets(s: string): string {
-  return s.replace(/[\(\（\[].*?[\)\）\]]/g, '').replace(/\s+/g, ' ').trim();
+  return s
+    .replace(/[\(\（\[].*?[\)\）\]]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function removeNoise(s: string): string {
   return s
-    .replace(/[\(\（\[].*?[\)\）\]]/g, '')      // 括号内容
+    .replace(/[\(\（\[].*?[\)\）\]]/g, '') // 括号内容
     .replace(/[～～\~\-\–\—\:\：\|\/\.\,\，\、\!\！]/g, ' ') // 标点
-    .replace(/\b(feat\.?|ft\.?|ver\.?|version|live|inst\.?|instrumental|off vocal|伴奏|remix|cover|翻唱)\b/gi, '')
+    .replace(
+      /\b(feat\.?|ft\.?|ver\.?|version|live|inst\.?|instrumental|off vocal|伴奏|remix|cover|翻唱)\b/gi,
+      '',
+    )
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -21,7 +27,11 @@ export function normalizeSong(keyword: string): { strict: string; medium: string
   return { strict, medium, loose };
 }
 
-export function normalizeArtist(keyword: string): { strict: string; medium: string; loose: string } {
+export function normalizeArtist(keyword: string): {
+  strict: string;
+  medium: string;
+  loose: string;
+} {
   const strict = keyword.toLowerCase().replace(/\s+/g, ' ').trim();
   const medium = removeBrackets(keyword).toLowerCase().replace(/\s+/g, ' ').trim();
   const loose = removeNoise(keyword).toLowerCase().replace(/\s+/g, '').trim();

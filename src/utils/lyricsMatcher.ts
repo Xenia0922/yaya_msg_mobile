@@ -1,7 +1,4 @@
-import {
-  normalizeSong, normalizeArtist, normalizeGroup,
-  similarity,
-} from './normalize';
+import { normalizeSong, normalizeArtist, normalizeGroup, similarity } from './normalize';
 
 export interface LyricEntry {
   id: string;
@@ -62,7 +59,10 @@ export class LyricsMatcher {
     let bestScore = -1;
     for (const e of list) {
       const sc = score(e);
-      if (sc > bestScore) { bestScore = sc; best = e; }
+      if (sc > bestScore) {
+        bestScore = sc;
+        best = e;
+      }
     }
     return best;
   }
@@ -81,37 +81,38 @@ export class LyricsMatcher {
 
     // Tier 2: strict exact (song + artist + group)
     if (reqArtist && reqGroup) {
-      const hits = this.entries.filter((e) =>
-        e.normalized.song.strict === reqSong.strict &&
-        e.normalized.artist.strict === reqArtist.strict &&
-        e.normalized.group.loose === reqGroup.loose
+      const hits = this.entries.filter(
+        (e) =>
+          e.normalized.song.strict === reqSong.strict &&
+          e.normalized.artist.strict === reqArtist.strict &&
+          e.normalized.group.loose === reqGroup.loose,
       );
       if (hits.length) return { entry: this.pickVersion(hits, req.album), tier: 2, score: 1 };
     }
 
     // Tier 3: medium exact (song + group)
     if (reqGroup) {
-      const hits = this.entries.filter((e) =>
-        e.normalized.song.medium === reqSong.medium &&
-        e.normalized.group.loose === reqGroup.loose
+      const hits = this.entries.filter(
+        (e) =>
+          e.normalized.song.medium === reqSong.medium &&
+          e.normalized.group.loose === reqGroup.loose,
       );
       if (hits.length) return { entry: this.pickVersion(hits, req.album), tier: 3, score: 1 };
     }
 
     // Tier 4: medium exact (song + artist)
     if (reqArtist) {
-      const hit = this.entries.find((e) =>
-        e.normalized.song.medium === reqSong.medium &&
-        e.normalized.artist.medium === reqArtist.medium
+      const hit = this.entries.find(
+        (e) =>
+          e.normalized.song.medium === reqSong.medium &&
+          e.normalized.artist.medium === reqArtist.medium,
       );
       if (hit) return { entry: hit, tier: 4, score: 1 };
     }
 
     // Tier 5: loose exact song + artist similarity sort
     if (reqArtist) {
-      const candidates = this.entries.filter((e) =>
-        e.normalized.song.loose === reqSong.loose
-      );
+      const candidates = this.entries.filter((e) => e.normalized.song.loose === reqSong.loose);
       if (candidates.length > 0) {
         const best = candidates
           .map((e) => ({ entry: e, sim: similarity(reqArtist!.loose, e.normalized.artist.loose) }))

@@ -5,10 +5,10 @@
  * 关键约束：**BlurTargetView 里不能包含任何 BlurView**（否则 RenderNode 互相嵌套，
  * RenderThread 里 prepareTreeImpl 递归爆栈 → SIGSEGV，实测）。
  * 而 React context 只能向下传、屏幕里的玻璃又必须读到 ref，所以拆成两个：
- *   <BlurTargetProvider>  只提供 ref（包整个应用，屏幕能读到）
- *     <BlurTargetSurface> 真正挂 BlurTargetView（只包背景层）
- *     其余内容（屏幕/玻璃都在这里，但在 Surface 之外）
- *   </BlurTargetProvider>
+ * <BlurTargetProvider> 只提供 ref（包整个应用，屏幕能读到）
+ * <BlurTargetSurface> 真正挂 BlurTargetView（只包背景层）
+ * 其余内容（屏幕/玻璃都在这里，但在 Surface 之外）
+ * </BlurTargetProvider>
  */
 import React, { createContext, useContext, useRef } from 'react';
 import { StyleSheet, type View, type StyleProp, type ViewStyle } from 'react-native';

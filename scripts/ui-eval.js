@@ -46,7 +46,10 @@ while ((m = re.exec(raw))) {
     desc: (attr('content-desc') || '').trim(),
     clickable: attr('clickable') === 'true',
     longClickable: attr('long-clickable') === 'true',
-    x1: +bm[1], y1: +bm[2], x2: +bm[3], y2: +bm[4],
+    x1: +bm[1],
+    y1: +bm[2],
+    x2: +bm[3],
+    y2: +bm[4],
   });
 }
 
@@ -57,16 +60,22 @@ const push = (type, detail, weight) => issues.push({ type, detail, weight });
 // 1) 越界 / 裁切
 for (const n of nodes) {
   if (n.x1 < -2 || n.y1 < -2 || n.x2 > SW + 2 || n.y2 > SH + 2) {
-    push('越界', `${n.cls} "${(n.text || n.desc || '').slice(0, 24)}" [${n.x1},${n.y1}][${n.x2},${n.y2}]`, 5);
+    push(
+      '越界',
+      `${n.cls} "${(n.text || n.desc || '').slice(0, 24)}" [${n.x1},${n.y1}][${n.x2},${n.y2}]`,
+      5,
+    );
   }
 }
 
 // 2) 触控目标过小（仅交互节点）
-const isInside = (a, b) => a !== b && a.x1 >= b.x1 - 2 && a.y1 >= b.y1 - 2 && a.x2 <= b.x2 + 2 && a.y2 <= b.y2 + 2;
+const isInside = (a, b) =>
+  a !== b && a.x1 >= b.x1 - 2 && a.y1 >= b.y1 - 2 && a.x2 <= b.x2 + 2 && a.y2 <= b.y2 + 2;
 const clickables = nodes.filter((n) => n.clickable || n.longClickable);
 const topClickables = clickables.filter((n) => !clickables.some((o) => isInside(n, o)));
 for (const n of topClickables) {
-  const w = n.x2 - n.x1, h = n.y2 - n.y1;
+  const w = n.x2 - n.x1,
+    h = n.y2 - n.y1;
   if (w > 0 && h > 0 && (w < MIN_TOUCH || h < MIN_TOUCH)) {
     push('触控过小', `${w}x${h} ${n.cls} "${(n.text || n.desc || '').slice(0, 24)}"`, 2);
   }
@@ -79,10 +88,13 @@ const estW = (t) => {
   const cjk = (s.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/g) || []).length;
   return cjk * 28 + (s.length - cjk) * 16;
 };
-const texts = nodes.filter((n) => n.text && n.y1 < TAB_ZONE && (n.x2 - n.x1) <= Math.max(320, estW(n) * 4));
+const texts = nodes.filter(
+  (n) => n.text && n.y1 < TAB_ZONE && n.x2 - n.x1 <= Math.max(320, estW(n) * 4),
+);
 for (let i = 0; i < texts.length; i++) {
   for (let j = i + 1; j < texts.length; j++) {
-    const a = texts[i], b = texts[j];
+    const a = texts[i],
+      b = texts[j];
     const ox = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1);
     const oy = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
     if (ox > 8 && oy > 8) {
@@ -105,7 +117,10 @@ const penalty = issues.reduce((s, x) => s + x.weight, 0);
 const score = Math.max(0, Math.min(100, 100 - penalty));
 const grade = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : 'D';
 
-const byType = issues.reduce((acc, x) => { acc[x.type] = (acc[x.type] || 0) + 1; return acc; }, {});
+const byType = issues.reduce((acc, x) => {
+  acc[x.type] = (acc[x.type] || 0) + 1;
+  return acc;
+}, {});
 console.log(`\n===== ${NAME} =====`);
 console.log(`节点 ${nodes.length} · 可点击 ${clicks} · 评分 ${score} (${grade})`);
 for (const [k, v] of Object.entries(byType)) console.log(`  ${k}: ${v}`);

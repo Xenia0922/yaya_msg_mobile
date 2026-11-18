@@ -5,7 +5,9 @@ import vm from 'node:vm';
 
 const ts = createRequire(import.meta.url)('typescript');
 const source = readFileSync(new URL('../src/utils/lyrics.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText;
 const sandbox = { exports: {} };
 vm.runInNewContext(compiled, sandbox);
 const { parseLrc } = sandbox.exports;
@@ -36,11 +38,21 @@ assert.ok(!lines.some((l) => l.text.includes('词：')), '不得残留「词：�
 assert.ok(!lines.some((l) => l.text.includes('SNH48 Team HII')), '不得残留「歌名 - 歌手」标题行');
 
 // 正文里的冒号不能被误杀（不在白名单关键词里）
-assert.ok(lines.some((l) => l.text === '他说：别怕'), '普通冒号歌词应保留');
+assert.ok(
+  lines.some((l) => l.text === '他说：别怕'),
+  '普通冒号歌词应保留',
+);
 
 // 时间轴排序 + 一行多时间戳
 const multi = parseLrc('[00:20.00][00:40.00]副歌\n[00:10.00]主歌');
-assert.equal(JSON.stringify(multi.map((l) => [l.time, l.text])), JSON.stringify([[10, '主歌'], [20, '副歌'], [40, '副歌']]));
+assert.equal(
+  JSON.stringify(multi.map((l) => [l.time, l.text])),
+  JSON.stringify([
+    [10, '主歌'],
+    [20, '副歌'],
+    [40, '副歌'],
+  ]),
+);
 
 // 只有制作信息 → 返回空数组（调用方显示「暂无歌词」）
 assert.equal(parseLrc('[00:00.00]词：某人\n[00:00.00]曲：某人').length, 0);

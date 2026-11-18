@@ -2,29 +2,16 @@
  * 优雅加载指示 —— 全站统一居中 spinner。
  *
  * 设计原则：
- *   - 居中 ActivityIndicator（palette.tint 品牌粉，双主题自动切换），可选一行低调提示；
- *   - 纯 RN 内置组件，零额外依赖；
- *   - 不再接受 dark prop：主题由 usePalette 单一来源决定。
+ * - 居中 ActivityIndicator（palette.tint 品牌粉，双主题自动切换），可选一行低调提示；
+ * - 纯 RN 内置组件，零额外依赖；
+ * - 不再接受 dark prop：主题由 usePalette 单一来源决定。
  */
 import React from 'react';
-import {
-  ActivityIndicator,
-  StyleProp,
-  StyleSheet,
-  Text,
-  View,
-  ViewStyle,
-} from 'react-native';
+import { ActivityIndicator, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { usePalette } from '../theme';
 import { typography } from '../theme/typography';
 
-export function CenterSpinner({
-  text,
-  style,
-}: {
-  text?: string;
-  style?: StyleProp<ViewStyle>;
-}) {
+export function CenterSpinner({ text, style }: { text?: string; style?: StyleProp<ViewStyle> }) {
   const palette = usePalette();
   return (
     <View style={[styles.center, style]}>

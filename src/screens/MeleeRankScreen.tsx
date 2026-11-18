@@ -2,15 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PerfFlatList } from '../components/PerfFlatList';
 import { NetworkImage } from '../components/NetworkImage';
 
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import ScreenHeader from '../components/ScreenHeader';
@@ -28,7 +20,7 @@ import { EmptyState, ErrorState } from '../components/StateViews';
 import { Skeleton } from '../components/Skeleton';
 import { GlassSurface } from '../components/GlassSurface';
 
-// 鸡腿榜页签：周榜 + 成员贡献（年榜已按需求移除 2026-10-19）
+// 鸡腿榜页签：周榜 + 成员贡献（年榜已按需求移除）
 type ViewMode = 'week' | 'person';
 
 const MODES: { key: ViewMode; label: string }[] = [
@@ -51,7 +43,7 @@ function pickNum(...vals: any[]): number {
 }
 
 /**
- * 瞬时失败重试（2026-10-06 新增）：鸡腿榜走官方网关，实测**偶发 504 / 超时** ——
+ * 瞬时失败重试（新增）：鸡腿榜走官方网关，实测**偶发 504 / 超时** ——
  * 同一个请求时好时坏，用户看到的就是「偶尔加载不出来」。
  * 只对「看起来是瞬时」的错误重试（超时/网络/5xx），业务错误（4xx、业务码）不重试，
  * 避免把明确的失败拖成 3 倍等待。
@@ -64,7 +56,10 @@ async function withTransientRetry<T>(fn: () => Promise<T>, attempts = 3): Promis
     } catch (e: any) {
       lastErr = e;
       const msg = String(e?.message || e || '');
-      const transient = /timeout|timed out|超时|network|Network|failed to fetch|50[0-9]|Unexpected end|JSON/i.test(msg);
+      const transient =
+        /timeout|timed out|超时|network|Network|failed to fetch|50[0-9]|Unexpected end|JSON/i.test(
+          msg,
+        );
       if (!transient || i === attempts - 1) throw e;
       await new Promise((r) => setTimeout(r, i === 0 ? 400 : 900));
     }
@@ -92,15 +87,21 @@ export default function MeleeRankScreen() {
   const nextIdRef = useRef('');
   const hasMoreRef = useRef(false);
   const reqIdRef = useRef(0); // Y31: 请求序号（切榜/切周时丢弃过期响应）
+  const personReqIdRef = useRef(0); // 成员贡献请求序号：切成员/切页签丢弃过期响应
+  const moreReqIdRef = useRef(0); // 分页请求序号：切周/刷新时作废旧分页，禁止旧页 append
 
   const switchMode = (m: ViewMode) => {
     /**
-     * ⚠️ 已在该页签 → 直接返回（2026-10-06 修复）：`GlassSegmented` 的每一格
+     * ⚠️ 已在该页签 → 直接返回（修复）：`GlassSegmented` 的每一格
      * **每次点击都会回调 onChange（含点当前已选中那格）**。
      * 此前无条件 `setRanks([])` 而 `setMode(同一个值)` 不触发下面的加载 effect →
      * **榜单被清空后永不重载**，表现为「点一下当前页签 → 榜单变『暂无排名数据』」。
      */
     if (m === mode) return;
+    // 切页签：作废在途的成员贡献请求与分页请求，避免旧响应落到新页签
+    personReqIdRef.current += 1;
+    moreReqIdRef.current += 1;
+    setLoadingMore(false);
     setRanks([]);
     setPersonRanks([]);
     setPersonTotal(null);
@@ -112,6 +113,9 @@ export default function MeleeRankScreen() {
 
   const loadRank = useCallback(async () => {
     const rid = ++reqIdRef.current;
+    // 整体重载（切周/下拉刷新）：作废在途分页，防止旧分页 append 到新榜
+    moreReqIdRef.current += 1;
+    setLoadingMore(false);
     setLoading(true);
     setError('');
     try {
@@ -134,7 +138,10 @@ export default function MeleeRankScreen() {
         setWeeks((prev) => (prev.length ? prev : ws));
         // 默认选中「最新一期」：不能假设数组顺序（接口可能降序，取末项会选到最旧周）
         if (!selectedWeekRef.current) {
-          const latest = ws.reduce((a, b) => (Number(b.weekRankId) > Number(a.weekRankId) ? b : a), ws[0]);
+          const latest = ws.reduce(
+            (a, b) => (Number(b.weekRankId) > Number(a.weekRankId) ? b : a),
+            ws[0],
+          );
           setSelectedWeek(latest);
         }
       }
@@ -155,38 +162,50 @@ export default function MeleeRankScreen() {
     } finally {
       if (rid === reqIdRef.current) setLoading(false);
     }
-  }, [mode, t]);
+  }, [mode]);
 
   const loadMoreRank = useCallback(async () => {
     if (loading || loadingMore || !hasMoreRef.current || !nextIdRef.current) return;
+    const rid = ++moreReqIdRef.current;
+    const prevNextId = nextIdRef.current;
+    const prevHasMore = hasMoreRef.current;
+    const weekKey = String(selectedWeekRef.current?.weekRankId ?? '');
     setLoadingMore(true);
     try {
       let res: any;
       if (mode === 'week') {
         const wk2 = selectedWeekRef.current;
+        if (String(wk2?.weekRankId ?? '') !== weekKey) return;
         res = wk2
-          ? await withTransientRetry(() => pocketApi.getMeleeWeekRank(wk2.weekRankId, nextIdRef.current))
-          : await withTransientRetry(() => pocketApi.getMeleeRankPage(0, nextIdRef.current));
+          ? await withTransientRetry(() => pocketApi.getMeleeWeekRank(wk2.weekRankId, prevNextId))
+          : await withTransientRetry(() => pocketApi.getMeleeRankPage(0, prevNextId));
       } else {
         return;
       }
+      // 期间已切周/刷新/切页签：丢弃旧分页，禁止 append
+      if (rid !== moreReqIdRef.current) return;
       const data = res?.content ?? res?.data ?? res ?? {};
       const list = extractRankList(data);
       const nextId = String(data?.nextId || data?.next || '');
       setRanks((prev) => {
-        const seen = new Set(prev.map((it) => String(it.userId || it.rankNum || it.resId || it.id)));
-        const fresh = list.filter((it) => !seen.has(String(it.userId || it.rankNum || it.resId || it.id)));
+        const seen = new Set(
+          prev.map((it) => String(it.userId || it.rankNum || it.resId || it.id)),
+        );
+        const fresh = list.filter((raw) => {
+          const it = raw as Record<string, unknown>;
+          return !seen.has(String(it.userId || it.rankNum || it.resId || it.id));
+        });
         return [...prev, ...fresh];
       });
       /**
-       * ⚠️ 上游 getMeleeWeekRank 的 nextId 是**失效字段**（2026-10-06 实测）：
+       * ⚠️ 上游 getMeleeWeekRank 的 nextId 是**失效字段**（实测）：
        * 把返回的 nextId 原样传回去，返回的 nextId 还是同一个值，rankUserList 也**逐条相同**
        * （试过 int/字符串/0/offset/page/lastId/next/limit 共 9 种传参，全部返回同一份）。
        * 且周榜本身只有 7 个名额（weekRankId 415~424 共 10 期实测：全部 7 条、rankNum=[1..7]）。
        * 若不自判，上拉会无限触发、每次拿回同一批又被 seen 去重全滤掉 → 表现为「滑到底没反应」。
        * 判定：返回值与本次传入相同时视为不可翻页，直接停止。
        */
-      if (nextId && nextId === String(nextIdRef.current || '')) {
+      if (nextId && nextId === String(prevNextId || '')) {
         nextIdRef.current = '';
         hasMoreRef.current = false;
       } else {
@@ -194,13 +213,18 @@ export default function MeleeRankScreen() {
         hasMoreRef.current = !!nextId && list.length > 0;
       }
     } catch {
-      hasMoreRef.current = false;
+      // 失败回滚分页游标/可用状态，允许用户再次上拉重试（不能直接置 hasMore=false）
+      if (rid === moreReqIdRef.current) {
+        nextIdRef.current = prevNextId;
+        hasMoreRef.current = prevHasMore;
+      }
     } finally {
-      setLoadingMore(false);
+      if (rid === moreReqIdRef.current) setLoadingMore(false);
     }
-  }, [loading, loadingMore, mode, t]);
+  }, [loading, loadingMore, mode]);
 
   const loadPerson = useCallback(async (m: Member) => {
+    const rid = ++personReqIdRef.current;
     if (!m?.id) {
       setPersonRanks([]);
       setPersonTotal(null);
@@ -211,24 +235,30 @@ export default function MeleeRankScreen() {
     setError('');
     try {
       const res = await withTransientRetry(() => pocketApi.getPersonMeleeRankPage(Number(m.id)));
+      if (rid !== personReqIdRef.current) return;
       const data = res?.content ?? res?.data ?? {};
       const list = Array.isArray(data?.charmInfo) ? data.charmInfo : extractRankList(data);
       setPersonRanks(list);
       // 总贡献值 = 各贡献用户 totalCharm 之和（上游 queryPersonMeleeRankData 同口径）
-      const total = list.reduce((sum: number, it: any) => sum + pickNum(it?.totalCharm, it?.charm, it?.charmValue, it?.total, it?.score), 0);
+      const total = list.reduce(
+        (sum: number, it: any) =>
+          sum + pickNum(it?.totalCharm, it?.charm, it?.charmValue, it?.total, it?.score),
+        0,
+      );
       setPersonTotal(total);
       // 空数据不 setError：交给列表 ListEmptyComponent 渲染，避免错误态与空态重叠（与周榜分支一致）
     } catch (e: any) {
+      if (rid !== personReqIdRef.current) return;
       setError(errorMessage(e));
       setPersonRanks([]);
       setPersonTotal(null);
     } finally {
-      setLoading(false);
+      if (rid === personReqIdRef.current) setLoading(false);
     }
-  }, [t]);
+  }, []);
 
   /**
-   * ⚠️ 拆成两个 effect（2026-10-06）：日期栏现在在两个页签下都常驻，
+   * ⚠️ 拆成两个 effect：日期栏现在在两个页签下都常驻，
    * 若沿用「一个 effect 同时依赖 selectedWeek」的写法，在成员贡献页点日期会**白跑一次
    * loadPerson**（贡献榜数据与周次无关）。拆开后各自只依赖自己真正关心的输入。
    */
@@ -242,6 +272,7 @@ export default function MeleeRankScreen() {
     if (mode !== 'person') return;
     if (member) loadPerson(member);
     else {
+      personReqIdRef.current += 1;
       setPersonRanks([]);
       setPersonTotal(null);
       setLoading(false);
@@ -251,7 +282,7 @@ export default function MeleeRankScreen() {
   const renderWeekChip = ({ item }: { item: WeekItem }) => {
     const active = selectedWeek?.weekRankId === item.weekRankId;
     /**
-     * ⚠️ 这里**故意不用 `Pill`**（2026-10-06 实测修复「切换日期瞬间 chip 被挤压」）：
+     * ⚠️ 这里**故意不用 `Pill`**（实测修复「切换日期瞬间 chip 被挤压」）：
      * `Pill` 在选中/未选中之间会切换**两套完全不同的元素树**（实心 Pressable ↔ GlassSurface 包裹），
      * 换树会给 Android 一帧未完成测量的重排 —— 连拍实测：切换那一帧粉色胶囊高度塌成 12dp
      * （文字仍是全尺寸、溢出在外），用户看到的就是「日期被挤压一下」。
@@ -264,18 +295,21 @@ export default function MeleeRankScreen() {
       <Pressable
         onPress={() => {
           /**
-           * ⚠️ 点已选中的同一周 → 无操作（2026-10-06 修复）：
+           * ⚠️ 点已选中的同一周 → 无操作（修复）：
            * 此前无条件 `setRanks([]) + setSelectedWeek(item)`，而 `item` 就是当前
            * `selectedWeek` 的同一个对象引用 → setState 被 React 判为无变化、**加载 effect 不重跑**
            * → 榜单被清空后卡在「暂无排名数据」（用户反馈的「双击日期像是刷新/变空」）。
            */
           if (selectedWeek?.weekRankId === item.weekRankId) return;
           /**
-           * ⚠️ 刻意**不** `setRanks([])`（2026-10-06）：清空会让列表瞬间塌成骨架屏 →
+           * ⚠️ 刻意**不** `setRanks([])`：清空会让列表瞬间塌成骨架屏 →
            * 页面内容高度骤变、整块区域重排，切换瞬间看起来「被挤一下」。
            * 改为保留上一周数据直到新数据到达（loadRank 成功时整体替换），
            * 切换期间只在标题旁显示小转圈 —— 页面高度全程不变。
            */
+          // 切周：立即作废旧分页请求，防止旧周第 N 页 append 到新周榜单
+          moreReqIdRef.current += 1;
+          setLoadingMore(false);
           setSelectedWeek(item);
         }}
         style={styles.weekChipWrap}
@@ -290,7 +324,10 @@ export default function MeleeRankScreen() {
         />
         <Text
           numberOfLines={1}
-          style={[typography.footnote, { fontWeight: '600', color: active ? '#fff' : palette.label }]}
+          style={[
+            typography.footnote,
+            { fontWeight: '600', color: active ? '#fff' : palette.label },
+          ]}
         >
           {item.weekRankName}
         </Text>
@@ -349,7 +386,14 @@ export default function MeleeRankScreen() {
       </View>
 
       {mode === 'person' && (
-        <MemberPicker selectedMember={member} onSelect={(m) => { setPersonRanks([]); setMember(m); }} placeholder={t('搜索成员查看鸡腿贡献...')} />
+        <MemberPicker
+          selectedMember={member}
+          onSelect={(m) => {
+            setPersonRanks([]);
+            setMember(m);
+          }}
+          placeholder={t('搜索成员查看鸡腿贡献...')}
+        />
       )}
 
       {/*
@@ -360,7 +404,7 @@ export default function MeleeRankScreen() {
         常驻即可：不卸载 → 无挂载帧 → 不塌陷；同时保留横向滚动位置，
         切回「周榜」时你上次选的那一期仍在原位。
         （选中周次只影响周榜；在成员贡献页点它不改变当前视图，切回即生效。）
-      */}
+ */}
       {weeks.length > 0 && (
         <PerfFlatList
           horizontal
@@ -376,7 +420,10 @@ export default function MeleeRankScreen() {
       )}
 
       {error ? (
-        <ErrorState title={error} onAction={() => (mode === 'person' && member ? loadPerson(member) : loadRank())} />
+        <ErrorState
+          title={error}
+          onAction={() => (mode === 'person' && member ? loadPerson(member) : loadRank())}
+        />
       ) : null}
 
       {mode === 'person' ? (
@@ -385,7 +432,9 @@ export default function MeleeRankScreen() {
         ) : (
           <PerfFlatList
             data={personRanks}
-            keyExtractor={(item: any, index: number) => String(item.userId || item.id || item.uid || item.resId || `p${index}`)}
+            keyExtractor={(item: any, index: number) =>
+              String(item.userId || item.id || item.uid || item.resId || `p${index}`)
+            }
             contentContainerStyle={styles.list}
             initialNumToRender={12}
             maxToRenderPerBatch={12}
@@ -399,7 +448,11 @@ export default function MeleeRankScreen() {
                 colors={[palette.tint]}
               />
             }
-            ListHeaderComponent={member ? <PersonSummary member={member} total={personTotal} count={personRanks.length} /> : null}
+            ListHeaderComponent={
+              member ? (
+                <PersonSummary member={member} total={personTotal} count={personRanks.length} />
+              ) : null
+            }
             ListEmptyComponent={
               <EmptyState
                 icon="account-heart"
@@ -413,7 +466,9 @@ export default function MeleeRankScreen() {
       ) : (
         <PerfFlatList
           data={ranks}
-          keyExtractor={(item: any, index: number) => String(item.userId || item.rankNum || item.resId || item.id || `r${index}`)}
+          keyExtractor={(item: any, index: number) =>
+            String(item.userId || item.rankNum || item.resId || item.id || `r${index}`)
+          }
           contentContainerStyle={styles.list}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
@@ -430,9 +485,7 @@ export default function MeleeRankScreen() {
             />
           }
           ListHeaderComponent={ranks.length >= 3 ? <Podium ranks={ranks.slice(0, 3)} /> : null}
-          ListEmptyComponent={
-            <EmptyState icon="trophy-outline" title={t('暂无排名数据')} />
-          }
+          ListEmptyComponent={<EmptyState icon="trophy-outline" title={t('暂无排名数据')} />}
           ListFooterComponent={null}
         />
       )}
@@ -451,34 +504,84 @@ const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
   const order = [ranks[1], ranks[0], ranks[2]]; // 2nd | 1st | 3rd
   // 柱高按「名次」索引（0=第1名），此前写成 order 顺序 [76,96,64] 却用 realIndex 取值，
   // 导致第 2 名柱子比第 1 名还高（领奖台排版错乱）
-  // 2026-10-06 压低整体高度（原 96/76/64）：第一名柱子比头像还高，实心色块占掉近半屏，观感很重
+  // 压低整体高度（原 96/76/64）：第一名柱子比头像还高，实心色块占掉近半屏，观感很重
   const heights = [60, 46, 36];
   const tones = [palette.fill2, palette.tintSoft, palette.fill2];
   return (
     <FadeInView delay={60} duration={320} style={{ marginBottom: 12 }}>
-      <GlassSurface radius={22} role="card" style={[styles.podiumCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+      <GlassSurface
+        radius={22}
+        role="card"
+        style={[
+          styles.podiumCard,
+          { backgroundColor: 'transparent', borderColor: palette.hairline },
+        ]}
+      >
         <Text style={[styles.podiumTitle, { color: palette.label }]}>{t('领奖台')}</Text>
         <View style={styles.podiumRow}>
           {order.map((item: any, idx: number) => {
             const realIndex = idx === 0 ? 1 : idx === 1 ? 0 : 2;
             const u = item.baseUserInfo || item.userInfo || item.user || item;
-            const name = String(u.userName || u.nickname || u.nickName || u.name || t('用户 {rank}', { rank: realIndex + 1 }));
-            const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
+            const name = String(
+              u.userName ||
+                u.nickname ||
+                u.nickName ||
+                u.name ||
+                t('用户 {rank}', { rank: realIndex + 1 }),
+            );
+            const avatar = normalizeUrl(
+              String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''),
+            );
             const melee = pickNum(item.melee, item.meleeValue, item.score, item.total, item.charm);
             const isFirst = realIndex === 0;
             return (
               <View key={realIndex} style={[styles.podiumCell, { flex: isFirst ? 1.15 : 1 }]}>
                 <View style={[styles.podiumAvatarWrap, { backgroundColor: tones[realIndex] }]}>
                   {avatar ? (
-                    <NetworkImage source={{ uri: avatar }} style={styles.podiumAvatar} thumbnail={160} />
+                    <NetworkImage
+                      source={{ uri: avatar }}
+                      style={styles.podiumAvatar}
+                      thumbnail={160}
+                    />
                   ) : (
-                    <MaterialCommunityIcons name="account" size={26} color={palette.labelTertiary} />
+                    <MaterialCommunityIcons
+                      name="account"
+                      size={26}
+                      color={palette.labelTertiary}
+                    />
                   )}
                 </View>
-                <MaterialCommunityIcons name={medal(realIndex) as any} size={18} color={isFirst ? palette.warning : palette.labelTertiary} style={{ marginTop: 6 }} />
-                <Text style={[styles.podiumName, { color: palette.label, fontWeight: isFirst ? '800' : '600' }]} numberOfLines={1}>{name}</Text>
-                <View style={[styles.podiumBar, { height: heights[realIndex], backgroundColor: isFirst ? palette.tintSoft : palette.fill2 }]}>
-                  <Text style={[styles.podiumMelee, { color: isFirst ? palette.tint : palette.labelSecondary }]} numberOfLines={1}>
+                <MaterialCommunityIcons
+                  name={medal(realIndex) as any}
+                  size={18}
+                  color={isFirst ? palette.warning : palette.labelTertiary}
+                  style={{ marginTop: 6 }}
+                />
+                <Text
+                  style={[
+                    styles.podiumName,
+                    { color: palette.label, fontWeight: isFirst ? '800' : '600' },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {name}
+                </Text>
+                <View
+                  style={[
+                    styles.podiumBar,
+                    {
+                      height: heights[realIndex],
+                      backgroundColor: isFirst ? palette.tintSoft : palette.fill2,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.podiumMelee,
+                      { color: isFirst ? palette.tint : palette.labelSecondary },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {melee >= 10000 ? `${(melee / 10000).toFixed(1)}w` : String(melee)}
                   </Text>
                 </View>
@@ -493,11 +596,15 @@ const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
 
 /** 首屏榜单骨架：与真实榜单行同构的 Skeleton（spec §8） */
 function SkeletonRankList() {
-  const palette = usePalette();
   return (
     <View style={styles.list}>
       {[0, 1, 2, 3, 4, 5].map((i) => (
-        <GlassSurface radius={22} role="card" key={i} style={[styles.rankCard, { backgroundColor: 'transparent' }]}>
+        <GlassSurface
+          radius={22}
+          role="card"
+          key={i}
+          style={[styles.rankCard, { backgroundColor: 'transparent' }]}
+        >
           <Skeleton width={30} height={30} radius={10} style={{ marginRight: 10 }} />
           <Skeleton width={44} height={44} radius={22} style={{ marginRight: 10 }} />
           <View style={[styles.rankInfo, { gap: 6 }]}>
@@ -511,14 +618,24 @@ function SkeletonRankList() {
   );
 }
 
-const RankCard = React.memo(function RankCard({ item, index, max }: { item: any; index: number; max: number }) {
+const RankCard = React.memo(function RankCard({
+  item,
+  index,
+  max,
+}: {
+  item: any;
+  index: number;
+  max: number;
+}) {
   const palette = usePalette();
   const { t } = useI18n();
   const rankNum = Number(item.rankNum || item.rank || item.no || index + 1);
   const u = item.baseUserInfo || item.userInfo || item.user || item;
   const topU = item.topUserInfo || item.topUser || {};
   const name = String(u.nickname || u.starName || u.userName || u.nickName || u.name || '');
-  const avatar = normalizeUrl(String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''));
+  const avatar = normalizeUrl(
+    String(u.userAvatar || u.avatar || u.headImg || u.headUrl || u.picPath || ''),
+  );
   const topUser = String(topU.userName || topU.nickname || '');
   const melee = pickNum(item.melee, item.meleeValue, item.score, item.total, item.charm);
   const isTop = rankNum <= 3;
@@ -526,46 +643,66 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
   const pct = max > 0 ? Math.max(2, Math.min(100, (melee / max) * 100)) : 2;
 
   return (
-    <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
-        {/* 名次徽标：前三名 tint 实底白字 16/900，其余 fill2 底 14/800 */}
-        <View
+    <View
+      style={[
+        styles.rankCard,
+        { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline },
+      ]}
+    >
+      {/* 名次徽标：前三名 tint 实底白字 16/900，其余 fill2 底 14/800 */}
+      <View
+        style={[
+          styles.rankBadge,
+          isTop ? { backgroundColor: palette.tint } : { backgroundColor: palette.fill2 },
+        ]}
+      >
+        <Text
           style={[
-            styles.rankBadge,
-            isTop
-              ? { backgroundColor: palette.tint }
-              : { backgroundColor: palette.fill2 },
+            styles.rankBadgeText,
+            {
+              color: isTop ? palette.onTint : palette.labelSecondary,
+              fontSize: isTop ? 16 : 14,
+              fontWeight: isTop ? '900' : '800',
+            },
           ]}
         >
-          <Text style={[styles.rankBadgeText, { color: isTop ? palette.onTint : palette.labelSecondary, fontSize: isTop ? 16 : 14, fontWeight: isTop ? '900' : '800' }]}>
-            {rankNum}
-          </Text>
+          {rankNum}
+        </Text>
+      </View>
+      {avatar ? (
+        <NetworkImage
+          source={{ uri: avatar }}
+          style={[styles.avatar, { backgroundColor: palette.fill2 }]}
+          thumbnail={96}
+        />
+      ) : (
+        <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: palette.fill3 }]}>
+          <MaterialCommunityIcons name="account" size={20} color={palette.labelTertiary} />
         </View>
-        {avatar ? (
-          <NetworkImage source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} thumbnail={96} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: palette.fill3 }]}>
-            <MaterialCommunityIcons name="account" size={20} color={palette.labelTertiary} />
+      )}
+      <View style={styles.rankInfo}>
+        <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>
+          {name || t('用户 {rank}', { rank: rankNum })}
+        </Text>
+        {topUser ? (
+          <View style={styles.rankMetaRow}>
+            <MaterialCommunityIcons name="crown" size={12} color={palette.warning} />
+            <Text style={[styles.rankMeta, { color: palette.labelSecondary }]} numberOfLines={1}>
+              {t('榜首: {topUser}', { topUser })}
+            </Text>
           </View>
-        )}
-        <View style={styles.rankInfo}>
-          <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>{name || t('用户 {rank}', { rank: rankNum })}</Text>
-          {topUser ? (
-            <View style={styles.rankMetaRow}>
-              <MaterialCommunityIcons name="crown" size={12} color={palette.warning} />
-              <Text style={[styles.rankMeta, { color: palette.labelSecondary }]} numberOfLines={1}>{t('榜首: {topUser}', { topUser })}</Text>
-            </View>
-          ) : null}
-          <View style={[styles.miniTrack, { backgroundColor: palette.fill3 }]}>
-            <View style={[styles.miniFill, { backgroundColor: palette.tint, width: `${pct}%` }]} />
-          </View>
+        ) : null}
+        <View style={[styles.miniTrack, { backgroundColor: palette.fill3 }]}>
+          <View style={[styles.miniFill, { backgroundColor: palette.tint, width: `${pct}%` }]} />
         </View>
-        <View style={styles.meleeWrap}>
-          <MaterialCommunityIcons name="food-drumstick-outline" size={16} color={palette.tint} />
-          {/* 大数值缩写 + 单行：此前长数字会挤压名字列/换行破版 */}
-          <Text style={[styles.meleeValue, { color: palette.tint }]} numberOfLines={1}>
-            {melee >= 10000 ? `${(melee / 10000).toFixed(1)}w` : String(melee)}
-          </Text>
-        </View>
+      </View>
+      <View style={styles.meleeWrap}>
+        <MaterialCommunityIcons name="food-drumstick-outline" size={16} color={palette.tint} />
+        {/* 大数值缩写 + 单行：此前长数字会挤压名字列/换行破版 */}
+        <Text style={[styles.meleeValue, { color: palette.tint }]} numberOfLines={1}>
+          {melee >= 10000 ? `${(melee / 10000).toFixed(1)}w` : String(melee)}
+        </Text>
+      </View>
     </View>
   );
 });
@@ -574,30 +711,59 @@ const RankCard = React.memo(function RankCard({ item, index, max }: { item: any;
  * 成员贡献头部 summary（同 queryPersonMeleeRankData 输出）：
  * 查询成员 + 总贡献值 + 贡献人数，一眼看到头部格局。
  */
-const PersonSummary = React.memo(function PersonSummary({ member, total, count }: { member: Member; total: number | null; count: number }) {
+const PersonSummary = React.memo(function PersonSummary({
+  member,
+  total,
+  count,
+}: {
+  member: Member;
+  total: number | null;
+  count: number;
+}) {
   const palette = usePalette();
   const { t } = useI18n();
   const name = String(member.ownerName || member.id || '');
   return (
     <FadeInView delay={40} duration={280} style={{ marginBottom: 10 }}>
-      <GlassSurface radius={22} role="card" style={[styles.podiumCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}>
+      <GlassSurface
+        radius={22}
+        role="card"
+        style={[
+          styles.podiumCard,
+          { backgroundColor: 'transparent', borderColor: palette.hairline },
+        ]}
+      >
         <View style={styles.personSummaryRow}>
           <View style={styles.personSummaryCell}>
-            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>{t('查询成员')}</Text>
-            <Text style={[styles.personSummaryValue, { color: palette.label }]} numberOfLines={1}>{name}</Text>
+            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>
+              {t('查询成员')}
+            </Text>
+            <Text style={[styles.personSummaryValue, { color: palette.label }]} numberOfLines={1}>
+              {name}
+            </Text>
           </View>
           <View style={styles.personSummaryCell}>
-            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>{t('总贡献值')}</Text>
+            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>
+              {t('总贡献值')}
+            </Text>
             <View style={styles.personSummaryValueRow}>
               <MaterialCommunityIcons name="food-drumstick" size={16} color={palette.tint} />
               <Text style={[styles.personSummaryValue, { color: palette.tint }]}>
-                {total == null ? '--' : total >= 10000 ? `${(total / 10000).toFixed(1)}w` : String(total)}
+                {total == null
+                  ? '--'
+                  : total >= 10000
+                    ? `${(total / 10000).toFixed(1)}w`
+                    : String(total)}
               </Text>
             </View>
           </View>
           <View style={styles.personSummaryCell}>
-            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>{t('贡献人数')}</Text>
-            <Text style={[styles.personSummaryValue, { color: palette.label }]}>{String(count)}</Text>
+            <Text style={[styles.personSummaryLabel, { color: palette.labelSecondary }]}>
+              {t('贡献人数')}
+            </Text>
+            <Text style={[styles.personSummaryValue, { color: palette.label }]}>
+              {String(count)}
+            </Text>
           </View>
         </View>
       </GlassSurface>
@@ -605,14 +771,41 @@ const PersonSummary = React.memo(function PersonSummary({ member, total, count }
   );
 });
 
-const PersonCard = React.memo(function PersonCard({ item, index, max }: { item: any; index: number; max: number }) {
+const PersonCard = React.memo(function PersonCard({
+  item,
+  index,
+  max,
+}: {
+  item: any;
+  index: number;
+  max: number;
+}) {
   const palette = usePalette();
   const { t } = useI18n();
   const u = item.userInfo || item.baseUserInfo || item.user || item;
   const name = String(u.nickname || u.realNickName || u.userName || u.nickName || u.name || '');
-  const avatar = normalizeUrl(String(u.avatar || u.userAvatar || u.headImg || u.headUrl || u.picPath || item.userAvatar || item.avatar || item.headImg || ''));
+  const avatar = normalizeUrl(
+    String(
+      u.avatar ||
+        u.userAvatar ||
+        u.headImg ||
+        u.headUrl ||
+        u.picPath ||
+        item.userAvatar ||
+        item.avatar ||
+        item.headImg ||
+        '',
+    ),
+  );
   const userId = String(u.userId || u.id || item.userId || item.uid || '');
-  const charm = pickNum(item.totalCharm, item.charm, item.charmValue, item.total, item.score, item.melee);
+  const charm = pickNum(
+    item.totalCharm,
+    item.charm,
+    item.charmValue,
+    item.total,
+    item.score,
+    item.melee,
+  );
   const rankNum = Number(item.rankNum || item.rank || 0) || index + 1;
   const privacy = !!item.privacy;
   const isTop = rankNum <= 3;
@@ -620,40 +813,61 @@ const PersonCard = React.memo(function PersonCard({ item, index, max }: { item: 
   const pct = max > 0 ? Math.max(2, Math.min(100, (charm / max) * 100)) : 2;
 
   return (
-    <View style={[styles.rankCard, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline }]}>
-        {/* 名次徽标：前三 tint 实底白字，其余 fill2 底（与周榜 RankCard 一致） */}
-        <View
+    <View
+      style={[
+        styles.rankCard,
+        { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline },
+      ]}
+    >
+      {/* 名次徽标：前三 tint 实底白字，其余 fill2 底（与周榜 RankCard 一致） */}
+      <View
+        style={[
+          styles.rankBadge,
+          isTop ? { backgroundColor: palette.tint } : { backgroundColor: palette.fill2 },
+        ]}
+      >
+        <Text
           style={[
-            styles.rankBadge,
-            isTop
-              ? { backgroundColor: palette.tint }
-              : { backgroundColor: palette.fill2 },
+            styles.rankBadgeText,
+            {
+              color: isTop ? palette.onTint : palette.labelSecondary,
+              fontSize: isTop ? 16 : 14,
+              fontWeight: isTop ? '900' : '800',
+            },
           ]}
         >
-          <Text style={[styles.rankBadgeText, { color: isTop ? palette.onTint : palette.labelSecondary, fontSize: isTop ? 16 : 14, fontWeight: isTop ? '900' : '800' }]}>{rankNum}</Text>
+          {rankNum}
+        </Text>
+      </View>
+      {avatar ? (
+        <NetworkImage
+          source={{ uri: avatar }}
+          style={[styles.avatar, { backgroundColor: palette.fill2 }]}
+          thumbnail={96}
+        />
+      ) : (
+        <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: palette.fill3 }]}>
+          <MaterialCommunityIcons name="account" size={20} color={palette.labelTertiary} />
         </View>
-        {avatar ? (
-          <NetworkImage source={{ uri: avatar }} style={[styles.avatar, { backgroundColor: palette.fill2 }]} thumbnail={96} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: palette.fill3 }]}>
-            <MaterialCommunityIcons name="account" size={20} color={palette.labelTertiary} />
-          </View>
-        )}
-        <View style={styles.rankInfo}>
-          <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>{name || t('未知用户')}</Text>
-          <Text style={[styles.rankMeta, { color: palette.labelSecondary }]} numberOfLines={1}>
-            {t('ID: {id}', { id: userId })}{privacy ? t(' · 隐私用户') : ''}
-          </Text>
-          <View style={[styles.miniTrack, { backgroundColor: palette.fill3 }]}>
-            <View style={[styles.miniFill, { backgroundColor: palette.tint, width: `${pct}%` }]} />
-          </View>
+      )}
+      <View style={styles.rankInfo}>
+        <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>
+          {name || t('未知用户')}
+        </Text>
+        <Text style={[styles.rankMeta, { color: palette.labelSecondary }]} numberOfLines={1}>
+          {t('ID: {id}', { id: userId })}
+          {privacy ? t(' · 隐私用户') : ''}
+        </Text>
+        <View style={[styles.miniTrack, { backgroundColor: palette.fill3 }]}>
+          <View style={[styles.miniFill, { backgroundColor: palette.tint, width: `${pct}%` }]} />
         </View>
-        <View style={styles.meleeWrap}>
-          <MaterialCommunityIcons name="food-drumstick-outline" size={16} color={palette.tint} />
-          <Text style={[styles.meleeValue, { color: palette.tint }]} numberOfLines={1}>
-            {charm >= 10000 ? `${(charm / 10000).toFixed(1)}w` : String(charm)}
-          </Text>
-        </View>
+      </View>
+      <View style={styles.meleeWrap}>
+        <MaterialCommunityIcons name="food-drumstick-outline" size={16} color={palette.tint} />
+        <Text style={[styles.meleeValue, { color: palette.tint }]} numberOfLines={1}>
+          {charm >= 10000 ? `${(charm / 10000).toFixed(1)}w` : String(charm)}
+        </Text>
+      </View>
     </View>
   );
 });
@@ -680,7 +894,7 @@ const styles = StyleSheet.create({
   },
   /**
    * 背景层：**不参与尺寸计算，也不依赖父级布局**。
-   * ⚠️ 刻意用显式 height 而不是 `StyleSheet.absoluteFillObject`（2026-10-06 实测）：
+   * ⚠️ 刻意用显式 height 而不是 `StyleSheet.absoluteFillObject`（实测）：
    * 日期栏在切模式时会被卸载/重新挂载，**挂载后的第 1 帧父级还没完成布局**（高度=文字高度 12dp），
    * absoluteFill 的 bottom:0 于是也跟着塌成 12dp → 用户看到「切换瞬间日期栏塌陷」。
    * 给死高度后背景层任何一帧都恒为 32dp。
@@ -704,8 +918,12 @@ const styles = StyleSheet.create({
   podiumRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
   podiumCell: { alignItems: 'center', minWidth: 0 },
   podiumAvatarWrap: {
-    width: 64, height: 64, borderRadius: 36,
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    width: 64,
+    height: 64,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   podiumAvatar: { width: 64, height: 64, borderRadius: 36 },
   podiumName: { fontSize: 12, marginTop: 4, width: '100%', textAlign: 'center' },
@@ -727,13 +945,20 @@ const styles = StyleSheet.create({
   personSummaryValue: { fontSize: 15, fontWeight: '800', marginTop: 3 },
   personSummaryValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
   rankCard: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: radiiAlias.card, padding: 12, marginBottom: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radiiAlias.card,
+    padding: 12,
+    marginBottom: 5,
     borderWidth: StyleSheet.hairlineWidth,
   },
   rankBadge: {
-    width: 30, height: 30, borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center', marginRight: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   rankBadgeText: { fontWeight: '900' },
   avatar: { width: 44, height: 44, borderRadius: radiiAlias.avatar, marginRight: 10 },

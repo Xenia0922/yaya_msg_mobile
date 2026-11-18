@@ -4,7 +4,7 @@
 // - assets/2.wasm 是随 APK 打包的可信产物，其 SHA-256 钉在 WASM_SHA256。
 // - fetchWasm 从 GitHub 代理下载 wasm 后必须用本哈希校验，任一代理被投毒即拒绝执行（供应链止血点）。
 // - wasmBase64.ts（WebView 兜底用的内联副本）必须由 scripts/gen-wasm-base64.mjs 从同一份
-//   assets/2.wasm 生成，确保两端字节一致；更新 wasm 时务必同步本常量。
+// assets/2.wasm 生成，确保两端字节一致；更新 wasm 时务必同步本常量。
 
 export const WASM_SHA256 = '764de771c46d9eb3e545deb7d72ee23f3a8ded8f63ac0fe56d3b0521bd027528';
 
@@ -20,8 +20,14 @@ export function sha256Hex(buf: ArrayBuffer): string {
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
   ]);
-  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a,
-    h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+  let h0 = 0x6a09e667,
+    h1 = 0xbb67ae85,
+    h2 = 0x3c6ef372,
+    h3 = 0xa54ff53a,
+    h4 = 0x510e527f,
+    h5 = 0x9b05688c,
+    h6 = 0x1f83d9ab,
+    h7 = 0x5be0cd19;
 
   const len = bytes.length;
   const bitLen = len * 8;
@@ -36,7 +42,7 @@ export function sha256Hex(buf: ArrayBuffer): string {
   dv.setUint32(total - 4, bitLen >>> 0);
 
   const w = new Uint32Array(64);
-  const ror = (x: number, n: number): number => ((x >>> n) | (x << (32 - n))) | 0;
+  const ror = (x: number, n: number): number => (x >>> n) | (x << (32 - n)) | 0;
 
   for (let off = 0; off < total; off += 64) {
     for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
@@ -45,7 +51,14 @@ export function sha256Hex(buf: ArrayBuffer): string {
       const s1 = ror(w[i - 2], 17) ^ ror(w[i - 2], 19) ^ (w[i - 2] >>> 10);
       w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
     }
-    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, hh = h7;
+    let a = h0,
+      b = h1,
+      c = h2,
+      d = h3,
+      e = h4,
+      f = h5,
+      g = h6,
+      hh = h7;
     for (let i = 0; i < 64; i++) {
       const S1 = ror(e, 6) ^ ror(e, 11) ^ ror(e, 25);
       const ch = (e & f) ^ (~e & g);
@@ -53,10 +66,23 @@ export function sha256Hex(buf: ArrayBuffer): string {
       const S0 = ror(a, 2) ^ ror(a, 13) ^ ror(a, 22);
       const maj = (a & b) ^ (a & c) ^ (b & c);
       const t2 = (S0 + maj) | 0;
-      hh = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+      hh = g;
+      g = f;
+      f = e;
+      e = (d + t1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) | 0;
     }
-    h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0;
-    h4 = (h4 + e) | 0; h5 = (h5 + f) | 0; h6 = (h6 + g) | 0; h7 = (h7 + hh) | 0;
+    h0 = (h0 + a) | 0;
+    h1 = (h1 + b) | 0;
+    h2 = (h2 + c) | 0;
+    h3 = (h3 + d) | 0;
+    h4 = (h4 + e) | 0;
+    h5 = (h5 + f) | 0;
+    h6 = (h6 + g) | 0;
+    h7 = (h7 + hh) | 0;
   }
   return [h0, h1, h2, h3, h4, h5, h6, h7]
     .map((x) => (x >>> 0).toString(16).padStart(8, '0'))

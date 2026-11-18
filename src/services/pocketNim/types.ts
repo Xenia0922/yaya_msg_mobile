@@ -2,18 +2,17 @@
  * 口袋48 · 云信（NIM）通道常量与类型。
  *
  * 逆向自官方 口袋48 7.1.39（classes5.dex）：
- *   com.pocket.snh48.lib.yunxin.im.NIMStrategy#getOptions   → appKey
- *   com.pocket.snh48.lib.yunxin.model.MsgType                → messageType 常量表
- *   com.pocket.snh48.lib.yunxin.model.ModuleType             → module 常量表
- *   com.pocket.snh48.lib.yunxin.model.ChatMsgBuilder         → 各消息 remoteExtension 结构
- *   com.pocket.snh48.lib.yunxin.im.IMChatRoom                → 直播弹幕（聊天室）收发
+ * com.pocket.snh48.lib.yunxin.im.NIMStrategy#getOptions → appKey
+ * com.pocket.snh48.lib.yunxin.model.MsgType → messageType 常量表
+ * com.pocket.snh48.lib.yunxin.model.ModuleType → module 常量表
+ * com.pocket.snh48.lib.yunxin.model.ChatMsgBuilder → 各消息 remoteExtension 结构
+ * com.pocket.snh48.lib.yunxin.im.IMChatRoom → 直播弹幕（聊天室）收发
  *
  * 结论：口袋48 的「发送」全部走云信，HTTP 侧没有任何发送接口（已用接口探测确认 404）。
  */
 
 /** 官方 appKey（NIMStrategy.getOptions 明文） */
 export const NIM_APP_KEY = '632feff1f4c838541ab75195d1ceb3fa';
-
 
 export const NIM_CHATROOM_ADDRESSES = ['chatweblink01.netease.im:443'];
 
@@ -90,6 +89,15 @@ export interface BarrageItem {
   level: number;
   /** 毫秒时间戳 */
   time: number;
+  /** 连麦/PK 事件附带数据（官方 multiMicUserInfoList / pkStatus 等） */
+  liveEvent?: {
+    multiMicUserInfoList?: any[];
+    pkStatus?: number;
+    pkCreateSuccess?: number;
+    pkFailStatus?: number;
+    topUserInfo?: any;
+    [key: string]: unknown;
+  };
   /** 礼物附带信息 */
   gift?: {
     giftId: number;
@@ -112,7 +120,8 @@ export interface NimCredentials {
   accid: string;
   /** 云信 token（官方字段名 pwd / token / imPwd） */
   token: string;
-  userId: number;
+  /** 用户 id：超出 Number.MAX_SAFE_INTEGER 的 64 位 id 保留字符串，避免精度丢失 */
+  userId: number | string;
   nickName: string;
   avatar: string;
   level: number;
@@ -121,13 +130,14 @@ export interface NimCredentials {
 
 /** 发送弹幕用的自身资料（塞进 remoteExtension.user） */
 export interface NimSelfProfile {
-  userId: number;
+  /** 用户 id：超出安全整数范围时用字符串原样保留 */
+  userId: number | string;
   nickName: string;
   avatar: string;
   level?: number;
   roleId?: number;
   accid?: string;
-  
+
   vip?: boolean;
   pfUrl?: string;
   teamLogo?: string | null;

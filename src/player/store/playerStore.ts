@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlayerSource, PlayerMeta, DanmakuSource } from '../types';
+import { isRtmpUrl } from '../resolve/streamResolver';
 // 播放互斥（单向）：playerStore 开播(直播/录播/视频/电台经此)时暂停后台音乐；
 // 反向（音乐开播停 playerStore 媒体）在 MusicEngine.playTrack/resume 内处理。
 import { useMusicPlayerStore } from '../../store/musicPlayerStore';
@@ -38,7 +39,7 @@ interface PlayerState {
   qualityQn: number | null;
   /** 播放倍速（回放可用；live 恒 1） */
   rate: number;
-  
+
   rotateDeg: number;
   /** 镜像模式：none/horizontal/vertical */
   mirrorMode: 'none' | 'horizontal' | 'vertical';
@@ -80,7 +81,7 @@ interface PlayerState {
   setSeekTarget: (t: number) => void;
   /** 清除 seek 指令（早退分支用）：不递增 seekNonce，避免消费 effect 重入 */
   clearSeekTarget: () => void;
-  
+
   markSeekIssued: (target: number) => void;
   /** 请求重建内核（重试同一个 URL） */
   requestKernelRebuild: () => void;
@@ -101,12 +102,12 @@ interface PlayerState {
 export function kernelForSource(source: PlayerSource): 'exo' | 'native' {
   const u = String((source && source.url) || '').toLowerCase();
   if (source?.needsNativeExo) return 'exo';
-  if (u.startsWith('rtmp://') || u.startsWith('rtmps://')) return 'exo';
+  if (isRtmpUrl(u)) return 'exo';
   if (u.includes('.flv')) return 'exo';
   return 'native';
 }
 
-export const usePlayerStore = create<PlayerState>((set, get) => ({
+export const usePlayerStore = create<PlayerState>((set) => ({
   onClose: null,
   setOnClose: (fn) => set({ onClose: fn }),
   source: null,
@@ -143,8 +144,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // 播放互斥：后播者胜 —— 直播/录播/电台/视频开播时，后台音乐自动暂停（可再点回播放）
     try {
       const mst = useMusicPlayerStore.getState();
-      if (mst.queue.length && (mst.playbackState === 'playing' || mst.playbackState === 'paused')) {
-        mst.setPlaybackState('paused'); // → MusicLibrary 351 effect exoControl pause + 通知转暂停
+      if (
+        mst.queue.length &&
+        (mst.playbackState === 'playing' ||
+          mst.playbackState === 'paused' ||
+          mst.playbackState === 'loading')
+      ) {
+        // loading 时音乐尚未出声，但异步解析仍可能在稍后 setUrl+playing；必须置 idle 让
+        // playTrack/restore 的 seq 守卫失效，否则视频开播后音乐解析完成会双路出声。
+        mst.setPlaybackState(mst.playbackState === 'loading' ? 'idle' : 'paused');
       }
     } catch {}
     return set((s) => {
@@ -191,20 +199,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }),
 
   setState: (state) => set({ state }),
-  setPosition: (position) => set((s) => {
-    // seek 粘滞守卫（2026-10-03 修「进度条松手回弹」）：seek 下发后内核仍可能上报旧位置，
-    // 直接覆盖会让进度条先跳到目标再弹回。窗口内只接受「比出发时更接近目标」的上报。
-    if (s.stickyUntil > Date.now()) {
-      const dNow = Math.abs(position - s.stickyTarget);
-      const dFrom = Math.abs(s.stickyFrom - s.stickyTarget) + 0.3;
-      if (dNow > dFrom) return {};
-    }
-    return { position };
-  }),
+  setPosition: (position) =>
+    set((s) => {
+      // seek 粘滞守卫（修「进度条松手回弹」）：seek 下发后内核仍可能上报旧位置，
+      // 直接覆盖会让进度条先跳到目标再弹回。窗口内只接受「比出发时更接近目标」的上报。
+      if (s.stickyUntil > Date.now()) {
+        const dNow = Math.abs(position - s.stickyTarget);
+        const dFrom = Math.abs(s.stickyFrom - s.stickyTarget) + 0.3;
+        if (dNow > dFrom) return {};
+      }
+      return { position };
+    }),
   setDuration: (duration) => set({ duration }),
   setError: (error) => set({ error, state: 'error' }),
   clearError: () => set({ error: '', state: 'loading' }),
-  toggleControls: (visible) => set((s) => ({ controlsVisible: visible === undefined ? !s.controlsVisible : visible })),
+  toggleControls: (visible) =>
+    set((s) => ({ controlsVisible: visible === undefined ? !s.controlsVisible : visible })),
   setCleanScreen: (cleanScreen) => set({ cleanScreen }),
   setFullscreen: (fullscreen) => set({ fullscreen }),
   setUseWebKernel: (useWebKernel) => set({ useWebKernel }),
@@ -215,34 +225,38 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setRotateDeg: (rotateDeg) => set({ rotateDeg: ((rotateDeg % 360) + 360) % 360 }),
   setMirrorMode: (mirrorMode) => set({ mirrorMode }),
   // seek 指令：递增 seekNonce（使「seek 到 0」也能被消费，不再用 0 当哨兵），并开粘滞窗口
-  setSeekTarget: (seekTarget) => set((s) => ({
-    seekTarget,
-    seekNonce: s.seekNonce + 1,
-    stickyFrom: s.position,
-    stickyTarget: seekTarget,
-    stickyUntil: Date.now() + 1500,
-  })),
+  setSeekTarget: (seekTarget) =>
+    set((s) => ({
+      seekTarget,
+      seekNonce: s.seekNonce + 1,
+      stickyFrom: s.position,
+      stickyTarget: seekTarget,
+      stickyUntil: Date.now() + 1500,
+    })),
   // 清除指令（直播流/非有限时长等早退分支）：不动 seekNonce，避免消费 effect 重入
   clearSeekTarget: () => set({ seekTarget: 0 }),
-  markSeekIssued: (target) => set((s) => ({
-    position: target,
-    seekTarget: 0,
-    stickyTarget: target,
-    stickyFrom: s.position,
-    stickyUntil: Date.now() + 1500,
-  })),
+  markSeekIssued: (target) =>
+    set((s) => ({
+      position: target,
+      seekTarget: 0,
+      stickyTarget: target,
+      stickyFrom: s.position,
+      stickyUntil: Date.now() + 1500,
+    })),
   requestKernelRebuild: () => set((s) => ({ rebuildNonce: s.rebuildNonce + 1 })),
   toggleDanmaku: () => set((s) => ({ danmakuOn: !s.danmakuOn })),
-  toggleEnter: () => set((s) => {
-    const hideEnter = !s.hideEnter;
-    persistPrefs(hideEnter, s.hideEffects);
-    return { hideEnter };
-  }),
-  toggleEffects: () => set((s) => {
-    const hideEffects = !s.hideEffects;
-    persistPrefs(s.hideEnter, hideEffects);
-    return { hideEffects };
-  }),
+  toggleEnter: () =>
+    set((s) => {
+      const hideEnter = !s.hideEnter;
+      persistPrefs(hideEnter, s.hideEffects);
+      return { hideEnter };
+    }),
+  toggleEffects: () =>
+    set((s) => {
+      const hideEffects = !s.hideEffects;
+      persistPrefs(s.hideEnter, hideEffects);
+      return { hideEffects };
+    }),
   nextCandidate: () => {
     let switched = false;
     set((s) => {

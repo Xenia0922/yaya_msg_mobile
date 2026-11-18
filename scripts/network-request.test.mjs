@@ -44,11 +44,18 @@ try {
 
   // 相同地址与 body 但身份不同的在途请求必须各自发出并拿到各自响应。
   const pending = [];
-  globalThis.fetch = (_url, options) => new Promise((resolve) => {
-    pending.push({ options, resolve });
+  globalThis.fetch = (_url, options) =>
+    new Promise((resolve) => {
+      pending.push({ options, resolve });
+    });
+  const accountA = requestJson('https://example.test/account', {
+    headers: { Authorization: 'MOCK_A' },
+    cacheTtl: 60000,
   });
-  const accountA = requestJson('https://example.test/account', { headers: { Authorization: 'MOCK_A' }, cacheTtl: 60000 });
-  const accountB = requestJson('https://example.test/account', { headers: { Authorization: 'MOCK_B' }, cacheTtl: 60000 });
+  const accountB = requestJson('https://example.test/account', {
+    headers: { Authorization: 'MOCK_B' },
+    cacheTtl: 60000,
+  });
   if (pending.length !== 2) throw new Error('不同身份的 GET 被合并');
   pending[0].resolve(new Response('{"account":"A"}', { status: 200 }));
   pending[1].resolve(new Response('{"account":"B"}', { status: 200 }));
@@ -56,8 +63,14 @@ try {
   if (a.account !== 'A' || b.account !== 'B') throw new Error('不同身份的 GET 响应串号');
 
   pending.length = 0;
-  const firstPost = requestJson('https://example.test/action', { method: 'POST', body: { action: 'send' } });
-  const secondPost = requestJson('https://example.test/action', { method: 'POST', body: { action: 'send' } });
+  const firstPost = requestJson('https://example.test/action', {
+    method: 'POST',
+    body: { action: 'send' },
+  });
+  const secondPost = requestJson('https://example.test/action', {
+    method: 'POST',
+    body: { action: 'send' },
+  });
   if (pending.length !== 2) throw new Error('POST 被合并');
   for (const call of pending) call.resolve(new Response('{}', { status: 200 }));
   await Promise.all([firstPost, secondPost]);

@@ -12,7 +12,7 @@ import { logInfo, logWarn } from '../utils/runtimeLog';
  * 不阻塞、不弹窗；只用于日志/排障。
  */
 
-/** JS 侧实际使用的原生模块名（与各 Module.getName() 对齐） */
+/** JS 侧实际使用的原生模块名（与各 Module.getName 对齐） */
 const REQUIRED_MODULES: Array<{ name: string; purpose: string; optional?: boolean }> = [
   { name: 'RadioServiceModule', purpose: '电台前台服务/通知' },
   { name: 'RadioExoModule', purpose: '音乐 ExoPlayer 桥' },
@@ -60,7 +60,10 @@ export function checkNativeModules(): NativeModuleReport {
   if (missing.length === 0) {
     logInfo(`[native.check] 原生模块齐全（${REQUIRED_MODULES.length} 个）`, 'native');
   } else if (missingRequired.length) {
-    logWarn(`[native.check] 缺失必需原生模块 ${missingRequired.length} 个：${missing.join(' / ')}（功能会静默失效）`, 'native');
+    logWarn(
+      `[native.check] 缺失必需原生模块 ${missingRequired.length} 个：${missing.join(' / ')}（功能会静默失效）`,
+      'native',
+    );
   } else {
     logWarn(`[native.check] 缺失可选原生模块：${missing.join(' / ')}`, 'native');
   }

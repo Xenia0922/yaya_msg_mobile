@@ -2,20 +2,14 @@
  * 云信消息（直播弹幕 / 会话消息）编解码。
  *
  * 逆向依据（口袋48 7.1.39）：
- *   com.pocket.snh48.lib.yunxin.model.ChatMsgUtil#getBaseParams   → fromApp/roomId/sourceId/session/bubbleId/user/config
- *   com.pocket.snh48.lib.yunxin.model.ChatMsgBuilder#createBarrageNomalMessageMap
- *                                    #createBarrageMemberMessageMap
- *                                    #createTextMessageMap
- *   com.pocket.snh48.lib.yunxin.im.IMChatRoom#sendTextMessage      → type 判定 + setContent + setRemoteExtension
+ * com.pocket.snh48.lib.yunxin.model.ChatMsgUtil#getBaseParams → fromApp/roomId/sourceId/session/bubbleId/user/config
+ * com.pocket.snh48.lib.yunxin.model.ChatMsgBuilder#createBarrageNomalMessageMap
+ * #createBarrageMemberMessageMap
+ * #createTextMessageMap
+ * com.pocket.snh48.lib.yunxin.im.IMChatRoom#sendTextMessage → type 判定 + setContent + setRemoteExtension
  */
 
-import {
-  BarrageItem,
-  BarrageKind,
-  NimModule,
-  NimMsgType,
-  NimSelfProfile,
-} from './types';
+import { BarrageItem, BarrageKind, NimModule, NimMsgType, NimSelfProfile } from './types';
 import { looksLikeHtml, sanitizeText } from '../../utils/html';
 import { logInfo } from '../../utils/runtimeLog';
 
@@ -33,6 +27,10 @@ function buildConfig() {
 /**
  * 从云信消息里取出 remoteExtension（官方 SDK 里叫 remoteExtension，Web SDK 里叫 ext / custom）。
  * 版本差异较大，这里按候选字段依次兜底，字符串形态自动 JSON.parse。
+ *
+ * ⚠️【安全】绝不能把 msg.content / msg.text 当 ext 解析：普通文本内容完全由发送方控制，
+ * 若文本本身是 JSON（如 {"user":{"roleId":2,...}}）会被当成身份资料，伪造「超管/成员」显示（P1-C11）。
+ * 只信任协议层的 extension 字段。
  */
 export function readExt(msg: any): Record<string, any> {
   if (!msg) return {};
@@ -41,7 +39,6 @@ export function readExt(msg: any): Record<string, any> {
     msg.ext,
     msg.custom,
     msg.localCustom,
-    msg.content,
     msg.msg_setting_ && msg.msg_setting_.ext_,
   ];
   for (const raw of candidates) {
@@ -51,7 +48,9 @@ export function readExt(msg: any): Record<string, any> {
       const text = raw.trim();
       if (!text || text[0] !== '{') continue;
       try {
-        const parsed = JSON.parse(text.replace(/("(?:userId|uid|id)"\s*:\s*)(\d{16,})(?=\s*[,}])/g, '$1"$2"'));
+        const parsed = JSON.parse(
+          text.replace(/("(?:userId|uid|id)"\s*:\s*)(\d{16,})(?=\s*[,}])/g, '$1"$2"'),
+        );
         if (parsed && typeof parsed === 'object') return parsed;
       } catch {
         /* 非法 JSON 继续尝试下一个候选 */
@@ -89,7 +88,8 @@ function toKind(messageType: string, ext: Record<string, any>): BarrageKind {
       break;
   }
   if (ext && ext.giftInfo) return 'gift';
-  if (messageType === NimMsgType.LIVE_ANNOUNCE || messageType === NimMsgType.KTV_SONG_MSG) return 'system';
+  if (messageType === NimMsgType.LIVE_ANNOUNCE || messageType === NimMsgType.KTV_SONG_MSG)
+    return 'system';
   return 'other';
 }
 
@@ -119,11 +119,21 @@ function toUserId(...values: any[]): string {
   return '';
 }
 
+export function isLiveEndMessage(messageType: string): boolean {
+  return messageType === 'CLOSELIVE';
+}
+
 export function isLiveStreamTransition(messageType: string): boolean {
-  return messageType === 'MICROPHONE_CONNECTION_AGREE_V2'
-    || messageType === 'MICROPHONE_CONNECTION_FINISH_V2'
-    || messageType === 'MULTI_MIC_PK_SUCCESS'
-    || messageType === 'MULTI_MIC_PK_FINISH';
+  const upper = String(messageType || '').toUpperCase();
+  if (upper === 'MULTI_MIC_PK_SCORE' || upper === 'MICROPHONE_CONNECTION_SCORE') {
+    return false;
+  }
+  return (
+    upper.startsWith('MULTI_MIC_PK_') ||
+    upper.startsWith('MICROPHONE_CONNECTION_') ||
+    upper.includes('MIC_PK') ||
+    upper.startsWith('PK_')
+  );
 }
 
 export function parseLiveUpdate(msg: any): { audience?: string; rankAvatars?: string[] } | null {
@@ -131,9 +141,15 @@ export function parseLiveUpdate(msg: any): { audience?: string; rankAvatars?: st
   if (ext.messageType !== 'LIVEUPDATE') return null;
   const info = ext.liveUpdateInfo || ext;
   const rawAudience = info.online;
-  const audience = rawAudience === undefined || rawAudience === null ? undefined : String(rawAudience);
+  const audience =
+    rawAudience === undefined || rawAudience === null ? undefined : String(rawAudience);
   const rankAvatars = Array.isArray(info.topList)
-    ? info.topList.slice(0, 3).map((row: any) => firstString(row?.user?.userAvatar, row?.user?.avatar, row?.userAvatar, row?.avatar)).filter(Boolean)
+    ? info.topList
+        .slice(0, 3)
+        .map((row: any) =>
+          firstString(row?.user?.userAvatar, row?.user?.avatar, row?.userAvatar, row?.avatar),
+        )
+        .filter(Boolean)
     : undefined;
   return { audience, rankAvatars };
 }
@@ -147,11 +163,25 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
 
   const ext = readExt(msg);
   const messageType: string = firstString(ext.messageType, type === 'text' ? NimMsgType.TEXT : '');
-  const user = (ext.user && typeof ext.user === 'object' ? ext.user : ext.userInfo && typeof ext.userInfo === 'object' ? ext.userInfo : {}) as Record<string, any>;
+  const user = (
+    ext.user && typeof ext.user === 'object'
+      ? ext.user
+      : ext.userInfo && typeof ext.userInfo === 'object'
+        ? ext.userInfo
+        : {}
+  ) as Record<string, any>;
   const kind = toKind(messageType, ext);
 
   const nick = firstString(user.nickName, user.nickname, user.userName, msg.fromNick, msg.from);
-  const avatar = firstString(user.avatar, user.userAvatar, user.headImg, user.headUrl, ext.avatar, ext.userAvatar, msg.fromAvatar);
+  const avatar = firstString(
+    user.avatar,
+    user.userAvatar,
+    user.headImg,
+    user.headUrl,
+    ext.avatar,
+    ext.userAvatar,
+    msg.fromAvatar,
+  );
   const userId = toUserId(user.userId, user.id, user.uid, ext.userId);
   const roleId = toNumber(user.roleId);
   const level = toNumber(user.level, user.userLevel, ext.level, ext.userLevel);
@@ -159,13 +189,13 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
   let text = firstString(ext.text, msg.text);
   let gift: BarrageItem['gift'];
 
-  // ── 官方「富文本模板」消息不能当弹幕显示（2026-11-07 用户截图）──
+  // ── 官方「富文本模板」消息不能当弹幕显示（用户截图）──
   // 现象：公屏出现 `我真的变心了（北女一梦女版）：<div><span>欢迎</span><span>黄宣绮</span><img src=…/></div>`
   // 根因：官方部分 custom 消息（送礼/进房/欢迎卡等）的 ext.text 是**给官方客户端渲染的 HTML**，
-  //       本实现只判断「有没有 text」，于是把整段 HTML 当普通弹幕收下并原样显示。
+  // 本实现只判断「有没有 text」，于是把整段 HTML 当普通弹幕收下并原样显示。
   // 处理：命中 HTML 模板时不采用该 text ——
-  //   - 礼物/进房：清空 → 走下面的自动文案（"X 送出 N 个 Y" / "X 进入直播间"）；
-  //   - 其它未知类型：直接丢弃，不进入公屏（正常弹幕不会是这样）。
+  // - 礼物/进房：清空 → 走下面的自动文案（"X 送出 N 个 Y" / "X 进入直播间"）；
+  // - 其它未知类型：直接丢弃，不进入公屏（正常弹幕不会是这样）。
   if (text && looksLikeHtml(text)) {
     if (kind === 'gift' || kind === 'enter') {
       text = '';
@@ -189,14 +219,27 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
       toName,
       picPath: firstString(giftInfo.picPath, giftInfo.icon),
       // 全屏特效（仅 PRESENT_FULLSCREEN(_TWO) 非空）：zipPath 相对路径 + zipMd5 校验
-      zipPath: firstString(giftInfo.zipPath, giftInfo.effectPath, giftInfo.pagPath, giftInfo.zipUrl, giftInfo.effectUrl),
+      zipPath: firstString(
+        giftInfo.zipPath,
+        giftInfo.effectPath,
+        giftInfo.pagPath,
+        giftInfo.zipUrl,
+        giftInfo.effectUrl,
+      ),
       zipMd5: firstString(giftInfo.zipMd5, giftInfo.md5, giftInfo.zipMd5Value),
       resourceType: toNumber(giftInfo.resourceType),
     };
     if (!text) {
-      text = toName ? `${nick} 送给 ${toName} ${giftNum}个${giftName}` : `${nick} 送出 ${giftNum}个${giftName}`;
+      text = toName
+        ? `${nick} 送给 ${toName} ${giftNum}个${giftName}`
+        : `${nick} 送出 ${giftNum}个${giftName}`;
     }
-    try { logInfo(`[gift] type=${messageType} id=${gift.giftId} name=${giftName} num=${giftNum} zip=${gift.zipPath ? 'yes' : 'no'} keys=${Object.keys(giftInfo).slice(0, 15).join(',')}`, 'gift'); } catch {}
+    try {
+      logInfo(
+        `[gift] type=${messageType} id=${gift.giftId} name=${giftName} num=${giftNum} zip=${gift.zipPath ? 'yes' : 'no'} keys=${Object.keys(giftInfo).slice(0, 15).join(',')}`,
+        'gift',
+      );
+    } catch {}
   } else if (kind === 'enter' && !text) {
     text = `${nick} 进入直播间`;
   }
@@ -204,8 +247,30 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
   // 官方富文本弹幕（<div>/<span>/<img>）→ 清洗成纯文本，避免把标签当文字显示
   text = sanitizeText(text);
 
-  if (!text && kind !== 'gift' && !isLiveStreamTransition(messageType)) return null;
+  if (
+    !text &&
+    kind !== 'gift' &&
+    !isLiveStreamTransition(messageType) &&
+    !isLiveEndMessage(messageType)
+  )
+    return null;
 
+  const liveEvent =
+    isLiveStreamTransition(messageType) || isLiveEndMessage(messageType)
+      ? {
+          multiMicUserInfoList: Array.isArray(ext.multiMicUserInfoList)
+            ? ext.multiMicUserInfoList
+            : Array.isArray(ext.multiMicList)
+              ? ext.multiMicList
+              : Array.isArray(ext.micUserList)
+                ? ext.micUserList
+                : undefined,
+          pkStatus: ext.pkStatus,
+          pkCreateSuccess: ext.pkCreateSuccess,
+          pkFailStatus: ext.pkFailStatus,
+          topUserInfo: ext.topUserInfo,
+        }
+      : undefined;
   return {
     id: firstString(msg.idClient, msg.idServer, msg.uuid, `${nick}-${msg.time}-${text}`),
     kind,
@@ -217,6 +282,7 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
     roleId,
     level,
     time: toNumber(msg.time, Date.now()),
+    ...(liveEvent ? { liveEvent } : {}),
     ...(gift ? { gift } : {}),
   };
 }
@@ -239,7 +305,6 @@ export interface BuildLiveBarrageOptions {
   /** 消息 uuid（签名用，缺省由 SDK 生成，此处仅官方同款兼容） */
   uuid?: string;
 }
-
 
 export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<string, any> {
   const { roomId, sourceId, text, self } = options;
@@ -275,7 +340,7 @@ export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<st
 }
 
 export interface BuildSessionTextOptions {
-  /** 会话房间 id（官方 getRoomInfo().realRoomId） */
+  /** 会话房间 id（官方 getRoomInfo.realRoomId） */
   roomId: string | number;
   /** 会话 sourceId（官方传 sessionId/fromAccount，TEXT 场景传自身 id） */
   sourceId: string | number;
@@ -320,14 +385,42 @@ export function md5Hex(input: string): string {
   const rol = (n: number, c: number): number => (n << c) | (n >>> (32 - c));
   const cmn = (q: number, a: number, b: number, x: number, s: number, t: number): number =>
     add(rol(add(add(a, q), add(x, t)), s), b);
-  const ff = (a: number, b: number, c: number, d: number, x: number, s: number, t: number): number =>
-    cmn((b & c) | (~b & d), a, b, x, s, t);
-  const gg = (a: number, b: number, c: number, d: number, x: number, s: number, t: number): number =>
-    cmn((b & d) | (c & ~d), a, b, x, s, t);
-  const hh = (a: number, b: number, c: number, d: number, x: number, s: number, t: number): number =>
-    cmn(b ^ c ^ d, a, b, x, s, t);
-  const ii = (a: number, b: number, c: number, d: number, x: number, s: number, t: number): number =>
-    cmn(c ^ (b | ~d), a, b, x, s, t);
+  const ff = (
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    x: number,
+    s: number,
+    t: number,
+  ): number => cmn((b & c) | (~b & d), a, b, x, s, t);
+  const gg = (
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    x: number,
+    s: number,
+    t: number,
+  ): number => cmn((b & d) | (c & ~d), a, b, x, s, t);
+  const hh = (
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    x: number,
+    s: number,
+    t: number,
+  ): number => cmn(b ^ c ^ d, a, b, x, s, t);
+  const ii = (
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    x: number,
+    s: number,
+    t: number,
+  ): number => cmn(c ^ (b | ~d), a, b, x, s, t);
 
   const str = unescape(encodeURIComponent(input));
   const len = str.length;

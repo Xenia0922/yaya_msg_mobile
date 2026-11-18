@@ -1,9 +1,10 @@
 import React, { type ReactNode } from 'react';
-import { StyleSheet, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, TextInput, type StyleProp, type ViewStyle } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from './GlassSurface';
 import { ScalePressable } from './Motion';
 import { usePalette } from '../theme';
+import { useI18n } from '../i18n';
 
 /**
  * 玻璃搜索框（C2 公共件）。
@@ -25,6 +26,7 @@ export function SearchBar({
   autoFocus?: boolean;
 }) {
   const palette = usePalette();
+  const { t } = useI18n();
   return (
     <GlassSurface radius={14} role="chip" style={[styles.bar, style]}>
       <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
@@ -35,6 +37,7 @@ export function SearchBar({
         placeholderTextColor={palette.labelTertiary}
         style={[styles.input, { color: palette.label }]}
         autoFocus={autoFocus}
+        accessibilityLabel={placeholder}
       />
       {value ? (
         <ScalePressable
@@ -42,6 +45,8 @@ export function SearchBar({
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           pressedScale={0.9}
           activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel={t('清除')}
         >
           <MaterialCommunityIcons name="close-circle" size={16} color={palette.labelTertiary} />
         </ScalePressable>

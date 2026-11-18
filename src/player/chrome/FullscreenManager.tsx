@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { BackHandler } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { usePlayerStore } from '../store/playerStore';
@@ -28,7 +28,11 @@ export function FullscreenManager() {
       setLiveImmersiveMode(false);
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
-    return () => setLiveImmersiveMode(false);
+    return () => {
+      // 卸载/关闭播放器时兜底恢复竖屏锁定：否则页面关闭后设备仍停留在横屏。
+      setLiveImmersiveMode(false);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    };
   }, [fullscreen]);
 
   // PiP 标志：播放中（含全屏）即可在切后台时进系统悬浮窗。
@@ -36,11 +40,14 @@ export function FullscreenManager() {
   // 页面的私有播放器/小窗各自经 setPipPlaying 覆写此标志（播放确立时由 PlayerCore 事件驱动）。
   //
   // ⚠️ 原条件带 `&& !fullscreen` → 用户全屏看直播/录播时按 Home，videoPlaying 恒 false，
-  //    MainActivity.onUserLeaveHint 直接 return，**永远换不出系统小窗**（2026-10-21 反馈）。
-  //    Manifest 已声明 keyboad|orientation|screenSize|screenLayout 的 configChanges，
-  //    进 PiP 不会重建 Activity，横屏状态可保留；PiP 窗口比例由 setPipAspect 控制。
+  // MainActivity.onUserLeaveHint 直接 return，**永远换不出系统小窗**（反馈）。
+  // Manifest 已声明 keyboad|orientation|screenSize|screenLayout 的 configChanges，
+  // 进 PiP 不会重建 Activity，横屏状态可保留；PiP 窗口比例由 setPipAspect 控制。
   useEffect(() => {
-    const on = !!source?.url && state === 'playing';
+    // 录播缓冲/暂停时也保留 PiP 身份：VOD 的 state 在起播前后可能短暂为 loading，
+    // 若只在 playing 时置 true，按 Home 的瞬间刚好处在 loading/暂停态就不会弹系统小窗。
+    const vodActive = source?.kind === 'vod' && (state === 'loading' || state === 'paused');
+    const on = !!source?.url && (state === 'playing' || vodActive);
     setPipPlaying(on, pipSource);
     // 视频（非音乐）成为前台媒体时，若音乐服务只是"暂停残留"，可留待原生 PiP 入口统一清理
   }, [source, state, pipSource]);
@@ -53,7 +60,11 @@ export function FullscreenManager() {
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       const s = usePlayerStore.getState();
-      if (s.cleanScreen) { s.setCleanScreen(false); s.toggleControls(true); return true; }
+      if (s.cleanScreen) {
+        s.setCleanScreen(false);
+        s.toggleControls(true);
+        return true;
+      }
       if (!s.source) return false;
       if (s.fullscreen) {
         s.setFullscreen(false);

@@ -1,28 +1,21 @@
 /**
- * 房间相册 —— 重写版（2026-10-12）
+ * 房间相册 —— 重写版
  *
  * 旧实现（531 行，`0ee880f` 以「有问题未实现」删除后本轮短暂恢复）实测三处硬伤，本版针对性重写：
- *  1. **2 列网格整行塌成一张全宽变形图、50 张图一张都看不见** —— 旧版每个网格项外面包了
- *     `FadeInView` 但没给它宽度，内层卡片的 `flex:1` 没有可依据的宽度。
- *     本版：**格容器自己 `width:'50%'`**（不用 flex:1，奇数张时最后一张也不会被拉成整行），
- *     且**不再逐项包 FadeInView**（50 项逐个入场动画既卡又容易出布局问题）。
- *  2. **相册页顶部挂着一张房间背景大图** —— 相册页不该出现房间背景图，本版**整块删除**，
- *     连带那次多余的 roomMeta 请求（房间名对浏览相册没有价值，模式由分段控件表达）。
- *  3. **状态文案混乱**：`status` 初值就是「暂无数据」，加载完成后又同时弹 toast + 行内文字。
- *     本版：状态机收敛为「未选成员 / 加载中 / 失败 / 空 / 列表」五态，只在一处渲染。
+ * 1. **2 列网格整行塌成一张全宽变形图、50 张图一张都看不见** —— 旧版每个网格项外面包了
+ * `FadeInView` 但没给它宽度，内层卡片的 `flex:1` 没有可依据的宽度。
+ * 本版：**格容器自己 `width:'50%'`**（不用 flex:1，奇数张时最后一张也不会被拉成整行），
+ * 且**不再逐项包 FadeInView**（50 项逐个入场动画既卡又容易出布局问题）。
+ * 2. **相册页顶部挂着一张房间背景大图** —— 相册页不该出现房间背景图，本版**整块删除**，
+ * 连带那次多余的 roomMeta 请求（房间名对浏览相册没有价值，模式由分段控件表达）。
+ * 3. **状态文案混乱**：`status` 初值就是「暂无数据」，加载完成后又同时弹 toast + 行内文字。
+ * 本版：状态机收敛为「未选成员 / 加载中 / 失败 / 空 / 列表」五态，只在一处渲染。
  *
  * 列表图片一律走 48 图床缩略图（`NetworkImage thumbnail`），滚动不拉原图；点开大图才用原图。
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  RefreshControl,
-  StyleSheet,
-  Text,
-  Share,
-  View,
-} from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
 
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
@@ -79,22 +72,23 @@ function parseAlbumBody(item: any): any {
 function mediaUrl(item: any): string {
   const body = parseAlbumBody(item);
   return normalizeUrl(
-    pickText(body, ['url', 'imageUrl', 'videoUrl', 'mediaUrl', 'msg.url', 'message.url'])
-    || pickText(item, ['url', 'imageUrl', 'videoUrl']),
+    pickText(body, ['url', 'imageUrl', 'videoUrl', 'mediaUrl', 'msg.url', 'message.url']) ||
+      pickText(item, ['url', 'imageUrl', 'videoUrl']),
   );
 }
 
 function isVideoItem(item: any, url: string): boolean {
   const body = parseAlbumBody(item);
-  const marker = `${item?.sourceType || ''} ${item?.msgType || ''} ${body?.ext || ''} ${body?.type || ''} ${url}`.toUpperCase();
+  const marker =
+    `${item?.sourceType || ''} ${item?.msgType || ''} ${body?.ext || ''} ${body?.type || ''} ${url}`.toUpperCase();
   return marker.includes('VIDEO') || /\.(mp4|mov|m4v|3gp|webm)(\?|$)/i.test(url);
 }
 
 function mediaDuration(item: any): number {
   const body = parseAlbumBody(item);
   const n = Number(
-    pickText(body, ['duration', 'time', 'videoDuration', 'videoTime', 'length'])
-    || pickText(item, ['duration', 'videoDuration', 'videoTime', 'length']),
+    pickText(body, ['duration', 'time', 'videoDuration', 'videoTime', 'length']) ||
+      pickText(item, ['duration', 'videoDuration', 'videoTime', 'length']),
   );
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
@@ -131,14 +125,15 @@ function toItems(res: any, mode: RoomMode): AlbumItem[] {
 
 /** 下一页游标：优先取响应体，退化到本页最早一条的时间戳 */
 function nextCursor(res: any, list: AlbumItem[]): number {
-  const direct = Number(pickText(res, ['content.nextTime', 'content.next', 'data.nextTime', 'nextTime']));
+  const direct = Number(
+    pickText(res, ['content.nextTime', 'content.next', 'data.nextTime', 'nextTime']),
+  );
   if (Number.isFinite(direct) && direct > 0) return direct;
   const times = list.map((item) => item.time).filter((time) => Number.isFinite(time) && time > 0);
   return times.length ? Math.min(...times) : 0;
 }
 
 export default function RoomAlbumScreen() {
-  const navigation = useNavigation<any>();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
@@ -146,7 +141,7 @@ export default function RoomAlbumScreen() {
   const [member, setMember] = useState<Member | null>(null);
   const [mode, setMode] = useState<RoomMode>('big');
   const [items, setItems] = useState<AlbumItem[]>([]);
-  const [cursor, setCursor] = useState(0);
+  const [, setCursor] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -176,7 +171,10 @@ export default function RoomAlbumScreen() {
       if (!append) setError('');
       const sentCursor = append ? cursorRef.current : 0;
       try {
-        const res = await pocketApi.getRoomAlbum({ channelId: String(channelId), nextTime: sentCursor });
+        const res = await pocketApi.getRoomAlbum({
+          channelId: String(channelId),
+          nextTime: sentCursor,
+        });
         if (rid !== reqRef.current) return; // 已切走，丢弃
         const page = toItems(res, roomMode);
         const next = nextCursor(res, page);
@@ -307,7 +305,7 @@ export default function RoomAlbumScreen() {
         </ScalePressable>
       </View>
     ),
-    [palette.fill3, openItem, download],
+    [palette.fill3, openItem, download, t],
   );
 
   const renderFooter = useCallback(() => {
@@ -315,7 +313,9 @@ export default function RoomAlbumScreen() {
       return <Text style={[styles.footer, { color: palette.labelTertiary }]}>{t('加载中…')}</Text>;
     }
     if (items.length > 0 && !hasMore) {
-      return <Text style={[styles.footer, { color: palette.labelTertiary }]}>{t('没有更多了')}</Text>;
+      return (
+        <Text style={[styles.footer, { color: palette.labelTertiary }]}>{t('没有更多了')}</Text>
+      );
     }
     return null;
   }, [loading, items.length, hasMore, palette.labelTertiary, t]);
@@ -344,14 +344,20 @@ export default function RoomAlbumScreen() {
     <View style={styles.container}>
       <ScreenHeader
         title={t('房间相册')}
-        right={member
-          ? <HeaderAction label={t('刷新')} onPress={refresh} loading={loading && items.length > 0} />
-          : undefined}
+        right={
+          member ? (
+            <HeaderAction
+              label={t('刷新')}
+              onPress={refresh}
+              loading={loading && items.length > 0}
+            />
+          ) : undefined
+        }
       />
 
       <View style={styles.top}>
         <MemberPicker
-              activeOnly
+          activeOnly
           selectedMember={member}
           onSelect={pickMember}
           placeholder={t('输入成员名搜索，如“柏欣妤”')}
@@ -383,7 +389,11 @@ export default function RoomAlbumScreen() {
         <EmptyState
           icon="image-multiple-outline"
           title={t('暂无相册内容')}
-          hint={mode === 'small' ? t('该成员的小房间还没有图片或视频') : t('该成员的大房间还没有图片或视频')}
+          hint={
+            mode === 'small'
+              ? t('该成员的小房间还没有图片或视频')
+              : t('该成员的大房间还没有图片或视频')
+          }
         />
       ) : (
         <PerfFlatList
@@ -395,7 +405,6 @@ export default function RoomAlbumScreen() {
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
-          removeClippedSubviews
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
           ListFooterComponent={renderFooter}
@@ -411,21 +420,21 @@ export default function RoomAlbumScreen() {
       )}
 
       <ZoomImageModal
-          url={preview ? preview.url : ''}
-          onClose={() => setPreview(null)}
-          onDownload={() => {
-            const u = preview ? preview.url : '';
-            if (!u) return;
-            void enqueueDownload({ url: u, type: 'image', name: `album-${Date.now()}.jpg` })
-              .then(() => showToast(t('已加入下载管理')))
-              .catch((err) => showToast(errorMessage(err)));
-          }}
-          onShare={() => {
-            const u = preview ? preview.url : '';
-            if (!u) return;
-            void shareRemoteImage(u).catch(() => showToast(t('分享失败')));
-          }}
-        />
+        url={preview ? preview.url : ''}
+        onClose={() => setPreview(null)}
+        onDownload={() => {
+          const u = preview ? preview.url : '';
+          if (!u) return;
+          void enqueueDownload({ url: u, type: 'image', name: `album-${Date.now()}.jpg` })
+            .then(() => showToast(t('已加入下载管理')))
+            .catch((err) => showToast(errorMessage(err)));
+        }}
+        onShare={() => {
+          const u = preview ? preview.url : '';
+          if (!u) return;
+          void shareRemoteImage(u).catch(() => showToast(t('分享失败')));
+        }}
+      />
     </View>
   );
 }

@@ -1,57 +1,88 @@
 /**
- * AppToast · iOS 26 banner 风格
- *  - 顶部悬浮，玻璃圆角胶囊
- *  - Spring 入场 / 退场
- *  - 最大 2 行，消失后保留最末一段
+ * AppToast · iOS 26 顶部通知胶囊
+ * - 顶部悬浮、自适应宽度，图标 + 单/双行正文
+ * - 长消息自动延长停留时间，避免「还没看完就消失」
+ * - 消息清空后立即卸载，避免 Toast 永远停留
  */
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { useUiStore } from '../store';
-import { usePalette, radii } from '../theme';
+import { usePalette, radiiAlias } from '../theme';
 import { typography } from '../theme/typography';
 import { motion } from '../theme/motion';
+
+type ToastTone = 'success' | 'error' | 'info';
+
+function toastTone(message: string): ToastTone {
+  if (/失败|错误|异常|超时|无法|拒绝|不足|未找到/.test(message)) return 'error';
+  if (/成功|已更新|已保存|已复制|已完成|已是最新|已连接|已发送|已删除|已登录|已退出/.test(message))
+    return 'success';
+  return 'info';
+}
 
 export default function AppToast() {
   const message = useUiStore((state) => state.toastMessage);
   const hideToast = useUiStore((state) => state.hideToast);
   const palette = usePalette();
   const insets = useSafeAreaInsets();
-  const ty = useRef(new Animated.Value(40)).current;
+  const ty = useRef(new Animated.Value(-14)).current;
   const op = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    ty.stopAnimation();
-    op.stopAnimation();
-    if (!message) {
-      const exit = Animated.parallel([
-        Animated.timing(ty, { toValue: 40, duration: motion.duration.fast, useNativeDriver: true }),
-        Animated.timing(op, { toValue: 0, duration: motion.duration.fast, useNativeDriver: true }),
-      ]);
-      exit.start();
-      return () => exit.stop();
-    }
+    if (!message) return;
+    // 每条新消息都从「上方 + 透明」重新入场；不要在 message 清空后保留组件，
+    // 否则退场动画的完成回调可能因原生节点已卸载而不触发，旧 Toast 会永久停留。
+    ty.setValue(-14);
+    op.setValue(0);
     const enter = Animated.parallel([
       Animated.spring(ty, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: true }),
       Animated.timing(op, { toValue: 1, duration: motion.duration.base, useNativeDriver: true }),
     ]);
     enter.start();
-    const t = setTimeout(() => hideToast(), 2200);
+    // 长消息（如成员库同步详情）按长度延长到最多 5 秒，短消息保持轻快。
+    const duration = Math.min(5000, Math.max(2400, 1600 + message.length * 28));
+    let exit: Animated.CompositeAnimation | null = null;
+    const timer = setTimeout(() => {
+      exit = Animated.parallel([
+        Animated.timing(op, { toValue: 0, duration: 180, useNativeDriver: true }),
+        Animated.timing(ty, { toValue: -8, duration: 180, useNativeDriver: true }),
+      ]);
+      exit.start(({ finished }) => {
+        if (finished) hideToast();
+      });
+    }, duration);
     return () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       enter.stop();
+      exit?.stop();
     };
   }, [hideToast, message, op, ty]);
 
   if (!message) return null;
 
+  const tone = toastTone(message);
+  const toneColor =
+    tone === 'error' ? palette.danger : tone === 'success' ? palette.success : palette.tint;
+  const toneSoft =
+    tone === 'error'
+      ? 'rgba(255,59,48,0.14)'
+      : tone === 'success'
+        ? 'rgba(52,199,89,0.15)'
+        : palette.tintSoft;
+  const iconName =
+    tone === 'error' ? 'alert-circle' : tone === 'success' ? 'check-circle' : 'information-outline';
+
   return (
     <Animated.View
       pointerEvents="none"
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
       style={[
         styles.outer,
         {
-          top: Math.max(insets.top, 14) + 4,
+          top: Math.max(insets.top, 14) + 6,
           opacity: op,
           transform: [{ translateY: ty }],
         },
@@ -59,20 +90,22 @@ export default function AppToast() {
     >
       <Animated.View
         style={[
-          styles.pill,
+          styles.banner,
           {
             backgroundColor:
-              palette.name === 'dark' ? 'rgba(40,40,42,0.86)' : 'rgba(20,20,22,0.86)',
-            borderColor: 'rgba(255,255,255,0.08)',
+              palette.name === 'dark' ? 'rgba(38,38,43,0.94)' : 'rgba(255,255,255,0.95)',
+            borderColor: palette.hairline,
+            shadowColor: palette.name === 'dark' ? '#000000' : '#555560',
           },
         ]}
       >
+        <View style={[styles.iconWrap, { backgroundColor: toneSoft }]}>
+          <MaterialCommunityIcons name={iconName} size={18} color={toneColor} />
+        </View>
         <Text
           numberOfLines={2}
-          style={[
-            typography.subhead,
-            { color: '#FFFFFF', fontWeight: '600', textAlign: 'center' },
-          ]}
+          ellipsizeMode="tail"
+          style={[typography.footnote, styles.message, { color: palette.label }]}
         >
           {message}
         </Text>
@@ -84,16 +117,43 @@ export default function AppToast() {
 const styles = StyleSheet.create({
   outer: {
     position: 'absolute',
-    left: 24,
-    right: 24,
+    left: 16,
+    right: 16,
     zIndex: 9999,
     alignItems: 'center',
   },
-  pill: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: radii.sheet,
+  banner: {
+    width: '100%',
+    maxWidth: 560,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: radiiAlias.card,
     borderWidth: StyleSheet.hairlineWidth,
-    maxWidth: '100%',
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.16,
+        shadowRadius: 16,
+      },
+      android: { elevation: 6 },
+      default: null,
+    }),
+  },
+  iconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  message: {
+    flex: 1,
+    minWidth: 0,
+    fontWeight: '600',
+    lineHeight: 18,
   },
 });

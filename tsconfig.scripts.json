@@ -1,0 +1,32 @@
+{
+  // 脚本类型检查（scripts/** 下的 Node 脚本，JSONC 允许注释）。
+  // 历史脚本是纯 JS，未写 JSDoc；这里开启 checkJs 做真实的属性/参数/返回值检查。
+  // strict 打开 null/undefined 等检查，但关闭 noImplicitAny（历史脚本大量未标注参数，
+  // 否则隐式 any 会淹没真正的问题）；已修复 strictNullChecks 报出的实际错误。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["scripts/**/*.js", "scripts/**/*.mjs"],
+  "exclude": [
+    "node_modules",
+    // 以下 *-test.mjs 用 vm.runInNewContext 注入伪模块，module.exports 被推断为 {}，
+    // 静态检查无法还原运行时形状（TS2339/TS2722 等）；这些文件由 test:core 的运行时断言覆盖。
+    "scripts/downloads.test.mjs",
+    "scripts/live-online-count.test.mjs",
+    "scripts/member-data-update.test.mjs",
+    "scripts/pocket-live-transition.test.mjs",
+    "scripts/pocket-registration.test.mjs",
+    "scripts/runtime-log.test.mjs"
+  ]
+}

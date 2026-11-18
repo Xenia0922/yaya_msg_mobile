@@ -26,6 +26,8 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
   private var connectPromise: Promise? = null
   /** 发送中的 promise 按 idClient 挂起（服务端回执后 resolve） */
   private val sendPromises = mutableMapOf<String, Promise>()
+  /** sendPromises 跨线程访问保护：RN 调用线程 vs NIM 回调主线程 */
+  private val sendLock = Any()
   private var lastStatus: String = "idle"
   private var lastStatusDetail: String? = null
 
@@ -83,7 +85,7 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
     }
 
     override fun onSendResult(idClient: String, ok: Boolean, detail: String?) {
-      val promise = sendPromises.remove(idClient)
+      val promise = synchronized(sendLock) { sendPromises.remove(idClient) }
       if (ok) promise?.resolve(idClient) else promise?.reject("E_SEND", detail ?: "发送弹幕失败")
       emit("PocketNimChatroom:sendResult", Arguments.createMap().apply {
         putString("idClient", idClient)
@@ -117,15 +119,20 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
       promise.reject("E_STATE", "聊天室尚未连接")
       return
     }
+    var registeredId: String? = null
     try {
       val custom = try {
         if (customJson.isBlank()) JSONObject() else JSONObject(customJson)
       } catch (_: Throwable) {
         JSONObject()
       }
-      val idClient = active.sendText(text, custom)
-      sendPromises[idClient] = promise
+      // 先登记 Promise 再写 socket：服务端回执可能比 sendText 返回更快（旧实现回执先到 → Promise 丢）
+      active.sendText(text, custom) { id ->
+        registeredId = id
+        synchronized(sendLock) { sendPromises[id] = promise }
+      }
     } catch (t: Throwable) {
+      registeredId?.let { id -> synchronized(sendLock) { sendPromises.remove(id) } }
       promise.reject("E_SEND", t)
     }
   }
@@ -150,8 +157,12 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
     client = null
     connectPromise?.reject("E_CANCELLED", "已断开")
     connectPromise = null
-    for (promise in sendPromises.values) promise.reject("E_CANCELLED", "已断开")
-    sendPromises.clear()
+    val pending = synchronized(sendLock) {
+      val list = sendPromises.values.toList()
+      sendPromises.clear()
+      list
+    }
+    for (promise in pending) promise.reject("E_CANCELLED", "已断开")
   }
 
   override fun invalidate() {

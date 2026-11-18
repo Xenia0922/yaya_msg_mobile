@@ -2,6 +2,7 @@ package com.yk1z.yayamsg;
 
 import android.content.Intent;
 import android.content.pm.PackageInfo;
+import android.util.Log;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
 import android.net.Uri;
@@ -126,7 +127,12 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
       promise.reject("EIO", "无法创建下载目录");
       return;
     }
-    final File out = new File(dir, fileName);
+    final String safeName = safeUpdateFileName(fileName);
+    if (safeName == null) {
+      promise.reject("EINVAL", "下载文件名不合法");
+      return;
+    }
+    final File out = new File(dir, safeName);
 
     io.execute(() -> {
       try {
@@ -225,7 +231,8 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
         if (pi == null || pi.signatures == null) return out;
         for (Signature s : pi.signatures) out.add(sha256Hex(s.toByteArray()));
       }
-    } catch (Throwable ignored) {
+    } catch (Throwable t) {
+      Log.w("ApkUpdaterModule", "读取已安装应用签名失败 pkg=" + pkg, t);
     }
     return out;
   }
@@ -247,7 +254,8 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
         if (pi == null || pi.signatures == null) return out;
         for (Signature s : pi.signatures) out.add(sha256Hex(s.toByteArray()));
       }
-    } catch (Throwable ignored) {
+    } catch (Throwable t) {
+      Log.w("ApkUpdaterModule", "读取 APK 签名失败 path=" + apkPath, t);
     }
     return out;
   }
@@ -259,7 +267,9 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
    * 推给用户；用户若安装即被替换成恶意应用。Android 系统在覆盖安装时会拒绝不同签名的包，
    * 但「卸载重装」引导 + 伪造包仍能骗到用户，所以必须在下载后、安装前自己拦一道。
    *
-   * 策略：与「当前已安装应用」的证书摘要取交集（等价于系统同签名升级校验）。
+   * 策略：与「当前已安装应用」的证书摘要集合**完全一致**（等价于系统同签名升级校验）。
+   * 旧实现只要求有交集：若待装 APK 夹带一张与本应用相同的旧证书 + 任意新证书，
+   * 交集校验会放行，但 Android 安装器实际会按签名方案拒绝/替换，属于绕过前置校验。
    * 好处：不硬编码证书摘要，换签名/多渠道构建不会失效；缺点：若已装的应用本身是伪造包，
    * 则会自我比对通过（该场景需要用户先被诱导安装过一次，属另一层问题）。
    */
@@ -267,11 +277,34 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     PackageManager pm = ctx.getPackageManager();
     Set<String> mine = installedSignerDigests(pm, ctx.getPackageName());
     Set<String> theirs = apkSignerDigests(pm, apk.getAbsolutePath());
-    if (mine.isEmpty() || theirs.isEmpty()) return false; // 取不到证书 → 视为不安全，拒绝
-    for (String d : theirs) {
-      if (mine.contains(d)) return true;
+    if (mine.isEmpty() || theirs.isEmpty()) {
+      // 取不到证书 → 视为不安全，拒绝；保留错误日志便于定位签名读取失败
+      Log.w("ApkUpdaterModule", "签名校验失败：证书集合为空 installed=" + mine.size() + " apk=" + theirs.size());
+      return false;
     }
-    return false;
+    if (!mine.equals(theirs)) {
+      // P2-P24：必须集合严格相等，交集校验会被「旧证书 + 任意新证书」的伪造包绕过
+      Log.w("ApkUpdaterModule", "签名校验失败：证书集合不一致 installed=" + mine.size() + " apk=" + theirs.size());
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 校验下载落地文件名：只允许纯文件名（禁止 ../、/、\、NUL 等），且必须是 .apk。
+   * 旧实现直接 new File(dir, fileName)，攻击者可传 ../../... 把文件写到任意可写目录。
+   */
+  private static String safeUpdateFileName(String raw) {
+    if (raw == null) return null;
+    String name = raw.trim();
+    if (name.isEmpty() || name.length() > 128) return null;
+    if (name.equals(".") || name.equals("..") || name.contains("..")) return null;
+    if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf('\0') >= 0) return null;
+    for (int i = 0; i < name.length(); i++) {
+      if (name.charAt(i) < 0x20 || name.charAt(i) == 0x7f) return null;
+    }
+    if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".apk")) return null;
+    return name;
   }
 
   private static String sha256Hex(byte[] data) {

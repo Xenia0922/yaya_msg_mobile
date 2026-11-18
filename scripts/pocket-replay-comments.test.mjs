@@ -6,14 +6,26 @@ import vm from 'node:vm';
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
 const source = readFileSync(new URL('../src/utils/danmaku.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText;
 const htmlSrc = readFileSync(new URL('../src/utils/html.ts', import.meta.url), 'utf8');
 const htmlMod = { exports: {} };
-vm.runInNewContext(ts.transpileModule(htmlSrc, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module: htmlMod, exports: htmlMod.exports });
+vm.runInNewContext(
+  ts.transpileModule(htmlSrc, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
+  { module: htmlMod, exports: htmlMod.exports },
+);
 const moduleObject = { exports: {} };
-vm.runInNewContext(compiled, { module: moduleObject, exports: moduleObject.exports, require: (n) => (n === './html' ? htmlMod.exports : {}) });
-const { parseDanmaku, recentDanmaku, replayDanmakuCount, enrichReplayDanmaku } = moduleObject.exports;
-const entries = parseDanmaku('[00:01]甲\t第一条\n[00:10]乙\t第二条\n[00:10]丙\t第三条\n[00:30]丁\t第四条');
+vm.runInNewContext(compiled, {
+  module: moduleObject,
+  exports: moduleObject.exports,
+  require: (n) => (n === './html' ? htmlMod.exports : {}),
+});
+const { parseDanmaku, recentDanmaku, replayDanmakuCount, enrichReplayDanmaku } =
+  moduleObject.exports;
+const entries = parseDanmaku(
+  '[00:01]甲\t第一条\n[00:10]乙\t第二条\n[00:10]丙\t第三条\n[00:30]丁\t第四条',
+);
 assert.equal(recentDanmaku(entries, 0).length, 0);
 assert.equal(recentDanmaku(entries, 10).length, 3, '同一时间的消息应全部显示');
 assert.equal(recentDanmaku(entries, 30).length, 3, '过期消息应消失，边界消息仍显示');
@@ -23,7 +35,13 @@ const many = Array.from({ length: 10 }, (_, i) => ({ time: i, text: String(i) })
 assert.equal(recentDanmaku(many, 9).length, 6, '公屏最多显示六条');
 assert.equal(replayDanmakuCount(entries, 10), 3, '历史应包含播放位置之前的全部消息');
 assert.equal(replayDanmakuCount(entries, 3), 1, '回退后历史不应包含未来消息');
-const matching = [{ time: 1, content: '第一条', user: '甲', userId: '123', avatar: 'https://example.test/avatar' }];
+const matching = [
+  { time: 1, content: '第一条', user: '甲', userId: '123', avatar: 'https://example.test/avatar' },
+];
 assert.equal(enrichReplayDanmaku(entries, matching)[0].userId, '123', '唯一匹配时补充发送者信息');
-assert.equal(enrichReplayDanmaku(entries, [...matching, ...matching])[0].userId, undefined, '存在歧义时不能错误绑定发送者');
+assert.equal(
+  enrichReplayDanmaku(entries, [...matching, ...matching])[0].userId,
+  undefined,
+  '存在歧义时不能错误绑定发送者',
+);
 console.log('录播公屏时间轴与回退测试通过');

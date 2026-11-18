@@ -16,11 +16,11 @@ export type RadiusToken = keyof typeof radii;
 
 /** 推荐组合：卡片 20（适中圆润）、按钮 18、输入 14、chip/avatar 胶囊 */
 export const radiiAlias = {
-  card: radii.lg,         // 22 —— 实心卡片（与设置页统一）
-  cardCompact: radii.md,  // 14 —— 紧凑卡片
-  button: 18,             // 18 —— 主按钮
+  card: radii.lg, // 22 —— 实心卡片（与设置页统一）
+  cardCompact: radii.md, // 14 —— 紧凑卡片
+  button: 18, // 18 —— 主按钮
   buttonSquare: radii.md, // 14 —— 方按钮
-  input: radii.md,        // 14
-  chip: radii.pill,       // 999
-  avatar: radii.pill,     // 圆形
+  input: radii.md, // 14
+  chip: radii.pill, // 999
+  avatar: radii.pill, // 圆形
 } as const;

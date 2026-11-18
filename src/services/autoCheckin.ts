@@ -12,21 +12,33 @@ function todayKey() {
   return `${y}-${m}-${day}`;
 }
 
+/** token 只用于区分账号；落盘的是不可逆指纹，绝不能把 token 片段写进设置 JSON。 */
+function tokenFingerprint(token: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < token.length; i += 1) {
+    hash ^= token.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `token-hash:${(hash >>> 0).toString(36)}`;
+}
+
 function pickCurrentUserId(res: any, token: string) {
   return String(
-    res?.content?.userInfo?.userId
-    || res?.content?.baseUserInfo?.userId
-    || res?.content?.user?.userId
-    || res?.content?.userId
-    || res?.data?.userInfo?.userId
-    || res?.data?.userId
-    || (token ? `token:${String(token).slice(-16)}` : ''),
+    res?.content?.userInfo?.userId ||
+      res?.content?.baseUserInfo?.userId ||
+      res?.content?.user?.userId ||
+      res?.content?.userId ||
+      res?.data?.userInfo?.userId ||
+      res?.data?.userId ||
+      (token ? tokenFingerprint(String(token)) : ''),
   );
 }
 
 function isAlreadyCheckedError(error: any) {
   const message = error?.message || error?.msg || String(error || '');
-  return /\u5df2\u7b7e\u5230|\u91cd\u590d\u7b7e\u5230|\u5df2\u7ecf\u7b7e\u5230|\u5df2\u9886\u53d6|\u660e\u5929\u518d\u6765/.test(message);
+  return /\u5df2\u7b7e\u5230|\u91cd\u590d\u7b7e\u5230|\u5df2\u7ecf\u7b7e\u5230|\u5df2\u9886\u53d6|\u660e\u5929\u518d\u6765/.test(
+    message,
+  );
 }
 
 function isCheckedToday(res: any) {
@@ -46,18 +58,24 @@ function isCheckedToday(res: any) {
     content.hasChecked,
   ];
   if (flags.some((item) => item === true || item === 1 || item === '1')) return true;
-  return /\u5df2\u7b7e\u5230|\u5df2\u7ecf\u7b7e\u5230|\u4eca\u65e5\u5df2\u7b7e/.test(JSON.stringify(content));
+  return /\u5df2\u7b7e\u5230|\u5df2\u7ecf\u7b7e\u5230|\u4eca\u65e5\u5df2\u7b7e/.test(
+    JSON.stringify(content),
+  );
 }
 
 export async function runAutoCheckinIfNeeded() {
   const { settings, setSettings } = useSettingsStore.getState();
-  if (!settings.yaya_auto_checkin_enabled || !settings.p48Token) return { skipped: true, message: '自动签到未开启或未登录' };
+  if (!settings.yaya_auto_checkin_enabled || !settings.p48Token)
+    return { skipped: true, message: '自动签到未开启或未登录' };
 
   const today = todayKey();
   const profile = await pocketApi.getNimLoginInfo().catch(() => null);
   const user = pickCurrentUserId(profile, settings.p48Token);
   if (!user) return { skipped: true, message: '自动签到未获取到账号信息' };
-  if (settings.yaya_auto_checkin_last_date === today && settings.yaya_auto_checkin_last_user === user) {
+  if (
+    settings.yaya_auto_checkin_last_date === today &&
+    settings.yaya_auto_checkin_last_user === user
+  ) {
     return { skipped: true, alreadyChecked: true, message: '今日已自动签到过' };
   }
 
@@ -73,15 +91,12 @@ export async function runAutoCheckinIfNeeded() {
   }
 
   let message = '自动签到成功';
-  let alreadyChecked = false;
   try {
     const res: any = await pocketApi.checkIn();
-    alreadyChecked = !!res?.alreadyChecked;
-    message = res?.alreadyChecked ? '今日已经签到过了' : (res?.message || res?.msg || '自动签到成功');
+    message = res?.alreadyChecked ? '今日已经签到过了' : res?.message || res?.msg || '自动签到成功';
   } catch (error: any) {
     if (isAlreadyCheckedError(error)) {
       message = '今日已经签到过了';
-      alreadyChecked = true;
     } else {
       throw error;
     }

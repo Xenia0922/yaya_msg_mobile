@@ -2,8 +2,8 @@
  * 成员房间消息（云信 QChat / 圈组）原生桥 —— commonlink 协议版。
  *
  * 原生实现：android/app/src/main/java/com/yk1z/yayamsg/nim/
- *   NimCommonlinkSession.kt（TCP + RSA 握手 + RC4 + 请求应答）
- *   NimQChatClient.kt（NIM 会话 → 24/1 取 QChat 地址 → QChat 会话 → 收 24/11 / 发 24/10）
+ * NimCommonlinkSession.kt（TCP + RSA 握手 + RC4 + 请求应答）
+ * NimQChatClient.kt（NIM 会话 → 24/1 取 QChat 地址 → QChat 会话 → 收 24/11 / 发 24/10）
  *
  * 关键：登录鉴权属性里包名自己填（白名单包 `com.seine48.app`），
  * 官方 SDK 只能带真实包名 → 服务端拒（实测 414）。
@@ -14,7 +14,12 @@ import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 interface PocketNimQChatNative {
   connect(appKey: string, account: string, token: string): Promise<boolean>;
   send(serverId: string, channelId: string, text: string, extJson: string): Promise<string>;
-  sendCustom(serverId: string, channelId: string, attachment: string, extJson: string): Promise<string>;
+  sendCustom(
+    serverId: string,
+    channelId: string,
+    attachment: string,
+    extJson: string,
+  ): Promise<string>;
   disconnect(): void;
 }
 
@@ -33,6 +38,8 @@ export interface QChatNativeMessage {
   /** 0 = 文本，100 = 自定义 */
   type: number;
   body: string;
+  /** QChat 消息类型（text/qchatCustom/notification…） */
+  msgType?: string;
   attachment: string;
   /** remoteExtension 的 JSON 字符串 */
   ext: string;
@@ -50,7 +57,7 @@ export async function qchatSend(
   serverId: string,
   channelId: string,
   text: string,
-  extJson: string
+  extJson: string,
 ): Promise<string> {
   if (!native) throw new Error('当前平台不支持原生房间消息通道');
   return native.send(serverId, channelId, text, extJson);
@@ -60,12 +67,19 @@ export function qchatDisconnect(): void {
   native?.disconnect?.();
 }
 
-export async function qchatSendCustom(serverId: string, channelId: string, attachment: string, extJson: string): Promise<string> {
+export async function qchatSendCustom(
+  serverId: string,
+  channelId: string,
+  attachment: string,
+  extJson: string,
+): Promise<string> {
   if (!native?.sendCustom) throw new Error('当前设备不支持发送表情包');
   return native.sendCustom(serverId, channelId, attachment, extJson);
 }
 
-export function onQChatStatus(listener: (status: { state: string; detail: string }) => void): () => void {
+export function onQChatStatus(
+  listener: (status: { state: string; detail: string }) => void,
+): () => void {
   const sub = DeviceEventEmitter.addListener('PocketNimQChat:status', (e: any) => {
     listener({ state: String(e?.state || 'idle'), detail: String(e?.detail || '') });
   });
@@ -75,10 +89,10 @@ export function onQChatStatus(listener: (status: { state: string; detail: string
 /**
  * 圈组消息监听。
  *
- * ⚠️【2026-10-20 修复】原生有**两套**事件名/字段命名：
- *  - 旧：`PocketNimQChat:message`，单条，字段 body / ext / msgIdClient / msgIdServer
- *  - 实际在跑的 PocketImModule：`PocketIm:message`，**一次 emit 一个数组**，
- *    字段是 content / extension / uuid（无 msgIdClient）
+ * ⚠️【修复】原生有**两套**事件名/字段命名：
+ * - 旧：`PocketNimQChat:message`，单条，字段 body / ext / msgIdClient / msgIdServer
+ * - 实际在跑的 PocketImModule：`PocketIm:message`，**一次 emit 一个数组**，
+ * 字段是 content / extension / uuid（无 msgIdClient）
  * 之前只监听旧事件名 → 每条推送都被丢掉 → 房间消息只能靠 15s/60s 轮询，
  * 表现为「消息收到了（轮询拉到）但很久才显示 / 不实时」。两个都监听并统一字段。
  */
@@ -92,6 +106,7 @@ export function onQChatMessage(listener: (message: QChatNativeMessage) => void):
     type: Number(e?.type ?? 0),
     // PocketImModule 用 content；旧桥用 body
     body: String(e?.body ?? e?.content ?? ''),
+    msgType: String(e?.msgType || ''),
     attachment: String(e?.attachment || ''),
     // PocketImModule 用 extension（JSON 字符串）；旧桥用 ext
     ext: typeof e?.ext === 'string' ? e.ext : String(e?.extension || '{}'),
@@ -106,5 +121,8 @@ export function onQChatMessage(listener: (message: QChatNativeMessage) => void):
     const list: any[] = Array.isArray(arr) ? arr : [arr];
     for (const e of list) listener(mapOne(e));
   });
-  return () => { subOld.remove(); subIm.remove(); };
+  return () => {
+    subOld.remove();
+    subIm.remove();
+  };
 }

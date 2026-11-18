@@ -3,6 +3,7 @@ import { saveSettings } from './settings';
 import { resetNimSession } from './pocketNim/session';
 import { useSettingsStore } from '../store';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
+import { MusicEngine } from './musicPlayer';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { encryptSecret, decryptSecret } from '../native/SecureVault';
 
@@ -35,64 +36,86 @@ function tokenId(token: string): string {
   return (hash >>> 0).toString(36);
 }
 
+let vaultWriteChain: Promise<unknown> = Promise.resolve();
+function withVaultWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const run = vaultWriteChain.then(fn);
+  vaultWriteChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 async function write(accounts: SavedAccount[]): Promise<SavedAccount[]> {
   const json = JSON.stringify(accounts);
   const enc = await encryptSecret(json);
-  // 原生加密不可用时降级为明文（仅开发/iOS；Android 正式包始终加密）
-  await AsyncStorage.setItem(VAULT_KEY, enc == null ? json : `${ENC_PREFIX}${enc}`);
+  if (enc == null) throw new Error('安全存储不可用，已拒绝保存账号');
+  await AsyncStorage.setItem(VAULT_KEY, `${ENC_PREFIX}${enc}`);
   return accounts;
 }
 
-/** 读出并解密原始 JSON；解不开返回 null（按空处理，不崩） */
+/** 读出并解密原始 JSON；存储不存在返回 null，损坏/解密失败抛错（不能静默当空表） */
 async function readDecrypted(): Promise<string | null> {
   const raw = await AsyncStorage.getItem(VAULT_KEY);
   if (!raw) return null;
   if (!raw.startsWith(ENC_PREFIX)) {
-    // 历史明文：读出来的同时顺手加密，避免明文长期留存
-    try { await write(JSON.parse(raw) as SavedAccount[]); } catch { /* 忽略 */ }
+    // 历史明文：读出来的同时顺手加密，避免明文长期留存。
+    // 加密暂时不可用时仍允许本次读取，但不能把明文回写。
+    try {
+      await write(JSON.parse(raw) as SavedAccount[]);
+    } catch {
+      /* 保留原值，等下次可写时迁移 */
+    }
     return raw;
   }
-  return decryptSecret(raw.slice(ENC_PREFIX.length));
+  const plain = await decryptSecret(raw.slice(ENC_PREFIX.length));
+  if (plain == null) throw new Error('账号仓库解密失败，请重新登录');
+  return plain;
 }
 
 export async function listSavedAccounts(): Promise<SavedAccount[]> {
+  const json = await readDecrypted();
+  if (!json) return [];
+  let list: unknown;
   try {
-    const json = await readDecrypted();
-    if (!json) return [];
-    const list = JSON.parse(json) as SavedAccount[];
-    return Array.isArray(list) ? list.filter((item) => item && item.token) : [];
+    list = JSON.parse(json);
   } catch {
-    return [];
+    throw new Error('账号仓库数据损坏');
   }
+  return Array.isArray(list) ? (list as SavedAccount[]).filter((item) => item && item.token) : [];
 }
 
 /** 把当前登录态存进列表；同 token 只更新名字/身份，不重复添加 */
-export async function saveCurrentAccount(label = ''): Promise<SavedAccount[]> {
-  const { p48Token, p48ClientProfile } = useSettingsStore.getState().settings;
-  const token = String(p48Token || '').trim();
-  if (!token) return listSavedAccounts();
-  const accounts = await listSavedAccounts();
-  const id = tokenId(token);
-  const index = accounts.findIndex((item) => item.id === id);
-  const prev = index >= 0 ? accounts[index] : null;
-  const now = new Date();
-  const stamp = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const entry: SavedAccount = {
-    id,
-    // 自动保存（不传名字）时保留已有名字；新账号用时间做默认名，避免一串「账号 1/2/3」
-    label: String(label || '').trim() || prev?.label || `账号 ${stamp}`,
-    token,
-    clientProfile: p48ClientProfile === 'seine48' ? 'seine48' : 'pocket48',
-    addedAt: prev?.addedAt ?? Date.now(),
-  };
-  if (prev) accounts[index] = entry;
-  else accounts.push(entry);
-  return write(accounts);
+export function saveCurrentAccount(label = ''): Promise<SavedAccount[]> {
+  return withVaultWrite(async () => {
+    const { p48Token, p48ClientProfile } = useSettingsStore.getState().settings;
+    const token = String(p48Token || '').trim();
+    if (!token) return listSavedAccounts();
+    const accounts = await listSavedAccounts();
+    const id = tokenId(token);
+    const index = accounts.findIndex((item) => item.id === id);
+    const prev = index >= 0 ? accounts[index] : null;
+    const now = new Date();
+    const stamp = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const entry: SavedAccount = {
+      id,
+      // 自动保存（不传名字）时保留已有名字；新账号用时间做默认名，避免一串「账号 1/2/3」
+      label: String(label || '').trim() || prev?.label || `账号 ${stamp}`,
+      token,
+      clientProfile: p48ClientProfile === 'seine48' ? 'seine48' : 'pocket48',
+      addedAt: prev?.addedAt ?? Date.now(),
+    };
+    if (prev) accounts[index] = entry;
+    else accounts.push(entry);
+    return write(accounts);
+  });
 }
 
-export async function removeSavedAccount(id: string): Promise<SavedAccount[]> {
-  const accounts = await listSavedAccounts();
-  return write(accounts.filter((item) => item.id !== id));
+export function removeSavedAccount(id: string): Promise<SavedAccount[]> {
+  return withVaultWrite(async () => {
+    const accounts = await listSavedAccounts();
+    return write(accounts.filter((item) => item.id !== id));
+  });
 }
 
 /**
@@ -111,6 +134,7 @@ export async function switchSavedAccount(entry: SavedAccount): Promise<void> {
     /* ignore */
   }
   try {
+    MusicEngine.stop();
     const music = useMusicPlayerStore.getState();
     if (music.playbackState !== 'idle') music.setPlaybackState('idle');
   } catch {
@@ -118,7 +142,8 @@ export async function switchSavedAccount(entry: SavedAccount): Promise<void> {
   }
   const patch = {
     p48Token: token,
-    p48ClientProfile: entry.clientProfile === 'seine48' ? ('seine48' as const) : ('pocket48' as const),
+    p48ClientProfile:
+      entry.clientProfile === 'seine48' ? ('seine48' as const) : ('pocket48' as const),
   };
   useSettingsStore.getState().setSettings(patch);
   await saveSettings(patch);

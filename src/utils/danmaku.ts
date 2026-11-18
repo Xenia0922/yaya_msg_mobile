@@ -4,8 +4,8 @@ import { sanitizeText } from './html';
  * 鲁棒弹幕 / LRC 解析器。
  *
  * 痛点：口袋48 的弹幕有两种时间格式混用
- *   - 直播回放风格:  [hh:mm:ss]       或  [hh:mm:ss.xxx]
- *   - 标准 LRC:      [mm:ss]          或  [mm:ss.xx]
+ * - 直播回放风格: [hh:mm:ss] 或 [hh:mm:ss.xxx]
+ * - 标准 LRC: [mm:ss] 或 [mm:ss.xx]
  * 且正文常为 `昵称\t内容` 形式。逐行容错，任何一行解析失败都不影响整体。
  */
 
@@ -41,13 +41,25 @@ function replayRowItems(row: ReplayBarrageInfo): DanmakuItem[] {
 }
 
 export function replayBarrageToDanmaku(rows: ReplayBarrageInfo[]): DanmakuItem[] {
-  return rows.flatMap((row) => replayRowItems(row).map((item) => ({
-    ...item, nick: item.nick || row.user || undefined, userId: row.userId, avatar: row.avatar, level: row.level,
-  }))).filter((item) => !!item.text).sort((a, b) => a.time - b.time);
+  return rows
+    .flatMap((row) =>
+      replayRowItems(row).map((item) => ({
+        ...item,
+        nick: item.nick || row.user || undefined,
+        userId: row.userId,
+        avatar: row.avatar,
+        level: row.level,
+      })),
+    )
+    .filter((item) => !!item.text)
+    .sort((a, b) => a.time - b.time);
 }
 
 /** 仅在昵称、内容、相对时间均唯一匹配时补全资料，避免同名用户资料串用。 */
-export function enrichReplayDanmaku(items: DanmakuItem[], rows: ReplayBarrageInfo[]): DanmakuItem[] {
+export function enrichReplayDanmaku(
+  items: DanmakuItem[],
+  rows: ReplayBarrageInfo[],
+): DanmakuItem[] {
   const lookup = new Map<string, Array<DanmakuItem>>();
   for (const row of rows) {
     if (!row.userId && !row.avatar && !row.level) continue;
@@ -58,7 +70,14 @@ export function enrichReplayDanmaku(items: DanmakuItem[], rows: ReplayBarrageInf
       if (!nick || !text || !Number.isFinite(time) || time < 0 || time > 86400) continue;
       const key = `${nick}\t${text}`;
       const list = lookup.get(key) || [];
-      list.push({ time, text: sanitizeText(text), nick, userId: row.userId, avatar: row.avatar, level: row.level });
+      list.push({
+        time,
+        text: sanitizeText(text),
+        nick,
+        userId: row.userId,
+        avatar: row.avatar,
+        level: row.level,
+      });
       lookup.set(key, list);
     }
   }
@@ -67,15 +86,27 @@ export function enrichReplayDanmaku(items: DanmakuItem[], rows: ReplayBarrageInf
     if (!item.nick) continue;
     const key = `${item.nick.trim()}\t${item.text.trim()}`;
     const times = sourceLookup.get(key) || [];
-    times.push(item.time); sourceLookup.set(key, times);
+    times.push(item.time);
+    sourceLookup.set(key, times);
   }
   return items.map((item) => {
     if (!item.nick) return item;
     const key = `${item.nick.trim()}\t${item.text.trim()}`;
-    const matches = (lookup.get(key) || []).filter((candidate) => Math.abs(candidate.time - item.time) < 1);
-    if (matches.length !== 1 || (sourceLookup.get(key) || []).filter((time) => Math.abs(time - item.time) < 1).length !== 1) return item;
+    const matches = (lookup.get(key) || []).filter(
+      (candidate) => Math.abs(candidate.time - item.time) < 1,
+    );
+    if (
+      matches.length !== 1 ||
+      (sourceLookup.get(key) || []).filter((time) => Math.abs(time - item.time) < 1).length !== 1
+    )
+      return item;
     const match = matches[0];
-    return { ...item, userId: item.userId || match.userId, avatar: item.avatar || match.avatar, level: item.level || match.level };
+    return {
+      ...item,
+      userId: item.userId || match.userId,
+      avatar: item.avatar || match.avatar,
+      level: item.level || match.level,
+    };
   });
 }
 

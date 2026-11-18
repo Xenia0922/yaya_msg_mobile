@@ -1,7 +1,7 @@
 /**
  * HeaderAction · 页头右侧文字操作（全站统一）
- *  - 「刷新 / 清理完成 / 发送翻牌」等文字按钮统一字号与按压反馈
- *  - loading 时显示迷你 spinner；disabled 时降透明度
+ * - 「刷新 / 清理完成 / 发送翻牌」等文字按钮统一字号与按压反馈
+ * - loading 时显示迷你 spinner；disabled 时降透明度
  */
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native';
@@ -25,6 +25,9 @@ export function HeaderAction({ label, onPress, disabled, loading }: HeaderAction
       activeOpacity={0.6}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       style={[styles.btn, { opacity: inactive ? 0.45 : 1 }]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: inactive, busy: !!loading }}
     >
       {loading ? (
         <ActivityIndicator size="small" color={palette.tint} />

@@ -6,7 +6,9 @@ import vm from 'node:vm';
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
 const source = readFileSync(new URL('../src/utils/members.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText;
 const moduleObject = { exports: {} };
 vm.runInNewContext(compiled, { module: moduleObject, exports: moduleObject.exports });
 const { appendOfficialGroupMembers } = moduleObject.exports;

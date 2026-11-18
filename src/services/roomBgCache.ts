@@ -23,6 +23,11 @@ type BgMap = Record<string, { localUri: string; url: string }>;
 
 let mapCache: BgMap | null = null;
 let mapPromise: Promise<BgMap> | null = null;
+// 写映射串行化：并发下载各自持有旧 map 快照时，后写会覆盖先写（丢缓存条目）。
+// 所有“合并 + 落盘”都排进这条链，且每次合并都基于最新 mapCache。
+let mapWriteChain: Promise<void> = Promise.resolve();
+// 同一 URL 的并发请求共享同一次下载，避免重复下载同一文件
+const inflightDownloads = new Map<string, Promise<void>>();
 
 async function loadMap(): Promise<BgMap> {
   if (mapCache) return mapCache;
@@ -46,6 +51,28 @@ async function saveMap(map: BgMap): Promise<void> {
   } catch {
     /* 持久化失败不影响本次显示，下次重试 */
   }
+}
+
+/** 串行合并单个条目到最新 map（并发安全的“读-改-写”） */
+function commitEntry(abs: string, entry: { localUri: string; url: string }): Promise<void> {
+  const run = async () => {
+    const map = await loadMap();
+    const next: BgMap = { ...map, [abs]: entry };
+    // 淘汰：超过上限时删除最旧条目（对象插入顺序 ≈ 写入顺序）
+    const keys = Object.keys(next);
+    if (keys.length > MAX_ENTRIES) {
+      const drop = keys.slice(0, keys.length - MAX_ENTRIES);
+      for (const k of drop) {
+        const uri = next[k]?.localUri;
+        if (uri) FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
+        delete next[k];
+      }
+    }
+    await saveMap(next);
+  };
+  const task = mapWriteChain.then(run, run);
+  mapWriteChain = task.catch(() => undefined);
+  return task;
 }
 
 /** 服务端 bgImg 常是相对路径（/backstage/...）→ 补全 source.48.cn 绝对地址，否则 Image 联网加载失败（新房间无背景的根因） */
@@ -78,25 +105,25 @@ export async function ensureBgCached(url: string): Promise<void> {
     const info = await FileSystem.getInfoAsync(entry.localUri).catch(() => null);
     if (info && info.exists) return; // 已缓存且文件在，无需重下
   }
-  // 缓存缺失或文件丢失 → 下载
-  try {
-    await FileSystem.makeDirectoryAsync(BG_DIR, { intermediates: true }).catch(() => undefined);
-    const localUri = `${BG_DIR}${hashUrl(abs)}.img`;
-    await FileSystem.downloadAsync(abs, localUri);
-    const next: BgMap = { ...map, [abs]: { localUri, url: abs } };
-    // 淘汰：超过上限时删除最旧条目（对象插入顺序 ≈ 写入顺序）
-    const keys = Object.keys(next);
-    if (keys.length > MAX_ENTRIES) {
-      const drop = keys.slice(0, keys.length - MAX_ENTRIES);
-      for (const k of drop) {
-        const uri = next[k]?.localUri;
-        if (uri) FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
-        delete next[k];
-      }
+  // 同一 URL 并发进入时共享同一次下载
+  const existing = inflightDownloads.get(abs);
+  if (existing) return existing;
+  const task = (async () => {
+    try {
+      await FileSystem.makeDirectoryAsync(BG_DIR, { intermediates: true }).catch(() => undefined);
+      const localUri = `${BG_DIR}${hashUrl(abs)}.img`;
+      await FileSystem.downloadAsync(abs, localUri);
+      // 合并最新 map（而不是下载开始时的旧快照），避免并发写覆盖其它条目
+      await commitEntry(abs, { localUri, url: abs });
+    } catch {
+      /* 下载失败不影响：下次进房间或下次轮询会重试 */
     }
-    await saveMap(next);
-  } catch {
-    /* 下载失败不影响：下次进房间或下次轮询会重试 */
+  })();
+  inflightDownloads.set(abs, task);
+  try {
+    await task;
+  } finally {
+    inflightDownloads.delete(abs);
   }
 }
 
