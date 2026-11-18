@@ -6,8 +6,8 @@ import { NativeModules, Platform } from 'react-native';
  * 只用于「落盘那一份」：磁盘上只存密文，密钥不可导出。
  * 内存中仍是明文，因此「复制 Token」等用户功能完全不受影响。
  *
- * iOS / 原生模块缺失时 encryptSecret 返回 null，由调用方降级为明文保存
- * （开发环境与 iOS 不因此中断；Android 正式包始终可用）。
+ * iOS / 原生模块缺失时 encryptSecret 返回 null；调用方必须拒绝写入敏感字段，
+ * 不允许降级明文（Android 正式包始终可用，开发环境可改用模拟实现）。
  */
 type NativeSecureVault = {
   encrypt(plain: string): Promise<string>;
@@ -15,7 +15,9 @@ type NativeSecureVault = {
 };
 
 const native: NativeSecureVault | undefined =
-  Platform.OS === 'android' ? ((NativeModules as any)?.SecureVault as NativeSecureVault | undefined) : undefined;
+  Platform.OS === 'android'
+    ? ((NativeModules as any)?.SecureVault as NativeSecureVault | undefined)
+    : undefined;
 
 export const isSecureVaultAvailable = !!native;
 

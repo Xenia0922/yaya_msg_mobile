@@ -14,7 +14,9 @@ const fs = require('fs');
 const xmlPath = process.argv[2];
 if (!xmlPath) {
   console.error('用法: node scripts/qa-check.js <uiautomator-dump.xml> [screenW screenH]');
-  console.error('示例: adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml ui.xml && node scripts/qa-check.js ui.xml 1080 1920');
+  console.error(
+    '示例: adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml ui.xml && node scripts/qa-check.js ui.xml 1080 1920',
+  );
   process.exit(2);
 }
 const SW = Number(process.argv[3] || 1080);
@@ -41,36 +43,52 @@ while ((m = re.exec(raw))) {
     desc: attr('content-desc'),
     clickable: attr('clickable') === 'true',
     longClickable: attr('long-clickable') === 'true',
-    x1: +bm[1], y1: +bm[2], x2: +bm[3], y2: +bm[4],
+    x1: +bm[1],
+    y1: +bm[2],
+    x2: +bm[3],
+    y2: +bm[4],
   });
 }
 
 const issues = [];
 // 1. 越界
 for (const n of nodes) {
-  const w = n.x2 - n.x1, h = n.y2 - n.y1;
+  const w = n.x2 - n.x1,
+    h = n.y2 - n.y1;
   if (n.x1 < -2 || n.y1 < -2 || n.x2 > SW + 2 || n.y2 > SH + 2) {
-    issues.push(`[越界] ${n.cls?.split('.').pop()} "${(n.text || n.desc || '').slice(0, 30)}" bounds=[${n.x1},${n.y1}][${n.x2},${n.y2}]`);
+    issues.push(
+      `[越界] ${n.cls?.split('.').pop()} "${(n.text || n.desc || '').slice(0, 30)}" bounds=[${n.x1},${n.y1}][${n.x2},${n.y2}]`,
+    );
   }
   // 2. 触控目标过小
   if ((n.clickable || n.longClickable) && (w < MIN_TOUCH || h < MIN_TOUCH)) {
-    issues.push(`[触控过小 ${w}x${h}] ${n.cls?.split('.').pop()} "${(n.text || n.desc || '').slice(0, 30)}"`);
+    issues.push(
+      `[触控过小 ${w}x${h}] ${n.cls?.split('.').pop()} "${(n.text || n.desc || '').slice(0, 30)}"`,
+    );
   }
 }
 // 3. 文字重叠（两两比较，限制数量；排除底部悬浮 TabBar 区（屏幕底部 ~13%）的节点——那是正常的内容滚动遮挡；
 //    也排除「容器型」文本节点（宽度远超自身字符估计宽度，如 flex:1 的标题行，uiautomator 报的是容器 bounds 而非字形））
 const TAB_ZONE = SH * 0.87;
-const estWidth = (t) => { const cjk = (t.text.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/g) || []).length; const other = t.text.length - cjk; return cjk * 28 + other * 16; };
-const isContainerNode = (t) => (t.x2 - t.x1) > Math.max(320, estWidth(t) * 4);
-const texts = nodes.filter((n) => n.text && n.text.trim() && n.y1 < TAB_ZONE && !isContainerNode(n));
-outer:
-for (let i = 0; i < texts.length; i++) {
+const estWidth = (t) => {
+  const cjk = (t.text.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/g) || []).length;
+  const other = t.text.length - cjk;
+  return cjk * 28 + other * 16;
+};
+const isContainerNode = (t) => t.x2 - t.x1 > Math.max(320, estWidth(t) * 4);
+const texts = nodes.filter(
+  (n) => n.text && n.text.trim() && n.y1 < TAB_ZONE && !isContainerNode(n),
+);
+outer: for (let i = 0; i < texts.length; i++) {
   for (let j = i + 1; j < texts.length; j++) {
-    const a = texts[i], b = texts[j];
+    const a = texts[i],
+      b = texts[j];
     const ox = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1);
     const oy = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
     if (ox > 6 && oy > 6) {
-      issues.push(`[文字重叠] "${a.text.slice(0, 20)}" & "${b.text.slice(0, 20)}"`);
+      const aText = String(a.text || '').slice(0, 20);
+      const bText = String(b.text || '').slice(0, 20);
+      issues.push(`[文字重叠] "${aText}" & "${bText}"`);
       if (issues.filter((x) => x.startsWith('[文字重叠]')).length > 8) break outer;
     }
   }

@@ -1,9 +1,12 @@
 package com.yk1z.yayamsg;
 
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.SurfaceTexture;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
@@ -50,14 +53,45 @@ public class LiveExoView extends FrameLayout {
   /** JS 显式暂停（统一播放器控制条用；默认 false=自动播，等同 v2.7.3 行为） */
   private volatile boolean paused = false;
   private final com.facebook.react.uimanager.ThemedReactContext reactContext;
+  private SurfaceTexture lastSurfaceTexture = null;
+  private boolean lastInPip = false;
 
   public LiveExoView(Context context) {
     super(context);
     this.reactContext = (context instanceof com.facebook.react.uimanager.ThemedReactContext)
         ? (com.facebook.react.uimanager.ThemedReactContext) context : null;
     setBackgroundColor(Color.BLACK);
+    setClipChildren(false);
+    setClipToPadding(false);
     textureView = new TextureView(context);
     addView(textureView, new LayoutParams(-1, -1, Gravity.CENTER));
+    // SurfaceTexture 在系统 PiP 进入/退出、Activity 重建、TextureView 重新挂载时
+    // 可能被销毁并重新创建；只在 layout 回调里 setVideoTextureView 会漏掉
+    // 「surface 已可用但 layout 未变化」的恢复路径，表现为切回全屏黑屏。
+    textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+      @Override
+      public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+        lastSurfaceTexture = null;
+        ensurePlayerSurface();
+        applyAspectTransform();
+      }
+
+      @Override
+      public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+        applyAspectTransform();
+      }
+
+      @Override
+      public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+        lastSurfaceTexture = null;
+        return true;
+      }
+
+      @Override
+      public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+        // no-op
+      }
+    });
     applyAudioOnlyPresentation();
 
     statusText = new TextView(context);
@@ -70,7 +104,22 @@ public class LiveExoView extends FrameLayout {
     statusParams.bottomMargin = dp(12);
     addView(statusText, statusParams);
 
-    addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> applyAspectTransform());
+    addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+      ensurePlayerSurface();
+      applyAspectTransform();
+    });
+
+    this.decorLayoutListener = (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+      if (left != oldLeft || top != oldTop || right != oldRight || bottom != oldBottom) {
+        post(() -> {
+          // 窗口尺寸变化（含 PiP 进入/退出/系统缩放）只触发本 View 的重新布局；
+          // 不要再拿 decor 的 right-left 去 layout TextureView —— decor 在 PiP 下可能是全屏尺寸。
+          requestLayout();
+          ensurePlayerSurface();
+          applyAspectTransform();
+        });
+      }
+    };
   }
 
   /** 纯音频模式：不渲染视频画面，仅解码播放音频（上麦/电台流为声音，无需黑屏画面） */
@@ -244,6 +293,166 @@ public class LiveExoView extends FrameLayout {
     }
   }
 
+  private Activity getActivity() {
+    Context ctx = getContext();
+    if (ctx instanceof com.facebook.react.uimanager.ThemedReactContext) {
+      return ((com.facebook.react.uimanager.ThemedReactContext) ctx).getCurrentActivity();
+    }
+    while (ctx instanceof android.content.ContextWrapper) {
+      if (ctx instanceof Activity) return (Activity) ctx;
+      ctx = ((android.content.ContextWrapper) ctx).getBaseContext();
+    }
+    return null;
+  }
+
+  private boolean isInPip() {
+    Activity a = getActivity();
+    if (a != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      return a.isInPictureInPictureMode();
+    }
+    return PipModule.isInPipMode();
+  }
+
+  private int getRealWindowWidth() {
+    Activity a = getActivity();
+    if (a == null) {
+      a = PipModule.getAppActivity();
+    }
+    if (a != null && a.getWindow() != null) {
+      View decor = a.getWindow().getDecorView();
+      if (decor != null && decor.getWidth() > 0) {
+        return decor.getWidth();
+      }
+    }
+    return getWidth();
+  }
+
+  private int getRealWindowHeight() {
+    Activity a = getActivity();
+    if (a == null) {
+      a = PipModule.getAppActivity();
+    }
+    if (a != null && a.getWindow() != null) {
+      View decor = a.getWindow().getDecorView();
+      if (decor != null && decor.getHeight() > 0) {
+        return decor.getHeight();
+      }
+    }
+    return getHeight();
+  }
+
+  private void ensurePlayerSurface() {
+    if (player != null && !audioOnly && textureView != null && textureView.isAvailable()) {
+      SurfaceTexture st = textureView.getSurfaceTexture();
+      boolean inPip = isInPip();
+      if (st != null && (st != lastSurfaceTexture || inPip != lastInPip)) {
+        lastSurfaceTexture = st;
+        lastInPip = inPip;
+        try {
+          // 先解绑再绑定：系统 PiP 的 TextureView surface 在窗口尺寸切换时可能
+          // 只换 buffer 不换 SurfaceTexture，直接重复 setVideoTextureView 不刷新画面。
+          player.clearVideoTextureView(textureView);
+          player.setVideoTextureView(textureView);
+          player.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT);
+          textureView.postInvalidateOnAnimation();
+          // PiP 返回全屏的首帧布局可能晚一两帧：补两次变换，避免黑屏/错位残留。
+          handler.postDelayed(this::applyAspectTransform, 120L);
+          handler.postDelayed(this::applyAspectTransform, 600L);
+        } catch (Throwable ignored) {
+        }
+      }
+    }
+  }
+
+  private View.OnLayoutChangeListener decorLayoutListener;
+
+  @Override
+  protected void onAttachedToWindow() {
+    super.onAttachedToWindow();
+    Activity a = getActivity();
+    if (a == null) {
+      a = PipModule.getAppActivity();
+    }
+    if (a != null && a.getWindow() != null) {
+      a.getWindow().getDecorView().addOnLayoutChangeListener(decorLayoutListener);
+    }
+    ensurePlayerSurface();
+  }
+
+  @Override
+  protected void onDetachedFromWindow() {
+    Activity a = getActivity();
+    if (a == null) {
+      a = PipModule.getAppActivity();
+    }
+    if (a != null && a.getWindow() != null) {
+      a.getWindow().getDecorView().removeOnLayoutChangeListener(decorLayoutListener);
+    }
+    super.onDetachedFromWindow();
+  }
+
+  @Override
+  protected void onWindowVisibilityChanged(int visibility) {
+    super.onWindowVisibilityChanged(visibility);
+    if (visibility == View.VISIBLE) {
+      // 系统 PiP 返回时窗口可见性会重新变为 VISIBLE；部分 ROM 此时不触发
+      // TextureView 的 surfaceAvailable（只恢复旧 surface），必须在可见后主动补绑一次。
+      handler.postDelayed(this::ensurePlayerSurface, 80L);
+      handler.postDelayed(this::applyAspectTransform, 140L);
+    }
+  }
+
+  @Override
+  public void onWindowFocusChanged(boolean hasWindowFocus) {
+    super.onWindowFocusChanged(hasWindowFocus);
+    if (hasWindowFocus) {
+      handler.postDelayed(this::ensurePlayerSurface, 80L);
+    }
+  }
+
+  @Override
+  protected void onConfigurationChanged(android.content.res.Configuration newConfig) {
+    super.onConfigurationChanged(newConfig);
+    post(() -> {
+      ensurePlayerSurface();
+      requestLayout();
+      applyAspectTransform();
+    });
+  }
+
+  @Override
+  protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+    // 系统 PiP 下 WindowMetrics 的 decor 尺寸可能仍是全屏尺寸（不同 ROM 行为不一致）；
+    // 曾用 decor 尺寸强制 setMeasuredDimension，导致小窗内容按全屏比例放大、左右裁切。
+    // 统一以父容器给 RN 视图的真实 MeasureSpec 为准；PiP 由系统把根视图缩到小窗尺寸。
+    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+    int w = getMeasuredWidth();
+    int h = getMeasuredHeight();
+    if (w > 0 && h > 0) {
+      textureView.measure(
+          MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY),
+          MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY));
+    }
+  }
+
+  @Override
+  protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+    // 只使用本 View 的真实布局尺寸：系统 PiP 的 decor 尺寸在部分 ROM 上是全屏，
+    // 用它 layout TextureView 会把画面放大后裁掉左右。
+    int w = Math.max(0, right - left);
+    int h = Math.max(0, bottom - top);
+    textureView.layout(0, 0, w, h);
+    if (statusText.getVisibility() != View.GONE) {
+      int tw = statusText.getMeasuredWidth();
+      int th = statusText.getMeasuredHeight();
+      int sx = (w - tw) / 2;
+      int sy = h - th - dp(12);
+      statusText.layout(sx, sy, sx + tw, sy + th);
+    }
+    ensurePlayerSurface();
+    applyAspectTransform();
+  }
+
   public void setCoverPortrait(boolean coverPortrait) {
     this.coverPortrait = coverPortrait;
     applyAspectTransform();
@@ -251,25 +460,54 @@ public class LiveExoView extends FrameLayout {
 
   private void applyAspectTransform() {
     if (audioOnly) return; // 纯音频模式下不渲染画面，无需适配
-    int hostW = getWidth();
-    int hostH = getHeight();
+    // 以 TextureView 真实布局尺寸为容器尺寸。系统 PiP 的 decor/WindowMetrics
+    // 在部分 ROM（含 ColorOS）上仍返回全屏，绝不能拿来算矩阵，否则小窗必裁切。
+    int hostW = textureView.getWidth();
+    int hostH = textureView.getHeight();
+    if (hostW <= 0) hostW = getWidth();
+    if (hostH <= 0) hostH = getHeight();
     if (hostW <= 0 || hostH <= 0 || videoWidth <= 0 || videoHeight <= 0) return;
+
+    boolean inPip = isInPip();
     float videoRatio = ((float) videoWidth * videoPixelRatio) / (float) videoHeight;
     float hostRatio = (float) hostW / (float) hostH;
 
-    float scaleX = 1f;
-    float scaleY = 1f;
-    if (coverPortrait && videoRatio < 1f && hostRatio < 1f) {
-      if (videoRatio > hostRatio) scaleX = videoRatio / hostRatio;
-      else scaleY = hostRatio / videoRatio;
-    } else if (videoRatio > hostRatio) {
-      scaleY = hostRatio / videoRatio;
+    float targetW;
+    float targetH;
+
+    if (coverPortrait && !inPip && videoRatio < 1f && hostRatio < 1f) {
+      // 竖屏全屏模式下的铺满裁剪 (cover)
+      if (videoRatio > hostRatio) {
+        targetH = hostH;
+        targetW = hostH * videoRatio;
+      } else {
+        targetW = hostW;
+        targetH = hostW / videoRatio;
+      }
     } else {
-      scaleX = videoRatio / hostRatio;
+      // 小窗（PiP）模式下必须完整显示画面、严禁左右裁切（FIT_CENTER contain）
+      if (videoRatio > hostRatio) {
+        targetW = hostW;
+        targetH = hostW / videoRatio;
+      } else {
+        targetH = hostH;
+        targetW = hostH * videoRatio;
+      }
     }
 
+    int tw = textureView.getWidth();
+    int th = textureView.getHeight();
+    if (tw <= 0) tw = hostW;
+    if (th <= 0) th = hostH;
+
+    float sx = targetW / (float) tw;
+    float sy = targetH / (float) th;
+    float dx = (tw - targetW) / 2f;
+    float dy = (th - targetH) / 2f;
+
     Matrix matrix = new Matrix();
-    matrix.setScale(scaleX, scaleY, hostW / 2f, hostH / 2f);
+    matrix.setScale(sx, sy);
+    matrix.postTranslate(dx, dy);
     textureView.setTransform(matrix);
   }
 

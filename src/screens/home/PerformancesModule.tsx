@@ -54,10 +54,16 @@ export default function PerformancesModule({
           <GlassSurface
             radius={22}
             role="card"
-            style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
+            style={[
+              styles.liveStateCard,
+              { backgroundColor: 'transparent', borderColor: palette.hairline },
+            ]}
           >
             <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
-            <Text style={[styles.liveStateText, { color: palette.labelSecondary }]} numberOfLines={2}>
+            <Text
+              style={[styles.liveStateText, { color: palette.labelSecondary }]}
+              numberOfLines={2}
+            >
               {t('公演直播加载失败')}
             </Text>
             <Button title={t('重试')} variant="tinted" size="sm" onPress={onRetry} />
@@ -68,10 +74,15 @@ export default function PerformancesModule({
           <GlassSurface
             radius={22}
             role="card"
-            style={[styles.liveStateCard, { backgroundColor: 'transparent', borderColor: palette.hairline }]}
+            style={[
+              styles.liveStateCard,
+              { backgroundColor: 'transparent', borderColor: palette.hairline },
+            ]}
           >
             <MaterialCommunityIcons name="broadcast-off" size={20} color={palette.labelTertiary} />
-            <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>{t('此时段暂无公演直播')}</Text>
+            <Text style={[styles.liveStateText, { color: palette.labelSecondary }]}>
+              {t('此时段暂无公演直播')}
+            </Text>
           </GlassSurface>
         </FadeInView>
       ) : (
@@ -87,7 +98,15 @@ export default function PerformancesModule({
                     滚动时逐帧重算 RenderEffect 模糊，三星等模糊较慢的机型直接掉帧。
                     项目铁律：列表/网格用实底圆角 + 细描边（surfaceGlassStrong）。 */}
                 <View
-                  style={[styles.liveRow, shadows.xs, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}
+                  style={[
+                    styles.liveRow,
+                    shadows.xs,
+                    {
+                      backgroundColor: palette.surfaceGlassStrong,
+                      borderColor: palette.hairline,
+                      borderWidth: StyleSheet.hairlineWidth,
+                    },
+                  ]}
                 >
                   <View style={[styles.liveRowThumb, { backgroundColor: palette.tintSoft }]}>
                     {gongyanInfo[room.roomId]?.cover ? (
@@ -97,26 +116,49 @@ export default function PerformancesModule({
                         resizeMode="cover"
                       />
                     ) : (
-                      <MaterialCommunityIcons name="television-classic" color={palette.tint} size={22} />
+                      <MaterialCommunityIcons
+                        name="television-classic"
+                        color={palette.tint}
+                        size={22}
+                      />
                     )}
                   </View>
                   <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
                     <Text style={[styles.liveRowTitle, { color: palette.label }]} numberOfLines={1}>
-                      {gongyanInfo[room.roomId]?.title || room.name || t('房间号：{id}', { id: room.roomId })}
+                      {gongyanInfo[room.roomId]?.title ||
+                        room.name ||
+                        t('房间号：{id}', { id: room.roomId })}
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                       <View style={[styles.gongyanDotWrap, { backgroundColor: palette.success }]}>
                         <View style={[styles.gongyanDot, { backgroundColor: palette.success }]} />
                       </View>
-                      <Text style={[styles.liveRowNick, { color: palette.success, marginTop: 0, marginLeft: 5 }]}>{t('直播中')}</Text>
+                      <Text
+                        style={[
+                          styles.liveRowNick,
+                          { color: palette.success, marginTop: 0, marginLeft: 5 },
+                        ]}
+                      >
+                        {t('直播中')}
+                      </Text>
                       {room.name ? (
-                        <Text style={[styles.liveRowNick, { color: palette.labelTertiary, marginTop: 0, marginLeft: 8 }]} numberOfLines={1}>
+                        <Text
+                          style={[
+                            styles.liveRowNick,
+                            { color: palette.labelTertiary, marginTop: 0, marginLeft: 8 },
+                          ]}
+                          numberOfLines={1}
+                        >
                           {room.name}
                         </Text>
                       ) : null}
                     </View>
                   </View>
-                  <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={18} />
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    color={palette.labelTertiary}
+                    size={18}
+                  />
                 </View>
               </ScalePressable>
             </FadeInView>

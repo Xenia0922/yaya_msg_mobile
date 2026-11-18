@@ -9,13 +9,17 @@ function getCookie(): string {
   return useSettingsStore.getState().settings.bilibiliCookie || '';
 }
 
-function biliHeaders(cookie = getCookie(), referer = 'https://live.bilibili.com/'): Record<string, string> {
+function biliHeaders(
+  cookie = getCookie(),
+  referer = 'https://live.bilibili.com/',
+): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/json, text/plain, */*',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
     'Cache-Control': 'no-cache',
     Pragma: 'no-cache',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
     Referer: referer,
   };
   if (referer.includes('live.bilibili.com')) headers.Origin = 'https://live.bilibili.com';
@@ -38,8 +42,8 @@ function candidateScore(item: any): number {
   const codec = String(item.codecName || '').toLowerCase();
 
   // 优先级：① 可播放性（HLS fmp4/ts 远优先于 http-flv，ExoPlayer 播不了 flv）
-  //          ② 画质（qn 越高越好，默认即最高可用画质）
-  //          ③ 同画质下编码 tie-break：AVC 略优于 HEVC
+  // ② 画质（qn 越高越好，默认即最高可用画质）
+  // ③ 同画质下编码 tie-break：AVC 略优于 HEVC
   // 这样默认拿到「能播的最高画质」；若某线路播放失败，上层静默换到下一条。
   if (format === 'fmp4' || format === 'ts' || protocol.includes('hls')) score += 100000;
   score += Number(item.currentQn || 0) * 2;
@@ -94,17 +98,19 @@ function buildQualities(playInfo: any, candidates: any[]): BiliQuality[] {
   for (const c of candidates) {
     if (Number(c.currentQn) > 0) {
       qns.add(Number(c.currentQn));
-      if (!labelByQn.has(Number(c.currentQn))) labelByQn.set(Number(c.currentQn), `qn${c.currentQn}`);
+      if (!labelByQn.has(Number(c.currentQn)))
+        labelByQn.set(Number(c.currentQn), `qn${c.currentQn}`);
     }
   }
-  return [...qns]
-    .sort((a, b) => b - a)
-    .map((qn) => ({ qn, label: labelByQn.get(qn) || '原画' }));
+  return [...qns].sort((a, b) => b - a).map((qn) => ({ qn, label: labelByQn.get(qn) || '原画' }));
 }
 
 export const bilibiliApi = {
   headers(roomId?: string) {
-    return biliHeaders(getCookie(), roomId ? `https://live.bilibili.com/${roomId}` : 'https://live.bilibili.com/');
+    return biliHeaders(
+      getCookie(),
+      roomId ? `https://live.bilibili.com/${roomId}` : 'https://live.bilibili.com/',
+    );
   },
 
   async checkLoginStatus(cookie?: string) {
@@ -115,9 +121,12 @@ export const bilibiliApi = {
   },
 
   async generateQrCode() {
-    const res = await requestJson<any>('https://passport.bilibili.com/x/passport-login/web/qrcode/generate', {
-      headers: biliHeaders('', 'https://passport.bilibili.com/'),
-    });
+    const res = await requestJson<any>(
+      'https://passport.bilibili.com/x/passport-login/web/qrcode/generate',
+      {
+        headers: biliHeaders('', 'https://passport.bilibili.com/'),
+      },
+    );
     return assertBiliOk(res, 'B站二维码获取失败');
   },
 
@@ -130,9 +139,9 @@ export const bilibiliApi = {
   },
 
   /** B站 2024+ 新协议：扫码确认后 poll 只回 ticket 型 crossDomain url（如
-   *  https://passport.biligame.com/x/passport-login/web/crossDomain?ticket=xxx&gourl=...），
-   *  cookie 由访问该 url 时服务端 Set-Cookie 响应头下发。RN fetch 自动跟随 302 拿不到该头，
-   *  走原生 BiliLoginModule（followRedirects=false 停在首包读 Set-Cookie）。返回 "k=v; k=v" 串。 */
+   * https://passport.biligame.com/x/passport-login/web/crossDomain?ticket=xxx&gourl=...），
+   * cookie 由访问该 url 时服务端 Set-Cookie 响应头下发。RN fetch 自动跟随 302 拿不到该头，
+   * 走原生 BiliLoginModule（followRedirects=false 停在首包读 Set-Cookie）。返回 "k=v; k=v" 串。 */
   async exchangeTicket(crossDomainUrl: string) {
     const M: any = (NativeModules as any)?.BiliLoginModule;
     if (Platform.OS !== 'android' || !M?.fetchTicket) {
@@ -198,7 +207,9 @@ export const bilibiliApi = {
         .filter((h: any) => h.host);
       return {
         token: data.token || '',
-        host_list: hosts.length ? hosts : [{ host: data.host || 'broadcastlv.chat.bilibili.com', wss_port: 443 }],
+        host_list: hosts.length
+          ? hosts
+          : [{ host: data.host || 'broadcastlv.chat.bilibili.com', wss_port: 443 }],
       };
     }
   },

@@ -1,5 +1,3 @@
-
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
@@ -54,15 +52,10 @@ export interface DanmakuListSheetProps {
 }
 
 /**
- * 固定行高（getItemLayout 精确滚动依赖它）。
- *
- * ⚠️ 历史坑：两行文本时行高 44 = 18×2 + padding 4×2，**刚好顶满、零余量**，
- * 系统字体缩放稍大就溢出 44 → getItemLayout 仍按 44 步进 → 文字看着被切掉。
- * 现按用户要求改**单行**（超出省略号），行高回到紧凑档并留出余量。
+ * 行最小高度（仅作为紧凑基线；实际行高随弹幕文本折行增长）。
+ * 不使用 getItemLayout，避免长弹幕折行后固定行高与实际布局错位。
  */
 const ROW_H = 40;
-/** 行内文本最多显示行数：单行 + 省略号（列表保持紧凑、不易错位） */
-const ROW_LINES = 1;
 /** 发送者榜最多展示的发送者数 */
 const USER_TOP = 60;
 const FOLLOW_KEY = 'yaya_danmu_list_follow_v1';
@@ -153,9 +146,11 @@ export function DanmakuListSheet({
     });
   }, [entries, query, nickFilter]);
 
-  
   const users = useMemo(() => {
-    const map = new Map<string, { nick: string; count: number; first: number; userId?: number | string; avatar?: string }>();
+    const map = new Map<
+      string,
+      { nick: string; count: number; first: number; userId?: number | string; avatar?: string }
+    >();
     for (const item of entries) {
       const nick = item.nick || t('匿名');
       const cur = map.get(nick);
@@ -163,7 +158,14 @@ export function DanmakuListSheet({
         cur.count += 1;
         if (cur.userId == null && item.userId != null) cur.userId = item.userId;
         if (!cur.avatar && item.avatar) cur.avatar = item.avatar;
-      } else map.set(nick, { nick, count: 1, first: item.time, userId: item.userId, avatar: item.avatar });
+      } else
+        map.set(nick, {
+          nick,
+          count: 1,
+          first: item.time,
+          userId: item.userId,
+          avatar: item.avatar,
+        });
     }
     return Array.from(map.values())
       .sort((a, b) => b.count - a.count || a.first - b.first)
@@ -194,9 +196,12 @@ export function DanmakuListSheet({
     if (!visible || !follow || activeIndex < 0) return;
     const list = listRef.current;
     if (!list) return;
-    const offset = Math.max(0, (activeIndex - 2) * ROW_H);
     try {
-      list.scrollToOffset({ offset, animated: false });
+      list.scrollToIndex({
+        index: Math.max(0, activeIndex - 2),
+        animated: false,
+        viewPosition: 0,
+      });
     } catch {
       /* 列表尚未渲染完成 */
     }
@@ -249,9 +254,11 @@ export function DanmakuListSheet({
         >
           {isActive ? <View style={styles.activeBar} /> : null}
           {live ? null : (
-            <Text style={[styles.time, isActive && { color: '#FF6FA5' }]}>{fmtTime(item.time)}</Text>
+            <Text style={[styles.time, isActive && { color: '#FF6FA5' }]}>
+              {fmtTime(item.time)}
+            </Text>
           )}
-          <Text style={styles.rowText} numberOfLines={ROW_LINES}>
+          <Text style={styles.rowText}>
             <Text
               style={[styles.nick, accent ? { color: accent } : null]}
               onPress={(e) => {
@@ -275,27 +282,55 @@ export function DanmakuListSheet({
   );
 
   const renderUserRow = useCallback(
-    ({ item }: { item: { nick: string; count: number; first: number; userId?: number | string; avatar?: string } }) => (
+    ({
+      item,
+    }: {
+      item: {
+        nick: string;
+        count: number;
+        first: number;
+        userId?: number | string;
+        avatar?: string;
+      };
+    }) => (
       <TouchableOpacity
         style={styles.row}
         activeOpacity={0.75}
         // 整行 = 只看 TA（原行为）；右侧漏斗是显式入口，头像/昵称区在有 onOpenProfile 时改为看资料
         onPress={() => filterByUser(item.nick)}
       >
-        <MaterialCommunityIcons name="account-outline" size={15} color="rgba(255,255,255,0.6)" style={{ marginRight: 8 }} />
+        <MaterialCommunityIcons
+          name="account-outline"
+          size={15}
+          color="rgba(255,255,255,0.6)"
+          style={{ marginRight: 8 }}
+        />
         <Text
           style={[styles.rowText, { flex: 1 }]}
           numberOfLines={1}
           onPress={(e) => {
             e?.stopPropagation?.();
-            if (onOpenProfile) onOpenProfile({ id: '', time: item.first, nick: item.nick, text: '', userId: item.userId, avatar: item.avatar });
+            if (onOpenProfile)
+              onOpenProfile({
+                id: '',
+                time: item.first,
+                nick: item.nick,
+                text: '',
+                userId: item.userId,
+                avatar: item.avatar,
+              });
           }}
           suppressHighlighting
         >
           <Text style={styles.nick}>{item.nick}</Text>
         </Text>
         <Text style={styles.count}>{t('{n} 条', { n: item.count })}</Text>
-        <MaterialCommunityIcons name="filter-variant" size={15} color="rgba(255,255,255,0.5)" style={{ marginLeft: 6 }} />
+        <MaterialCommunityIcons
+          name="filter-variant"
+          size={15}
+          color="rgba(255,255,255,0.5)"
+          style={{ marginLeft: 6 }}
+        />
       </TouchableOpacity>
     ),
     [filterByUser, onOpenProfile, t],
@@ -308,7 +343,11 @@ export function DanmakuListSheet({
         <View style={styles.handle} />
       </View>
       <View style={styles.headerRow}>
-        <MaterialCommunityIcons name="comment-text-multiple-outline" size={15} color="rgba(255,255,255,0.85)" />
+        <MaterialCommunityIcons
+          name="comment-text-multiple-outline"
+          size={15}
+          color="rgba(255,255,255,0.85)"
+        />
         <Text style={styles.title} numberOfLines={1}>
           {title || t('弹幕列表')}
         </Text>
@@ -318,7 +357,11 @@ export function DanmakuListSheet({
             : `${filtered.length}/${entries.length}`}
         </Text>
         {!live && onSeek ? (
-          <TouchableOpacity onPress={toggleFollow} activeOpacity={0.75} style={[styles.followBtn, follow && styles.followBtnOn]}>
+          <TouchableOpacity
+            onPress={toggleFollow}
+            activeOpacity={0.75}
+            style={[styles.followBtn, follow && styles.followBtnOn]}
+          >
             <MaterialCommunityIcons
               name={follow ? 'crosshairs-gps' : 'crosshairs'}
               size={12}
@@ -327,7 +370,11 @@ export function DanmakuListSheet({
             <Text style={[styles.followText, follow && { color: '#fff' }]}>{t('跟随')}</Text>
           </TouchableOpacity>
         ) : null}
-        <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={onClose}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.7}
+        >
           <MaterialCommunityIcons name="close" size={18} color="rgba(255,255,255,0.85)" />
         </TouchableOpacity>
       </View>
@@ -364,8 +411,15 @@ export function DanmakuListSheet({
               returnKeyType="search"
             />
             {query ? (
-              <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <MaterialCommunityIcons name="close-circle" size={14} color="rgba(255,255,255,0.5)" />
+              <TouchableOpacity
+                onPress={() => setQuery('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <MaterialCommunityIcons
+                  name="close-circle"
+                  size={14}
+                  color="rgba(255,255,255,0.5)"
+                />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -374,7 +428,10 @@ export function DanmakuListSheet({
               <Text style={styles.filterLabel} numberOfLines={1}>
                 {t('只看：{name}', { name: nickFilter })}
               </Text>
-              <TouchableOpacity onPress={() => setNickFilter('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <TouchableOpacity
+                onPress={() => setNickFilter('')}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
                 <Text style={styles.filterClear}>{t('清除')}</Text>
               </TouchableOpacity>
             </View>
@@ -384,15 +441,32 @@ export function DanmakuListSheet({
             data={filtered}
             renderItem={renderRow}
             keyExtractor={(item) => item.id}
-            getItemLayout={(_d, index) => ({ length: ROW_H, offset: ROW_H * index, index })}
             extraData={activeIndex}
             style={{ flex: 1 }}
             contentContainerStyle={styles.listContent}
             initialNumToRender={16}
             maxToRenderPerBatch={16}
             windowSize={9}
-            removeClippedSubviews
             keyboardShouldPersistTaps="handled"
+            onScrollToIndexFailed={({ index, averageItemLength }) => {
+              // 动态行高下首次 scrollToIndex 可能尚未测量到目标项：先按平均值定位，
+              // 再在下一帧重试一次，避免「跟随」在长弹幕列表中失效。
+              try {
+                listRef.current?.scrollToOffset({
+                  offset: Math.max(0, index * (averageItemLength || ROW_H)),
+                  animated: false,
+                });
+                setTimeout(() => {
+                  try {
+                    listRef.current?.scrollToIndex({
+                      index,
+                      animated: false,
+                      viewPosition: 0,
+                    });
+                  } catch {}
+                }, 80);
+              } catch {}
+            }}
             // 手动滚动 = 用户在看历史 → 自动暂停跟随（再点「跟随」可恢复）
             onScrollBeginDrag={() => follow && toggleFollow()}
             ListEmptyComponent={
@@ -433,7 +507,13 @@ export function DanmakuListSheet({
   );
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.root}>
         {/* 点空白处关闭；面板自身是兄弟节点，不会误触关闭 */}
         <Pressable style={styles.backdrop} onPress={onClose} />
@@ -444,7 +524,18 @@ export function DanmakuListSheet({
 }
 
 const styles = StyleSheet.create({
-  scrollBottomBtn: { position: 'absolute', right: 14, bottom: 14, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(40,40,46,0.85)', elevation: 4 },
+  scrollBottomBtn: {
+    position: 'absolute',
+    right: 14,
+    bottom: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(40,40,46,0.85)',
+    elevation: 4,
+  },
   root: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)' },
   sheet: {
@@ -456,7 +547,13 @@ const styles = StyleSheet.create({
   // 手柄命中区做高一些（22px）：太窄会「拖不动面板」
   handleArea: { alignItems: 'center', justifyContent: 'center', height: 22 },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.35)' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingBottom: 8 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+  },
   title: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.94)', flexShrink: 1 },
   total: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginLeft: 'auto' },
   followBtn: {
@@ -471,7 +568,12 @@ const styles = StyleSheet.create({
   followBtnOn: { backgroundColor: '#FF6FA5' },
   followText: { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.75)' },
   tabRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 8 },
-  tab: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.1)' },
+  tab: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
   tabOn: { backgroundColor: 'rgba(255,255,255,0.9)' },
   tabText: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.75)' },
   tabTextOn: { color: '#111' },
@@ -486,21 +588,34 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
   searchInput: { flex: 1, fontSize: 12, color: 'rgba(255,255,255,0.94)', padding: 0 },
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 8 },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
   filterLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', flexShrink: 1 },
   filterClear: { fontSize: 11, fontWeight: '700', color: '#FF6FA5' },
   listContent: { paddingTop: 6, paddingBottom: 12 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    // 固定高度（不用 minHeight）：getItemLayout 按 ROW_H 预测，实际行高必须严格等于它，
-    // 否则滚动条位置与内容会逐渐错位（minHeight 在字体放大时会突破 ROW_H）
-    height: ROW_H,
+    // 动态行高：长弹幕折行时行高自动增长，不再用固定 height 截断
+    minHeight: ROW_H,
     paddingHorizontal: 14,
     paddingVertical: 4,
   },
   rowActive: { backgroundColor: 'rgba(255,111,165,0.16)' },
-  activeBar: { position: 'absolute', left: 0, top: 6, bottom: 6, width: 3, borderRadius: 2, backgroundColor: '#FF6FA5' },
+  activeBar: {
+    position: 'absolute',
+    left: 0,
+    top: 6,
+    bottom: 6,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: '#FF6FA5',
+  },
   time: { fontSize: 11, color: 'rgba(255,255,255,0.45)', width: 52, fontVariant: ['tabular-nums'] },
   rowText: { flex: 1, fontSize: 12.5, lineHeight: 18, color: 'rgba(255,255,255,0.92)' },
   nick: { fontWeight: '700', color: 'rgba(255,255,255,0.72)' },

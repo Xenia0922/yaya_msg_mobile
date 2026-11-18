@@ -4,17 +4,25 @@ const fs = require('fs');
 const zlib = require('zlib');
 
 const buf = fs.readFileSync(process.argv[2]);
-if (buf.readUInt32BE(0) !== 0x89504e47) { console.log('not png'); process.exit(1); }
+if (buf.readUInt32BE(0) !== 0x89504e47) {
+  console.log('not png');
+  process.exit(1);
+}
 let pos = 8;
-let w = 0, h = 0, bitDepth = 0, colorType = 0;
+let w = 0,
+  h = 0,
+  bitDepth = 0,
+  colorType = 0;
 const idat = [];
 while (pos < buf.length) {
   const len = buf.readUInt32BE(pos);
   const type = buf.toString('ascii', pos + 4, pos + 8);
   const data = buf.slice(pos + 8, pos + 8 + len);
   if (type === 'IHDR') {
-    w = data.readUInt32BE(0); h = data.readUInt32BE(4);
-    bitDepth = data[8]; colorType = data[9];
+    w = data.readUInt32BE(0);
+    h = data.readUInt32BE(4);
+    bitDepth = data[8];
+    colorType = data[9];
   } else if (type === 'IDAT') idat.push(data);
   pos += 12 + len;
 }
@@ -39,7 +47,9 @@ for (let y = 0; y < h; y++) {
     else if (filter === 3) v = (v + ((a + b) >> 1)) & 0xff;
     else if (filter === 4) {
       const p = a + b - c;
-      const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      const pa = Math.abs(p - a),
+        pb = Math.abs(p - b),
+        pc = Math.abs(p - c);
       v = (v + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 0xff;
     }
     out[i] = v;

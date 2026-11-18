@@ -3,9 +3,9 @@
  * icon / style / textStyle / fullWidth），全站调用点无需改动。
  *
  * 变体：
- *  - filled：实心 tint 底 + 白字（主操作；不做玻璃，实心底下玻璃不可见）
- *  - tinted：玻璃胶囊 + tint 字（次操作，玻璃质感）
- *  - plain ：纯文字按钮（无底）
+ * - filled：实心 tint 底 + 白字（主操作；不做玻璃，实心底下玻璃不可见）
+ * - tinted：玻璃胶囊 + tint 字（次操作，玻璃质感）
+ * - plain：纯文字按钮（无底）
  * 旧 reactnatively Button 已移除，实现走 GlassSurface。
  */
 import React from 'react';
@@ -70,7 +70,10 @@ export function Button({
       ) : icon ? (
         <View style={{ marginRight: 6 }}>{icon}</View>
       ) : null}
-      <Text style={[styles.label, { color: labelColor, fontSize: s.font }, textStyle]} numberOfLines={1}>
+      <Text
+        style={[styles.label, { color: labelColor, fontSize: s.font }, textStyle]}
+        numberOfLines={1}
+      >
         {title}
       </Text>
     </View>
@@ -87,7 +90,14 @@ export function Button({
 
   if (variant === 'tinted') {
     return (
-      <Pressable onPress={onPress} disabled={dim} style={fullWidth ? styles.full : undefined}>
+      <Pressable
+        onPress={onPress}
+        disabled={dim}
+        style={fullWidth ? styles.full : undefined}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ disabled: dim, busy: !!loading }}
+      >
         <GlassSurface role="chip" radius={s.radius} style={box} interactive={!dim}>
           {inner}
         </GlassSurface>
@@ -96,7 +106,14 @@ export function Button({
   }
 
   return (
-    <Pressable onPress={onPress} disabled={dim} style={box}>
+    <Pressable
+      onPress={onPress}
+      disabled={dim}
+      style={box}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: dim, busy: !!loading }}
+    >
       {inner}
     </Pressable>
   );

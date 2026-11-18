@@ -28,7 +28,8 @@ for (const file of files) {
     const lines = next.split('\n');
     let lastImport = -1;
     for (let i = 0; i < lines.length; i++) {
-      if (/^import[\s\S]*?;?\s*$/.test(lines[i]) && lines[i].trim().startsWith('import')) lastImport = i;
+      if (/^import[\s\S]*?;?\s*$/.test(lines[i]) && lines[i].trim().startsWith('import'))
+        lastImport = i;
     }
     if (lastImport >= 0) lines.splice(lastImport + 1, 0, importLine);
     else lines.unshift(importLine + '\n');

@@ -72,9 +72,24 @@ export default function ResumeModule({
                 )}
               </View>
             </ScalePressable>
-            <ScalePressable onPress={onOpenLibrary} pressedScale={0.98} style={{ flex: 1, marginHorizontal: 8, minWidth: 0 }}>
-              <Text style={[{ fontSize: 16, lineHeight: 21, fontWeight: '600' }, { color: palette.label }]} numberOfLines={1}>{trackTitle}</Text>
-              <Text style={[typography.footnote, { color: palette.labelSecondary, marginTop: 2 }]} numberOfLines={1}>
+            <ScalePressable
+              onPress={onOpenLibrary}
+              pressedScale={0.98}
+              style={{ flex: 1, marginHorizontal: 8, minWidth: 0 }}
+            >
+              <Text
+                style={[
+                  { fontSize: 16, lineHeight: 21, fontWeight: '600' },
+                  { color: palette.label },
+                ]}
+                numberOfLines={1}
+              >
+                {trackTitle}
+              </Text>
+              <Text
+                style={[typography.footnote, { color: palette.labelSecondary, marginTop: 2 }]}
+                numberOfLines={1}
+              >
                 {trackArtist || resumeLabel}
               </Text>
             </ScalePressable>
@@ -95,7 +110,13 @@ export default function ResumeModule({
                 style={[styles.miniBtn, { backgroundColor: palette.tint }]}
               >
                 <MaterialCommunityIcons
-                  name={playbackState === 'playing' ? 'pause' : playbackState === 'loading' ? 'dots-horizontal' : 'play'}
+                  name={
+                    playbackState === 'playing'
+                      ? 'pause'
+                      : playbackState === 'loading'
+                        ? 'dots-horizontal'
+                        : 'play'
+                  }
                   color={palette.onTint}
                   size={22}
                 />

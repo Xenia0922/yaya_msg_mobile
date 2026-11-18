@@ -2,9 +2,9 @@
  * Apple 流体动效组件（RN Animated + native driver，零 worklet 依赖）
  *
  * 规范来源：WWDC Designing Fluid Interfaces + emilkowalski/animate-expo：
- *  - FadeInView：进场 ease-out 强曲线（0.23,1,0.32,1）+ 轻位移
- *  - ScalePressable：按下即反馈（press-in 即刻 scale 0.97/120ms），松手 spring 回弹
- *  - MotionIcon：图标挂载 spring 浮现（0.92→1，轻微过冲）
+ * - FadeInView：进场 ease-out 强曲线（0.23,1,0.32,1）+ 轻位移
+ * - ScalePressable：按下即反馈（press-in 即刻 scale 0.97/120ms），松手 spring 回弹
+ * - MotionIcon：图标挂载 spring 浮现（0.92→1，轻微过冲）
  * 只动 transform/opacity（native driver 可动画属性）。
  */
 import React, { useEffect, useRef } from 'react';
@@ -68,9 +68,17 @@ export function FadeInView({
 
   useEffect(() => {
     progress.value = 0;
-    progress.value = withDelay(delay, withTiming(1, { duration, easing: REasing.bezier(0.23, 1, 0.32, 1) }));
+    progress.value = withDelay(
+      delay,
+      withTiming(1, { duration, easing: REasing.bezier(0.23, 1, 0.32, 1) }),
+    );
     // 兜底：万一 UI 线程动画没推进（异常/被回收），到点直接置 1，绝不留透明块
-    const guard = setTimeout(() => { progress.value = 1; }, delay + duration + 200);
+    const guard = setTimeout(
+      () => {
+        progress.value = 1;
+      },
+      delay + duration + 200,
+    );
     return () => clearTimeout(guard);
   }, [delay, duration, progress]);
 
@@ -159,9 +167,11 @@ export function MotionIcon({
         style,
         {
           opacity: value,
-          transform: [{
-            scale: value.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }),
-          }],
+          transform: [
+            {
+              scale: value.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }),
+            },
+          ],
         },
       ]}
     >

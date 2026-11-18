@@ -1,10 +1,23 @@
+import { logWarn } from '../utils/runtimeLog';
 /**
  * 原生 Exo 播放桥（M2）：真实音频在 YayaExoService（ExoPlayer + media3 会话）。
  * 引擎仍负责队列/切歌/模式；本模块只做：单曲下发 + 控制 + 事件回流。
  */
 import { NativeModules, DeviceEventEmitter, Platform } from 'react-native';
 
-const M: any = NativeModules.RadioExoModule;
+type RadioExoNativeModule = {
+  getPlaybackSnapshot?: () => Promise<Record<string, unknown>>;
+  playQueue?: (...args: [string, number, number, boolean, string, number, number]) => void;
+  control?: (...args: [string, number]) => void;
+  setSkipHints?: (...args: [string, string]) => void;
+};
+
+const M = NativeModules.RadioExoModule as RadioExoNativeModule | undefined;
+
+/** 运行时取模块：启动早期 NativeModules 可能尚未就绪，不能只依赖模块加载时抓到的 M。 */
+function getModule(): RadioExoNativeModule | undefined {
+  return (NativeModules.RadioExoModule as RadioExoNativeModule | undefined) || M;
+}
 
 export interface ExoTrackItem {
   url: string;
@@ -30,22 +43,30 @@ export interface ExoPlaybackSnapshot {
 
 export async function exoGetPlaybackSnapshot(): Promise<ExoPlaybackSnapshot> {
   const empty: ExoPlaybackSnapshot = {
-    active: false, url: '', trackId: '', title: '', artist: '', album: '',
-    position: 0, duration: 0, playing: false,
+    active: false,
+    url: '',
+    trackId: '',
+    title: '',
+    artist: '',
+    album: '',
+    position: 0,
+    duration: 0,
+    playing: false,
   };
-  if (Platform.OS !== 'android' || !M?.getPlaybackSnapshot) return empty;
+  const mod = getModule();
+  if (Platform.OS !== 'android' || !mod?.getPlaybackSnapshot) return empty;
   try {
-    const value = await M.getPlaybackSnapshot();
+    const value = await mod.getPlaybackSnapshot();
     return {
-      active: !!value?.active,
-      url: String(value?.url || ''),
-      trackId: String(value?.trackId || ''),
-      title: String(value?.title || ''),
-      artist: String(value?.artist || ''),
-      album: String(value?.album || ''),
-      position: Math.max(0, Number(value?.position) || 0),
-      duration: Math.max(0, Number(value?.duration) || 0),
-      playing: !!value?.playing,
+      active: !!value.active,
+      url: String(value.url || ''),
+      trackId: String(value.trackId || ''),
+      title: String(value.title || ''),
+      artist: String(value.artist || ''),
+      album: String(value.album || ''),
+      position: Math.max(0, Number(value.position) || 0),
+      duration: Math.max(0, Number(value.duration) || 0),
+      playing: !!value.playing,
     };
   } catch {
     return empty;
@@ -61,25 +82,37 @@ export function exoPlayTrack(
   volume = 1.0,
   repeat = 0,
 ) {
-  if (Platform.OS !== 'android' || !M?.playQueue) return;
+  const mod = getModule();
+  if (Platform.OS !== 'android' || !mod?.playQueue) return;
   try {
-    M.playQueue(JSON.stringify([item]), 0, Number(positionSec) || 0, !!playing, JSON.stringify(headers || {}), Number(volume) || 0, repeat ? 1 : 0);
+    mod.playQueue(
+      JSON.stringify([item]),
+      0,
+      Number(positionSec) || 0,
+      !!playing,
+      JSON.stringify(headers || {}),
+      Number(volume) || 0,
+      repeat ? 1 : 0,
+    );
   } catch {}
 }
 
-export function exoControl(cmd: 'pause' | 'resume' | 'seek' | 'stop' | 'next' | 'prev' | 'repeat', positionSec = 0) {
+export function exoControl(
+  cmd: 'pause' | 'resume' | 'seek' | 'stop' | 'next' | 'prev' | 'repeat',
+  positionSec = 0,
+) {
   if (Platform.OS !== 'android') return;
   // ⚠️ 不能只依赖模块加载时抓到的 M：启动早期 NativeModules 可能尚未就绪，
   // 那之后所有控制（尤其 stop）都会静默失效 —— 声音停不下来。
-  const mod: any = NativeModules.RadioExoModule || M;
+  const mod = getModule();
   if (!mod?.control) {
-    console.warn('[exo] control unavailable:', cmd);
+    logWarn(`[exo] control unavailable: ${cmd}`, 'radio');
     return;
   }
   try {
     mod.control(cmd, Number(positionSec) || 0);
   } catch (e) {
-    console.warn('[exo] control failed:', cmd, e);
+    logWarn(`[exo] control failed: ${cmd} ${String(e)}`, 'radio');
   }
 }
 
@@ -93,9 +126,10 @@ export function exoControl(cmd: 'pause' | 'resume' | 'seek' | 'stop' | 'next' | 
  * 可用 hint（或 url 相同需重播）时才兜底走 cmd 事件。
  */
 export function exoSetSkipHints(next: ExoTrackItem | null, prev: ExoTrackItem | null) {
-  if (Platform.OS !== 'android' || !M?.setSkipHints) return;
+  const mod = getModule();
+  if (Platform.OS !== 'android' || !mod?.setSkipHints) return;
   try {
-    M.setSkipHints(JSON.stringify(next), JSON.stringify(prev));
+    mod.setSkipHints(JSON.stringify(next), JSON.stringify(prev));
   } catch {}
 }
 
@@ -103,18 +137,26 @@ export function exoSetSkipHints(next: ExoTrackItem | null, prev: ExoTrackItem | 
 // ⚠️ 模块级裸变量：JS reload 会失步。但原生 poller 持续推 progress → 收到 progress&&playing 即自愈重新激活。
 let nativeExoActive = false;
 let nativeExoDisabled = false; // 本次会话内原生已判不可用（error/超时）→ 不再尝试（防每曲 4s 静音窗）
-export const setNativeExoActive = (v: boolean) => { nativeExoActive = v; };
+export const setNativeExoActive = (v: boolean) => {
+  nativeExoActive = v;
+};
 export const isNativeExoActive = () => nativeExoActive;
-export const setNativeExoDisabled = (v: boolean) => { nativeExoDisabled = v; if (v) nativeExoActive = false; };
+export const setNativeExoDisabled = (v: boolean) => {
+  nativeExoDisabled = v;
+  if (v) nativeExoActive = false;
+};
 export const isNativeExoDisabled = () => nativeExoDisabled;
 
 /** 订阅事件：progress/ended/error/cmd */
-export function subscribeExo(cb: (type: string, payload: any) => void): () => void {
+export function subscribeExo(
+  cb: (_type: string, _payload: Record<string, unknown>) => void,
+): () => void {
   if (Platform.OS !== 'android') return () => {};
-  const sub = DeviceEventEmitter.addListener('YayaExoEvent', (e: any) => {
+  const sub = DeviceEventEmitter.addListener('YayaExoEvent', (e: unknown) => {
     try {
-      const type = String(e?.type || '');
-      if (type) cb(type, e);
+      const payload = e as Record<string, unknown>;
+      const type = String(payload?.type || '');
+      if (type) cb(type, payload);
     } catch {}
   });
   return () => sub.remove();

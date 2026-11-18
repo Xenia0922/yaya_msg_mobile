@@ -67,15 +67,20 @@ object NimProtocol {
   class Varint(val value: Int, val size: Int)
 
   fun readVarint(buffer: ByteArray, offset: Int = 0, length: Int = buffer.size): Varint? {
+    if (offset < 0 || length <= offset || offset >= buffer.size) return null
     var value = 0L
-    var scale = 1L
+    var shift = 0
     var index = offset
-    val end = minOf(length, offset + 5)
+    val end = minOf(buffer.size, length, offset + 5)
     while (index < end) {
       val byte = buffer[index].toInt() and 0xff
-      value += (byte and 0x7f) * scale
-      if ((byte and 0x80) == 0) return Varint(value.toInt(), index - offset + 1)
-      scale *= 128
+      value = value or ((byte and 0x7f).toLong() shl shift)
+      if ((byte and 0x80) == 0) {
+        // 5 字节最多 35 位；超过 Int.MAX_VALUE 视为畸形，避免溢出成负数
+        if (value > Int.MAX_VALUE.toLong()) return null
+        return Varint(value.toInt(), index - offset + 1)
+      }
+      shift += 7
       index += 1
     }
     return null
@@ -115,13 +120,16 @@ object NimProtocol {
   fun decodeProperties(buffer: ByteArray): MutableMap<Int, String> {
     val properties = mutableMapOf<Int, String>()
     val count = readVarint(buffer, 0, buffer.size) ?: return properties
+    if (count.value < 0 || count.value > 4096) return properties
     var offset = count.size
     for (i in 0 until count.value) {
       val key = readVarint(buffer, offset, buffer.size) ?: break
+      if (key.value < 0) break
       offset += key.size
       val len = readVarint(buffer, offset, buffer.size) ?: break
       offset += len.size
-      if (offset + len.value > buffer.size) break
+      // 长度必须非负且不能越界（旧实现负数长度会抛 StringIndexOutOfBounds）
+      if (len.value < 0 || len.value > buffer.size || offset > buffer.size - len.value) break
       properties[key.value] = String(buffer, offset, len.value, Charsets.UTF_8)
       offset += len.value
     }
@@ -154,9 +162,13 @@ object NimProtocol {
   /** 从缓冲区头部解一个包；不足一包或非法时返回 null */
   fun decodePacket(raw: ByteArray, embedded: Boolean = false): Packet? {
     val frameLength = readVarint(raw, 0, raw.size) ?: return null
-    if (!embedded && raw.size < frameLength.size + frameLength.value) return null
-    if (!embedded && frameLength.value < 5) return null
-    if (embedded && raw.size < frameLength.size + 5) return null
+    if (frameLength.value < 0) return null
+    if (!embedded) {
+      if (frameLength.value < 5) return null
+      if (frameLength.value > raw.size - frameLength.size) return null
+    } else {
+      if (raw.size - frameLength.size < 5) return null
+    }
 
     var offset = frameLength.size
     val serviceId = raw[offset].toInt() and 0xff
@@ -172,7 +184,9 @@ object NimProtocol {
       offset += 2
     }
 
-    val packetEnd = if (embedded) raw.size else minOf(raw.size, frameLength.size + frameLength.value)
+    val declaredEnd = if (frameLength.value > raw.size - frameLength.size) raw.size else frameLength.size + frameLength.value
+    val packetEnd = if (embedded) raw.size else minOf(raw.size, declaredEnd)
+    if (offset > packetEnd) return null
     var body = raw.copyOfRange(offset, packetEnd)
     if (tag and 1 != 0) {
       if (body.size < 4) return null
@@ -181,23 +195,34 @@ object NimProtocol {
       body = inflate(body.copyOfRange(4, body.size)) ?: return null
       if (body.size != expected) return null
     }
-    return Packet(serviceId, commandId, serial, resultCode, body, frameLength.size + frameLength.value)
+    return Packet(serviceId, commandId, serial, resultCode, body, declaredEnd)
   }
 
-  private fun inflate(data: ByteArray): ByteArray? = try {
-    val inflater = Inflater()
-    inflater.setInput(data)
-    val out = ByteArrayOutputStream(data.size * 4)
-    val chunk = ByteArray(4096)
-    while (!inflater.finished()) {
-      val n = inflater.inflate(chunk)
-      if (n <= 0 && inflater.needsInput()) break
-      out.write(chunk, 0, n)
+  private fun inflate(data: ByteArray): ByteArray? {
+    val maxOutput = 8 * 1024 * 1024
+    var inflater: Inflater? = null
+    try {
+      inflater = Inflater()
+      inflater.setInput(data)
+      val initial = if (data.size > maxOutput / 4) maxOutput else data.size * 4
+      val out = ByteArrayOutputStream(maxOf(initial, 64))
+      val chunk = ByteArray(4096)
+      var total = 0
+      while (!inflater.finished()) {
+        val n = inflater.inflate(chunk)
+        if (n <= 0 && inflater.needsInput()) break
+        if (n > 0) {
+          total += n
+          if (total > maxOutput) return null // 防御 zip bomb / 畸形包
+          out.write(chunk, 0, n)
+        }
+      }
+      return out.toByteArray()
+    } catch (t: Throwable) {
+      return null
+    } finally {
+      try { inflater?.end() } catch (_: Throwable) {}
     }
-    inflater.end()
-    out.toByteArray()
-  } catch (t: Throwable) {
-    null
   }
 
   // ---------------- 握手加密 ----------------

@@ -8,14 +8,16 @@ import {
   Text,
   TouchableOpacity,
   View,
+  type NativeTouchEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NetworkImage } from './NetworkImage';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
-import { usePalette, radii } from '../theme';
+import { radii } from '../theme';
 import { motion } from '../theme/motion';
 
-function distance(touches: any[]) {
+function distance(touches: readonly NativeTouchEvent[]) {
   if (touches.length < 2) return 0;
   const [a, b] = touches;
   const dx = a.pageX - b.pageX;
@@ -45,10 +47,14 @@ export default function ZoomImageModal({
   onShare?: () => void;
 }) {
   const { t } = useI18n();
-  const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
+  /** 与 Animated.Value 同步的普通 ref：手势读写不再使用私有 __getValue */
+  const scaleValue = useRef(1);
+  const translateXValue = useRef(0);
+  const translateYValue = useRef(0);
   /** 下滑返回：跟着位移淡出遮罩，松手判定是否关闭 */
   const shadeOpacity = useRef(new Animated.Value(1)).current;
 
@@ -71,131 +77,219 @@ export default function ZoomImageModal({
   }, [url]);
 
   useEffect(() => {
+    const ids = [
+      scale.addListener(({ value }) => {
+        scaleValue.current = value;
+      }),
+      translateX.addListener(({ value }) => {
+        translateXValue.current = value;
+      }),
+      translateY.addListener(({ value }) => {
+        translateYValue.current = value;
+      }),
+    ];
+    return () => {
+      scale.removeListener(ids[0]);
+      translateX.removeListener(ids[1]);
+      translateY.removeListener(ids[2]);
+    };
+  }, [scale, translateX, translateY]);
+
+  useEffect(() => {
     if (!url) {
       scale.setValue(1);
       translateX.setValue(0);
       translateY.setValue(0);
+      scaleValue.current = 1;
+      translateXValue.current = 0;
+      translateYValue.current = 0;
     }
   }, [url, scale, translateX, translateY]);
 
-  const responder = useMemo(() => PanResponder.create({
-    // 捕获阶段就抢占：Modal 内层 Image/父容器会先拿 responder，
-    // 双指落下后手势被上层 terminate → 表现为「双指放大没有反应」（2026-10-18）
-    onStartShouldSetPanResponder: () => true,
-    onStartShouldSetPanResponderCapture: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    // 捕获阶段只抢「双指」或「明确向下拖」的手势：
-    // 原为无条件 true → 任何轻微滑动都被当成关闭手势（用户反馈「下滑关闭太敏感」）。
-    onMoveShouldSetPanResponderCapture: (_e, g) =>
-      g.numberActiveTouches >= 2 || (g.dy > 10 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2),
-    onPanResponderTerminationRequest: () => false,
-    onShouldBlockNativeResponder: () => true,
-    onPanResponderGrant: (event) => {
-      // 读取当前动画值（近似：从 __getValue 取，缩放/平移过程中足够）
-      startScale.current = (scale as any).__getValue() || 1;
-      // 单指落下时 distance 为 0；真正的基准在双指出现那一刻固定（见 move）
-      startDistance.current = event.nativeEvent.touches.length >= 2 ? distance(event.nativeEvent.touches) : 0;
-      tapStart.current = { t: Date.now(), moved: false };
-      startOffset.current = {
-        x: (translateX as any).__getValue() || 0,
-        y: (translateY as any).__getValue() || 0,
-      };
-    },
-    onPanResponderMove: (event, gesture) => {
-      const touches = event.nativeEvent.touches;
-      if (Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6) tapStart.current.moved = true;
-      if (touches.length >= 2) {
-        // ⚠️ 根因修复（2026-10-18）：基准必须在双指**首次出现**时固定。
-        // 原写法 base = startDistance.current || distance(touches)，而 startDistance 从未赋值
-        // → 每次 move 都拿当前距离当基准 → 比例恒为 1 → 双指放大完全没反应。
-        if (!startDistance.current) {
-          startDistance.current = distance(touches);
-          startScale.current = (scale as any).__getValue() || 1;
-        }
-        const base = startDistance.current;
-        const next = base ? clamp(startScale.current * (distance(touches) / base), 1, 5) : startScale.current;
-        scale.setValue(next);
-        return;
-      }
-      const currentScale = (scale as any).__getValue() || 1;
-      if (currentScale > 1.01) {
-        translateX.setValue(startOffset.current.x + gesture.dx);
-        translateY.setValue(startOffset.current.y + gesture.dy);
-        return;
-      }
-      // 未放大：单指下滑返回（跟手位移 + 遮罩淡出）
-      if (gesture.dy > 0) {
-        translateY.setValue(gesture.dy);
-        shadeOpacity.setValue(Math.max(0.35, 1 - gesture.dy / 420));
-      }
-    },
-    onPanResponderRelease: () => {
-      const currentScale = (scale as any).__getValue() || 1;
-      startDistance.current = 0; // 复位：下次双指重新取基准
-      const start = tapStart.current;
-      const isTap = !start.moved && Date.now() - start.t < 260;
-      if (isTap) {
-        const now = Date.now();
-        if (now - lastTapAt.current < 320) {
-          lastTapAt.current = 0;
-          if (currentScale <= 1.02) {
-            onCloseRef.current(); // 未放大时双击（空白处/画面）→ 退出预览
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        // 捕获阶段就抢占：Modal 内层 Image/父容器会先拿 responder，
+        // 双指落下后手势被上层 terminate → 表现为「双指放大没有反应」
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        // 捕获阶段只抢「双指」或「明确向下拖」的手势：
+        // 原为无条件 true → 任何轻微滑动都被当成关闭手势（用户反馈「下滑关闭太敏感」）。
+        onMoveShouldSetPanResponderCapture: (_e, g) =>
+          g.numberActiveTouches >= 2 || (g.dy > 10 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2),
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
+        onPanResponderGrant: (event) => {
+          // 读取当前动画值（由 addListener 同步到 ref）
+          startScale.current = scaleValue.current || 1;
+          // 单指落下时 distance 为 0；真正的基准在双指出现那一刻固定（见 move）
+          startDistance.current =
+            event.nativeEvent.touches.length >= 2 ? distance(event.nativeEvent.touches) : 0;
+          tapStart.current = { t: Date.now(), moved: false };
+          startOffset.current = {
+            x: translateXValue.current || 0,
+            y: translateYValue.current || 0,
+          };
+        },
+        onPanResponderMove: (event, gesture) => {
+          const touches = event.nativeEvent.touches;
+          if (Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6) tapStart.current.moved = true;
+          if (touches.length >= 2) {
+            // ⚠️ 根因修复：基准必须在双指**首次出现**时固定。
+            // 原写法 base = startDistance.current || distance(touches)，而 startDistance 从未赋值
+            // → 每次 move 都拿当前距离当基准 → 比例恒为 1 → 双指放大完全没反应。
+            if (!startDistance.current) {
+              startDistance.current = distance(touches);
+              startScale.current = scaleValue.current || 1;
+            }
+            const base = startDistance.current;
+            const next = base
+              ? clamp(startScale.current * (distance(touches) / base), 1, 5)
+              : startScale.current;
+            scale.setValue(next);
+            scaleValue.current = next;
             return;
           }
-          Animated.parallel([
-            Animated.spring(scale, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: false }),
-            Animated.spring(translateX, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: false }),
-            Animated.spring(translateY, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: false }),
-          ]).start();
-          return;
-        }
-        lastTapAt.current = now;
-      }
-      // 下滑返回：位移超过 180 才关闭（原 110 太敏感，轻微下滑就退出预览）
-      const dyNow = Number((translateY as any).__getValue() || 0);
-      if (dyNow > 180) {
-        Animated.timing(shadeOpacity, { toValue: 0, duration: 140, useNativeDriver: false }).start(() => {
-          // ⚠️ 先关再复位：若先 setValue(0)，关闭前的最后一帧会看到图片「闪回原位」（用户实测）
-          onCloseRef.current();
-          requestAnimationFrame(() => {
-            translateY.setValue(0);
-            translateX.setValue(0);
-            scale.setValue(1);
-            shadeOpacity.setValue(1);
-          });
-        });
-        return;
-      }
-      Animated.spring(shadeOpacity, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: false }).start();
-      if (currentScale <= 1.02) {
-        Animated.parallel([
-          Animated.spring(scale, { toValue: 1, ...motion.spring.bouncy, useNativeDriver: false }),
-          Animated.spring(translateX, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: false }),
-          Animated.spring(translateY, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: false }),
-        ]).start();
-      }
-    },
-  }), [scale, translateX, translateY]);
+          const currentScale = scaleValue.current || 1;
+          if (currentScale > 1.01) {
+            translateX.setValue(startOffset.current.x + gesture.dx);
+            translateY.setValue(startOffset.current.y + gesture.dy);
+            translateXValue.current = startOffset.current.x + gesture.dx;
+            translateYValue.current = startOffset.current.y + gesture.dy;
+            return;
+          }
+          // 未放大：单指下滑返回（跟手位移 + 遮罩淡出）
+          if (gesture.dy > 0) {
+            translateY.setValue(gesture.dy);
+            translateYValue.current = gesture.dy;
+            shadeOpacity.setValue(Math.max(0.35, 1 - gesture.dy / 420));
+          }
+        },
+        onPanResponderRelease: () => {
+          const currentScale = scaleValue.current || 1;
+          startDistance.current = 0; // 复位：下次双指重新取基准
+          const start = tapStart.current;
+          const isTap = !start.moved && Date.now() - start.t < 260;
+          if (isTap) {
+            const now = Date.now();
+            if (now - lastTapAt.current < 320) {
+              lastTapAt.current = 0;
+              if (currentScale <= 1.02) {
+                onCloseRef.current(); // 未放大时双击（空白处/画面）→ 退出预览
+                return;
+              }
+              Animated.parallel([
+                Animated.spring(scale, {
+                  toValue: 1,
+                  ...motion.spring.bouncy,
+                  useNativeDriver: false,
+                }),
+                Animated.spring(translateX, {
+                  toValue: 0,
+                  ...motion.spring.bouncy,
+                  useNativeDriver: false,
+                }),
+                Animated.spring(translateY, {
+                  toValue: 0,
+                  ...motion.spring.bouncy,
+                  useNativeDriver: false,
+                }),
+              ]).start();
+              scaleValue.current = 1;
+              translateXValue.current = 0;
+              translateYValue.current = 0;
+              return;
+            }
+            lastTapAt.current = now;
+          }
+          // 下滑返回：位移超过 180 才关闭（原 110 太敏感，轻微下滑就退出预览）
+          const dyNow = translateYValue.current || 0;
+          if (dyNow > 180) {
+            Animated.timing(shadeOpacity, {
+              toValue: 0,
+              duration: 140,
+              useNativeDriver: false,
+            }).start(() => {
+              // ⚠️ 先关再复位：若先 setValue(0)，关闭前的最后一帧会看到图片「闪回原位」（用户实测）
+              onCloseRef.current();
+              requestAnimationFrame(() => {
+                translateY.setValue(0);
+                translateX.setValue(0);
+                scale.setValue(1);
+                translateXValue.current = 0;
+                translateYValue.current = 0;
+                scaleValue.current = 1;
+                shadeOpacity.setValue(1);
+              });
+            });
+            return;
+          }
+          Animated.spring(shadeOpacity, {
+            toValue: 1,
+            ...motion.spring.bouncy,
+            useNativeDriver: false,
+          }).start();
+          if (currentScale <= 1.02) {
+            Animated.parallel([
+              Animated.spring(scale, {
+                toValue: 1,
+                ...motion.spring.bouncy,
+                useNativeDriver: false,
+              }),
+              Animated.spring(translateX, {
+                toValue: 0,
+                ...motion.spring.bouncy,
+                useNativeDriver: false,
+              }),
+              Animated.spring(translateY, {
+                toValue: 0,
+                ...motion.spring.bouncy,
+                useNativeDriver: false,
+              }),
+            ]).start();
+            scaleValue.current = 1;
+            translateXValue.current = 0;
+            translateYValue.current = 0;
+          }
+        },
+      }),
+    [scale, translateX, translateY, shadeOpacity],
+  );
 
   return (
     <Modal visible={!!url} transparent animationType="fade" onRequestClose={onClose}>
       <Animated.View style={[styles.shade, { opacity: shadeOpacity }]}>
-        <TouchableOpacity style={styles.close} onPress={onClose} activeOpacity={0.75}>
+        <TouchableOpacity
+          style={[styles.close, { top: insets.top + 16 }]}
+          onPress={onClose}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('关闭')}
+        >
           <Text style={styles.closeText}>{t('关闭')}</Text>
         </TouchableOpacity>
         {url ? (
-          <View style={styles.stage} {...responder.panHandlers}>
+          <View
+            style={[styles.stage, { paddingBottom: 96 + insets.bottom }]}
+            {...responder.panHandlers}
+          >
             {/* 位移/缩放放在外层 Animated.View 上（原来直接包在 Animated.Image 上）；
                 图片本体换成 NetworkImage —— 与网格同一套「缩略图→原图→占位」三级兜底，
                 不再出现"原图失败就满屏黑"的情况 */}
-            <Animated.View style={[styles.image, { transform: [{ translateX }, { translateY }, { scale }] }]}>
+            <Animated.View
+              style={[styles.image, { transform: [{ translateX }, { translateY }, { scale }] }]}
+            >
               <NetworkImage
                 source={{ uri: url }}
                 resizeMode="contain"
                 style={styles.fill}
                 onLoadStart={() => setLoadingImg(true)}
                 onLoad={() => setLoadingImg(false)}
-                onError={() => { setLoadingImg(false); setFailed(true); }}
+                onError={() => {
+                  setLoadingImg(false);
+                  setFailed(true);
+                }}
               />
             </Animated.View>
             {loadingImg ? (
@@ -211,15 +305,30 @@ export default function ZoomImageModal({
           </View>
         ) : null}
         {/* 右下角操作：下载 / 分享（与预览控件同区，避免误触关闭） */}
-        <View style={styles.actions} pointerEvents="box-none">
+        <View
+          style={[styles.actions, { bottom: Math.max(insets.bottom, 16) + 14 }]}
+          pointerEvents="box-none"
+        >
           {onDownload ? (
-            <TouchableOpacity style={styles.actionBtn} onPress={onDownload} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={onDownload}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t('下载')}
+            >
               <MaterialCommunityIcons name="download" size={20} color="#fff" />
               <Text style={styles.actionText}>{t('下载')}</Text>
             </TouchableOpacity>
           ) : null}
           {onShare ? (
-            <TouchableOpacity style={styles.actionBtn} onPress={onShare} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={onShare}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={t('分享')}
+            >
               <MaterialCommunityIcons name="share-variant" size={20} color="#fff" />
               <Text style={styles.actionText}>{t('分享')}</Text>
             </TouchableOpacity>
@@ -233,10 +342,9 @@ export default function ZoomImageModal({
 const styles = StyleSheet.create({
   shade: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)' },
   // 底部留 96dp 给下载/分享条：图片按 contain 排版时不再被按钮盖住
-  stage: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 96 },
+  stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   close: {
     position: 'absolute',
-    top: 42,
     right: 18,
     zIndex: 2,
     paddingHorizontal: 14,
@@ -251,7 +359,15 @@ const styles = StyleSheet.create({
   hintWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   hintText: { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600' },
   /** 右下角操作条 */
-  actions: { position: 'absolute', left: 0, right: 0, bottom: 30, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
+  actions: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',

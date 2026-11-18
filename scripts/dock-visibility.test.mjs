@@ -5,8 +5,13 @@ import vm from 'node:vm';
 
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
-const source = readFileSync(new URL('../src/navigation/tabBarVisibility.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const source = readFileSync(
+  new URL('../src/navigation/tabBarVisibility.ts', import.meta.url),
+  'utf8',
+);
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText;
 const module = { exports: {} };
 vm.runInNewContext(compiled, { module, exports: module.exports });
 const { shouldHideTabBar } = module.exports;

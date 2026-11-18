@@ -16,7 +16,10 @@ function parseKeys(s) {
   const keys = [];
   for (const line of s.split(/\r?\n/)) {
     let m = line.match(/^\s*'([^']*)'\s*:/);
-    if (m) { keys.push(m[1]); continue; }
+    if (m) {
+      keys.push(m[1]);
+      continue;
+    }
     m = line.match(/^\s*([^'":][^:\n]*?)\s*:/);
     if (m) keys.push(m[1]);
   }

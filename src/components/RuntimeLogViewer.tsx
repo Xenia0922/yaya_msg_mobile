@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {Modal, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import { Modal, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { showDialog } from '../components/AppDialog';
 import { useUiStore } from '../store';
@@ -45,7 +45,13 @@ function fmtTime(t: number): string {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-export default function RuntimeLogViewer({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export default function RuntimeLogViewer({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
@@ -59,7 +65,7 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
     }
   }, [visible]);
 
-  const counts = useMemo(() => getLogCounts(), [entries]);
+  const counts = getLogCounts();
 
   const filtered = useMemo(() => {
     if (filter === 'all') return entries;
@@ -76,7 +82,9 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
 
   const onShare = () => {
     const text = exportLogText(filtered);
-    Share.share({ title: t('牙牙消息运行日志'), message: text }).catch(() => showToast(t('分享失败')));
+    Share.share({ title: t('牙牙消息运行日志'), message: text }).catch(() =>
+      showToast(t('分享失败')),
+    );
   };
 
   const onCopyEntry = (entry: any) => {
@@ -107,14 +115,31 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: palette.background }]}>
-        <View style={[styles.header, { backgroundColor: palette.surface, borderBottomColor: palette.hairline }]}>
+        <View
+          style={[
+            styles.header,
+            { backgroundColor: palette.surface, borderBottomColor: palette.hairline },
+          ]}
+        >
           <Text style={[typography.title3, { color: palette.label }]}>{t('运行日志')}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.6} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={[typography.subhead, { color: palette.tint, fontWeight: '700' }]}>{t('关闭')}</Text>
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.closeBtn}
+            activeOpacity={0.6}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={[typography.subhead, { color: palette.tint, fontWeight: '700' }]}>
+              {t('关闭')}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.filterRow, { backgroundColor: palette.surface, borderBottomColor: palette.hairline }]}>
+        <View
+          style={[
+            styles.filterRow,
+            { backgroundColor: palette.surface, borderBottomColor: palette.hairline },
+          ]}
+        >
           {LEVELS.map((lv) => {
             const c = lv.key === 'all' ? entries.length : counts[lv.key as LogLevel];
             const active = filter === lv.key;
@@ -129,7 +154,11 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
           })}
         </View>
 
-        <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator>
+        <ScrollView
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator
+        >
           {filtered.length === 0 ? (
             <CenterSpinner text={t('暂无记录')} style={{ marginTop: 60 }} />
           ) : (
@@ -148,13 +177,21 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
                 hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               >
                 <View style={styles.rowTop}>
-                  <Text style={[styles.time, { color: palette.labelTertiary }]}>{fmtTime(e.t)}</Text>
+                  <Text style={[styles.time, { color: palette.labelTertiary }]}>
+                    {fmtTime(e.t)}
+                  </Text>
                   <View style={[styles.badge, { backgroundColor: levelColor(e.level) }]}>
                     <Text style={styles.badgeText}>{e.level.toUpperCase()}</Text>
                   </View>
-                  {e.ctx ? <Text style={[styles.ctx, { color: palette.labelTertiary }]} numberOfLines={1}>{e.ctx}</Text> : null}
+                  {e.ctx ? (
+                    <Text style={[styles.ctx, { color: palette.labelTertiary }]} numberOfLines={1}>
+                      {e.ctx}
+                    </Text>
+                  ) : null}
                 </View>
-                <Text style={[typography.subhead, styles.msg, { color: palette.label }]}>{e.msg}</Text>
+                <Text style={[typography.subhead, styles.msg, { color: palette.label }]}>
+                  {e.msg}
+                </Text>
                 {e.stack ? (
                   <Text style={[styles.stack, { color: palette.labelTertiary }]} numberOfLines={6}>
                     {e.stack}
@@ -165,17 +202,38 @@ export default function RuntimeLogViewer({ visible, onClose }: { visible: boolea
           )}
         </ScrollView>
 
-        <View style={[styles.toolbar, { backgroundColor: palette.surface, borderTopColor: palette.hairline }]}>
-          <TouchableOpacity style={[styles.toolBtn, { backgroundColor: palette.fill2 }]} onPress={refresh} activeOpacity={0.7}>
+        <View
+          style={[
+            styles.toolbar,
+            { backgroundColor: palette.surface, borderTopColor: palette.hairline },
+          ]}
+        >
+          <TouchableOpacity
+            style={[styles.toolBtn, { backgroundColor: palette.fill2 }]}
+            onPress={refresh}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.toolText, { color: palette.label }]}>{t('刷新')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.toolBtn, { backgroundColor: palette.fill2 }]} onPress={onCopy} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={[styles.toolBtn, { backgroundColor: palette.fill2 }]}
+            onPress={onCopy}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.toolText, { color: palette.label }]}>{t('复制')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.toolBtn, { backgroundColor: palette.fill2 }]} onPress={onShare} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={[styles.toolBtn, { backgroundColor: palette.fill2 }]}
+            onPress={onShare}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.toolText, { color: palette.label }]}>{t('分享')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.toolBtn, { backgroundColor: palette.tintSoft }]} onPress={onClear} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={[styles.toolBtn, { backgroundColor: palette.tintSoft }]}
+            onPress={onClear}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.toolText, { color: palette.danger }]}>{t('清空')}</Text>
           </TouchableOpacity>
         </View>

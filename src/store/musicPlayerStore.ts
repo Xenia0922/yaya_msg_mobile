@@ -9,11 +9,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * 读取/删除不受影响；App 被杀时最多丢最近 12s 的进度（短播+杀进程不丢位置，防点回重头）。
  * 暂停/切歌/失活时另显式 flush（flushMusicPlayerStorage）。
  */
-function createThrottleStorage(storage: { getItem: (name: string) => Promise<string | null>; setItem: (name: string, value: string) => Promise<void>; removeItem: (name: string) => Promise<void> }, ms = 12000) {
+function createThrottleStorage(
+  storage: {
+    getItem: (name: string) => Promise<string | null>;
+    setItem: (name: string, value: string) => Promise<void>;
+    removeItem: (name: string) => Promise<void>;
+  },
+  ms = 12000,
+) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const pending = new Map<string, string>();
   const flushAll = () => {
-    timers.forEach((timer, name) => { clearTimeout(timer); });
+    timers.forEach((timer, _name) => {
+      clearTimeout(timer);
+    });
     timers.clear();
     pending.forEach((v, name) => {
       pending.delete(name);
@@ -25,12 +34,15 @@ function createThrottleStorage(storage: { getItem: (name: string) => Promise<str
     setItem: (name: string, value: string) => {
       pending.set(name, value);
       if (!timers.has(name)) {
-        timers.set(name, setTimeout(() => {
-          timers.delete(name);
-          const v = pending.get(name);
-          pending.delete(name);
-          if (v !== undefined) storage.setItem(name, v).catch(() => {});
-        }, ms));
+        timers.set(
+          name,
+          setTimeout(() => {
+            timers.delete(name);
+            const v = pending.get(name);
+            pending.delete(name);
+            if (v !== undefined) storage.setItem(name, v).catch(() => {});
+          }, ms),
+        );
       }
     },
     removeItem: (name: string) => {
@@ -172,19 +184,23 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
 
       setQueue: (tracks) => set({ queue: tracks, currentIndex: tracks.length > 0 ? 0 : -1 }),
 
-      addToQueue: (track) => set((s) => {
-        if (s.queue.find((t) => String(t.musicId || t.id) === String(track.musicId || track.id))) return s;
-        return { queue: [...s.queue, track] };
-      }),
+      addToQueue: (track) =>
+        set((s) => {
+          if (s.queue.find((t) => String(t.musicId || t.id) === String(track.musicId || track.id)))
+            return s;
+          return { queue: [...s.queue, track] };
+        }),
 
-      removeFromQueue: (id) => set((s) => {
-        const removedIdx = s.queue.findIndex((t) => String(t.musicId || t.id) === String(id));
-        const newQueue = s.queue.filter((t) => String(t.musicId || t.id) !== String(id));
-        let newIdx = s.currentIndex;
-        if (removedIdx >= 0 && removedIdx < s.currentIndex) newIdx = s.currentIndex - 1;
-        else if (removedIdx === s.currentIndex) newIdx = newQueue.length > 0 ? Math.min(s.currentIndex, newQueue.length - 1) : -1;
-        return { queue: newQueue, currentIndex: newIdx };
-      }),
+      removeFromQueue: (id) =>
+        set((s) => {
+          const removedIdx = s.queue.findIndex((t) => String(t.musicId || t.id) === String(id));
+          const newQueue = s.queue.filter((t) => String(t.musicId || t.id) !== String(id));
+          let newIdx = s.currentIndex;
+          if (removedIdx >= 0 && removedIdx < s.currentIndex) newIdx = s.currentIndex - 1;
+          else if (removedIdx === s.currentIndex)
+            newIdx = newQueue.length > 0 ? Math.min(s.currentIndex, newQueue.length - 1) : -1;
+          return { queue: newQueue, currentIndex: newIdx };
+        }),
 
       clearQueue: () => set({ queue: [], currentIndex: -1 }),
 
@@ -195,28 +211,32 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
        * loading 态 paused=true，旧画面/旧音不发声，解析完成后 setUrl 切换。
        *
        * keepPosition=true（主页「继续播放」/ 记忆恢复）：保留当前 position 并把其转成
-       * seekTarget，等 Video onLoad 就绪后 seek 回去 —— 否则 play() 会把进度清零，
+       * seekTarget，等 Video onLoad 就绪后 seek 回去 —— 否则 play 会把进度清零，
        * 播放记忆形同虚设。
        */
-      play: (track, queue, keepPosition = false) => set((s) => {
-        const q = queue || s.queue;
-        const idx = q.findIndex((t) => String(t.musicId || t.id) === String(track.musicId || track.id));
-        const resumePos = keepPosition && idx === s.currentIndex && s.position > 0 ? s.position : 0;
-        return {
-          queue: q,
-          currentIndex: idx >= 0 ? idx : 0,
-          playbackState: 'loading',
-          url: s.url,           // B2：保留旧 url（不置空），消除空 source 翻转
-          duration: resumePos > 0 ? s.duration : 0,
-          position: resumePos,
-          lyrics: [],
-          error: null,
-          seekTarget: resumePos,
-          seekNonce: resumePos > 0 ? s.seekNonce + 1 : s.seekNonce,
-          seekFrom: s.position,
-          seekIssuedAt: resumePos > 0 ? Date.now() : 0,
-        };
-      }),
+      play: (track, queue, keepPosition = false) =>
+        set((s) => {
+          const q = queue || s.queue;
+          const idx = q.findIndex(
+            (t) => String(t.musicId || t.id) === String(track.musicId || track.id),
+          );
+          const resumePos =
+            keepPosition && idx === s.currentIndex && s.position > 0 ? s.position : 0;
+          return {
+            queue: q,
+            currentIndex: idx >= 0 ? idx : 0,
+            playbackState: 'loading',
+            url: s.url, // B2：保留旧 url（不置空），消除空 source 翻转
+            duration: resumePos > 0 ? s.duration : 0,
+            position: resumePos,
+            lyrics: [],
+            error: null,
+            seekTarget: resumePos,
+            seekNonce: resumePos > 0 ? s.seekNonce + 1 : s.seekNonce,
+            seekFrom: s.position,
+            seekIssuedAt: resumePos > 0 ? Date.now() : 0,
+          };
+        }),
 
       setUrl: (url) => set({ url }),
 
@@ -253,16 +273,26 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
           if (dNow > dFrom) return; // 旧位置（还没跳到目标）→ 丢弃，防回弹
           // ⚠️ seek 窗口内必须直接放行（含向后 seek）。
           // 此前落到下面的「回退守卫」：s.position 仍是 seek 前的旧值，新位置更小 → 被当陈旧帧丢掉，
-          // 表现为「点了/拖了进度，音乐跳了但进度条和歌词定在原地，等播放追上旧位置才恢复」（2026-10-18）。
+          // 表现为「点了/拖了进度，音乐跳了但进度条和歌词定在原地，等播放追上旧位置才恢复」。
           set({ position });
           return;
         }
-        // 无 seek 时的回退守卫（2026-10-18）：
+        // 无 seek 时的回退守卫：
         // 每次进音乐页/进度条重新挂载，原生或 JS 播放器会先推一帧 0 或早期帧，
         // 进度条就会「先缩到 0.00 → 再跳到当前 → 附近抖动」。非 seek 场景下
         // 进度倒退超过 3s 一律视为陈旧帧丢弃；真正的后退都走 setSeekTarget。
-        const naturalSingleLoop = s.playMode === 'single' && s.duration > 0 && s.position >= s.duration - 3 && position <= 2;
-        if (Number.isFinite(position) && s.position - position > 0.5 && s.playbackState !== 'idle' && !naturalSingleLoop) return;
+        const naturalSingleLoop =
+          s.playMode === 'single' &&
+          s.duration > 0 &&
+          s.position >= s.duration - 3 &&
+          position <= 2;
+        if (
+          Number.isFinite(position) &&
+          s.position - position > 0.5 &&
+          s.playbackState !== 'idle' &&
+          !naturalSingleLoop
+        )
+          return;
         set({ position });
       },
 
@@ -302,37 +332,45 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
         return false;
       },
 
-      toggleFavorite: (id, track) => set((s) => {
-        if (!id) return s;
-        const t = track || s.queue.find((x) => String(x.musicId || x.id) === String(id));
-        if (t) {
-          const k2 = `${String(t.title || '').trim()}|${String(t.artist || '').trim()}`.trim();
-          const k3 = `${k2}|${String(t.album || '').trim()}`.trim();
-          const hasK3 = k3 !== '||' && s.favorites.includes(k3);
-          const hasK2 = k2 !== '|' && s.favorites.includes(k2);
-          const hasId = s.favorites.includes(id);
-          if (hasK3) {
-            // 取消收藏：只取消当前精确版本
-            return { favorites: s.favorites.filter((f) => f !== k3) };
+      toggleFavorite: (id, track) =>
+        set((s) => {
+          if (!id) return s;
+          const t = track || s.queue.find((x) => String(x.musicId || x.id) === String(id));
+          if (t) {
+            const k2 = `${String(t.title || '').trim()}|${String(t.artist || '').trim()}`.trim();
+            const k3 = `${k2}|${String(t.album || '').trim()}`.trim();
+            const hasK3 = k3 !== '||' && s.favorites.includes(k3);
+            const hasK2 = k2 !== '|' && s.favorites.includes(k2);
+            const hasId = s.favorites.includes(id);
+            if (hasK3) {
+              // 取消收藏：只取消当前精确版本
+              return { favorites: s.favorites.filter((f) => f !== k3) };
+            }
+            if (hasId || hasK2) {
+              // 旧整歌/musicId 收藏 → 升级为「当前版本」精确收藏（remove 旧键 + add 版本键）
+              const rest = s.favorites.filter((f) => f !== id && f !== k2);
+              return { favorites: [...rest, k3 !== '||' ? k3 : id] };
+            }
+            // 新收藏：精确版本
+            return { favorites: [...s.favorites, k3 !== '||' ? k3 : k2 !== '|' ? k2 : id] };
           }
-          if (hasId || hasK2) {
-            // 旧整歌/musicId 收藏 → 升级为「当前版本」精确收藏（remove 旧键 + add 版本键）
-            const rest = s.favorites.filter((f) => f !== id && f !== k2);
-            return { favorites: [...rest, k3 !== '||' ? k3 : id] };
-          }
-          // 新收藏：精确版本
-          return { favorites: [...s.favorites, k3 !== '||' ? k3 : k2 !== '|' ? k2 : id] };
-        }
-        // 无 track：按原 id/键切换
-        if (s.favorites.includes(id)) return { favorites: s.favorites.filter((f) => f !== id) };
-        return { favorites: [...s.favorites, id] };
-      }),
+          // 无 track：按原 id/键切换
+          if (s.favorites.includes(id)) return { favorites: s.favorites.filter((f) => f !== id) };
+          return { favorites: [...s.favorites, id] };
+        }),
 
       next: () => {
         const s = get();
         if (s.queue.length === 0) return null;
         const idx = nextIndex(s.currentIndex, s.queue.length, s.playMode);
-        set({ currentIndex: idx, duration: 0, position: 0, lyrics: [], error: null, seekTarget: 0 });
+        set({
+          currentIndex: idx,
+          duration: 0,
+          position: 0,
+          lyrics: [],
+          error: null,
+          seekTarget: 0,
+        });
         return s.queue[idx] || null;
       },
 
@@ -340,7 +378,14 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
         const s = get();
         if (s.queue.length === 0) return null;
         const idx = s.currentIndex <= 0 ? s.queue.length - 1 : s.currentIndex - 1;
-        set({ currentIndex: idx, duration: 0, position: 0, lyrics: [], error: null, seekTarget: 0 });
+        set({
+          currentIndex: idx,
+          duration: 0,
+          position: 0,
+          lyrics: [],
+          error: null,
+          seekTarget: 0,
+        });
         return s.queue[idx] || null;
       },
     }),

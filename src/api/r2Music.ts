@@ -2,8 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { parseMaybeJson } from '../utils/data';
 import { fetchWithTimeout } from '../utils/network';
 
-
-
 const R2_MUSIC_URL = 'https://gnz.hk/api/r2-music?metadata_v=3';
 // v2：列表结构新增 durationSec（旧缓存里只有 duration 字符串，等于没有时长）
 const CACHE_KEY = 'yaya_r2_music_cache_v2';
@@ -49,17 +47,13 @@ export function parseR2Duration(durationText: string): number {
 }
 
 async function fetchR2MusicRaw(): Promise<R2MusicTrack[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
-  try {
-    const resp = await fetchWithTimeout(R2_MUSIC_URL, { signal: controller.signal }, 20000);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const json: any = parseMaybeJson(await resp.text());
-    if (!json || !Array.isArray(json.tracks)) throw new Error('r2-music 响应缺少 tracks');
-    return json.tracks as R2MusicTrack[];
-  } finally {
-    clearTimeout(timer);
-  }
+  // 超时统一由 fetchWithTimeout 负责（含响应体读取）；再套一层 AbortController
+  // 只会让两个定时器互相竞争，且 finally 可能提前清掉外层计时。
+  const resp = await fetchWithTimeout(R2_MUSIC_URL, {}, 20000);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const json: any = parseMaybeJson(await resp.text());
+  if (!json || !Array.isArray(json.tracks)) throw new Error('r2-music 响应缺少 tracks');
+  return json.tracks as R2MusicTrack[];
 }
 
 /** 归一化为与官方源一致的曲目结构（musicId / title / artist / album / groupLabel / mp3 / coverUrl） */
@@ -117,11 +111,11 @@ async function readR2Cache(): Promise<any[] | null> {
  * 真正拉取 + 写缓存（模块级 in-flight 去重；网络失败回退旧缓存）。
  *
  * ⚠️【必须与 loadR2Music 分开】旧实现里「过期 → 后台刷新」直接调
- * `prefetchR2Music()` → `loadR2Music(false)`，而后者又会命中**同一份过期缓存**、
+ * `prefetchR2Music` → `loadR2Music(false)`，而后者又会命中**同一份过期缓存**、
  * 直接 `return parsed.list` —— 于是：
- *   ① 刷新链每次都在「读缓存 + JSON.parse(1MB)」后就返回，**从不真正发网络请求**，
- *      缓存永远保持过期；
- *   ② 每次命中过期缓存都会再起一次刷新 → **无限递归**。
+ * ① 刷新链每次都在「读缓存 + JSON.parse(1MB)」后就返回，**从不真正发网络请求**，
+ * 缓存永远保持过期；
+ * ② 每次命中过期缓存都会再起一次刷新 → **无限递归**。
  * 实测后果（Hermes CPU Profile）：`[Native] jsonParse` 占 21.6%、`[GC Young Gen]` 占 34.4%，
  * App 空闲即吃 **129% CPU（1.3 核）**，且切后台不停、无网络、无日志、不渲染。
  * 所以后台刷新必须走这条**只负责真正拉取**的路径。

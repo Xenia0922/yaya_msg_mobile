@@ -37,7 +37,7 @@ const used = new Map(); // key -> Set(file)
 for (const file of walk(SRC)) {
   const s = fs.readFileSync(file, 'utf8');
   // 注意：`translate('x')` 也收录；跳过 t(`...`) 里的模板变量（含 ${ 的不算可静态校验的 key）
-  for (const m of s.matchAll(/\bt\(\s*['`]([^'`$]+)['`]/g)) {
+  for (const m of s.matchAll(/\b(?:t|translate)\(\s*['`]([^'`$]+)['`]/g)) {
     const key = m[1];
     if (!key.trim()) continue;
     if (!used.has(key)) used.set(key, new Set());

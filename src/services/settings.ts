@@ -7,6 +7,7 @@ const SETTINGS_KEY = 'yaya_settings';
 let settingsCache: AppSettings | null = null;
 let settingsLoadPromise: Promise<AppSettings> | null = null;
 let settingsWriteChain: Promise<void> = Promise.resolve();
+let settingsLoadFailed = false;
 
 /**
  * 敏感字段：绝不写进 AsyncStorage 的 settings JSON，只进加密仓（secretStore）。
@@ -100,6 +101,8 @@ export async function loadSettings(): Promise<AppSettings> {
         settings = { ...DEFAULT_SETTINGS, ...rawObj } as AppSettings;
       }
     } catch (e) {
+      // 读失败时继续用默认值启动，但禁止随后的保存把损坏/不可读的整份设置覆盖掉。
+      settingsLoadFailed = true;
       logError(e, 'settings.loadSettings');
     }
 
@@ -109,9 +112,15 @@ export async function loadSettings(): Promise<AppSettings> {
       for (const f of SECRET_FIELDS) {
         const enc = encodeSecret(rawObj[f]);
         if (enc) {
-          await setSecret(f, enc);
-          delete rawObj[f];
-          migrated = true;
+          try {
+            await setSecret(f, enc);
+            delete rawObj[f];
+            migrated = true;
+          } catch (e) {
+            // 加密仓暂时不可用时保留原值继续启动（不删除明文、不假装迁移成功）；
+            // 下次启动会重试，避免一个凭据迁移失败拖垮全部设置。
+            logError(e, `settings.migrateSecret.${f}`);
+          }
         }
       }
       if (migrated) {
@@ -125,11 +134,15 @@ export async function loadSettings(): Promise<AppSettings> {
       }
     }
 
-    // ② 从加密仓读回，填进内存 settings（全应用同步读取照旧）
-    for (const f of SECRET_FIELDS) {
-      const stored = await getSecret(f);
-      (settings as unknown as Record<string, unknown>)[f] = decodeSecret(stored, f !== 'meet48Auth');
-    }
+    // ② 从加密仓读回，填进内存 settings（全应用同步读取照旧）。
+    // 三个字段互不依赖，并行读取，避免启动时串行等待三次原生加密仓调用。
+    const storedSecrets = await Promise.all(SECRET_FIELDS.map((f) => getSecret(f)));
+    SECRET_FIELDS.forEach((f, index) => {
+      (settings as unknown as Record<string, unknown>)[f] = decodeSecret(
+        storedSecrets[index],
+        f !== 'meet48Auth',
+      );
+    });
 
     settingsCache = settings;
     return { ...settings };
@@ -143,12 +156,14 @@ export async function loadSettings(): Promise<AppSettings> {
 }
 
 export async function saveSettings(settings: Partial<AppSettings>): Promise<void> {
+  if (settingsLoadFailed) {
+    throw new Error('设置读取失败，为防止覆盖原数据已拒绝保存；请重启应用后重试');
+  }
   const operation = settingsWriteChain
     .catch(() => undefined)
     .then(async () => {
       const current = await loadSettings();
       const merged = { ...current, ...settings };
-      settingsCache = merged;
       // 敏感字段：只加密落盘（不进 settings 明文 JSON）
       for (const f of SECRET_FIELDS) {
         if (Object.prototype.hasOwnProperty.call(settings, f)) {
@@ -158,6 +173,9 @@ export async function saveSettings(settings: Partial<AppSettings>): Promise<void
       const persisted: Record<string, unknown> = { ...merged };
       for (const f of SECRET_FIELDS) delete persisted[f];
       await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(persisted));
+      // 全部写入成功后再更新缓存：否则 setSecret/setItem 失败时内存显示已保存，
+      // 重启后又回退，用户会误以为设置生效。
+      settingsCache = merged;
     });
   settingsWriteChain = operation;
   await operation;
@@ -168,7 +186,10 @@ export async function getSetting<K extends keyof AppSettings>(key: K): Promise<A
   return settings[key];
 }
 
-export async function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): Promise<void> {
+export async function setSetting<K extends keyof AppSettings>(
+  key: K,
+  value: AppSettings[K],
+): Promise<void> {
   await saveSettings({ [key]: value });
 }
 
@@ -176,12 +197,14 @@ export async function clearSettings(): Promise<void> {
   const operation = settingsWriteChain
     .catch(() => undefined)
     .then(async () => {
-      settingsCache = { ...DEFAULT_SETTINGS };
       await AsyncStorage.removeItem(SETTINGS_KEY);
       // 同时清掉加密仓里的敏感字段（退出登录/清数据时不该留 token 密文）
       for (const f of SECRET_FIELDS) {
         await deleteSecret(f);
       }
+      // 清理全部成功后再重置内存，避免删除失败时界面已显示清空、磁盘仍有旧值。
+      settingsCache = { ...DEFAULT_SETTINGS };
+      settingsLoadFailed = false;
     });
   settingsWriteChain = operation;
   await operation;

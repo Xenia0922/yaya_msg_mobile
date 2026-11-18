@@ -3,11 +3,7 @@
   "compilerOptions": {
     "strict": true
   },
-  "include": [
-    "src",
-    "App.tsx",
-    "index.ts"
-  ],
+  "include": ["src", "App.tsx", "index.ts"],
   "exclude": [
     "node_modules",
     "oh_modules",

@@ -35,5 +35,9 @@ for (const dir of dirs) {
     }
   }
 }
-fs.writeFileSync(path.join(root, '..', 'untranslated-report.txt'), results.join('\n') + '\n', 'utf8');
+fs.writeFileSync(
+  path.join(root, '..', 'untranslated-report.txt'),
+  results.join('\n') + '\n',
+  'utf8',
+);
 console.log('hits:', results.length);

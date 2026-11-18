@@ -45,12 +45,23 @@ export default function ToolsModule({ toolChips, quickCellW, onPressItem }: Tool
               style={{ minWidth: Math.round(quickCellW * 0.8) }}
             >
               <View
-                style={[styles.chip, styles.toolChip, { backgroundColor: palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)', borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)' }]}
+                style={[
+                  styles.chip,
+                  styles.toolChip,
+                  {
+                    backgroundColor:
+                      palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)',
+                    borderColor:
+                      palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)',
+                  },
+                ]}
               >
                 <View style={[styles.chipIcon, { backgroundColor: palette.tintSoft }]}>
                   <MaterialCommunityIcons name={item.icon} color={palette.tint} size={16} />
                 </View>
-                <Text style={[styles.chipText, { color: palette.label }]} numberOfLines={1}>{item.title}</Text>
+                <Text style={[styles.chipText, { color: palette.label }]} numberOfLines={1}>
+                  {item.title}
+                </Text>
               </View>
             </ScalePressable>
           ))}

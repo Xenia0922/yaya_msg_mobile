@@ -130,6 +130,20 @@ public class PipModule extends ReactContextBaseJavaModule {
    * ColorOS / MIUI 等 ROM 把「画中画」作为独立的 AppOps 权限，用户关掉后
    * enterPictureInPictureMode 会静默失败（不抛异常也不进 PiP）→ 表现为「怎么都换不出系统小窗」。
    */
+  public static Activity getAppActivity() {
+    return savedReactContext != null ? savedReactContext.getCurrentActivity() : null;
+  }
+
+  public static boolean isInPipMode() {
+    if (savedReactContext != null) {
+      Activity a = savedReactContext.getCurrentActivity();
+      if (a != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        return a.isInPictureInPictureMode();
+      }
+    }
+    return false;
+  }
+
   public static boolean canUsePip(Context ctx) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false;
     try {
@@ -174,6 +188,9 @@ public class PipModule extends ReactContextBaseJavaModule {
     try {
       if (savedAppContext != null) savedAppContext.unregisterReceiver(toggleReceiver);
     } catch (Throwable ignored) {}
+    // 静态引用必须清空：旧 Module 销毁后仍被 savedReactContext 强引用会导致 ReactContext/Activity 泄漏
+    savedReactContext = null;
+    savedAppContext = null;
     super.onCatalystInstanceDestroy();
   }
 

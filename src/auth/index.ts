@@ -23,7 +23,8 @@ let _paFailSuppressed = 0;
 function logPaFailure(message: string) {
   const now = Date.now();
   if (now - _paFailLoggedAt > 5000) {
-    const extra = _paFailSuppressed > 0 ? `（同一窗口内另有 ${_paFailSuppressed} 次相同失败已折叠）` : '';
+    const extra =
+      _paFailSuppressed > 0 ? `（同一窗口内另有 ${_paFailSuppressed} 次相同失败已折叠）` : '';
     console.error('[generatePaAsync] WebView PA generation FAILED:', `${message}${extra}`);
     _paFailLoggedAt = now;
     _paFailSuppressed = 0;
@@ -35,12 +36,15 @@ function logPaFailure(message: string) {
 export function getWasmError(): string {
   // 原生已成功但 pa 仍为空 → 真实阻塞点在 WebView 兜底，优先报 WebView 错误，避免把原生引导期的
   // 中间态（如 "WebAssembly undefined" 守卫串）误当成设备不支持而吓到用户。
-  if (_nativeSucceeded && !isWebViewSignerReady()) return getWebViewSignerError() || _lastError || '';
+  if (_nativeSucceeded && !isWebViewSignerReady())
+    return getWebViewSignerError() || _lastError || '';
   if (isWebViewSignerReady()) return '';
   // WebView 是实际依赖的兜底通道：若它未就绪，优先报其错误而非原生引导期的守卫串
   return getWebViewSignerError() || _lastError || '';
 }
-export function isWasmReady(): boolean { return (WASM_READY && _paGen !== null) || isWebViewSignerReady() || !!_cachedPa; }
+export function isWasmReady(): boolean {
+  return (WASM_READY && _paGen !== null) || isWebViewSignerReady() || !!_cachedPa;
+}
 
 let _initPromise: Promise<void> | null = null;
 /**
@@ -59,7 +63,7 @@ export function initWasm(): Promise<void> {
       dbg('[initWasm] Starting native WASM initialization...');
       if (typeof WebAssembly === 'undefined') {
         // RN Hermes 引擎默认不暴露 WebAssembly，此守卫在真机上是正常命中路径（非异常）；
-      // 原生通道不可用即降级到 WebView 签名器，不当作致命错误。
+        // 原生通道不可用即降级到 WebView 签名器，不当作致命错误。
         _nativeUnavailable = true; // 运行期不会再有 WebAssembly，永久短路
         throw new Error('当前运行环境缺少 WebAssembly 支持');
       }
@@ -83,7 +87,10 @@ export function initWasm(): Promise<void> {
       // 不当作错误污染用户可见日志（getWasmError 在 WebView 就绪时已返回 ''）。
       if (!_nativeWarned) {
         _nativeWarned = true;
-        console.warn('[initWasm] Native WASM unavailable (Hermes), falling back to WebView signer:', _lastError);
+        console.warn(
+          '[initWasm] Native WASM unavailable (Hermes), falling back to WebView signer:',
+          _lastError,
+        );
       }
       // 失败不置 WASM_READY：原生通道可重试（下次调用重跑），generatePaAsync 仍会兜底 WebView。
     } finally {
@@ -132,43 +139,60 @@ async function fetchWasm(): Promise<ArrayBuffer> {
   ];
   let lastErr = '';
   for (const url of urls) {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 8000);
+      timer = setTimeout(() => ctrl.abort(), 8000);
       const resp = await fetch(url, { signal: ctrl.signal });
-      clearTimeout(timer);
       if (!resp.ok) continue;
+      // timer 必须覆盖 arrayBuffer：仅拿到响应头就清 timer 会让慢 body 永久挂起。
       const buf = await resp.arrayBuffer();
       if (!verifyWasm(buf)) {
         lastErr = '下载的 wasm 完整性校验失败，已拒绝执行（疑似被篡改）';
         continue;
       }
       return buf;
-    } catch (e: any) { lastErr = e.message || String(e); }
+    } catch (e: any) {
+      lastErr = e.message || String(e);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
   throw new Error(lastErr || '所有源下载失败');
 }
 
 export function generatePa(): string | null {
   if (!_paGen) return null;
-  try { return _paGen(); } catch { return null; }
+  try {
+    return _paGen();
+  } catch {
+    return null;
+  }
 }
 
-export async function generatePaAsync(): Promise<string | null> {
+export async function generatePaAsync(options?: { fresh?: boolean }): Promise<string | null> {
   // 先等原生通道初始化完成再判定（避免「initWasm 还在异步加载、_paGen 尚为 null」就误判为不可用，
   // 进而过早落到 WebView 兜底并被 6s 超时打断 —— 这正是 1305 后「设备不支持 WebAssembly」误报的根因）。
-  dbg('[generatePaAsync] ERROR-LEVEL: Checking native WASM status, WASM_READY:', WASM_READY, '_paGen:', !!_paGen, '_initPromise:', !!_initPromise);
+  dbg(
+    '[generatePaAsync] ERROR-LEVEL: Checking native WASM status, WASM_READY:',
+    WASM_READY,
+    '_paGen:',
+    !!_paGen,
+    '_initPromise:',
+    !!_initPromise,
+  );
   if ((!WASM_READY || !_paGen) && _initPromise) {
-    try { 
+    try {
       dbg('[generatePaAsync] Waiting for native initPromise...');
-      await _initPromise; 
+      await _initPromise;
       dbg('[generatePaAsync] Native initPromise resolved');
-    } catch { 
+    } catch {
       dbg('[generatePaAsync] Native initPromise failed, will try WebView');
-      /* 原生失败则继续走 WebView 兜底 */ 
+      /* 原生失败则继续走 WebView 兜底 */
     }
   }
-  const cached = _cachedPa && Date.now() - _cachedPaAt < PA_CACHE_TTL_MS ? _cachedPa : null;
+  const cached =
+    !options?.fresh && _cachedPa && Date.now() - _cachedPaAt < PA_CACHE_TTL_MS ? _cachedPa : null;
   if (cached) {
     dbg('[generatePaAsync] Using cached PA');
     return cached;
@@ -181,7 +205,12 @@ export async function generatePaAsync(): Promise<string | null> {
     return localPa;
   }
   dbg('[generatePaAsync] Native PA unavailable, trying WebView...');
-  dbg('[generatePaAsync] ERROR-LEVEL: isWebViewSignerReady:', isWebViewSignerReady(), 'getWebViewSignerError:', getWebViewSignerError());
+  dbg(
+    '[generatePaAsync] ERROR-LEVEL: isWebViewSignerReady:',
+    isWebViewSignerReady(),
+    'getWebViewSignerError:',
+    getWebViewSignerError(),
+  );
   try {
     // 冷启动 WebView 签名容器需要时间预热，给足 10s（同 1305 之前的默认），避免首调超时误报
     const webviewPa = await generatePaViaWebView(10000);

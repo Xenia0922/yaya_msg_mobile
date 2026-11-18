@@ -37,7 +37,11 @@ export function SectionTitle({
         <Text style={[styles.title, { color: palette.label }]}>{title}</Text>
       </View>
       {actionLabel && onAction ? (
-        <ScalePressable onPress={onAction} pressedScale={0.94} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <ScalePressable
+          onPress={onAction}
+          pressedScale={0.94}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <View style={styles.left}>
             <Text style={[styles.action, { color: palette.tint }]}>{actionLabel}</Text>
             <MaterialCommunityIcons name="chevron-right" color={palette.tint} size={15} />
@@ -49,9 +53,21 @@ export function SectionTitle({
 }
 
 const styles = StyleSheet.create({
-  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   left: { flexDirection: 'row', alignItems: 'center' },
-  iconChip: { width: 20, height: 20, borderRadius: 7, alignItems: 'center', justifyContent: 'center', marginRight: 7 },
+  iconChip: {
+    width: 20,
+    height: 20,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 7,
+  },
   dot: { width: 3, height: 16, borderRadius: 1.5, marginRight: 8 },
   title: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
   action: { fontSize: 11, fontWeight: '700', marginRight: 2 },

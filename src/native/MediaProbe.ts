@@ -1,4 +1,5 @@
 import { NativeModules, Platform } from 'react-native';
+import { USER_AGENT } from '../constants';
 
 /**
  * 媒体时长探测桥（Android MediaMetadataRetriever）。
@@ -16,13 +17,16 @@ export const isMediaProbeAvailable = !!native;
 
 /** 房间播放器统一防盗链头（与 playerSource 保持一致） */
 export const ROOM_MEDIA_HEADERS = {
-  'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
+  'User-Agent': USER_AGENT,
   Referer: 'https://h5.48.cn/',
   Origin: 'https://h5.48.cn',
 };
 
 /** 解析媒体时长（秒）。读不到时 resolve 0，不抛错，避免污染 UI。 */
-export function probeMediaDurationSeconds(url: string, headers: Record<string, string> = ROOM_MEDIA_HEADERS): Promise<number> {
+export function probeMediaDurationSeconds(
+  url: string,
+  headers: Record<string, string> = ROOM_MEDIA_HEADERS,
+): Promise<number> {
   if (!native || !url) return Promise.resolve(0);
   return native.getDurationSeconds(url, headers).catch(() => 0);
 }

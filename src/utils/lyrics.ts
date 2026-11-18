@@ -1,11 +1,15 @@
-export interface LyricLine { time: number; text: string }
+export interface LyricLine {
+  time: number;
+  text: string;
+}
 
 /**
  * LRC 头部的制作信息行（「词：张鹏鹏」「录音：夏甄尧」「OP：…」）。
  * 这类行时间戳通常也是 00:00，混在歌词里会让首页 minibar / 歌词页开头几十秒
- * 一直显示制作名单（2026-11-05 用户反馈「最近播放的歌词有问题」）。
+ * 一直显示制作名单（用户反馈「最近播放的歌词有问题」）。
  */
-const CREDIT_RE = /^(?:作词|作曲|编曲|填词|词|曲|录音|混音|母带|制作人|监制|出品|发行|企划|统筹|策划|音乐总监|人声|配唱|和声|吉他|贝斯|鼓|弦乐|键盘|后期|美术|设计|OP|SP|A&R)\s*[:：]/i;
+const CREDIT_RE =
+  /^(?:作词|作曲|编曲|填词|词|曲|录音|混音|母带|制作人|监制|出品|发行|企划|统筹|策划|音乐总监|人声|配唱|和声|吉他|贝斯|鼓|弦乐|键盘|后期|美术|设计|OP|SP|A&R)\s*[:：]/i;
 
 /** 首行常见的「歌名 - 歌手」标题行：时间在开头、带空格连字符、无句子标点。 */
 function isTitleLine(text: string, time: number): boolean {

@@ -23,7 +23,9 @@ for (const file of files) {
   // ---- 第一遍：定位站点 ----
   const sites = []; // { glassIdx, openIdx, closeIdx, radius, tag }
   for (let i = 0; i < lines.length; i++) {
-    const gm = lines[i].match(/^(\s*)<GlassBackground radius=\{(\d+)\}(?:\s+refract=\{false\})?\s*\/>\s*$/);
+    const gm = lines[i].match(
+      /^(\s*)<GlassBackground radius=\{(\d+)\}(?:\s+refract=\{false\})?\s*\/>\s*$/,
+    );
     if (!gm) continue;
     const glassIndent = indentOf(lines[i]);
     const radius = gm[2];
@@ -77,16 +79,21 @@ for (const file of files) {
     if (glassSet.has(j)) continue; // 丢掉 GlassBackground 行
     if (openMap.has(j)) {
       const s = openMap.get(j);
-      // 开标签按实际容器标签替换（View/TouchableOpacity/ScalePressable/Pressable/Animated.View）
-      out.push(
-        lines[j].replace(
-          new RegExp(`^([\\s]*)<${s.tag}`),
-          `$1<GlassSurface radius={${s.radius}} role="card"`,
-        ),
-      );
+      if (s) {
+        // 开标签按实际容器标签替换（View/TouchableOpacity/ScalePressable/Pressable/Animated.View）
+        out.push(
+          lines[j].replace(
+            new RegExp(`^([\\s]*)<${s.tag}`),
+            `$1<GlassSurface radius={${s.radius}} role="card"`,
+          ),
+        );
+      } else {
+        out.push(lines[j]);
+      }
     } else if (closeMap.has(j)) {
       const s = closeMap.get(j);
-      out.push(lines[j].replace(new RegExp(`</${s.tag}>`), '</GlassSurface>'));
+      if (s) out.push(lines[j].replace(new RegExp(`</${s.tag}>`), '</GlassSurface>'));
+      else out.push(lines[j]);
     } else {
       out.push(lines[j]);
     }

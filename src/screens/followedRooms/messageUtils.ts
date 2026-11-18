@@ -2,12 +2,12 @@
  * 房间消息域纯函数（从 FollowedRoomsScreen 抽出，无 React 依赖）。
  *
  * 范围：消息体解析、时间归一、合并排序、QChat 消息转换、最新消息挑选、房间标签。
- * ⚠️ 全部为**原样搬迁**（逐字复制），未改任何规则。
+ * 规则与 FollowedRoomsScreen 原实现保持一致；类型收窄时保留了原有空值/零值兜底语义。
  */
 import { messagePayload, normalizeUrl, parseMaybeJson, pickText } from '../../utils/data';
 import { toMs } from '../../utils/format';
 import { t } from '../../i18n';
-import { Member, RoomMessage } from '../../types';
+import { Member, RoomMessage, RoomMessageWire, WireRecord } from '../../types';
 import { type RoomLiveMessage } from '../../services/pocketNim/qchat';
 
 export type RoomMode = 'big' | 'small';
@@ -20,26 +20,26 @@ export function capText(text: string, max = 18) {
 }
 
 /** 送礼面板网格单元格的礼物图（picPath 为相对路径 → normalizeUrl 补全域名） */
-export function rgiftImage(g: any): string {
+export function rgiftImage(g: WireRecord | null | undefined): string {
   return normalizeUrl(g?.picPath || g?.icon || g?.giftPic || g?.url || '');
 }
 
-export function parseObject(value: any) {
+export function parseObject(value: unknown): WireRecord {
   const parsed = parseMaybeJson(value);
-  if (parsed && typeof parsed === 'object') return parsed;
+  if (parsed && typeof parsed === 'object') return parsed as WireRecord;
   return {};
 }
 
-export function extraInfo(item: any) {
+export function extraInfo(item: RoomMessageWire): WireRecord {
   return parseObject(item?.extInfo);
 }
 
-export function messageBody(item: any) {
+export function messageBody(item: RoomMessageWire): WireRecord {
   const body = messagePayload(item);
-  return body && typeof body === 'object' ? body : {};
+  return body && typeof body === 'object' ? (body as WireRecord) : {};
 }
 
-export function firstTextFrom(objects: any[], paths: string[]) {
+export function firstTextFrom(objects: unknown[], paths: string[]) {
   for (const obj of objects) {
     const value = pickText(obj, paths);
     if (value) return value;
@@ -47,7 +47,7 @@ export function firstTextFrom(objects: any[], paths: string[]) {
   return '';
 }
 
-export function deepFindText(value: any, keys: string[], depth = 0): string {
+export function deepFindText(value: unknown, keys: string[], depth = 0): string {
   if (!value || depth > 5) return '';
   if (typeof value === 'string') return '';
   if (Array.isArray(value)) {
@@ -58,11 +58,12 @@ export function deepFindText(value: any, keys: string[], depth = 0): string {
     return '';
   }
   if (typeof value !== 'object') return '';
+  const record = value as Record<string, unknown>;
   for (const key of keys) {
-    const direct = value[key];
+    const direct = record[key];
     if (direct !== undefined && direct !== null && String(direct).trim()) return String(direct);
   }
-  for (const child of Object.values(value)) {
+  for (const child of Object.values(record)) {
     const found = deepFindText(child, keys, depth + 1);
     if (found) return found;
   }
@@ -72,47 +73,78 @@ export function deepFindText(value: any, keys: string[], depth = 0): string {
 /**
  * 消息时间统一【归一为毫秒】。
  *
- * ⚠️ 单位混用会造成两处致命后果（2026-10-03 修复）：
- *  1) 排序错乱：HTTP 历史消息的 msgTime 是**秒**，QChat/NIM 推送的 time 是**毫秒**，
- *     直接比较会把毫秒消息全排到最前并「钉死」。
- *  2) 轮询水位污染：refreshRoomMessages 用「列表最大原始时间」当水位，
- *     一旦毫秒值（~1.7e12）进入列表顶部，HTTP 秒级新消息（~1.7e9）永远小于水位 →
- *     `hasFresh=false` 直接 return，**聊天流永久冻结（新消息永不上屏）**。
+ * ⚠️ 单位混用会造成两处致命后果（修复）：
+ * 1) 排序错乱：HTTP 历史消息的 msgTime 是**秒**，QChat/NIM 推送的 time 是**毫秒**，
+ * 直接比较会把毫秒消息全排到最前并「钉死」。
+ * 2) 轮询水位污染：refreshRoomMessages 用「列表最大原始时间」当水位，
+ * 一旦毫秒值（~1.7e12）进入列表顶部，HTTP 秒级新消息（~1.7e9）永远小于水位 →
+ * `hasFresh=false` 直接 return，**聊天流永久冻结（新消息永不上屏）**。
  * 统一走 toMs（10 位当秒转毫秒、13 位原样），比较/排序/去重键全部使用归一后的值。
  */
-export function getMessageTime(item: any): number {
-  return toMs(item?.msgTime ?? item?.messageTime ?? item?.ctime ?? item?.time) || 0;
+export function getMessageTime(item: unknown): number {
+  const msg = item as RoomMessageWire | null | undefined;
+  // 原实现为 msgTime || ctime || 0：msgTime 为 0/空串时必须继续回退到 ctime，
+  // 否则占位消息会被分到 1970 日期桶（integration review P2）。
+  const raw = [msg?.msgTime, msg?.messageTime, msg?.ctime, msg?.time].find(
+    (value) =>
+      value !== undefined && value !== null && String(value).trim() !== '' && Number(value) !== 0,
+  );
+  return toMs(raw) || 0;
 }
 
-export function getNextTime(res: any, list: any[]): number {
-  const direct = Number(firstTextFrom([res?.content, res?.data, res], ['nextTime', 'next', 'lastTime']));
-  if (Number.isFinite(direct) && direct > 0) return direct;
-  return 0;
+export function getNextTime(res: unknown, list: unknown[]): number {
+  // 优先读服务端游标（兼容 content/data 多层与点路径）；接口的 nextTime 与 msgTime 同为毫秒。
+  const cursor = pickText(res, [
+    'content.nextTime',
+    'content.data.nextTime',
+    'data.nextTime',
+    'content.next',
+    'data.next',
+    'nextTime',
+    'next',
+    'lastTime',
+    'content.lastTime',
+    'data.lastTime',
+  ]);
+  if (cursor !== '') {
+    const direct = Number(cursor);
+    // 0 / -1 是服务端明确的「没有下一页」语义，必须原样返回，不能再用本页最早消息兜底，
+    // 否则非空末页会被误判为 hasMoreMessages=true，反复请求同一页（integration review P1）。
+    if (Number.isFinite(direct)) return Math.max(0, direct);
+  }
+  // 仅在服务端完全未返回游标字段时，退化用本页最早一条消息的时间作为翻页游标。
+  const times = (Array.isArray(list) ? list : [])
+    .map((item) => getMessageTime(item))
+    .filter((time) => Number.isFinite(time) && time > 0);
+  return times.length ? Math.min(...times) : 0;
 }
 
 // 诊断标记：undefined/null 元素究竟是「首次进入就带毒」还是「merge 累积污染」由这里打印栈标记区分
-let __msgDiagTag = 'INIT';
-export function diagnoseUndefined(list: any[], tag: string) {
+const __msgDiagTag = 'INIT';
+export function diagnoseUndefined(list: unknown[], tag: string) {
   if (!Array.isArray(list)) return;
-  const bad = list
-    .map((it, i) => (it == null ? i : -1))
-    .filter((i) => i >= 0);
+  const bad = list.map((it, i) => (it == null ? i : -1)).filter((i) => i >= 0);
   if (bad.length) {
     // 真机/调试时可见：指出是哪个入口首次把 undefined 写进 roomMessages
     // eslint-disable-next-line no-console
-    console.warn(`[msgDiag:${tag}] 检出 ${bad.length} 个 null/undefined 元素，下标=[${bad.slice(0, 20).join(',')}]`, {
-      rawSample: list.slice(0, 5),
-      stack: new Error().stack,
-    });
+    console.warn(
+      `[msgDiag:${tag}] 检出 ${bad.length} 个 null/undefined 元素，下标=[${bad.slice(0, 20).join(',')}]`,
+      {
+        rawSample: list.slice(0, 5),
+        stack: new Error().stack,
+      },
+    );
   }
 }
 
 export function sortMessagesNewestFirst<T>(list: T[]): T[] {
-  return list.slice().sort((a: any, b: any) => getMessageTime(b) - getMessageTime(a));
+  return list.slice().sort((a, b) => getMessageTime(b) - getMessageTime(a));
 }
 
-export function qchatToRoomMessage(msg: RoomLiveMessage): any {
-  const user = (msg.ext?.user && typeof msg.ext.user === 'object' ? msg.ext.user : {}) as Record<string, any>;
+export function qchatToRoomMessage(msg: RoomLiveMessage): RoomMessageWire {
+  const user = (
+    msg.ext?.user && typeof msg.ext.user === 'object' ? msg.ext.user : {}
+  ) as WireRecord;
   const nickName = String(user.nickName || user.nickname || msg.fromNick || '');
   return {
     uuid: msg.uuid,
@@ -149,7 +181,10 @@ export function qchatToRoomMessage(msg: RoomLiveMessage): any {
  * 大房间最新消息：只认 channelId===大房间 或 成员本人发言。
  * 注意不能按 serverId 兜底——小房间与大房间共用 serverId，兜底会把小房间消息冒充大房间预览。
  */
-export function findLastMessage(messages: any[], member?: Member) {
+export function findLastMessage(
+  messages: RoomMessageWire[],
+  member?: Member,
+): RoomMessageWire | null {
   if (!member) return null;
   const bigId = String(member.channelId || '');
   const ykid = String(member.yklzId || '');
@@ -159,23 +194,28 @@ export function findLastMessage(messages: any[], member?: Member) {
     if (exact) return exact;
   }
   // ② 兜底：只有 userId/ownerId 命中成员 id，且**不是小房间消息**（否则小房间消息会冒充大房间预览）
-  return messages.find((msg) => (
-    String(msg.userId || msg.ownerId || '') === String(member.id || '')
-    && (!ykid || ykid === '0' || String(msg.channelId || '') !== ykid)
-  )) || null;
+  return (
+    messages.find(
+      (msg) =>
+        String(msg.userId || msg.ownerId || '') === String(member.id || '') &&
+        (!ykid || ykid === '0' || String(msg.channelId || '') !== ykid),
+    ) || null
+  );
 }
 
 /** 小房间（yklzId）最新消息：只认 channelId 精确匹配小房间 */
-export function findSmallLastMessage(messages: any[], member?: Member) {
+export function findSmallLastMessage(
+  messages: RoomMessageWire[],
+  member?: Member,
+): RoomMessageWire | null {
   if (!member) return null;
   const ykid = String(member.yklzId || '');
   if (!ykid || ykid === '0' || ykid === 'undefined') return null;
-  return messages.find((msg) => String(msg.channelId || '') === ykid)
-    || null;
+  return messages.find((msg) => String(msg.channelId || '') === ykid) || null;
 }
 
 export function roomChannelId(member: Member, mode: RoomMode) {
-  return String(mode === 'small' ? (member.yklzId || '') : (member.channelId || ''));
+  return String(mode === 'small' ? member.yklzId || '' : member.channelId || '');
 }
 
 export function roomLabel(member: Member, mode: RoomMode) {

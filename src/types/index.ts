@@ -1,11 +1,17 @@
 export interface Member {
   ownerName: string;
   id: string;
+  /** 口袋 userId（friends/id 返回值；部分历史数据只填 userId，不一定等于 id） */
+  userId?: string;
+  /** 成员库内部 memberId（历史数据可能缺省） */
+  memberId?: string;
   serverId: string;
   channelId: string;
   yklzId: string;
   roomId?: string;
   liveRoomId?: string;
+  /** 口袋账号（部分接口返回，用于直播/房间匹配） */
+  account?: string;
   team: string;
   pinyin: string;
   isInGroup: boolean;
@@ -131,6 +137,147 @@ export interface ShowRecord {
 export interface NimLoginInfo {
   account: string;
   token: string;
+}
+
+/**
+ * 口袋 HTTP 接口通用响应包络。
+ * 官方各端返回字段不统一：业务数据可能在 content / data，状态可能在 status / code，
+ * 顶层还可能透传 alreadyChecked、_request 等扩展字段。
+ */
+export interface ApiEnvelope<T = any> {
+  status?: number;
+  code?: number;
+  success?: boolean;
+  message?: string;
+  msg?: string;
+  error?: string;
+  statusDesc?: string;
+  content?: T;
+  data?: T;
+  list?: unknown;
+  /** 旧接口/调试字段透传；取值处需按业务类型收窄 */
+  [key: string]: any;
+}
+
+/** 网络边界上字段形态不固定的 JSON 对象；进入业务层后应转成具体类型 */
+export type WireRecord = Record<string, any>;
+
+/**
+ * 房间消息的原始 wire 结构（口袋 HTTP / QChat 推送共用）。
+ * 官方字段随版本漂移：常用字段显式列出，未列出的字段从索引签名透传。
+ */
+export interface RoomMessageWire {
+  id?: string | number;
+  msgId?: string | number;
+  messageId?: string | number;
+  clientMsgId?: string;
+  uuid?: string;
+  msgUuid?: string;
+  msgTime?: number | string;
+  messageTime?: number | string;
+  ctime?: number | string;
+  time?: number | string;
+  msgType?: string | number;
+  extMsgType?: string | number;
+  bodys?: unknown;
+  body?: unknown;
+  msgContent?: string;
+  extInfo?: unknown;
+  msgExtInfo?: unknown;
+  senderUserId?: string | number;
+  senderId?: string | number;
+  fromUserId?: string | number;
+  uid?: string | number;
+  senderName?: string;
+  nickName?: string;
+  userAvatar?: string;
+  avatar?: string;
+  channelId?: string | number;
+  serverId?: string | number;
+  liveId?: string;
+  giftInfo?: WireRecord;
+  giftReplyInfo?: WireRecord;
+  /** 标记来自实时 QChat 推送（仅诊断用） */
+  __live?: boolean;
+  /** 官方消息字段随版本漂移，未列出的字段透传；取值时用 String/Number 归一 */
+  [key: string]: any;
+}
+
+/** 私信会话列表的原始 wire 结构（message/api/v1/user/message/list） */
+export interface PrivateConversationWire {
+  targetUserId?: string | number;
+  userId?: string | number;
+  userMessageId?: string | number;
+  lastTime?: number;
+  msgTime?: number;
+  newestMessage?: string;
+  newestMessagetime?: number;
+  noreadNum?: number | string;
+  user?: {
+    userId?: string | number;
+    nickname?: string;
+    nickName?: string;
+    starName?: string;
+    realNickName?: string;
+    avatar?: string;
+    teamName?: string;
+    groupName?: string;
+    isStar?: boolean;
+    teamLogo?: string;
+    [key: string]: any;
+  };
+  [key: string]: any;
+}
+
+/** 私信消息的原始 wire 结构（message/api/v1/user/message/info） */
+export interface PrivateMessageWire {
+  id?: string | number;
+  msgId?: string | number;
+  messageId?: string | number;
+  uuid?: string;
+  msgTime?: number;
+  messageTime?: number;
+  ctime?: number;
+  time?: number;
+  fromUserId?: string | number;
+  senderUserId?: string | number;
+  toUserId?: string | number;
+  targetUserId?: string | number;
+  text?: string;
+  message?: string;
+  msgContent?: string;
+  body?: unknown;
+  bodys?: unknown;
+  msgType?: string | number;
+  messageType?: string | number;
+  extInfo?: unknown;
+  user?: Record<string, any>;
+  [key: string]: any;
+}
+
+/** 成员库/关注列表的松散摘要（id 可能是 id / userId / memberId / account） */
+export interface MemberSummary {
+  id?: string | number;
+  userId?: string | number;
+  memberId?: string | number;
+  account?: string | number;
+  ownerName?: string;
+  nickName?: string;
+  nickname?: string;
+  avatar?: string;
+  channelId?: string;
+  serverId?: string;
+  yklzId?: string;
+  team?: string;
+  groupName?: string;
+  [key: string]: any;
+}
+
+/** B 站扫码登录后的用户信息（LoginScreen 写入；未登录为 null） */
+export interface BilibiliUserInfo {
+  mid: string;
+  uname: string;
+  face: string;
 }
 
 export interface MusicItem {
@@ -307,7 +454,7 @@ export interface AppSettings {
   /** 登录/请求身份：pocket48 = 口袋48 客户端身份，seine48 = 塞纳河48 客户端身份（appInfo/UA 不同） */
   p48ClientProfile: 'pocket48' | 'seine48';
   bilibiliCookie: string;
-  bilibiliUserInfo: any;
+  bilibiliUserInfo: BilibiliUserInfo | null;
   msg_sort_order: 'asc' | 'desc';
   yaya_followed_custom_order: string[];
   yaya_music_play_mode: 'sequential' | 'random' | 'single';

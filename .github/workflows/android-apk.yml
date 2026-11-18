@@ -63,7 +63,16 @@ jobs:
           echo "ANDROID_HOME=$SDK"
 
       - name: Install deps
-        run: npm ci --no-audit --no-fund --legacy-peer-deps || npm install --no-audit --no-fund --legacy-peer-deps
+        # 锁文件不一致必须让流水线失败，禁止 `|| npm install` 静默漂移依赖版本。
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
+
+      # 出包分支不能绕过质量门禁：在编译前强制执行 lint/format/typecheck/核心测试。
+      - name: Quality gate
+        run: |
+          npm run lint
+          npm run format:check
+          npm run typecheck
+          npm run test:core
 
       # 渠道必须由构建期写入：私有出包仓库 → plus，公开仓库 → public。
       # 漏掉这一步会让 plus 包按公开渠道运行（权限功能全关、应用内更新被打开）。
@@ -97,10 +106,12 @@ jobs:
         env:
           RELEASE_STORE_BASE64: ${{ secrets.RELEASE_STORE_BASE64 }}
         run: |
-          if [ -n "$RELEASE_STORE_BASE64" ]; then
-            echo "$RELEASE_STORE_BASE64" | base64 --decode > android/app/release.keystore
-            echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android/app/release.keystore" >> "$GITHUB_ENV"
+          if [ -z "$RELEASE_STORE_BASE64" ]; then
+            echo "::error::RELEASE_STORE_BASE64 secret is required; refusing to build a debug-signed/unsigned release APK."
+            exit 1
           fi
+          echo "$RELEASE_STORE_BASE64" | base64 --decode > android/app/release.keystore
+          echo "RELEASE_STORE_FILE=$GITHUB_WORKSPACE/android/app/release.keystore" >> "$GITHUB_ENV"
 
       - name: Assemble release APK
         working-directory: android
@@ -112,6 +123,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease \
+            -Pyaya.requireReleaseSigning=true \
             -Pyaya.abis="$ABIS" \
             -Pyaya.universal="$UNIVERSAL" \
             -Dorg.gradle.parallel=false \

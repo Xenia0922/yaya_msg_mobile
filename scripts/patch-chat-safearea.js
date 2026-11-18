@@ -40,7 +40,8 @@ if (!src.includes('SafeAreaInsetsContext')) {
 }
 
 // 2) 用 insets context 替换 provider
-const providerRe = /<SafeAreaProvider initialMetrics=\{INITIAL_SAFE_AREA_METRICS\}>([\s\S]*?)<\/SafeAreaProvider>/;
+const providerRe =
+  /<SafeAreaProvider initialMetrics=\{INITIAL_SAFE_AREA_METRICS\}>([\s\S]*?)<\/SafeAreaProvider>/;
 if (!providerRe.test(src)) {
   console.log('[patch-chat-safearea] 未找到 SafeAreaProvider 用法（库版本可能变了），未修改');
   process.exit(1);

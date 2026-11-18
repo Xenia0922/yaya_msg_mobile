@@ -2,7 +2,7 @@ type JsonValue = any;
 
 /**
  * 带超时的 fetch 封装（Hermes 兼容）。
- * 注意：不能用 AbortSignal.timeout() —— 该 API 在 React Native Hermes 中不存在，
+ * 注意：不能用 AbortSignal.timeout —— 该 API 在 React Native Hermes 中不存在，
  * 调用会抛 "undefined is not a function"（历史教训：曾导致音乐库/弹幕 LRC/歌词/成员库全部静默失败）。
  */
 export function fetchWithTimeout(
@@ -20,10 +20,40 @@ export function fetchWithTimeout(
     if (ext.aborted) controller.abort();
     else ext.addEventListener('abort', onExtAbort, { once: true });
   }
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+  const cleanup = () => {
     clearTimeout(timer);
     if (ext) ext.removeEventListener('abort', onExtAbort);
-  });
+  };
+  return fetch(url, { ...options, signal: controller.signal })
+    .then((res) => {
+      // 超时必须覆盖响应体读取，而不只是响应头：服务器常常先返回 200，
+      // 随后长时间不发送 body；旧实现 fetch resolve 后立刻清 timer，
+      // 调用方 await res.text/arrayBuffer 会永久挂起。
+      const bodyMethods = new Set(['text', 'json', 'arrayBuffer', 'blob', 'formData']);
+      return new Proxy(res, {
+        get(target, prop) {
+          // 必须用 target 作为 receiver：Node/undici 的 Response 属性是原生 getter，
+          // 传入 Proxy 会抛 "Cannot read private member #state..."（RN 的 whatwg-fetch
+          // 恰好把属性做成自有属性，所以只在部分环境暴露）。
+          const value = Reflect.get(target, prop, target);
+          if (typeof prop === 'string' && bodyMethods.has(prop)) {
+            return async (...args: unknown[]) => {
+              try {
+                return await (value as (...a: unknown[]) => Promise<unknown>).apply(target, args);
+              } finally {
+                cleanup();
+              }
+            };
+          }
+          // 其他方法（clone 等）也绑定到真实 Response，避免 this 指向 Proxy。
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    })
+    .catch((error) => {
+      cleanup();
+      throw error;
+    });
 }
 
 interface RequestOptions {
@@ -127,11 +157,12 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
       const res = await fetch(url, {
         method,
         headers,
-        body: method === 'POST'
-          ? options.bodyType === 'raw'
-            ? String(options.body ?? '')
-            : JSON.stringify(options.body ?? {})
-          : undefined,
+        body:
+          method === 'POST'
+            ? options.bodyType === 'raw'
+              ? String(options.body ?? '')
+              : JSON.stringify(options.body ?? {})
+            : undefined,
         // ⚠️ 必须始终用内部 controller.signal：超时（setTimeout → controller.abort）挂的是它。
         // 此前写成 `options.signal ?? controller.signal`，一旦调用方传了外部 signal，
         // 内部 controller 的 signal 就没挂到 fetch 上 → **超时彻底失效，请求可永久挂起**。
@@ -139,7 +170,7 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
         signal: controller.signal,
       });
 
-      clearTimeout(timer);
+      // 不清 timer：响应体可能迟迟不到，超时必须覆盖 res.text 的等待。
       const text = await res.text();
       const body = parseResponse(text);
 
@@ -171,7 +202,8 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
       throw error;
     } finally {
       // ⚠️ 清理统一放 finally：此前只在成功路径移除 abort 监听，失败/超时路径会残留 →
-      // 长生命周期的外部 signal 反复请求会持续累积监听（内存泄漏，2026-10-03 修复）
+      // 长生命周期的外部 signal 反复请求会持续累积监听（内存泄漏， 修复）
+      clearTimeout(timer);
       if (extAbort && options.signal) options.signal.removeEventListener('abort', extAbort);
       if (shareable) inflight.delete(key);
     }
@@ -188,7 +220,12 @@ function fetchJson<T>(url: string, cacheTtl = 0): Promise<T> {
   return requestJson<T>(url, { method: 'GET', timeout: 10000, cacheTtl });
 }
 
-function xhrPost(url: string, data: any, headers: Record<string, string>, timeout = 15000): Promise<any> {
+function xhrPost(
+  url: string,
+  data: any,
+  headers: Record<string, string>,
+  timeout = 15000,
+): Promise<any> {
   return requestJson(url, {
     method: 'POST',
     body: data,

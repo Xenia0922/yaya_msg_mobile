@@ -5,11 +5,19 @@ import vm from 'node:vm';
 
 const ts = createRequire(import.meta.url)('typescript');
 const source = readFileSync(new URL('../src/utils/data.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText;
 const htmlSrc = readFileSync(new URL('../src/utils/html.ts', import.meta.url), 'utf8');
 const htmlMod = { exports: {} };
-vm.runInNewContext(ts.transpileModule(htmlSrc, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module: htmlMod, exports: htmlMod.exports });
-const sandbox = { exports: {}, require: (n) => (n === './html' ? htmlMod.exports : { translate: (s) => s }) };
+vm.runInNewContext(
+  ts.transpileModule(htmlSrc, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
+  { module: htmlMod, exports: htmlMod.exports },
+);
+const sandbox = {
+  exports: {},
+  require: (n) => (n === './html' ? htmlMod.exports : { translate: (s) => s }),
+};
 vm.runInNewContext(compiled, sandbox);
 const { messagePayload, messageText, humanizeRawMessageText } = sandbox.exports;
 
@@ -58,4 +66,28 @@ assert.equal(humanizeRawMessageText(replyBody), '超孝子佳霞！先突破4强
 assert.equal(humanizeRawMessageText('普通文本'), '普通文本');
 assert.equal(humanizeRawMessageText('{坏JSON'), '{坏JSON');
 
-console.log('房间 REPLY 消息解析（推送/轮询/复制）测试通过');
+// 礼物回复（GIFTREPLY / AUDIO_GIFT_REPLY）带语音解析
+const giftReplyAudioBody = JSON.stringify({
+  messageType: 'AUDIO_GIFT_REPLY',
+  giftReplyInfo: {
+    replyName: '柠檬茴香',
+    replyText: '送给 周文迪 1个琴音生花',
+    voiceUrl: '/voice/2026/11/16/zwd_flower.m4a',
+    duration: '5',
+    replyGiftInfo: {
+      giftName: '琴音生花',
+      giftNum: 1,
+      picPath: '/mediasource/gift/flower.png',
+    },
+  },
+});
+const giftReplyMsg = {
+  msgType: 'GIFTREPLY',
+  bodys: giftReplyAudioBody,
+};
+const giftPayload = messagePayload(giftReplyMsg);
+assert.ok(giftPayload.giftReplyInfo, 'giftReplyInfo 应被成功解析');
+assert.equal(giftPayload.giftReplyInfo.replyName, '柠檬茴香');
+assert.equal(giftPayload.giftReplyInfo.voiceUrl, '/voice/2026/11/16/zwd_flower.m4a');
+
+console.log('房间 REPLY / GIFTREPLY 消息解析（推送/轮询/复制/语音礼物回复）测试通过');

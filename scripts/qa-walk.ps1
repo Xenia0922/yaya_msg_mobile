@@ -4,8 +4,10 @@ param(
   [Parameter(Mandatory=$false)][int]$Wait = 3,
   [Parameter(Mandatory=$false)][string]$Device = "127.0.0.1:16384"
 )
-$adb = "D:\Program Files\Netease\MuMuPlayer\nx_main\adb.exe"
-$qa = "E:\yymsg\yaya_msg_mobile\scratch\qa"
+# 跨平台：优先 YAYA_ADB，其次 PATH 中的 adb（MuMu 等模拟器可用 YAYA_ADB 指到自带 adb）。
+$adb = if ($env:YAYA_ADB) { $env:YAYA_ADB } else { 'adb' }
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$qa = if ($env:YAYA_QA_DIR) { $env:YAYA_QA_DIR } else { Join-Path $repoRoot 'scratch\qa' }
 New-Item -ItemType Directory -Force -Path $qa | Out-Null
 if ($Tap) {
   $xy = $Tap -split ','
@@ -17,4 +19,4 @@ Start-Sleep -Seconds $Wait
 & $adb -s $Device shell uiautomator dump /sdcard/qa.xml | Out-Null
 & $adb -s $Device pull /sdcard/qa.xml "$qa\$Name.xml" | Out-Null
 Write-Host "=== [$Name] screenshot + dump captured ==="
-node "E:\yymsg\yaya_msg_mobile\scripts\qa-check.js" "$qa\$Name.xml" 2>&1 | Select-Object -First 40
+node (Join-Path $PSScriptRoot 'qa-check.js') "$qa\$Name.xml" 2>&1 | Select-Object -First 40

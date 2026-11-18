@@ -2,9 +2,9 @@
  * 统一状态组件 —— 空态 / 错误态（含重试）
  *
  * 设计原则：
- *   - 空态：居中小图标 + 标题 + 可选说明 + 可选操作按钮；
- *   - 错误态：警示图标 + 错误信息 + 「重试」主按钮；
- *   - 全主题化（usePalette），操作按钮复用统一 Button 组件。
+ * - 空态：居中小图标 + 标题 + 可选说明 + 可选操作按钮；
+ * - 错误态：警示图标 + 错误信息 + 「重试」主按钮；
+ * - 全主题化（usePalette），操作按钮复用统一 Button 组件。
  */
 import React from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
@@ -25,18 +25,39 @@ interface StateViewProps {
   error?: boolean;
 }
 
-export function StateView({ icon, title, hint, actionLabel, onAction, style, error }: StateViewProps) {
+export function StateView({
+  icon,
+  title,
+  hint,
+  actionLabel,
+  onAction,
+  style,
+  error,
+}: StateViewProps) {
   const palette = usePalette();
   const { t } = useI18n();
   const glyph = icon || (error ? 'alert-circle-outline' : 'file-search-outline');
   return (
     <View style={[styles.wrap, style]}>
-      <View style={[styles.iconWrap, { backgroundColor: error ? 'rgba(255,59,48,0.12)' : palette.tintSoft }]}>
-        <MaterialCommunityIcons name={glyph} size={34} color={error ? palette.danger : palette.tint} />
+      <View
+        style={[
+          styles.iconWrap,
+          { backgroundColor: error ? 'rgba(255,59,48,0.12)' : palette.tintSoft },
+        ]}
+      >
+        <MaterialCommunityIcons
+          name={glyph}
+          size={34}
+          color={error ? palette.danger : palette.tint}
+        />
       </View>
-      <Text style={[typography.headline, { color: palette.label, textAlign: 'center' }]}>{title}</Text>
+      <Text style={[typography.headline, { color: palette.label, textAlign: 'center' }]}>
+        {title}
+      </Text>
       {hint ? (
-        <Text style={[typography.footnote, styles.hint, { color: palette.labelSecondary }]}>{hint}</Text>
+        <Text style={[typography.footnote, styles.hint, { color: palette.labelSecondary }]}>
+          {hint}
+        </Text>
       ) : null}
       {actionLabel && onAction ? (
         <View style={styles.actionWrap}>

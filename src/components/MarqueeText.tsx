@@ -3,17 +3,27 @@
  *
  * 需求：标题/歌词单行显示；放不下时自动循环滚动，放得下静止；任何分辨率/字号都不能靠猜。
  *
- * 实现（2026-10-18 第三次重写，前两版均失败）：
- *  - **测量**：用一条不可见的横向 ScrollView 装同样文本，`onContentSizeChange` 拿到的是
- *    文本的真实内容宽（横向滚动视图不会把子节点压到容器宽）。上一版用「绝对定位 Text」
- *    量宽，在 Android 上仍会被父容器约束，量到的就是容器宽 → 永远判定「不需要滚」，
- *    这正是「歌词不滚动」的根因。
- *  - **动画**：可见层用 Animated.View 平移（JS 驱动，可 setValue 复位），
- *    dist = 文本宽 - 容器宽 + 间隙；两份文本接续形成无缝循环。
- *  - 可见文本 `ellipsizeMode="clip"`，滚动过程不会出现「…」。
+ * 实现（第三次重写，前两版均失败）：
+ * - **测量**：用一条不可见的横向 ScrollView 装同样文本，`onContentSizeChange` 拿到的是
+ * 文本的真实内容宽（横向滚动视图不会把子节点压到容器宽）。上一版用「绝对定位 Text」
+ * 量宽，在 Android 上仍会被父容器约束，量到的就是容器宽 → 永远判定「不需要滚」，
+ * 这正是「歌词不滚动」的根因。
+ * - **动画**：可见层用 Animated.View 平移（JS 驱动，可 setValue 复位），
+ * dist = 文本宽 - 容器宽 + 间隙；两份文本接续形成无缝循环。
+ * - 可见文本 `ellipsizeMode="clip"`，滚动过程不会出现「…」。
  */
 import React from 'react';
-import { Animated, Easing, ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  Animated,
+  Easing,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 
 export interface MarqueeTextProps {
   text: string;
@@ -48,7 +58,8 @@ export function MarqueeText({
     const flat = (StyleSheet.flatten(style) || {}) as TextStyle;
     const fs = Number(flat.fontSize) || 13;
     let width = 0;
-    for (const ch of text) width += /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]/.test(ch) ? fs : fs * 0.55;
+    for (const ch of text)
+      width += /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]/.test(ch) ? fs : fs * 0.55;
     return Math.round(width);
   }, [textW, text, style]);
 
@@ -68,7 +79,12 @@ export function MarqueeText({
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(pause),
-        Animated.timing(x, { toValue: -dist, duration, easing: Easing.linear, useNativeDriver: false }),
+        Animated.timing(x, {
+          toValue: -dist,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: false,
+        }),
         Animated.delay(280),
         Animated.timing(x, { toValue: 0, duration: 0, useNativeDriver: false }),
       ]),
@@ -111,7 +127,11 @@ export function MarqueeText({
           {text}
         </Text>
         {overflow ? (
-          <Text numberOfLines={1} ellipsizeMode="clip" style={[style, styles.text, { marginLeft: gap }]}>
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="clip"
+            style={[style, styles.text, { marginLeft: gap }]}
+          >
             {text}
           </Text>
         ) : null}

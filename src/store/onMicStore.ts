@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import pocketApi from '../api/pocket48';
 import { logInfo, logWarn } from '../utils/runtimeLog';
 import { hydrateRoomMap, getRoomMapEntry } from '../services/roomMapCache';
+import type { VoiceEvent } from '../services/pocketNim/voiceEvent';
 
 /** 上麦快照持久化 key：冷启动先展示旧结果，后台再增量重扫 */
 const SNAPSHOT_KEY = 'yaya_onmic_snapshot_v1';
@@ -15,7 +16,7 @@ export interface OnMicMemberInput {
   smallChannelId?: string;
   /** 成员状态分类（官方源优先） */
   state?: string;
-  
+
   isInGroup?: boolean;
 }
 
@@ -40,6 +41,8 @@ export interface OnMicEntry {
 interface OnMicState {
   /** 以 memberId 为键的上麦成员表 */
   onMic: Record<string, OnMicEntry>;
+  /** VOICE_OPERATE 的房间级语聊状态（key = serverId:channelId） */
+  voiceRooms: Record<string, boolean>;
   scanning: boolean;
   lastScan: number;
   /** 本轮扫描任务总数（大/小房间各算一个，供内部进度） */
@@ -53,6 +56,8 @@ interface OnMicState {
   /** 快照年龄（毫秒）：>0 表示当前数据来自快照恢复 */
   snapshotAgeMs?: number;
   scan: (members: OnMicMemberInput[], opts?: { force?: boolean }) => Promise<void>;
+  /** 官方 TEAM_VOICE 事件：直接增删当前房间在麦成员，不等待全量扫描 */
+  applyVoiceEvent: (event: VoiceEvent) => void;
   clear: () => void;
 }
 
@@ -69,9 +74,9 @@ const SCAN_STUCK_MS = 90 * 1000;
  * 把两轮的进度混在一起（`done` 双计数）。
  *
  * 现在每轮拿一个独立的 round 对象，worker 闭包捕获**自己那一轮**的对象：
- *   - 心跳只刷自己轮的 lastProgress（不会替别的轮续命）
- *   - 看门狗只置自己轮的 aborted（只中止该死的那一轮，不误伤新一轮）
- *   - 进度 set / 结果 set 前都先校验 `isCurrent(round)`，旧轮一律作废不写 state
+ * - 心跳只刷自己轮的 lastProgress（不会替别的轮续命）
+ * - 看门狗只置自己轮的 aborted（只中止该死的那一轮，不误伤新一轮）
+ * - 进度 set / 结果 set 前都先校验 `isCurrent(round)`，旧轮一律作废不写 state
  */
 interface ScanRound {
   id: number;
@@ -90,7 +95,6 @@ const REQUEST_GAP_MS = 20;
 
 let snapshotHydrated = false;
 
-
 function normChannelId(value: any): string {
   const v = String(value || '').trim();
   return /^\d+$/.test(v) && v !== '0' ? v : '';
@@ -108,7 +112,6 @@ interface ScanTask {
   smallChannelId: string;
 }
 
-
 function buildScanTasks(members: OnMicMemberInput[]): ScanTask[] {
   const tasks: ScanTask[] = [];
   const seen = new Set<string>();
@@ -120,13 +123,24 @@ function buildScanTasks(members: OnMicMemberInput[]): ScanTask[] {
     const big = normChannelId(m.channelId) || normChannelId(cached?.channelId);
     const small = normChannelId(m.smallChannelId) || normChannelId(cached?.yklzId);
     const serverId = String(m.serverId || cached?.serverId || '').trim();
-    const pairs: [string, 'big' | 'small'][] = [[big, 'big'], [small, 'small']];
+    const pairs: [string, 'big' | 'small'][] = [
+      [big, 'big'],
+      [small, 'small'],
+    ];
     for (const [channelId, roomType] of pairs) {
       if (!channelId) continue;
       const key = `${serverId}:${channelId}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      tasks.push({ memberId: m.memberId, name, serverId, channelId, roomType, bigChannelId: big, smallChannelId: small });
+      tasks.push({
+        memberId: m.memberId,
+        name,
+        serverId,
+        channelId,
+        roomType,
+        bigChannelId: big,
+        smallChannelId: small,
+      });
     }
   }
   return tasks;
@@ -134,15 +148,16 @@ function buildScanTasks(members: OnMicMemberInput[]): ScanTask[] {
 
 /**
  * v2.7.4 上麦扫描（语义：全部成员房间电台探测）：
- *  - 上麦 ≠ 口袋直播（liveList 是直播列表，与房间语音无关），只认 voice/operate 返回。
- *  - 快照优先：冷启动先恢复上次上麦结果（秒显），再后台重扫。
- *  - 预算制增量：非强制扫描每轮只探测「最久未探测」的 1/3（至少 40 位），
- *    降低服务端压力（原全量 505 人/轮）；强制扫描（进页）仍全量。
- *  - 大房间无声时补测小房间（yklzId），小房间有音则标记 smallVoice，播放页默认切小房间。
- *  - 60s 节流 + scanning 防重入。
+ * - 上麦 ≠ 口袋直播（liveList 是直播列表，与房间语音无关），只认 voice/operate 返回。
+ * - 快照优先：冷启动先恢复上次上麦结果（秒显），再后台重扫。
+ * - 预算制增量：非强制扫描每轮只探测「最久未探测」的 1/3（至少 40 位），
+ * 降低服务端压力（原全量 505 人/轮）；强制扫描（进页）仍全量。
+ * - 大房间无声时补测小房间（yklzId），小房间有音则标记 smallVoice，播放页默认切小房间。
+ * - 60s 节流 + scanning 防重入。
  */
 export const useOnMicStore = create<OnMicState>((set, get) => ({
   onMic: {},
+  voiceRooms: {},
   scanning: false,
   lastScan: 0,
   total: 0,
@@ -154,7 +169,7 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
     if (!allMembers || allMembers.length === 0) return;
     // ⚠️【扫描死锁修复】节流必须在 set({scanning:true}) 之前判断并返回。
     // 旧写法先置 scanning 再判节流，节流 return 时 scanning 留在 true 且无人复位 →
-    // 之后的每次扫描（含头部「刷新」以外的自动刷新）都被 if (get().scanning) return 拦死，
+    // 之后的每次扫描（含头部「刷新」以外的自动刷新）都被 if (get.scanning) return 拦死，
     // 页面永久停「扫描中…」、一位成员都扫不出来。上麦页 60s 定时器与 SCAN_INTERVAL 同为 60s，
     // 极易命中该窗口 → 表现为「有概率扫不出来 / 偶尔一直转圈」。
     const last = get().lastScan;
@@ -166,7 +181,10 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
       const prevStuck = !prev || Date.now() - prev.lastProgress > SCAN_STUCK_MS;
       if (prevStuck) {
         if (prev) {
-          logWarn(`[onMic] 上次扫描疑似卡死（${Math.round((Date.now() - prev.lastProgress) / 1000)}s 无进展），中止该轮后重扫`, 'onMic');
+          logWarn(
+            `[onMic] 上次扫描疑似卡死（${Math.round((Date.now() - prev.lastProgress) / 1000)}s 无进展），中止该轮后重扫`,
+            'onMic',
+          );
           prev.aborted = true;
         }
         set({ scanning: false });
@@ -182,7 +200,7 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
          * 头部「刷新」同样会被丢掉 → 怎么点都没反应。
          *
          * 现在：显式 force 一律中止在飞轮次并立刻接手（worker 会在下一次
-         * `isCurrent()` 检查时退出，不会与新轮抢 cursor）。
+         * `isCurrent` 检查时退出，不会与新轮抢 cursor）。
          */
         logInfo('[onMic] 强制扫描：中止在飞的上一轮并立即重扫', 'onMic');
         prev.aborted = true;
@@ -202,18 +220,23 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
         const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          const entries: Record<string, OnMicEntry> = (parsed?.entries && typeof parsed.entries === 'object')
-            ? parsed.entries : {};
+          const entries: Record<string, OnMicEntry> =
+            parsed?.entries && typeof parsed.entries === 'object' ? parsed.entries : {};
           const savedAt = Number(parsed?.savedAt || 0);
           const ageMs = savedAt ? Date.now() - savedAt : 0;
           if (Object.keys(entries).length) {
             set({ onMic: entries, snapshotAgeMs: ageMs >= 0 ? ageMs : 0 });
-            logInfo(`[onMic] 快照恢复上麦成员 ${Object.keys(entries).length} 位（${Math.round(Math.max(ageMs, 0) / 60000)} 分钟前）`, 'onMic');
+            logInfo(
+              `[onMic] 快照恢复上麦成员 ${Object.keys(entries).length} 位（${Math.round(Math.max(ageMs, 0) / 60000)} 分钟前）`,
+              'onMic',
+            );
           }
         }
       } catch {
         // 快照损坏忽略
       }
+      // 快照读取期间可能已被 clear/新一轮扫描取代：旧轮不得继续写状态（P2-P7）。
+      if (currentRound !== round || round.aborted) return;
     }
     set({ scanning: true, total: 0, done: 0 });
     const updates: Record<string, OnMicEntry> = {};
@@ -221,6 +244,8 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
     let uniq: OnMicMemberInput[] = [];
     try {
       await hydrateRoomMap();
+      // 等待缓存期间可能已被 clear/新一轮扫描取代；旧轮不能继续写 scanning/total。
+      if (currentRound !== round || round.aborted) return;
       uniq = allMembers.filter(
         (m, i, arr) => arr.findIndex((x) => x.memberId === m.memberId) === i,
       );
@@ -256,7 +281,10 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
       set({ total: queue.length, memberTotal: uniq.length });
 
       // 成员级统计：仅当某成员的全部任务都成功返回且都没有流 → 才允许从列表移除（防网络抖动误清）
-      const stat = new Map<string, { done: number; total: number; onAir: boolean; failed: number }>();
+      const stat = new Map<
+        string,
+        { done: number; total: number; onAir: boolean; failed: number }
+      >();
       for (const t of queue) {
         const st = stat.get(t.memberId) || { done: 0, total: 0, onAir: false, failed: 0 };
         st.total += 1;
@@ -290,14 +318,21 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
           const t = queue[cursor++];
           const st = stat.get(t.memberId)!;
           try {
-            const res: any = await pocketApi.operateRoomVoice({ channelId: t.channelId, serverId: t.serverId });
+            const res: any = await pocketApi.operateRoomVoice({
+              channelId: t.channelId,
+              serverId: t.serverId,
+            });
             const content = res?.content || (res?.data && res.data.content) || {};
             if (!sampleLogged) {
               sampleLogged = true;
-              logInfo(`[onMic] voice/operate 返回结构（${t.name} ch=${t.channelId} srv=${t.serverId}）：${JSON.stringify(res).slice(0, 700)}`, 'onMic');
+              logInfo(
+                `[onMic] voice/operate 返回结构（${t.name} ch=${t.channelId} srv=${t.serverId}）：${JSON.stringify(res).slice(0, 700)}`,
+                'onMic',
+              );
             }
             const voiceList = Array.isArray(content?.voiceUserList) ? content.voiceUserList : null;
-            const activeVoice = !!voiceList && voiceList.some((u: any) => u && u.voiceStatus !== false);
+            const activeVoice =
+              !!voiceList && voiceList.some((u: any) => u && u.voiceStatus !== false);
             const streamUrl = String(content?.streamUrl || '');
             const onAir = !!streamUrl && (!voiceList || activeVoice);
             st.done += 1;
@@ -314,7 +349,9 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
                   serverId: t.serverId,
                   smallChannelId: t.smallChannelId,
                   hasRadio: true,
-                  onMicCount: voiceList ? voiceList.filter((u: any) => u && u.voiceStatus !== false).length : 0,
+                  onMicCount: voiceList
+                    ? voiceList.filter((u: any) => u && u.voiceStatus !== false).length
+                    : 0,
                   smallVoice: isSmall || undefined,
                   streamUrl: streamUrl || undefined,
                   updatedAt: Date.now(),
@@ -322,7 +359,10 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
                 updates[t.memberId] = entry;
                 // 发现即上屏：不等整轮扫描结束，立即写进列表
                 set((snap) => ({ onMic: { ...snap.onMic, [t.memberId]: entry } }));
-                logInfo(`[onMic] ${t.name} 上麦中（${isSmall ? '小' : '大'}房间）ch=${t.channelId} srv=${t.serverId}`, 'onMic');
+                logInfo(
+                  `[onMic] ${t.name} 上麦中（${isSmall ? '小' : '大'}房间）ch=${t.channelId} srv=${t.serverId}`,
+                  'onMic',
+                );
               }
             }
           } catch {
@@ -340,19 +380,26 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
           }
         }
       };
-      const workers = Array.from({ length: Math.min(SCAN_CONCURRENCY, queue.length) }, () => worker());
+      const workers = Array.from({ length: Math.min(SCAN_CONCURRENCY, queue.length) }, () =>
+        worker(),
+      );
       await Promise.all(workers);
       flushDone(true);
       // 仅移除「全部任务成功且都没有流」的成员；失败/部分成功的保留旧状态
       stat.forEach((v, id) => {
         if (v.failed === 0 && v.done >= v.total && !v.onAir) removable.add(id);
       });
-      logInfo(`[onMic] 扫描完成：任务 ${queue.length} 个 / ${uniq.length} 位成员，上麦 ${Object.keys(updates).length} 位，确认无声 ${removable.size} 位${opts.force ? '（全量）' : '（增量）'}`, 'onMic');
+      logInfo(
+        `[onMic] 扫描完成：任务 ${queue.length} 个 / ${uniq.length} 位成员，上麦 ${Object.keys(updates).length} 位，确认无声 ${removable.size} 位${opts.force ? '（全量）' : '（增量）'}`,
+        'onMic',
+      );
       set((snap) => {
         // 本轮已被看门狗中止 / 已被新轮取代：结果作废，不要覆盖新轮的状态与进度
         if (!isCurrent()) return snap;
         const next: Record<string, OnMicEntry> = { ...snap.onMic };
-        removable.forEach((id) => { if (!(id in updates)) delete next[id]; });
+        removable.forEach((id) => {
+          if (!(id in updates)) delete next[id];
+        });
         Object.assign(next, updates);
         return {
           onMic: next,
@@ -369,15 +416,83 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
       // 仅当仍是活跃轮才复位 —— 否则新轮刚开始就被旧轮的异常路径把 scanning 清掉了。
       if (currentRound === round && !round.aborted) set({ scanning: false });
     }
-    // 无论成功失败都持久化当前结果（含快照恢复后的首次空结果）
-    try {
-      await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
-        entries: get().onMic,
-        savedAt: Date.now(),
-      }));
-    } catch {
-      // 持久化失败忽略
+    // 无论成功失败都持久化当前结果（含快照恢复后的首次空结果）。
+    // 仅活跃轮才写盘：clear/看门狗/新轮接管后，旧轮不得用过期结果覆盖快照（P2-P7）。
+    if (currentRound === round && !round.aborted) {
+      try {
+        await AsyncStorage.setItem(
+          SNAPSHOT_KEY,
+          JSON.stringify({
+            entries: get().onMic,
+            savedAt: Date.now(),
+          }),
+        );
+      } catch {
+        // 持久化失败忽略
+      }
     }
   },
-  clear: () => set({ onMic: {}, scanning: false, lastScan: 0, total: 0, memberTotal: 0, done: 0, probedAt: {}, snapshotAgeMs: undefined }),
+  applyVoiceEvent: (event) => {
+    if (event.kind === 'room') {
+      set((snap) => ({
+        voiceRooms: {
+          ...snap.voiceRooms,
+          [`${event.serverId}:${event.channelId}`]: !!event.active,
+        },
+      }));
+      return;
+    }
+    set((snap) => {
+      const next = { ...snap.onMic };
+      const removeChannelEntries = event.operateType === 'closeVoice' && !event.users.length;
+      if (removeChannelEntries) {
+        for (const [id, entry] of Object.entries(next)) {
+          if (
+            entry.serverId === event.serverId &&
+            (entry.channelId === event.channelId || entry.smallChannelId === event.channelId)
+          ) {
+            delete next[id];
+          }
+        }
+      }
+      for (const user of event.users) {
+        if (
+          !user.micState ||
+          event.operateType === 'downVoice' ||
+          event.operateType === 'closeVoice'
+        ) {
+          delete next[user.userId];
+          continue;
+        }
+        next[user.userId] = {
+          memberId: user.userId,
+          name: user.nickname,
+          channelId: event.channelId,
+          serverId: event.serverId,
+          smallChannelId: '',
+          hasRadio: !!event.streamUrl,
+          onMicCount: 1,
+          streamUrl: event.streamUrl || undefined,
+          updatedAt: Date.now(),
+        };
+      }
+      return { onMic: next, lastScan: Date.now(), snapshotAgeMs: 0 };
+    });
+  },
+  clear: () => {
+    // 中止在飞轮次：否则 clear 后旧 worker 仍可能把结果写回来（P2: currentRound.aborted 未清）。
+    if (currentRound) currentRound.aborted = true;
+    currentRound = null;
+    set({
+      onMic: {},
+      voiceRooms: {},
+      scanning: false,
+      lastScan: 0,
+      total: 0,
+      memberTotal: 0,
+      done: 0,
+      probedAt: {},
+      snapshotAgeMs: undefined,
+    });
+  },
 }));

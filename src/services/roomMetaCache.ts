@@ -38,7 +38,7 @@ export async function loadRoomMetaCache(): Promise<Record<string, RoomMeta>> {
     try {
       const raw = await AsyncStorage.getItem(KEY);
       const parsed = raw ? JSON.parse(raw) : {};
-      cache = parsed && typeof parsed === 'object' ? (parsed as Record<string, RoomMeta>) : {};
+      cache = parsed && typeof parsed === 'object' ? trim(parsed as Record<string, RoomMeta>) : {};
     } catch {
       cache = {};
     }
@@ -58,6 +58,8 @@ export function setRoomMetaCached(channelId: string, meta: RoomMeta) {
   // 重新插入以更新「最近使用」顺序
   delete cache[channelId];
   cache[channelId] = { name: meta.name || '', bg: meta.bg || '' };
+  // 内存 Map 同样要限流，否则长时间运行会随进房次数无限增长；落盘快照也会 trim。
+  if (Object.keys(cache).length > MAX_ENTRIES) cache = trim(cache);
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;

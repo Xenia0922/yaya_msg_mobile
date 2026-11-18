@@ -10,9 +10,14 @@ const androidDir = path.join(projectRoot, 'android');
 const apkOutputDir = path.join('E:/yymsg/APK');
 const pkg = require(path.join(projectRoot, 'package.json'));
 let branch = '';
-try { branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot }).toString().trim(); } catch {}
-const requestedFlavor = String(process.env.YAYA_FLAVOR || (branch === 'plus' ? 'plus' : 'public')).trim().toLowerCase();
-if (!['plus', 'public'].includes(requestedFlavor)) throw new Error('YAYA_FLAVOR 必须为 plus 或 public');
+try {
+  branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot }).toString().trim();
+} catch {}
+const requestedFlavor = String(process.env.YAYA_FLAVOR || (branch === 'plus' ? 'plus' : 'public'))
+  .trim()
+  .toLowerCase();
+if (!['plus', 'public'].includes(requestedFlavor))
+  throw new Error('YAYA_FLAVOR 必须为 plus 或 public');
 const FLAVOR = requestedFlavor === 'plus' ? 'plus' : '';
 const { writeBuildChannel, channelFile } = require('./write-build-channel');
 const originalChannel = fs.readFileSync(channelFile, 'utf8');
@@ -26,8 +31,16 @@ const gradleCmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 const extraProps = [
   process.env.YAYA_ABIS ? `-Pyaya.abis=${process.env.YAYA_ABIS}` : '',
   process.env.YAYA_UNIVERSAL ? `-Pyaya.universal=${process.env.YAYA_UNIVERSAL}` : '',
-].filter(Boolean).join(' ');
-const gradleArgs = ['assembleRelease', '--max-workers=1', '-Dorg.gradle.daemon=true', '-Dorg.gradle.parallel=false', extraProps]
+]
+  .filter(Boolean)
+  .join(' ');
+const gradleArgs = [
+  'assembleRelease',
+  '--max-workers=1',
+  '-Dorg.gradle.daemon=true',
+  '-Dorg.gradle.parallel=false',
+  extraProps,
+]
   .filter(Boolean)
   .join(' ');
 if (extraProps) console.log(`   （附加 gradle 参数：${extraProps}）`);
@@ -59,8 +72,10 @@ const baseName = FLAVOR ? `yaya-msg-mobile-${FLAVOR}` : 'yaya-msg-mobile';
 if (FLAVOR) console.log(`   （打包版本：${FLAVOR}）`);
 
 // v2.6.4 起启用 ABI 分包：arm64-v8a / armeabi-v7a / x86_64 / universal(全量)
-const abiSplits = (process.env.YAYA_ABIS || 'armeabi-v7a,arm64-v8a,x86_64')
-  .split(',').map((abi) => abi.trim()).filter(Boolean);
+const abiSplits = (process.env.YAYA_ABIS || 'arm64-v8a,x86_64')
+  .split(',')
+  .map((abi) => abi.trim())
+  .filter(Boolean);
 const universalEnabled = String(process.env.YAYA_UNIVERSAL || 'true').toLowerCase() === 'true';
 
 // Ensure APK output dir exists
@@ -70,7 +85,7 @@ if (!fs.existsSync(apkOutputDir)) {
 
 const copied = [];
 const missing = [];
-const fileExists = f => fs.existsSync(f);
+const fileExists = (f) => fs.existsSync(f);
 
 for (const abi of abiSplits) {
   const src = path.join(apkDir, `app-${abi}-release.apk`);
@@ -94,7 +109,9 @@ if (universalEnabled && fileExists(universalSrc)) {
 }
 
 if (missing.length || (universalEnabled && !fileExists(universalSrc))) {
-  console.error(`❌ Expected APK output missing: ${[...missing, ...(universalEnabled && !fileExists(universalSrc) ? ['universal'] : [])].join(', ')}`);
+  console.error(
+    `❌ Expected APK output missing: ${[...missing, ...(universalEnabled && !fileExists(universalSrc) ? ['universal'] : [])].join(', ')}`,
+  );
   process.exit(1);
 }
 

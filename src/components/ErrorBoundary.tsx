@@ -5,14 +5,27 @@ import { useI18n } from '../i18n';
 import { ErrorState } from './StateViews';
 import { usePalette } from '../theme';
 
-interface Props { children: ReactNode; }
-interface State { error: Error | null; retryNonce: number; }
+interface Props {
+  children: ReactNode;
+}
+interface State {
+  error: Error | null;
+  retryNonce: number;
+}
 
 function ErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }) {
   const palette = usePalette();
   const { t } = useI18n();
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: palette.background, padding: 40 }}>
+    <View
+      style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: palette.background,
+        padding: 40,
+      }}
+    >
       <ErrorState
         icon="alert-circle-outline"
         title={t('出现错误')}
@@ -26,17 +39,21 @@ function ErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }
 
 export default class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null, retryNonce: 0 };
-  static getDerivedStateFromError(error: Error) { return { error }; }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.warn('ErrorBoundary caught:', error.message, info.componentStack?.slice(0, 200));
-    logCrash(error, `render:${info.componentStack?.split('\n')[1]?.trim().slice(0, 80) || 'unknown'}`);
+    logCrash(
+      error,
+      `render:${info.componentStack?.split('\n')[1]?.trim().slice(0, 80) || 'unknown'}`,
+    );
   }
   render() {
     if (this.state.error) {
       return (
         <ErrorFallback
           error={this.state.error}
-          // ⚠️ 递增 retryNonce 并把它作为子树 key（2026-10-03 修复）：
+          // ⚠️ 递增 retryNonce 并把它作为子树 key（修复）：
           // 只清 error 时，若错误由稳定数据引起会「重试 → 立刻再崩」死循环；换 key 强制重建子树。
           onRetry={() => this.setState((s) => ({ error: null, retryNonce: s.retryNonce + 1 }))}
         />

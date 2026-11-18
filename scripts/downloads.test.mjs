@@ -10,7 +10,11 @@ const require = createRequire(import.meta.url);
 const ts = require('typescript');
 const source = readFileSync(join(root, 'src/services/downloads.ts'), 'utf8');
 const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2020,
+    esModuleInterop: true,
+  },
 }).outputText;
 
 let data = [];
@@ -18,20 +22,36 @@ let headers;
 let releaseDownload;
 let releaseDelete;
 let deletionStarted;
-const deletionStartedPromise = new Promise((resolve) => { deletionStarted = resolve; });
-const deleteGate = new Promise((resolve) => { releaseDelete = resolve; });
+const deletionStartedPromise = new Promise((resolve) => {
+  deletionStarted = resolve;
+});
+const deleteGate = new Promise((resolve) => {
+  releaseDelete = resolve;
+});
 const storage = {
   getItem: async () => JSON.stringify(data),
-  setItem: async (_key, value) => { data = JSON.parse(value); },
+  setItem: async (_key, value) => {
+    data = JSON.parse(value);
+  },
 };
 const filesystem = {
   documentDirectory: 'file:///mock/',
   makeDirectoryAsync: async () => {},
-  deleteAsync: async () => { deletionStarted(); await deleteGate; },
+  deleteAsync: async () => {
+    deletionStarted();
+    await deleteGate;
+  },
   getInfoAsync: async () => ({ exists: true, size: 100 }),
   createDownloadResumable: (_url, uri, options) => {
     headers = options.headers;
-    return { downloadAsync: async () => { await new Promise((resolve) => { releaseDownload = resolve; }); return { uri }; } };
+    return {
+      downloadAsync: async () => {
+        await new Promise((resolve) => {
+          releaseDownload = resolve;
+        });
+        return { uri };
+      },
+    };
   },
 };
 const moduleObject = { exports: {} };
@@ -41,6 +61,7 @@ const imports = {
   'expo-file-system/legacy': filesystem,
   'expo-media-library': {},
   '../utils/runtimeLog': { logError() {} },
+  '../constants': { USER_AGENT: 'test-user-agent' },
   'react-native': {
     Linking: {},
     Platform: { OS: 'android' },
@@ -58,14 +79,20 @@ const imports = {
 vm.runInNewContext(compiled, {
   module: moduleObject,
   exports: moduleObject.exports,
-  require: (id) => imports[id] ?? (() => { throw new Error(`Unexpected import: ${id}`); })(),
+  require: (id) =>
+    imports[id] ??
+    (() => {
+      throw new Error(`Unexpected import: ${id}`);
+    })(),
   setTimeout,
   clearTimeout,
   console,
 });
 const api = moduleObject.exports;
 
-data = [{ id: 'old', url: 'https://example.test/old', status: 'done', localUri: 'file:///mock/old' }];
+data = [
+  { id: 'old', url: 'https://example.test/old', status: 'done', localUri: 'file:///mock/old' },
+];
 const clearing = api.clearFinishedDownloads();
 await deletionStartedPromise;
 const downloading = api.enqueueDownload({ url: 'https://third-party.example/new', type: 'file' });
@@ -77,12 +104,17 @@ releaseDownload();
 await downloading;
 assert.equal(data.length, 1, '清理不能覆盖并发新下载');
 assert.equal(data[0].status, 'done');
-assert.ok(String(data[0].publicUri || '').startsWith('content://downloads/'), '下载完成应导出到系统下载目录');
+assert.ok(
+  String(data[0].publicUri || '').startsWith('content://downloads/'),
+  '下载完成应导出到系统下载目录',
+);
 
 // 导出失败只记 exportError，不能把已下载完的文件判成 failed（旧包没有原生模块就会踩到）
 data = [];
 publicDownloadFails = true;
-filesystem.createDownloadResumable = () => ({ downloadAsync: async () => ({ uri: 'file:///mock/export-failed' }) });
+filesystem.createDownloadResumable = () => ({
+  downloadAsync: async () => ({ uri: 'file:///mock/export-failed' }),
+});
 await api.enqueueDownload({ url: 'https://example.test/export-failure', type: 'file' });
 assert.equal(data[0].status, 'done', '导出失败不应导致下载失败');
 assert.match(String(data[0].exportError || ''), /synthetic export failure/);
@@ -98,4 +130,12 @@ filesystem.createDownloadResumable = (_url, _uri, _options, onProgress) => ({
 await assert.rejects(api.enqueueDownload({ url: 'https://example.test/failure', type: 'file' }));
 await new Promise((resolve) => setTimeout(resolve, 450));
 assert.equal(data[0].status, 'failed', '延迟进度不能覆盖失败终态');
-console.log('  ✓ 下载凭证边界、并发清理与失败终态正确');
+
+// 损坏的下载记录：写路径必须 fail-closed，不能把 [] 当基线覆盖整张表
+const originalGetItem = storage.getItem;
+storage.getItem = async () => '{broken-json';
+const beforeCorruptWrite = data;
+await assert.rejects(api.clearFinishedDownloads(), /下载记录损坏/);
+assert.deepEqual(data, beforeCorruptWrite, '损坏记录不能被空表覆盖');
+storage.getItem = originalGetItem;
+console.log('  ✓ 下载凭证边界、并发清理、失败终态与损坏记录保护正确');

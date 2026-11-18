@@ -48,7 +48,12 @@ export function saveResumePosition(id: string, seconds: number, force = false): 
   if (!id || !Number.isFinite(seconds) || seconds < 2) return Promise.resolve();
   const now = Date.now();
   const prev = lastWrite.get(id);
-  if (!force && prev && now - prev.ts < WRITE_THROTTLE_MS && Math.abs(seconds - prev.value) < WRITE_THROTTLE_DELTA) {
+  if (
+    !force &&
+    prev &&
+    now - prev.ts < WRITE_THROTTLE_MS &&
+    Math.abs(seconds - prev.value) < WRITE_THROTTLE_DELTA
+  ) {
     return Promise.resolve();
   }
   lastWrite.set(id, { ts: now, value: seconds });

@@ -2,7 +2,7 @@
  * 应用内更新的 APK 资产解析。
  *
  * GitHub Release 的资产命名约定（见 scripts/build-apk.js 的产物拷贝逻辑）：
- *   yaya-msg-mobile-<tag>-v8a.apk / -v7a.apk / -x64.apk / -universal.apk
+ * yaya-msg-mobile-<tag>-v8a.apk / -v7a.apk / -x64.apk / -universal.apk
  * tag 形如 v2.7.6（含 v）。
  *
  * 分包 m 与 universal 体积差 ~2.5 倍，所以优先下对应 ABI 的分包，404 时再回退 universal。
@@ -11,6 +11,7 @@
 const REPO = 'Xenia0922/yaya_msg_mobile';
 
 import { parseMaybeJson } from '../utils/data';
+import { fetchWithTimeout } from './network';
 
 export type AbiAssetTag = 'v8a' | 'v7a' | 'x64' | 'universal';
 
@@ -45,14 +46,20 @@ const SELF_PACKAGES_URL = 'https://gnz48.tech/api/packages';
  */
 export async function findSelfHostedUrl(assetName: string): Promise<string | null> {
   try {
-    const res = await fetch(SELF_PACKAGES_URL, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const res = await fetchWithTimeout(
+      SELF_PACKAGES_URL,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } },
+      10000,
+    );
     if (!res.ok) return null;
     const data: any = parseMaybeJson(await res.text());
     const list = Array.isArray(data?.packages) ? data.packages : [];
     // 同名可能有多条（重复上传）：取最新一条
     const hits = list
       .filter((p: any) => String(p?.name || '') === assetName)
-      .sort((x: any, y: any) => String(y?.uploadedAt || '').localeCompare(String(x?.uploadedAt || '')));
+      .sort((x: any, y: any) =>
+        String(y?.uploadedAt || '').localeCompare(String(x?.uploadedAt || '')),
+      );
     const hit = hits[0];
     return hit?.id ? `https://gnz48.tech/api/pkg/${hit.id}` : null;
   } catch {
@@ -61,8 +68,18 @@ export async function findSelfHostedUrl(assetName: string): Promise<string | nul
 }
 
 /** 由 release tag（如 v2.7.6）+ 设备 ABI（如 arm64-v8a）构造下载地址 */
-export function buildApkAsset(tag: string, abi: string, flavor: 'public' | 'plus' = 'public'): ApkAsset {
-  const t = String(tag || '').replace(/^\/+/, '').trim();
+export function buildApkAsset(
+  tag: string,
+  abi: string,
+  flavor: 'public' | 'plus' = 'public',
+): ApkAsset {
+  const t = String(tag || '')
+    .replace(/^\/+/, '')
+    .trim();
+  // tag 来自网络响应，禁止路径分隔符/..，避免拼进下载文件名或 URL 时越界。
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(t)) {
+    throw new Error(`非法的版本标签：${t}`);
+  }
   const abiTag = resolveAbiAssetTag(abi);
   const base = `https://github.com/${REPO}/releases/download/${t}`;
   const prefix = flavor === 'plus' ? 'yaya-msg-mobile-plus' : 'yaya-msg-mobile';

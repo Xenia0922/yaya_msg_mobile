@@ -7,23 +7,23 @@ import { logInfo, logWarn } from '../utils/runtimeLog';
 /**
  * 房间映射缓存服务（v2.7.4）：
  * 官方数据（已交叉验证）：
- *  - getStarServerMap() → content.userServerMap = { "<userId>": "<serverId>" }（大房间 serverId）
- *  - im/seine/server/detail(serverId) → content.channelInfoList，顺序固定：
- *      [0] = 大房间 channelId（→ member.channelId）
- *      [1] = 小房间 channelId（→ member.yklzId）
- *  - 大房间的 serverId 就是 userServerMap 的值（张琼予 1148117 / 王秭歆 1181028 均与旧库吻合）
+ * - getStarServerMap → content.userServerMap = { "<userId>": "<serverId>" }（大房间 serverId）
+ * - im/seine/server/detail(serverId) → content.channelInfoList，顺序固定：
+ * [0] = 大房间 channelId（→ member.channelId）
+ * [1] = 小房间 channelId（→ member.yklzId）
+ * - 大房间的 serverId 就是 userServerMap 的值（张琼予 1148117 / 王秭歆 1181028 均与旧库吻合）
  *
  * 解析结果持久化到 AsyncStorage，避免每次扫描重复请求 seine/server/detail。
  */
 
-// v3（2026-10-02）：v2 缓存里可能存过「大房间 channelId 被最新消息反推写成小房间/历史房间」的
+// v3：v2 缓存里可能存过「大房间 channelId 被最新消息反推写成小房间/历史房间」的
 // 污染映射（详情见 memberData.ts 反推逻辑注释）。升级 key 丢弃旧缓存，由成员库 + seine 重新播种。
 const ROOM_MAP_KEY = 'yaya_member_room_map_v3';
 
 export interface RoomMapEntry {
   channelId: string; // 大房间 channelId
-  yklzId: string;    // 小房间 channelId
-  serverId: string;  // 大房间 serverId
+  yklzId: string; // 小房间 channelId
+  serverId: string; // 大房间 serverId
   updatedAt: number;
   /** 最近一次「小房间补齐尝试」时间：yklzId 为空时用它做 24h 退避，避免每次扫描重复请求 */
   yklzTriedAt?: number;
@@ -35,6 +35,18 @@ let roomMap: Record<string, RoomMapEntry> = {};
 let hydrated = false;
 let hydration: Promise<void> | null = null;
 
+/** 内存映射上限：按 updatedAt 淘汰最旧条目，避免长期运行/扫描导致常驻内存无限增长 */
+const MAX_ENTRIES = 1000;
+
+function trimRoomMap(): void {
+  const keys = Object.keys(roomMap);
+  if (keys.length <= MAX_ENTRIES) return;
+  const drop = keys
+    .sort((a, b) => (roomMap[a]?.updatedAt || 0) - (roomMap[b]?.updatedAt || 0))
+    .slice(0, keys.length - MAX_ENTRIES);
+  for (const k of drop) delete roomMap[k];
+}
+
 export async function hydrateRoomMap(): Promise<void> {
   if (hydrated) return;
   if (hydration) return hydration;
@@ -45,13 +57,18 @@ export async function hydrateRoomMap(): Promise<void> {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') roomMap = parsed;
       }
+      trimRoomMap();
     } catch {
       roomMap = {};
     }
     hydrated = true;
     logInfo(`[roomMap] 已加载房间映射缓存 ${Object.keys(roomMap).length} 条`, 'roomMap');
   })();
-  try { await hydration; } finally { hydration = null; }
+  try {
+    await hydration;
+  } finally {
+    hydration = null;
+  }
 }
 
 export function getRoomMapEntry(memberId: string): RoomMapEntry | undefined {
@@ -78,9 +95,18 @@ export function seedRoomMapFromMembers(members: any[]): void {
       changed = true;
       continue;
     }
-    if ((!existing.channelId || existing.channelId === '0') && cid) { existing.channelId = cid; changed = true; }
-    if ((!existing.yklzId || existing.yklzId === '0') && yid) { existing.yklzId = yid; changed = true; }
-    if ((!existing.serverId || existing.serverId === '0') && sid) { existing.serverId = sid; changed = true; }
+    if ((!existing.channelId || existing.channelId === '0') && cid) {
+      existing.channelId = cid;
+      changed = true;
+    }
+    if ((!existing.yklzId || existing.yklzId === '0') && yid) {
+      existing.yklzId = yid;
+      changed = true;
+    }
+    if ((!existing.serverId || existing.serverId === '0') && sid) {
+      existing.serverId = sid;
+      changed = true;
+    }
     existing.updatedAt = Date.now();
   }
   if (changed) persistRoomMap();
@@ -92,6 +118,7 @@ let persistChain: Promise<void> = Promise.resolve();
 function persistRoomMap(): void {
   persistChain = persistChain.then(async () => {
     try {
+      trimRoomMap();
       await AsyncStorage.setItem(ROOM_MAP_KEY, JSON.stringify(roomMap));
     } catch {
       /* 写失败静默：下次字段变更时会再写 */
@@ -104,7 +131,11 @@ function persistRoomMap(): void {
  * channelInfoList[0]=大房间 channelId、[1]=小房间 channelId；chatServerInfo.serverId=大房间 serverId。
  * 返回 { channelId(大), yklzId(小), serverId }，解析不到则为 ''。
  */
-export function parseSeineDetail(content: any): { channelId: string; yklzId: string; serverId: string } {
+export function parseSeineDetail(content: any): {
+  channelId: string;
+  yklzId: string;
+  serverId: string;
+} {
   const list = Array.isArray(content?.channelInfoList) ? content.channelInfoList : [];
   const big = list[0];
   const small = list[1];
@@ -127,7 +158,11 @@ export async function refreshActiveRoomMappings(): Promise<void> {
     return;
   }
   if (useSettingsStore.getState().settings.p48Token !== token) return;
-  const candidates = useMemberStore.getState().members.filter((member) => isRoomMember(member) && /^[1-9]\d*$/.test(String(servers[member.id] || '')));
+  const candidates = useMemberStore
+    .getState()
+    .members.filter(
+      (member) => isRoomMember(member) && /^[1-9]\d*$/.test(String(servers[member.id] || '')),
+    );
   let next = 0;
   let failures = 0;
   let changed = 0;
@@ -137,14 +172,27 @@ export async function refreshActiveRoomMappings(): Promise<void> {
     const updates = new Map(patches);
     patches.clear();
     const store = useMemberStore.getState();
-    store.setMembers(store.members.map((member) => {
-      const update = updates.get(String(member.id));
-      return update ? { ...member, serverId: update.serverId, channelId: update.channelId, yklzId: update.yklzId } : member;
-    }));
+    store.setMembers(
+      store.members.map((member) => {
+        const update = updates.get(String(member.id));
+        return update
+          ? {
+              ...member,
+              serverId: update.serverId,
+              channelId: update.channelId,
+              yklzId: update.yklzId,
+            }
+          : member;
+      }),
+    );
     persistRoomMap();
   };
   const worker = async () => {
-    while (next < candidates.length && failures < 8 && useSettingsStore.getState().settings.p48Token === token) {
+    while (
+      next < candidates.length &&
+      failures < 8 &&
+      useSettingsStore.getState().settings.p48Token === token
+    ) {
       const member = candidates[next++];
       const sid = String(servers[member.id]);
       if (!Number.isSafeInteger(Number(sid))) continue;
@@ -152,12 +200,23 @@ export async function refreshActiveRoomMappings(): Promise<void> {
         const result = await pocketApi.getSeineServerDetail(Number(sid));
         if (useSettingsStore.getState().settings.p48Token !== token) return;
         const parsed = parseSeineDetail(result?.content || result?.data || {});
-        if (!/^[1-9]\d*$/.test(parsed.channelId) || (parsed.serverId && parsed.serverId !== sid) || parsed.channelId === parsed.yklzId) throw new Error('房间映射无效');
+        if (
+          !/^[1-9]\d*$/.test(parsed.channelId) ||
+          (parsed.serverId && parsed.serverId !== sid) ||
+          parsed.channelId === parsed.yklzId
+        )
+          throw new Error('房间映射无效');
         failures = 0;
         const previous = roomMap[String(member.id)];
         const entry: RoomMapEntry = {
           channelId: parsed.channelId,
-          yklzId: /^[1-9]\d*$/.test(parsed.yklzId) ? parsed.yklzId : (previous?.serverId === sid ? previous.yklzId : member.serverId === sid ? member.yklzId : '') || '',
+          yklzId: /^[1-9]\d*$/.test(parsed.yklzId)
+            ? parsed.yklzId
+            : (previous?.serverId === sid
+                ? previous.yklzId
+                : member.serverId === sid
+                  ? member.yklzId
+                  : '') || '',
           serverId: sid,
           updatedAt: Date.now(),
           verifiedAt: Date.now(),
@@ -179,14 +238,19 @@ export async function refreshActiveRoomMappings(): Promise<void> {
 
 /**
  * 按 userId 解析房间映射：
- *   1. 缓存命中（且含大房间 channelId）→ 直接返回
- *   2. 缺 serverId 时用 userServerMap 或 store 已有值补（调用方传入）
- *   3. 无缓存或缓存缺 → seine/server/detail(serverId) 解析（channelInfoList[0]/[1]），写缓存 + 回写 store
+ * 1. 缓存命中（且含大房间 channelId）→ 直接返回
+ * 2. 缺 serverId 时用 userServerMap 或 store 已有值补（调用方传入）
+ * 3. 无缓存或缓存缺 → seine/server/detail(serverId) 解析（channelInfoList[0]/[1]），写缓存 + 回写 store
  * 返回 { channelId, yklzId, serverId, fromCache }
  */
 export async function resolveMemberRooms(
   memberId: string,
-  opts: { name?: string; knownChannelId?: string; knownYklzId?: string; knownServerId?: string } = {},
+  opts: {
+    name?: string;
+    knownChannelId?: string;
+    knownYklzId?: string;
+    knownServerId?: string;
+  } = {},
 ): Promise<{ channelId: string; yklzId: string; serverId: string; fromCache: boolean }> {
   const id = String(memberId);
   let channelId = opts.knownChannelId || '';
@@ -218,7 +282,13 @@ export async function resolveMemberRooms(
   if (channelId && serverId) {
     const tried = cached?.yklzTriedAt || 0;
     if (yklzId || tried > Date.now() - 24 * 3600 * 1000) {
-      roomMap[id] = { channelId, yklzId, serverId, updatedAt: Date.now(), yklzTriedAt: tried || undefined };
+      roomMap[id] = {
+        channelId,
+        yklzId,
+        serverId,
+        updatedAt: Date.now(),
+        yklzTriedAt: tried || undefined,
+      };
       return { channelId, yklzId, serverId, fromCache: true };
     }
     // yklzId 仍缺 → 落到下面走 seine 补齐（带上已有的大房间信息）
@@ -236,9 +306,12 @@ export async function resolveMemberRooms(
         if (jcid && jcid !== '0') channelId = jcid;
         roomMap[id] = { channelId, yklzId, serverId, updatedAt: Date.now() };
         persistRoomMap();
-        logInfo(`[roomMap] serverJump 解析 userId=${id} ${opts.name || ''} -> 大=${channelId} 小=${yklzId} srv=${serverId}`, 'roomMap');
+        logInfo(
+          `[roomMap] serverJump 解析 userId=${id} ${opts.name || ''} -> 大=${channelId} 小=${yklzId} srv=${serverId}`,
+          'roomMap',
+        );
       }
-    } catch (e: any) {
+    } catch (_e: any) {
       // 登录态缺失等，静默失败（不刷日志噪音）
     }
   }
@@ -255,13 +328,20 @@ export async function resolveMemberRooms(
         if (!serverId) serverId = parsed.serverId || serverId;
       } else {
         // 诊断：接口返回了但没解析出大房间——输出原始结构便于识别（空频道/结构变化/单频道）
-        const listLen = Array.isArray(content?.channelInfoList) ? content.channelInfoList.length : -1;
+        const listLen = Array.isArray(content?.channelInfoList)
+          ? content.channelInfoList.length
+          : -1;
         const keys = content ? Object.keys(content).join(',') : 'EMPTY';
-        logWarn(`[roomMap] seine 无大房间 userId=${id} ${opts.name || ''} srv=${serverId} listLen=${listLen} keys=${keys} raw=${JSON.stringify(content).slice(0, 300)}`, 'roomMap');
+        logWarn(
+          `[roomMap] seine 无大房间 userId=${id} ${opts.name || ''} srv=${serverId} listLen=${listLen} keys=${keys} raw=${JSON.stringify(content).slice(0, 300)}`,
+          'roomMap',
+        );
       }
       // yklzId 仍未拿到 → 记退避时间（24h 内不再为此人补查，防每轮扫描放大请求）
       roomMap[id] = {
-        channelId, yklzId, serverId,
+        channelId,
+        yklzId,
+        serverId,
         updatedAt: Date.now(),
         yklzTriedAt: yklzId ? undefined : Date.now(),
       };
@@ -269,7 +349,10 @@ export async function resolveMemberRooms(
       if (channelId || yklzId || serverId) {
         useMemberStore.getState().patchMemberByUserId(id, { channelId, yklzId, serverId });
       }
-      logInfo(`[roomMap] seine 解析 userId=${id} ${opts.name || ''} -> 大=${channelId} 小=${yklzId} srv=${serverId}`, 'roomMap');
+      logInfo(
+        `[roomMap] seine 解析 userId=${id} ${opts.name || ''} -> 大=${channelId} 小=${yklzId} srv=${serverId}`,
+        'roomMap',
+      );
     } catch (e: any) {
       logWarn(`[roomMap] seine 解析失败 userId=${id}：${e?.message || String(e)}`, 'roomMap');
     }

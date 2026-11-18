@@ -5,7 +5,9 @@ import vm from 'node:vm';
 
 const ts = createRequire(import.meta.url)('typescript');
 const source = readFileSync(new URL('../src/services/roomMapCache.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true } }).outputText;
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+}).outputText;
 let token = 'test-account';
 let members = [
   { id: '1', serverId: '10', channelId: '11', yklzId: '12', isInGroup: true },
@@ -13,23 +15,53 @@ let members = [
   { id: '3', serverId: '30', channelId: '31', yklzId: '', isInGroup: false },
 ];
 const calls = [];
-const store = { getState: () => ({ members, setMembers: (value) => { members = value; } }) };
+const store = {
+  getState: () => ({
+    members,
+    setMembers: (value) => {
+      members = value;
+    },
+  }),
+};
 const imports = {
-  '@react-native-async-storage/async-storage': { __esModule: true, default: { getItem: async () => null, setItem: async () => {} } },
-  '../store': { useMemberStore: store, useSettingsStore: { getState: () => ({ settings: { p48Token: token } }) } },
+  '@react-native-async-storage/async-storage': {
+    __esModule: true,
+    default: { getItem: async () => null, setItem: async () => {} },
+  },
+  '../store': {
+    useMemberStore: store,
+    useSettingsStore: { getState: () => ({ settings: { p48Token: token } }) },
+  },
   '../utils/members': { isRoomMember: (m) => m.isInGroup !== false },
   '../utils/runtimeLog': { logInfo() {}, logWarn() {} },
-  '../api/pocket48': { __esModule: true, default: {
-    getStarServerMap: async () => ({ content: { userServerMap: { 1: '10', 2: '20', 3: '30' } } }),
-    getSeineServerDetail: async (id) => {
-      calls.push(id);
-      if (id === 20) throw new Error('offline');
-      return { content: { chatServerInfo: { serverId: id }, channelInfoList: [{ channelId: '111' }, { channelId: '112' }] } };
+  '../api/pocket48': {
+    __esModule: true,
+    default: {
+      getStarServerMap: async () => ({ content: { userServerMap: { 1: '10', 2: '20', 3: '30' } } }),
+      getSeineServerDetail: async (id) => {
+        calls.push(id);
+        if (id === 20) throw new Error('offline');
+        return {
+          content: {
+            chatServerInfo: { serverId: id },
+            channelInfoList: [{ channelId: '111' }, { channelId: '112' }],
+          },
+        };
+      },
     },
-  } },
+  },
 };
 const module = { exports: {} };
-vm.runInNewContext(compiled, { module, exports: module.exports, require: (id) => imports[id], setTimeout: (fn) => { fn(); return 0; }, console });
+vm.runInNewContext(compiled, {
+  module,
+  exports: module.exports,
+  require: (id) => imports[id],
+  setTimeout: (fn) => {
+    fn();
+    return 0;
+  },
+  console,
+});
 await module.exports.refreshActiveRoomMappings();
 assert.equal(members[0].channelId, '111', '官方有效映射应更新');
 assert.equal(members[0].yklzId, '112');

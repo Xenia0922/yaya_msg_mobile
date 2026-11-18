@@ -9,10 +9,10 @@ export const accent = {
   pinkOnDark: '#ff8fa8',
 } as const;
 
-/** 官方口袋48风格：白底 + 粉点缀 + 实心卡片（2026-08-15 改版）
- *  2026-09-06 用户嫌「功能选项底色太白了」+「tab 玻璃感不足」
- *  bg #F5F5F7→#ECEDF1、surface 全白 #FFFFFF→#F4F5F9（柔和卡片，非惨白）、
- *  muted/glass 系列同调:卡片白块与背景灰层次舒适,iOS 26 group 卡片观感 */
+/** 官方口袋48风格：白底 + 粉点缀 + 实心卡片（改版）
+ * 用户嫌「功能选项底色太白了」+「tab 玻璃感不足」
+ * bg #F5F5F7→#ECEDF1、surface 全白 #FFFFFF→#F4F5F9（柔和卡片，非惨白）、
+ * muted/glass 系列同调:卡片白块与背景灰层次舒适,iOS 26 group 卡片观感 */
 const neutralLight = {
   background: '#ECEDF1',
   surface: '#F4F5F9',
@@ -83,7 +83,6 @@ export type PaletteName = 'light' | 'dark';
 export const Palettes = { light, dark } as const;
 
 /** 通过 useAppTheme / useResolvedTheme 选其一返回 */
-import { useSettingsStore } from '../store';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 
 export function usePalette(): Palette {
@@ -96,20 +95,6 @@ export function usePalette(): Palette {
  * - 有自定义背景图 → 露出根层 ImageBackground
  * 页面内容与玻璃卡直接叠在底衬上，获得真实液态玻璃观感。
  */
-export function usePageBackground(): string {
+export function getPageBackground(): string {
   return 'transparent';
 }
-
-/** 兼容旧 Colors 引用：返回扁平 token 对象（默认 light）—— 旧 screens 不爆炸 */
-export const Colors = {
-  ...light,
-  // 兼容旧字段（其它模块残留引用）
-  bgDark: dark.background,
-  darkTextPrimary: dark.label,
-  darkTextSecondary: dark.labelSecondary,
-  darkTextTertiary: dark.labelTertiary,
-  btnSecondaryBg: light.fill3,
-  btnSecondaryBgDark: dark.fill3,
-};
-
-export const DarkColors = dark;

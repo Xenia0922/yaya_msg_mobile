@@ -79,13 +79,18 @@ for (const file of files) {
   if (path.basename(file) === 'styles.ts') {
     try {
       const dirs = [path.dirname(file), path.dirname(path.dirname(file))];
-      refSrc = dirs.flatMap((d) => {
-        try {
-          return fs.readdirSync(d)
-            .filter((n) => /\.(ts|tsx)$/.test(n) && n !== 'styles.ts')
-            .map((n) => fs.readFileSync(path.join(d, n), 'utf8'));
-        } catch { return []; }
-      }).join('\n');
+      refSrc = dirs
+        .flatMap((d) => {
+          try {
+            return fs
+              .readdirSync(d)
+              .filter((n) => /\.(ts|tsx)$/.test(n) && n !== 'styles.ts')
+              .map((n) => fs.readFileSync(path.join(d, n), 'utf8'));
+          } catch {
+            return [];
+          }
+        })
+        .join('\n');
     } catch {}
   }
   const unused = keys.filter((k) => {
@@ -104,7 +109,7 @@ console.log(`扫描 ${files.length} 个文件；发现未使用样式 ${totalUnu
 for (const r of report) {
   if (r.skipped) {
     console.log(`\n${rel(r.file)}  [跳过：${r.skipped}]`);
-  } else {
+  } else if (r.unused) {
     console.log(`\n${rel(r.file)}`);
     console.log('  - ' + r.unused.join(', '));
   }

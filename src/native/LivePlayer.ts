@@ -1,11 +1,17 @@
-import { DeviceEventEmitter, NativeModules, Platform, requireNativeComponent, ViewProps } from 'react-native';
+import {
+  DeviceEventEmitter,
+  NativeModules,
+  Platform,
+  requireNativeComponent,
+  ViewProps,
+} from 'react-native';
 import { isNativeExoDisabled } from './RadioExo';
 
 const { LivePlayerModule, RadioServiceModule } = NativeModules;
 
 /**
  * 全屏沉浸（隐藏/恢复系统栏）。
- * 旧的 `openNativeLivePlayer`（拉起全原生 LivePlayerActivity）已于 2026-11-07 删除：
+ * 旧的 `openNativeLivePlayer`（拉起全原生 LivePlayerActivity）已删除：
  * 统一播放器接管 rtmp/flv 后，该函数在 JS 侧零调用者，整条原生 Activity 链路为死代码。
  */
 export function setLiveImmersiveMode(enabled: boolean) {
@@ -20,19 +26,22 @@ export interface LiveSizeEventData {
   height: number;
 }
 
-export const LiveExoView = Platform.OS === 'android'
-  ? requireNativeComponent<ViewProps & {
-      url: string;
-      /** 纯音频模式：不渲染视频画面，仅解码音频（上麦/电台流） */
-      audioOnly?: boolean;
-      coverPortrait?: boolean;
-      /** 暂停/恢复（原生 Exo 播放控制，统一播放器控制条使用） */
-      paused?: boolean;
-      onSize?: (e: { nativeEvent: LiveSizeEventData }) => void;
-      /** 原生重试耗尽后回调：播放失败/断流（message 为失败原因） */
-      onError?: (e: { nativeEvent: { message: string } }) => void;
-    }>('LiveExoView')
-  : null;
+export const LiveExoView =
+  Platform.OS === 'android'
+    ? requireNativeComponent<
+        ViewProps & {
+          url: string;
+          /** 纯音频模式：不渲染视频画面，仅解码音频（上麦/电台流） */
+          audioOnly?: boolean;
+          coverPortrait?: boolean;
+          /** 暂停/恢复（原生 Exo 播放控制，统一播放器控制条使用） */
+          paused?: boolean;
+          onSize?: (e: { nativeEvent: LiveSizeEventData }) => void;
+          /** 原生重试耗尽后回调：播放失败/断流（message 为失败原因） */
+          onError?: (e: { nativeEvent: { message: string } }) => void;
+        }
+      >('LiveExoView')
+    : null;
 
 /**
  * 直播首帧尺寸（NativeModule 事件通道）。
@@ -43,7 +52,7 @@ export const LiveExoView = Platform.OS === 'android'
  * NativeModule 的 RCTDeviceEventEmitter（bridgeless 可用）且首帧后补发两次。
  */
 export function onLiveFirstFrame(
-  cb: (payload: { url: string; width: number; height: number }) => void
+  cb: (payload: { url: string; width: number; height: number }) => void,
 ): () => void {
   if (Platform.OS !== 'android') return () => {};
   const sub = DeviceEventEmitter.addListener('LivePlayer:size', (e: any) => {
@@ -58,7 +67,7 @@ export function onLiveFirstFrame(
 
 /** 直播内核重试耗尽（NativeModule 事件通道，与 onError 互为兜底） */
 export function onLiveNativeError(
-  cb: (payload: { url: string; message: string }) => void
+  cb: (payload: { url: string; message: string }) => void,
 ): () => void {
   if (Platform.OS !== 'android') return () => {};
   const sub = DeviceEventEmitter.addListener('LivePlayer:error', (e: any) => {
@@ -139,16 +148,28 @@ export function onRadioStopRequested(cb: () => void): () => void {
 }
 
 /** 媒体通知控制回调（播放/暂停、上一首、下一首、停止）：返回解绑函数 */
-export function onRadioControlRequested(cb: (action: 'play' | 'pause' | 'play_pause' | 'prev' | 'next' | 'stop' | 'seek' | 'favorite' | 'playlist', value?: number) => void): () => void {
+export function onRadioControlRequested(
+  cb: (
+    action:
+      'play' | 'pause' | 'play_pause' | 'prev' | 'next' | 'stop' | 'seek' | 'favorite' | 'playlist',
+    value?: number,
+  ) => void,
+): () => void {
   if (Platform.OS !== 'android') return () => {};
   const sub = DeviceEventEmitter.addListener('RadioControlRequested', (e: any) => {
     const a = String(e?.action || '');
     // 白名单必须与原生 emit 的动作一致：早期只放了传输控制，
-    // favorite/playlist 被过滤掉 → 系统卡上点了没反应（2026-10-18 修复）
+    // favorite/playlist 被过滤掉 → 系统卡上点了没反应（修复）
     if (
-      a === 'play' || a === 'pause' || a === 'play_pause' || a === 'prev'
-      || a === 'next' || a === 'stop' || a === 'seek'
-      || a === 'favorite' || a === 'playlist'
+      a === 'play' ||
+      a === 'pause' ||
+      a === 'play_pause' ||
+      a === 'prev' ||
+      a === 'next' ||
+      a === 'stop' ||
+      a === 'seek' ||
+      a === 'favorite' ||
+      a === 'playlist'
     ) {
       cb(a as any, Number(e?.value) || 0);
     }

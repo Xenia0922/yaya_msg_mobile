@@ -3,10 +3,11 @@ import { resolveMemberRooms } from './roomMapCache';
 import { pickText } from '../utils/data';
 import { useMemberStore } from '../store';
 import type { Member } from '../types';
+import { isRtmpUrl } from '../player/resolve/streamResolver';
 
 /** 上麦/电台流是否 rtmp（react-native-video 不支持，需原生 LiveExoView） */
 export function isRtmpRadioUrl(url: string): boolean {
-  return String(url || '').toLowerCase().startsWith('rtmp://');
+  return isRtmpUrl(url);
 }
 
 /**
@@ -14,12 +15,19 @@ export function isRtmpRadioUrl(url: string): boolean {
  * 从 RoomRadioScreen 内的 fetchRadioUrl 抽出，供「房间内直接播放」复用。
  * 返回 null 表示接口成功但当前未开麦；抛 NO_CHANNEL 表示缺少房间映射。
  */
-export async function fetchMemberRadioUrl(member: Member, mode: 'big' | 'small' = 'big'): Promise<string | null> {
+export async function fetchMemberRadioUrl(
+  member: Member,
+  mode: 'big' | 'small' = 'big',
+): Promise<string | null> {
   // 语义保持 2.7.3：小房间=member.yklzId，大房间=member.channelId
-  let channelId = mode === 'small' ? (member.yklzId || member.channelId) : member.channelId;
+  let channelId = mode === 'small' ? member.yklzId || member.channelId : member.channelId;
   let serverId = member.serverId;
-  const needResolve = !channelId || channelId === '0' || channelId === 'undefined'
-    || (mode === 'small' && (!member.yklzId || member.yklzId === '0' || member.yklzId === 'undefined'));
+  const needResolve =
+    !channelId ||
+    channelId === '0' ||
+    channelId === 'undefined' ||
+    (mode === 'small' &&
+      (!member.yklzId || member.yklzId === '0' || member.yklzId === 'undefined'));
   if (needResolve) {
     const room = await resolveMemberRooms(String(member.id || ''), {
       name: member.ownerName,
@@ -27,7 +35,7 @@ export async function fetchMemberRadioUrl(member: Member, mode: 'big' | 'small' 
       knownYklzId: member.yklzId,
       knownServerId: member.serverId,
     });
-    channelId = mode === 'small' ? (room.yklzId || room.channelId) : room.channelId;
+    channelId = mode === 'small' ? room.yklzId || room.channelId : room.channelId;
     serverId = room.serverId || member.serverId;
     if (channelId) {
       useMemberStore.getState().patchMemberByUserId(String(member.id || ''), {
@@ -44,6 +52,15 @@ export async function fetchMemberRadioUrl(member: Member, mode: 'big' | 'small' 
   }
   const res = await pocketApi.operateRoomVoice({ channelId, serverId });
   if (res?.status && Number(res.status) !== 200) return null;
-  const url = pickText(res, ['content.streamUrl', 'content.url', 'content.streamPath', 'content.playUrl', 'data.streamUrl', 'data.url', 'streamUrl', 'url']);
+  const url = pickText(res, [
+    'content.streamUrl',
+    'content.url',
+    'content.streamPath',
+    'content.playUrl',
+    'data.streamUrl',
+    'data.url',
+    'streamUrl',
+    'url',
+  ]);
   return url || null;
 }

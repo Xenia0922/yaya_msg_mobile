@@ -136,6 +136,13 @@ class NimQChatClient(
         },
         onStatus = { state, detail -> post { listener.onStatus(state, detail) } },
       )
+      // 重连/重登时旧 QChat 会话必须先销毁，否则旧 socket 与读线程泄漏（P1：onConnected 重复 startQChat）
+      val oldQChat = qchatSession
+      qchatSession = null
+      if (oldQChat != null && oldQChat !== qchat) {
+        try { oldQChat.destroy() } catch (_: Throwable) {
+        }
+      }
       qchatSession = qchat
       qchat.connect()
     } catch (t: Throwable) {

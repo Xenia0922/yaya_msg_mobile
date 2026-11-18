@@ -52,15 +52,17 @@ export function cancelApkDownload(): void {
 }
 
 /** 下载 APK 到缓存目录，resolve 本地绝对路径（不自动安装）。
- *  失败 code：EBADAPK（包名不符）/ EBADSIGN（签名与本应用不一致）/ EDOWNLOAD / ECANCEL */
+ * 失败 code：EBADAPK（包名不符）/ EBADSIGN（签名与本应用不一致）/ EDOWNLOAD / ECANCEL */
 export function downloadApk(url: string, fallbackUrl: string, fileName: string): Promise<string> {
-  if (!native) return Promise.reject(Object.assign(new Error('unsupported'), { code: 'EUNSUPPORTED' }));
+  if (!native)
+    return Promise.reject(Object.assign(new Error('unsupported'), { code: 'EUNSUPPORTED' }));
   return native.download(url, fallbackUrl, fileName);
 }
 
 /** 拉起系统安装器；未授权「安装未知应用」时 reject(code=NEED_PERMISSION) */
 export function installDownloadedApk(path: string): Promise<boolean> {
-  if (!native) return Promise.reject(Object.assign(new Error('unsupported'), { code: 'EUNSUPPORTED' }));
+  if (!native)
+    return Promise.reject(Object.assign(new Error('unsupported'), { code: 'EUNSUPPORTED' }));
   return native.installFile(path);
 }
 

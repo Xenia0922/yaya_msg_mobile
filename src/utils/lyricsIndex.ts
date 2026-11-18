@@ -54,7 +54,12 @@ export async function getLyricsMatcher() {
     const raw = await AsyncStorage.getItem(INDEX_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.t && Date.now() - parsed.t < INDEX_CACHE_TTL && Array.isArray(parsed.index)) {
+      if (
+        parsed &&
+        parsed.t &&
+        Date.now() - parsed.t < INDEX_CACHE_TTL &&
+        Array.isArray(parsed.index)
+      ) {
         const entries = buildLyricEntries(parsed.index);
         if (entries.length) {
           cachedMatcher = { entries, matcher: new LyricsMatcher(entries) };

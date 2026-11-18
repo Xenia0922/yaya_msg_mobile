@@ -6,7 +6,7 @@
  */
 
 import pocketApi from '../../api/pocket48';
-import { ALLOW_CUSTOM_IDENTITY_ROLES, ALLOW_CUSTOM_SENDER_PROFILE, ALLOW_CUSTOM_TEAM_LOGO } from '../../constants/identityFeatures';
+import { ALLOW_CUSTOM_SENDER_PROFILE } from '../../constants/identityFeatures';
 import { getSetting } from '../settings';
 import { useSettingsStore } from '../../store';
 import { logInfo } from '../../utils/runtimeLog';
@@ -57,8 +57,8 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
   if (!force && cached) return cached;
   if (!force && inflight) return inflight;
   const requestGeneration = generation;
-  let request!: Promise<NimCredentials | null>;
-  request = (async () => {
+  const requestRef: { current: Promise<NimCredentials | null> | null } = { current: null };
+  const request = (async () => {
     try {
       const res = await pocketApi.getNimLoginInfo();
       if (requestGeneration !== generation || tokenNow !== currentPocketToken()) return null;
@@ -67,7 +67,12 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
       try {
         const content = (res && (res.content || res.data)) || {};
         // eslint-disable-next-line no-console
-        console.log('[nim] userinfo keys =', Object.keys(content).join(','), '| status =', (res && (res.status ?? res.code)) ?? '-');
+        console.log(
+          '[nim] userinfo keys =',
+          Object.keys(content).join(','),
+          '| status =',
+          (res && (res.status ?? res.code)) ?? '-',
+        );
         // eslint-disable-next-line no-console
         console.log('[nim] creds valid =', Boolean(creds));
       } catch {
@@ -81,12 +86,13 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
     } catch {
       return null;
     } finally {
-      if (inflight === request) {
+      if (inflight === requestRef.current) {
         inflight = null;
         inflightToken = '';
       }
     }
   })();
+  requestRef.current = request;
   inflight = request;
   inflightToken = tokenNow;
   return request;
@@ -97,11 +103,14 @@ function absFrame(a: string): string {
   const v = String(a || '').trim();
   if (!v) return '';
   if (/^(https?:)?\/\//i.test(v)) return v.startsWith('//') ? `https:${v}` : v;
-  if (v.startsWith('avatar/') || v.startsWith('mediasource/') || v.startsWith('backstage')) return `https://source1.48.cn/${v}`;
+  if (v.startsWith('avatar/') || v.startsWith('mediasource/') || v.startsWith('backstage'))
+    return `https://source1.48.cn/${v}`;
   return `https://source.48.cn${v.startsWith('/') ? v : `/${v}`}`;
 }
 
-/** 相对路径头像 → source.48.cn 绝对地址（App 内同款惯例） */function absAvatar(a: string): string {
+/** 相对路径头像 → source.48.cn 绝对地址（App 内同款惯例） */ function absAvatar(
+  a: string,
+): string {
   const v = String(a || '').trim();
   if (!v) return '';
   if (/^https?:\/\//i.test(v)) return v;
@@ -121,7 +130,8 @@ export async function loadSelfProfile(force = false): Promise<NimSelfProfile | n
   const requestToken = currentPocketToken();
   const resolvedProfile = await resolveSelfProfile(force);
   const profile = resolvedProfile ? { ...resolvedProfile } : null;
-  if (!profile || requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
+  if (!profile || requestGeneration !== generation || requestToken !== currentPocketToken())
+    return null;
   // 公开版只发登录账号的真实资料（+ 个性装扮），不注入任何自定义发言身份。
   if (!ALLOW_CUSTOM_SENDER_PROFILE) {
     return applySenderDecorations(profile, requestGeneration, requestToken);
@@ -168,7 +178,10 @@ async function applySenderDecorations(
     if (requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
     if (pfUrl && pfUrl.trim()) profile.pfUrl = absFrame(pfUrl.trim());
     if (badge && badge.trim()) {
-      profile.badge = badge.split(',').map((item: string) => absFrame(item.trim())).filter(Boolean);
+      profile.badge = badge
+        .split(',')
+        .map((item: string) => absFrame(item.trim()))
+        .filter(Boolean);
     }
   } catch {
     /* 设置读取失败不影响发送 */
@@ -183,13 +196,13 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
   if (requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
   if (!force && selfProfileCache) return selfProfileCache;
   if (!selfProfileInflight) {
-    let request!: Promise<NimSelfProfile | null>;
-    request = (async () => {
+    const requestRef: { current: Promise<NimSelfProfile | null> | null } = { current: null };
+    const request = (async () => {
       try {
         const res = await pocketApi.loginCheckToken();
         if (requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
         const content = (res && (res.content || res.data)) || {};
-        const u = (content.userInfo || content.user || content) as Record<string, any>;
+        const u = (content.userInfo || content.user || content) as Record<string, unknown>;
         if (base && u && typeof u === 'object') {
           const nick = String(u.nickName || u.nickname || '').trim();
           if (nick) base.nickName = nick;
@@ -207,11 +220,14 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
         selfProfileCache = base;
         return base;
       } catch {
-        return requestGeneration === generation && requestToken === currentPocketToken() ? base : null;
+        return requestGeneration === generation && requestToken === currentPocketToken()
+          ? base
+          : null;
       } finally {
-        if (selfProfileInflight === request) selfProfileInflight = null;
+        if (selfProfileInflight === requestRef.current) selfProfileInflight = null;
       }
     })();
+    requestRef.current = request;
     selfProfileInflight = request;
   }
   return selfProfileInflight;
@@ -220,7 +236,7 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
 /**
  * 清空云信会话缓存（切号/登出）。
  * ⚠️ 必须连自身资料缓存一起清：只清 cached 的话，新号资料字段缺失时
- *    resolveSelfProfile 会回落到旧号的 selfProfileCache → 用旧号的昵称/头像/等级发言。
+ * resolveSelfProfile 会回落到旧号的 selfProfileCache → 用旧号的昵称/头像/等级发言。
  */
 export function clearNimCredentials(): void {
   generation += 1;

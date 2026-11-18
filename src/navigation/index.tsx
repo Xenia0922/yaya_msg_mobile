@@ -1,10 +1,26 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
-import { NavigationContainer, DefaultTheme, DarkTheme, useIsFocused, useNavigationContainerRef } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DefaultTheme,
+  DarkTheme,
+  useIsFocused,
+  useNavigationContainerRef,
+} from '@react-navigation/native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Animated, BackHandler, DeviceEventEmitter, Easing, ImageBackground, Keyboard, Platform, StyleSheet, ToastAndroid, useWindowDimensions, View } from 'react-native';
+import {
+  BackHandler,
+  DeviceEventEmitter,
+  ImageBackground,
+  Keyboard,
+  Platform,
+  StyleSheet,
+  ToastAndroid,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
 import { setPipEnabled, listenPipToggle, listenPipDenied } from '../utils/pip';
 import { Palettes } from '../theme/colors';
@@ -19,7 +35,6 @@ import { AppDialogHost } from '../components/AppDialog';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
-import { usePalette } from '../theme';
 import HomeScreen from '../screens/HomeScreen';
 import MediaScreen from '../screens/MediaScreen';
 import FollowedRoomsScreen from '../screens/FollowedRoomsScreen';
@@ -73,25 +88,39 @@ function withPageMotion<T extends object>(
   _distance = 8,
   _hideTabBar = false,
 ) {
+  // 关键：tab 切换只改变 wrapper 的 focused 状态，不能因此重渲染整个大页面。
+  // 否则 Home/Media/FollowedRooms 每次切 tab 都整页 reconcile，dock 会卡 2s。
+  const MemoizedScreen = React.memo(Screen) as React.ComponentType<T>;
   return function PageMotionScreen(props: T) {
     const focused = useIsFocused();
-    const autoKeyboard = _hideTabBar && Screen !== PrivateMessagesScreen && Screen !== OpenLiveScreen && Screen !== BilibiliLiveScreen;
+    const autoKeyboard =
+      _hideTabBar &&
+      Screen !== PrivateMessagesScreen &&
+      Screen !== OpenLiveScreen &&
+      Screen !== BilibiliLiveScreen;
     const keyboardHeight = useKeyboardHeight(Platform.OS === 'android' && autoKeyboard && focused);
     return (
       <ErrorBoundary>
-        <View style={{ flex: 1, paddingBottom: keyboardHeight }}><Screen {...props} /></View>
+        <View style={{ flex: 1, paddingBottom: keyboardHeight }}>
+          <MemoizedScreen {...props} />
+        </View>
       </ErrorBoundary>
     );
   };
 }
 
-// 4 个 tab 的页面直接挂载，避免切换瞬间才 mount 造成「慢半拍」。
-// 数据请求是异步的，先让页面壳和静态布局就位，tab 动画不再等待数据。
+// 4 个 tab 的页面直接挂载：启动阶段由 App 开屏遮罩盖住，等壳和首屏数据都就位后再撤，
+// 用户看到的第一个完整页面就是可交互状态（不能拿 tab 首次切换流畅度换启动速度）。
 const HomeTabScreen = withPageMotion(HomeScreen);
 const MediaTabScreen = withPageMotion(MediaScreen);
 const RoomsTabScreen = withPageMotion(FollowedRoomsScreen);
 const SettingsTabScreen = withPageMotion(SettingsScreen);
-const PrivateMessagesStackScreen = withPageMotion(PrivateMessagesScreen, ui.motion.stackDuration, 10, true);
+const PrivateMessagesStackScreen = withPageMotion(
+  PrivateMessagesScreen,
+  ui.motion.stackDuration,
+  10,
+  true,
+);
 const LoginStackScreen = withPageMotion(LoginScreen, ui.motion.stackDuration, 10, true);
 const RechargeStackScreen = withPageMotion(RechargeScreen, ui.motion.stackDuration, 10, true);
 const FlipStackScreen = withPageMotion(FlipScreen, ui.motion.stackDuration, 10, true);
@@ -99,10 +128,26 @@ const ProfileStackScreen = withPageMotion(ProfileScreen, ui.motion.stackDuration
 const PhotosStackScreen = withPageMotion(PhotosScreen, ui.motion.stackDuration, 10, true);
 const RoomRadioStackScreen = withPageMotion(RoomRadioScreen, ui.motion.stackDuration, 10, true);
 const OpenLiveStackScreen = withPageMotion(OpenLiveScreen, ui.motion.stackDuration, 10, true);
-const BilibiliLiveStackScreen = withPageMotion(BilibiliLiveScreen, ui.motion.stackDuration, 10, true);
-const MusicLibraryStackScreen = withPageMotion(MusicLibraryScreen, ui.motion.stackDuration, 10, true);
+const OnMicStackScreen = withPageMotion(OnMicScreen, ui.motion.stackDuration, 10, true);
+const BilibiliLiveStackScreen = withPageMotion(
+  BilibiliLiveScreen,
+  ui.motion.stackDuration,
+  10,
+  true,
+);
+const MusicLibraryStackScreen = withPageMotion(
+  MusicLibraryScreen,
+  ui.motion.stackDuration,
+  10,
+  true,
+);
 const DownloadStackScreen = withPageMotion(DownloadScreen, ui.motion.stackDuration, 10, true);
-const UsagePreferencesStackScreen = withPageMotion(UsagePreferencesScreen, ui.motion.stackDuration, 10, true);
+const UsagePreferencesStackScreen = withPageMotion(
+  UsagePreferencesScreen,
+  ui.motion.stackDuration,
+  10,
+  true,
+);
 const AboutStackScreen = withPageMotion(AboutScreen, ui.motion.stackDuration, 10, true);
 const DisclaimerStackScreen = withPageMotion(DisclaimerScreen, ui.motion.stackDuration, 10, true);
 const DatabaseStackScreen = withPageMotion(DatabaseScreen, ui.motion.stackDuration, 10, true);
@@ -117,7 +162,6 @@ function MainTabBar({
   hidden,
 }: BottomTabBarProps & { hidden: boolean }) {
   const { t } = useI18n();
-  const palette = usePalette();
   if (hidden) return null;
 
   const items = state.routes.map((route, index) => {
@@ -126,16 +170,21 @@ function MainTabBar({
       ? { icon: MCI(tabMeta.icon), label: t(tabMeta.label) }
       : {
           icon: MCI('circle'),
-          label: typeof descriptors[route.key]?.options?.tabBarLabel === 'string'
-            ? t(descriptors[route.key]?.options?.tabBarLabel as string)
-            : route.name,
+          label:
+            typeof descriptors[route.key]?.options?.tabBarLabel === 'string'
+              ? t(descriptors[route.key]?.options?.tabBarLabel as string)
+              : route.name,
         };
     return {
       key: route.name,
       icon: fallback.icon,
       label: fallback.label,
       onPress: () => {
-        const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+        const event = navigation.emit({
+          type: 'tabPress',
+          target: route.key,
+          canPreventDefault: true,
+        });
         if (state.index !== index && !event.defaultPrevented) navigation.navigate(route.name);
       },
     };
@@ -164,11 +213,21 @@ function MainTabs() {
       tabBarPosition="bottom"
       initialLayout={{ width: windowWidth }}
       tabBar={(props: any) => (
-        <MainTabBar {...props} hidden={shouldHideTabBar(props.state.routes[props.state.index]?.name, mainFocused, hiddenByRoute)} />
+        <MainTabBar
+          {...props}
+          hidden={shouldHideTabBar(
+            props.state.routes[props.state.index]?.name,
+            mainFocused,
+            hiddenByRoute,
+          )}
+        />
       )}
       screenOptions={{
         lazy: false,
         swipeEnabled: false,
+        // dock 点击必须即时切页：material-top-tabs 默认会播放 pager 滑动动画，
+        // 与页面重渲染叠加时表现为「点一下卡一会才切」。页面本身已无入场动画。
+        animationEnabled: false,
       }}
     >
       <Tab.Screen name="Home" component={HomeTabScreen} options={{ tabBarLabel: '主页' }} />
@@ -178,9 +237,6 @@ function MainTabs() {
     </Tab.Navigator>
   );
 }
-
-const styles = StyleSheet.create({
-});
 
 const AppTheme = {
   ...DefaultTheme,
@@ -210,14 +266,14 @@ const AppDarkTheme = {
  * 全局「返回先收键盘」桥（Android）。
  *
  * 问题：edge-to-edge + 手势导航下，系统不一定先收起输入法就直接把页面退了 →
- *   ① 用户想关键盘却退出了页面；
- *   ② 更隐蔽的连带伤害：页面已切走、输入法还开着，`keyboardDidHide` 可能不触发，
- *      靠键盘高度做布局的页面（聊天/房间 `paddingBottom: kb`）会**卡在非 0 高度**，
- *      背景图被顶掉一条（「房间背景图显示不完全」就是这么来的）。
+ * ① 用户想关键盘却退出了页面；
+ * ② 更隐蔽的连带伤害：页面已切走、输入法还开着，`keyboardDidHide` 可能不触发，
+ * 靠键盘高度做布局的页面（聊天/房间 `paddingBottom: kb`）会**卡在非 0 高度**，
+ * 背景图被顶掉一条（「房间背景图显示不完全」就是这么来的）。
  *
  * 这里统一接管：键盘可见时，本次返回只收键盘并消费事件，不进下一步；再返回一次才走页面返回。
  * 注意 BackHandler 是「后注册先执行」，本桥在导航根注册（最早），因此页面自己的返回
- * 处理优先 —— 页面若自行消费返回，建议也先调一次 Keyboard.dismiss()。
+ * 处理优先 —— 页面若自行消费返回，建议也先调一次 Keyboard.dismiss。
  */
 function KeyboardBackBridge() {
   useEffect(() => {
@@ -265,9 +321,10 @@ function PipToggleBridge() {
   // 进系统小窗被拒（ROM 关掉了画中画权限 / 调用失败）→ 明确提示，别再静默失败
   useEffect(() => {
     return listenPipDenied((reason) => {
-      const msg = reason === 'appops'
-        ? '系统未允许画中画：请到 系统设置 → 应用 → 牙牙消息 → 画中画 中开启'
-        : '系统未能进入小窗，请稍后重试';
+      const msg =
+        reason === 'appops'
+          ? '系统未允许画中画：请到 系统设置 → 应用 → 牙牙消息 → 画中画 中开启'
+          : '系统未能进入小窗，请稍后重试';
       ToastAndroid.show(msg, ToastAndroid.LONG);
     });
   }, []);
@@ -289,9 +346,10 @@ export default function AppNavigator() {
   }, [navRef]);
 
   const theme = useResolvedTheme();
-  const palette = usePalette();
   const screenBackdrop = useUiStore((state) => state.screenBackdrop);
-  const customBgRaw = useSettingsStore((state) => state.settings.customBackgroundFile?.trim() || '');
+  const customBgRaw = useSettingsStore(
+    (state) => state.settings.customBackgroundFile?.trim() || '',
+  );
   const pocketToken = useSettingsStore((state) => state.settings.p48Token);
   const memberBootRef = useRef<Promise<void> | null>(null);
   /**
@@ -305,130 +363,153 @@ export default function AppNavigator() {
   // 导航层永远透明：液态玻璃的透光来源是根层 PageBackdrop/背景图，
   // card 不透明会把底衬完全盖住 → 玻璃无从谈起
   /**
-   * 默认背景（2026-10-18 定稿）：浅色/深色各一张内置图，用户自定义背景优先。
+   * 默认背景（定稿）：浅色/深色各一张内置图，用户自定义背景优先。
    * 内置换成 require 资源（打包进 APK），不再依赖 PageBackdrop 的纯色渐变兜底。
    */
-  const defaultBg = theme === 'dark'
-    ? require('../../assets/defaults/bg-dark.jpg')
-    : require('../../assets/defaults/bg-light.jpg');
+  const defaultBg =
+    theme === 'dark'
+      ? require('../../assets/defaults/bg-dark.jpg')
+      : require('../../assets/defaults/bg-light.jpg');
   const bgSource = hasBackground ? { uri: customBg } : defaultBg;
-  const themed = { ...navTheme, colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' } };
+  const themed = {
+    ...navTheme,
+    colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' },
+  };
   // 自定义背景暗化遮罩：浅色主题压一层白雾保证深色文字可读，深色主题压一层黑幕保证浅色文字可读。
   // 取值克制（<=0.35），既保证可读性又不至于「看不清背景图」。
   const bgScrim = theme === 'dark' ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.34)';
 
-  // 启动即自动同步成员数据库（进入软件自动更新；失败静默忽略，不阻塞启动）
+  // 启动即同步成员数据库（开屏遮罩期间完成；失败静默，不阻塞后续导航）。
   useEffect(() => {
     memberBootRef.current = ensureMemberData().catch(() => {});
   }, []);
 
   useEffect(() => {
     let active = true;
-    if (pocketToken) void (memberBootRef.current || Promise.resolve()).then(() => {
-      if (active) return refreshActiveRoomMappings();
-    }).catch(() => {});
-    return () => { active = false; };
+    if (pocketToken)
+      void (memberBootRef.current || Promise.resolve())
+        .then(() => {
+          if (active) return refreshActiveRoomMappings();
+        })
+        .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, [pocketToken]);
 
   // 启动静默检查版本更新（24h 限流；失败静默，有更新时设置页显示红点）
   useEffect(() => {
-    useUpdateStore.getState().checkUpdate().catch(() => {});
+    useUpdateStore
+      .getState()
+      .checkUpdate()
+      .catch(() => {});
   }, []);
 
   return (
     <ErrorBoundary>
-    <>
-      <BlurTargetProvider>
-      <BlurTargetSurface>
-        {/* 房间页打开时：blur 目标层挂房间背景图（+遮罩），让房间里的玻璃折射房间背景。
+      <>
+        <BlurTargetProvider>
+          <BlurTargetSurface>
+            {/* 房间页打开时：blur 目标层挂房间背景图（+遮罩），让房间里的玻璃折射房间背景。
             玻璃只录这一层 —— 房间背景若只渲染在页面里，玻璃折射到的仍是全局背景。 */}
-        {screenBackdrop?.uri ? (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <ImageBackground
-              source={{ uri: screenBackdrop.uri }}
-              resizeMode="cover"
-              style={StyleSheet.absoluteFill}
-            />
-            <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: screenBackdrop.scrim }]} />
-          </View>
-        ) : (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <ImageBackground
-              source={bgSource as any}
-              resizeMode="cover"
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFill,
-                // 内置默认图是柔和渐变：遮罩压淡（0.18/0.10），自定义图仍用原强度保证可读性
-                { backgroundColor: hasBackground ? bgScrim : theme === 'dark' ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.10)' },
-              ]}
-            />
-          </View>
-        )}
-      </BlurTargetSurface>
-      {/* 全局自绘对话框宿主：替代原生 Alert（样式统一，Android 不限按钮数） */}
-      <AppDialogHost />
-      {/*
+            {screenBackdrop?.uri ? (
+              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                <ImageBackground
+                  source={{ uri: screenBackdrop.uri }}
+                  resizeMode="cover"
+                  style={StyleSheet.absoluteFill}
+                />
+                <View
+                  pointerEvents="none"
+                  style={[StyleSheet.absoluteFill, { backgroundColor: screenBackdrop.scrim }]}
+                />
+              </View>
+            ) : (
+              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                <ImageBackground
+                  source={bgSource as any}
+                  resizeMode="cover"
+                  style={StyleSheet.absoluteFill}
+                />
+                <View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    // 内置默认图是柔和渐变：遮罩压淡（0.18/0.10），自定义图仍用原强度保证可读性
+                    {
+                      backgroundColor: hasBackground
+                        ? bgScrim
+                        : theme === 'dark'
+                          ? 'rgba(0,0,0,0.18)'
+                          : 'rgba(255,255,255,0.10)',
+                    },
+                  ]}
+                />
+              </View>
+            )}
+          </BlurTargetSurface>
+          {/* 全局自绘对话框宿主：替代原生 Alert（样式统一，Android 不限按钮数） */}
+          <AppDialogHost />
+          {/*
         onStateChange：任何一次导航（含手势返回被 navigator 自己处理掉、不经过
         BackHandler 的情况）都兜底收起输入法 —— 否则键盘可能跟着旧页面留着，
         而靠键盘高度做布局的页面会卡在非 0 高度（背景被顶掉一条）。
-      */}
-      <NavigationContainer
-        ref={navRef}
-        theme={themed}
-        onStateChange={() => { if (Keyboard.isVisible()) Keyboard.dismiss(); }}
-      >
-      <>
-        <Stack.Navigator
-          screenOptions={{
-            headerShown: false,
-            animation: 'none',
-            cardOverlayEnabled: false,
-            // 被压住的页面必须 detach：否则上一个页面仍留在原生视图树里，会透在
-            // 新推入的页面上面（与 tab 的 freezeOnBlur 同一个道理）。
-            detachPreviousScreen: true,
-            // 冻结渲染：反复进出头像资料卡/二级页时不再重复跑重渲染。
-            // ✅ 走 react-freeze（Suspense，纯 JS），不是原生 detach/re-attach，
-            //    不会引入 Fabric「同一事务 detach+attach」的崩溃。
-            freezeOnBlur: true,
-            cardStyle: { backgroundColor: 'transparent' },
-          }}
-        >
-          <Stack.Screen name="Main" component={MainTabs} />
-          <Stack.Screen name="LoginScreen" component={LoginStackScreen} />
-          <Stack.Screen name="RechargeScreen" component={RechargeStackScreen} />
-          <Stack.Screen name="FlipScreen" component={FlipStackScreen} />
-          <Stack.Screen name="ProfileScreen" component={ProfileStackScreen} />
-          <Stack.Screen name="PhotosScreen" component={PhotosStackScreen} />
-          <Stack.Screen name="RoomRadioScreen" component={RoomRadioStackScreen} />
-          <Stack.Screen name="OpenLiveScreen" component={OpenLiveStackScreen} />
-          <Stack.Screen name="OnMicScreen" component={withPageMotion(OnMicScreen, ui.motion.stackDuration, 10, true)} />
-          <Stack.Screen name="PrivateMessagesScreen" component={PrivateMessagesStackScreen} />
-          <Stack.Screen name="BilibiliLiveScreen" component={BilibiliLiveStackScreen} />
-          <Stack.Screen name="MusicLibraryScreen" component={MusicLibraryStackScreen} />
-          <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
-          <Stack.Screen name="UsagePreferences" component={UsagePreferencesStackScreen} />
-          <Stack.Screen name="AboutScreen" component={AboutStackScreen} />
-          <Stack.Screen name="DisclaimerScreen" component={DisclaimerStackScreen} />
-          <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
-          <Stack.Screen name="MeleeRankScreen" component={MeleeRankStackScreen} />
-          <Stack.Screen name="RoomAlbumScreen" component={RoomAlbumStackScreen} />
-          <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
-        </Stack.Navigator>
-        <AppToast />
-        {/* 应用内悬浮小窗播放器（全局挂载，导航上下文内可用） */}
-        <MiniPlayer />
-        {/* 系统 PiP ⏯ → 当前媒体切换（全局单次监听） */}
-        <PipToggleBridge />
-        {/* 返回键/手势返回 → 先收输入法（避免「退页了键盘还在」及其连带的布局卡死） */}
-        <KeyboardBackBridge />
+ */}
+          <NavigationContainer
+            ref={navRef}
+            theme={themed}
+            onStateChange={() => {
+              if (Keyboard.isVisible()) Keyboard.dismiss();
+            }}
+          >
+            <>
+              <Stack.Navigator
+                screenOptions={{
+                  headerShown: false,
+                  animation: 'none',
+                  cardOverlayEnabled: false,
+                  // 被压住的页面必须 detach：否则上一个页面仍留在原生视图树里，会透在
+                  // 新推入的页面上面（与 tab 的 freezeOnBlur 同一个道理）。
+                  detachPreviousScreen: true,
+                  // 冻结渲染：反复进出头像资料卡/二级页时不再重复跑重渲染。
+                  // ✅ 走 react-freeze（Suspense，纯 JS），不是原生 detach/re-attach，
+                  // 不会引入 Fabric「同一事务 detach+attach」的崩溃。
+                  freezeOnBlur: true,
+                  cardStyle: { backgroundColor: 'transparent' },
+                }}
+              >
+                <Stack.Screen name="Main" component={MainTabs} />
+                <Stack.Screen name="LoginScreen" component={LoginStackScreen} />
+                <Stack.Screen name="RechargeScreen" component={RechargeStackScreen} />
+                <Stack.Screen name="FlipScreen" component={FlipStackScreen} />
+                <Stack.Screen name="ProfileScreen" component={ProfileStackScreen} />
+                <Stack.Screen name="PhotosScreen" component={PhotosStackScreen} />
+                <Stack.Screen name="RoomRadioScreen" component={RoomRadioStackScreen} />
+                <Stack.Screen name="OpenLiveScreen" component={OpenLiveStackScreen} />
+                <Stack.Screen name="OnMicScreen" component={OnMicStackScreen} />
+                <Stack.Screen name="PrivateMessagesScreen" component={PrivateMessagesStackScreen} />
+                <Stack.Screen name="BilibiliLiveScreen" component={BilibiliLiveStackScreen} />
+                <Stack.Screen name="MusicLibraryScreen" component={MusicLibraryStackScreen} />
+                <Stack.Screen name="DownloadScreen" component={DownloadStackScreen} />
+                <Stack.Screen name="UsagePreferences" component={UsagePreferencesStackScreen} />
+                <Stack.Screen name="AboutScreen" component={AboutStackScreen} />
+                <Stack.Screen name="DisclaimerScreen" component={DisclaimerStackScreen} />
+                <Stack.Screen name="DatabaseScreen" component={DatabaseStackScreen} />
+                <Stack.Screen name="MeleeRankScreen" component={MeleeRankStackScreen} />
+                <Stack.Screen name="RoomAlbumScreen" component={RoomAlbumStackScreen} />
+                <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
+              </Stack.Navigator>
+              <AppToast />
+              {/* 应用内悬浮小窗播放器（全局挂载，导航上下文内可用） */}
+              <MiniPlayer />
+              {/* 系统 PiP ⏯ → 当前媒体切换（全局单次监听） */}
+              <PipToggleBridge />
+              {/* 返回键/手势返回 → 先收输入法（避免「退页了键盘还在」及其连带的布局卡死） */}
+              <KeyboardBackBridge />
+            </>
+          </NavigationContainer>
+        </BlurTargetProvider>
       </>
-      </NavigationContainer>
-      </BlurTargetProvider>
-    </>
     </ErrorBoundary>
   );
 }

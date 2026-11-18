@@ -16,7 +16,9 @@ let failures = 0;
 function eq(actual, expected, name) {
   if (actual !== expected) {
     failures += 1;
-    console.error(`✗ ${name}\n  expected: ${JSON.stringify(expected)}\n  actual:   ${JSON.stringify(actual)}`);
+    console.error(
+      `✗ ${name}\n  expected: ${JSON.stringify(expected)}\n  actual:   ${JSON.stringify(actual)}`,
+    );
   } else {
     console.log(`✓ ${name}`);
   }
@@ -39,7 +41,11 @@ eq(looksLikeHtml('a<b 且 c>d'), false, '普通比较符不算 HTML');
 eq(sanitizeText('a<b 且 c>d'), 'a<b 且 c>d', '普通文本原样返回');
 
 // 3) 实体与换行
-eq(htmlToPlain('<div>a<br/>b</div><div>c&amp;d</div>').replace(/\n+/g, '|'), 'a|b|c&d', 'br/div 转行 + &amp; 解码');
+eq(
+  htmlToPlain('<div>a<br/>b</div><div>c&amp;d</div>').replace(/\n+/g, '|'),
+  'a|b|c&d',
+  'br/div 转行 + &amp; 解码',
+);
 
 // 4) 图片提取（相对路径保留）
 const imgs = extractHtmlImageUrls(sample);

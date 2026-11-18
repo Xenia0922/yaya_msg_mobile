@@ -1,12 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 
-import {Image, Modal, Platform, StyleSheet, Text, TextInput, View} from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../navigation/types';
-import { useSettingsStore, useUiStore } from '../store';
+import { Modal, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useUiStore } from '../store';
 import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
@@ -27,8 +25,6 @@ import {
   openDownloadItem,
 } from '../services/downloads';
 import { GlassSurface } from '../components/GlassSurface';
-
-type Nav = StackNavigationProp<RootStackParamList, 'DownloadScreen'>;
 
 function formatBytes(value?: number) {
   if (value === undefined || value === null) return '--';
@@ -59,7 +55,6 @@ function typeIcon(type: DownloadItem['type']): string {
 }
 
 export default function DownloadScreen() {
-  const navigation = useNavigation<Nav>();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((s) => s.showToast);
@@ -73,7 +68,11 @@ export default function DownloadScreen() {
       setImgPreview(item.localUri);
       return;
     }
-    try { await openDownloadItem(item); } catch (e: any) { showToast(t('打开失败：{msg}', { msg: e?.message || e })); }
+    try {
+      await openDownloadItem(item);
+    } catch (e: any) {
+      showToast(t('打开失败：{msg}', { msg: e?.message || e }));
+    }
   };
 
   const handleExport = async (item: DownloadItem) => {
@@ -90,14 +89,18 @@ export default function DownloadScreen() {
     const list = await loadDownloadItems();
     // 列表排序：进行中 > 失败 > 已完成，组内新任务在前 —— 进行中的任务始终置顶可见
     const order: Record<string, number> = { downloading: 0, failed: 1, done: 2 };
-    setItems([...list].sort(
-      (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.createdAt - a.createdAt,
-    ));
+    setItems(
+      [...list].sort(
+        (a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.createdAt - a.createdAt,
+      ),
+    );
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    refresh();
-  }, [refresh]));
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   // G2: 下载进度节流——每块进度都全表刷新太频（进度回调密集时列表持续重建）
   const lastRefreshRef = useRef(0);
@@ -115,10 +118,13 @@ export default function DownloadScreen() {
     try {
       await enqueueDownload({
         url: target,
-        type: /\.(jpe?g|png|webp|gif)(\?|$)/i.test(target) ? 'image'
-          : /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(target) ? 'audio'
-          : /\.(mp4|m3u8|flv|mov)(\?|$)/i.test(target) ? 'video'
-          : 'file',
+        type: /\.(jpe?g|png|webp|gif)(\?|$)/i.test(target)
+          ? 'image'
+          : /\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(target)
+            ? 'audio'
+            : /\.(mp4|m3u8|flv|mov)(\?|$)/i.test(target)
+              ? 'video'
+              : 'file',
         onProgress: throttledRefresh,
       });
       setUrl('');
@@ -140,7 +146,11 @@ export default function DownloadScreen() {
         onProgress: throttledRefresh,
       });
       // 删除原失败记录，避免同 URL 双任务
-      try { await deleteDownloadItem(task.id); } catch { /* ignore */ }
+      try {
+        await deleteDownloadItem(task.id);
+      } catch {
+        /* ignore */
+      }
       showToast(t('已重新加入下载'));
     } catch (error: any) {
       showToast(t('重试失败：{msg}', { msg: error?.message || error }));
@@ -157,7 +167,11 @@ export default function DownloadScreen() {
         text: t('删除'),
         style: 'destructive',
         onPress: async () => {
-          try { await deleteDownloadItem(id); } catch { /* ignore */ }
+          try {
+            await deleteDownloadItem(id);
+          } catch {
+            /* ignore */
+          }
           refresh();
         },
       },
@@ -172,7 +186,11 @@ export default function DownloadScreen() {
         text: t('清理'),
         style: 'destructive',
         onPress: async () => {
-          try { await clearFinishedDownloads(); } catch { /* ignore */ }
+          try {
+            await clearFinishedDownloads();
+          } catch {
+            /* ignore */
+          }
           refresh();
         },
       },
@@ -195,7 +213,8 @@ export default function DownloadScreen() {
       else if (it.status === 'failed') groups[2].items.push(it);
       else groups[0].items.push(it);
     }
-    const flat: { type: 'header' | 'item'; key: string; title?: string; item?: DownloadItem }[] = [];
+    const flat: { type: 'header' | 'item'; key: string; title?: string; item?: DownloadItem }[] =
+      [];
     groups.forEach((g) => {
       if (!g.items.length) return;
       flat.push({ type: 'header', key: `h-${g.key}`, title: g.title });
@@ -206,18 +225,44 @@ export default function DownloadScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title={t('下载管理')} right={
-        <HeaderAction label={t('清理完成')} onPress={clearDone} disabled={doneCount + failedCount === 0} />
-      } />
+      <ScreenHeader
+        title={t('下载管理')}
+        right={
+          <HeaderAction
+            label={t('清理完成')}
+            onPress={clearDone}
+            disabled={doneCount + failedCount === 0}
+          />
+        }
+      />
 
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <GlassSurface radius={22} role="card" style={[styles.manualCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+        <GlassSurface
+          radius={22}
+          role="card"
+          style={[
+            styles.manualCard,
+            {
+              backgroundColor: 'transparent',
+              borderColor: palette.hairline,
+              borderWidth: StyleSheet.hairlineWidth,
+            },
+          ]}
+        >
           <View style={styles.manualHead}>
             <MaterialCommunityIcons name="link-variant" size={18} color={palette.tint} />
             <Text style={[styles.manualTitle, { color: palette.label }]}>{t('手动添加下载')}</Text>
           </View>
           <TextInput
-            style={[styles.urlInput, { backgroundColor: palette.fill2, color: palette.label, borderColor: palette.innerStroke, borderWidth: StyleSheet.hairlineWidth }]}
+            style={[
+              styles.urlInput,
+              {
+                backgroundColor: palette.fill2,
+                color: palette.label,
+                borderColor: palette.innerStroke,
+                borderWidth: StyleSheet.hairlineWidth,
+              },
+            ]}
             placeholder={t('粘贴图片、语音、视频或录播地址')}
             placeholderTextColor={palette.labelTertiary}
             value={url}
@@ -227,7 +272,16 @@ export default function DownloadScreen() {
             onSubmitEditing={startManualDownload}
             blurOnSubmit={false}
           />
-          <Button title={t('添加下载')} onPress={startManualDownload} variant="filled" size="md" fullWidth loading={busy} disabled={busy} style={styles.addBtn} />
+          <Button
+            title={t('添加下载')}
+            onPress={startManualDownload}
+            variant="filled"
+            size="md"
+            fullWidth
+            loading={busy}
+            disabled={busy}
+            style={styles.addBtn}
+          />
         </GlassSurface>
 
         <PerfFlatList
@@ -236,89 +290,203 @@ export default function DownloadScreen() {
           contentContainerStyle={styles.list}
           ListHeaderComponent={
             items.length > 0 ? (
-              <GlassSurface radius={22} role="card" style={[styles.overviewCard, { backgroundColor: 'transparent', borderColor: palette.hairline, borderWidth: StyleSheet.hairlineWidth }]}>
+              <GlassSurface
+                radius={22}
+                role="card"
+                style={[
+                  styles.overviewCard,
+                  {
+                    backgroundColor: 'transparent',
+                    borderColor: palette.hairline,
+                    borderWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
                 <View style={styles.overviewItem}>
                   <Text style={[styles.overviewNum, { color: palette.tint }]}>{activeCount}</Text>
-                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>{t('下载中')}</Text>
+                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>
+                    {t('下载中')}
+                  </Text>
                 </View>
                 <View style={[styles.overviewDivider, { backgroundColor: palette.hairline }]} />
                 <View style={styles.overviewItem}>
                   <Text style={[styles.overviewNum, { color: palette.success }]}>{doneCount}</Text>
-                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>{t('已完成')}</Text>
+                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>
+                    {t('已完成')}
+                  </Text>
                 </View>
                 <View style={[styles.overviewDivider, { backgroundColor: palette.hairline }]} />
                 <View style={styles.overviewItem}>
-                  <Text style={[styles.overviewNum, { color: failedCount ? palette.danger : palette.label }]}>{failedCount}</Text>
-                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>{t('失败')}</Text>
+                  <Text
+                    style={[
+                      styles.overviewNum,
+                      { color: failedCount ? palette.danger : palette.label },
+                    ]}
+                  >
+                    {failedCount}
+                  </Text>
+                  <Text style={[styles.overviewLabel, { color: palette.labelSecondary }]}>
+                    {t('失败')}
+                  </Text>
                 </View>
               </GlassSurface>
             ) : null
           }
-          ListEmptyComponent={<EmptyState icon="download-off" title={t('暂无下载项目')} hint={t('通过上方输入框粘贴链接下载')} />}
+          ListEmptyComponent={
+            <EmptyState
+              icon="download-off"
+              title={t('暂无下载项目')}
+              hint={t('通过上方输入框粘贴链接下载')}
+            />
+          }
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
-          removeClippedSubviews
           renderItem={({ item }) => {
             if (item.type === 'header') {
               return (
-                <Text style={[styles.groupTitle, { color: palette.labelTertiary }]}>{item.title}</Text>
+                <Text style={[styles.groupTitle, { color: palette.labelTertiary }]}>
+                  {item.title}
+                </Text>
               );
             }
             const task = item.item as DownloadItem;
             const progress = Math.round((task.progress || 0) * 100);
-            const thumbUri = task.type === 'image' ? (task.localUri || task.url) : '';
+            const thumbUri = task.type === 'image' ? task.localUri || task.url : '';
             return (
-              <View style={[styles.task, { backgroundColor: palette.surfaceGlassStrong, borderColor: palette.hairline, borderRadius: 20 }]}>
-                  {/* 缩略图 44 圆角 10：图片用本地/网络缩略，其余回退为类型图标 */}
-                  {thumbUri ? (
-                    <NetworkImage source={{ uri: thumbUri }} style={[styles.taskThumb, { backgroundColor: palette.fill3 }]} />
-                  ) : (
-                    <View style={[styles.taskThumb, styles.taskThumbIcon, { backgroundColor: palette.tintSoft }]}>
-                      <MaterialCommunityIcons name={typeIcon(task.type)} size={20} color={palette.tint} />
-                    </View>
-                  )}
-                  <View style={styles.taskBody}>
-                    <View style={styles.taskTitleRow}>
-                      <Text style={[styles.taskName, { color: palette.label }]} numberOfLines={1}>{task.name}</Text>
-                      <View style={[styles.taskTypePill, { backgroundColor: palette.fill2 }]}>
-                        <Text style={[styles.taskTypeText, { color: palette.labelSecondary }]}>{t(typeLabel(task.type))}</Text>
-                      </View>
-                    </View>
-                    <View style={[styles.progressTrack, { backgroundColor: palette.fill3 }]}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          { backgroundColor: task.status === 'failed' ? palette.danger : palette.tint, width: `${progress}%` },
-                        ]}
-                      />
-                    </View>
-                    <View style={styles.taskMetaRow}>
-                      <Text style={[styles.taskStatus, { color: task.status === 'failed' ? palette.danger : palette.labelSecondary }]} numberOfLines={1}>
-                        {task.status === 'done' ? task.exportError || (Platform.OS === 'android' && !task.publicUri ? t('仅保存在应用内') : t('完成')) : task.status === 'failed' ? t('失败：{msg}', { msg: task.error || '' }) : t('下载中 {downloaded} / {total}', { downloaded: formatBytes(task.downloadedBytes), total: formatBytes(task.totalBytes) })}
+              <View
+                style={[
+                  styles.task,
+                  {
+                    backgroundColor: palette.surfaceGlassStrong,
+                    borderColor: palette.hairline,
+                    borderRadius: 20,
+                  },
+                ]}
+              >
+                {/* 缩略图 44 圆角 10：图片用本地/网络缩略，其余回退为类型图标 */}
+                {thumbUri ? (
+                  <NetworkImage
+                    source={{ uri: thumbUri }}
+                    style={[styles.taskThumb, { backgroundColor: palette.fill3 }]}
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.taskThumb,
+                      styles.taskThumbIcon,
+                      { backgroundColor: palette.tintSoft },
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name={typeIcon(task.type)}
+                      size={20}
+                      color={palette.tint}
+                    />
+                  </View>
+                )}
+                <View style={styles.taskBody}>
+                  <View style={styles.taskTitleRow}>
+                    <Text style={[styles.taskName, { color: palette.label }]} numberOfLines={1}>
+                      {task.name}
+                    </Text>
+                    <View style={[styles.taskTypePill, { backgroundColor: palette.fill2 }]}>
+                      <Text style={[styles.taskTypeText, { color: palette.labelSecondary }]}>
+                        {t(typeLabel(task.type))}
                       </Text>
-                      <Text style={[styles.taskPercent, { color: palette.labelTertiary }]}>{progress}%</Text>
                     </View>
                   </View>
-                  <View style={styles.taskActions}>
-                    {task.status === 'done' && Platform.OS === 'android' && !task.publicUri ? (
-                      <ScalePressable accessibilityRole="button" accessibilityLabel={t('保存到系统下载目录')} onPress={() => handleExport(task)} style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <MaterialCommunityIcons name="folder-download-outline" size={16} color={palette.tint} />
-                      </ScalePressable>
-                    ) : null}
-                    {task.status === 'failed' ? (
-                      <ScalePressable onPress={() => retryTask(task)} style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <MaterialCommunityIcons name="refresh" size={16} color={palette.tint} />
-                      </ScalePressable>
-                    ) : (
-                      <ScalePressable onPress={() => handleOpen(task).catch((error: any) => showToast(t('打开失败：{msg}', { msg: error?.message || error })))} style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <MaterialCommunityIcons name="open-in-app" size={16} color={palette.tint} />
-                      </ScalePressable>
-                    )}
-                    <ScalePressable onPress={() => remove(task.id)} style={styles.actionBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <MaterialCommunityIcons name="delete-outline" size={16} color={palette.danger} />
-                    </ScalePressable>
+                  <View style={[styles.progressTrack, { backgroundColor: palette.fill3 }]}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        {
+                          backgroundColor: task.status === 'failed' ? palette.danger : palette.tint,
+                          width: `${progress}%`,
+                        },
+                      ]}
+                    />
                   </View>
+                  <View style={styles.taskMetaRow}>
+                    <Text
+                      style={[
+                        styles.taskStatus,
+                        {
+                          color: task.status === 'failed' ? palette.danger : palette.labelSecondary,
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {task.status === 'done'
+                        ? task.exportError ||
+                          (Platform.OS === 'android' && !task.publicUri
+                            ? t('仅保存在应用内')
+                            : t('完成'))
+                        : task.status === 'failed'
+                          ? t('失败：{msg}', { msg: task.error || '' })
+                          : t('下载中 {downloaded} / {total}', {
+                              downloaded: formatBytes(task.downloadedBytes),
+                              total: formatBytes(task.totalBytes),
+                            })}
+                    </Text>
+                    <Text style={[styles.taskPercent, { color: palette.labelTertiary }]}>
+                      {progress}%
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.taskActions}>
+                  {task.status === 'done' && Platform.OS === 'android' && !task.publicUri ? (
+                    <ScalePressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t('保存到系统下载目录')}
+                      onPress={() => handleExport(task)}
+                      style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]}
+                      activeOpacity={0.6}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialCommunityIcons
+                        name="folder-download-outline"
+                        size={16}
+                        color={palette.tint}
+                      />
+                    </ScalePressable>
+                  ) : null}
+                  {task.status === 'failed' ? (
+                    <ScalePressable
+                      onPress={() => retryTask(task)}
+                      style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]}
+                      activeOpacity={0.6}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialCommunityIcons name="refresh" size={16} color={palette.tint} />
+                    </ScalePressable>
+                  ) : (
+                    <ScalePressable
+                      onPress={() =>
+                        handleOpen(task).catch((error: any) =>
+                          showToast(t('打开失败：{msg}', { msg: error?.message || error })),
+                        )
+                      }
+                      style={[styles.actionBtn, { backgroundColor: palette.tintSoft }]}
+                      activeOpacity={0.6}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialCommunityIcons name="open-in-app" size={16} color={palette.tint} />
+                    </ScalePressable>
+                  )}
+                  <ScalePressable
+                    onPress={() => remove(task.id)}
+                    style={styles.actionBtn}
+                    activeOpacity={0.6}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialCommunityIcons
+                      name="delete-outline"
+                      size={16}
+                      color={palette.danger}
+                    />
+                  </ScalePressable>
+                </View>
               </View>
             );
           }}
@@ -326,8 +494,16 @@ export default function DownloadScreen() {
       </FadeInView>
       {imgPreview ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setImgPreview('')}>
-          <ScalePressable style={styles.imgModal} activeOpacity={1} onPress={() => setImgPreview('')}>
-            <NetworkImage source={{ uri: imgPreview }} style={styles.imgFull} resizeMode="contain" />
+          <ScalePressable
+            style={styles.imgModal}
+            activeOpacity={1}
+            onPress={() => setImgPreview('')}
+          >
+            <NetworkImage
+              source={{ uri: imgPreview }}
+              style={styles.imgFull}
+              resizeMode="contain"
+            />
           </ScalePressable>
         </Modal>
       ) : null}
@@ -358,7 +534,13 @@ const styles = StyleSheet.create({
   overviewNum: { fontSize: 20, fontWeight: '800' },
   overviewLabel: { fontSize: 11, marginTop: 2 },
   overviewDivider: { width: StyleSheet.hairlineWidth, height: 32, alignSelf: 'center' },
-  groupTitle: { fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8, paddingHorizontal: 4 },
+  groupTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 18,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
   task: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -375,16 +557,30 @@ const styles = StyleSheet.create({
   taskName: { fontSize: 14, fontWeight: '600', flex: 1 },
   taskTypePill: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
   taskTypeText: { fontSize: 10, fontWeight: '700' },
-  progressTrack: { height: 4, marginTop: 8, borderRadius: 2, overflow: 'hidden', backgroundColor: 'transparent' },
+  progressTrack: {
+    height: 4,
+    marginTop: 8,
+    borderRadius: 2,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
   progressFill: { height: 4, borderRadius: 2 },
   taskMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
   taskStatus: { fontSize: 11, flex: 1 },
   taskPercent: { fontSize: 11, fontWeight: '800' },
   taskActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 10 },
   actionBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    alignItems: 'center', justifyContent: 'center',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  imgModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', alignItems: 'center', justifyContent: 'center' },
+  imgModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   imgFull: { width: '96%', height: '80%' },
 });

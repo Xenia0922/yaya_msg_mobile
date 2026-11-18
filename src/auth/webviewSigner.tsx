@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AppState, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import wasmBase64 from './wasmBase64';
@@ -57,13 +57,12 @@ function bindAppState() {
 function waitForAppActive(timeoutMs: number): Promise<boolean> {
   if (appActive) return Promise.resolve(true);
   return new Promise((resolve) => {
-    let timer: ReturnType<typeof setTimeout>;
+    const timer = setTimeout(() => done(false), timeoutMs);
     const done = (active: boolean) => {
       clearTimeout(timer);
       activeWaiters = activeWaiters.filter((item) => item !== done);
       resolve(active);
     };
-    timer = setTimeout(() => done(false), timeoutMs);
     activeWaiters.push(done);
   });
 }
@@ -77,18 +76,17 @@ function waitForMount(timeoutMs: number): Promise<boolean> {
   dbg('[waitForMount] Called, signerRequest:', !!signerRequest);
   if (signerRequest) return Promise.resolve(true);
   return new Promise((resolve) => {
-    let timer: ReturnType<typeof setTimeout>;
+    const timer = setTimeout(() => {
+      mountWaiters = mountWaiters.filter((item) => item !== done);
+      console.error('[waitForMount] Timeout');
+      resolve(false);
+    }, timeoutMs);
     const done = (ready: boolean) => {
       clearTimeout(timer);
       mountWaiters = mountWaiters.filter((item) => item !== done);
       dbg('[waitForMount] Resolved:', ready);
       resolve(ready);
     };
-    timer = setTimeout(() => {
-      mountWaiters = mountWaiters.filter((item) => item !== done);
-      console.error('[waitForMount] Timeout');
-      resolve(false);
-    }, timeoutMs);
     mountWaiters.push(done);
   });
 }
@@ -103,18 +101,17 @@ function waitForReady(timeoutMs: number): Promise<boolean> {
   if (signerReady) return Promise.resolve(true);
   if (signerError) return Promise.resolve(false);
   return new Promise((resolve) => {
-    let timer: ReturnType<typeof setTimeout>;
+    const timer = setTimeout(() => {
+      readyWaiters = readyWaiters.filter((item) => item !== done);
+      console.error('[waitForReady] Timeout');
+      resolve(false);
+    }, timeoutMs);
     const done = (ready: boolean) => {
       clearTimeout(timer);
       readyWaiters = readyWaiters.filter((item) => item !== done);
       dbg('[waitForReady] Resolved:', ready);
       resolve(ready);
     };
-    timer = setTimeout(() => {
-      readyWaiters = readyWaiters.filter((item) => item !== done);
-      console.error('[waitForReady] Timeout');
-      resolve(false);
-    }, timeoutMs);
     readyWaiters.push(done);
   });
 }
@@ -225,13 +222,15 @@ export async function generatePaViaWebView(timeoutMs = DEFAULT_TIMEOUT): Promise
 
   inflight = run;
   // 无论成功失败都要放开单飞锁，否则后续请求会一直挂在失败结果上
-  run.finally(() => {
-    if (inflight === run) inflight = null;
-  }).catch(() => {});
+  run
+    .finally(() => {
+      if (inflight === run) inflight = null;
+    })
+    .catch(() => {});
   return run;
 }
 
-function makeHtml(wasmBase64: string) {
+function makeHtml(wasmBase64: string, instanceId: string | number) {
   const shim = `var module = (typeof module !== 'undefined') ? module : {};
 module.require = function() { return undefined; };`;
 
@@ -240,8 +239,9 @@ module.require = function() { return undefined; };`;
 <head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body>
 <script>
+var INSTANCE_ID = ${JSON.stringify(String(instanceId))};
 window.onerror = function(message) {
-  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', error: String(message) }));
+  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', instance: INSTANCE_ID, error: String(message) }));
 };
 ${shim}
 ${wasmGlueSource}
@@ -253,6 +253,7 @@ function bytesFromBase64(base64) {
   return bytes;
 }
 function send(payload) {
+  payload.instance = INSTANCE_ID;
   window.ReactNativeWebView.postMessage(JSON.stringify(payload));
 }
 function handleMessage(event) {
@@ -275,12 +276,20 @@ __wbg_init(bytesFromBase64(${JSON.stringify(wasmBase64)}))
 </html>`;
 }
 
+let signerInstanceCounter = 0;
+
 export function WebViewSigner() {
   const webRef = useRef<WebView>(null);
   const [html, setHtml] = useState<string>('');
   // 换 key 即重挂载 WebView：渲染进程被回收 / 签名请求超时后靠它把签名通道救回来
   const [generation, setGeneration] = useState(0);
   const htmlRef = useRef<string>('');
+  /** 只有 wasm 完整性校验通过后才允许生成 HTML，重挂载也不能绕过校验。 */
+  const verifiedRef = useRef(false);
+  // 实例标识必须随每次重挂载变化：key={generation} 只换 WebView 节点，
+  // 若 instanceId 不变，旧渲染进程的迟到 ready/error 会误通过过滤。
+  const [instanceId, setInstanceId] = useState(() => `signer-${++signerInstanceCounter}`);
+  const instanceIdRef = useRef(instanceId);
 
   useEffect(() => {
     let mounted = true;
@@ -291,6 +300,14 @@ export function WebViewSigner() {
       if (!mounted) return;
       signerReady = false;
       signerError = '';
+      // 生成新的实例标识并同步重建 HTML：旧 WebView 的迟到消息会因 instance 不匹配被丢弃。
+      const nextInstanceId = `signer-${++signerInstanceCounter}`;
+      setInstanceId(nextInstanceId);
+      if (verifiedRef.current) {
+        const built = makeHtml(wasmBase64, nextInstanceId);
+        htmlRef.current = built;
+        setHtml(built);
+      }
       setGeneration((value) => value + 1);
     };
     remount = myRemount;
@@ -307,7 +324,8 @@ export function WebViewSigner() {
           throw new Error('内联 wasmBase64 完整性校验失败');
         }
         dbg('[WebViewSigner] Hash verified, setting HTML...');
-        const built = makeHtml(wasmBase64);
+        verifiedRef.current = true;
+        const built = makeHtml(wasmBase64, instanceIdRef.current);
         htmlRef.current = built;
         if (mounted) {
           setHtml(built);
@@ -322,12 +340,17 @@ export function WebViewSigner() {
     })();
 
     const myRequest = async (timeoutMs = DEFAULT_TIMEOUT) => {
-      dbg('[WebViewSigner] signerRequest called, html:', !!htmlRef.current, 'webRef:', !!webRef.current);
+      dbg(
+        '[WebViewSigner] signerRequest called, html:',
+        !!htmlRef.current,
+        'webRef:',
+        !!webRef.current,
+      );
       if (!htmlRef.current) {
         // 等待 wasm 注入完成
         let waited = 0;
         while (!htmlRef.current && waited < timeoutMs) {
-          await new Promise(r => setTimeout(r, 50));
+          await new Promise((r) => setTimeout(r, 50));
           waited += 50;
         }
         if (!htmlRef.current) {
@@ -355,7 +378,7 @@ export function WebViewSigner() {
         const item: PendingRequest = {
           resolve,
           reject,
-          timer: (null as unknown) as ReturnType<typeof setTimeout>,
+          timer: null as unknown as ReturnType<typeof setTimeout>,
         };
         // 后台冻结时不计时：重排一次，等回前台再算超时
         const arm = (ms: number) => {
@@ -420,7 +443,18 @@ export function WebViewSigner() {
         javaScriptEnabled
         domStorageEnabled
         onLoad={() => dbg('[WebViewSigner] WebView onLoad fired')}
-        onLoadEnd={(e) => dbg('[WebViewSigner] WebView onLoadEnd, canGoBack:', e.nativeEvent.canGoBack, 'loading:', e.nativeEvent.loading, 'url:', e.nativeEvent.url, 'title:', e.nativeEvent.title)}
+        onLoadEnd={(e) =>
+          dbg(
+            '[WebViewSigner] WebView onLoadEnd, canGoBack:',
+            e.nativeEvent.canGoBack,
+            'loading:',
+            e.nativeEvent.loading,
+            'url:',
+            e.nativeEvent.url,
+            'title:',
+            e.nativeEvent.title,
+          )
+        }
         onError={(e) => console.error('[WebViewSigner] WebView onError:', e.nativeEvent)}
         onRenderProcessGone={() => {
           // 系统回收渲染进程后原 WebView 已不可用，重建才能继续签名
@@ -429,7 +463,14 @@ export function WebViewSigner() {
         }}
         onMessage={(event) => {
           let payload: any;
-          try { payload = JSON.parse(event.nativeEvent.data); } catch { return; }
+          try {
+            payload = JSON.parse(event.nativeEvent.data);
+          } catch {
+            return;
+          }
+          // 旧 WebView 实例的迟到消息（ready/error/pa）不得影响新实例：
+          // 每个实例有独立 instance id，非本实例消息一律丢弃。
+          if (String(payload.instance || '') !== String(instanceId)) return;
           if (payload.type === 'ready') {
             signerReady = true;
             signerError = '';

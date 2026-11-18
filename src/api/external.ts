@@ -1,14 +1,20 @@
-import {
-  BILIBILI_LIVE_CONFIG_URL,
-} from '../constants';
-import {
-  BilibiliLiveRoom,
-} from '../types';
+import { BILIBILI_LIVE_CONFIG_URL } from '../constants';
+import { BilibiliLiveRoom } from '../types';
 import { fetchJson } from '../utils/network';
 import { unwrapList } from '../utils/data';
 
+/** B 站直播配置接口的原始行（字段名随上游版本变化，宽松解析） */
+interface BilibiliRoomRaw {
+  roomId?: string | number;
+  id?: string | number;
+  name?: string;
+  title?: string;
+  roomName?: string;
+  isLive?: boolean | number;
+}
+
 async function fetchList<T>(url: string, keys: string[] = [], cacheTtl = 0): Promise<T[]> {
-  const res = await fetchJson<any>(url, cacheTtl);
+  const res = await fetchJson<unknown>(url, cacheTtl);
   return unwrapList(res, keys) as T[];
 }
 
@@ -18,7 +24,11 @@ export const externalApi = {
    * 会话内 5 分钟 TTL 内存缓存，避免反复进出直播页重复拉取。
    */
   async fetchBilibiliConfig(): Promise<BilibiliLiveRoom[]> {
-    const rooms = await fetchList<any>(BILIBILI_LIVE_CONFIG_URL, ['rooms', 'data', 'content', 'list'], 5 * 60 * 1000);
+    const rooms = await fetchList<BilibiliRoomRaw>(
+      BILIBILI_LIVE_CONFIG_URL,
+      ['rooms', 'data', 'content', 'list'],
+      5 * 60 * 1000,
+    );
     return rooms.map((room) => ({
       ...room,
       roomId: String(room.roomId || room.id || ''),

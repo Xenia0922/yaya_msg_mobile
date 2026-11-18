@@ -10,7 +10,11 @@ const require = createRequire(import.meta.url);
 const ts = require('typescript');
 const source = readFileSync(join(root, 'src/services/pocketNim/credentials.ts'), 'utf8');
 const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2020,
+    esModuleInterop: true,
+  },
 }).outputText;
 
 let token = 'MOCK_ACCOUNT_A';
@@ -21,7 +25,11 @@ const imports = {
     __esModule: true,
     default: { getNimLoginInfo: () => new Promise((resolve) => requests.push(resolve)) },
   },
-  '../../constants/identityFeatures': { ALLOW_CUSTOM_IDENTITY_ROLES: false, ALLOW_CUSTOM_SENDER_PROFILE: false, ALLOW_CUSTOM_TEAM_LOGO: false },
+  '../../constants/identityFeatures': {
+    ALLOW_CUSTOM_IDENTITY_ROLES: false,
+    ALLOW_CUSTOM_SENDER_PROFILE: false,
+    ALLOW_CUSTOM_TEAM_LOGO: false,
+  },
   '../settings': { getSetting: async () => null },
   '../../store': { useSettingsStore: { getState: () => ({ settings: { p48Token: token } }) } },
   '../../utils/runtimeLog': { logInfo() {} },
@@ -30,7 +38,11 @@ const imports = {
 vm.runInNewContext(compiled, {
   module: moduleObject,
   exports: moduleObject.exports,
-  require: (id) => imports[id] ?? (() => { throw new Error(`Unexpected import: ${id}`); })(),
+  require: (id) =>
+    imports[id] ??
+    (() => {
+      throw new Error(`Unexpected import: ${id}`);
+    })(),
   console: { log() {} },
 });
 
@@ -53,6 +65,11 @@ assert.equal(await beforeLogout, null, '登出后的在途请求应作废');
 assert.equal(api.peekNimCredentials(), null);
 token = 'MOCK_ACCOUNT_C';
 const profileRequest = api.loadSelfProfile();
-requests[3]({ accid: 'MOCK_USER_C', token: 'MOCK_CREDENTIAL_C', nickName: 'Mock', avatar: 'https://example.test/avatar' });
+requests[3]({
+  accid: 'MOCK_USER_C',
+  token: 'MOCK_CREDENTIAL_C',
+  nickName: 'Mock',
+  avatar: 'https://example.test/avatar',
+});
 assert.equal((await profileRequest)?.accid, 'MOCK_USER_C', '切号后的首次自身资料请求应成功');
 console.log('  ✓ 云信凭证切号与登出时的在途请求隔离正确');

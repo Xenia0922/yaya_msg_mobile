@@ -1,4 +1,3 @@
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -29,8 +28,6 @@ export interface AppTabBarProps {
 
 /** 底栏左右内边距（与 styles.bar.paddingHorizontal 保持一致） */
 const BAR_PAD = 8;
-/** 单格最小宽：低于此值（极窄屏/超多 tab）宁可靠边也不挤压文字 */
-const CELL_MIN = 64;
 
 function TabCell({
   item,
@@ -50,7 +47,12 @@ function TabCell({
     pop.stopAnimation();
     if (active) {
       pop.setValue(0.92);
-      const animation = Animated.spring(pop, { toValue: 1, tension: 240, friction: 26, useNativeDriver: true });
+      const animation = Animated.spring(pop, {
+        toValue: 1,
+        tension: 240,
+        friction: 26,
+        useNativeDriver: true,
+      });
       animation.start();
       return () => animation.stop();
     } else {
@@ -64,12 +66,16 @@ function TabCell({
       accessibilityState={{ selected: active }}
       hitSlop={6}
       onPress={onSelect}
-      style={({ pressed }) => [{ ...styles.cell, width }, pressed && { transform: [{ scale: 0.97 }] }]}
+      style={({ pressed }) => [
+        { ...styles.cell, width },
+        pressed && { transform: [{ scale: 0.97 }] },
+      ]}
     >
       <Animated.View style={[styles.cellIcon, { transform: [{ scale: pop }] }]}>
         {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 23 })}
       </Animated.View>
       <Text
+        numberOfLines={1}
         style={[
           typography.caption2,
           {
@@ -90,13 +96,16 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const isDark = palette.name === 'dark';
   const { width: winW } = useWindowDimensions();
 
-  const activeIndex = Math.max(0, items.findIndex((it) => it.key === activeKey));
-  // D7：单格宽按屏宽/格数自适应（此前写死 76，加第 5 个 tab 必溢出）
-  const cellW = Math.max(CELL_MIN, Math.round((Math.min(winW, 520) - 32 - BAR_PAD * 2) / Math.max(1, items.length)));
+  const activeIndex = Math.max(
+    0,
+    items.findIndex((it) => it.key === activeKey),
+  );
+  // D7：单格宽按屏宽/格数自适应；极窄屏允许低于 64，保证底栏整体不溢出屏幕
+  const availableW = Math.min(winW, 520) - 32 - BAR_PAD * 2;
+  const cellW = Math.max(1, Math.floor(availableW / Math.max(1, items.length)));
   // PanResponder 只创建一次，闭包里用 ref 读最新格宽（格数/屏宽变化时不出错）
   const cellWRef = useRef(cellW);
   cellWRef.current = cellW;
-  const maxShift = Math.max(0, (items.length - 1) * cellW);
 
   const indX = useRef(new Animated.Value(activeIndex * cellWRef.current)).current;
   const indXRef = useRef(activeIndex * cellWRef.current);
@@ -107,7 +116,12 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const dragScale = useRef(new Animated.Value(1)).current;
   const scaleTo = useCallback(
     (v: number) => {
-      Animated.spring(dragScale, { toValue: v, tension: 240, friction: 26, useNativeDriver: true }).start();
+      Animated.spring(dragScale, {
+        toValue: v,
+        tension: 240,
+        friction: 26,
+        useNativeDriver: true,
+      }).start();
     },
     [dragScale],
   );
@@ -115,13 +129,18 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const hoverRef = useRef<number | null>(null);
 
-  // 外部切页（含导航状态变化）时把指示器弹到位
+  // 外部切页（含导航状态变化）或屏宽/格数变化时把指示器弹到位
   useEffect(() => {
     if (hoverRef.current != null) return; // 拖动中不要被外部状态拽走
-    const target = activeIndex * cellWRef.current;
+    const target = activeIndex * cellW;
     indXRef.current = target;
-    Animated.spring(indX, { toValue: target, tension: 240, friction: 26, useNativeDriver: true }).start();
-  }, [activeIndex, indX]);
+    Animated.spring(indX, {
+      toValue: target,
+      tension: 240,
+      friction: 26,
+      useNativeDriver: true,
+    }).start();
+  }, [activeIndex, cellW, indX]);
 
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -135,7 +154,12 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
   const settle = useCallback(
     (x: number) => {
       indXRef.current = x;
-      Animated.spring(indX, { toValue: x, tension: 240, friction: 26, useNativeDriver: true }).start();
+      Animated.spring(indX, {
+        toValue: x,
+        tension: 240,
+        friction: 26,
+        useNativeDriver: true,
+      }).start();
     },
     [indX],
   );
@@ -144,8 +168,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
     PanResponder.create({
       // 点击不抢：只有横向拖动才接管，保证 tab 的点击照常触发
       onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
       onPanResponderGrant: () => {
         indX.stopAnimation((v: number) => {
           indXRef.current = v;
@@ -178,7 +201,12 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         settle(h * cellWRef.current);
         scaleTo(1);
         dragStretch.setValue(1);
-        Animated.spring(dragStretch, { toValue: 1, tension: 240, friction: 26, useNativeDriver: true }).start();
+        Animated.spring(dragStretch, {
+          toValue: 1,
+          tension: 240,
+          friction: 26,
+          useNativeDriver: true,
+        }).start();
         const target = itemsRef.current[h];
         if (target && target.key !== activeKeyRef.current) onSelectRef.current(target.key);
       },
@@ -187,7 +215,12 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         setHoverIndex(null);
         settle(activeIndexRef.current * cellWRef.current);
         scaleTo(1);
-        Animated.spring(dragStretch, { toValue: 1, tension: 240, friction: 26, useNativeDriver: true }).start();
+        Animated.spring(dragStretch, {
+          toValue: 1,
+          tension: 240,
+          friction: 26,
+          useNativeDriver: true,
+        }).start();
       },
     }),
   ).current;
@@ -207,14 +240,19 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
             style={[
               styles.indicator,
               {
-                width: cellWRef.current,
+                width: cellW,
                 // 选中胶囊 = 底面 + 柔和投影。
                 // ⚠️ 阴影必须是「灰色」：黑色投影压在浅色玻璃上会显脏（用户明确要求）。
                 // Android 端 RN 会把 shadowColor 映射到 outline shadow 颜色（API 28+），
                 // 所以两边都设成同一个灰。
                 backgroundColor: isDark ? 'rgba(30,30,36,0.86)' : 'rgba(242,242,246,0.80)',
                 ...Platform.select({
-                  ios: { shadowColor: '#9A9AA2', shadowOpacity: 0.42, shadowRadius: 7, shadowOffset: { width: 0, height: 2 } },
+                  ios: {
+                    shadowColor: '#9A9AA2',
+                    shadowOpacity: 0.42,
+                    shadowRadius: 7,
+                    shadowOffset: { width: 0, height: 2 },
+                  },
                   android: { shadowColor: '#9A9AA2', elevation: 4 },
                   default: null,
                 }),
@@ -228,7 +266,7 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               asBackground
               // 静止：低调浅灰（不是亮白，避免像一块贴纸）
               // 拖动：更透但仍保留材质 —— 完全透明等于把玻璃删了，不是液态玻璃；
-              //       拖动要的是「玻璃流过」：白纱变薄 + AGSL 边缘折射/色散更明显。
+              // 拖动要的是「玻璃流过」：白纱变薄 + AGSL 边缘折射/色散更明显。
               tintColor={
                 hoverIndex !== null
                   ? isDark
@@ -275,7 +313,7 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.10,
+        shadowOpacity: 0.1,
         shadowRadius: 16,
       },
       android: { elevation: 8 },

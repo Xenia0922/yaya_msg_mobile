@@ -45,7 +45,8 @@ export function formatDuration(seconds: number): string {
 }
 
 export function formatCount(n: number): string {
-  if (!Number.isFinite(n)) return '0';  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
+  if (!Number.isFinite(n)) return '0';
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
@@ -78,9 +79,22 @@ export function getMessageType(msg: RoomMessage): string {
 
 export function isMessageType(msg: RoomMessage, type: string): boolean {
   const msgType = (msg.msgType || '').toUpperCase();
-  if (type === 'text') return !['AUDIO', 'IMAGE', 'VIDEO', 'REPLY', 'GIFTREPLY', 'LIVEPUSH', 'SHARE_LIVE', 'GIFT_TEXT', 'FLIPCARD', 'LIVE_RECORD'].includes(msgType);
+  if (type === 'text')
+    return ![
+      'AUDIO',
+      'IMAGE',
+      'VIDEO',
+      'REPLY',
+      'GIFTREPLY',
+      'LIVEPUSH',
+      'SHARE_LIVE',
+      'GIFT_TEXT',
+      'FLIPCARD',
+      'LIVE_RECORD',
+    ].includes(msgType);
   if (type === 'reply') return msgType === 'REPLY' || msgType === 'GIFTREPLY';
-  if (type === 'live-record') return msgType === 'LIVEPUSH' || msgType === 'SHARE_LIVE' || msgType === 'LIVE_RECORD';
+  if (type === 'live-record')
+    return msgType === 'LIVEPUSH' || msgType === 'SHARE_LIVE' || msgType === 'LIVE_RECORD';
   return msgType === type.toUpperCase();
 }
 

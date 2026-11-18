@@ -1,11 +1,11 @@
 /**
  * 应用内悬浮小窗播放器（In-App Mini Player）：
- *  - 右下角悬浮，可拖动（PanResponder，零依赖）
- *  - 独立 Video 实例续播（交棒时 seek 到原位置）
- *  - 交互：右上角「返回全屏」常显按钮（回放全屏播放器）；左上角「关闭」；
- *    点画面唤出/隐藏控件组（暂停、标题，3s 无操作自动隐藏）
- *  - 容器宽高按视频内容比例自适应（竖屏内容竖着小窗，不再裁剪变形）
- *  - 与系统 PiP 并存：App 前台用小窗，切后台由 MainActivity 自动进系统悬浮窗
+ * - 右下角悬浮，可拖动（PanResponder，零依赖）
+ * - 独立 Video 实例续播（交棒时 seek 到原位置）
+ * - 交互：右上角「返回全屏」常显按钮（回放全屏播放器）；左上角「关闭」；
+ * 点画面唤出/隐藏控件组（暂停、标题，3s 无操作自动隐藏）
+ * - 容器宽高按视频内容比例自适应（竖屏内容竖着小窗，不再裁剪变形）
+ * - 与系统 PiP 并存：App 前台用小窗，切后台由 MainActivity 自动进系统悬浮窗
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -19,15 +19,16 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import Video from 'react-native-video';
+import Video, { ViewType } from 'react-native-video';
 import { WebView } from 'react-native-webview';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
-import { useSettingsStore } from '../store';
+import { USER_AGENT } from '../constants';
 import { usePalette } from '../theme';
 import { setPipPlaying, setPipAspect } from '../utils/pip';
 import { useI18n } from '../i18n';
 import { LiveExoView } from '../native/LivePlayer';
+import { isRtmpUrl } from '../player/resolve/streamResolver';
 import { getPlayerHtml } from './media/player';
 
 const W = 180;
@@ -122,8 +123,11 @@ export function MiniPlayer() {
   }, [info, close, navigation]);
 
   /** 缩放档位循环：默认 1 → 放大 1.18 → 缩小 0.74 → 1
-   *  触发方式：双击画面空白处（原来是右上角那颗 resize 按钮，用户要求去掉） */
-  const cycleScale = useCallback(() => setScale((sv) => (sv >= 1.1 ? SCALE_SMALL : sv < 0.9 ? 1 : SCALE_LARGE)), []);
+   * 触发方式：双击画面空白处（原来是右上角那颗 resize 按钮，用户要求去掉） */
+  const cycleScale = useCallback(
+    () => setScale((sv) => (sv >= 1.1 ? SCALE_SMALL : sv < 0.9 ? 1 : SCALE_LARGE)),
+    [],
+  );
 
   const pan = useMemo(
     () =>
@@ -217,19 +221,19 @@ export function MiniPlayer() {
       setHasNatural(true);
     }
     setPipAspect(w, h);
-  }, [W]);
+  }, []);
   // 播放状态 → PiP 标志（小窗切后台自动进系统悬浮窗）
   useEffect(() => {
     // 上麦/纯音频胶囊不参与系统小窗：audioOnly 时始终关闭 PiP 标志，避免「唤出上麦胶囊后召回系统小窗」
-  setPipPlaying(visible && playing && !!info?.url && !info?.audioOnly, 'miniplayer');
+    setPipPlaying(visible && playing && !!info?.url && !info?.audioOnly, 'miniplayer');
   }, [visible, playing, info]);
   useEffect(() => () => setPipPlaying(false, 'miniplayer'), []);
 
   // 切后台兜底：强制置 PiP 标志（防主播放器关闭时把标志覆盖成 false，导致小窗切后台不进悬浮窗）
   // + 同步渲染"全屏媒体盖层"：系统 PiP 的画面 = 整个 Activity 窗口快照，若不把页面盖住，
-  //   悬浮窗里会看到「列表页 + 右下角小窗」的脏画面；全屏化后悬浮窗=纯媒体。
+  // 悬浮窗里会看到「列表页 + 右下角小窗」的脏画面；全屏化后悬浮窗=纯媒体。
   // ⚠️ AppState 在 PiP 下不切 background（仍为 active），不能驱动此处的盖层；
-  //    改用 MainActivity.onPictureInPictureModeChanged → DeviceEvent 'PipEnteredChanged' 通知。
+  // 改用 MainActivity.onPictureInPictureModeChanged → DeviceEvent 'PipEnteredChanged' 通知。
   useEffect(() => {
     const active = visible && !!info?.url;
     const sub = DeviceEventEmitter.addListener('PipEnteredChanged', (entered: boolean) => {
@@ -243,7 +247,6 @@ export function MiniPlayer() {
       setPipCover(entered && active);
     });
     return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, playing, info]);
 
   // 系统 PiP ⏯ 点击（PipToggleBridge 经 store 发信号）→ 与小窗暂停键同逻辑切换当前小窗内容
@@ -255,7 +258,9 @@ export function MiniPlayer() {
     const next = !cur.playing;
     cur.setPlaying(next);
     if (useWebMini) {
-      try { webMiniRef.current?.postMessage(JSON.stringify({ type: next ? 'play' : 'pause' })); } catch {}
+      try {
+        webMiniRef.current?.postMessage(JSON.stringify({ type: next ? 'play' : 'pause' }));
+      } catch {}
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sysToggleSeq]);
@@ -263,23 +268,38 @@ export function MiniPlayer() {
   // ⚠️ 所有 hooks 必须在下方 `if (!visible || !info) return null` 之前：
   // return 若夹在 hooks 中间，每次小窗开/关(visible 翻转) hooks 数量变化 → "Rendered more hooks" 崩溃
   const lowerUrl = String(info?.url || '').toLowerCase();
-  const isNativeLive = !!info?.isLive && !!info?.url && (lowerUrl.startsWith('rtmp://') || lowerUrl.includes('.flv')) && !!LiveExoView;
-  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{ style?: any; url: string; onSize?: (e: any) => void; audioOnly?: boolean; paused?: boolean }> | null;
+  const isNativeLive =
+    !!info?.isLive &&
+    !!info?.url &&
+    (isRtmpUrl(lowerUrl) || lowerUrl.includes('.flv')) &&
+    !!LiveExoView;
+  const NativeLiveView = (LiveExoView || null) as React.ComponentType<{
+    style?: any;
+    url: string;
+    onSize?: (e: any) => void;
+    audioOnly?: boolean;
+    paused?: boolean;
+  }> | null;
   // 公演/B站直播小窗：网页内核（无 LIVE 标、带 WebAudio 增益与防盗链 headers，音量与大屏一致）
   const useWebMini = !!info?.web && !!info?.isLive && /^https?:\/\//i.test(lowerUrl);
   const webMiniRef = useRef<WebView>(null);
+  const webHeaders = info?.web?.headers;
+  const webVolumeBoost = Number(info?.web?.volumeBoost) || 1;
   const webMiniHtml = useMemo(
-    () => (useWebMini
-      ? getPlayerHtml(info.url, undefined, 0, false, (info.web?.headers || {}) as any, Number(info.web?.volumeBoost) || 1)
-      : ''),
-    [useWebMini, (info && info.url) || ''],
+    () =>
+      useWebMini
+        ? getPlayerHtml(info.url, undefined, 0, false, (webHeaders || {}) as any, webVolumeBoost)
+        : '',
+    [useWebMini, info?.url, webHeaders, webVolumeBoost],
   );
   const handlePlayToggle = () => {
     const cur = useMiniPlayerStore.getState().playing;
     const next = !cur;
     useMiniPlayerStore.getState().setPlaying(next);
     if (useWebMini) {
-      try { webMiniRef.current?.postMessage(JSON.stringify({ type: next ? 'play' : 'pause' })); } catch {}
+      try {
+        webMiniRef.current?.postMessage(JSON.stringify({ type: next ? 'play' : 'pause' }));
+      } catch {}
     }
   };
   // 缩放档位循环：默认 1 → 放大 1.18 → 缩小 0.74 → 1
@@ -292,10 +312,10 @@ export function MiniPlayer() {
     const by = Math.min(Math.max(6, basePos.current.y), maxY);
     basePos.current = { x: bx, y: by };
     pos.setValue({ x: bx, y: by });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     // ⚠️ 依赖必须含 boxW/boxHNow/winW/winH：boxH 按内容自适应变高后，位置若不重新夹紧，
     // 高的小窗会直接戳出屏幕下方/盖住 dock（用户反馈「小窗空间有问题」）。
-  }, [scale, boxW, boxHNow, winW, winH]);
+  }, [scale, boxW, boxHNow, winW, winH, pos]);
 
   /**
    * 交棒时带上大窗已知的视频宽高 → **立刻**按比例适配容器（不等 onLoad）。
@@ -304,17 +324,17 @@ export function MiniPlayer() {
    */
   useEffect(() => {
     // ⚠️ 直播不接受 naturalSize：部分成员直播上报横屏编码尺寸（1920×1080），
-    //    跟着它会「竖屏直播进小窗变横屏」。直播一律走下面的来源判定分支。
+    // 跟着它会「竖屏直播进小窗变横屏」。直播一律走下面的来源判定分支。
     const liveFixed = !!info?.isLive && !info?.audioOnly;
     const w = liveFixed ? 0 : Number(info?.aspectW || 0);
     const h = liveFixed ? 0 : Number(info?.aspectH || 0);
     if (!(w > 0 && h > 0)) {
-      // ⚠️ 不再一律假定竖屏 9:16（2026-10-03 修复）：横屏 rtmp 直播（B站/公演网页内核）
+      // ⚠️ 不再一律假定竖屏 9:16（修复）：横屏 rtmp 直播（B站/公演网页内核）
       // 会被当成竖屏 → 小窗变竖条、画面被压。按来源区分：网页内核直播多为横屏，
       // 成员原生直播（手机摄像头）多为竖屏。
       const landscapeLive = !!info?.isLive && !!info?.web;
       if (info?.isLive && !info?.audioOnly) {
-        const ph = landscapeLive ? Math.round(W * 9 / 16) : Math.round(W * 16 / 9);
+        const ph = landscapeLive ? Math.round((W * 9) / 16) : Math.round((W * 16) / 9);
         boxHRef.current = ph;
         setBoxH(ph);
         // 未确认真实尺寸：等 onSize/onVideoSizeChanged 回调纠正
@@ -355,8 +375,8 @@ export function MiniPlayer() {
             // 位置改用 transform 承载（不再用 left/top）：不触发布局重排，拖动/滚动更顺
             left: 0,
             top: 0,
-            width: pipCover ? winW : (info.audioOnly ? CAPSULE_W : boxW),
-            height: pipCover ? winH : (info.audioOnly ? CAPSULE_H : boxHNow),
+            width: pipCover ? winW : info.audioOnly ? CAPSULE_W : boxW,
+            height: pipCover ? winH : info.audioOnly ? CAPSULE_H : boxHNow,
             borderRadius: info.audioOnly ? CAPSULE_H / 2 : undefined,
             backgroundColor: info.audioOnly ? palette.surfaceGlassStrong : '#000',
             borderColor: palette.hairline,
@@ -365,129 +385,155 @@ export function MiniPlayer() {
         ]}
       >
         {/* 纯音频（上麦/电台）：媒体层全透明，只出声 —— 否则是一块黑，且不跟随深浅色主题 */}
-        <View pointerEvents="none" style={info.audioOnly ? [StyleSheet.absoluteFill, { opacity: 0 }] : StyleSheet.absoluteFill}>
-        {useWebMini ? (
-          <WebView
-            ref={webMiniRef}
-            key={info.url}
-            source={{ html: webMiniHtml }}
-            style={StyleSheet.absoluteFill}
-            javaScriptEnabled
-            domStorageEnabled
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            originWhitelist={['*']}
-            mixedContentMode="always"
-            onMessage={(e) => {
-              // ⚠️ 网页内核小窗此前完全没接 onMessage（2026-10-03 修复）：
-              // ① videosize 拿不到 → 小窗永远停在默认 180×104、竖屏内容被裁；
-              // ② progress 拿不到 → currentPos 恒 0，回大窗从 0 开始。
-              try {
-                const d = JSON.parse(e.nativeEvent.data);
-                if (d.type === 'videosize') {
-                  applyContentSize(Number(d.width) || 0, Number(d.height) || 0);
-                } else if (d.type === 'progress') {
-                  const t = Number(d.time) || 0;
-                  if (Number.isFinite(t) && t > 0) useMiniPlayerStore.getState().setCurrentPos(t);
+        <View
+          pointerEvents="none"
+          style={
+            info.audioOnly ? [StyleSheet.absoluteFill, { opacity: 0 }] : StyleSheet.absoluteFill
+          }
+        >
+          {useWebMini ? (
+            <WebView
+              ref={webMiniRef}
+              key={info.url}
+              source={{ html: webMiniHtml }}
+              style={StyleSheet.absoluteFill}
+              javaScriptEnabled
+              domStorageEnabled
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              originWhitelist={['*']}
+              mixedContentMode="always"
+              onMessage={(e) => {
+                // ⚠️ 网页内核小窗此前完全没接 onMessage（修复）：
+                // ① videosize 拿不到 → 小窗永远停在默认 180×104、竖屏内容被裁；
+                // ② progress 拿不到 → currentPos 恒 0，回大窗从 0 开始。
+                try {
+                  const d = JSON.parse(e.nativeEvent.data);
+                  if (d.type === 'videosize') {
+                    applyContentSize(Number(d.width) || 0, Number(d.height) || 0);
+                  } else if (d.type === 'progress') {
+                    const t = Number(d.time) || 0;
+                    if (Number.isFinite(t) && t > 0) useMiniPlayerStore.getState().setCurrentPos(t);
+                  }
+                } catch {}
+              }}
+            />
+          ) : isNativeLive && NativeLiveView ? (
+            /* RTMP/FLV 直播流：ExoPlayer 不支持，必须用原生 LiveExoView（与大播放器一致） */
+            <NativeLiveView
+              key={info.url}
+              style={StyleSheet.absoluteFill}
+              url={info.url}
+              paused={!playing}
+              // 纯音频（上麦/电台）：原生不渲染画面，露出胶囊自己的主题底色（否则是一块黑）
+              audioOnly={!!info.audioOnly}
+              onSize={(e) => {
+                // 原生 onVideoSizeChanged 回调：按视频实际宽高自适应小窗容器（横屏 16:9 / 竖屏 9:16）
+                const w = e.nativeEvent?.width;
+                const h = e.nativeEvent?.height;
+                if (w > 0 && h > 0) {
+                  const rawH = Math.round((W * h) / w);
+                  if (rawH > 420) {
+                    boxHRef.current = H_MIN;
+                    setBoxH(H_MIN);
+                    setHasNatural(false);
+                  } else {
+                    const hh = Math.max(H_MIN, rawH);
+                    boxHRef.current = hh;
+                    setBoxH(hh);
+                    setHasNatural(true);
+                  }
+                  setPipAspect(w, h);
                 }
-              } catch {}
-            }}
-          />
-        ) : isNativeLive && NativeLiveView ? (
-          /* RTMP/FLV 直播流：ExoPlayer 不支持，必须用原生 LiveExoView（与大播放器一致） */
-          <NativeLiveView
-            key={info.url}
-            style={StyleSheet.absoluteFill}
-            url={info.url}
-            paused={!playing}
-            // 纯音频（上麦/电台）：原生不渲染画面，露出胶囊自己的主题底色（否则是一块黑）
-            audioOnly={!!info.audioOnly}
-            onSize={(e) => {
-              // 原生 onVideoSizeChanged 回调：按视频实际宽高自适应小窗容器（横屏 16:9 / 竖屏 9:16）
-              const w = e.nativeEvent?.width;
-              const h = e.nativeEvent?.height;
-              if (w > 0 && h > 0) {
-                const rawH = Math.round((W * h) / w);
-                if (rawH > 420) {
-                  boxHRef.current = H_MIN;
-                  setBoxH(H_MIN);
-                  setHasNatural(false);
+              }}
+            />
+          ) : (
+            <Video
+              ref={videoRef}
+              key={`${info.url}-${info.position || 0}`}
+              source={{
+                uri: info.url,
+                // 口袋48 直播流防盗链校验 Referer/UA/Origin——与大播放器 playerSource 一致
+                headers: {
+                  'User-Agent': USER_AGENT,
+                  Referer: 'https://h5.48.cn/',
+                  Origin: 'https://h5.48.cn',
+                },
+              }}
+              style={StyleSheet.absoluteFill}
+              // Android 系统 PiP 里 SurfaceView 会先黑屏很久；用 TextureView 保证切小窗/双击缩放立即可见。
+              viewType={ViewType.TEXTURE}
+              // PiP 盖层用 contain：系统双击放大/缩小窗口时保持完整画面，不裁掉边缘。
+              // 双击改变 scale 后也保持 contain，避免放大/缩小时裁掉边缘。
+              resizeMode={pipCover || hasNatural || scale !== 1 ? 'contain' : 'cover'}
+              paused={!playing}
+              playInBackground
+              playWhenInactive
+              ignoreSilentSwitch="ignore"
+              onLoad={(e) => {
+                // 按内容比例自适应小窗高度：竖屏内容竖着小窗、横屏 16:9，比例完全贴合 → contain 无黑边
+                const ns = e?.naturalSize;
+                if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) {
+                  const rawH = Math.round((W * Number(ns.height)) / Number(ns.width));
+                  if (rawH > 420) {
+                    // 超长内容（极高宽比）：cover 填满默认容器，避免小窗过高遮挡
+                    boxHRef.current = H_MIN;
+                    setBoxH(H_MIN);
+                    setHasNatural(false);
+                  } else {
+                    const h = Math.max(H_MIN, rawH);
+                    boxHRef.current = h;
+                    setBoxH(h);
+                    setHasNatural(true);
+                  }
+                  // 同步 PiP 窗口比例（切后台的系统悬浮窗也跟随内容方向）
+                  setPipAspect(ns.width, ns.height);
                 } else {
-                  const hh = Math.max(H_MIN, rawH);
-                  boxHRef.current = hh;
-                  setBoxH(hh);
-                  setHasNatural(true);
+                  // 拿不到内容比例：cover 填满容器（无黑边），高度退回默认
+                  setHasNatural(false);
                 }
-                setPipAspect(w, h);
-              }
-            }}
-          />
-        ) : (
-        <Video
-          ref={videoRef}
-          key={`${info.url}-${info.position || 0}`}
-          source={{
-            uri: info.url,
-            // 口袋48 直播流防盗链校验 Referer/UA/Origin——与大播放器 playerSource 一致
-            headers: {
-              'User-Agent': 'PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)',
-              Referer: 'https://h5.48.cn/',
-              Origin: 'https://h5.48.cn',
-            },
-          }}
-          style={StyleSheet.absoluteFill}
-          resizeMode={hasNatural ? 'contain' : 'cover'}
-          paused={!playing}
-          playInBackground
-          playWhenInactive
-          ignoreSilentSwitch="ignore"
-          onLoad={(e) => {
-            // 按内容比例自适应小窗高度：竖屏内容竖着小窗、横屏 16:9，比例完全贴合 → contain 无黑边
-            const ns = e?.naturalSize;
-            if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) {
-              const rawH = Math.round((W * Number(ns.height)) / Number(ns.width));
-              if (rawH > 420) {
-                // 超长内容（极高宽比）：cover 填满默认容器，避免小窗过高遮挡
-                boxHRef.current = H_MIN;
-                setBoxH(H_MIN);
-                setHasNatural(false);
-              } else {
-                const h = Math.max(H_MIN, rawH);
-                boxHRef.current = h;
-                setBoxH(h);
-                setHasNatural(true);
-              }
-              // 同步 PiP 窗口比例（切后台的系统悬浮窗也跟随内容方向）
-              setPipAspect(ns.width, ns.height);
-            } else {
-              // 拿不到内容比例：cover 填满容器（无黑边），高度退回默认
-              setHasNatural(false);
-            }
-            // 续播到交棒位置（仅录播）
-            const t = Number(info.position) || 0;
-            // 仅录播续播：HLS 直播 seek 到过去位置会黑屏/错误，直播从 LIVE edge 播
-            if (t > 1 && !seekedRef.current && !info.isLive && videoRef.current?.seek) {
-              seekedRef.current = true;
-              videoRef.current.seek(t);
-            }
-          }}
-          // 记录小窗实时进度（回大窗续播；仅录播）
-          onProgress={(e: any) => {
-            const t = Number(e?.currentTime) || 0;
-            if (!info.isLive && t > 0) useMiniPlayerStore.getState().setCurrentPos(t);
-          }}
-          onEnd={() => setPlaying(false)}
-          onError={(event) => {
-            // 不再静默 close：把错误显示在小窗里，用户截图/反馈能直接看到原因
-            setErrorMsg(t('小窗播放失败：{detail}', { detail: JSON.stringify(event?.error || event).slice(0, 160) }));
-          }}
-        />
-        )}
+                // 续播到交棒位置（仅录播）
+                const t = Number(info.position) || 0;
+                // 仅录播续播：HLS 直播 seek 到过去位置会黑屏/错误，直播从 LIVE edge 播
+                if (t > 1 && !seekedRef.current && !info.isLive && videoRef.current?.seek) {
+                  seekedRef.current = true;
+                  videoRef.current.seek(t);
+                }
+              }}
+              // 记录小窗实时进度（回大窗续播；仅录播）
+              onProgress={(e: any) => {
+                const t = Number(e?.currentTime) || 0;
+                if (!info.isLive && t > 0) useMiniPlayerStore.getState().setCurrentPos(t);
+              }}
+              onEnd={() => setPlaying(false)}
+              onError={(event) => {
+                // 不再静默 close：把错误显示在小窗里，用户截图/反馈能直接看到原因
+                setErrorMsg(
+                  t('小窗播放失败：{detail}', {
+                    detail: JSON.stringify(event?.error || event).slice(0, 160),
+                  }),
+                );
+              }}
+            />
+          )}
         </View>
         {errorMsg ? (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 8 }]} pointerEvents="none">
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: 8,
+              },
+            ]}
+            pointerEvents="none"
+          >
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#ff6b6b" />
-            <Text style={{ color: '#fff', fontSize: 10, marginTop: 4, textAlign: 'center' }}>{errorMsg}</Text>
+            <Text style={{ color: '#fff', fontSize: 10, marginTop: 4, textAlign: 'center' }}>
+              {errorMsg}
+            </Text>
           </View>
         ) : null}
         {/* 透明拖动/点击层：elevation 让此 JS 层盖过 Android SurfaceView 接收触摸（否则 Video 消费触摸无法拖动）。
@@ -507,7 +553,9 @@ export function MiniPlayer() {
             style={[styles.titleBar, controlsVisible && !pipCover ? null : styles.hiddenLayer]}
             pointerEvents="none"
           >
-            <Text style={styles.title} numberOfLines={1}>{info.title}</Text>
+            <Text style={styles.title} numberOfLines={1}>
+              {info.title}
+            </Text>
           </View>
         ) : null}
       </Animated.View>
@@ -525,7 +573,15 @@ export function MiniPlayer() {
           StyleSheet.absoluteFill,
           pipCover
             ? { left: 0, top: 0, width: winW, height: winH, zIndex: 9999, elevation: 9999 }
-            : { left: 0, top: 0, width: info.audioOnly ? CAPSULE_W : boxW, height: info.audioOnly ? CAPSULE_H : boxHNow, zIndex: 1002, elevation: 24, transform: pos.getTranslateTransform() },
+            : {
+                left: 0,
+                top: 0,
+                width: info.audioOnly ? CAPSULE_W : boxW,
+                height: info.audioOnly ? CAPSULE_H : boxHNow,
+                zIndex: 1002,
+                elevation: 24,
+                transform: pos.getTranslateTransform(),
+              },
         ]}
       >
         {/* ⚠️ 下面三组控件**常驻挂载**，只切 opacity / pointerEvents，**不做条件卸载**：
@@ -540,9 +596,18 @@ export function MiniPlayer() {
             pointerEvents={pipCover ? 'none' : 'box-none'}
           >
             <MaterialCommunityIcons name="microphone" size={12} color={palette.tint} />
-            <Text style={[styles.capsuleTitle, { color: palette.label }]} numberOfLines={1}>{info.title}</Text>
-            <TouchableOpacity onPress={handlePlayToggle} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}>
-              <MaterialCommunityIcons name={playing ? 'pause' : 'play'} size={14} color={palette.label} />
+            <Text style={[styles.capsuleTitle, { color: palette.label }]} numberOfLines={1}>
+              {info.title}
+            </Text>
+            <TouchableOpacity
+              onPress={handlePlayToggle}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+            >
+              <MaterialCommunityIcons
+                name={playing ? 'pause' : 'play'}
+                size={14}
+                color={palette.label}
+              />
             </TouchableOpacity>
             {/* 用户要求：上麦只留胶囊 —— 不再提供「放大到大直播播放器」入口 */}
             <TouchableOpacity onPress={close} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}>
@@ -597,7 +662,13 @@ export function MiniPlayer() {
 }
 
 const styles = StyleSheet.create({
-  capsuleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10 },
+  capsuleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+  },
   capsuleTitle: { flex: 1, fontSize: 11, fontWeight: '600' },
   /** 只隐藏不卸载：避免 Fabric 同一事务里 detach + attach（→ RetryableMountingLayerException） */
   hiddenLayer: { opacity: 0 },
@@ -643,7 +714,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   title: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  // 三角按钮语义（2026-11-05 按参考图重排）：
+  // 三角按钮语义（按参考图重排）：
   // 左上角关闭（X）、右上角返回全屏（四角括号）、正中播放/暂停；
   // 尺寸切换不再是按钮 —— 双击画面空白处循环「小 → 大 → 原尺寸」。
   closeBtn: {

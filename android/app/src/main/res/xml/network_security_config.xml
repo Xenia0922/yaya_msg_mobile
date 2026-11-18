@@ -1,9 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 允许媒体流使用明文 HTTP；HTTPS 域名沿用系统信任链。 -->
+<!--
+  默认禁止明文 HTTP；仅对确有直播/图片/镜像需求的媒体域名开放 cleartext。
+  HTTPS 域名仍沿用系统信任链，不在此处放宽证书校验。
+  说明：RTMP（rtmp://）走独立 TCP 协议，不受 Android cleartextTraffic 策略约束。
+-->
 <network-security-config>
-  <base-config cleartextTrafficPermitted="true">
+  <base-config cleartextTrafficPermitted="false">
     <trust-anchors>
       <certificates src="system" />
     </trust-anchors>
   </base-config>
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">48.cn</domain>
+    <domain includeSubdomains="true">bilibili.com</domain>
+    <domain includeSubdomains="true">bilivideo.com</domain>
+    <domain includeSubdomains="true">bilivideo.cn</domain>
+    <domain includeSubdomains="true">hdslb.com</domain>
+    <domain includeSubdomains="true">gnz48.tech</domain>
+    <domain includeSubdomains="true">yaya-data.pages.dev</domain>
+    <domain includeSubdomains="true">meet48.xyz</domain>
+    <domain includeSubdomains="true">ckg48.cn</domain>
+  </domain-config>
 </network-security-config>

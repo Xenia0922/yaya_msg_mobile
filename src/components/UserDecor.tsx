@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, View, StyleSheet, Text } from 'react-native';
 
 /**
- * 用户身份装饰（官方 UserIconShowView 语义，按 2026-10-19 用户要求精简）：
+ * 用户身份装饰（官方 UserIconShowView 语义，按 用户要求精简）：
  * - 成员（isStar/roleId 2-5）：只显示 teamLogo 队标（官方成员不带粉丝徽章）
  * - 普通用户：**只要「账号等级」+「头像框」**，不显示勋章行（badge[] 是勋章图，
- *   头像框是 pfUrl —— 两者语义不能互换；此前把 badge 当框、pfUrl 当勋章都渲染了，实测错位）
+ * 头像框是 pfUrl —— 两者语义不能互换；此前把 badge 当框、pfUrl 当勋章都渲染了，实测错位）
  * 官方 level → 图标映射见 android.os.hg.m13906（1-20 用 contributionlist_one…ershi，
  * 21-30 用 level21…level30，>30 封顶 level30）。
  */
@@ -23,7 +23,8 @@ function absUrl(u: string): string {
   const raw = String(u || '').trim();
   if (!raw) return '';
   if (raw.startsWith('//')) return `https:${raw}`;
-  if (raw.startsWith('/')) return `https://${/^(avatar|mediasource|backstage)\b/i.test(raw.slice(1)) ? 'source.48.cn' : 'source1.48.cn'}${raw}`;
+  if (raw.startsWith('/'))
+    return `https://${/^(avatar|mediasource|backstage)\b/i.test(raw.slice(1)) ? 'source.48.cn' : 'source1.48.cn'}${raw}`;
   return raw;
 }
 
@@ -54,7 +55,16 @@ function LevelChip({ level, size }: { level?: number | string; size: number }) {
         justifyContent: 'center',
       }}
     >
-      <Text style={{ fontSize: size * 0.85, fontWeight: '800', color: '#ff6f91', lineHeight: size * 1.1 }}>Lv.{n}</Text>
+      <Text
+        style={{
+          fontSize: size * 0.85,
+          fontWeight: '800',
+          color: '#ff6f91',
+          lineHeight: size * 1.1,
+        }}
+      >
+        Lv.{n}
+      </Text>
     </View>
   );
 }
@@ -66,6 +76,10 @@ function LevelChip({ level, size }: { level?: number | string; size: number }) {
  */
 function TeamLogoImage({ uri, size }: { uri: string; size: number }) {
   const [failed, setFailed] = useState(false);
+  // 地址变化（切换用户/刷新数据）时重置失败态，否则同一组件实例会一直空白
+  useEffect(() => {
+    setFailed(false);
+  }, [uri]);
   if (failed) return null;
   return (
     <Image
@@ -124,10 +138,27 @@ export function AvatarWithFrame({
   return (
     <View style={{ width: size, height: size }}>
       {avatarUri ? (
-        <Image source={{ uri: avatarUri }} style={{ width: size, height: size, borderRadius: size / 2 }} />
+        <Image
+          source={{ uri: avatarUri }}
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+        />
       ) : (
-        <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2, backgroundColor: fallbackBg || 'rgba(128,128,128,0.25)' }]}>
-          <Text style={{ color: fallbackColor || '#fff', fontWeight: '900', fontSize: size * 0.38 }}>{fallbackText || '?'}</Text>
+        <View
+          style={[
+            styles.avatarFallback,
+            {
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              backgroundColor: fallbackBg || 'rgba(128,128,128,0.25)',
+            },
+          ]}
+        >
+          <Text
+            style={{ color: fallbackColor || '#fff', fontWeight: '900', fontSize: size * 0.38 }}
+          >
+            {fallbackText || '?'}
+          </Text>
         </View>
       )}
       {frame ? (

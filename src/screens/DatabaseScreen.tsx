@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import ScreenHeader from '../components/ScreenHeader';
 import { useI18n } from '../i18n';
@@ -17,7 +11,7 @@ const DB_URL = 'https://gnz.hk/database';
 export default function DatabaseScreen() {
   const { t } = useI18n();
   const palette = usePalette();
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -34,9 +28,15 @@ export default function DatabaseScreen() {
           startInLoadingState
           originWhitelist={['*']}
           mixedContentMode="always"
-          onLoadStart={() => { setLoading(true); setFailed(false); }}
+          onLoadStart={() => {
+            setLoading(true);
+            setFailed(false);
+          }}
           onLoadEnd={() => setLoading(false)}
-          onError={() => { setLoading(false); setFailed(true); }}
+          onError={() => {
+            setLoading(false);
+            setFailed(true);
+          }}
           renderLoading={() => (
             <View style={styles.center} pointerEvents="none">
               <ActivityIndicator size="large" color={palette.tint} />
@@ -73,7 +73,9 @@ const styles = StyleSheet.create({
   center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   failWrap: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center', justifyContent: 'center', gap: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
   },
   failText: { fontSize: 13 },
   retryBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },

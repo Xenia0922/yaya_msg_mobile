@@ -12,8 +12,8 @@ export interface MiniPlayerInfo {
   /** 交棒给小窗时的播放位置（秒），小窗 onLoad 后 seek 续播 */
   position?: number;
   /** ⚠️ 大窗已知的视频宽高（PlayerCore onVideoSize 上报）：小窗用它**立刻**按比例适配容器。
-   *  部分流（rtmp/flv 原生视图、部分录播）onLoad/onVideoSizeChanged 拿不到尺寸，
-   *  此前小窗一直停在默认 180×104，竖屏内容被 cover 裁得只剩中间（用户反馈「没自适应/空间不对」）。 */
+   * 部分流（rtmp/flv 原生视图、部分录播）onLoad/onVideoSizeChanged 拿不到尺寸，
+   * 此前小窗一直停在默认 180×104，竖屏内容被 cover 裁得只剩中间（用户反馈「没自适应/空间不对」）。 */
   aspectW?: number;
   aspectH?: number;
   /** 公演/B站直播走网页内核播放（去 LIVE 标 + WebAudio 增益） */
@@ -56,15 +56,27 @@ export const useMiniPlayerStore = create<MiniPlayerState>((set) => ({
   sysToggleSeq: 0,
   open: (info) => {
     // 播放互斥（后播者胜）：与 playerStore.open 同款 —— 小窗/音频胶囊开播时暂停后台音乐。
-    // 此前这里完全不触碰音乐 store →「正在听音乐 + 点房间上麦」变成双路声音（2026-10-03 修复）。
+    // 此前这里完全不触碰音乐 store →「正在听音乐 + 点房间上麦」变成双路声音（修复）。
     try {
       const mst = useMusicPlayerStore.getState();
-      if (mst.queue.length && (mst.playbackState === 'playing' || mst.playbackState === 'paused')) {
-        mst.setPlaybackState('paused');
+      if (
+        mst.queue.length &&
+        (mst.playbackState === 'playing' ||
+          mst.playbackState === 'paused' ||
+          mst.playbackState === 'loading')
+      ) {
+        // 与 playerStore.open 同款：loading 中必须置 idle 作废在途解析，不能只 paused。
+        mst.setPlaybackState(mst.playbackState === 'loading' ? 'idle' : 'paused');
       }
     } catch {}
     const position = info.position;
-    set({ info, visible: true, playing: true, currentPos: !info.isLive && position != null && Number.isFinite(position) ? Math.max(0, position) : 0 });
+    set({
+      info,
+      visible: true,
+      playing: true,
+      currentPos:
+        !info.isLive && position != null && Number.isFinite(position) ? Math.max(0, position) : 0,
+    });
   },
   close: () => set({ visible: false, info: null, currentPos: 0 }),
   setPlaying: (playing) => set({ playing }),

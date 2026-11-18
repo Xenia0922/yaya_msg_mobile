@@ -10,8 +10,8 @@ import { encryptSecret, decryptSecret, isSecureVaultAvailable } from '../native/
  * 设计要点：
  * - 写入串行化（writeChain），避免并发写互相覆盖；
  * - 内存缓存整张表，读取不重复解 JSON；
- * - 原生加密模块不可用时降级为无前缀明文（仅开发/iOS，Android 正式包不会走到）；
- * - 解密失败一律按「空」返回，绝不抛错打断启动。
+ * - 原生加密模块异常时 fail-closed（拒绝明文落盘），旧的无前缀历史明文仍可读；
+ * - 解密失败按「空」返回，绝不把损坏密文当明文使用。
  */
 const SECRETS_KEY = 'yaya_secrets_v1';
 const ENC_PREFIX = 'v1:';
@@ -23,19 +23,30 @@ let writeChain: Promise<void> = Promise.resolve();
 
 async function readMap(): Promise<SecretMap> {
   if (cache) return { ...cache };
-  try {
-    const raw = await AsyncStorage.getItem(SECRETS_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    cache = parsed && typeof parsed === 'object' ? (parsed as SecretMap) : {};
-  } catch {
+  const raw = await AsyncStorage.getItem(SECRETS_KEY);
+  if (!raw) {
     cache = {};
+    return {};
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // 读取/解析失败不能当成空表：否则下一次 setSecret 会用只含一条的新对象
+    // 覆盖掉整仓历史凭据（GitHub 等密钥直接丢失）。抛错让上层显式处理。
+    throw new Error('敏感凭证存储损坏，无法读取');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('敏感凭证存储格式异常');
+  }
+  cache = parsed as SecretMap;
   return { ...cache };
 }
 
 async function writeMap(map: SecretMap): Promise<void> {
-  cache = map;
   await AsyncStorage.setItem(SECRETS_KEY, JSON.stringify(map));
+  // 写入成功后才更新缓存，避免 setItem 失败时内存显示“已保存”、重启后丢失。
+  cache = map;
 }
 
 /** 写入一条（空字符串 = 删除该条） */
@@ -49,8 +60,10 @@ export async function setSecret(key: string, plain: string): Promise<void> {
         delete map[key];
       } else {
         const enc = await encryptSecret(plain);
-        // enc 为 null 时（无原生模块）降级为明文，保持功能可用
-        map[key] = enc == null ? plain : `${ENC_PREFIX}${enc}`;
+        // 禁止 fail-open：加密模块异常时绝不能把 token/cookie 明文落盘。
+        // 开发/iOS 无原生模块的场景由 SecureVault 显式声明不可用；Android 正式包必须加密。
+        if (enc == null) throw new Error('安全存储不可用，已拒绝保存敏感凭证');
+        map[key] = `${ENC_PREFIX}${enc}`;
       }
       await writeMap(map);
     });
@@ -60,7 +73,14 @@ export async function setSecret(key: string, plain: string): Promise<void> {
 
 /** 读取一条；不存在或解不开返回 '' */
 export async function getSecret(key: string): Promise<string> {
-  const map = await readMap();
+  let map: SecretMap;
+  try {
+    map = await readMap();
+  } catch {
+    // 存储损坏时读取按“无此凭据”处理，避免阻断应用启动；
+    // 写入路径仍会因 readMap 抛错而拒绝覆盖原数据。
+    return '';
+  }
   const v = map[key];
   if (!v) return '';
   if (!v.startsWith(ENC_PREFIX)) return v; // 历史明文（尚未迁移）

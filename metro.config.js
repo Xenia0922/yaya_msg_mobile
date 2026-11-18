@@ -11,7 +11,7 @@ config.resolver.assetExts.push('wasm');
 // 这里把它重定向到本地空实现，避免为此引入一个用不到的 iOS 原生依赖。
 const pushNotificationIosStub = path.resolve(
   __dirname,
-  'src/third_party/nim/push-notification-ios-stub.js'
+  'src/third_party/nim/push-notification-ios-stub.js',
 );
 
 const defaultResolveRequest = config.resolver.resolveRequest;

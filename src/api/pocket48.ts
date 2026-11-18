@@ -2,354 +2,24 @@ import { useMemberStore, useSettingsStore } from '../store';
 import { generatePa, generatePaAsync, getWasmError, initWasm } from '../auth';
 import { requestJson, xhrPost, fetchWithTimeout } from '../utils/network';
 import { unwrapList, normalizeUrl, parseMaybeJson, pickText } from '../utils/data';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { ApiEnvelope, WireRecord } from '../types';
+import {
+  BASE,
+  type HeadersMap,
+  createArea48Headers,
+  createCheckinHeaders,
+  createHeaders,
+  createInvoiceHeaders,
+  createMeet48Headers,
+  createPocketAndroidHeaders,
+  createPocketLoginHeaders,
+  createSeineHeaders,
+  createSeineIosHeaders,
+  createWeiboHeaders,
+  ensureDeviceId,
+} from './pocketHeaders';
 
 // 选举计分（score-*）、花漾（pageantry-*）、QR 登录（login-*-qr）、部分 Area48 话题接口；
-
-const BASE = 'https://pocketapi.48.cn';
-const APP_VERSION = '7.0.41';
-const APP_BUILD = '24011601';
-// 塞纳河48 官方客户端身份（取值实测自官方 1.3.5 APK）
-const SEINE_APP_VERSION = '1.3.5';
-const SEINE_APP_BUILD = 26102601;
-
-// ── 客户端身份常量（收敛历史上的 9 处硬编码；**取值与原字面量完全一致**，指纹不变）──
-// UA 画像按「接口族」区分（官方不同客户端/接口对不同 UA 敏感，不能统一成一条）。
-const UA_IOS_7135 = 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)';
-const UA_IOS_7138 = 'PocketFans201807/7.1.38 (iPhone; iOS 26.5; Scale/3.00)';
-const UA_ANDROID_7143 = 'PocketFans201807/7.1.43_26070701 (SM-G9730:Android 12;Samsung V417IR release-keys)';
-const UA_ANDROID_7145 = 'PocketFans201807/7.1.45_26102701 (SM-G9730:Android 12;Samsung V417IR release-keys)';
-const UA_SEINE_100 = 'PocketFans201807/1.0.0_26061101 (SM-G9730:Android 12;Samsung V417IR release-keys)';
-const UA_AREA48_6022 = 'PocketFans201807/6.0.22_201128 (SM-G9730:Android 12;Samsung V417IR release-keys)';
-// 设备指纹：以下为历史遗留的固定值（legacy iOS/Android 画像专用），**故意保持固定**——
-// 换成按设备持久化的随机 id 会改变服务端看到的风控指纹，属行为变更，需灰度验证后再动。
-const DEVICE_ID_IOS_UUID = '7B93DFD0-472F-4736-A628-E85FAE086486';
-const DEVICE_ID_IOS_UUID_ALT = '7B93DFD0-472F-4736-A628-E85FAE086487';
-const DEVICE_ID_IOS_HEX = '7b93dfd0472f4736a628e85fae086486';
-
-type HeadersMap = Record<string, string>;
-
-/** 当前是否走塞纳河48 身份（登录页可选，持久化在 p48ClientProfile） */
-function isSeineProfile(): boolean {
-  return useSettingsStore.getState().settings.p48ClientProfile === 'seine48';
-}
-
-function createDeviceId(): string {
-  const chars = 'QWERTYUIOPASDFGHJKLZXCVBNM1234567890';
-  const rand = (length: number) => {
-    let result = '';
-    for (let i = 0; i < length; i += 1) result += chars[Math.floor(Math.random() * chars.length)];
-    return result;
-  };
-  return `${rand(8)}-${rand(4)}-${rand(4)}-${rand(4)}-${rand(12)}`;
-}
-
-// 设备指纹持久化：DEVICE_ID 不再每次冷启动随机（随机 id 会被服务端风控判定为异常设备，
-// 也破坏「同一账号同一设备」的连续性）。首次生成后写入 AsyncStorage，后续启动复用；
-// 进程内同步先落一个临时 id 保证早期请求可用，AsyncStorage 读回后以持久值替换。
-const DEVICE_ID_KEY = 'yaya_device_id_v1';
-let DEVICE_ID = createDeviceId();
-let deviceIdLoaded = false;
-AsyncStorage.getItem(DEVICE_ID_KEY)
-  .then((saved) => {
-    if (saved) DEVICE_ID = saved;
-    deviceIdLoaded = true;
-  })
-  .catch(() => { deviceIdLoaded = true; });
-
-/** 等待持久化 DEVICE_ID 就绪（最多 ~800ms，超时用内存临时 id 兜底，不阻塞请求） */
-async function ensureDeviceId(): Promise<string> {
-  if (deviceIdLoaded) return DEVICE_ID;
-  const deadline = Date.now() + 800;
-  while (!deviceIdLoaded && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 40));
-  }
-  if (deviceIdLoaded) return DEVICE_ID;
-  // 持久化未回（异常环境）：本次进程使用临时 id，并尝试补写
-  AsyncStorage.setItem(DEVICE_ID_KEY, DEVICE_ID).catch(() => {});
-  return DEVICE_ID;
-}
-
-// --- App Info / Headers factories ---
-
-function appInfo(modern = false, deviceId = DEVICE_ID) {
-  // 塞纳河身份优先于 modern：身份由用户在登录页选择，不能被「现代接口」分支覆盖
-  if (isSeineProfile()) {
-    return {
-      IMEI: deviceId,
-      deviceId,
-      appName: 'seine48',
-      appVersion: SEINE_APP_VERSION,
-      appBuild: SEINE_APP_BUILD,
-      deviceName: 'SM-G9730',
-      osType: 'android',
-      osVersion: '12',
-      phoneName: 'SM-G9730',
-      phoneSystemVersion: '12',
-      vendor: 'Samsung',
-    };
-  }
-  if (modern) {
-    return {
-      vendor: 'apple',
-      deviceId: DEVICE_ID_IOS_UUID,
-      appVersion: '7.1.35',
-      appBuild: '25101021',
-      osVersion: '16.3.0',
-      osType: 'ios',
-      deviceName: 'iPhone 14 Pro',
-      os: 'ios',
-    };
-  }
-  return {
-    vendor: 'apple',
-    deviceId,
-    appVersion: APP_VERSION,
-    appBuild: APP_BUILD,
-    osVersion: '16.3.1',
-    osType: 'ios',
-    deviceName: 'iPhone XR',
-    os: 'ios',
-  };
-}
-
-function createHeaders(token?: string, pa?: string | null, modern = false, deviceId = DEVICE_ID): HeadersMap {
-  const seine = isSeineProfile();
-  const headers: HeadersMap = {
-    'Content-Type': 'application/json;charset=utf-8',
-    'User-Agent': seine
-      ? `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`
-      : modern
-        ? UA_IOS_7135
-        : `PocketFans201807/${APP_VERSION} (iPhone; iOS 16.3.1; Scale/2.00)`,
-    Host: 'pocketapi.48.cn',
-    'Accept-Language': 'zh-Hans-CN;q=1',
-    Accept: '*/*',
-    appInfo: JSON.stringify(appInfo(modern, deviceId)),
-  };
-  if (seine) headers['X-Custom-Device-Type'] = 'ANDROID';
-  if (token) headers.token = token;
-  if (pa) headers.pa = pa;
-  return headers;
-}
-
-function createModernHeaders(token?: string, pa?: string | null): HeadersMap {
-  const headers = createHeaders(token, pa, true);
-  // 塞纳河身份下保留 createHeaders 生成的 Android 1.3.5 头，不再改写成 iOS
-  if (isSeineProfile()) return headers;
-  headers.appInfo = JSON.stringify({
-    vendor: 'apple',
-    deviceId: DEVICE_ID_IOS_UUID,
-    appVersion: '7.1.35',
-    appBuild: '25101021',
-    osVersion: '16.3.0',
-    osType: 'ios',
-    deviceName: 'iPhone 14 Pro',
-    os: 'ios',
-  });
-  headers['User-Agent'] = UA_IOS_7135;
-  headers['Content-Type'] = 'application/json;charset=utf-8';
-  delete (headers as any).Origin;
-  delete (headers as any).Referer;
-  return headers;
-}
-
-function createCheckinHeaders(token?: string, pa?: string | null): HeadersMap {
-  const headers = createModernHeaders(token, pa);
-  headers['P-Sign-Type'] = 'V0';
-  return headers;
-}
-
-/** Android 客户端头（posts 相册/视频/动态、私信删除等） */
-function createPocketAndroidHeaders(token?: string, pa?: string | null): HeadersMap {
-  const headers: HeadersMap = {
-    'Content-Type': 'application/json; charset=UTF-8',
-    'User-Agent': UA_ANDROID_7143,
-    'Accept-Language': 'zh-Hans-CN;q=1',
-    Accept: '*/*',
-    Host: 'pocketapi.48.cn',
-    appInfo: JSON.stringify({
-      IMEI: DEVICE_ID_IOS_HEX,
-      appBuild: '26070701',
-      appName: 'pocket48',
-      appVersion: '7.1.43',
-      deviceId: DEVICE_ID_IOS_HEX,
-      deviceName: 'SM-G9730',
-      osType: 'android',
-      osVersion: '12',
-      phoneName: 'SM-G9730',
-      phoneSystemVersion: '12',
-      vendor: 'Samsung',
-    }),
-  };
-  if (isSeineProfile()) {
-    headers['User-Agent'] = `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`;
-    headers['X-Custom-Device-Type'] = 'ANDROID';
-    headers.appInfo = JSON.stringify({
-      IMEI: DEVICE_ID_IOS_HEX,
-      appBuild: SEINE_APP_BUILD,
-      appName: 'seine48',
-      appVersion: SEINE_APP_VERSION,
-      deviceId: DEVICE_ID_IOS_HEX,
-      deviceName: 'SM-G9730',
-      osType: 'android',
-      osVersion: '12',
-      phoneName: 'SM-G9730',
-      phoneSystemVersion: '12',
-      vendor: 'Samsung',
-    });
-  }
-  if (token) headers.token = token;
-  if (pa) headers.pa = pa;
-  return headers;
-}
-
-async function createPocketLoginHeaders(): Promise<HeadersMap> {
-  const deviceId = Array.from((await ensureDeviceId()).replace(/[^a-z0-9]/gi, '').slice(0, 16), (c) => (c.charCodeAt(0) % 16).toString(16)).join('').padEnd(16, '0');
-  // 登录/注册身份：跟随登录页选择（塞纳河账号用塞纳河客户端身份登录）
-  const seine = isSeineProfile();
-  return {
-    'Content-Type': 'application/json; charset=UTF-8',
-    'User-Agent': seine
-      ? `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`
-      : UA_ANDROID_7145,
-    'Accept-Language': 'zh-Hans-CN;q=1',
-    ...(seine ? { 'X-Custom-Device-Type': 'ANDROID' } : {}),
-    appInfo: JSON.stringify(seine
-      ? { IMEI: deviceId, deviceId, appName: 'seine48', appVersion: SEINE_APP_VERSION, appBuild: SEINE_APP_BUILD, deviceName: 'SM-G9730', osType: 'android', osVersion: '12', phoneName: 'SM-G9730', phoneSystemVersion: '12', vendor: 'Samsung' }
-      : { IMEI: deviceId, deviceId, appName: 'pocket48', appVersion: '7.1.45', appBuild: '26102701', deviceName: 'SM-G9730', osType: 'android', osVersion: '12', phoneName: 'SM-G9730', phoneSystemVersion: '12', vendor: 'Samsung' }),
-  };
-}
-
-/** Seine（ckg48 新版客户端）Android 头 */
-function createSeineHeaders(token?: string, pa?: string | null): HeadersMap {
-  const headers = createPocketAndroidHeaders(token, pa);
-  headers.appInfo = JSON.stringify({
-    appVersion: '1.0.0',
-    appBuild: 26061101,
-    osType: 'android',
-    appName: 'seine48',
-    deviceId: DEVICE_ID_IOS_HEX,
-    deviceName: 'SM-G9730',
-    osVersion: '12',
-    vendor: 'Samsung',
-    IMEI: DEVICE_ID_IOS_HEX,
-    phoneName: 'SM-G9730',
-    phoneSystemVersion: '12',
-  });
-  headers['X-Custom-Device-Type'] = 'ANDROID';
-  headers['User-Agent'] = UA_SEINE_100;
-  return headers;
-}
-
-/** Seine iOS 头（公演列表走 ckg48 域名） */
-function createSeineIosHeaders(): HeadersMap {
-  return {
-    'Content-Type': 'application/json; charset=UTF-8',
-    Accept: '*/*',
-    'Accept-Language': 'zh-Hans-CN;q=1',
-    'User-Agent': 'Seina/1.2.0 (com.seine48.app; build:26072902; iOS 27.0.0) Alamofire/5.8.0',
-    appInfo: JSON.stringify({
-      deviceId: DEVICE_ID_IOS_UUID,
-      appVersion: '1.2.0',
-      deviceName: 'iPhone 16 Pro',
-      osType: 'ios',
-      appBuild: '26072902',
-      osVersion: '27.0',
-      appName: 'seine48',
-      vendor: 'apple',
-    }),
-  };
-}
-
-/** Area48 社区头（老版 Android 客户端 6.0.22） */
-function createArea48Headers(token?: string, pa?: string | null): HeadersMap {
-  const headers: HeadersMap = {
-    'Content-Type': 'application/json; charset=UTF-8',
-    Accept: '*/*',
-    'Accept-Language': 'zh-Hans-CN;q=1',
-    'User-Agent': UA_AREA48_6022,
-    Host: 'pocketapi.48.cn',
-    appInfo: JSON.stringify({
-      IMEI: '6172656134383a303030303030',
-      appBuild: '201128',
-      appVersion: '6.0.22',
-      deviceId: '6172656134383a303030303030',
-      deviceName: 'SM-G9730',
-      osType: 'android',
-      osVersion: '12',
-      phoneName: 'SM-G9730',
-      phoneSystemVersion: '12',
-      vendor: 'Samsung',
-    }),
-  };
-  if (token) headers.token = token;
-  if (pa) headers.pa = pa;
-  return headers;
-}
-
-function createWeiboHeaders(token?: string, pa?: string | null): HeadersMap {
-  const headers = createModernHeaders(token, pa);
-  headers.appInfo = JSON.stringify({
-    vendor: 'apple',
-    deviceId: DEVICE_ID_IOS_UUID_ALT,
-    appVersion: '7.1.38',
-    appBuild: '26042402',
-    osVersion: '26.5.0',
-    osType: 'ios',
-    deviceName: 'iPhone17,1',
-    os: 'ios',
-  });
-  headers['User-Agent'] = UA_IOS_7138;
-  headers['P-Sign-Type'] = 'V0';
-  return headers;
-}
-
-function createInvoiceHeaders(token?: string, options?: { tokenHeader?: boolean }): HeadersMap {
-  const headers: HeadersMap = {
-    'Content-Type': 'application/json; charset=utf-8',
-    Accept: 'application/json, text/plain, */*',
-    Host: 'pocketapi.48.cn',
-    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
-  };
-  if (options?.tokenHeader && token) headers.token = token;
-  return headers;
-}
-
-function createMeet48Headers(): HeadersMap {
-  const settings = useSettingsStore.getState().settings;
-  const storedAuth = settings.meet48Auth;
-  const authDisabled = storedAuth?.disabled === true;
-  const deviceId = (!authDisabled && storedAuth?.deviceId) || createDeviceId();
-  const headers: HeadersMap = {
-    'content-type': 'application/json',
-    accept: '*/*',
-    'accept-language': 'zh_TW',
-    'user-agent': 'Meet48/2.0.3 (com.dapp.meet48; build:2602062; iOS 26.4.2) Alamofire/5.8.0',
-    'x-versioncode': '2.0.3',
-    'x-app-id': '2e63a31eac9d056755b0f83b89ef6674',
-    'x-device-info': JSON.stringify({
-      appVersion: '2.0.3',
-      deviceId,
-      osType: 'ios',
-      appName: 'Meet48',
-      vendor: 'apple',
-      osVersion: '26.4.2',
-      appBuildId: '2602062',
-      osLoginType: 'common',
-      bundleId: 'com.dapp.meet48',
-      deviceName: 'iPhone17,1',
-    }),
-    'x-web-type': '1',
-    'x-deviceid': deviceId,
-    'x-custom-device-type': 'IOS',
-  };
-  const token = authDisabled ? '' : (storedAuth?.token || '');
-  const cookie = authDisabled ? '' : (storedAuth?.cookie || '');
-  if (token) headers.token = token;
-  if (cookie) headers.cookie = cookie;
-  return headers;
-}
 
 function tokenFromStore(): string {
   return useSettingsStore.getState().settings.p48Token || '';
@@ -361,26 +31,33 @@ function requireToken(): string {
   return token;
 }
 
-function responseOk(data: any): boolean {
-  if (!data) return false;
-  if (data.success === false) return false;
-  if (typeof data.status === 'number' && data.status !== 200) return false;
-  if (typeof data.code === 'number' && data.code !== 0) return false;
-  if (data.success === true) return true;
-  if (data.status === 200) return true;
-  if (data.code === 0) return true;
-  if (data.content !== undefined || data.data !== undefined || data.list !== undefined) return true;
+function responseOk(data: unknown): boolean {
+  const d = (data ?? {}) as ApiEnvelope;
+  if (!d) return false;
+  if (d.success === false) return false;
+  if (typeof d.status === 'number' && d.status !== 200) return false;
+  if (typeof d.code === 'number' && d.code !== 0) return false;
+  if (d.success === true) return true;
+  if (d.status === 200) return true;
+  if (d.code === 0) return true;
+  // content/data/list 即使为 null，只要字段存在也视为请求成功（如空列表/无内容），
+  // 保持原有语义，避免把合法空结果误报为接口失败。
+  if (d.content !== undefined || d.data !== undefined || d.list !== undefined) return true;
   return false;
 }
 
-function responseMessage(data: any, fallback: string): string {
-  return data?.message || data?.msg || data?.error || data?.statusDesc || fallback;
+function responseMessage(data: unknown, fallback: string): string {
+  const d = (data ?? {}) as ApiEnvelope;
+  return String(d.message || d.msg || d.error || d.statusDesc || fallback);
 }
 
-function assertPocketOk(data: any, fallback = 'pocket api request failed') {
-  if (responseOk(data)) return data;
+function assertPocketOk<T = ApiEnvelope>(
+  data: T | null | undefined,
+  fallback = 'pocket api request failed',
+): T {
+  if (responseOk(data)) return data as T;
   const detail = responseMessage(data, fallback);
-  const status = data?.status ?? data?.code;
+  const status = (data as ApiEnvelope | null | undefined)?.status ?? (data as ApiEnvelope)?.code;
   throw new Error(status !== undefined ? `${detail} (${status})` : detail);
 }
 
@@ -398,11 +75,25 @@ async function createSignedHeaders(token?: string, modern = false, patch: Header
   };
 }
 
-async function rawPost(url: string, data: any, options: { token?: string; modern?: boolean; headers?: HeadersMap; signed?: boolean; timeout?: number } = {}) {
+async function rawPost(
+  url: string,
+  data: unknown,
+  options: {
+    token?: string;
+    modern?: boolean;
+    headers?: HeadersMap;
+    signed?: boolean;
+    timeout?: number;
+  } = {},
+): Promise<ApiEnvelope> {
   const token = options.token ?? tokenFromStore();
-  const headers = options.signed === false
-    ? { ...createHeaders(token, null, !!options.modern, await ensureDeviceId()), ...(options.headers || {}) }
-    : await createSignedHeaders(token, !!options.modern, options.headers || {});
+  const headers =
+    options.signed === false
+      ? {
+          ...createHeaders(token, null, !!options.modern, await ensureDeviceId()),
+          ...(options.headers || {}),
+        }
+      : await createSignedHeaders(token, !!options.modern, options.headers || {});
   return xhrPost(url, data, headers, options.timeout);
 }
 
@@ -410,7 +101,18 @@ async function signedHeaders(token?: string, modern = false, patch: HeadersMap =
   return createSignedHeaders(token ?? tokenFromStore(), modern, patch);
 }
 
-async function pocketPost(url: string, data: any, options: { tokenRequired?: boolean; modern?: boolean; headers?: HeadersMap; fallback?: string; signed?: boolean; timeout?: number } = {}) {
+async function pocketPost(
+  url: string,
+  data: unknown,
+  options: {
+    tokenRequired?: boolean;
+    modern?: boolean;
+    headers?: HeadersMap;
+    fallback?: string;
+    signed?: boolean;
+    timeout?: number;
+  } = {},
+): Promise<ApiEnvelope> {
   const token = options.tokenRequired === false ? tokenFromStore() : requireToken();
   const res = await rawPost(url, data, {
     token,
@@ -426,12 +128,12 @@ async function pocketPost(url: string, data: any, options: { tokenRequired?: boo
 async function pocketGet(url: string, options: { modern?: boolean; fallback?: string } = {}) {
   const token = requireToken();
   const headers = await createSignedHeaders(token, !!options.modern, {});
-  const res = await requestJson<any>(url, { method: 'GET', headers, timeout: 15000 });
+  const res = await requestJson<ApiEnvelope>(url, { method: 'GET', headers, timeout: 15000 });
   return assertPocketOk(res, options.fallback);
 }
 
-async function publicMediaPost(url: string, data: any, fallback: string) {
-  const res = await requestJson<any>(url, {
+async function publicMediaPost(url: string, data: unknown, fallback: string) {
+  const res = await requestJson<ApiEnvelope>(url, {
     method: 'POST',
     body: data,
     timeout: 15000,
@@ -450,32 +152,41 @@ async function publicMediaPost(url: string, data: any, fallback: string) {
   return assertPocketOk(res, fallback);
 }
 
-function pushUniqueId(target: string[], value: any) {
+function pushUniqueId(target: string[], value: unknown) {
   const text = String(value || '');
   if (!text || text === '0' || target.includes(text)) return;
   target.push(text);
 }
 
-function collectServerIdsForChannel(node: any, channelId: string, target: string[], depth = 0) {
+function collectServerIdsForChannel(
+  node: unknown,
+  channelId: string,
+  target: string[],
+  depth = 0,
+): void {
   if (!node || depth > 6) return;
   if (Array.isArray(node)) {
     node.forEach((item) => collectServerIdsForChannel(item, channelId, target, depth + 1));
     return;
   }
   if (typeof node !== 'object') return;
+  const record = node as WireRecord;
 
   const nodeChannel = String(
-    node.channelId
-      || node.roomId
-      || node.teamInfo?.channelId
-      || node.teamInfo?.roomId
-      || '',
+    record.channelId ||
+      record.roomId ||
+      record.teamInfo?.channelId ||
+      record.teamInfo?.roomId ||
+      '',
   );
   if (nodeChannel === String(channelId)) {
-    pushUniqueId(target, node.serverId || node.serverID || node.teamInfo?.serverId || node.teamInfo?.serverID);
+    pushUniqueId(
+      target,
+      record.serverId || record.serverID || record.teamInfo?.serverId || record.teamInfo?.serverID,
+    );
   }
 
-  Object.entries(node).forEach(([key, value]) => {
+  Object.entries(record).forEach(([key, value]) => {
     if (String(key) === String(channelId)) pushUniqueId(target, value);
     collectServerIdsForChannel(value, channelId, target, depth + 1);
   });
@@ -484,16 +195,28 @@ function collectServerIdsForChannel(node: any, channelId: string, target: string
 async function resolveServerIds(channelId: string): Promise<string[]> {
   const ids: string[] = [];
   try {
-    const res = await pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) });
-    pushUniqueId(ids, res?.content?.serverId || res?.content?.teamInfo?.serverId || res?.data?.serverId || res?.serverId);
+    const res = await pocketPost(`${BASE}/im/api/v1/im/team/room/info`, {
+      channelId: String(channelId),
+    });
+    pushUniqueId(
+      ids,
+      res?.content?.serverId ||
+        res?.content?.teamInfo?.serverId ||
+        res?.data?.serverId ||
+        res?.serverId,
+    );
   } catch {
     // Fall through to the server map; some large rooms have stale local serverId values.
   }
   try {
-    const res = await pocketPost(`${BASE}/im/api/v1/team/star/server/map/get`, {}, {
-      modern: true,
-      fallback: 'get room server map failed',
-    });
+    const res = await pocketPost(
+      `${BASE}/im/api/v1/team/star/server/map/get`,
+      {},
+      {
+        modern: true,
+        fallback: 'get room server map failed',
+      },
+    );
     collectServerIdsForChannel(res, channelId, ids);
   } catch {
     // The map is a fallback only.
@@ -516,14 +239,22 @@ function rememberServerId(channelId: string, serverId: string) {
  *
  * 默认行为与历史一致：按顺序逐个试，任一成功即返回，全失败才抛汇总错误。
  *
- * 新增（2026-11-07，修 P0「请求放大」）：
+ * 新增（修 P0「请求放大」）：
  * - `perAttemptTimeout`：单次尝试超时（默认沿用 pocketPost 的 15s）；
  * - `deadlineMs`：整组尝试的总预算，超时立即停止并抛出「已尝试 N/M」错误。
- *   此前 getRoomMessages 最多 12 个串行 POST × 15s = 最坏 ~180s，用户进房间转圈；
- *   加预算后最坏时长被硬性封顶。
+ * 此前 getRoomMessages 最多 12 个串行 POST × 15s = 最坏 ~180s，用户进房间转圈；
+ * 加预算后最坏时长被硬性封顶。
  */
 async function tryPocketPost(
-  attempts: Array<{ url: string; payload: any; modern?: boolean; tokenRequired?: boolean; signed?: boolean; headers?: HeadersMap; label: string }>,
+  attempts: Array<{
+    url: string;
+    payload: unknown;
+    modern?: boolean;
+    tokenRequired?: boolean;
+    signed?: boolean;
+    headers?: HeadersMap;
+    label: string;
+  }>,
   fallback: string,
   opts: { perAttemptTimeout?: number; deadlineMs?: number } = {},
 ) {
@@ -532,7 +263,9 @@ async function tryPocketPost(
   for (let i = 0; i < attempts.length; i += 1) {
     const attempt = attempts[i];
     if (opts.deadlineMs && Date.now() - startedAt > opts.deadlineMs) {
-      errors.push(`[deadline] 超过 ${opts.deadlineMs}ms 预算，已停止（已试 ${i}/${attempts.length}）`);
+      errors.push(
+        `[deadline] 超过 ${opts.deadlineMs}ms 预算，已停止（已试 ${i}/${attempts.length}）`,
+      );
       break;
     }
     try {
@@ -551,17 +284,27 @@ async function tryPocketPost(
           payload: attempt.payload,
         },
       };
-    } catch (error: any) {
-      errors.push(`${attempt.label}: ${error?.message || String(error)}`);
+    } catch (error: unknown) {
+      errors.push(`${attempt.label}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   throw new Error(errors.join('\n') || fallback);
 }
 
-function safeNumber(value: any): number {
+function safeNumber(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
+
+/** 房间礼物列表项（清洗后的稳定结构） */
+type GiftEntry = {
+  giftId: string;
+  giftName: string;
+  money: number;
+  isPocketGift: number;
+  stock: number;
+  picPath: string;
+};
 
 export const pocketApi = {
   initWasm,
@@ -570,7 +313,7 @@ export const pocketApi = {
 
   async loginSendSms(mobile: string, area = '86', answer?: string) {
     const cleanArea = String(area || '').replace(/[^0-9]/g, '') || '86';
-    const payload: any = { mobile, area: cleanArea };
+    const payload: WireRecord = { mobile, area: cleanArea };
     if (answer !== undefined && String(answer).trim() !== '') {
       payload.answer = String(answer).trim();
     } else {
@@ -578,11 +321,15 @@ export const pocketApi = {
       payload.businessCode = 1;
       payload.intelligenceToken = '';
     }
-    const data = await rawPost(`${BASE}/user/api/v2/sms/send_sms`, payload, { token: '', signed: true, headers: await createPocketLoginHeaders() });
+    const data = await rawPost(`${BASE}/user/api/v2/sms/send_sms`, payload, {
+      token: '',
+      signed: true,
+      headers: await createPocketLoginHeaders(),
+    });
     if (data.status === 200 || data.success) return { success: true };
     if (data.status === 2001) {
       try {
-        const verificationData = JSON.parse(data.message);
+        const verificationData = JSON.parse(String(data.message || ''));
         return {
           success: false,
           needVerification: true,
@@ -599,30 +346,54 @@ export const pocketApi = {
   /** 短信验证码登录：保留未注册状态，由界面进入注册流程。 */
   async loginByCode(mobile: string, code: string, area = '86') {
     const cleanArea = String(area || '').replace(/[^0-9]/g, '') || '86';
-    return rawPost(`${BASE}/user/api/v2/login/app/app_login`,
-      { mobileCodeLogin: { mobile, code, area: cleanArea }, loginType: 'MOBILE_SMS_CODE', deviceToken: '' },
-      { token: '', signed: true, headers: await createPocketLoginHeaders() });
+    return rawPost(
+      `${BASE}/user/api/v2/login/app/app_login`,
+      {
+        mobileCodeLogin: { mobile, code, area: cleanArea },
+        loginType: 'MOBILE_SMS_CODE',
+        deviceToken: '',
+      },
+      { token: '', signed: true, headers: await createPocketLoginHeaders() },
+    );
   },
 
   async registerByCode(mobile: string, code: string, area: string, encryptedPassword: string) {
-    return rawPost(`${BASE}/user/api/v1/register/mobile`,
+    return rawPost(
+      `${BASE}/user/api/v1/register/mobile`,
       { mobile, code, area, mobilePwd: encryptedPassword },
-      { token: '', signed: true, headers: await createPocketLoginHeaders() });
+      { token: '', signed: true, headers: await createPocketLoginHeaders() },
+    );
   },
 
   async loginByPassword(mobile: string, encryptedPassword: string) {
-    const result = await rawPost(`${BASE}/user/api/v1/login/app/mobile`,
-      { loginMobile: { mobile, pwd: encryptedPassword }, loginType: 'MOBILE_PWD', intelligenceToken: '', deviceToken: '' },
-      { token: '', signed: true, headers: await createPocketLoginHeaders() });
+    const result = await rawPost(
+      `${BASE}/user/api/v1/login/app/mobile`,
+      {
+        loginMobile: { mobile, pwd: encryptedPassword },
+        loginType: 'MOBILE_PWD',
+        intelligenceToken: '',
+        deviceToken: '',
+      },
+      { token: '', signed: true, headers: await createPocketLoginHeaders() },
+    );
     return assertPocketOk(result, '登录失败');
   },
 
   async loginCheckToken() {
-    return pocketPost(`${BASE}/user/api/v1/user/info/reload`, { from: 'appstart' }, { fallback: 'Token 无效' });
+    return pocketPost(
+      `${BASE}/user/api/v1/user/info/reload`,
+      { from: 'appstart' },
+      { fallback: 'Token 无效' },
+    );
   },
 
   /** 删除（撤回）自己在成员房间大/小房间发送的消息（官方 im/api/v1/team/msg/delete） */
-  async deleteTeamMsg(params: { accId: string; msgIdClient: string; channelId: string; msgTime: number }) {
+  async deleteTeamMsg(params: {
+    accId: string;
+    msgIdClient: string;
+    channelId: string;
+    msgTime: number;
+  }) {
     return pocketPost(
       `${BASE}/im/api/v1/team/msg/delete`,
       {
@@ -657,10 +428,14 @@ export const pocketApi = {
   },
 
   async getUserRenameCount() {
-    return pocketPost(`${BASE}/user/api/v1/user/rename/count`, {}, {
-      modern: true,
-      fallback: '获取改名次数失败',
-    });
+    return pocketPost(
+      `${BASE}/user/api/v1/user/rename/count`,
+      {},
+      {
+        modern: true,
+        fallback: '获取改名次数失败',
+      },
+    );
   },
 
   async uploadUserAvatar(params: { uri: string; fileName?: string; mimeType?: string }) {
@@ -669,14 +444,15 @@ export const pocketApi = {
     delete headers['Content-Type'];
     delete headers.Host;
     const mimeType = params.mimeType || 'image/jpeg';
-    const fileName = params.fileName || `avatar-${Date.now()}.${mimeType.includes('png') ? 'png' : 'jpg'}`;
+    const fileName =
+      params.fileName || `avatar-${Date.now()}.${mimeType.includes('png') ? 'png' : 'jpg'}`;
     const formData = new FormData();
     formData.append('fromType', 'avatar');
     formData.append('file', {
       uri: params.uri,
       name: fileName,
       type: mimeType,
-    } as any);
+    } as unknown as Blob);
     // FormData 上传无法走 requestJson（其会 JSON.stringify body），这里保留 fetch 但补超时取消，防无限挂起
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30000);
@@ -688,126 +464,170 @@ export const pocketApi = {
         body: formData,
         signal: controller.signal,
       });
-    } catch (error: any) {
-      throw new Error(error?.name === 'AbortError' ? '上传头像超时' : '上传头像网络失败');
+    } catch (error: unknown) {
+      throw new Error(
+        error instanceof Error && error.name === 'AbortError' ? '上传头像超时' : '上传头像网络失败',
+      );
     } finally {
       clearTimeout(timer);
     }
     const contentType = response.headers.get('content-type') || '';
-    const data = contentType.includes('application/json') ? parseMaybeJson(await response.text()) : null;
+    const data = contentType.includes('application/json')
+      ? parseMaybeJson(await response.text())
+      : null;
     if (response.ok && data && (data.status === 200 || data.success)) {
       const item = Array.isArray(data.content) ? data.content[0] : data.content;
       const path = item?.path || item?.url || item?.filePath || '';
       if (!path) throw new Error('上传头像成功但没有返回图片路径');
       return { success: true, content: item, path };
     }
-    const source = data || response;
-    throw new Error((source as any)?.message || (source as any)?.msg || `上传失败 HTTP ${response.status}`);
+    const source = (data || {}) as WireRecord;
+    throw new Error(String(source.message || source.msg || `上传失败 HTTP ${response.status}`));
   },
 
   async checkIn() {
-    const res = await rawPost(`${BASE}/user/api/v1/checkin`, {}, {
-      token: requireToken(),
-      modern: true,
-      headers: { 'P-Sign-Type': 'V0' },
-      signed: true,
-    });
+    const res = await rawPost(
+      `${BASE}/user/api/v1/checkin`,
+      {},
+      {
+        token: requireToken(),
+        modern: true,
+        headers: { 'P-Sign-Type': 'V0' },
+        signed: true,
+      },
+    );
     if (responseOk(res)) return res;
     const message = responseMessage(res, '签到失败');
-    if (/\u5df2\u7b7e\u5230|\u91cd\u590d\u7b7e\u5230|\u5df2\u7ecf\u7b7e\u5230|\u5df2\u9886\u53d6|\u660e\u5929\u518d\u6765/.test(message)) {
-      return { success: true, status: res?.status ?? res?.code ?? 200, message, content: res?.content || null, alreadyChecked: true };
+    if (
+      /\u5df2\u7b7e\u5230|\u91cd\u590d\u7b7e\u5230|\u5df2\u7ecf\u7b7e\u5230|\u5df2\u9886\u53d6|\u660e\u5929\u518d\u6765/.test(
+        message,
+      )
+    ) {
+      return {
+        success: true,
+        status: res?.status ?? res?.code ?? 200,
+        message,
+        content: res?.content || null,
+        alreadyChecked: true,
+      };
     }
-    throw new Error(res?.status !== undefined || res?.code !== undefined ? `${message} (${res?.status ?? res?.code})` : message);
+    throw new Error(
+      res?.status !== undefined || res?.code !== undefined
+        ? `${message} (${res?.status ?? res?.code})`
+        : message,
+    );
   },
 
   async getCheckinToday() {
-    return pocketPost(`${BASE}/user/api/v1/checkin/check/today`, {}, {
-      modern: true,
-      fallback: '获取今日签到状态失败',
-    });
+    return pocketPost(
+      `${BASE}/user/api/v1/checkin/check/today`,
+      {},
+      {
+        modern: true,
+        fallback: '获取今日签到状态失败',
+      },
+    );
   },
 
   async getNimLoginInfo() {
     // 官方云信凭证新接口，返回 content.accid/accId/imUserId + pwd/token/imPwd + userId；
     // 失败再回退旧路径（user/info/reload / user/info/home）多路兜底，防旧接口下线后私信/签到失效。
     try {
-      const res = await pocketPost(`${BASE}/im/api/v1/im/userinfo`, {}, {
-        headers: createCheckinHeaders(),
-        fallback: '获取云信凭证失败',
-      });
+      const res = await pocketPost(
+        `${BASE}/im/api/v1/im/userinfo`,
+        {},
+        {
+          headers: createCheckinHeaders(),
+          fallback: '获取云信凭证失败',
+        },
+      );
       if (res?.content) return res;
     } catch {
       /* 落到旧多路兜底 */
     }
-    return tryPocketPost([
-      {
-        url: `${BASE}/user/api/v1/user/info/reload`,
-        payload: { from: 'appstart' },
-        modern: true,
-        label: 'reload modern',
-      },
-      {
-        url: `${BASE}/user/api/v1/user/info/reload`,
-        payload: { from: 'appstart' },
-        label: 'reload legacy',
-      },
-      {
-        url: `${BASE}/user/api/v1/user/info/home`,
-        payload: {},
-        modern: true,
-        label: 'info home modern',
-      },
-      {
-        url: `${BASE}/user/api/v1/user/info/home`,
-        payload: {},
-        label: 'info home legacy',
-      },
-    ], 'get self user info failed');
+    return tryPocketPost(
+      [
+        {
+          url: `${BASE}/user/api/v1/user/info/reload`,
+          payload: { from: 'appstart' },
+          modern: true,
+          label: 'reload modern',
+        },
+        {
+          url: `${BASE}/user/api/v1/user/info/reload`,
+          payload: { from: 'appstart' },
+          label: 'reload legacy',
+        },
+        {
+          url: `${BASE}/user/api/v1/user/info/home`,
+          payload: {},
+          modern: true,
+          label: 'info home modern',
+        },
+        {
+          url: `${BASE}/user/api/v1/user/info/home`,
+          payload: {},
+          label: 'info home legacy',
+        },
+      ],
+      'get self user info failed',
+    );
   },
 
   async getUserProfile(userId: string) {
     const id = Number(String(userId || '').trim());
     if (!Number.isFinite(id) || id <= 0) throw new Error('missing userId');
-    //   POST /user/api/v1/user/info/home  body { userId: <number> }  + **Android 头**
+    // POST /user/api/v1/user/info/home body { userId: <number> } + **Android 头**
     // 之前移动端用 iOS/modern 头 + 字符串 userId 依次试 info/detail/home，服务端全部
     // 返回「No message available」（404）→ 资料卡只显示出错文本（用户反馈加载不出来）。
-    return tryPocketPost([
-      {
-        url: `${BASE}/user/api/v1/user/info/home`,
-        payload: { userId: id },
-        headers: createPocketAndroidHeaders(),
-        label: 'user home',
-      },
-      {
-        url: `${BASE}/user/api/v1/user/info/home`,
-        payload: { userId: id },
-        modern: true,
-        label: 'user home(ios)',
-      },
-      {
-        url: `${BASE}/user/api/v1/user/info`,
-        payload: { userId: id },
-        label: 'user info',
-      },
-    ], 'get user profile failed');
+    return tryPocketPost(
+      [
+        {
+          url: `${BASE}/user/api/v1/user/info/home`,
+          payload: { userId: id },
+          headers: createPocketAndroidHeaders(),
+          label: 'user home',
+        },
+        {
+          url: `${BASE}/user/api/v1/user/info/home`,
+          payload: { userId: id },
+          modern: true,
+          label: 'user home(ios)',
+        },
+        {
+          url: `${BASE}/user/api/v1/user/info`,
+          payload: { userId: id },
+          label: 'user info',
+        },
+      ],
+      'get user profile failed',
+    );
   },
 
   async switchBigSmall(targetUserId: string) {
-    return pocketPost(`${BASE}/user/api/v1/bigsmall/switch/user`, { toUserId: String(targetUserId) }, { fallback: '切换账号失败' });
+    return pocketPost(
+      `${BASE}/user/api/v1/bigsmall/switch/user`,
+      { toUserId: String(targetUserId) },
+      { fallback: '切换账号失败' },
+    );
   },
 
   async getStarServerMap() {
-    return pocketPost(`${BASE}/im/api/v1/team/star/server/map/get`, {}, {
-      modern: true,
-      fallback: '获取成员房间映射失败',
-    });
+    return pocketPost(
+      `${BASE}/im/api/v1/team/star/server/map/get`,
+      {},
+      {
+        modern: true,
+        fallback: '获取成员房间映射失败',
+      },
+    );
   },
 
   async getUserMoney() {
     return pocketPost(`${BASE}/user/api/v1/user/money`, {}, { fallback: '获取余额失败' });
   },
 
-  async getGroupTeamStar(payload?: any) {
+  async getGroupTeamStar(payload: WireRecord = {}) {
     return pocketPost(`${BASE}/user/api/v1/client/update/group_team_star`, payload || {}, {
       modern: true,
       tokenRequired: false,
@@ -818,29 +638,45 @@ export const pocketApi = {
   async getFollowedIds() {
     // ⚠️ 必须带 P-Sign-Type: V0（createCheckinHeaders，上游 createFriendshipHeaders 同款）：
     // 裸 pocketPost 默认头在这个接口上可能被判签名类型不符 → content.data 缺失/为空 →
-    // 房间列表少人（如周文迪不显示，2026-10-19 用户反馈）。
-    return pocketPost(`${BASE}/user/api/v1/friendships/friends/id`, {}, { headers: createCheckinHeaders(), fallback: '获取关注房间失败' });
+    // 房间列表少人（如周文迪不显示；用户反馈）。
+    return pocketPost(
+      `${BASE}/user/api/v1/friendships/friends/id`,
+      {},
+      { headers: createCheckinHeaders(), fallback: '获取关注房间失败' },
+    );
   },
 
   async followMember(memberId: string) {
     // + **P-Sign-Type: V0** 头（createFriendshipHeaders 同款），否则可能被判签名类型不符
-    return pocketPost(`${BASE}/user/api/v2/friendships/friends/add`, { toSourceId: safeNumber(memberId), toType: 1 }, { headers: createCheckinHeaders(), fallback: '关注失败' });
+    return pocketPost(
+      `${BASE}/user/api/v2/friendships/friends/add`,
+      { toSourceId: safeNumber(memberId), toType: 1 },
+      { headers: createCheckinHeaders(), fallback: '关注失败' },
+    );
   },
 
   async unfollowMember(memberId: string) {
-    return pocketPost(`${BASE}/user/api/v2/friendships/friends/remove`, { toSourceId: safeNumber(memberId), toType: 1 }, { headers: createCheckinHeaders(), fallback: '取消关注失败' });
+    return pocketPost(
+      `${BASE}/user/api/v2/friendships/friends/remove`,
+      { toSourceId: safeNumber(memberId), toType: 1 },
+      { headers: createCheckinHeaders(), fallback: '取消关注失败' },
+    );
   },
 
   async getLastMessages(serverIdList: number[]) {
-    return pocketPost(`${BASE}/im/api/v1/team/classic/last/message/get`, {
-      serverIdList: serverIdList.map(Number).filter((item) => Number.isFinite(item) && item > 0),
-    }, { fallback: '获取最新消息失败' });
+    return pocketPost(
+      `${BASE}/im/api/v1/team/classic/last/message/get`,
+      {
+        serverIdList: serverIdList.map(Number).filter((item) => Number.isFinite(item) && item > 0),
+      },
+      { fallback: '获取最新消息失败' },
+    );
   },
 
   /** 房间精华消息列表（成员在官方端设为精华；响应与房间历史同构：messageList[]） */
   /**
    * 房间精华消息（成员在官方端设为精华，服务端存储，全员可见，只读）。
-   * 路径前缀是 /im/（官方 Retrofit base = https://pocketapi.48.cn/im/，2026-10-17 实测：
+   * 路径前缀是 /im/（官方 Retrofit base = https://pocketapi.48.cn/im/，实测：
    * 少前缀直接 nginx 404）；返回 content.essenceMessageList[]（不是 messageList）。
    */
   async getEssenceMessages(params: { channelId: string }) {
@@ -853,14 +689,21 @@ export const pocketApi = {
     );
   },
 
-
-  async getRoomMessages(params: { channelId: string; serverId: string; nextTime?: number; fetchAll?: boolean; limit?: number; fallbackChannelId?: string }) {
+  async getRoomMessages(params: {
+    channelId: string;
+    serverId: string;
+    nextTime?: number;
+    fetchAll?: boolean;
+    limit?: number;
+    fallbackChannelId?: string;
+  }) {
     const channelId = String(params.channelId || '');
     const fallbackCid = params.fallbackChannelId ? String(params.fallbackChannelId) : '';
     const originalServerId = String(params.serverId || '');
     if (!channelId) throw new Error('missing channelId');
     // v2.4.2 logic: resolve serverId when original is empty, and remember it
-    const resolvedServerId = (originalServerId && originalServerId !== '0') ? '' : await resolveServerId(channelId);
+    const resolvedServerId =
+      originalServerId && originalServerId !== '0' ? '' : await resolveServerId(channelId);
     const serverIds = [originalServerId, resolvedServerId]
       .map((item) => String(item || ''))
       .filter((item, index, arr) => item && item !== '0' && arr.indexOf(item) === index);
@@ -868,24 +711,37 @@ export const pocketApi = {
 
     const urls = params.fetchAll
       ? [
-        { url: `${BASE}/im/api/v1/team/message/list/all`, mode: 'all' },
-        { url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner-fallback' },
-      ]
+          { url: `${BASE}/im/api/v1/team/message/list/all`, mode: 'all' },
+          { url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner-fallback' },
+        ]
       : [{ url: `${BASE}/im/api/v1/team/message/list/homeowner`, mode: 'owner' }];
-    const attempts: Array<{ url: string; payload: any; modern?: boolean; signed?: boolean; label: string }> = [];
+    const attempts: Array<{
+      url: string;
+      payload: WireRecord;
+      modern?: boolean;
+      signed?: boolean;
+      label: string;
+    }> = [];
     const limit = params.limit || 100;
     const next = params.nextTime || 0;
     // Try both channelId and fallbackChannelId
     const cids = [channelId, ...(fallbackCid && fallbackCid !== channelId ? [fallbackCid] : [])];
     for (const cid of cids) {
-      const svrs = cid === channelId ? serverIds : [params.serverId || ''].filter(s => s && s !== '0');
+      // fallbackChannelId 是同一房间的另一个 channelId（大小房间切换），serverId 共用；
+      // 之前这里用空 serverId 过滤，导致 fallback 一个请求都不发 → 小房间历史消息永远为空（P2-D8）。
+      const svrs = serverIds;
       for (const serverId of svrs.length ? svrs : ['']) {
         const sid = String(serverId || '');
         if (!sid || sid === '0') continue;
         for (const entry of urls) {
           attempts.push({
             url: entry.url,
-            payload: { channelId: safeNumber(cid), serverId: safeNumber(sid), nextTime: next, limit },
+            payload: {
+              channelId: safeNumber(cid),
+              serverId: safeNumber(sid),
+              nextTime: next,
+              limit,
+            },
             label: `${entry.mode} num ch=${cid} srv=${sid}`,
           });
           attempts.push({
@@ -895,7 +751,12 @@ export const pocketApi = {
           });
           attempts.push({
             url: entry.url,
-            payload: { channelId: safeNumber(cid), serverId: safeNumber(sid), nextTime: next, limit },
+            payload: {
+              channelId: safeNumber(cid),
+              serverId: safeNumber(sid),
+              nextTime: next,
+              limit,
+            },
             modern: true,
             label: `${entry.mode} mod ch=${cid} srv=${sid}`,
           });
@@ -933,64 +794,101 @@ export const pocketApi = {
     return '';
   },
 
-  async getRoomInfo(channelId: string) {    return pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: String(channelId) }, { tokenRequired: false, fallback: '获取房间信息失败' });
+  async getRoomInfo(channelId: string) {
+    return pocketPost(
+      `${BASE}/im/api/v1/im/team/room/info`,
+      { channelId: String(channelId) },
+      { tokenRequired: false, fallback: '获取房间信息失败' },
+    );
   },
 
   /** 解析房间信息（大/小房间通用）：
-   *  1) room/info → content.channelInfo（单数，FollowedRooms 同款字段）
-   *  2) 小房间（yklzId）实测 room/info 返回 2001 无权限 → 回退【塞纳河接口】
-   *     im/api/seine/server/detail（seine48 头）：返回 channelInfoList（大/小房间 channelId+channelName）
-   *     + chatServerInfo.serverBgWallImg（背景墙图）+ serverName。
-   *  serverId 必须传入（成员数据里有），否则无法走塞纳河兜底。 */
-  async getRoomMeta(channelId: string | number, fallbackChannelId?: string | number, serverId?: string | number) {
+   * 1) room/info → content.channelInfo（单数，FollowedRooms 同款字段）
+   * 2) 小房间（yklzId）实测 room/info 返回 2001 无权限 → 回退【塞纳河接口】
+   * im/api/seine/server/detail（seine48 头）：返回 channelInfoList（大/小房间 channelId+channelName）
+   * + chatServerInfo.serverBgWallImg（背景墙图）+ serverName。
+   * serverId 必须传入（成员数据里有），否则无法走塞纳河兜底。 */
+  async getRoomMeta(
+    channelId: string | number,
+    fallbackChannelId?: string | number,
+    serverId?: string | number,
+  ) {
     const cid = String(channelId);
-// 传入 serverId 为空时（成员数据缺 serverId）自动解析，否则无法走塞纳河兜底 → name/bg 全空。
+    // 传入 serverId 为空时（成员数据缺 serverId）自动解析，否则无法走塞纳河兜底 → name/bg 全空。
     // 复刻 getRoomMessages 的 v2.4.2 逻辑：resolveServerId 从 room/info 的 content.serverId 提取并写回 store。
     let resolvedSid = serverId;
     if (!resolvedSid || String(resolvedSid) === '0' || String(resolvedSid) === '') {
       try {
         const s = await resolveServerId(cid);
-        if (s && s !== '0') { resolvedSid = s; rememberServerId(cid, s); }
-      } catch { /* 解析失败保持空，下方兜底流程自然跳过塞纳河 */ }
+        if (s && s !== '0') {
+          resolvedSid = s;
+          rememberServerId(cid, s);
+        }
+      } catch {
+        /* 解析失败保持空，下方兜底流程自然跳过塞纳河 */
+      }
     }
     // bgImg|bgImgUrl|backgroundImg|backgroundImgUrl|backImg|backImgUrl|homeBgImg|homeBgImgUrl|bannerUrl
-    const pickBg = (o: any): string => {
+    const pickBg = (o: WireRecord | null | undefined): string => {
       if (!o) return '';
       return String(
-        o.bgImg || o.bgImgUrl || o.backgroundImg || o.backgroundImgUrl
-        || o.backImg || o.backImgUrl || o.homeBgImg || o.homeBgImgUrl
-        || o.bannerUrl || o.serverBgWallImg || ''
+        o.bgImg ||
+          o.bgImgUrl ||
+          o.backgroundImg ||
+          o.backgroundImgUrl ||
+          o.backImg ||
+          o.backImgUrl ||
+          o.homeBgImg ||
+          o.homeBgImgUrl ||
+          o.bannerUrl ||
+          o.serverBgWallImg ||
+          '',
       );
     };
     const tryRoomInfo = async (target: string): Promise<{ name: string; bg: string }> => {
       const res = await this.getRoomInfo(target).catch(() => null);
-      const content = (res as any)?.content || (res as any)?.data || {};
-      if ((res as any)?.status && Number((res as any)?.status) !== 200) return { name: '', bg: '' };
+      const content = (res?.content || res?.data || {}) as WireRecord;
+      if (res?.status && Number(res.status) !== 200) return { name: '', bg: '' };
       const ci = content.channelInfo || {};
       let name = String(ci.channelName || '');
       let bg = pickBg(ci);
       if (!name && Array.isArray(content.channelInfoList)) {
-        const hit = content.channelInfoList.find((c: any) => String(c?.channelId) === target);
+        const hit = (content.channelInfoList as WireRecord[]).find(
+          (c) => String(c?.channelId) === target,
+        );
         if (hit) {
           name = String(hit.channelName || '');
           bg = pickBg(hit);
         }
       }
-      if (!bg) bg = pickBg(content.userChatConfig || {});
+      if (!bg) bg = pickBg(content.userChatConfig as WireRecord);
       if (!bg && Array.isArray(content.channelInfoList)) {
-        const anyHit = content.channelInfoList.find((c: any) => String(c?.channelId) === target);
+        const anyHit = (content.channelInfoList as WireRecord[]).find(
+          (c) => String(c?.channelId) === target,
+        );
         if (anyHit) bg = pickBg(anyHit);
       }
       return { name, bg: bg ? normalizeUrl(bg) : '' };
     };
     let meta = await tryRoomInfo(cid);
-    if ((!meta.bg || (!meta.name && !meta.bg)) && resolvedSid !== undefined && resolvedSid !== null && String(resolvedSid) !== '' && String(resolvedSid) !== '0') {
+    if (
+      (!meta.bg || (!meta.name && !meta.bg)) &&
+      resolvedSid !== undefined &&
+      resolvedSid !== null &&
+      String(resolvedSid) !== '' &&
+      String(resolvedSid) !== '0'
+    ) {
       try {
         const res = await this.getSeineServerDetail(Number(resolvedSid)).catch(() => null);
-        const content = (res as any)?.content || (res as any)?.data || {};
-        const list = Array.isArray(content.channelInfoList) ? content.channelInfoList : [];
-        const hit = list.find((c: any) => String(c?.channelId) === cid)
-          || (fallbackChannelId !== undefined && fallbackChannelId !== null ? list.find((c: any) => String(c?.channelId) === String(fallbackChannelId)) : undefined);
+        const content = (res?.content || res?.data || {}) as WireRecord;
+        const list: WireRecord[] = Array.isArray(content.channelInfoList)
+          ? (content.channelInfoList as WireRecord[])
+          : [];
+        const hit =
+          list.find((c) => String(c?.channelId) === cid) ||
+          (fallbackChannelId !== undefined && fallbackChannelId !== null
+            ? list.find((c) => String(c?.channelId) === String(fallbackChannelId))
+            : undefined);
         const si = content.chatServerInfo || {};
         const bg = meta.bg || pickBg(hit) || pickBg(si);
         if (hit || bg) {
@@ -999,219 +897,362 @@ export const pocketApi = {
             bg: bg ? normalizeUrl(String(bg)) : meta.bg || '',
           };
         }
-      } catch { /* 塞纳河兜底失败忽略 */ }
+      } catch {
+        /* 塞纳河兜底失败忽略 */
+      }
     }
     // 最终兜底：回退同成员大房间背景
-    if (!meta.name && !meta.bg && fallbackChannelId !== undefined && fallbackChannelId !== null && String(fallbackChannelId) !== cid) {
+    if (
+      !meta.name &&
+      !meta.bg &&
+      fallbackChannelId !== undefined &&
+      fallbackChannelId !== null &&
+      String(fallbackChannelId) !== cid
+    ) {
       const fb = await tryRoomInfo(String(fallbackChannelId)).catch(() => ({ name: '', bg: '' }));
-if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
+      if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }
     return meta;
   },
 
   async getRoomAlbum(params: { channelId: string; nextTime?: number }) {
-    return pocketPost(`${BASE}/im/api/v1/team/msg/list/img`, {
-      channelId: String(params.channelId),
-      nextTime: params.nextTime || 0,
-    }, { fallback: '获取房间相册失败' });
+    return pocketPost(
+      `${BASE}/im/api/v1/team/msg/list/img`,
+      {
+        channelId: String(params.channelId),
+        nextTime: params.nextTime || 0,
+      },
+      { fallback: '获取房间相册失败' },
+    );
   },
 
   async getOfficialTalkList(params: { ctime?: number; groupId?: number; limit?: number } = {}) {
-    return publicMediaPost(`${BASE}/media/api/media/v1/talk/list`, {
-      ctime: params.ctime || 0,
-      groupId: params.groupId ?? 0,
-      limit: params.limit || 20,
-    }, 'get talk list failed');
+    return publicMediaPost(
+      `${BASE}/media/api/media/v1/talk/list`,
+      {
+        ctime: params.ctime || 0,
+        groupId: params.groupId ?? 0,
+        limit: params.limit || 20,
+      },
+      'get talk list failed',
+    );
   },
 
   async getOfficialTalk(talkId: string) {
-    return publicMediaPost(`${BASE}/media/api/media/v1/talk`, {
-      resId: String(talkId),
-    }, 'get talk audio failed');
+    return publicMediaPost(
+      `${BASE}/media/api/media/v1/talk`,
+      {
+        resId: String(talkId),
+      },
+      'get talk audio failed',
+    );
   },
 
   async getOfficialMusicList(params: { ctime?: number; limit?: number } = {}) {
-    return publicMediaPost(`${BASE}/media/api/media/v1/music/list`, {
-      ctime: params.ctime || 0,
-      limit: params.limit || 20,
-    }, 'get music list failed');
+    return publicMediaPost(
+      `${BASE}/media/api/media/v1/music/list`,
+      {
+        ctime: params.ctime || 0,
+        limit: params.limit || 20,
+      },
+      'get music list failed',
+    );
   },
 
   async getOfficialMusic(musicId: string) {
-    return publicMediaPost(`${BASE}/media/api/media/v1/music`, {
-      resId: String(musicId),
-    }, 'get music url failed');
+    return publicMediaPost(
+      `${BASE}/media/api/media/v1/music`,
+      {
+        resId: String(musicId),
+      },
+      'get music url failed',
+    );
   },
 
-  async getOfficialVideoList(params: { ctime?: number; typeId?: number; groupId?: number; limit?: number } = {}) {
-    return publicMediaPost(`${BASE}/media/api/media/v1/video/list`, {
-      ctime: params.ctime || 0,
-      typeId: params.typeId ?? 0,
-      groupId: params.groupId ?? 0,
-      limit: params.limit || 20,
-    }, 'get video list failed');
+  async getOfficialVideoList(
+    params: { ctime?: number; typeId?: number; groupId?: number; limit?: number } = {},
+  ) {
+    return publicMediaPost(
+      `${BASE}/media/api/media/v1/video/list`,
+      {
+        ctime: params.ctime || 0,
+        typeId: params.typeId ?? 0,
+        groupId: params.groupId ?? 0,
+        limit: params.limit || 20,
+      },
+      'get video list failed',
+    );
   },
 
   async getOfficialVideo(videoId: string) {
-    return publicMediaPost(`${BASE}/media/api/media/v1/video`, {
-      resId: String(videoId),
-    }, 'get video url failed');
+    return publicMediaPost(
+      `${BASE}/media/api/media/v1/video`,
+      {
+        resId: String(videoId),
+      },
+      'get video url failed',
+    );
   },
 
   async getPrivateMessageList(lastTime?: number) {
-    return pocketPost(`${BASE}/message/api/v1/user/message/list`, {
-      lastTime: Number(lastTime) || Date.now(),
-    }, { modern: true, fallback: '获取私信列表失败' });
+    return pocketPost(
+      `${BASE}/message/api/v1/user/message/list`,
+      {
+        lastTime: Number(lastTime) || Date.now(),
+      },
+      { modern: true, fallback: '获取私信列表失败' },
+    );
   },
 
   async getRoomExpressionList(ownerId: string, serverType: number) {
-    return pocketPost(`${BASE}/im/api/v2/auth/manager/getExpressionList`, {
-      ownerId: String(ownerId), serverType: Number(serverType) || 0,
-    }, { modern: true, fallback: '获取房间表情包失败' });
+    return pocketPost(
+      `${BASE}/im/api/v2/auth/manager/getExpressionList`,
+      {
+        ownerId: String(ownerId),
+        serverType: Number(serverType) || 0,
+      },
+      { modern: true, fallback: '获取房间表情包失败' },
+    );
   },
 
   async getPrivateMessageDetail(targetUserId: string, lastTime = 0) {
-    return pocketPost(`${BASE}/message/api/v1/user/message/info`, {
-      lastTime: Number(lastTime) || 0,
-      targetUserId: String(targetUserId),
-    }, { modern: true, fallback: '获取私信详情失败' });
+    return pocketPost(
+      `${BASE}/message/api/v1/user/message/info`,
+      {
+        lastTime: Number(lastTime) || 0,
+        targetUserId: String(targetUserId),
+      },
+      { modern: true, fallback: '获取私信详情失败' },
+    );
   },
 
   async sendPrivateMessageReply(targetUserId: string, text: string) {
-    return pocketPost(`${BASE}/message/api/v1/user/message/reply`, {
-      messageType: 'TEXT',
-      text: String(text),
-      targetUserId: String(targetUserId),
-    }, { modern: true, fallback: '发送私信失败' });
+    return pocketPost(
+      `${BASE}/message/api/v1/user/message/reply`,
+      {
+        messageType: 'TEXT',
+        text: String(text),
+        targetUserId: String(targetUserId),
+      },
+      { modern: true, fallback: '发送私信失败' },
+    );
   },
 
   async getFlipList(beginLimit = 0, limit = 20) {
-    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/user/question/list`, {
-      status: 0,
-      beginLimit,
-      limit,
-      memberId: '',
-    }, { fallback: '获取翻牌记录失败' });
+    return pocketPost(
+      `${BASE}/idolanswer/api/idolanswer/v1/user/question/list`,
+      {
+        status: 0,
+        beginLimit,
+        limit,
+        memberId: '',
+      },
+      { fallback: '获取翻牌记录失败' },
+    );
   },
 
   async getFlipPrices(memberId: string) {
-    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v2/custom/index`, {
-      memberId: String(memberId),
-    }, { fallback: '获取翻牌类型失败' });
+    return pocketPost(
+      `${BASE}/idolanswer/api/idolanswer/v2/custom/index`,
+      {
+        memberId: String(memberId),
+      },
+      { fallback: '获取翻牌类型失败' },
+    );
   },
 
-  async sendFlipQuestion(payload: any) {
-    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/user/question`, payload, { fallback: '发送翻牌失败' });
+  async sendFlipQuestion(payload: WireRecord) {
+    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/user/question`, payload, {
+      fallback: '发送翻牌失败',
+    });
   },
 
   async operateFlipQuestion(questionId: string, operateType = 1) {
-    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/user/question/operate`, {
-      questionId: String(questionId),
-      operateType,
-    }, { fallback: '操作翻牌失败' });
+    return pocketPost(
+      `${BASE}/idolanswer/api/idolanswer/v1/user/question/operate`,
+      {
+        questionId: String(questionId),
+        operateType,
+      },
+      { fallback: '操作翻牌失败' },
+    );
   },
 
-  async getStarArchives(memberId: number) {
-    return pocketPost(`${BASE}/user/api/v1/user/star/archives`, { memberId: Number(memberId) }, { tokenRequired: false, fallback: '获取成员档案失败' });
+  // 返回类型保持宽松：ProfileScreen 的 catch 分支注入 { __error } 并读取 content/data，
+  // 收窄为 ApiEnvelope 会让调用方的联合类型无法访问业务字段。
+  async getStarArchives(memberId: number): Promise<any> {
+    return pocketPost(
+      `${BASE}/user/api/v1/user/star/archives`,
+      { memberId: Number(memberId) },
+      { tokenRequired: false, fallback: '获取成员档案失败' },
+    );
   },
 
   async getStarHistory(memberId: number) {
-    return pocketPost(`${BASE}/user/api/v1/user/star/history`, {
-      memberId: Number(memberId),
-      limit: 100,
-      lastTime: 0,
-    }, { tokenRequired: false, fallback: '获取成员历史失败' });
+    return pocketPost(
+      `${BASE}/user/api/v1/user/star/history`,
+      {
+        memberId: Number(memberId),
+        limit: 100,
+        lastTime: 0,
+      },
+      { tokenRequired: false, fallback: '获取成员历史失败' },
+    );
   },
 
   async getOpenLive(params: { memberId: string; nextTime?: number }) {
     const memberId = String(params.memberId || '');
     if (!memberId) throw new Error('missing memberId');
-    return tryPocketPost([
-      { url: `${BASE}/im/api/v1/chatroom/msg/list/aim/type`, payload: { extMsgType: 'OPEN_LIVE', roomId: '', ownerId: memberId, nextTime: Number(params.nextTime) || 0 }, label: 'openlive' },
-      { url: `${BASE}/im/api/v1/chatroom/msg/list/aim/type`, payload: { extMsgType: 'OPEN_LIVE', roomId: '', ownerId: memberId, nextTime: Number(params.nextTime) || 0 }, signed: false, label: 'openlive unsigned' },
-    ], '获取成员公演失败');
+    return tryPocketPost(
+      [
+        {
+          url: `${BASE}/im/api/v1/chatroom/msg/list/aim/type`,
+          payload: {
+            extMsgType: 'OPEN_LIVE',
+            roomId: '',
+            ownerId: memberId,
+            nextTime: Number(params.nextTime) || 0,
+          },
+          label: 'openlive',
+        },
+        {
+          url: `${BASE}/im/api/v1/chatroom/msg/list/aim/type`,
+          payload: {
+            extMsgType: 'OPEN_LIVE',
+            roomId: '',
+            ownerId: memberId,
+            nextTime: Number(params.nextTime) || 0,
+          },
+          signed: false,
+          label: 'openlive unsigned',
+        },
+      ],
+      '获取成员公演失败',
+    );
   },
 
   async getOpenLiveOne(liveId: string) {
     const id = String(liveId);
-    return tryPocketPost([
-      {
-        url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
-        payload: { liveId: id },
-        tokenRequired: false,
-        label: 'open live one',
-      },
-      {
-        url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
-        payload: { liveId: id, streamProtocol: 'FLV' },
-        tokenRequired: false,
-        label: 'open live one flv',
-      },
-      {
-        url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
-        payload: { liveId: id, streamProtocol: 'HLS' },
-        tokenRequired: false,
-        label: 'open live one hls',
-      },
-    ], '获取公演详情失败');
+    return tryPocketPost(
+      [
+        {
+          url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
+          payload: { liveId: id },
+          tokenRequired: false,
+          label: 'open live one',
+        },
+        {
+          url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
+          payload: { liveId: id, streamProtocol: 'FLV' },
+          tokenRequired: false,
+          label: 'open live one flv',
+        },
+        {
+          url: `${BASE}/live/api/v1/live/getOpenLiveOne`,
+          payload: { liveId: id, streamProtocol: 'HLS' },
+          tokenRequired: false,
+          label: 'open live one hls',
+        },
+      ],
+      '获取公演详情失败',
+    );
   },
 
   async getRoomFlipUser(questionId: string, answerId: string) {
-    if (!/^[1-9]\d{0,31}$/.test(questionId) || !/^[1-9]\d{0,31}$/.test(answerId)) throw new Error('翻牌编号无效');
-    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/question_answer/detail`, { questionId, answerId }, { fallback: '获取翻牌提问者失败' });
+    if (!/^[1-9]\d{0,31}$/.test(questionId) || !/^[1-9]\d{0,31}$/.test(answerId))
+      throw new Error('翻牌编号无效');
+    return pocketPost(
+      `${BASE}/idolanswer/api/idolanswer/v1/question_answer/detail`,
+      { questionId, answerId },
+      { fallback: '获取翻牌提问者失败' },
+    );
   },
 
   async getOpenLiveMemberRank(liveId: string) {
     if (!liveId) throw new Error('缺少公演 ID');
-    return pocketPost(`${BASE}/live/api/v1/live/getOpenLiveMemberRank`, { liveId }, { fallback: '获取公演成员失败' });
+    return pocketPost(
+      `${BASE}/live/api/v1/live/getOpenLiveMemberRank`,
+      { liveId },
+      { fallback: '获取公演成员失败' },
+    );
   },
 
   async getLiveOne(liveId: string) {
     const id = String(liveId);
-    return tryPocketPost([
-      {
-        url: `${BASE}/live/api/v1/live/getLiveOne`,
-        payload: { liveId: id },
-        tokenRequired: false,
-        label: 'live one',
-      },
-      {
-        url: `${BASE}/live/api/v1/live/getLiveOne`,
-        payload: { liveId: id, streamProtocol: 'FLV' },
-        tokenRequired: false,
-        label: 'live one flv',
-      },
-      {
-        url: `${BASE}/live/api/v1/live/getLiveOne`,
-        payload: { liveId: id, streamProtocol: 'HLS' },
-        tokenRequired: false,
-        label: 'live one hls',
-      },
-    ], '获取直播详情失败');
+    return tryPocketPost(
+      [
+        {
+          url: `${BASE}/live/api/v1/live/getLiveOne`,
+          payload: { liveId: id },
+          tokenRequired: false,
+          label: 'live one',
+        },
+        {
+          url: `${BASE}/live/api/v1/live/getLiveOne`,
+          payload: { liveId: id, streamProtocol: 'FLV' },
+          tokenRequired: false,
+          label: 'live one flv',
+        },
+        {
+          url: `${BASE}/live/api/v1/live/getLiveOne`,
+          payload: { liveId: id, streamProtocol: 'HLS' },
+          tokenRequired: false,
+          label: 'live one hls',
+        },
+      ],
+      '获取直播详情失败',
+    );
   },
 
   /**
    * 直播弹幕（实时）用的云信聊天室坐标。
    *
    * 官方 7.1.39 直播弹幕走云信聊天室，房间号 = getLiveOne 的 content.roomId
-   * （LivePlayActivity 里 `m58828(live.getRoomId(), liveId)`），sourceId = liveId。
+   * （LivePlayActivity 里 `m58828(live.getRoomId, liveId)`），sourceId = liveId。
    * 这里一次取齐，避免调用方再解析一遍返回结构。
    */
-  async getLiveChatroom(liveId: string): Promise<{ roomId: string; sourceId: string; title: string; audience?: string; rankAvatars?: string[]; hostName?: string; hostAvatar?: string } | null> {
+  async getLiveChatroom(liveId: string): Promise<{
+    roomId: string;
+    sourceId: string;
+    title: string;
+    audience?: string;
+    rankAvatars?: string[];
+    hostName?: string;
+    hostAvatar?: string;
+  } | null> {
     const id = String(liveId || '');
     if (!id) return null;
     try {
       const res = await pocketApi.getLiveOne(id);
-      const content = (res && (res.content || res.data)) || {};
+      const content = ((res && (res.content || res.data)) || {}) as WireRecord;
       const roomId = String(content.roomId || content.chatroomId || content.chatRoomId || '');
       return {
         roomId,
         sourceId: id,
         title: String(content.title || content.liveTitle || ''),
-        hostName: pickText(content, ['user.userName', 'user.nickName', 'user.nickname', 'nickname', 'ownerName']) || undefined,
-        hostAvatar: pickText(content, ['user.userAvatar', 'user.avatar', 'avatar', 'headImg']) || undefined,
-        audience: pickText(content, ['onlineNum', 'onlineCount', 'onlineUserCount', 'viewerCount']) || undefined,
-        rankAvatars: Array.isArray(content.topUser) ? content.topUser.slice(0, 3).map((row: any) => normalizeUrl(pickText(row, ['user.userAvatar', 'user.avatar', 'userInfo.avatar', 'avatar']))).filter(Boolean) : undefined,
+        hostName:
+          pickText(content, [
+            'user.userName',
+            'user.nickName',
+            'user.nickname',
+            'nickname',
+            'ownerName',
+          ]) || undefined,
+        hostAvatar:
+          pickText(content, ['user.userAvatar', 'user.avatar', 'avatar', 'headImg']) || undefined,
+        audience:
+          pickText(content, ['onlineNum', 'onlineCount', 'onlineUserCount', 'viewerCount']) ||
+          undefined,
+        rankAvatars: Array.isArray(content.topUser)
+          ? (content.topUser as WireRecord[])
+              .slice(0, 3)
+              .map((row) =>
+                normalizeUrl(
+                  pickText(row, ['user.userAvatar', 'user.avatar', 'userInfo.avatar', 'avatar']),
+                ),
+              )
+              .filter(Boolean)
+          : undefined,
       };
     } catch {
       return null;
@@ -1222,14 +1263,38 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
    * 获取直播间弹幕（录播回放）。接口失败/无数据返回空数组，绝不抛错，
    * 保证弹幕只是「锦上添花」，不会拖垮播放。
    */
-  async getLiveBarrage(liveId: string): Promise<Array<{ messageId: string; content: string; color: string; time: number; user: string; userId?: string; avatar?: string; level?: number }>> {
+  async getLiveBarrage(liveId: string): Promise<
+    Array<{
+      messageId: string;
+      content: string;
+      color: string;
+      time: number;
+      user: string;
+      userId?: string;
+      avatar?: string;
+      level?: number;
+    }>
+  > {
     const id = String(liveId || '');
     if (!id) return [];
     try {
-      const res = await tryPocketPost([
-        { url: `${BASE}/live/api/v1/live/barrage/list`, payload: { liveId: id, time: 0 }, tokenRequired: false, label: 'barrage' },
-        { url: `${BASE}/live/api/v1/live/barrage/list`, payload: { liveId: id, lastTime: 0 }, tokenRequired: false, label: 'barrage lastTime' },
-      ], '获取弹幕失败');
+      const res = await tryPocketPost(
+        [
+          {
+            url: `${BASE}/live/api/v1/live/barrage/list`,
+            payload: { liveId: id, time: 0 },
+            tokenRequired: false,
+            label: 'barrage',
+          },
+          {
+            url: `${BASE}/live/api/v1/live/barrage/list`,
+            payload: { liveId: id, lastTime: 0 },
+            tokenRequired: false,
+            label: 'barrage lastTime',
+          },
+        ],
+        '获取弹幕失败',
+      );
       const infos = unwrapList(res, [
         'content.barrageInfos',
         'content.list',
@@ -1237,30 +1302,70 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
         'barrageInfos',
         'data.barrageInfos',
         'list',
-      ]);
-      return infos.map((b: any) => ({
+      ]) as WireRecord[];
+      return infos.map((b) => ({
         messageId: String(b.messageId || b.id || ''),
         content: String(b.content || b.msg || b.text || ''),
         color: String(b.color || ''),
         time: Number(b.time || b.t || 0) || 0,
-        user: pickText(b, ['user.nickName', 'user.nickname', 'user.userName', 'userInfo.nickName', 'userInfo.nickname', 'userInfo.userName', 'nickName', 'userName', 'name']) || (typeof b.user === 'string' ? b.user : ''),
-        userId: pickText(b, ['user.userId', 'user.id', 'userInfo.userId', 'userInfo.id', 'userId', 'uid']) || undefined,
-        avatar: pickText(b, ['user.avatar', 'user.userAvatar', 'user.avatarUrl', 'user.headImg', 'userInfo.avatar', 'userInfo.userAvatar', 'userInfo.avatarUrl', 'userInfo.headImg', 'avatar', 'userAvatar', 'avatarUrl', 'headImg']) || undefined,
-        level: Number(b.user?.level ?? b.user?.userLevel ?? b.userInfo?.level ?? b.userInfo?.userLevel ?? b.level ?? b.userLevel) || undefined,
+        user:
+          pickText(b, [
+            'user.nickName',
+            'user.nickname',
+            'user.userName',
+            'userInfo.nickName',
+            'userInfo.nickname',
+            'userInfo.userName',
+            'nickName',
+            'userName',
+            'name',
+          ]) || (typeof b.user === 'string' ? b.user : ''),
+        userId:
+          pickText(b, [
+            'user.userId',
+            'user.id',
+            'userInfo.userId',
+            'userInfo.id',
+            'userId',
+            'uid',
+          ]) || undefined,
+        avatar:
+          pickText(b, [
+            'user.avatar',
+            'user.userAvatar',
+            'user.avatarUrl',
+            'user.headImg',
+            'userInfo.avatar',
+            'userInfo.userAvatar',
+            'userInfo.avatarUrl',
+            'userInfo.headImg',
+            'avatar',
+            'userAvatar',
+            'avatarUrl',
+            'headImg',
+          ]) || undefined,
+        level:
+          Number(
+            b.user?.level ??
+              b.user?.userLevel ??
+              b.userInfo?.level ??
+              b.userInfo?.userLevel ??
+              b.level ??
+              b.userLevel,
+          ) || undefined,
       }));
     } catch {
       return [];
     }
   },
 
-  
   async getLiveLrc(liveId: string): Promise<string | null> {
     const id = String(liveId || '');
     if (!id) return null;
     try {
-      const one: any = await pocketApi.getLiveOne(id);
-      const content = (one && one.content) || one || {};
-      const lrcUrl: string = content.msgFilePath || content.lrcUrl || '';
+      const one: ApiEnvelope = await pocketApi.getLiveOne(id);
+      const content = ((one && (one.content || one)) || {}) as WireRecord;
+      const lrcUrl: string = String(content.msgFilePath || content.lrcUrl || '');
       if (!lrcUrl) return null;
       const url = /^https?:\/\//i.test(lrcUrl)
         ? lrcUrl
@@ -1275,24 +1380,41 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   async getOpenLivePublicList(params: { groupId?: number; next?: number; record?: boolean }) {
-    return pocketPost(`${BASE}/live/api/v1/live/getOpenLiveList`, {
-      groupId: params.groupId ?? 0,
-      debug: false,
-      next: params.next ?? 0,
-      record: !!params.record,
-    }, { tokenRequired: false, fallback: '获取公演列表失败' });
+    return pocketPost(
+      `${BASE}/live/api/v1/live/getOpenLiveList`,
+      {
+        groupId: params.groupId ?? 0,
+        debug: false,
+        next: params.next ?? 0,
+        record: !!params.record,
+      },
+      { tokenRequired: false, fallback: '获取公演列表失败' },
+    );
   },
 
   async getMemberPhotos(memberId: string, page = 0, size = 20) {
-    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/user/nft/user_nft_list`, {
-      starId: safeNumber(memberId),
-      size,
-      page,
-    }, { tokenRequired: false, fallback: '获取个人相册失败' });
+    return pocketPost(
+      `${BASE}/idolanswer/api/idolanswer/v1/user/nft/user_nft_list`,
+      {
+        starId: safeNumber(memberId),
+        size,
+        page,
+      },
+      { tokenRequired: false, fallback: '获取个人相册失败' },
+    );
   },
 
-  async getLiveList(params: { groupId?: number; liveType?: number; page?: number; record?: boolean; debug?: boolean; next?: number; size?: number; userId?: number | string }) {
-    const payload: any = {
+  async getLiveList(params: {
+    groupId?: number;
+    liveType?: number;
+    page?: number;
+    record?: boolean;
+    debug?: boolean;
+    next?: number;
+    size?: number;
+    userId?: number | string;
+  }) {
+    const payload: WireRecord = {
       groupId: params.groupId ?? 0,
       debug: params.debug ?? false,
       liveType: params.liveType ?? 0,
@@ -1306,17 +1428,26 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }
     if (params.page !== undefined) payload.page = params.page;
     if (params.size !== undefined) payload.size = params.size;
-    return pocketPost(`${BASE}/live/api/v1/live/getLiveList`, payload, { tokenRequired: false, fallback: '获取直播列表失败' });
+    return pocketPost(`${BASE}/live/api/v1/live/getLiveList`, payload, {
+      tokenRequired: false,
+      fallback: '获取直播列表失败',
+    });
   },
 
-  
   async serverSearch(searchContent: string) {
-    return pocketPost(`${BASE}/im/api/v1/im/server/search`, { searchContent: String(searchContent || '').trim() }, { fallback: '搜索失败' });
+    return pocketPost(
+      `${BASE}/im/api/v1/im/server/search`,
+      { searchContent: String(searchContent || '').trim() },
+      { fallback: '搜索失败' },
+    );
   },
 
-  
   async serverJump(starId: number | string) {
-    return pocketPost(`${BASE}/im/api/v1/im/server/jump`, { starId: Number(starId), targetType: 1 }, { fallback: '获取房间信息失败' });
+    return pocketPost(
+      `${BASE}/im/api/v1/im/server/jump`,
+      { starId: Number(starId), targetType: 1 },
+      { fallback: '获取房间信息失败' },
+    );
   },
 
   async operateRoomVoice(params: { channelId: string; serverId: string }) {
@@ -1324,35 +1455,71 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     let serverId = String(params.serverId || '');
     if (!serverId || serverId === '0') serverId = await resolveServerId(channelId);
     rememberServerId(channelId, serverId);
-    return pocketPost(`${BASE}/im/api/v1/team/voice/operate`, {
-      channelId: safeNumber(channelId),
-      serverId: safeNumber(serverId),
-      operateCode: 2,
-    }, { fallback: '获取房间电台失败' });
+    return pocketPost(
+      `${BASE}/im/api/v1/team/voice/operate`,
+      {
+        channelId: safeNumber(channelId),
+        serverId: safeNumber(serverId),
+        operateCode: 2,
+      },
+      { fallback: '获取房间电台失败' },
+    );
   },
 
-  async sendGift(params: { giftId: string; liveId: string; acceptUserId: string; giftNum?: number; crm?: string; businessCode?: number }) {
+  async sendGift(params: {
+    giftId: string;
+    liveId: string;
+    acceptUserId: string;
+    giftNum?: number;
+    crm?: string;
+    businessCode?: number;
+  }) {
     // 成员直播送礼（协议见官方 GiftManager.m57278 → C7246.m30090 + C9430.m34072）：
     // - businessCode 默认 0（LivePlay 场景）；liveType=5（公演直播）是 7，由调用方按 liveType 动态下发
     // - crm 必须透传「直播详情」里的值：它是 DES(key=TT^3m$b#) 加密的聊天室 id，
-    //   服务端靠它把礼物广播进直播间聊天室。缺失 → 只计贡献、成员端零感知（2026-10-17 实测）；
-    //   乱填 → 1008「暂不可送礼」（实测）。crm 为空的直播才不发（官方走 sendToRoomId）。
-    return pocketPost(`${BASE}/gift/api/v1/gift/send`, {
-      giftId: String(params.giftId),
-      acceptUserId: String(params.acceptUserId),
-      giftNum: Number(params.giftNum) || 1,
-      businessCode: Number(params.businessCode ?? 0),
-      businessId: String(params.liveId),
-      isPocketGift: 0,
-      ...(params.crm ? { crm: String(params.crm) } : {}),
-    }, { modern: true, fallback: '送礼失败' });
+    // 服务端靠它把礼物广播进直播间聊天室。缺失 → 只计贡献、成员端零感知（实测）；
+    // 乱填 → 1008「暂不可送礼」（实测）。crm 为空的直播才不发（官方走 sendToRoomId）。
+    return pocketPost(
+      `${BASE}/gift/api/v1/gift/send`,
+      {
+        giftId: String(params.giftId),
+        acceptUserId: String(params.acceptUserId),
+        giftNum: Number(params.giftNum) || 1,
+        businessCode: Number(params.businessCode ?? 0),
+        businessId: String(params.liveId),
+        isPocketGift: 0,
+        ...(params.crm ? { crm: String(params.crm) } : {}),
+      },
+      { modern: true, fallback: '送礼失败' },
+    );
   },
 
   async getGiftList(liveId: string) {
-    return pocketPost(`${BASE}/gift/api/v1/gift/list`, {
-      businessId: String(liveId),
-      giftType: 1,
-    }, { fallback: '获取礼物列表失败' });
+    return pocketPost(
+      `${BASE}/gift/api/v1/gift/list`,
+      {
+        businessId: String(liveId),
+        giftType: 1,
+      },
+      { fallback: '获取礼物列表失败' },
+    );
+  },
+
+  /**
+   * 直播场景按「收礼成员 + liveId」取完整礼物列表。
+   * 官方 OpenliveGiftDialogViewModel 使用 {memberId, businessCode:1, liveId}；
+   * 旧 getGiftList 只传 businessId/giftType，服务端会漏掉「琴音生花」这类礼物。
+   */
+  async getLiveGiftList(liveId: string, memberId: string) {
+    return pocketPost(
+      `${BASE}/gift/api/v1/gift/list`,
+      {
+        memberId: String(memberId),
+        businessCode: 1,
+        liveId: Number(liveId) || String(liveId),
+      },
+      { fallback: '获取礼物列表失败' },
+    );
   },
 
   /**
@@ -1363,43 +1530,60 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   /** 按 giftType 拉取（1=普通礼物，2=记分礼物；官方直播礼物面板分两组下发） */
   /** 记分礼物（如「琴音生花」）：businessCode=5 + giftType=2 + memberId */
   async getScoreGiftListByMember(memberId: string) {
-    return pocketPost(`${BASE}/gift/api/v1/gift/list`, {
-      memberId: String(memberId),
-      businessCode: 5,
-      giftType: 2,
-    }, { fallback: '获取礼物列表失败' });
+    return pocketPost(
+      `${BASE}/gift/api/v1/gift/list`,
+      {
+        memberId: String(memberId),
+        businessCode: 5,
+        giftType: 2,
+      },
+      { fallback: '获取礼物列表失败' },
+    );
   },
 
   /** 诊断：原始 gift/list 参数探测（定位「记分礼物」分组参数） */
-  async probeGiftList(params: Record<string, any>) {
+  async probeGiftList(params: Record<string, unknown>) {
     return pocketPost(`${BASE}/gift/api/v1/gift/list`, params, { fallback: '获取礼物列表失败' });
   },
 
   async getGiftListByType(liveId: string, giftType = 1) {
-    return pocketPost(`${BASE}/gift/api/v1/gift/list`, {
-      businessId: String(liveId),
-      giftType,
-    }, { fallback: '获取礼物列表失败' });
+    return pocketPost(
+      `${BASE}/gift/api/v1/gift/list`,
+      {
+        businessId: String(liveId),
+        giftType,
+      },
+      { fallback: '获取礼物列表失败' },
+    );
   },
 
   async getGiftListByMember(memberId: string) {
-    return pocketPost(`${BASE}/gift/api/v1/gift/list`, {
-      memberId: String(memberId),
-      businessCode: 5,
-    }, { fallback: '获取礼物列表失败' });
+    return pocketPost(
+      `${BASE}/gift/api/v1/gift/list`,
+      {
+        memberId: String(memberId),
+        businessCode: 5,
+      },
+      { fallback: '获取礼物列表失败' },
+    );
   },
 
   /**
    * 房间（非直播）送礼上下文 —— 协议按官方客户端实现 v2.14 fetchMemberRoomGiftContext：
    * 1) /im/api/v1/im/team/room/info {channelId} → channelInfo：ownerId 即收礼成员；
-   *    serverType=0 是队伍房间（官方不支持选人送礼）；userFunction.sendGift===false 时该账号在此房间不能送礼
+   * serverType=0 是队伍房间（官方不支持选人送礼）；userFunction.sendGift===false 时该账号在此房间不能送礼
    * 2) /user/api/v1/user/info/reload → userRole（官方身份 2-5 时 get_receive_gift_state 的 msgType 用 2，否则 1）
    * 3) /gift/api/v1/gift/list {memberId, businessCode:5}（房间场景 businessCode 固定 5）
-   *    + /gift/api/v1/gift/get_receive_gift_state {moduleType:2, starIds, msgType}（receiveGiftStatus!==1 → 不能收礼，文案取 receiveGiftTips）
-   *    + /user/api/v1/user/money（余额）
+   * + /gift/api/v1/gift/get_receive_gift_state {moduleType:2, starIds, msgType}（receiveGiftStatus!==1 → 不能收礼，文案取 receiveGiftTips）
+   * + /user/api/v1/user/money（余额）
    * 返回前对礼物做清洗（清洗规则）：跳过 typeId=888 / 投票礼物 / 口袋礼物无库存 / 价格非法。
    */
-  async getMemberRoomGiftContext(params: { serverId: string; channelId: string; bigChannelId?: string; memberId?: string }) {
+  async getMemberRoomGiftContext(params: {
+    serverId: string;
+    channelId: string;
+    bigChannelId?: string;
+    memberId?: string;
+  }) {
     const serverId = String(params.serverId || '');
     const channelId = String(params.channelId || '');
     if (!/^\d+$/.test(serverId) || !/^\d+$/.test(channelId)) throw new Error('缺少有效的房间 ID');
@@ -1408,17 +1592,22 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     // 成员「大房间」的 room/info（大房间始终可访问），因此传入 bigChannelId 时优先用它解析
     // ownerId/权限；拿不到就回退直接拉 gift/list（不依赖 room/info），避免面板空列表。
     const infoChannelId = String(params.bigChannelId || '') || channelId;
-    let info: any = null;
+    let info: WireRecord | null = null;
     let sendGiftOk = true;
     try {
-      const room: any = await pocketPost(`${BASE}/im/api/v1/im/team/room/info`, { channelId: infoChannelId }, { fallback: '获取房间信息失败' });
-      info = room?.content?.channelInfo;
+      const room: ApiEnvelope = await pocketPost(
+        `${BASE}/im/api/v1/im/team/room/info`,
+        { channelId: infoChannelId },
+        { fallback: '获取房间信息失败' },
+      );
+      info = (room?.content?.channelInfo || null) as WireRecord | null;
       if (info) {
         if (String(info.serverId) !== serverId) throw new Error('房间信息已变化，请重新打开房间');
-        if (Number(info.serverType) === 0) throw new Error('队伍房间暂不支持选择收礼成员，请进入成员房间送礼');
+        if (Number(info.serverType) === 0)
+          throw new Error('队伍房间暂不支持选择收礼成员，请进入成员房间送礼');
         sendGiftOk = room?.content?.userFunction?.sendGift !== false;
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       // 大/小房间都拿不到 info（如 2002 准入门槛）→ 不阻断，走 gift/list 直拉
       if (!params.memberId) throw e;
       info = null;
@@ -1426,15 +1615,29 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     if (!sendGiftOk) throw new Error('当前账号在此房间暂不能送礼');
     const memberId = String(info?.ownerId || params.memberId || '');
     if (!/^\d+$/.test(memberId)) throw new Error('缺少有效的收礼成员 ID');
-    const account: any = await pocketPost(`${BASE}/user/api/v1/user/info/reload`, { from: 'appstart' }, { fallback: '获取账号信息失败' });
-    const userRole = Number(account?.content?.userInfo?.userRole ?? account?.content?.userRole ?? 0);
+    const account: ApiEnvelope = await pocketPost(
+      `${BASE}/user/api/v1/user/info/reload`,
+      { from: 'appstart' },
+      { fallback: '获取账号信息失败' },
+    );
+    const userRole = Number(
+      account?.content?.userInfo?.userRole ?? account?.content?.userRole ?? 0,
+    );
     const [giftRes, receiveRes, moneyRes] = await Promise.all([
-      pocketPost(`${BASE}/gift/api/v1/gift/list`, { memberId, businessCode: 5 }, { fallback: '获取礼物列表失败' }),
-      pocketPost(`${BASE}/gift/api/v1/gift/get_receive_gift_state`, {
-        moduleType: 2,
-        starIds: memberId,
-        msgType: [2, 3, 4, 5].includes(userRole) ? 2 : 1,
-      }, { fallback: '获取收礼状态失败' }),
+      pocketPost(
+        `${BASE}/gift/api/v1/gift/list`,
+        { memberId, businessCode: 5 },
+        { fallback: '获取礼物列表失败' },
+      ),
+      pocketPost(
+        `${BASE}/gift/api/v1/gift/get_receive_gift_state`,
+        {
+          moduleType: 2,
+          starIds: memberId,
+          msgType: [2, 3, 4, 5].includes(userRole) ? 2 : 1,
+        },
+        { fallback: '获取收礼状态失败' },
+      ),
       pocketPost(`${BASE}/user/api/v1/user/money`, {}, { fallback: '获取余额失败' }),
     ]);
     const receive = receiveRes?.content || {};
@@ -1442,21 +1645,34 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
       throw new Error(String(receive.receiveGiftTips || '该成员暂不能接收礼物'));
     }
     const moneyTotal = Number(moneyRes?.content?.moneyTotal);
-    const groups = Array.isArray(giftRes?.content) ? giftRes.content : [giftRes?.content];
-    const gifts: any[] = [];
+    const groups: WireRecord[] = Array.isArray(giftRes?.content)
+      ? (giftRes.content as WireRecord[])
+      : ([giftRes?.content || {}] as WireRecord[]);
+    const gifts: GiftEntry[] = [];
     const seen = new Set<string>();
     for (const group of groups) {
       if (!group || Number(group.typeId) === 888) continue;
-      for (const g of group.giftList || []) {
+      const giftList: WireRecord[] = Array.isArray(group.giftList)
+        ? (group.giftList as WireRecord[])
+        : [];
+      for (const g of giftList) {
         const giftId = String(g.giftId ?? '');
         const price = Number(g.money);
         const isPocketGift = Number(g.isPocketGift || 0);
         const stock = Number(g.giftTotal || 0);
         const key = `${giftId}:${isPocketGift}`;
-        if (!/^\d+$/.test(giftId) || seen.has(key) || Number(g.typeId) === 888
-          || g.isVote === true || Number(g.isVote) === 1
-          || !Number.isSafeInteger(price) || price < 0
-          || ![0, 1].includes(isPocketGift) || (isPocketGift === 1 && !(stock > 0))) continue;
+        if (
+          !/^\d+$/.test(giftId) ||
+          seen.has(key) ||
+          Number(g.typeId) === 888 ||
+          g.isVote === true ||
+          Number(g.isVote) === 1 ||
+          !Number.isSafeInteger(price) ||
+          price < 0 ||
+          ![0, 1].includes(isPocketGift) ||
+          (isPocketGift === 1 && !(stock > 0))
+        )
+          continue;
         seen.add(key);
         gifts.push({
           giftId,
@@ -1487,9 +1703,15 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
    * - 响应 content.giftNum 存在且 <1 → 官方未确认有效赠送（未扣款），按失败处理
    */
   async sendMemberRoomGift(params: {
-    serverId: string; channelId: string; giftId: string; giftNum: number;
-    isPocketGift?: number; unitPrice?: number; acceptUserId?: string;
-    bigChannelId?: string; memberId?: string;
+    serverId: string;
+    channelId: string;
+    giftId: string;
+    giftNum: number;
+    isPocketGift?: number;
+    unitPrice?: number;
+    acceptUserId?: string;
+    bigChannelId?: string;
+    memberId?: string;
   }) {
     // 二次校验复用 openRoomGiftPanel 同一套上下文解析：小房间 room/info 2002（准入门槛）
     // 时由 bigChannelId/memberId 兜底直拉 gift/list，避免发送前校验误报「房间信息已变化」
@@ -1502,50 +1724,78 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     if (params.acceptUserId && String(params.acceptUserId) !== ctx.target.memberId) {
       throw new Error('收礼成员已变化，请重新选择礼物');
     }
-    const gift = ctx.gifts.find((g: any) => String(g.giftId) === String(params.giftId)
-      && Number(g.isPocketGift) === Number(params.isPocketGift || 0));
+    const gift = ctx.gifts.find(
+      (g) =>
+        String(g.giftId) === String(params.giftId) &&
+        Number(g.isPocketGift) === Number(params.isPocketGift || 0),
+    );
     if (!gift) throw new Error('该礼物已不可用，请重新打开礼物面板');
     if (gift.money !== Number(params.unitPrice)) throw new Error('礼物价格已变化，请重新选择');
-    if (gift.isPocketGift === 1
-      ? params.giftNum > gift.stock
-      : gift.money * params.giftNum > (ctx.balance ?? Number.POSITIVE_INFINITY)) {
+    if (
+      gift.isPocketGift === 1
+        ? params.giftNum > gift.stock
+        : gift.money * params.giftNum > (ctx.balance ?? Number.POSITIVE_INFINITY)
+    ) {
       throw new Error(gift.isPocketGift === 1 ? '背包礼物数量不足' : '鸡腿余额不足');
     }
-    const res: any = await pocketPost(`${BASE}/gift/api/v1/gift/send`, {
-      acceptUserId: ctx.target.memberId,
-      giftId: gift.giftId,
-      giftNum: Number(params.giftNum),
-      businessCode: 5,
-      businessId: ctx.target.serverId,
-      sendToRoomId: ctx.target.channelId,
-      isPocketGift: gift.isPocketGift,
-    }, { modern: true, fallback: '送礼未成功，请检查余额和房间记录' });
+    const res: ApiEnvelope = await pocketPost(
+      `${BASE}/gift/api/v1/gift/send`,
+      {
+        acceptUserId: ctx.target.memberId,
+        giftId: gift.giftId,
+        giftNum: Number(params.giftNum),
+        businessCode: 5,
+        businessId: ctx.target.serverId,
+        sendToRoomId: ctx.target.channelId,
+        isPocketGift: gift.isPocketGift,
+      },
+      { modern: true, fallback: '送礼未成功，请检查余额和房间记录' },
+    );
     const content = res?.content || {};
     const explicitEmpty = content.giftNum != null && !(Number(content.giftNum) > 0);
     if (explicitEmpty) throw new Error('官方未确认有效赠送，请检查余额和房间记录');
     return {
-      balance: content.money != null && Number.isFinite(Number(content.money)) ? Number(content.money) : null,
+      balance:
+        content.money != null && Number.isFinite(Number(content.money))
+          ? Number(content.money)
+          : null,
       target: ctx.target,
     };
   },
 
   async getLiveRank(liveId: string) {
-    return pocketPost(`${BASE}/live/api/v2/live/getLiveRank`, {
-      type: 1,
-      liveId: String(liveId),
-    }, { fallback: '获取直播榜单失败' });
+    return pocketPost(
+      `${BASE}/live/api/v2/live/getLiveRank`,
+      {
+        type: 1,
+        liveId: String(liveId),
+      },
+      { fallback: '获取直播榜单失败' },
+    );
   },
 
   // --- v2.6 New APIs ---
 
   async getLiveResult(liveId: string) {
-    return pocketPost(`${BASE}/live/api/v1/live/result`, {
-      liveId: String(liveId),
-    }, { tokenRequired: false, fallback: '获取直播结果失败' });
+    return pocketPost(
+      `${BASE}/live/api/v1/live/result`,
+      {
+        liveId: String(liveId),
+      },
+      { tokenRequired: false, fallback: '获取直播结果失败' },
+    );
   },
 
-  async getTripList(params: { groupId?: number; memberId?: string; userId?: string; lastTime?: string; isMore?: boolean } = {}) {
-    const payload: any = {
+  async getTripList(
+    params: {
+      groupId?: number;
+      memberId?: string;
+      userId?: string;
+      lastTime?: string;
+      isMore?: boolean;
+    } = {},
+  ) {
+    const payload: WireRecord = {
       lastTime: String(params.lastTime || '0'),
       groupId: Number(params.groupId) || 0,
       isMore: !!params.isMore,
@@ -1556,59 +1806,83 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   async getMeleeWeekRank(rankId: number, nextId?: string) {
-    const payload: any = { rankId: Number(rankId) || 0 };
+    const payload: WireRecord = { rankId: Number(rankId) || 0 };
     if (nextId) payload.nextId = nextId;
-    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeWeekRank`, payload, { fallback: '获取乱斗周榜失败' });
+    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeWeekRank`, payload, {
+      fallback: '获取乱斗周榜失败',
+    });
   },
 
   async getMeleeRankPage(rankId?: number, nextId?: string) {
-    const payload: any = {};
+    const payload: WireRecord = {};
     if (rankId !== undefined && rankId !== null) payload.rankid = Number(rankId) || 0;
     if (nextId) payload.nextId = nextId;
-    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeRankPage`, payload, { fallback: '获取乱斗榜单失败' });
+    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getMeleeRankPage`, payload, {
+      fallback: '获取乱斗榜单失败',
+    });
   },
 
   async getPersonMeleeRankPage(resId: number) {
-    return pocketPost(`${BASE}/gift/api/v1/melee/rank/getPersonMeleeRankPage`, {
-      resId: Number(resId) || 0,
-    }, { fallback: '获取成员鸡腿贡献榜失败' });
+    return pocketPost(
+      `${BASE}/gift/api/v1/melee/rank/getPersonMeleeRankPage`,
+      {
+        resId: Number(resId) || 0,
+      },
+      { fallback: '获取成员鸡腿贡献榜失败' },
+    );
   },
 
   async getMemberDynamic(params: { ownerId: string; nextTime?: number; roomId?: string }) {
-    return pocketPost(`${BASE}/im/api/v1/chatroom/msg/list/aim/type`, {
-      extMsgType: 'POST_INFO',
-      roomId: String(params.roomId || ''),
-      ownerId: String(params.ownerId),
-      nextTime: Number(params.nextTime) || 0,
-    }, { fallback: '获取成员动态失败', headers: createWeiboHeaders(requireToken()) });
+    return pocketPost(
+      `${BASE}/im/api/v1/chatroom/msg/list/aim/type`,
+      {
+        extMsgType: 'POST_INFO',
+        roomId: String(params.roomId || ''),
+        ownerId: String(params.ownerId),
+        nextTime: Number(params.nextTime) || 0,
+      },
+      { fallback: '获取成员动态失败', headers: createWeiboHeaders(requireToken()) },
+    );
   },
 
   async getMemberWeibo(params: { ownerId: string; nextTime?: number; roomId?: string }) {
-    return pocketPost(`${BASE}/im/api/v1/chatroom/msg/list/aim/type`, {
-      extMsgType: 'WEI_BO',
-      roomId: String(params.roomId || ''),
-      ownerId: String(params.ownerId),
-      nextTime: Number(params.nextTime) || 0,
-    }, { fallback: '获取成员微博失败', headers: createWeiboHeaders(requireToken()) });
+    return pocketPost(
+      `${BASE}/im/api/v1/chatroom/msg/list/aim/type`,
+      {
+        extMsgType: 'WEI_BO',
+        roomId: String(params.roomId || ''),
+        ownerId: String(params.ownerId),
+        nextTime: Number(params.nextTime) || 0,
+      },
+      { fallback: '获取成员微博失败', headers: createWeiboHeaders(requireToken()) },
+    );
   },
 
   async getMemberPostImages(userId: string, nextTime = 0) {
-    return pocketPost(`${BASE}/posts/api/v1/posts/img/list`, {
-      userId: String(userId),
-      nextTime: Number(nextTime) || 0,
-    }, { fallback: '获取成员图片动态失败' });
+    return pocketPost(
+      `${BASE}/posts/api/v1/posts/img/list`,
+      {
+        userId: String(userId),
+        nextTime: Number(nextTime) || 0,
+      },
+      { fallback: '获取成员图片动态失败' },
+    );
   },
 
   async getConversationPage(nextTime = 0, limit = 20) {
-    return pocketPost(`${BASE}/im/api/v1/conversation/page`, {
-      nextTime: Number(nextTime) || 0,
-      limit: Number(limit) || 20,
-    }, { modern: true, fallback: '获取会话列表失败' });
+    return pocketPost(
+      `${BASE}/im/api/v1/conversation/page`,
+      {
+        nextTime: Number(nextTime) || 0,
+        limit: Number(limit) || 20,
+      },
+      { modern: true, fallback: '获取会话列表失败' },
+    );
   },
 
-  async getUserHomeInfo(userId?: string) {
-    const payload: any = {};
-    if (userId) payload.userId = String(userId);
+  async getUserHomeInfo(userId?: string | number) {
+    const payload: WireRecord = {};
+    if (userId !== undefined && userId !== null && userId !== '') payload.userId = String(userId);
     return pocketPost(`${BASE}/user/api/v1/user/info/home`, payload, {
       modern: true,
       fallback: '获取用户主页信息失败',
@@ -1616,43 +1890,71 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   async getUnreadMessageCount() {
-    return pocketPost(`${BASE}/message/api/v1/unread/message/num`, {}, {
-      modern: true,
-      fallback: '获取未读消息数失败',
-    });
+    return pocketPost(
+      `${BASE}/message/api/v1/unread/message/num`,
+      {},
+      {
+        modern: true,
+        fallback: '获取未读消息数失败',
+      },
+    );
   },
 
   async getUserPictureFrames() {
-    return pocketPost(`${BASE}/user/api/v1/user/get/picture/frame`, {}, {
-      modern: true,
-      fallback: '获取头像框失败',
-    });
+    return pocketPost(
+      `${BASE}/user/api/v1/user/get/picture/frame`,
+      {},
+      {
+        modern: true,
+        fallback: '获取头像框失败',
+      },
+    );
   },
 
   async setUserPictureFrame(pfId: number) {
-    return pocketPost(`${BASE}/user/api/v1/user/modify/picture/frame`, { pfId }, {
-      modern: true, fallback: '设置口袋账号头像框失败',
-    });
+    return pocketPost(
+      `${BASE}/user/api/v1/user/modify/picture/frame`,
+      { pfId },
+      {
+        modern: true,
+        fallback: '设置口袋账号头像框失败',
+      },
+    );
   },
 
   async getUserBadges() {
-    return pocketPost(`${BASE}/user/api/v1/user/badge`, {}, {
-      modern: true, fallback: '获取勋章失败',
-    });
+    return pocketPost(
+      `${BASE}/user/api/v1/user/badge`,
+      {},
+      {
+        modern: true,
+        fallback: '获取勋章失败',
+      },
+    );
   },
 
   /** 官方口袋消息气泡列表；bubbleId 与 IM/QChat 消息扩展中的字段一致 */
   async getRoomBubbles() {
-    return pocketPost(`${BASE}/im/api/v1/room/bubbleList`, {}, {
-      modern: true, fallback: '获取口袋官方消息气泡失败',
-    });
+    return pocketPost(
+      `${BASE}/im/api/v1/room/bubbleList`,
+      {},
+      {
+        modern: true,
+        fallback: '获取口袋官方消息气泡失败',
+      },
+    );
   },
 
   /** 设置口袋官方消息气泡；VIP 权限由官方接口返回 */
   async setRoomBubble(bubbleId: string) {
-    return pocketPost(`${BASE}/im/api/v1/room/chooseBubble`, { bubbleId: String(bubbleId) }, {
-      modern: true, fallback: '设置口袋官方消息气泡失败',
-    });
+    return pocketPost(
+      `${BASE}/im/api/v1/room/chooseBubble`,
+      { bubbleId: String(bubbleId) },
+      {
+        modern: true,
+        fallback: '设置口袋官方消息气泡失败',
+      },
+    );
   },
 
   // --- 直播装扮（进场特效 / 弹幕气泡）：官方 `/live/*` 目录接口只接受 GET ---
@@ -1671,10 +1973,14 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
    * 转 Number 会改尾数导致「特效已过期」。
    */
   async setLiveSpecialEffect(specialEffectsId: string, enabled = true) {
-    return pocketPost(`${BASE}/live/api/v1/live/update/user/use/specialeffect`, {
-      operation: enabled ? 1 : 0,
-      specialEffectId: String(specialEffectsId),
-    }, { fallback: '设置直播进场特效失败' });
+    return pocketPost(
+      `${BASE}/live/api/v1/live/update/user/use/specialeffect`,
+      {
+        operation: enabled ? 1 : 0,
+        specialEffectId: String(specialEffectsId),
+      },
+      { fallback: '设置直播进场特效失败' },
+    );
   },
 
   /** 直播弹幕气泡全量目录（含预览图 liveBubbleUrl） */
@@ -1686,28 +1992,40 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
 
   /** 设置账号使用的直播弹幕气泡 */
   async setLiveBubble(bubbleId: string) {
-    return pocketPost(`${BASE}/live/api/v1/live/edit_live_my_bubble`, { bubbleId: String(bubbleId) }, {
-      fallback: '设置直播弹幕气泡失败',
-    });
+    return pocketPost(
+      `${BASE}/live/api/v1/live/edit_live_my_bubble`,
+      { bubbleId: String(bubbleId) },
+      {
+        fallback: '设置直播弹幕气泡失败',
+      },
+    );
   },
 
   async getMediaCollectionTotalCount() {
-    return pocketPost(`${BASE}/media/api/media/v1/getCollectionTotalCount`, {}, {
-      modern: true,
-      fallback: '获取收藏统计失败',
-    });
+    return pocketPost(
+      `${BASE}/media/api/media/v1/getCollectionTotalCount`,
+      {},
+      {
+        modern: true,
+        fallback: '获取收藏统计失败',
+      },
+    );
   },
 
   async getFlipCustomIndexV1(memberId: string) {
-    return pocketPost(`${BASE}/idolanswer/api/idolanswer/v1/custom/index`, {
-      memberId: String(memberId),
-    }, { tokenRequired: false, fallback: '获取翻牌配置失败' });
+    return pocketPost(
+      `${BASE}/idolanswer/api/idolanswer/v1/custom/index`,
+      {
+        memberId: String(memberId),
+      },
+      { tokenRequired: false, fallback: '获取翻牌配置失败' },
+    );
   },
 
   // --- Invoice APIs ---
 
   async getInvoiceTips() {
-    const res = await requestJson<any>(`${BASE}/invoice/api/v1/invoice/tips`, {
+    const res = await requestJson<ApiEnvelope>(`${BASE}/invoice/api/v1/invoice/tips`, {
       method: 'GET',
       headers: createInvoiceHeaders(),
     });
@@ -1715,22 +2033,30 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   },
 
   async getInvoiceConfig() {
-    return pocketPost(`${BASE}/invoice/api/v1/invoice/config`, {}, {
-      headers: createInvoiceHeaders(requireToken(), { tokenHeader: true }),
-      fallback: '获取开票配置失败',
-    });
+    return pocketPost(
+      `${BASE}/invoice/api/v1/invoice/config`,
+      {},
+      {
+        headers: createInvoiceHeaders(requireToken(), { tokenHeader: true }),
+        fallback: '获取开票配置失败',
+      },
+    );
   },
 
   async getInvoiceOrderList(nextTime = '', yearMonth = '') {
     const token = requireToken();
-    return pocketPost(`${BASE}/invoice/api/v1/order/list`, {
-      nextTime: String(nextTime || '0'),
-      token,
-      yearMonth: String(yearMonth || ''),
-    }, {
-      headers: createInvoiceHeaders(),
-      fallback: '获取可开票订单失败',
-    });
+    return pocketPost(
+      `${BASE}/invoice/api/v1/order/list`,
+      {
+        nextTime: String(nextTime || '0'),
+        token,
+        yearMonth: String(yearMonth || ''),
+      },
+      {
+        headers: createInvoiceHeaders(),
+        fallback: '获取可开票订单失败',
+      },
+    );
   },
 
   async applyElectronicInvoice(params: {
@@ -1746,9 +2072,9 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     orderDataId?: string[];
   }) {
     const token = requireToken();
-    const ids = (params.orderDataId || []).map(item => String(item || '').trim()).filter(Boolean);
+    const ids = (params.orderDataId || []).map((item) => String(item || '').trim()).filter(Boolean);
     if (!ids.length) throw new Error('请选择要开票的订单');
-    const payload: any = {
+    const payload: WireRecord = {
       buyerType: Number(params.buyerType) === 1 ? 1 : 0,
       buyerName: String(params.buyerName || '').trim(),
       notifyEmail: String(params.notifyEmail || '').trim(),
@@ -1774,59 +2100,87 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
   // --- Meet48 APIs ---
 
   async getMeet48LiveList(params: { next?: number; record?: boolean } = {}) {
-    const res = await requestJson<any>('https://meetapi-v2.meet48.xyz/meet48-api/live/api/v1/live/getLiveList', {
-      method: 'POST',
-      body: { title: null, next: params.next || 0, record: !!params.record },
-      headers: createMeet48Headers(),
-    });
+    const res = await requestJson<ApiEnvelope>(
+      'https://meetapi-v2.meet48.xyz/meet48-api/live/api/v1/live/getLiveList',
+      {
+        method: 'POST',
+        body: { title: null, next: params.next || 0, record: !!params.record },
+        headers: createMeet48Headers(),
+      },
+    );
     return assertPocketOk(res, 'Meet48 API 错误');
   },
 
   async getMeet48LiveOne(liveId: string) {
-    const res = await requestJson<any>('https://meetapi-v2.meet48.xyz/meet48-api/live/api/v1/live/getLiveOne', {
-      method: 'POST',
-      body: { liveId: String(liveId), streamProtocol: 'RTMP' },
-      headers: createMeet48Headers(),
-    });
+    const res = await requestJson<ApiEnvelope>(
+      'https://meetapi-v2.meet48.xyz/meet48-api/live/api/v1/live/getLiveOne',
+      {
+        method: 'POST',
+        body: { liveId: String(liveId), streamProtocol: 'RTMP' },
+        headers: createMeet48Headers(),
+      },
+    );
     return assertPocketOk(res, 'Meet48 API 错误');
   },
 
-
   /** 删除单条私信 */
   async deletePrivateMessage(msgId: string) {
-    return pocketPost(`${BASE}/message/api/v1/user/message/delete/msg`, {
-      msgId: String(msgId),
-    }, { fallback: '删除私信失败', headers: createPocketAndroidHeaders() });
+    return pocketPost(
+      `${BASE}/message/api/v1/user/message/delete/msg`,
+      {
+        msgId: String(msgId),
+      },
+      { fallback: '删除私信失败', headers: createPocketAndroidHeaders() },
+    );
   },
 
   /** 私信发送图片消息 */
-  async sendPrivateImageMessage(targetUserId: string, image: { imgUrl: string; imgWidth?: number; imgHeight?: number; imgSize?: number; text?: string }) {
-    return pocketPost(`${BASE}/message/api/v1/user/message/reply`, {
-      messageType: 'IMAGE',
-      imgUrl: String(image.imgUrl),
-      imgWidth: Number(image.imgWidth || 0),
-      imgHeight: Number(image.imgHeight || 0),
-      imgSize: Number(image.imgSize || 0),
-      targetUserId: String(targetUserId),
-      text: String(image.text || ''),
-    }, { modern: true, fallback: '发送图片私信失败' });
+  async sendPrivateImageMessage(
+    targetUserId: string,
+    image: {
+      imgUrl: string;
+      imgWidth?: number;
+      imgHeight?: number;
+      imgSize?: number;
+      text?: string;
+    },
+  ) {
+    return pocketPost(
+      `${BASE}/message/api/v1/user/message/reply`,
+      {
+        messageType: 'IMAGE',
+        imgUrl: String(image.imgUrl),
+        imgWidth: Number(image.imgWidth || 0),
+        imgHeight: Number(image.imgHeight || 0),
+        imgSize: Number(image.imgSize || 0),
+        targetUserId: String(targetUserId),
+        text: String(image.text || ''),
+      },
+      { modern: true, fallback: '发送图片私信失败' },
+    );
   },
 
   /** 上传图片到口袋（私信图片等，fromType 为空） */
-  async uploadPocketImage(params: { uri: string; fileName?: string; mimeType?: string; fromType?: string }) {
+  async uploadPocketImage(params: {
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+    fromType?: string;
+  }) {
     const token = requireToken();
     const headers = await signedHeaders(token, true);
     delete headers['Content-Type'];
     delete headers.Host;
     const mimeType = params.mimeType || 'image/jpeg';
-    const fileName = params.fileName || `image-${Date.now()}.${mimeType.includes('png') ? 'png' : 'jpg'}`;
+    const fileName =
+      params.fileName || `image-${Date.now()}.${mimeType.includes('png') ? 'png' : 'jpg'}`;
     const formData = new FormData();
     if (params.fromType) formData.append('fromType', params.fromType);
     formData.append('file', {
       uri: params.uri,
       name: fileName,
       type: mimeType,
-    } as any);
+    } as unknown as Blob);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30000);
     let response: Response;
@@ -1837,141 +2191,200 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
         body: formData,
         signal: controller.signal,
       });
-    } catch (error: any) {
-      throw new Error(error?.name === 'AbortError' ? '上传图片超时' : '上传图片网络失败');
+    } catch (error: unknown) {
+      throw new Error(
+        error instanceof Error && error.name === 'AbortError' ? '上传图片超时' : '上传图片网络失败',
+      );
     } finally {
       clearTimeout(timer);
     }
     const contentType = response.headers.get('content-type') || '';
-    const data = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+    const data = contentType.includes('application/json')
+      ? await response.json().catch(() => null)
+      : null;
     if (response.ok && data && (data.status === 200 || data.success)) {
       const item = Array.isArray(data.content) ? data.content[0] : data.content;
       const path = item?.path || item?.url || item?.filePath || '';
       if (!path) throw new Error('上传成功但没有返回图片路径');
       return { success: true, content: item, path };
     }
-    const source = data || response;
-    throw new Error((source as any)?.message || (source as any)?.msg || `上传失败 HTTP ${response.status}`);
+    const source = (data || {}) as WireRecord;
+    throw new Error(String(source.message || source.msg || `上传失败 HTTP ${response.status}`));
   },
 
   /** 主页相册（图片动态，Android 头） */
   async getPostImageList(userId: string, nextId = 0, limit = 20) {
-    return pocketPost(`${BASE}/posts/api/v1/posts/img/list`, {
-      nextId: Number(nextId || 0),
-      limit: Number(limit) || 20,
-      userId: Number(userId) || 0,
-    }, { fallback: '获取主页相册失败', headers: createPocketAndroidHeaders() });
+    return pocketPost(
+      `${BASE}/posts/api/v1/posts/img/list`,
+      {
+        nextId: Number(nextId || 0),
+        limit: Number(limit) || 20,
+        userId: Number(userId) || 0,
+      },
+      { fallback: '获取主页相册失败', headers: createPocketAndroidHeaders() },
+    );
   },
 
   /** 主页视频（v2） */
   async getPostVideoList(userId: string, nextId = 0, limit = 20) {
-    return pocketPost(`${BASE}/posts/api/v2/posts/video/list`, {
-      nextId: Number(nextId) || 0,
-      limit: Number(limit) || 20,
-      userId: Number(userId) || 0,
-    }, { fallback: '获取主页视频失败', headers: createPocketAndroidHeaders() });
+    return pocketPost(
+      `${BASE}/posts/api/v2/posts/video/list`,
+      {
+        nextId: Number(nextId) || 0,
+        limit: Number(limit) || 20,
+        userId: Number(userId) || 0,
+      },
+      { fallback: '获取主页视频失败', headers: createPocketAndroidHeaders() },
+    );
   },
 
   /** 主页动态时间线 */
   async getPostTimelineHome(userId: string, nextId = 0, limit = 20) {
-    return pocketPost(`${BASE}/posts/api/v1/posts/timeline/home`, {
-      nextId: Number(nextId) || 0,
-      limit: Number(limit) || 20,
-      userId: Number(userId) || 0,
-    }, { fallback: '获取主页动态失败', headers: createPocketAndroidHeaders() });
+    return pocketPost(
+      `${BASE}/posts/api/v1/posts/timeline/home`,
+      {
+        nextId: Number(nextId) || 0,
+        limit: Number(limit) || 20,
+        userId: Number(userId) || 0,
+      },
+      { fallback: '获取主页动态失败', headers: createPocketAndroidHeaders() },
+    );
   },
 
   /** Seine 公演列表（ckg48 域名，iOS Seine 头） */
   async getSeinePerformanceList(groupId = 0, next = 0) {
-    return requestJson<any>('https://snhapi-v1.ckg48.cn/home/api/seine/home/interaction/list', {
-      method: 'POST',
-      body: {
-        type: 2,
-        groupId: String(groupId || 0),
-        next: String(next || 0),
+    return requestJson<ApiEnvelope>(
+      'https://snhapi-v1.ckg48.cn/home/api/seine/home/interaction/list',
+      {
+        method: 'POST',
+        body: {
+          type: 2,
+          groupId: String(groupId || 0),
+          next: String(next || 0),
+        },
+        headers: createSeineIosHeaders(),
+        timeout: 15000,
       },
-      headers: createSeineIosHeaders(),
-      timeout: 15000,
-    }).then((res: any) => assertPocketOk(res, '获取公演列表失败'));
+    ).then((res) => assertPocketOk(res, '获取公演列表失败'));
   },
 
   /** Seine 频道详情（serverId → 房间名映射） */
   async getSeineServerDetail(serverId: number) {
-    return pocketPost(`${BASE}/im/api/seine/server/detail`, {
-      serverId: Number(serverId),
-    }, { fallback: '获取频道详情失败', headers: createSeineHeaders() });
+    return pocketPost(
+      `${BASE}/im/api/seine/server/detail`,
+      {
+        serverId: Number(serverId),
+      },
+      { fallback: '获取频道详情失败', headers: createSeineHeaders() },
+    );
   },
 
   /** 单成员最新消息（team/last/message，push 服务同款） */
   async getLastMessageByServerId(serverId: number) {
-    return pocketPost(`${BASE}/im/api/v1/team/last/message/get`, {
-      serverId: Number(serverId),
-    }, { fallback: '获取最新消息失败' });
+    return pocketPost(
+      `${BASE}/im/api/v1/team/last/message/get`,
+      {
+        serverId: Number(serverId),
+      },
+      { fallback: '获取最新消息失败' },
+    );
   },
 
   /** 社区动态（Area48 最新） */
   async getArea48Newest(nextId = 0) {
-    return pocketPost(`${BASE}/posts/api/v1/area48/data/newest/new`, {
-      nextId: Number(nextId) || 0,
-    }, { fallback: '获取社区动态失败', headers: createArea48Headers() });
+    return pocketPost(
+      `${BASE}/posts/api/v1/area48/data/newest/new`,
+      {
+        nextId: Number(nextId) || 0,
+      },
+      { fallback: '获取社区动态失败', headers: createArea48Headers() },
+    );
   },
 
   /** 社区推荐 */
   async getArea48Recommend(nextId = 0) {
-    return pocketPost(`${BASE}/posts/api/v1/area48/data/recommend/new`, {
-      nextId: Number(nextId) || 0,
-    }, { fallback: '获取社区推荐失败', headers: createArea48Headers() });
+    return pocketPost(
+      `${BASE}/posts/api/v1/area48/data/recommend/new`,
+      {
+        nextId: Number(nextId) || 0,
+      },
+      { fallback: '获取社区推荐失败', headers: createArea48Headers() },
+    );
   },
 
   /** 帖子详情 */
   async getArea48PostDetails(postId: string) {
-    return pocketPost(`${BASE}/posts/api/v1/posts/details`, {
-      needViewer: true,
-      needComment: true,
-      postId: String(postId),
-    }, { fallback: '获取帖子详情失败', headers: createArea48Headers() });
+    return pocketPost(
+      `${BASE}/posts/api/v1/posts/details`,
+      {
+        needViewer: true,
+        needComment: true,
+        postId: String(postId),
+      },
+      { fallback: '获取帖子详情失败', headers: createArea48Headers() },
+    );
   },
 
   /** 帖子评论列表 */
   async getArea48Comments(resourceId: string, next = 0) {
-    return pocketPost(`${BASE}/comment/api/v1/comment/level1/getCommentList`, {
-      next: next ? String(next) : 0,
-      resourceId: String(resourceId),
-      resourceMd: 'md',
-      resourceType: 1002,
-    }, { fallback: '获取评论失败', headers: createArea48Headers() });
+    return pocketPost(
+      `${BASE}/comment/api/v1/comment/level1/getCommentList`,
+      {
+        next: next ? String(next) : 0,
+        resourceId: String(resourceId),
+        resourceMd: 'md',
+        resourceType: 1002,
+      },
+      { fallback: '获取评论失败', headers: createArea48Headers() },
+    );
   },
 
   /** 发表评论 */
   async addArea48Comment(resourceId: string, commentMsg: string, commentUrl = '') {
-    return pocketPost(`${BASE}/comment/api/v1/comment/addComment`, {
-      resourceId: String(resourceId),
-      commentMsg: String(commentMsg).trim(),
-      commentUrl: String(commentUrl || ''),
-      resourceMd: 'md',
-      resourceType: 1002,
-    }, { fallback: '发送评论失败', headers: createArea48Headers() });
+    return pocketPost(
+      `${BASE}/comment/api/v1/comment/addComment`,
+      {
+        resourceId: String(resourceId),
+        commentMsg: String(commentMsg).trim(),
+        commentUrl: String(commentUrl || ''),
+        resourceMd: 'md',
+        resourceType: 1002,
+      },
+      { fallback: '发送评论失败', headers: createArea48Headers() },
+    );
   },
 
   /** 社区发帖 */
-  async createArea48Post(params: { title?: string; content: string; topicArray?: string; extInfo?: string }) {
-    return pocketPost(`${BASE}/posts/api/v1/posts/create`, {
-      topicArray: String(params.topicArray || ''),
-      postSource: '1',
-      title: String(params.title || '').trim(),
-      content: String(params.content).trim(),
-      extInfo: String(params.extInfo || ''),
-    }, { fallback: '发布动态失败', headers: createArea48Headers() });
+  async createArea48Post(params: {
+    title?: string;
+    content: string;
+    topicArray?: string;
+    extInfo?: string;
+  }) {
+    return pocketPost(
+      `${BASE}/posts/api/v1/posts/create`,
+      {
+        topicArray: String(params.topicArray || ''),
+        postSource: '1',
+        title: String(params.title || '').trim(),
+        content: String(params.content).trim(),
+        extInfo: String(params.extInfo || ''),
+      },
+      { fallback: '发布动态失败', headers: createArea48Headers() },
+    );
   },
 
   /** 屏蔽词列表（发言前过滤） */
   async getPocketMaskWords(clientTime = 0) {
     try {
-      const res = await requestJson<any>(`${BASE}/home/api/check/maskword?clientTime=${Number(clientTime) || 0}`, {
-        method: 'GET',
-        headers: createArea48Headers(),
-        timeout: 10000,
-      });
+      const res = await requestJson<ApiEnvelope>(
+        `${BASE}/home/api/check/maskword?clientTime=${Number(clientTime) || 0}`,
+        {
+          method: 'GET',
+          headers: createArea48Headers(),
+          timeout: 10000,
+        },
+      );
       if (res?.status === 200 || res?.success) return { success: true, content: res.content || {} };
       return { success: false, content: {} };
     } catch {
@@ -1979,12 +2392,12 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }
   },
 
-
   // --- Open Live Participants (web scraping) ---
 
-  async getOpenLiveParticipants(liveId: string, title = '', dateHint = '') {
+  async getOpenLiveParticipants(liveId: string, _title = '', _dateHint = '') {
     const pageHeaders: HeadersMap = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
       Referer: 'https://live.48.cn/',
     };
 
@@ -1994,11 +2407,14 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
       const html = await requestJson<string>(livePageUrl, {
         method: 'GET',
         headers: pageHeaders,
-      }) as any; // Returns raw HTML as string
+      }); // Returns raw HTML as string
 
       // Extract hidden input values
       const extractInput = (inputId: string) => {
-        const pattern = new RegExp(`<input[^>]+id=["']${inputId}["'][^>]+value=["']([^"']*)["']`, 'i');
+        const pattern = new RegExp(
+          `<input[^>]+id=["']${inputId}["'][^>]+value=["']([^"']*)["']`,
+          'i',
+        );
         const match = String(html || '').match(pattern);
         return match ? String(match[1] || '').trim() : '';
       };
@@ -2016,7 +2432,7 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
             club_id: clubId,
           }).toString();
 
-          const memberRes = await requestJson<any>(
+          const memberRes = await requestJson<ApiEnvelope>(
             'https://live.48.cn/Index/ajax_getmemberhot/',
             {
               method: 'POST',
@@ -2031,15 +2447,17 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
             },
           );
 
-          const rows = Array.isArray(memberRes?.desc) ? memberRes.desc : [];
+          const rows: WireRecord[] = Array.isArray(memberRes?.desc)
+            ? (memberRes.desc as WireRecord[])
+            : [];
           const participants = rows
-            .map((item: any) => ({
+            .map((item) => ({
               name: String(item?.memberName || '').trim(),
               memberId: String(item?.memberId || '').trim(),
               avatar: String(item?.avatar || '').trim(),
               hot: item?.hot ?? '',
             }))
-            .filter((item: any) => item.name);
+            .filter((item) => item.name);
 
           if (participants.length) {
             return { success: true, content: { participants, source: 'memberhot' } };
@@ -2050,13 +2468,17 @@ if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
       }
 
       // Fallback: extract names from HTML
-      const nameMatches = String(html || '').matchAll(/<p class="listname">\s*([^<\r\n]+?)\s*(?:<em|<\/p>)/gi);
+      const nameMatches = String(html || '').matchAll(
+        /<p class="listname">\s*([^<\r\n]+?)\s*(?:<em|<\/p>)/gi,
+      );
       const names: string[] = [];
       for (const match of nameMatches) {
-        const name = String(match[1] || '').replace(/\s+/g, ' ').trim();
+        const name = String(match[1] || '')
+          .replace(/\s+/g, ' ')
+          .trim();
         if (name && !names.includes(name)) names.push(name);
       }
-      const htmlParticipants = names.map(name => ({ name, memberId: '', avatar: '', hot: '' }));
+      const htmlParticipants = names.map((name) => ({ name, memberId: '', avatar: '', hot: '' }));
       if (htmlParticipants.length) {
         return { success: true, content: { participants: htmlParticipants, source: 'html' } };
       }

@@ -18,10 +18,10 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { RootStackParamList, TabParamList } from '../navigation/types';
-import { useSettingsStore } from '../store';
+import { useSettingsStore, useMemberStore } from '../store';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine } from '../services/musicPlayer';
-import { usePalette, spacing, usePageBackground } from '../theme';
+import { usePalette, spacing, getPageBackground } from '../theme';
 import { typography } from '../theme/typography';
 import ScreenHeader from '../components/ScreenHeader';
 import { GlassCard } from '../components/GlassCard';
@@ -42,6 +42,8 @@ import QuickModule from './home/QuickModule';
 import ResumeModule from './home/ResumeModule';
 import ToolsModule from './home/ToolsModule';
 import { styles } from './home/styles';
+import { matchFollowedMember } from './followedRooms/roomDomain';
+import { decideLivesUpdate } from '../utils/homeLivesRules';
 import type { LiveCardItem, NavItem } from './home/types';
 
 type HomeNavProp = CompositeNavigationProp<
@@ -51,13 +53,32 @@ type HomeNavProp = CompositeNavigationProp<
 
 /** MaterialCommunityIcons 图标（统一视觉语言，替代 emoji） */
 const ICONS: Record<string, string> = {
-  LiveRoom: 'video', Vod: 'play-box-multiple', RoomRadio: 'radio', Bilibili: 'broadcast',
-  Rooms: 'message-text', PrivateMessages: 'email-outline', RoomAlbum: 'image-multiple', OpenLive: 'theater',
-  FlipSend: 'comment-question-outline', FlipHistory: 'history', Analysis: 'chart-bar',
-  Profile: 'account', MemberDynamic: 'star-circle', MemberWeibo: 'web', Trip: 'briefcase',
-  VideoLibrary: 'play-box', MusicLibrary: 'music-note', AudioPrograms: 'podcast',
-  MeleeRank: 'trophy', Database: 'database', Login: 'key-variant', Download: 'download', Invoice: 'file-document-outline', Settings: 'cog',
-  Community: 'forum', OnMic: 'microphone',
+  LiveRoom: 'video',
+  Vod: 'play-box-multiple',
+  RoomRadio: 'radio',
+  Bilibili: 'broadcast',
+  Rooms: 'message-text',
+  PrivateMessages: 'email-outline',
+  RoomAlbum: 'image-multiple',
+  OpenLive: 'theater',
+  FlipSend: 'comment-question-outline',
+  FlipHistory: 'history',
+  Analysis: 'chart-bar',
+  Profile: 'account',
+  MemberDynamic: 'star-circle',
+  MemberWeibo: 'web',
+  Trip: 'briefcase',
+  VideoLibrary: 'play-box',
+  MusicLibrary: 'music-note',
+  AudioPrograms: 'podcast',
+  MeleeRank: 'trophy',
+  Database: 'database',
+  Login: 'key-variant',
+  Download: 'download',
+  Invoice: 'file-document-outline',
+  Settings: 'cog',
+  Community: 'forum',
+  OnMic: 'microphone',
 };
 
 const QUICK: NavItem[] = [
@@ -82,19 +103,45 @@ const TOOL_CHIPS: NavItem[] = [
   { title: '发票', desc: '', route: 'InvoiceScreen', icon: ICONS.Invoice },
 ];
 
+/** 统一昵称：部分直播接口带团名前缀，成员库 ownerName 不带，比较时去掉前缀。 */
+function normalizeFollowName(value: string): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:snh48|gnz48|bej48|ckg48|cgt48)[-_ ]/i, '');
+}
+
 /** 成员直播排序：已关注+置顶 → 已关注未置顶 → 其他（保持原顺序） */
-function sortLivesByPreference(list: LiveCardItem[], followedIds: Set<string>, pinnedIds: string[]) {
+function sortLivesByPreference(
+  list: LiveCardItem[],
+  followedIds: Set<string>,
+  pinnedIds: string[],
+  followedNames: Set<string> = new Set(),
+) {
   const pinSet = new Set(pinnedIds);
+  const isFollowed = (it: LiveCardItem) => {
+    const uid = String(it.userId ?? '');
+    if (followedIds.has(uid)) return true;
+    const nick = normalizeFollowName(it.nickname);
+    return !!nick && followedNames.has(nick);
+  };
   const rank = (it: LiveCardItem) => {
     const uid = String(it.userId ?? '');
-    if (followedIds.has(uid)) return pinSet.has(uid) ? 0 : 1;
+    if (isFollowed(it)) return pinSet.has(uid) ? 0 : 1;
     if (pinSet.has(uid)) return 2;
     return 3;
   };
-  // 有已关注成员在播时，只展示关注/置顶的直播；关注的人都没开播才回退到其他人的直播。
-  if (followedIds.size) {
-    const preferred = list.filter((it) => followedIds.has(String(it.userId ?? '')) || pinSet.has(String(it.userId ?? '')));
-    if (preferred.length) return preferred.sort((a, b) => rank(a) - rank(b));
+  // 关注/置顶的直播排最前；关注的人不够填满 banner 时，用其他正在直播的房间补齐。
+  if (followedIds.size || followedNames.size) {
+    const preferred = list.filter((it) => isFollowed(it) || pinSet.has(String(it.userId ?? '')));
+    if (preferred.length) {
+      const preferredSet = new Set(preferred);
+      const rest = list.filter((it) => !preferredSet.has(it));
+      return [
+        ...preferred.sort((a, b) => rank(a) - rank(b)),
+        ...rest.sort((a, b) => rank(a) - rank(b)),
+      ];
+    }
   }
   return [...list].sort((a, b) => rank(a) - rank(b));
 }
@@ -108,12 +155,30 @@ const GONGYAN_CACHE_KEY = 'yaya_home_gongyan_cache_v1';
 /** B站单请求短超时：开播检测只需状态，6s 未回视为失败，避免拖慢首页骨架 */
 const BILI_FAST_TIMEOUT = 6000;
 
-/** Promise 竞速超时：返回 null 表示超时（不 abort，仅放弃等待） */
+/** Promise 竞速超时：返回 null 表示超时（不 abort，仅放弃等待；结束时清理定时器） */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
-  return Promise.race([
-    p,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-  ]);
+  return new Promise<T | null>((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve(null);
+    }, ms);
+    p.then(
+      (value) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function isAppForeground(): boolean {
@@ -122,19 +187,62 @@ function isAppForeground(): boolean {
 
 function normalizeLiveList(res: any): LiveCardItem[] {
   const source = unwrapList(res, [
-    'content.liveList', 'content.list', 'content.data', 'content.records',
-    'data.liveList', 'liveList', 'list', 'data',
+    'content.liveList',
+    'content.list',
+    'content.data',
+    'content.records',
+    'data.liveList',
+    'liveList',
+    'list',
+    'data',
   ]);
   return source
     .map((raw: any, index: number) => ({
       liveId: String(pickText(raw, ['liveId', 'id', 'live_id', 'roomId'], String(index))),
       title: pickText(raw, ['title', 'liveTitle', 'liveRoomTitle', 'roomName', 'subject'], ''),
-      nickname: pickText(raw, ['nickname', 'nickName', 'userInfo.nickname', 'userInfo.nickName', 'ownerName'], ''),
-      cover: normalizeUrl(pickText(raw, ['liveCover', 'coverPath', 'cover', 'coverUrl', 'picPath', 'picturePath', 'imageUrl', 'poster', 'thumb', 'userInfo.avatar'], '')),
-      userId: String(pickText(raw, ['userId', 'ownerId', 'memberId', 'hostId', 'account', 'userInfo.userId', 'userInfo.id', 'owner.userId', 'memberInfo.userId', 'user.userId'], '')),
+      nickname: pickText(
+        raw,
+        ['nickname', 'nickName', 'userInfo.nickname', 'userInfo.nickName', 'ownerName'],
+        '',
+      ),
+      cover: normalizeUrl(
+        pickText(
+          raw,
+          [
+            'liveCover',
+            'coverPath',
+            'cover',
+            'coverUrl',
+            'picPath',
+            'picturePath',
+            'imageUrl',
+            'poster',
+            'thumb',
+            'userInfo.avatar',
+          ],
+          '',
+        ),
+      ),
+      userId: String(
+        pickText(
+          raw,
+          [
+            'userId',
+            'ownerId',
+            'memberId',
+            'hostId',
+            'account',
+            'userInfo.userId',
+            'userInfo.id',
+            'owner.userId',
+            'memberInfo.userId',
+            'user.userId',
+          ],
+          '',
+        ),
+      ),
     }))
-    .filter((item: LiveCardItem) => item.title)
-    .slice(0, 50);
+    .filter((item: LiveCardItem) => item.title);
 }
 
 export default function HomeScreen() {
@@ -163,21 +271,30 @@ export default function HomeScreen() {
   const pmUnreadTokenRef = useRef('');
   const fetchedRef = useRef(false);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
   const livesRetryRef = useRef(0);
   /** 最新成员直播列表快照（供失败分支判断"当前是否已有可展示数据"，避免空壳响应误清列表） */
   const livesRef = useRef<LiveCardItem[]>([]);
-  const liveEmptyTicksRef = useRef(0);
-  useEffect(() => { livesRef.current = lives; }, [lives]);
+  /** 未截断的完整直播列表：关注 id 晚于首屏到达时，必须从全量重排，不能只在已截断的 lives 里重排 */
+  const allLivesRef = useRef<LiveCardItem[]>([]);
+  /** 服务端连续返回「完整结构但空 liveList」的次数（见 utils/homeLivesRules） */
+  const emptyStreakRef = useRef(0);
+  useEffect(() => {
+    livesRef.current = lives;
+  }, [lives]);
 
   // 公演直播：B站直播间开播检测（仅五个团 SNH48/GNZ48/BEJ48/CGT48/CKG48，其余直播间不展示）
-  const GONGYAN_ROOMS = useMemo(
-    () => ['SNH48', 'GNZ48', 'BEJ48', 'CGT48', 'CKG48'],
-    [],
-  );
+  const GONGYAN_ROOMS = useMemo(() => ['SNH48', 'GNZ48', 'BEJ48', 'CGT48', 'CKG48'], []);
   const [gongyanRooms, setGongyanRooms] = useState<BilibiliLiveRoom[]>([]);
   const [gongyanLive, setGongyanLive] = useState<Record<string, boolean>>({});
-  const [gongyanInfo, setGongyanInfo] = useState<Record<string, { title: string; cover: string }>>({});
+  const [gongyanInfo, setGongyanInfo] = useState<Record<string, { title: string; cover: string }>>(
+    {},
+  );
   const [gongyanOk, setGongyanOk] = useState(false);
   const [gongyanError, setGongyanError] = useState('');
   const gongyanTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -187,20 +304,26 @@ export default function HomeScreen() {
   const gongyanLiveRef = useRef<Record<string, boolean>>({});
   /** 上一轮房间信息快照：info 请求失败时保留旧封面/标题（防封面闪回占位） */
   const gongyanInfoRef = useRef<Record<string, { title: string; cover: string }>>({});
-  useEffect(() => { gongyanLiveRef.current = gongyanLive; }, [gongyanLive]);
-  useEffect(() => { gongyanInfoRef.current = gongyanInfo; }, [gongyanInfo]);
+  useEffect(() => {
+    gongyanLiveRef.current = gongyanLive;
+  }, [gongyanLive]);
+  useEffect(() => {
+    gongyanInfoRef.current = gongyanInfo;
+  }, [gongyanInfo]);
 
   const fetchGongyanStatus = useCallback(async () => {
     if (!focusedRef.current || !isAppForeground()) return;
     try {
       const rooms = await externalApi.fetchBilibiliConfig();
       // 五团固定顺序（按 GONGYAN_ROOMS 序，非 B站接口返回序 —— 接口顺序跨轮不稳会导致行顺序跳动"抽风"）
-      const filtered = GONGYAN_ROOMS
-        .map((name) => rooms.find((room) => String(room.name || '').trim() === name))
-        .filter((room): room is BilibiliLiveRoom => !!room);
+      const filtered = GONGYAN_ROOMS.map((name) =>
+        rooms.find((room) => String(room.name || '').trim() === name),
+      ).filter((room): room is BilibiliLiveRoom => !!room);
       // 并行检测开播状态（每请求 6s 竞速超时：B站接口不稳，单请求挂起不应拖住整个公演区）
       const results = await Promise.allSettled(
-        filtered.map((room) => withTimeout(bilibiliApi.getRoomInit(room.roomId), BILI_FAST_TIMEOUT)),
+        filtered.map((room) =>
+          withTimeout(bilibiliApi.getRoomInit(room.roomId), BILI_FAST_TIMEOUT),
+        ),
       );
       const prevLive = gongyanLiveRef.current;
       const next: Record<string, boolean> = {};
@@ -215,7 +338,9 @@ export default function HomeScreen() {
       });
       // 在播房间并行抓取封面 + 直播标题（公演行展示真实封面与场次标题；6s 竞速超时）
       const liveIds = filtered.filter((room) => next[room.roomId]).map((room) => room.roomId);
-      const infoResults = await Promise.allSettled(liveIds.map((id) => withTimeout(bilibiliApi.getRoomInfo(id), BILI_FAST_TIMEOUT)));
+      const infoResults = await Promise.allSettled(
+        liveIds.map((id) => withTimeout(bilibiliApi.getRoomInfo(id), BILI_FAST_TIMEOUT)),
+      );
       const prevInfo = gongyanInfoRef.current;
       const infoMap: Record<string, { title: string; cover: string }> = {};
       infoResults.forEach((r, index) => {
@@ -273,7 +398,9 @@ export default function HomeScreen() {
             setGongyanOk(true);
             gongyanHasDataRef.current = true;
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       })
       .catch(() => {});
   }, []);
@@ -307,18 +434,41 @@ export default function HomeScreen() {
   // 成员直播排序偏好：已关注（getFollowedIds）+ 置顶（yaya_pinned_rooms）优先
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const members = useMemberStore((state) => state.members);
+  // 关注 id → 成员库 ownerName：直播接口有时缺 userId，昵称是最后一道兜底。
+  const followedNames = useMemo(() => {
+    const names = new Set<string>();
+    followedIds.forEach((id) => {
+      const member = matchFollowedMember(members, id);
+      const name = member?.ownerName;
+      const normalized = normalizeFollowName(String(name || ''));
+      if (normalized) names.add(normalized);
+    });
+    return names;
+  }, [members, followedIds]);
   useEffect(() => {
     AsyncStorage.getItem('yaya_pinned_rooms')
-      .then((v) => { try { const a = JSON.parse(v || '[]'); if (Array.isArray(a)) setPinnedIds(a.map(String)); } catch { /* ignore */ } })
+      .then((v) => {
+        try {
+          const a = JSON.parse(v || '[]');
+          if (Array.isArray(a)) setPinnedIds(a.map(String));
+        } catch {
+          /* ignore */
+        }
+      })
       .catch(() => {});
-    if (!token) { setFollowedIds(new Set()); return; }
+    if (!token) {
+      setFollowedIds(new Set());
+      return;
+    }
     let alive = true;
     // 本地缓存先出：首页 banner 的关注优先级不等网络。
     void readFollowedIdsCache(token).then((cached) => {
       if (alive && cached.cached) setFollowedIds(new Set(cached.ids));
     });
     const loadFollowedIds = () => {
-      pocketApi.getFollowedIds()
+      pocketApi
+        .getFollowedIds()
         .then((res: any) => {
           if (!alive) return;
           const ids = unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String);
@@ -330,82 +480,124 @@ export default function HomeScreen() {
     loadFollowedIds();
     const timer = setInterval(loadFollowedIds, 60000);
     const offFocus = navigation.addListener('focus', loadFollowedIds);
-    return () => { alive = false; clearInterval(timer); offFocus(); };
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      offFocus();
+    };
   }, [navigation, token]);
 
-  const fetchLives = useCallback(() => {
-    if (!focusedRef.current || !isAppForeground()) return;
-    // 秒显上次缓存（stale-while-revalidate）：冷启动立即有内容，后台刷新
-    AsyncStorage.getItem(LIVES_CACHE_KEY)
-      .then((raw) => {
-        if (!raw || !focusedRef.current) return;
-        try {
-          const cached = JSON.parse(raw);
-          if (Array.isArray(cached) && cached.length && !fetchedRef.current) {
-            setLives(sortLivesByPreference(cached, followedIds, pinnedIds));
-            setLivesOk(true);
+  const fetchLives = useCallback(
+    (options?: { authoritative?: boolean }) => {
+      if (!focusedRef.current || !isAppForeground()) return;
+      const authoritative = !!options?.authoritative;
+      // 秒显上次缓存（stale-while-revalidate）：冷启动立即有内容，后台刷新
+      AsyncStorage.getItem(LIVES_CACHE_KEY)
+        .then((raw) => {
+          if (!raw || !focusedRef.current) return;
+          try {
+            const cached = JSON.parse(raw);
+            if (Array.isArray(cached) && cached.length && !fetchedRef.current) {
+              allLivesRef.current = cached;
+              setLives(
+                sortLivesByPreference(cached, followedIds, pinnedIds, followedNames).slice(0, 8),
+              );
+              setLivesOk(true);
+            }
+          } catch {
+            /* ignore */
           }
-        } catch { /* ignore */ }
-      })
-      .catch(() => {});
-    withTimeout(
-      pocketApi.getLiveList({ groupId: 0, liveType: 0, next: 0, record: false }),
-      10000,
-    )
-      .then((res: any) => {
-        if (!focusedRef.current || !isAppForeground()) return;
-        if (!res) throw new Error('timeout');
-        // 空壳防护：官方接口偶发返回 success/200 但 content 无 liveList 字段（限流/风控/异常），
-        // 此时 normalizeLiveList 会解出空数组 → 误把"有直播"显示成"暂无成员直播"。
-        // 判定规则：结构里确实没有 liveList 数组 = 视为请求异常（保留旧数据走 catch），
-        // 只有结构完整且 liveList 真为空（此时无人开播）才落空态。
-        const rawList = (res?.content ?? res?.data ?? res)?.liveList;
-        if (!Array.isArray(rawList)) throw new Error('live list empty shell');
-        const list = sortLivesByPreference(normalizeLiveList(res), followedIds, pinnedIds).slice(0, 8);
-        // 接口偶发合法空数组会闪一下「无直播」→ 连续两次空才清空，避免 banner/列表消失一下
-        if (!list.length && livesRef.current.length > 0) {
-          liveEmptyTicksRef.current += 1;
-          if (liveEmptyTicksRef.current < 2) return;
-        } else {
-          liveEmptyTicksRef.current = 0;
-        }
-        setLives(list);
-        fetchedRef.current = true;
-        setLivesOk(true);
-        setLivesError('');
-        livesRetryRef.current = 0;
-        AsyncStorage.setItem(LIVES_CACHE_KEY, JSON.stringify(list)).catch(() => {});
-      })
-      .catch((e: any) => {
-        if (!focusedRef.current) return;
-        // 有缓存/已有列表时网络失败不打断展示（保留内容，仅静默）；
-        // 无任何数据时：记错误态 + 5s 后自动重试（最多 3 次，网络抖动自愈，不必等手动点重试）。
-        // 判断依据是当前无可展示数据，避免首屏失败后只剩 60s 轮询兜底。
-        if (livesRef.current.length === 0) {
-          setLivesError(e?.message || String(e));
-          if (livesRetryRef.current < 3) {
-            livesRetryRef.current += 1;
-            setTimeout(() => {
-              if (!mountedRef.current || !focusedRef.current) return;
-              if (isAppForeground()) fetchLives();
-            }, 5000);
+        })
+        .catch(() => {});
+      withTimeout(
+        pocketApi.getLiveList({
+          groupId: 0,
+          liveType: 0,
+          next: 0,
+          record: false,
+          // 默认一页仅 15 条：在播人数多时，排在后面的关注成员会在服务端就被截掉。
+          // 首页需要完整列表做「关注优先」排序，再截取展示数量。
+          size: 100,
+        }),
+        10000,
+      )
+        .then((res: any) => {
+          if (!focusedRef.current || !isAppForeground()) return;
+          if (!res) throw new Error('timeout');
+          // 空壳防护：官方接口偶发返回 success/200 但 content 无 liveList 字段（限流/风控/异常），
+          // 此时 normalizeLiveList 会解出空数组 → 误把"有直播"显示成"暂无成员直播"。
+          // 判定规则：结构里确实没有 liveList 数组 = 视为请求异常（保留旧数据走 catch），
+          // 只有结构完整且 liveList 真为空（此时无人开播）才落空态。
+          const rawList = (res?.content ?? res?.data ?? res)?.liveList;
+          if (!Array.isArray(rawList)) throw new Error('live list empty shell');
+          const allLives = normalizeLiveList(res);
+          allLivesRef.current = allLives;
+          const list = sortLivesByPreference(allLives, followedIds, pinnedIds, followedNames).slice(
+            0,
+            8,
+          );
+          // 与 Yaya Message X 相同的三态判定：非空替换；真空连续两次清空（用户主动刷新立即清）；
+          // 原始有条目但解析为 0 条视为解析异常，保留旧数据，避免把「有直播」误显示成「暂无」。
+          const decision = decideLivesUpdate({
+            prevCount: livesRef.current.length,
+            rawLen: rawList.length,
+            nextLen: list.length,
+            emptyStreak: emptyStreakRef.current,
+            authoritative,
+          });
+          emptyStreakRef.current = decision.emptyStreak;
+          fetchedRef.current = true;
+          setLivesOk(true);
+          setLivesError('');
+          livesRetryRef.current = 0;
+          if (decision.action === 'replace') {
+            setLives(list);
+            AsyncStorage.setItem(LIVES_CACHE_KEY, JSON.stringify(list)).catch(() => {});
+          } else if (decision.action === 'clear') {
+            setLives([]);
+            AsyncStorage.removeItem(LIVES_CACHE_KEY).catch(() => {});
           }
-        }
-      });
-  }, [followedIds, pinnedIds]);
+        })
+        .catch((e: any) => {
+          if (!focusedRef.current) return;
+          // 有缓存/已有列表时网络失败不打断展示（保留内容，仅静默）；
+          // 无任何数据时：记错误态 + 5s 后自动重试（最多 3 次，网络抖动自愈，不必等手动点重试）。
+          // 判断依据是当前无可展示数据，避免首屏失败后只剩 60s 轮询兜底。
+          if (livesRef.current.length === 0) {
+            setLivesError(e?.message || String(e));
+            if (livesRetryRef.current < 3) {
+              livesRetryRef.current += 1;
+              setTimeout(() => {
+                if (!mountedRef.current || !focusedRef.current) return;
+                if (isAppForeground()) fetchLives();
+              }, 5000);
+            }
+          }
+        });
+    },
+    [followedIds, pinnedIds, followedNames],
+  );
 
-  // 关注/置顶数据到达后：已有列表立即按新偏好重排（不重新请求，幂等）
+  // 关注/置顶数据到达后：从完整列表重排（不是只在已截断的 8 条里重排，
+  // 否则首次请求时关注列表尚未到达，排在后面的关注成员直播会被永久漏掉）。
   useEffect(() => {
-    setLives((prev) => (prev.length ? sortLivesByPreference(prev, followedIds, pinnedIds) : prev));
-  }, [followedIds, pinnedIds]);
+    const all = allLivesRef.current.length ? allLivesRef.current : livesRef.current;
+    if (all.length) {
+      setLives(sortLivesByPreference(all, followedIds, pinnedIds, followedNames).slice(0, 8));
+    }
+  }, [followedIds, pinnedIds, followedNames]);
 
   // 仅首页可见时请求和轮询；重新进入首页立即刷新。
   const wasFocusedRef = useRef(false);
   useEffect(() => {
-    if (!isFocused) { wasFocusedRef.current = false; return; }
+    if (!isFocused) {
+      wasFocusedRef.current = false;
+      return;
+    }
     if (!wasFocusedRef.current) {
       wasFocusedRef.current = true;
-      fetchLives();
+      // 从直播页/房间回到首页视为用户主动刷新：空列表立即采纳，不再让旧 banner 多挂一轮。
+      fetchLives({ authoritative: true });
     }
     const id = setInterval(() => {
       if (AppState.currentState === 'active') fetchLives();
@@ -413,7 +605,10 @@ export default function HomeScreen() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') fetchLives();
     });
-    return () => { clearInterval(id); sub.remove(); };
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
   }, [fetchLives, isFocused]);
 
   // banner 轮播：2.5s 自动切换下一条（最多轮前 4 条），切换带 crossfade + 位移动画。
@@ -441,14 +636,24 @@ export default function HomeScreen() {
           // 退场结束后再回弹，避免两个动画同时驱动 slideAnim。
           transition = Animated.parallel([
             Animated.timing(fadeAnim, { toValue: 1, duration: 240, useNativeDriver: true }),
-            Animated.spring(slideAnim, { toValue: 0, speed: 26, bounciness: 5, useNativeDriver: true }),
+            Animated.spring(slideAnim, {
+              toValue: 0,
+              speed: 26,
+              bounciness: 5,
+              useNativeDriver: true,
+            }),
           ]);
-          transition.start(() => { transition = null; });
+          transition.start(() => {
+            transition = null;
+          });
         });
       }, 2500);
     };
     const stopLoop = () => {
-      if (timer) { clearInterval(timer); timer = null; }
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
       transition?.stop();
       transition = null;
       fadeAnim.setValue(1);
@@ -459,7 +664,10 @@ export default function HomeScreen() {
       if (s === 'active') startLoop();
       else stopLoop();
     });
-    return () => { sub.remove(); stopLoop(); };
+    return () => {
+      sub.remove();
+      stopLoop();
+    };
   }, [bannerCount, fadeAnim, slideAnim, isFocused]);
 
   // B2 修复：lives 数量变化（60s 轮询）后 bannerIndex 收敛到有效范围（dots 点击/轮播前进以渲染期安全值为主）
@@ -479,15 +687,15 @@ export default function HomeScreen() {
    * 只有「行文本变化」才触发首页重渲染，避免每 250ms 刷整页。
    */
   /**
-   * minibar 歌词行（2026-10-18 重做）。
+   * minibar 歌词行（重做）。
    *
    * 此前直接按 store.position 取行：一旦位置心跳停更（页面不在 / 原生心跳丢失），
    * 歌词永远停在第一句（用户看到一直显示「如果有你在 -」这种版权信息行）。
    *
    * 现在：不订阅 position（避免 4 次/秒整页重渲染），改成 500ms 本地 ticker：
-   *  - 记录「最近一次 store.position + 对应时刻」作为锚点；
-   *  - 播放中时按墙上时钟补时（锚点 + 已过秒数），与 store.position 取较大值；
-   *  - 只在「命中的行号变化」时才 setState，渲染开销可忽略。
+   * - 记录「最近一次 store.position + 对应时刻」作为锚点；
+   * - 播放中时按墙上时钟补时（锚点 + 已过秒数），与 store.position 取较大值；
+   * - 只在「命中的行号变化」时才 setState，渲染开销可忽略。
    */
   const lyricsList = useMusicPlayerStore((s) => s.lyrics);
   const playbackForLyric = useMusicPlayerStore((s) => s.playbackState);
@@ -515,7 +723,12 @@ export default function HomeScreen() {
       let hit = -1;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        if (list[mid].time <= use) { hit = mid; lo = mid + 1; } else { hi = mid - 1; }
+        if (list[mid].time <= use) {
+          hit = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
       }
       setLyricIdx((v) => (v === hit ? v : hit));
     };
@@ -524,44 +737,39 @@ export default function HomeScreen() {
     return () => clearInterval(id);
   }, [lyricsList, playbackForLyric, isFocused]);
 
-  const lyricLine = lyricIdx >= 0 ? (lyricsList[lyricIdx]?.text || '') : '';
+  const lyricLine = lyricIdx >= 0 ? lyricsList[lyricIdx]?.text || '' : '';
 
-  const handleNav = useCallback((item: NavItem) => {
-    if (item.params) (navigation as any).navigate(item.route, item.params);
-    else (navigation as any).navigate(item.route);
-  }, [navigation]);
+  const handleNav = useCallback(
+    (item: NavItem) => {
+      if (item.params) (navigation as any).navigate(item.route, item.params);
+      else (navigation as any).navigate(item.route);
+    },
+    [navigation],
+  );
 
   /**
    * 进音乐功能（最近播放卡面/播放中胶囊）：只导航进音乐库，不触发播放——
-   *  - 外部正在播 → 保持原声连续（不再二次 resume：重复解析+seekTo 会造成"暂停一下再加载"的中断感）
-   *  - 外部暂停/停止 → 保持暂停态进入，不自动开播（用户要求：没在播时进音乐功能不得自动续播）
+   * - 外部正在播 → 保持原声连续（不再二次 resume：重复解析+seekTo 会造成"暂停一下再加载"的中断感）
+   * - 外部暂停/停止 → 保持暂停态进入，不自动开播（用户要求：没在播时进音乐功能不得自动续播）
    */
   const openMusicLibrary = useCallback(() => {
     handleNav({ title: '', desc: '', route: 'MusicLibraryScreen', icon: '' });
   }, [handleNav]);
 
-  /**
-   * 继续播放（仅显式点击胶囊时）：从记忆进度续播（position→seekTarget，resume 保留进度）。
-   * 播放中/加载中点胶囊只进音乐页（避免重启播放链路）。
-   */
-  const handleResumeMusic = useCallback(() => {
-    const s = useMusicPlayerStore.getState();
-    if (!s.queue[s.currentIndex]) return;
-    if (s.playbackState === 'playing' || s.playbackState === 'loading') {
-      openMusicLibrary();
-      return;
-    }
-    void MusicEngine.resume().catch(() => {});
-    openMusicLibrary();
-  }, [openMusicLibrary]);
-
   /** minibar：上一首 / 下一首 / 暂停播放 */
-  const handleMusicPrev = useCallback(() => { void MusicEngine.prev(); }, []);
-  const handleMusicNext = useCallback(() => { void MusicEngine.next(); }, []);
+  const handleMusicPrev = useCallback(() => {
+    void MusicEngine.prev();
+  }, []);
+  const handleMusicNext = useCallback(() => {
+    void MusicEngine.next();
+  }, []);
   const handleMusicToggle = useCallback(() => {
     const s = useMusicPlayerStore.getState();
     if (!s.queue[s.currentIndex]) return;
-    if (s.playbackState === 'idle') { void MusicEngine.resume().catch(() => {}); return; }
+    if (s.playbackState === 'idle') {
+      void MusicEngine.resume().catch(() => {});
+      return;
+    }
     MusicEngine.togglePause();
   }, []);
 
@@ -575,65 +783,101 @@ export default function HomeScreen() {
 
   const hour = new Date().getHours();
   const greeting =
-    hour < 5 ? t('夜深了') : hour < 11 ? t('早上好') : hour < 14 ? t('中午好') : hour < 18 ? t('下午好') : t('晚上好');
+    hour < 5
+      ? t('夜深了')
+      : hour < 11
+        ? t('早上好')
+        : hour < 14
+          ? t('中午好')
+          : hour < 18
+            ? t('下午好')
+            : t('晚上好');
 
   const quick = QUICK.map((i) => ({ ...i, title: t(i.title) }));
 
   // 私信未读红点：仅在已登录时拉取；失败静默（不打扰）
-  useFocusEffect(useCallback(() => {
-    // 设置里有开关（默认开）：关掉就不再拉取、不显示角标
-    if (!token || settings.yaya_pm_unread_badge === false) { pmUnreadTokenRef.current = ''; setPmUnread(0); return; }
-    if (pmUnreadTokenRef.current !== token) { pmUnreadTokenRef.current = token; setPmUnread(0); }
-    let alive = true;
-    let fetching = false;
-    const refreshUnread = () => {
-      if (!alive || fetching || AppState.currentState !== 'active') return;
-      fetching = true;
-      pocketApi.getUnreadMessageCount()
-        .then((res: any) => {
-          if (!alive) return;
-          const count = privateUnreadCount(res);
-          if (count !== null) setPmUnread(count);
-        })
-        .catch(() => {})
-        .finally(() => { fetching = false; });
-    };
-    refreshUnread();
-    const timer = setInterval(refreshUnread, 30000);
-    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') refreshUnread(); });
-    return () => { alive = false; clearInterval(timer); sub.remove(); };
-  }, [token, settings.yaya_pm_unread_badge]));
+  useFocusEffect(
+    useCallback(() => {
+      // 设置里有开关（默认开）：关掉就不再拉取、不显示角标
+      if (!token || settings.yaya_pm_unread_badge === false) {
+        pmUnreadTokenRef.current = '';
+        setPmUnread(0);
+        return;
+      }
+      if (pmUnreadTokenRef.current !== token) {
+        pmUnreadTokenRef.current = token;
+        setPmUnread(0);
+      }
+      let alive = true;
+      let fetching = false;
+      const refreshUnread = () => {
+        if (!alive || fetching || AppState.currentState !== 'active') return;
+        fetching = true;
+        pocketApi
+          .getUnreadMessageCount()
+          .then((res: any) => {
+            if (!alive) return;
+            const count = privateUnreadCount(res);
+            if (count !== null) setPmUnread(count);
+          })
+          .catch(() => {})
+          .finally(() => {
+            fetching = false;
+          });
+      };
+      refreshUnread();
+      const timer = setInterval(refreshUnread, 30000);
+      const sub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') refreshUnread();
+      });
+      return () => {
+        alive = false;
+        clearInterval(timer);
+        sub.remove();
+      };
+    }, [token, settings.yaya_pm_unread_badge]),
+  );
   const toolChips = TOOL_CHIPS.map((i) => ({ ...i, title: t(i.title) }));
 
   const trackTitle = currentTrack?.title || '';
   const trackArtist = currentTrack?.artist || currentTrack?.joinMemberNames || '';
   // F3 修复：续播卡随播放状态显示「播放中/加载中/继续播放」，R2 曲目 URL 异步解析时用户有反馈
-  const resumeLabel = musicPlaybackState === 'playing'
-    ? t('播放中')
-    : musicPlaybackState === 'loading'
-      ? t('加载中')
-      : t('继续播放');
+  const resumeLabel =
+    musicPlaybackState === 'playing'
+      ? t('播放中')
+      : musicPlaybackState === 'loading'
+        ? t('加载中')
+        : t('继续播放');
 
-  const openLive = useCallback((item: LiveCardItem) => {
-    (navigation as any).navigate('Media', {
-      mode: 'live',
-      playLiveId: item.liveId,
-      playTitle: item.title,
-      playCover: item.cover,
-      playNonce: Date.now(),
-    });
-  }, [navigation]);
+  const openLive = useCallback(
+    (item: LiveCardItem) => {
+      (navigation as any).navigate('Media', {
+        mode: 'live',
+        playLiveId: item.liveId,
+        playTitle: item.title,
+        playCover: item.cover,
+        playNonce: Date.now(),
+      });
+    },
+    [navigation],
+  );
 
   /** 公演直播：跳 B 站直播屏 */
   const openGongyanAll = useCallback(() => {
     handleNav({ title: '', desc: '', route: 'BilibiliLiveScreen', icon: '' });
   }, [handleNav]);
-  const openGongyanRoom = useCallback((room: BilibiliLiveRoom) => {
-    (navigation as any).navigate('BilibiliLiveScreen', { roomId: room.roomId, roomName: room.name });
-  }, [navigation]);
+  const openGongyanRoom = useCallback(
+    (room: BilibiliLiveRoom) => {
+      (navigation as any).navigate('BilibiliLiveScreen', {
+        roomId: room.roomId,
+        roomName: room.name,
+      });
+    },
+    [navigation],
+  );
 
   return (
-    <View style={[styles.outer, { backgroundColor: usePageBackground() }]}>
+    <View style={[styles.outer, { backgroundColor: getPageBackground() }]}>
       {}
       <ScreenHeader title={t('牙牙消息')} hideBack />
       <ScrollView
@@ -648,24 +892,44 @@ export default function HomeScreen() {
         {/* 问候区：一行问候 */}
         <View style={{ paddingHorizontal: spacing.md }}>
           {/* 问候：随手机当前时间变化（v2.7 字号缩小） */}
-          <Text style={[typography.footnote, { color: palette.labelSecondary, marginBottom: spacing.md }]}>
+          <Text
+            style={[
+              typography.footnote,
+              { color: palette.labelSecondary, marginBottom: spacing.md },
+            ]}
+          >
             {greeting}
           </Text>
 
           {!token ? (
-            <ScalePressable style={{ marginBottom: spacing.xl }} onPress={() => handleNav({ title: '', desc: '', route: 'LoginScreen', icon: '' })} pressedScale={0.98}>
+            <ScalePressable
+              style={{ marginBottom: spacing.xl }}
+              onPress={() => handleNav({ title: '', desc: '', route: 'LoginScreen', icon: '' })}
+              pressedScale={0.98}
+            >
               <GlassCard strong padding={14} radius={20} style={{ borderColor: palette.danger }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={[styles.loginBadge, { backgroundColor: palette.tintSoft }]}>
                     <MaterialCommunityIcons name="key-variant" color={palette.tint} size={20} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[typography.headline, { color: palette.label }]}>{t('未登录口袋账号')}</Text>
-                    <Text style={[typography.footnote, { color: palette.labelSecondary, marginTop: 3, lineHeight: 18 }]}>
+                    <Text style={[typography.headline, { color: palette.label }]}>
+                      {t('未登录口袋账号')}
+                    </Text>
+                    <Text
+                      style={[
+                        typography.footnote,
+                        { color: palette.labelSecondary, marginTop: 3, lineHeight: 18 },
+                      ]}
+                    >
                       {t('消息、私信、翻牌需要登录；点此粘贴 token')}
                     </Text>
                   </View>
-                  <MaterialCommunityIcons name="chevron-right" color={palette.labelTertiary} size={20} />
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    color={palette.labelTertiary}
+                    size={20}
+                  />
                 </View>
               </GlassCard>
             </ScalePressable>
@@ -700,7 +964,10 @@ export default function HomeScreen() {
                   gongyanError={gongyanError}
                   liveRooms={liveGongyanRooms}
                   gongyanInfo={gongyanInfo}
-                  onRetry={() => { setGongyanError(''); fetchGongyanStatus(); }}
+                  onRetry={() => {
+                    setGongyanError('');
+                    fetchGongyanStatus();
+                  }}
                   onPressAll={openGongyanAll}
                   onPressRoom={openGongyanRoom}
                 />
@@ -750,7 +1017,12 @@ export default function HomeScreen() {
         <Text
           style={[
             typography.caption1,
-            { color: palette.labelTertiary, textAlign: 'center', marginTop: spacing.xl, marginBottom: 24 },
+            {
+              color: palette.labelTertiary,
+              textAlign: 'center',
+              marginTop: spacing.xl,
+              marginBottom: 24,
+            },
           ]}
         >
           {t('Presented by Xenia')}
@@ -759,4 +1031,3 @@ export default function HomeScreen() {
     </View>
   );
 }
-

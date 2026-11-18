@@ -6,7 +6,9 @@ import vm from 'node:vm';
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
 const source = readFileSync(new URL('../src/utils/privateUnread.ts', import.meta.url), 'utf8');
-const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const code = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText;
 const module = { exports: {} };
 vm.runInNewContext(code, { module, exports: module.exports });
 const { privateUnreadCount } = module.exports;

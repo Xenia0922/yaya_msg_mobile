@@ -46,6 +46,9 @@ class MainActivity : ReactActivity() {
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
+    // RN/Expo 官方模板固定传 null：ReactActivityDelegate.onCreate 会忽略该 Bundle，
+    // 而 ReactActivity 继承 AppCompatActivity，传入非 null 时 FragmentManager 可能恢复旧 Fragment，
+    // 与 ReactRootView 重建叠加导致重复恢复/崩溃。应用状态由 RN 自身负责重建。
     super.onCreate(null)
     window.decorView.addOnLayoutChangeListener(compactWindowListener)
     requestMaxRefreshRate()
@@ -104,6 +107,7 @@ class MainActivity : ReactActivity() {
     // 否则 SystemUI 的 PiP/媒体控件会绑到音乐而非画面中的视频（用户反馈"控件控制的是音乐"根因之一）。
     // 仅无视频在播（听歌/一般页面切后台）才补发音乐会话重声明。
     if (PipModule.videoPlaying) {
+      reassertHandler.removeCallbacks(delayedReassert)
       // 系统小窗开关关闭：切后台不自动进 PiP，视频将随 Activity 后台停止 —— 顺手停掉
       // "暂停残留"的音乐前台服务，避免 SystemUI 媒体卡残留 App 的（音乐）控件。
       if (!PipModule.pipEnabled) stopMusicIfIdle()
@@ -124,9 +128,13 @@ class MainActivity : ReactActivity() {
 
   override fun onResume() {
     super.onResume()
-    // 回前台：停掉后台补发窗口，然后立即重声明一次（覆盖回前台瞬间的会话刷新）
+    // 回前台：停掉后台补发窗口，然后仅在当前没有视频在播时重声明音乐会话。
+    // 从系统 PiP 小窗返回时视频仍在播，此时无条件 reassertExoSession 会把 SystemUI 媒体卡
+    // 重新绑到已暂停的音乐（用户反馈"小窗返回后控件控制音乐"），必须跳过。
     reassertHandler.removeCallbacks(delayedReassert)
-    reassertExoSession()
+    if (!PipModule.videoPlaying) {
+      reassertExoSession()
+    }
     // ⚠️ 补发 PiP 模式状态：用户从小窗展开回 App 时若 exit 事件丢失，
     // JS 侧「PiP 全屏盖层」(pipCover) 会卡在 true —— 主页被全屏视频盖住（用户实测截图）。
     // onResume 时 PiP 模式必已确定：在 PiP 中补 true，已展开补 false（盖层随之复位）。
@@ -145,6 +153,9 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onDestroy() {
+    // 防止 Handler 持有已销毁 Activity 的 Runnable 在延迟窗口继续执行
+    reassertHandler.removeCallbacks(delayedReassert)
+    reassertHandler.removeCallbacksAndMessages(null)
     window.decorView.removeOnLayoutChangeListener(compactWindowListener)
     super.onDestroy()
   }
@@ -343,9 +354,17 @@ class MainActivity : ReactActivity() {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
     android.util.Log.i("YayaPip", "onPipModeChanged inPip=$isInPictureInPictureMode vp=${PipModule.videoPlaying} pe=${PipModule.pipEnabled}")
     PipModule.diag(if (isInPictureInPictureMode) "INFO" else "WARN", "onPipModeChanged inPip=$isInPictureInPictureMode")
-    compactPlayerWindow = isInPictureInPictureMode || isCompactPlayerWindow()
+    compactPlayerWindow = isInPictureInPictureMode
     PipOverlayController.setHidden(this, compactPlayerWindow)
     PipModule.emitPipChanged(compactPlayerWindow)
+    window.decorView.requestLayout()
+    if (!isInPictureInPictureMode) {
+      window.decorView.postDelayed({
+        PipOverlayController.setHidden(this, false)
+        PipModule.emitPipChanged(false)
+        window.decorView.requestLayout()
+      }, 300L)
+    }
   }
 
   override fun onPictureInPictureUiStateChanged(pipState: android.app.PictureInPictureUiState) {

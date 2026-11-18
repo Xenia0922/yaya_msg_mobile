@@ -12,9 +12,9 @@ import { logInfo, logWarn } from '../utils/runtimeLog';
  * 让「被动等用户报障」变成「日志里能一眼看到」。
  *
  * 校验项（都不联网、不消耗账号）：
- *   1. 能否生成 pa；
- *   2. pa 可 base64 解码、长度/结构符合 [13位毫秒][32hex][32hex][版本戳]；
- *   3. pa 内嵌时间与本机时间偏差 < 5s（偏差过大 = 用户手机时间不准，服务端可能拒签）。
+ * 1. 能否生成 pa；
+ * 2. pa 可 base64 解码、长度/结构符合 [13位毫秒][32hex][32hex][版本戳]；
+ * 3. pa 内嵌时间与本机时间偏差 < 5s（偏差过大 = 用户手机时间不准，服务端可能拒签）。
  *
  * 刻意不做：不比对固定版本戳（上游可能升级，硬比会造成误报）；不上报服务端。
  */
@@ -67,7 +67,9 @@ export async function checkSignatureHealth(): Promise<SignatureHealth> {
   const t0 = at;
   let pa: string | null = null;
   try {
-    pa = await generatePaAsync();
+    // 自检必须生成新 PA：generatePaAsync 正常路径会复用 15s 缓存，
+    // 用缓存里的时间戳去比当前时间会把「缓存年龄」误报成设备时钟偏差。
+    pa = await generatePaAsync({ fresh: true });
   } catch {
     pa = null;
   }
@@ -89,7 +91,14 @@ export async function checkSignatureHealth(): Promise<SignatureHealth> {
   const { shapeOk, clockMs } = parsePa(pa);
   const clockSkewMs = clockMs == null ? null : Math.abs(Date.now() - clockMs);
   if (!shapeOk) {
-    return { ok: false, reason: 'pa 结构异常（长度或组成不符合预期）', latencyMs, paLength: pa.length, clockSkewMs, at };
+    return {
+      ok: false,
+      reason: 'pa 结构异常（长度或组成不符合预期）',
+      latencyMs,
+      paLength: pa.length,
+      clockSkewMs,
+      at,
+    };
   }
   if (clockSkewMs != null && clockSkewMs > 5000) {
     return {

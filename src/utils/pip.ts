@@ -6,11 +6,11 @@ const Pip = (NativeModules as any)?.PipController;
 /**
  * 各播放源对「当前是否有媒体在播」的登记表。
  *
- * ⚠️ 必须**按来源分别登记、再 OR 汇总**下发给原生（2026-10-12 修复）：
+ * ⚠️ 必须**按来源分别登记、再 OR 汇总**下发给原生（修复）：
  * 此前 5 个调用点各自往原生写**绝对布尔值**，会互相踩。实测两个方向都会坏：
- *  - 小窗正在播（置 true）→ 用户打开全屏播放器，`FullscreenManager` 因 `fullscreen` 置 **false**
- *    → 小窗还在播但标志已变 false → 按 Home **不弹**系统悬浮窗；
- *  - 反向：`FullscreenManager` 卸载时无条件置 false → 把**还在播的小窗**标志一起清掉。
+ * - 小窗正在播（置 true）→ 用户打开全屏播放器，`FullscreenManager` 因 `fullscreen` 置 **false**
+ * → 小窗还在播但标志已变 false → 按 Home **不弹**系统悬浮窗；
+ * - 反向：`FullscreenManager` 卸载时无条件置 false → 把**还在播的小窗**标志一起清掉。
  * 改成各写各的 bit 之后，任一路在播，原生标志就是 true。
  */
 const pipSources = new Map<string, boolean>();
@@ -32,8 +32,15 @@ function syncPipPlaying() {
   const any = Array.from(pipSources.values()).some(Boolean);
   if (any) {
     // 有任意一路在播：取消待定的关断，立即置 true（起播即时可切小窗）
-    if (falseTimer) { clearTimeout(falseTimer); falseTimer = null; }
-    try { Pip.setVideoPlaying(true); } catch { /* ignore */ }
+    if (falseTimer) {
+      clearTimeout(falseTimer);
+      falseTimer = null;
+    }
+    try {
+      Pip.setVideoPlaying(true);
+    } catch {
+      /* ignore */
+    }
     return;
   }
   // 全部停播：滞后一拍再关，吸收 state 抖动（见上注释）
@@ -42,7 +49,11 @@ function syncPipPlaying() {
     falseTimer = null;
     // 到点再复核一次：可能期间又被置 true（此时 falseTimer 已被清，不会走到这）
     if (!Array.from(pipSources.values()).some(Boolean)) {
-      try { Pip.setVideoPlaying(false); } catch { /* ignore */ }
+      try {
+        Pip.setVideoPlaying(false);
+      } catch {
+        /* ignore */
+      }
     }
   }, FALSE_SETTLE_MS);
 }
@@ -62,7 +73,9 @@ export function setPipEnabled(enabled: boolean) {
   if (Platform.OS !== 'android' || !Pip?.setPipEnabled) return;
   try {
     Pip.setPipEnabled(!!enabled);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 /** 手动进入画中画悬浮窗（播放器"小窗"按钮） */
@@ -70,7 +83,9 @@ export function enterPipMode() {
   if (Platform.OS !== 'android' || !Pip?.enterPip) return;
   try {
     Pip.enterPip();
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -112,7 +127,9 @@ export function setPipAspect(w: number | string, h: number | string) {
   if (nw > 0 && nh > 0) {
     try {
       Pip.setAspectRatio(nw, nh);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 }
 
