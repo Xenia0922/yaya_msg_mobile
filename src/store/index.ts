@@ -3,6 +3,7 @@ import { parseMaybeJson } from '../utils/data';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings, Member } from '../types';
 import { APP_VERSION } from '../constants';
+import { IS_PLUS_BUILD } from '../constants/channel';
 import { DEFAULT_SETTINGS } from '../services/settings';
 
 interface SettingsState {
@@ -177,6 +178,12 @@ export const useUpdateStore = create<UpdateState>((set) => ({
   // 任何失败都不抛错、一律视为「无更新」（返回 false），成功/失败都写缓存限流；
   // 手动 force 不受缓存影响，随时可重试。
   checkUpdate: async (force = false) => {
+    // 内部构建不读取公开 Release，也不构造公开资产 URL；否则会显示 HTTP 404。
+    // 公开版仍按 GitHub Release 检查更新。
+    if (IS_PLUS_BUILD) {
+      set({ hasUpdate: false, latestVersion: '', latestUrl: '', lastCheckedAt: Date.now() });
+      return false;
+    }
     // 并发锁：静默检查进行中时，普通调用直接跳过；force（手动检查）必须继续，
     // 否则启动静默检查未结束时手动点「检查更新」会被吞 → 误报「已是最新版本」
     if (updateChecking && !force) return false;
