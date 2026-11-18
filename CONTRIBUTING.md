@@ -25,7 +25,7 @@ npm run test:core
 - 一个 PR 尽量只处理一个问题
 - 描述复现步骤、修复方式和验证结果
 - UI 改动请附截图或录屏
-- 不要提交 `APK/`、`android/app/build/`、keystore、token、cookie 等本地产物或敏感信息
+- 不要提交 APK、Android 构建产物、keystore、token、cookie 等本地产物或敏感信息
 
 ## Issue
 
