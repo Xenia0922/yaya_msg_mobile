@@ -1457,7 +1457,10 @@ export default function LoginScreen() {
 
         {mode === 'password' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
-            <AccountSectionTitle icon="lock-outline" title={t('口袋48密码登录')} />
+            <AccountSectionTitle
+              icon="lock-outline"
+              title={t(clientProfile === 'seine48' ? '塞纳河48密码登录' : '口袋48密码登录')}
+            />
             <TextInput
               underlineColorAndroid="transparent"
               style={[styles.field, { backgroundColor: palette.fill2, color: palette.label }]}
@@ -1498,7 +1501,10 @@ export default function LoginScreen() {
         {/* Token 登录 */}
         {mode === 'token' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
-            <AccountSectionTitle icon="key-variant" title={t('口袋48Token登录')} />
+            <AccountSectionTitle
+              icon="key-variant"
+              title={t(clientProfile === 'seine48' ? '塞纳河48Token登录' : '口袋48Token登录')}
+            />
             <TextInput
               underlineColorAndroid="transparent"
               style={[
