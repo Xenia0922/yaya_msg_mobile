@@ -15,8 +15,7 @@
    npm run test:core
    npm run check
    ```
-4. 使用发布 keystore 构建：
-   - `public` / `plus`
+4. 使用发布 keystore 构建公开版：
    - `arm64-v8a` / `x86_64`
    - 需要时额外构建 universal
 5. 用 `apksigner verify --print-certs` 校验签名，确认证书仍为 `CN=Android Debug`。
