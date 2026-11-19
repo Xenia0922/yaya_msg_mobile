@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSettingsStore } from '../store';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import PlayerScreen from '../player';
@@ -40,10 +40,20 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { GlassSurface } from '../components/GlassSurface';
 
 /** 直播状态点：直播中 success 呼吸动画（原生驱动）+ 文字；未开播 labelTertiary */
-function StatusDot({ live, palette, label }: { live: boolean; palette: Palette; label: string }) {
+function StatusDot({
+  live,
+  active,
+  palette,
+  label,
+}: {
+  live: boolean;
+  active: boolean;
+  palette: Palette;
+  label: string;
+}) {
   const pulse = React.useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    if (!live) {
+    if (!live || !active) {
       pulse.setValue(1);
       return;
     }
@@ -95,6 +105,8 @@ function StatusDot({ live, palette, label }: { live: boolean; palette: Palette; 
 export default function BilibiliLiveScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, 'BilibiliLiveScreen'>>();
+  const isFocused = useIsFocused();
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const palette = usePalette();
   const { t } = useI18n();
   const [rooms, setRooms] = useState<BilibiliLiveRoom[]>([]);
@@ -199,6 +211,7 @@ export default function BilibiliLiveScreen() {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
+      setAppActive(state === 'active');
       if (state !== 'active') {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
       }
@@ -303,8 +316,8 @@ export default function BilibiliLiveScreen() {
   }, [rooms, checkStatuses]);
 
   useEffect(() => {
-    if (streamUrl || !rooms.length) return;
-    // 功耗：后台暂停开播状态轮询；切回前台由上面的 effect 立即补拉一次
+    if (!isFocused || streamUrl || !rooms.length) return;
+    // 功耗：失焦或后台暂停开播状态轮询；回到页面/前台再补拉
     let id: ReturnType<typeof setInterval> | null = null;
     const start = () => {
       if (!id)
@@ -327,15 +340,15 @@ export default function BilibiliLiveScreen() {
       sub.remove();
       stop();
     };
-  }, [rooms, streamUrl, checkStatuses]);
+  }, [rooms, streamUrl, checkStatuses, isFocused]);
 
   // 切回前台时立即刷新开播状态（原 effect 只处理横屏锁复位）
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && !streamUrl) checkStatuses(true);
+      if (state === 'active' && isFocused && !streamUrl) checkStatuses(true);
     });
     return () => sub.remove();
-  }, [checkStatuses, streamUrl]);
+  }, [checkStatuses, isFocused, streamUrl]);
 
   // 从主页公演栏带 roomId 进入：直接开播该房间，跳过列表
   useEffect(() => {
@@ -627,7 +640,12 @@ export default function BilibiliLiveScreen() {
                   {t('房间号：{id}', { id: item.roomId })}
                 </Text>
               </View>
-              <StatusDot live={live} palette={palette} label={live ? t('直播中') : t('未开播')} />
+              <StatusDot
+                live={live}
+                active={isFocused && appActive}
+                palette={palette}
+                label={live ? t('直播中') : t('未开播')}
+              />
             </ScalePressable>
           );
         }}
