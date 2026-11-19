@@ -703,7 +703,14 @@ export default function HomeScreen() {
   const lyricAnchor = useRef({ pos: 0, at: Date.now(), last: -1 });
 
   useEffect(() => {
-    if (!isFocused) return;
+    if (
+      !isFocused ||
+      !lyricsList.length ||
+      (playbackForLyric !== 'playing' && playbackForLyric !== 'loading')
+    ) {
+      setLyricIdx(-1);
+      return;
+    }
     const tick = () => {
       const st = useMusicPlayerStore.getState();
       const list = st.lyrics;
@@ -733,7 +740,7 @@ export default function HomeScreen() {
       setLyricIdx((v) => (v === hit ? v : hit));
     };
     tick();
-    const id = setInterval(tick, 500);
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [lyricsList, playbackForLyric, isFocused]);
 
