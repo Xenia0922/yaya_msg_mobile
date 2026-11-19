@@ -182,7 +182,6 @@ export const ja: Record<string, string> = {
   正在检查Token: 'Token確認中...',
   Token有效: 'Tokenは有効です',
   'Token无效：{msg}': 'Tokenが無効：{msg}',
-  '登录状态已失效，请重新登录': 'ログイン状態の有効期限が切れました。再度ログインしてください',
   '正在切换到{name}': '{name} に切替中...',
   切换失败没有拿到目标账号ID: '切替失敗：対象アカウントIDがありません',
   '切换账号失败：{msg}': 'アカウント切替失敗：{msg}',

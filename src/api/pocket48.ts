@@ -113,7 +113,10 @@ async function pocketPost(
     timeout?: number;
   } = {},
 ): Promise<ApiEnvelope> {
-  const token = options.tokenRequired === false ? tokenFromStore() : requireToken();
+  // 公开接口（直播列表/详情、成员档案、房间信息等）不携带本地登录 token：
+  // 旧 token 过期时，服务端会对这类“可选 token”请求返回 token 解析失败，导致直播页误判为登录失效。
+  // 需要登录的接口仍由 requireToken() 强制校验。
+  const token = options.tokenRequired === false ? '' : requireToken();
   const res = await rawPost(url, data, {
     token,
     modern: options.modern,
