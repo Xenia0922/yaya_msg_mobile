@@ -10,6 +10,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { GlassSurface } from './GlassSurface';
 import { usePalette } from '../theme';
 
@@ -278,7 +279,7 @@ export function GlassSegmentedScroll<T extends string>({
 
   return (
     <GlassSurface role="chip" radius={height / 2} style={[styles.track, { height }, style]}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, position: 'relative' }}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -332,6 +333,17 @@ export function GlassSegmentedScroll<T extends string>({
             );
           })}
         </ScrollView>
+        <LinearGradient
+          pointerEvents="none"
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          colors={
+            palette.name === 'dark'
+              ? ['rgba(28,28,31,0)', 'rgba(28,28,31,0.92)']
+              : ['rgba(244,245,249,0)', 'rgba(244,245,249,0.94)']
+          }
+          style={{ position: 'absolute', right: 0, top: 3, bottom: 3, width: 24 }}
+        />
       </View>
     </GlassSurface>
   );
