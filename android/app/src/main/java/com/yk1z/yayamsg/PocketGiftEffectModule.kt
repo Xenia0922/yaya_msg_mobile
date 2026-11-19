@@ -57,7 +57,7 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
         return
       }
       val url = if (zipPath.startsWith("http")) zipPath else HOST + zipPath
-      val key = zipMd5.ifEmpty { zipPath }
+      val key = zipMd5.ifEmpty { sha256Hex(zipPath) }
       synchronized(this) {
         val now = System.currentTimeMillis()
         if (recentKeys.entries.any { it.key == key && now - it.value < 30_000L }) {
@@ -69,7 +69,7 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
           val it = recentKeys.entries.iterator()
           if (it.hasNext()) { it.next(); it.remove() } else break
         }
-        if (playing || queue.size >= MAX_QUEUE) {
+        if (queue.size >= MAX_QUEUE) {
           promise.resolve(false)
           return
         }
@@ -222,6 +222,10 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
 
   private fun md5Hex(bytes: ByteArray): String =
       MessageDigest.getInstance("MD5").digest(bytes).joinToString("") { "%02x".format(it) }
+
+  private fun sha256Hex(text: String): String =
+      MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
+          .joinToString("") { "%02x".format(it) }
 
   companion object {
     const val NAME = "PocketGiftEffect"

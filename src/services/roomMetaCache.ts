@@ -51,10 +51,13 @@ export function getRoomMetaCached(channelId: string): RoomMeta | undefined {
   return cache?.[channelId];
 }
 
-/** 写入内存并延迟落盘（合并短时间内的多次写入） */
+/** 写入内存并延迟落盘（若磁盘尚未加载完成则先加载再合并，防止空缓存覆写已有 300 条记录） */
 export function setRoomMetaCached(channelId: string, meta: RoomMeta) {
   if (!channelId) return;
-  if (!cache) cache = {};
+  if (!cache) {
+    void loadRoomMetaCache().then(() => setRoomMetaCached(channelId, meta));
+    return;
+  }
   // 重新插入以更新「最近使用」顺序
   delete cache[channelId];
   cache[channelId] = { name: meta.name || '', bg: meta.bg || '' };

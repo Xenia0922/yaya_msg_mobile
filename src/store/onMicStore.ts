@@ -357,6 +357,7 @@ export const useOnMicStore = create<OnMicState>((set, get) => ({
                   updatedAt: Date.now(),
                 };
                 updates[t.memberId] = entry;
+                if (!isCurrent()) return;
                 // 发现即上屏：不等整轮扫描结束，立即写进列表
                 set((snap) => ({ onMic: { ...snap.onMic, [t.memberId]: entry } }));
                 logInfo(

@@ -200,106 +200,118 @@ class NimChatroomClient(
     decryptor = NimProtocol.Rc4Stream(rc4Key)
 
     val sock = Socket()
-    sock.tcpNoDelay = true
-    sock.keepAlive = true
-    sock.connect(InetSocketAddress(host, port), 20_000)
-    if (stopped || generation != workerGeneration) {
-      try { sock.close() } catch (_: Throwable) {}
-      return
-    }
-    socket = sock
-    val out = sock.getOutputStream()
-    output = out
-    out.write(handshake)
-    out.flush()
-
-    val input = BufferedInputStream(sock.getInputStream())
-    var buffer = ByteArray(0)
-    var enterSent = false
-    val chunk = ByteArray(8192)
-    reconnectAt = System.currentTimeMillis()
-    var lastHeartbeat = System.currentTimeMillis()
-    // 进房后立刻取一次在线人数，之后每 ONLINE_REFRESH_MS 一次（桌面 danmaku-service 同节奏）
-    var lastOnlineRequest = 0L
-
-    while (!stopped && generation == workerGeneration) {
-      // 心跳（15s）：serviceId=1, commandId=2
-      val now = System.currentTimeMillis()
-      if (now - lastHeartbeat >= 15_000) {
-        lastHeartbeat = now
-        synchronized(lock) {
-          out.write(encryptor!!.apply(NimProtocol.makePacket(1, 2, nextSerial())))
-          out.flush()
-        }
+    try {
+      sock.tcpNoDelay = true
+      sock.keepAlive = true
+      sock.connect(InetSocketAddress(host, port), 20_000)
+      sock.soTimeout = 1_000
+      if (stopped || generation != workerGeneration) {
+        return
       }
-      // 在线人数：13/13 取聊天室信息（响应经 13/13 分支 → handleOnlineCount → onOnlineCount）
-      if (connected && now - lastOnlineRequest >= ONLINE_REFRESH_MS) {
-        lastOnlineRequest = now
-        synchronized(lock) {
-          out.write(encryptor!!.apply(NimProtocol.makePacket(13, 13, nextSerial())))
-          out.flush()
-        }
-      }
-
-      // 发送超时清理
       synchronized(lock) {
-        val iterator = pending.entries.iterator()
-        while (iterator.hasNext()) {
-          val entry = iterator.next()
-          if (entry.value.deadline < now) {
-            val idClient = entry.value.idClient
-            iterator.remove()
-            post { listener.onSendResult(idClient, false, "发送弹幕超时") }
+        socket = sock
+        output = sock.getOutputStream()
+      }
+      val out = output!!
+      out.write(handshake)
+      out.flush()
+
+      val input = BufferedInputStream(sock.getInputStream())
+      var buffer = ByteArray(0)
+      var enterSent = false
+      val chunk = ByteArray(8192)
+      reconnectAt = System.currentTimeMillis()
+      var lastHeartbeat = System.currentTimeMillis()
+      // 进房后立刻取一次在线人数，之后每 ONLINE_REFRESH_MS 一次（桌面 danmaku-service 同节奏）
+      var lastOnlineRequest = 0L
+
+      while (!stopped && generation == workerGeneration) {
+        // 心跳（15s）：serviceId=1, commandId=2
+        val now = System.currentTimeMillis()
+        if (now - lastHeartbeat >= 15_000) {
+          lastHeartbeat = now
+          synchronized(lock) {
+            out.write(encryptor!!.apply(NimProtocol.makePacket(1, 2, nextSerial())))
+            out.flush()
           }
         }
-      }
-
-      val available = input.available()
-      if (available <= 0) {
-        Thread.sleep(30)
-        continue
-      }
-      val read = input.read(chunk)
-      if (read <= 0) throw IllegalStateException("聊天室连接已断开")
-      val decrypted = decryptor!!.apply(chunk.copyOfRange(0, read))
-      buffer = NimProtocol.concat(buffer, decrypted)
-
-      while (true) {
-        val length = NimProtocol.readVarint(buffer, 0, buffer.size) ?: break
-        val frameSize = length.size + length.value
-        if (buffer.size < frameSize) break
-        val raw = buffer.copyOfRange(0, frameSize)
-        buffer = buffer.copyOfRange(frameSize, buffer.size)
-        var packet = NimProtocol.decodePacket(raw) ?: continue
-
-        // 4/{1,2,10,11} 是"内嵌包"，需要再解一层（前 8 字节是固定头）
-        if (packet.serviceId == 4 && packet.commandId in intArrayOf(1, 2, 10, 11) && packet.body.size > 8) {
-          val embedded = NimProtocol.decodePacket(packet.body.copyOfRange(8, packet.body.size), embedded = true) ?: continue
-          packet = embedded
+        // 在线人数：13/13 取聊天室信息（响应经 13/13 分支 → handleOnlineCount → onOnlineCount）
+        if (connected && now - lastOnlineRequest >= ONLINE_REFRESH_MS) {
+          lastOnlineRequest = now
+          synchronized(lock) {
+            out.write(encryptor!!.apply(NimProtocol.makePacket(13, 13, nextSerial())))
+            out.flush()
+          }
         }
 
-        when {
-          packet.serviceId == 1 && packet.commandId == 1 -> {
-            if (packet.resultCode != 200) throw IllegalStateException("聊天室握手失败：${packet.resultCode}")
-            if (!enterSent) {
-              enterSent = true
-              synchronized(lock) {
-                out.write(encryptor!!.apply(enterPacket))
-                out.flush()
+        // 发送超时清理
+        synchronized(lock) {
+          val iterator = pending.entries.iterator()
+          while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (entry.value.deadline < now) {
+              val idClient = entry.value.idClient
+              iterator.remove()
+              post { listener.onSendResult(idClient, false, "发送弹幕超时") }
+            }
+          }
+        }
+
+        val read = try {
+          input.read(chunk)
+        } catch (_: java.net.SocketTimeoutException) {
+          0
+        }
+        if (read < 0) throw IllegalStateException("聊天室连接已断开")
+        if (read == 0) continue
+        val decrypted = decryptor!!.apply(chunk.copyOfRange(0, read))
+        buffer = NimProtocol.concat(buffer, decrypted)
+
+        while (true) {
+          val length = NimProtocol.readVarint(buffer, 0, buffer.size) ?: break
+          val frameSize = length.size + length.value
+          if (buffer.size < frameSize) break
+          val raw = buffer.copyOfRange(0, frameSize)
+          buffer = buffer.copyOfRange(frameSize, buffer.size)
+          var packet = NimProtocol.decodePacket(raw) ?: continue
+
+          // 4/{1,2,10,11} 是"内嵌包"，需要再解一层（前 8 字节是固定头）
+          if (packet.serviceId == 4 && packet.commandId in intArrayOf(1, 2, 10, 11) && packet.body.size > 8) {
+            val embedded = NimProtocol.decodePacket(packet.body.copyOfRange(8, packet.body.size), embedded = true) ?: continue
+            packet = embedded
+          }
+
+          when {
+            packet.serviceId == 1 && packet.commandId == 1 -> {
+              if (packet.resultCode != 200) throw IllegalStateException("聊天室握手失败：${packet.resultCode}")
+              if (!enterSent) {
+                enterSent = true
+                synchronized(lock) {
+                  out.write(encryptor!!.apply(enterPacket))
+                  out.flush()
+                }
               }
             }
-          }
-          packet.serviceId == 13 && packet.commandId == 2 -> {
-            if (packet.resultCode != 200) throw IllegalStateException("进入直播聊天室失败：${packet.resultCode}")
-            if (!connected) {
-              connected = true
-              reconnectAttempt = 0
-              post { listener.onStatus("connected", null) }
+            packet.serviceId == 13 && packet.commandId == 2 -> {
+              if (packet.resultCode != 200) throw IllegalStateException("进入直播聊天室失败：${packet.resultCode}")
+              if (!connected) {
+                connected = true
+                reconnectAttempt = 0
+                post { listener.onStatus("connected", null) }
+              }
             }
+            packet.serviceId == 13 && packet.commandId == 7 -> handleMessage(packet.body, out)
+            packet.serviceId == 13 && packet.commandId == 6 -> handleSendResult(packet)
+            packet.serviceId == 13 && packet.commandId == 13 -> handleOnlineCount(packet)
           }
-          packet.serviceId == 13 && packet.commandId == 7 -> handleMessage(packet.body, out)
-          packet.serviceId == 13 && packet.commandId == 6 -> handleSendResult(packet)
-          packet.serviceId == 13 && packet.commandId == 13 -> handleOnlineCount(packet)
+        }
+      }
+    } finally {
+      try { sock.close() } catch (_: Throwable) {}
+      synchronized(lock) {
+        if (socket === sock) {
+          socket = null
+          output = null
         }
       }
     }
@@ -412,7 +424,11 @@ class NimChatroomClient(
       readTimeout = 15_000
       requestMethod = "GET"
     }
-    val text = connection.inputStream.bufferedReader().use { it.readText() }
+    val text = try {
+      connection.inputStream.bufferedReader().use { it.readText() }
+    } finally {
+      try { connection.disconnect() } catch (_: Throwable) {}
+    }
     val link = try {
       JSONObject(text).optJSONArray("link")?.optString(0) ?: ""
     } catch (_: Throwable) {

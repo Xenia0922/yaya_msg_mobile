@@ -45,8 +45,10 @@ const storageMock = {
   __esModule: true,
   default: { getItem: async () => null, setItem: async () => {} },
 };
+const pocketToken = load('../src/utils/pocketToken.ts', {}).exports;
 const pocketHeaders = load('../src/api/pocketHeaders.ts', {
   '../store': { useSettingsStore: { getState: () => ({ settings: mockedSettings }) } },
+  '../utils/pocketToken': pocketToken,
   '@react-native-async-storage/async-storage': storageMock,
 }).exports;
 const api = load('../src/api/pocket48.ts', {
@@ -59,6 +61,7 @@ const api = load('../src/api/pocket48.ts', {
     },
   },
   '../utils/data': {},
+  '../utils/pocketToken': pocketToken,
   './pocketHeaders': pocketHeaders,
   '@react-native-async-storage/async-storage': storageMock,
 }).exports.pocketApi;
@@ -88,5 +91,43 @@ const unifiedInfo = JSON.parse(unifiedCall.headers.appInfo);
 assert.equal(unifiedInfo.appName, 'pocket48');
 assert.equal(unifiedCall.headers['X-Custom-Device-Type'], undefined);
 assert.ok(unifiedCall.headers['User-Agent'].startsWith('PocketFans201807/7.1.45_26102701'));
+
+// 跨设备纯 token 遭遇 401005 token解析失败 时，自动带空 deviceId 重试并记住该 token
+calls.length = 0;
+mockedSettings.p48Token = 'cross-device-bare-token';
+let crossAttempt = 0;
+const origXhrPost = calls;
+const apiWithFallback = load('../src/api/pocket48.ts', {
+  '../store': { useSettingsStore: { getState: () => ({ settings: mockedSettings }) } },
+  '../auth': { initWasm: async () => {}, generatePaAsync: async () => 'mock-signature' },
+  '../utils/network': {
+    xhrPost: async (url, body, headers) => {
+      origXhrPost.push({ url, body, headers });
+      crossAttempt += 1;
+      if (crossAttempt === 1) return { status: 401005, success: false, message: 'token解析失败' };
+      return { status: 200, success: true, content: { data: [63] } };
+    },
+  },
+  '../utils/data': {},
+  '../utils/pocketToken': pocketToken,
+  './pocketHeaders': pocketHeaders,
+  '@react-native-async-storage/async-storage': storageMock,
+}).exports.pocketApi;
+
+const followed = await apiWithFallback.getFollowedIds();
+assert.equal(followed.content.data[0], 63);
+assert.equal(origXhrPost.length, 2);
+assert.notEqual(JSON.parse(origXhrPost[0].headers.appInfo).deviceId, '');
+assert.equal(JSON.parse(origXhrPost[1].headers.appInfo).deviceId, '');
+assert.equal(JSON.parse(origXhrPost[1].headers.appInfo).IMEI, '');
+
+// 后续同 token 请求直接跳过失败首包，1 次即发空 deviceId
+await apiWithFallback.getUserRenameCount();
+assert.equal(origXhrPost.length, 3);
+assert.equal(JSON.parse(origXhrPost[2].headers.appInfo).deviceId, '');
+
+// 验证码登录请求依然必须带上本机持久化非空 deviceId
+await apiWithFallback.loginSendSms('000000', '86');
+assert.notEqual(JSON.parse(origXhrPost[3].headers.appInfo).deviceId, '');
 
 console.log('注册、密码协议和登录请求测试通过');

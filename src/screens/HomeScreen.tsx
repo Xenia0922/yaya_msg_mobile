@@ -253,6 +253,8 @@ export default function HomeScreen() {
   const settings = useSettingsStore((state) => state.settings);
   /** C4：按注册表解析最终渲染顺序（已剔除隐藏模块） */
   const order = resolveHomeModules(settings.home_modules_order, settings.home_modules_hidden);
+  const showLive = order.some((m) => m.key === 'live');
+  const showPerformances = order.some((m) => m.key === 'performances');
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
@@ -406,7 +408,7 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    if (!isFocused) return;
+    if (!isFocused || !showPerformances) return;
     fetchGongyanStatus();
     gongyanTimer.current = setInterval(
       () => {
@@ -423,7 +425,7 @@ export default function HomeScreen() {
       if (gongyanTimer.current) clearInterval(gongyanTimer.current);
       sub.remove();
     };
-  }, [fetchGongyanStatus, isFocused]);
+  }, [fetchGongyanStatus, isFocused, showPerformances]);
 
   const liveGongyanRooms = useMemo(
     () => gongyanRooms.filter((room) => !!gongyanLive[room.roomId]),
@@ -481,12 +483,18 @@ export default function HomeScreen() {
         .catch(() => {});
     };
     loadFollowedIds();
-    const timer = setInterval(loadFollowedIds, 60000);
+    const timer = setInterval(() => {
+      if (focusedRef.current && isAppForeground()) loadFollowedIds();
+    }, 60000);
     const offFocus = navigation.addListener('focus', loadFollowedIds);
+    const appSub = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && focusedRef.current) loadFollowedIds();
+    });
     return () => {
       alive = false;
       clearInterval(timer);
       offFocus();
+      appSub.remove();
     };
   }, [navigation, token]);
 
@@ -590,10 +598,10 @@ export default function HomeScreen() {
     }
   }, [followedIds, pinnedIds, followedNames]);
 
-  // 仅首页可见时请求和轮询；重新进入首页立即刷新。
+  // 仅首页可见且模块启用时请求和轮询；重新进入首页立即刷新。
   const wasFocusedRef = useRef(false);
   useEffect(() => {
-    if (!isFocused) {
+    if (!isFocused || !showLive) {
       wasFocusedRef.current = false;
       return;
     }
@@ -612,7 +620,7 @@ export default function HomeScreen() {
       clearInterval(id);
       sub.remove();
     };
-  }, [fetchLives, isFocused]);
+  }, [fetchLives, isFocused, showLive]);
 
   // banner 轮播：2.5s 自动切换下一条（最多轮前 4 条），切换带 crossfade + 位移动画。
   // 与直播/公演轮询一致，仅首页可见且 App 前台时切换。

@@ -19,10 +19,8 @@ interface Props {
  * - paused 从 store 同步 → 控制条播放/暂停真实控原生。
  */
 export function ExoKernel({ source, onError }: Props) {
-  /** 断流自动重连（用户反馈「连麦断线后没自动重连」）：
-   * 原生 5 次重试耗尽后，旧实现直接 onError 定格在错误页；这里在 JS 层继续重连：
-   * 重建 LiveExoView（key=nonce）+ 指数退避 1s/2s/4s/8s…，最多 6 次；首帧成功即清零。 */
-  const MAX_RECONNECT = 6;
+  /** 原生 LiveExoView 自带 2 次快速重试（1.6s 间隔）；耗尽后直接交回 PlayerCore 统一切换候选线路与重连，避免三层嵌套重试爆炸。 */
+  const MAX_RECONNECT = 0;
   const attemptsRef = useRef(0);
   const [nonce, setNonce] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -118,6 +118,7 @@ export function PlayerScreen({
   const openedFor = useRef('');
   /** 本页 open 时记录 store 的 openToken：区分「跨页顶替」与「同页内核换线」 */
   const openTokenAtOpen = useRef(0);
+  const openingPending = useRef(false);
   const sourceUrl = source.url || '';
   const fullscreen = usePlayerStore((s) => s.fullscreen);
   const cleanScreen = usePlayerStore((s) => s.cleanScreen);
@@ -147,6 +148,7 @@ export function PlayerScreen({
   useEffect(() => {
     if (openedFor.current === sourceUrl) return;
     openedFor.current = sourceUrl;
+    openingPending.current = true;
     let cancelled = false;
     (async () => {
       // 所有入口统一兜底：分享页 URL 先解析成真实媒体流，绝不交给 Exo（否则必 Source error）
@@ -168,17 +170,20 @@ export function PlayerScreen({
           } catch {}
         }
       }
+      if (cancelled) return;
       // 开大播放器前收起悬浮小窗（独立 store 无互斥 → 否则双路声音）
       const mp = useMiniPlayerStore.getState();
       if (mp && mp.visible) mp.close();
       usePlayerStore.getState().open(openSource, meta, danmaku);
       openTokenAtOpen.current = usePlayerStore.getState().openToken;
+      openingPending.current = false;
       try {
         logInfo(`[player] PlayerScreen open kind=${openSource.kind}`, 'player.screen');
       } catch {}
     })();
     return () => {
       cancelled = true;
+      openingPending.current = false;
       // 卸载时若全局播放器仍指向本页打开的源 → 关闭（persistent 页面关闭也应清干净，
       // 否则陈旧 source/state 残留可能干扰二次进入播放（首次能进、之后卡首帧））
       const st = usePlayerStore.getState();
@@ -198,14 +203,7 @@ export function PlayerScreen({
   onCloseRef.current = onClose;
   useEffect(() => {
     if (!sourceUrl || openedFor.current !== sourceUrl) return;
-    // ⚠️ 判定「被别的页面顶替」必须用 openToken，不能用 source.url（修复）：
-    // 内核自动换线（nextCandidate）只改 source.url、不动 openToken，此前用 url 比较会把
-    // 「同一页面内的换线」误判为跨页顶替 → 首条线路失败就关闭整个播放器、退回列表页。
-    //
-    // ⚠️ 必须用 getState 读**实时** token，不能用 selector 捕获的 storeOpenToken（二次修复）：
-    // selector 给的是本次 render 时的快照 —— 上面 open effect 刚把 token 推进到 N+1，
-    // 而这里仍拿着 render 期的 N → 首帧就判定「被顶替」→ **播放器刚打开就被自己关闭**
-    //（实测：点回放录像，PlayerScreen 打开后立刻退回列表）。
+    if (openingPending.current || openTokenAtOpen.current <= 0) return;
     if (usePlayerStore.getState().openToken !== openTokenAtOpen.current && onCloseRef.current) {
       openedFor.current = '';
       onCloseRef.current();

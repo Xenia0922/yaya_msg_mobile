@@ -18,6 +18,7 @@ import {
   addPocketImMessageListener,
   isPocketImAvailable,
   pocketImInit,
+  pocketImJoinChannel,
   pocketImLogin,
   pocketImObserveMessages,
   pocketImSendChannelText,
@@ -29,6 +30,7 @@ import {
   qchatDisconnect,
   qchatSend,
   qchatSendCustom,
+  qchatSubscribe,
   onQChatMessage,
   onQChatStatus,
 } from '../../native/PocketNimQChat';
@@ -81,13 +83,27 @@ let pocketImObserveRefCount = 0;
 let pocketImObserveActive = false;
 let pocketImObserveStart: Promise<void> | null = null;
 
-/** 幂等开启原生消息监听（并发调用共享同一次注册） */
+/** 待补订的 serverId（commonlink 尚未建连前调用 subscribeRoomChannel 时暂存） */
+let pendingSubscribeServerId = '';
+
+function maskAccid(accid: string): string {
+  const s = String(accid || '');
+  if (!s) return '';
+  return s.length <= 4 ? '****' : `***${s.slice(-4)}`;
+}
+
+/** 幂等开启原生消息监听（并发调用共享同一次注册，await 后复核引用计数防竞态泄漏） */
 async function ensurePocketImObserve(): Promise<void> {
   if (pocketImObserveActive) return;
   if (!pocketImObserveStart) {
     pocketImObserveStart = pocketImObserveMessages(true)
       .then(() => {
-        pocketImObserveActive = true;
+        if (pocketImObserveRefCount > 0) {
+          pocketImObserveActive = true;
+        } else {
+          pocketImObserveActive = false;
+          pocketImObserveMessages(false).catch(() => undefined);
+        }
       })
       .finally(() => {
         pocketImObserveStart = null;
@@ -158,6 +174,7 @@ export function resetQChatSession(reason = ''): void {
   // 不会把新连接的计数减到 0（P1-C9）。
   observeRefCount = 0;
   observeRefGeneration = qchatGeneration;
+  pendingSubscribeServerId = '';
   try {
     qchatDisconnect();
   } catch {
@@ -182,12 +199,22 @@ async function ensureQChatNativeLogin(force = false): Promise<void> {
   ) {
     return;
   }
-  const existing = qchatNativeLogins.get(creds.accid);
-  if (existing) return existing;
+  if (force) {
+    qchatNativeAccid = '';
+    qchatNativeLogins.delete(creds.accid);
+    try {
+      qchatDisconnect();
+    } catch {
+      /* 忽略 */
+    }
+  } else {
+    const existing = qchatNativeLogins.get(creds.accid);
+    if (existing) return existing;
+  }
   const generation = qchatGeneration;
   const task: Promise<void> = (async () => {
-    logInfo(`[nim] native qchat connect account = ${creds.accid}`, 'nim');
-    // 原生 connect 没有超时兜底；限时 4s，超时立即让房间走轮询，不再等 10s+。
+    logInfo(`[nim] native qchat connect account = ${maskAccid(creds.accid)}`, 'nim');
+    // 原生 connect 没有超时兜底；限时 4s，超时主动断开原生连接避免后台泄漏，让房间走轮询。
     let timeout: ReturnType<typeof setTimeout> | null = null;
     try {
       await Promise.race([
@@ -196,6 +223,15 @@ async function ensureQChatNativeLogin(force = false): Promise<void> {
           timeout = setTimeout(() => reject(new Error('QChat 登录超时')), QCHAT_LOGIN_TIMEOUT_MS);
         }),
       ]);
+    } catch (err) {
+      if (!isQChatCancellation(err)) {
+        try {
+          qchatDisconnect();
+        } catch {
+          /* 忽略 */
+        }
+      }
+      throw err;
     } finally {
       if (timeout) clearTimeout(timeout);
     }
@@ -251,7 +287,7 @@ async function ensureLogin(): Promise<void> {
   const task = (async () => {
     try {
       logInfo(
-        `[nim] qchat ensureLogin accid = ${creds.accid} tokenLen = ${creds.token.length}`,
+        `[nim] qchat ensureLogin accid = ${maskAccid(creds.accid)} tokenLen = ${creds.token.length}`,
         'nim',
       );
       await pocketImInit();
@@ -344,8 +380,41 @@ export async function sendRoomSticker(
       height: Math.max(0, Math.round(Number(sticker.height) || 0)),
     },
   });
+  const ext = buildChannelExt(target, self);
   await ensureQChatNativeLogin();
-  await qchatSendCustom(serverId, channelId, attachment, buildChannelExt(target, self));
+  try {
+    await qchatSendCustom(serverId, channelId, attachment, ext);
+  } catch (error: any) {
+    const detail = String(error?.message || error || '');
+    logWarn(`[nim] qchat 表情包发送失败，重连后重试：${detail}`, 'nim');
+    await ensureQChatNativeLogin(true);
+    try {
+      await qchatSendCustom(serverId, channelId, attachment, ext);
+    } catch (retryError: any) {
+      throw new Error(
+        `表情包发送失败（已重连重试）：${String(retryError?.message || retryError || detail)}`,
+      );
+    }
+  }
+}
+
+/** 订阅房间圈组频道（Android commonlink 走 cmd 25/7，其余平台回退官方 SDK） */
+export async function subscribeRoomChannel(
+  serverId: string | number,
+  channelId: string | number,
+): Promise<boolean> {
+  const sid = String(serverId ?? '').trim();
+  const cid = String(channelId ?? '').trim();
+  if (!/^\d+$/.test(sid) || sid === '0') return false;
+  if (isPocketNimQChatAvailable()) {
+    pendingSubscribeServerId = sid;
+    return qchatSubscribe(sid);
+  }
+  if (isPocketImAvailable()) {
+    if (!/^\d+$/.test(cid) || cid === '0') return false;
+    return pocketImJoinChannel(Number(sid), Number(cid));
+  }
+  return false;
 }
 
 /** 发送房间文本消息；带 reply 时按官方 REPLY 结构组包（bodys 变 JSON，msgType=REPLY） */
@@ -516,13 +585,8 @@ export async function observeRoomMessages(
       }
       observeRefCount += 1;
       observerAttached = true;
-      try {
-        await ensurePocketImObserve();
-      } catch (e) {
-        logWarn(
-          '注册圈组消息监听失败（降级为轮询）：' + String((e as any)?.message || e),
-          'qchat.observe',
-        );
+      if (pendingSubscribeServerId) {
+        void qchatSubscribe(pendingSubscribeServerId);
       }
       if (disposed) return;
       off = onQChatMessage((message) => {
@@ -582,7 +646,6 @@ export async function observeRoomMessages(
         // 不会真正重连 → 房间消息通道「只能连接/发送一次」。点进房间/点输入框即触发重连。
         qchatNativeAccid = '';
         qchatLiveState = 'idle';
-        releasePocketImObserve();
       }
     };
   }

@@ -75,7 +75,7 @@ function StatusDot({
     );
     loop.start();
     return () => loop.stop();
-  }, [live, pulse]);
+  }, [live, active, pulse]);
 
   return (
     <View style={styles.statusWrap}>
@@ -222,6 +222,7 @@ export default function BilibiliLiveScreen() {
   const closePlayer = useCallback(() => {
     // 使在途 resolveLive 响应失效，避免关闭后旧响应重新拉起播放器
     watchSeqRef.current += 1;
+    webForcedRef.current = false;
     danmakuRef.current?.disconnect();
     danmakuRef.current = null;
     if (dmFlushTimer.current) clearTimeout(dmFlushTimer.current);
@@ -362,6 +363,7 @@ export default function BilibiliLiveScreen() {
   const startWatch = async (room: BilibiliLiveRoom) => {
     const watchSeq = watchSeqRef.current + 1;
     watchSeqRef.current = watchSeq;
+    webForcedRef.current = false;
     setLoading(true);
     setStatus(t('正在获取直播流：{name}', { name: room.name || room.roomId }));
     setCandidates([]);

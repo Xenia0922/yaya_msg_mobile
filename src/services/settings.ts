@@ -8,6 +8,8 @@ let settingsCache: AppSettings | null = null;
 let settingsLoadPromise: Promise<AppSettings> | null = null;
 let settingsWriteChain: Promise<void> = Promise.resolve();
 let settingsLoadFailed = false;
+/** 启动迁移时因加密仓暂不可用而尚未迁移的字段，saveSettings 时需保留其明文或重试迁移，避免丢失凭据。 */
+const unmigratedSecretFields = new Set<SecretField>();
 
 /**
  * 敏感字段：绝不写进 AsyncStorage 的 settings JSON，只进加密仓（secretStore）。
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   language: 'system',
   p48Token: '',
+  p48DeviceId: '',
   p48ClientProfile: 'pocket48',
   bilibiliCookie: '',
   bilibiliUserInfo: null,
@@ -106,27 +109,29 @@ export async function loadSettings(): Promise<AppSettings> {
       logError(e, 'settings.loadSettings');
     }
 
-    // ① 一次性迁移：历史明文敏感字段 → 加密仓；并从持久化 JSON 里删除明文
+    // ① 一次性迁移：历史明文敏感字段 → 加密仓；仅删除本轮成功迁移的字段，避免部分失败抹除其他凭据
+    const migratedFields = new Set<SecretField>();
     if (rawObj) {
-      let migrated = false;
       for (const f of SECRET_FIELDS) {
         const enc = encodeSecret(rawObj[f]);
         if (enc) {
           try {
             await setSecret(f, enc);
             delete rawObj[f];
-            migrated = true;
+            migratedFields.add(f);
+            unmigratedSecretFields.delete(f);
           } catch (e) {
             // 加密仓暂时不可用时保留原值继续启动（不删除明文、不假装迁移成功）；
-            // 下次启动会重试，避免一个凭据迁移失败拖垮全部设置。
+            // 下次启动或下次保存会重试，避免一个凭据迁移失败拖垮全部设置。
+            unmigratedSecretFields.add(f);
             logError(e, `settings.migrateSecret.${f}`);
           }
         }
       }
-      if (migrated) {
+      if (migratedFields.size > 0) {
         try {
           const persisted: Record<string, unknown> = { ...rawObj };
-          for (const f of SECRET_FIELDS) delete persisted[f];
+          for (const f of migratedFields) delete persisted[f];
           await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(persisted));
         } catch (e) {
           logError(e, 'settings.migrateSecrets');
@@ -135,13 +140,22 @@ export async function loadSettings(): Promise<AppSettings> {
     }
 
     // ② 从加密仓读回，填进内存 settings（全应用同步读取照旧）。
-    // 三个字段互不依赖，并行读取，避免启动时串行等待三次原生加密仓调用。
+    // 若某字段迁移失败且加密仓尚无值，保留 rawObj 中的明文在内存里，防止静默清空登录态。
     const storedSecrets = await Promise.all(SECRET_FIELDS.map((f) => getSecret(f)));
     SECRET_FIELDS.forEach((f, index) => {
-      (settings as unknown as Record<string, unknown>)[f] = decodeSecret(
-        storedSecrets[index],
-        f !== 'meet48Auth',
-      );
+      const fromVault = decodeSecret(storedSecrets[index], f !== 'meet48Auth');
+      const hasVaultVal = Boolean(storedSecrets[index]);
+      const rawPlain = rawObj ? encodeSecret(rawObj[f]) : '';
+      if (!hasVaultVal && rawPlain && !migratedFields.has(f)) {
+        (settings as unknown as Record<string, unknown>)[f] = decodeSecret(
+          rawPlain,
+          f !== 'meet48Auth',
+        );
+        unmigratedSecretFields.add(f);
+      } else {
+        (settings as unknown as Record<string, unknown>)[f] = fromVault;
+        if (hasVaultVal) unmigratedSecretFields.delete(f);
+      }
     });
 
     settingsCache = settings;
@@ -164,14 +178,28 @@ export async function saveSettings(settings: Partial<AppSettings>): Promise<void
     .then(async () => {
       const current = await loadSettings();
       const merged = { ...current, ...settings };
-      // 敏感字段：只加密落盘（不进 settings 明文 JSON）
+      // 敏感字段：只加密落盘（不进 settings 明文 JSON）；对历史未迁移字段顺带重试迁移
       for (const f of SECRET_FIELDS) {
-        if (Object.prototype.hasOwnProperty.call(settings, f)) {
-          await setSecret(f, encodeSecret((merged as unknown as Record<string, unknown>)[f]));
+        const touched = Object.prototype.hasOwnProperty.call(settings, f);
+        if (touched || unmigratedSecretFields.has(f)) {
+          const enc = encodeSecret((merged as unknown as Record<string, unknown>)[f]);
+          if (touched) {
+            await setSecret(f, enc);
+            unmigratedSecretFields.delete(f);
+          } else if (enc) {
+            try {
+              await setSecret(f, enc);
+              unmigratedSecretFields.delete(f);
+            } catch (e) {
+              logError(e, `settings.retryMigrateSecret.${f}`);
+            }
+          }
         }
       }
       const persisted: Record<string, unknown> = { ...merged };
-      for (const f of SECRET_FIELDS) delete persisted[f];
+      for (const f of SECRET_FIELDS) {
+        if (!unmigratedSecretFields.has(f)) delete persisted[f];
+      }
       await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(persisted));
       // 全部写入成功后再更新缓存：否则 setSecret/setItem 失败时内存显示已保存，
       // 重启后又回退，用户会误以为设置生效。
@@ -202,6 +230,7 @@ export async function clearSettings(): Promise<void> {
       for (const f of SECRET_FIELDS) {
         await deleteSecret(f);
       }
+      unmigratedSecretFields.clear();
       // 清理全部成功后再重置内存，避免删除失败时界面已显示清空、磁盘仍有旧值。
       settingsCache = { ...DEFAULT_SETTINGS };
       settingsLoadFailed = false;

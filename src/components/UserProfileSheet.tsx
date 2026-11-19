@@ -26,7 +26,6 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassSurface } from './GlassSurface';
 import { NetworkImage } from './NetworkImage';
 import { ScalePressable } from './Motion';
 import { usePalette } from '../theme';
@@ -324,7 +323,17 @@ export function UserProfileSheet({
           onPress={() => {}}
           style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 20) }]}
         >
-          <GlassSurface radius={22} role="card" style={styles.panel}>
+          <View
+            style={[
+              styles.panel,
+              {
+                backgroundColor: palette.surfaceElevated,
+                borderColor: palette.hairline,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderRadius: 22,
+              },
+            ]}
+          >
             <View style={styles.handleWrap}>
               <View style={[styles.handle, { backgroundColor: palette.fill3 }]} />
             </View>
@@ -452,7 +461,7 @@ export function UserProfileSheet({
                 <Text style={[styles.btnText, { color: palette.labelSecondary }]}>{t('关闭')}</Text>
               </Pressable>
             </View>
-          </GlassSurface>
+          </View>
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>

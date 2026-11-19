@@ -13,7 +13,6 @@ import {
   exoControl,
   ExoPlaybackSnapshot,
   isNativeExoDisabled,
-  subscribeExo,
 } from '../native/RadioExo';
 import { onRadioControlRequested } from '../native/LivePlayer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -135,7 +134,10 @@ function findNativeTrackIndex(
   return -1;
 }
 
-function applyNativeSnapshot(snapshot: ExoPlaybackSnapshot): { active: boolean; matched: boolean } {
+export function applyNativeSnapshot(snapshot: ExoPlaybackSnapshot): {
+  active: boolean;
+  matched: boolean;
+} {
   if (!snapshot.active) return { active: false, matched: false };
   const st = useMusicPlayerStore.getState();
   if (!st.queue.length || !snapshot.url) return { active: true, matched: false };
@@ -792,81 +794,8 @@ let musicBridgeInstalled = false;
 function installMusicBridge() {
   if (musicBridgeInstalled) return;
   musicBridgeInstalled = true;
-  let lastPlaying: boolean | null = null;
-  subscribeExo((type, p: any) => {
-    try {
-      const st = useMusicPlayerStore.getState();
-      if (type === 'progress') {
-        if (!st.queue.length) return;
-        // stop 后原生可能还有最后一拍迟到 progress：idle 态绝不能被快照复活成 playing。
-        if (st.playbackState === 'idle') return;
-        if (!st.url) {
-          const restored = applyNativeSnapshot({
-            active: true,
-            url: String(p?.url || ''),
-            trackId: String(p?.trackId || ''),
-            title: String(p?.title || ''),
-            artist: String(p?.artist || ''),
-            album: String(p?.album || ''),
-            position: Math.max(0, Number(p?.position) || 0),
-            duration: Math.max(0, Number(p?.duration) || 0),
-            playing: !!p?.playing,
-          });
-          if (!restored.matched) return;
-          return;
-        }
-        if (st.playbackState === 'loading') return;
-        // 旧曲心跳（切歌竞态）不写：url 不一致视为陈旧
-        if (p?.url && st.url && String(p.url) !== String(st.url)) return;
-        const current = st.queue[st.currentIndex];
-        const currentId = current ? String(current.musicId || current.id || '') : '';
-        if (p?.trackId && currentId && String(p.trackId) !== currentId) return;
-        const playingN = !!p?.playing;
-        if (lastPlaying !== playingN) {
-          lastPlaying = playingN;
-          st.setPlaybackState(playingN ? 'playing' : 'paused');
-        }
-        if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
-        if (typeof p?.position === 'number') st.setPosition(p.position);
-        return;
-      }
-      if (type === 'skipped') {
-        const result = applyNativeSnapshot({
-          active: true,
-          url: String(p?.url || ''),
-          trackId: String(p?.trackId || ''),
-          title: String(p?.title || ''),
-          artist: String(p?.artist || ''),
-          album: String(p?.album || ''),
-          position: 0,
-          duration: 0,
-          playing: true,
-        });
-        if (result.matched) {
-          const current = useMusicPlayerStore.getState();
-          const track = current.queue[current.currentIndex];
-          if (track) MusicEngine._fetchLyrics(track);
-        }
-        return;
-      }
-      if (type === 'cmd') {
-        // 系统卡/耳机线控切歌：原生只做指令转发（不再本地切），由 JS 队列决定上一首/下一首
-        const c = String((p as any)?.cmd || '');
-        st.setPlaybackState(st.playbackState === 'idle' ? 'loading' : st.playbackState);
-        if (c === 'next') void MusicEngine.next();
-        else if (c === 'prev') void MusicEngine.prev();
-        return;
-      }
-      if (type === 'ended') {
-        if (!st.queue.length) return;
-        if (st.playMode === 'single') return; // 单曲循环由原生 REPEAT_MODE_ONE 处理
-        lastPlaying = null;
-        void MusicEngine.next();
-      }
-    } catch {
-      /* 桥内异常不影响播放 */
-    }
-  });
+  // 注意：YayaExoEvent 统一由 App.tsx MusicForegroundBridge 单点消费（含滞回防自激、progress/ended/skipped/cmd），
+  // 此处仅保留 AppState 前台快照对账、收藏同步、离页兜底推流与系统媒体控制按钮监听。
 
   // Android 上原生 Exo 是后台播放的位置权威；回到前台时读取实时状态，
   // 避免持久化的旧曲目/旧进度被音乐页重新下发后把原生播放倒回去。

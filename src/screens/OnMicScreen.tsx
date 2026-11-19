@@ -217,8 +217,8 @@ export default function OnMicScreen() {
           onAction={() => scan({ force: true })}
         />
       ) : entries.length === 0 &&
-        scanning ? /* 扫描中且尚无结果：顶部 scanBar 已显示进度和文案，这里不再放第二个 spinner。 */
-      null : entries.length === 0 ? (
+        scanning /* 扫描中且尚无结果：顶部 scanBar 已显示进度和文案，这里不再放第二个 spinner。 */ ? null : entries.length ===
+        0 ? (
         <EmptyState
           icon="microphone-off"
           title={t('暂无成员上麦')}

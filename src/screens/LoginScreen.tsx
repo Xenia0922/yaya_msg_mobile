@@ -29,9 +29,17 @@ import {
   type SavedAccount,
 } from '../services/accountVault';
 import { resetNimSession } from '../services/pocketNim/session';
-import pocketApi from '../api/pocket48';
+import pocketApi, { isPocketAuthError } from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, normalizeUrl, pickText } from '../utils/data';
+import {
+  extractPocketTokenFromObject,
+  formatPocketTokenBundle,
+  normalizePocketDeviceId,
+  normalizePocketToken,
+  parsePocketTokenBundle,
+} from '../utils/pocketToken';
+import { resolveBoundPocketDeviceId } from '../api/pocketHeaders';
 import { logWarn } from '../utils/runtimeLog';
 import { usePalette, radii, radiiAlias, getPageBackground } from '../theme';
 import { translate, useI18n } from '../i18n';
@@ -175,43 +183,28 @@ function pickBiliCookies(raw = ''): string {
 }
 
 function extractPocketToken(value: any): string {
-  const seen = new Set<any>();
-  const walk = (node: any): string => {
-    if (!node || typeof node !== 'object' || seen.has(node)) return '';
-    seen.add(node);
-    const direct = [
-      node.token,
-      node.accessToken,
-      node.access_token,
-      node.p48Token,
-      node.sessionToken,
-      node?.userInfo?.token,
-      node?.userInfo?.accessToken,
-      node?.content?.token,
-      node?.content?.accessToken,
-      node?.content?.userInfo?.token,
-      node?.data?.token,
-      node?.data?.accessToken,
-    ].find((item) => typeof item === 'string' && item.trim().length > 10);
-    if (direct) return direct.trim();
-    for (const item of Object.values(node)) {
-      const found = walk(item);
-      if (found) return found;
-    }
-    return '';
-  };
-  return walk(value);
+  return extractPocketTokenFromObject(value);
 }
 
 function accountId(user: any): string {
-  return String(user?.userId || user?.id || user?.userInfo?.userId || user?.userInfo?.id || '');
+  return String(
+    user?.baseUserInfo?.userId ||
+      user?.userId ||
+      user?.id ||
+      user?.userInfo?.baseUserInfo?.userId ||
+      user?.userInfo?.userId ||
+      user?.userInfo?.id ||
+      '',
+  );
 }
 
 function accountName(user: any): string {
   return String(
-    user?.nickname ||
+    user?.baseUserInfo?.nickname ||
+      user?.nickname ||
       user?.nickName ||
       user?.name ||
+      user?.userInfo?.baseUserInfo?.nickname ||
       user?.userInfo?.nickname ||
       user?.userInfo?.nickName ||
       user?.userInfo?.name ||
@@ -290,11 +283,23 @@ export default function LoginScreen() {
    * 改成和其它聊天页同一套：手动把容器底部抬起。
    */
   const pollingRef = useRef(true);
+  const goBackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
       pollingRef.current = false;
+      if (goBackTimerRef.current) {
+        clearTimeout(goBackTimerRef.current);
+        goBackTimerRef.current = null;
+      }
     };
   }, []);
+  const scheduleGoBack = () => {
+    if (goBackTimerRef.current) clearTimeout(goBackTimerRef.current);
+    goBackTimerRef.current = setTimeout(() => {
+      goBackTimerRef.current = null;
+      if (pollingRef.current) navigation.goBack();
+    }, 700);
+  };
   // 账号设置页固定竖屏：避免从横屏播放器进入时内容被横向挤压（布局按竖屏设计）
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
@@ -320,7 +325,16 @@ export default function LoginScreen() {
     setConfirmation('');
     setAgreed(false);
   }, [phone, area, code]);
-  const [manualToken, setManualToken] = useState(settings.p48Token || '');
+  const [manualToken, setManualToken] = useState(() => normalizePocketToken(settings.p48Token));
+  const prevSettingsTokenRef = useRef(settings.p48Token || '');
+  const skipAutoCheckTokenRef = useRef('');
+  useEffect(() => {
+    const nextToken = settings.p48Token || '';
+    if (nextToken !== prevSettingsTokenRef.current) {
+      prevSettingsTokenRef.current = nextToken;
+      setManualToken(normalizePocketToken(nextToken));
+    }
+  }, [settings.p48Token]);
   const activePollKeyRef = useRef(''); // Y3: 当前活跃轮询的二维码 key（刷新二维码时旧轮询据此退出）
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -350,10 +364,19 @@ export default function LoginScreen() {
       .catch(() => undefined);
   }, []);
   useEffect(() => {
+    if (!settings.p48Token) {
+      accountRequestRef.current += 1;
+      setAccountInfo({ current: null, users: [] });
+      setProfileAvatar('');
+      return;
+    }
+    if (skipAutoCheckTokenRef.current && skipAutoCheckTokenRef.current === settings.p48Token) {
+      skipAutoCheckTokenRef.current = '';
+      return;
+    }
     const seq = ++accountRequestRef.current;
     setAccountInfo({ current: null, users: [] });
     setProfileAvatar('');
-    if (!settings.p48Token) return;
     void pocketApi
       .loginCheckToken()
       .then((res) => {
@@ -434,11 +457,12 @@ export default function LoginScreen() {
     }
   };
 
-  const savePocketToken = async (token: string, message: string) => {
-    const clean = token.trim();
+  const savePocketToken = async (token: string, message: string, deviceId = '') => {
+    const clean = normalizePocketToken(token) || token.trim();
+    const cleanDeviceId = normalizePocketDeviceId(deviceId);
     try {
-      setSettings({ p48Token: clean });
-      await saveSettings({ p48Token: clean });
+      setSettings({ p48Token: clean, p48DeviceId: cleanDeviceId });
+      await saveSettings({ p48Token: clean, p48DeviceId: cleanDeviceId });
       // 账号变了 → 立即重置云信会话（凭证/自身资料/QChat·聊天室登录态 + 原生连接）。
       // 否则切号后短时间内：弹幕与房间消息仍带旧号身份、且新旧 accid 不匹配导致连不上房间。
       resetNimSession('切换/保存口袋账号');
@@ -528,7 +552,7 @@ export default function LoginScreen() {
         Number(res?.status) === 200 && res?.success !== false ? extractPocketToken(res) : '';
       if (token) {
         await savePocketToken(token, t('登录成功'));
-        setTimeout(() => navigation.goBack(), 700);
+        scheduleGoBack();
       } else {
         const msg = res?.message || res?.msg || res?.content?.message || '';
         const base = t('登录失败接口未返回token');
@@ -556,7 +580,7 @@ export default function LoginScreen() {
       if (!token) throw new Error(t('登录失败，接口未返回登录信息'));
       setPassword('');
       await savePocketToken(token, t('登录成功'));
-      setTimeout(() => navigation.goBack(), 700);
+      scheduleGoBack();
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -633,7 +657,7 @@ export default function LoginScreen() {
       if (!token) throw new Error(t('自动登录失败，请重试登录'));
       setRegistration(null);
       await savePocketToken(token, t('登录成功'));
-      setTimeout(() => navigation.goBack(), 700);
+      scheduleGoBack();
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -643,23 +667,24 @@ export default function LoginScreen() {
   };
 
   const handleSaveManualToken = async () => {
-    const token = manualToken.trim();
-    if (!token) {
+    const parsed = parsePocketTokenBundle(manualToken);
+    if (!parsed.token) {
       setStatus(t('请先粘贴token'));
       return;
     }
+    if (parsed.token !== manualToken) setManualToken(parsed.token);
     setLoading(true);
     setStatus(t('正在保存...'));
     try {
-      await savePocketToken(token, t('Token已保存'));
+      await savePocketToken(parsed.token, t('Token已保存'), parsed.deviceId);
     } finally {
       setLoading(false);
     }
   };
 
-  const refreshAccountInfo = async () => {
+  const refreshAccountInfo = async (tokenOverride?: string, deviceIdOverride?: string) => {
     const seq = ++accountRequestRef.current;
-    const res = await pocketApi.loginCheckToken();
+    const res = await pocketApi.loginCheckToken(tokenOverride, deviceIdOverride);
     const ok =
       res?.success !== false && (res?.status === 200 || res?.success || res?.content || res?.data);
     if (seq === accountRequestRef.current && ok) setAccountInfo(parseAccountInfo(res));
@@ -708,17 +733,39 @@ export default function LoginScreen() {
     }
   };
 
+  const formatTokenCheckError = (raw: string) => {
+    const reason = raw.trim();
+    if (isPocketAuthError(reason)) {
+      return t('服务端无法解析该 Token（可能已过期或复制不完整），请重新登录或核对完整 Token');
+    }
+    return reason || t('Token 已失效，请重新获取');
+  };
+
   const handleCheckToken = async () => {
-    const token = manualToken.trim() || settings.p48Token;
-    if (token && token !== settings.p48Token) {
-      // 与登录/切号走同一条路径：改 token 必须同时重置云信会话
-      // （否则弹幕与房间消息仍用旧号身份、且新旧 accid 不匹配会连不上房间）
-      await savePocketToken(token, t('Token已保存'));
+    const rawInput = manualToken.trim();
+    const parsed = rawInput ? parsePocketTokenBundle(rawInput) : { token: '', deviceId: '' };
+    const savedToken = normalizePocketToken(settings.p48Token);
+    const token = parsed.token || savedToken;
+    const isSameSavedToken = !!token && token === savedToken;
+    const deviceId =
+      parsed.deviceId || (isSameSavedToken ? normalizePocketDeviceId(settings.p48DeviceId) : '');
+    if (!token) {
+      setStatus(t('请先粘贴token'));
+      return;
+    }
+    if (rawInput && token !== manualToken) {
+      setManualToken(token);
     }
     setLoading(true);
     setStatus(t('正在检查Token'));
     try {
-      const { res, ok } = await refreshAccountInfo();
+      // 先用待检查 Token 与绑定 deviceId 验证通过后再落盘，避免检查无效粘贴串时覆盖当前登录态
+      const { res, ok } = await refreshAccountInfo(token, deviceId);
+      const currentBoundDevice = normalizePocketDeviceId(settings.p48DeviceId);
+      if (ok && (token !== settings.p48Token || (deviceId && deviceId !== currentBoundDevice))) {
+        skipAutoCheckTokenRef.current = token;
+        await savePocketToken(token, t('Token有效'), deviceId);
+      }
       // 不要把 JSON.stringify(res) 甩给用户（原来失败时整段裸 JSON 显示在状态行）
       const reason = String(
         (res as any)?.msg ||
@@ -729,12 +776,10 @@ export default function LoginScreen() {
           '',
       ).trim();
       setStatus(
-        ok
-          ? t('Token有效')
-          : t('Token无效：{msg}', { msg: reason || t('Token 已失效，请重新获取') }),
+        ok ? t('Token有效') : t('Token无效：{msg}', { msg: formatTokenCheckError(reason) }),
       );
     } catch (error) {
-      setStatus(t('Token无效：{msg}', { msg: errorMessage(error) }));
+      setStatus(t('Token无效：{msg}', { msg: formatTokenCheckError(errorMessage(error)) }));
     } finally {
       setLoading(false);
     }
@@ -864,7 +909,7 @@ export default function LoginScreen() {
     setLoading(true);
     setStatus(t('正在读取口袋资料'));
     try {
-      const res = await pocketApi.getNimLoginInfo();
+      const res = await pocketApi.loginCheckToken().catch(() => pocketApi.getNimLoginInfo());
       const info =
         res?.content?.userInfo ||
         res?.content?.user ||
@@ -872,10 +917,13 @@ export default function LoginScreen() {
         res?.data?.userInfo ||
         res?.data ||
         {};
-      setProfileName(String(info.nickName || info.nickname || info.name || ''));
-      setProfileAvatar(String(info.avatar || info.headImg || info.headUrl || ''));
+      const base = info?.baseUserInfo || {};
+      setProfileName(String(base.nickname || info.nickName || info.nickname || info.name || ''));
+      setProfileAvatar(
+        String(base.avatar || base.faceImage || info.avatar || info.headImg || info.headUrl || ''),
+      );
       const renameRes = await pocketApi.getUserRenameCount().catch(() => null);
-      const renameContent = renameRes?.content ?? renameRes?.data ?? renameRes;
+      const renameContent = renameRes?.content ?? renameRes?.data;
       if (renameContent && typeof renameContent === 'object') {
         const freeCount =
           renameContent.count ??
@@ -893,6 +941,17 @@ export default function LoginScreen() {
           t('免费修改：{free} · 鸡腿修改：{chicken}', {
             free: freeCount ?? '--',
             chicken: chickenCount ?? '--',
+          }),
+        );
+      } else {
+        const freeText =
+          renameContent === undefined || renameContent === null || renameContent === ''
+            ? '--'
+            : String(renameContent);
+        setRenameCountText(
+          t('免费修改：{free} · 鸡腿修改：{chicken}', {
+            free: freeText,
+            chicken: '--',
           }),
         );
       }
@@ -1461,10 +1520,11 @@ export default function LoginScreen() {
               placeholder={t('粘贴口袋token')}
               placeholderTextColor={palette.labelTertiary}
               value={manualToken}
-              onChangeText={setManualToken}
+              onChangeText={(value) => setManualToken(value.replace(/[\r\n]/g, ''))}
               autoCapitalize="none"
               autoCorrect={false}
-              numberOfLines={1}
+              multiline
+              blurOnSubmit
             />
             <View style={styles.btnCol}>
               <Button
@@ -1488,19 +1548,33 @@ export default function LoginScreen() {
             {/* 已保存 Token + Token 状态：卡片内普通段落（紧贴按钮列），无独立块背景，
                 避免被误认为\"卡片外独立横条\" */}
             {settings.p48Token ? (
-              <View style={styles.copyTokenRow}>
+              <View style={styles.copyTokenBlock}>
                 <Text style={[styles.copyTokenLabel, { color: palette.labelSecondary }]}>
                   {t('已保存当前账号 Token')}
                 </Text>
-                <Button
-                  title={t('复制 Token')}
-                  variant="tinted"
-                  size="sm"
-                  onPress={() => {
-                    Clipboard.setString(settings.p48Token);
-                    showToast(t('Token 已复制'));
-                  }}
-                />
+                <View style={styles.copyTokenActions}>
+                  <Button
+                    title={t('复制 Token')}
+                    variant="tinted"
+                    size="sm"
+                    onPress={() => {
+                      Clipboard.setString(
+                        normalizePocketToken(settings.p48Token) || settings.p48Token,
+                      );
+                      showToast(t('Token 已复制'));
+                    }}
+                  />
+                  <Button
+                    title={t('复制跨设备凭证')}
+                    variant="tinted"
+                    size="sm"
+                    onPress={async () => {
+                      const deviceId = await resolveBoundPocketDeviceId();
+                      Clipboard.setString(formatPocketTokenBundle(settings.p48Token, deviceId));
+                      showToast(t('跨设备凭证已复制'));
+                    }}
+                  />
+                </View>
               </View>
             ) : null}
             {status && mode === 'token' ? (
@@ -1884,7 +1958,13 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 14,
   },
-  tokenInput: { minHeight: 46, textAlignVertical: 'center', paddingVertical: 8 },
+  tokenInput: {
+    height: undefined,
+    minHeight: 54,
+    maxHeight: 112,
+    textAlignVertical: 'center',
+    paddingVertical: 10,
+  },
   btnCol: { gap: 10, marginTop: 4 },
   buttonRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   buttonCell: { flex: 1, minWidth: 0 },
@@ -1942,14 +2022,16 @@ const styles = StyleSheet.create({
   },
   qrRetryText: { fontSize: 13, fontWeight: '700' },
   tokenInfo: { fontSize: 12, lineHeight: 18, flexShrink: 0, minHeight: 18, marginTop: 12 },
-  copyTokenRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+  copyTokenBlock: {
     marginTop: 12,
+    gap: 8,
   },
-  copyTokenLabel: { flex: 1, fontSize: 12, lineHeight: 18 },
+  copyTokenActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  copyTokenLabel: { fontSize: 12, lineHeight: 18 },
   status: { fontSize: 12, lineHeight: 18, flexShrink: 0, marginTop: 6 },
   metaLine: { marginTop: 8, marginBottom: 10, fontSize: 12, lineHeight: 18, flexShrink: 1 },
   accountSummary: { fontSize: 12, lineHeight: 18 },

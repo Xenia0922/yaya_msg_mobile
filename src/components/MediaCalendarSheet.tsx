@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { GlassSurface } from './GlassSurface';
 import { useI18n } from '../i18n';
 import { usePalette, radiiAlias } from '../theme';
 
@@ -42,12 +41,14 @@ export function MediaCalendarSheet({
         accessibilityRole="button"
         accessibilityLabel={t('关闭')}
       >
-        <GlassSurface
-          radius={22}
-          role="card"
+        <View
           style={[
             styles.sheet,
-            { backgroundColor: 'transparent', borderColor: palette.innerStroke },
+            {
+              backgroundColor: palette.surfaceElevated,
+              borderColor: palette.hairline,
+              borderWidth: StyleSheet.hairlineWidth,
+            },
           ]}
           onStartShouldSetResponder={() => true}
         >
@@ -121,7 +122,7 @@ export function MediaCalendarSheet({
               <Text style={[styles.todayText, { color: palette.onTint }]}>{t('今天')}</Text>
             </TouchableOpacity>
           </View>
-        </GlassSurface>
+        </View>
       </TouchableOpacity>
     </Modal>
   );

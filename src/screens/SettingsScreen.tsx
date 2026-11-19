@@ -226,14 +226,30 @@ export default function SettingsScreen() {
         if (!alive) return;
         const c: any = res?.content || res?.data || res || {};
         const u: any = c.userInfo || c.user || c.baseUserInfo || c.userList?.[0] || c;
-        const userId = String(u.userId || u.id || c.userId || '').trim();
+        const base: any = u?.baseUserInfo || {};
+        const userId = String(base.userId || u.userId || u.id || c.userId || '').trim();
         const rawName = String(
-          u.nickname || u.nickName || u.name || u.userName || c.nickname || c.nickName || '',
+          base.nickname ||
+            u.nickname ||
+            u.nickName ||
+            u.name ||
+            u.userName ||
+            c.nickname ||
+            c.nickName ||
+            '',
         ).trim();
         // 有些账号的 name 字段是纯数字账号 ID（如 20261006215238），不作为昵称展示
         const name = rawName;
         let avatar = normalizeLiveAvatar(
-          u.avatar || u.userAvatar || u.headImg || u.avatarUrl || c.avatar || c.userAvatar || '',
+          base.avatar ||
+            base.faceImage ||
+            u.avatar ||
+            u.userAvatar ||
+            u.headImg ||
+            u.avatarUrl ||
+            c.avatar ||
+            c.userAvatar ||
+            '',
         );
         if (!avatar && userId) avatar = await getLiveUserAvatar(userId).catch(() => '');
         if (!alive) return;

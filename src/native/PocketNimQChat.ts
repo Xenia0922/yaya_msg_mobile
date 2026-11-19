@@ -13,6 +13,7 @@ import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 
 interface PocketNimQChatNative {
   connect(appKey: string, account: string, token: string): Promise<boolean>;
+  subscribe?(serverId: string): Promise<boolean>;
   send(serverId: string, channelId: string, text: string, extJson: string): Promise<string>;
   sendCustom(
     serverId: string,
@@ -50,6 +51,15 @@ export interface QChatNativeMessage {
 export async function qchatConnect(appKey: string, account: string, token: string): Promise<void> {
   if (!native) throw new Error('当前平台不支持原生房间消息通道');
   await native.connect(appKey, account, token);
+}
+
+export async function qchatSubscribe(serverId: string): Promise<boolean> {
+  if (!native?.subscribe) return false;
+  try {
+    return await native.subscribe(String(serverId));
+  } catch {
+    return false;
+  }
 }
 
 /** 返回 msgIdClient（发送成功由服务端应答确认，这里 await 到应答后返回） */

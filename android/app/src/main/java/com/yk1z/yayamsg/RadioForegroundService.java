@@ -123,7 +123,7 @@ public class RadioForegroundService extends Service {
           // ⚠️ 必须用 elapsedRealtime（单调时钟）：SystemUI 用 (now-updated)×speed+position 演算进度，
           // 用墙钟 currentTimeMillis 会让 ColorOS 算出异常差值 → 播放态进度错乱/归 0
           .setState(isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
-              position, 1.0f, android.os.SystemClock.elapsedRealtime())
+              position, isPlaying ? 1.0f : 0f, android.os.SystemClock.elapsedRealtime())
           .build();
       mediaSession.setPlaybackState(state);
       mediaSession.setActive(true);
@@ -517,7 +517,7 @@ public class RadioForegroundService extends Service {
     PendingIntent prevPi = mediaPi(RadioMediaReceiver.ACTION_PREV, 10);
     PendingIntent playPausePi = mediaPi(isPlaying ? RadioMediaReceiver.ACTION_PLAY_PAUSE : RadioMediaReceiver.ACTION_PLAY_PAUSE, 11);
     PendingIntent nextPi = mediaPi(RadioMediaReceiver.ACTION_NEXT, 12);
-    PendingIntent stopPi = mediaPi(RadioMediaReceiver.ACTION_STOP, 13);
+    PendingIntent stopPi = mediaPi(RadioMediaReceiver.ACTION_STOP, 15);
 
     // MediaSession 元数据：标题/歌手/专辑/时长 + 封面（锁屏与各厂商媒体中心取封面/时间用）
     try {
@@ -542,7 +542,7 @@ public class RadioForegroundService extends Service {
         // （历史病灶「修两处漏一处」的另一处，2026-11-07 修正）
         .setState(
             isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
-            position, 1.0f, android.os.SystemClock.elapsedRealtime())
+            position, isPlaying ? 1.0f : 0f, android.os.SystemClock.elapsedRealtime())
         .build();
     mediaSession.setPlaybackState(playbackState);
     mediaSession.setActive(true);

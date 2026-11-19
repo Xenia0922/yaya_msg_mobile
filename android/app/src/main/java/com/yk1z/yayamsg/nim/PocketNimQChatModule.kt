@@ -6,6 +6,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 成员房间消息（云信 QChat / 圈组）原生模块 —— commonlink 协议版。
@@ -19,7 +20,7 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
   private var client: NimQChatClient? = null
-  private var connectPromise: Promise? = null
+  private val connectPromise = AtomicReference<Promise?>(null)
 
   override fun getName(): String = "PocketNimQChat"
 
@@ -35,12 +36,10 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
     override fun onStatus(state: String, detail: String?) {
       when (state) {
         "connected" -> {
-          connectPromise?.resolve(true)
-          connectPromise = null
+          connectPromise.getAndSet(null)?.resolve(true)
         }
         "error" -> {
-          connectPromise?.reject("E_CONNECT", detail ?: "成员房间连接失败")
-          connectPromise = null
+          connectPromise.getAndSet(null)?.reject("E_CONNECT", detail ?: "成员房间连接失败")
         }
         else -> {}
       }
@@ -51,6 +50,11 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
     }
 
     override fun onMessage(message: NimQChatMessage) {
+      val msgType = when (message.type) {
+        0 -> "text"
+        100 -> "qchatCustom"
+        else -> message.type.toString()
+      }
       emit("PocketNimQChat:message", Arguments.createMap().apply {
         putString("serverId", message.serverId)
         putString("channelId", message.channelId)
@@ -58,6 +62,7 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
         putString("fromNick", message.fromNick)
         putDouble("time", message.time.toDouble())
         putInt("type", message.type)
+        putString("msgType", msgType)
         putString("body", message.body)
         putString("attachment", message.attachment)
         putString("ext", message.ext)
@@ -77,11 +82,28 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
       }
       val next = NimQChatClient(appKey, account, token, listener)
       client = next
-      connectPromise = promise
+      connectPromise.getAndSet(promise)?.reject("E_CANCELLED", "已重连")
       next.connect()
     } catch (t: Throwable) {
+      connectPromise.compareAndSet(promise, null)
       promise.reject("E_CONNECT", t)
     }
+  }
+
+  @ReactMethod
+  fun subscribe(serverId: String, promise: Promise) {
+    val active = client
+    if (active == null) {
+      promise.resolve(false)
+      return
+    }
+    Thread({
+      try {
+        promise.resolve(active.subscribeServer(serverId))
+      } catch (_: Throwable) {
+        promise.resolve(false)
+      }
+    }, "nim-qchat-sub").also { it.isDaemon = true; it.start() }
   }
 
   @ReactMethod
@@ -124,8 +146,7 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
   private fun disconnectInternal() {
     client?.destroy()
     client = null
-    connectPromise?.reject("E_CANCELLED", "已断开")
-    connectPromise = null
+    connectPromise.getAndSet(null)?.reject("E_CANCELLED", "已断开")
   }
 
   override fun invalidate() {

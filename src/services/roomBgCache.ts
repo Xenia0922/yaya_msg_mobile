@@ -112,7 +112,11 @@ export async function ensureBgCached(url: string): Promise<void> {
     try {
       await FileSystem.makeDirectoryAsync(BG_DIR, { intermediates: true }).catch(() => undefined);
       const localUri = `${BG_DIR}${hashUrl(abs)}.img`;
-      await FileSystem.downloadAsync(abs, localUri);
+      const dl = await FileSystem.downloadAsync(abs, localUri);
+      if (dl.status < 200 || dl.status >= 300) {
+        await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
+        return;
+      }
       // 合并最新 map（而不是下载开始时的旧快照），避免并发写覆盖其它条目
       await commitEntry(abs, { localUri, url: abs });
     } catch {

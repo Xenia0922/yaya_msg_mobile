@@ -2,10 +2,10 @@ name: Quality
 
 on:
   push:
-    # 开发实际发生在 plus / public-* 分支，只监听 main 等于门禁从不校验业务代码
-    branches: [main, plus, 'public-*']
+    # public 为日常开发与发布主分支，plus / public-* 为历史或特性分支
+    branches: [main, public, plus, 'public-*']
   pull_request:
-    branches: [main, plus, 'public-*']
+    branches: [main, public, plus, 'public-*']
 
 jobs:
   core:
@@ -34,6 +34,9 @@ jobs:
 
       - name: Core tests
         run: npm run test:core
+
+      - name: Static checks
+        run: npm run check
 
       - name: Diff check
         run: git diff --check

@@ -451,6 +451,8 @@ export interface AppSettings {
   theme: Theme;
   language: LanguageSetting;
   p48Token: string;
+  /** Token 签发时绑定的设备标识（空 = 使用本机持久化 deviceId；跨设备导入凭证时保留源设备 ID） */
+  p48DeviceId?: string;
   /** 登录/请求身份：pocket48 = 口袋48 客户端身份，seine48 = 塞纳河48 客户端身份（appInfo/UA 不同） */
   p48ClientProfile: 'pocket48' | 'seine48';
   bilibiliCookie: string;

@@ -1,7 +1,8 @@
 import { useMemberStore, useSettingsStore } from '../store';
-import { generatePa, generatePaAsync, getWasmError, initWasm } from '../auth';
+import { generatePa, generatePaAsync, getWasmError, initWasm, invalidatePaCache } from '../auth';
 import { requestJson, xhrPost, fetchWithTimeout } from '../utils/network';
 import { unwrapList, normalizeUrl, parseMaybeJson, pickText } from '../utils/data';
+import { normalizePocketToken } from '../utils/pocketToken';
 import type { ApiEnvelope, WireRecord } from '../types';
 import {
   BASE,
@@ -13,6 +14,7 @@ import {
   createMeet48Headers,
   createPocketAndroidHeaders,
   createPocketLoginHeaders,
+  createPocketProfileHeaders,
   createSeineHeaders,
   createSeineIosHeaders,
   createWeiboHeaders,
@@ -22,7 +24,7 @@ import {
 // 选举计分（score-*）、花漾（pageantry-*）、QR 登录（login-*-qr）、部分 Area48 话题接口；
 
 function tokenFromStore(): string {
-  return useSettingsStore.getState().settings.p48Token || '';
+  return normalizePocketToken(useSettingsStore.getState().settings.p48Token);
 }
 
 function requireToken(): string {
@@ -51,17 +53,46 @@ function responseMessage(data: unknown, fallback: string): string {
   return String(d.message || d.msg || d.error || d.statusDesc || fallback);
 }
 
+export function isPocketAuthError(value: unknown): boolean {
+  const text = String(value || '');
+  if (!text) return false;
+  if (/token/i.test(text) && /(解析|parse|invalid|expired|失效|过期|无效)/i.test(text)) {
+    return true;
+  }
+  return /登录.*(失效|过期|无效)|login.*(expired|invalid|required)/i.test(text);
+}
+
 function assertPocketOk<T = ApiEnvelope>(
   data: T | null | undefined,
   fallback = 'pocket api request failed',
+  checkAuthError = true,
 ): T {
-  if (responseOk(data)) return data as T;
   const detail = responseMessage(data, fallback);
+  if (checkAuthError && isPocketAuthError(detail)) {
+    throw new Error(detail);
+  }
+  if (responseOk(data)) return data as T;
+  if (/\bpa\b|签名|signature/i.test(detail)) {
+    invalidatePaCache();
+  }
   const status = (data as ApiEnvelope | null | undefined)?.status ?? (data as ApiEnvelope)?.code;
   throw new Error(status !== undefined ? `${detail} (${status})` : detail);
 }
 
-async function createSignedHeaders(token?: string, modern = false, patch: HeadersMap = {}) {
+const emptyDeviceTokens = new Set<string>();
+
+function isDeviceMismatchTokenError(data: ApiEnvelope | null | undefined): boolean {
+  if (!data || responseOk(data)) return false;
+  return /token.*(解析|parse)/i.test(responseMessage(data, ''));
+}
+
+async function createSignedHeaders(
+  token?: string,
+  modern = false,
+  patch: HeadersMap = {},
+  preservePatch = false,
+  deviceIdOverride?: string,
+) {
   await initWasm();
   const pa = await generatePaAsync();
   if (!pa) {
@@ -69,10 +100,32 @@ async function createSignedHeaders(token?: string, modern = false, patch: Header
     throw new Error(reason ? `签名模块未就绪：${reason}` : '签名模块未就绪，无法请求口袋接口');
   }
   const deviceId = await ensureDeviceId();
-  return {
+  const base = {
     ...createHeaders(token, pa, modern, deviceId),
     ...patch,
   };
+  // 与桌面版 pocket-client-context.mjs#applyPocketClientHeaders 对齐：
+  // 登录后所有携带 token 的常规接口统一使用与 loginByCode 一致的 7.1.45_26102701 Android 头
+  // 与持久化 deviceId，保留 P-Sign-Type / Host / Accept 等自定义头。
+  if (token && !preservePatch && !patch['X-Custom-Device-Type']) {
+    const resolvedDeviceOverride =
+      deviceIdOverride !== undefined
+        ? deviceIdOverride
+        : emptyDeviceTokens.has(token)
+          ? ''
+          : undefined;
+    const profileHeaders = await createPocketProfileHeaders(
+      'pocket48',
+      token,
+      pa,
+      resolvedDeviceOverride,
+    );
+    return {
+      ...base,
+      ...profileHeaders,
+    };
+  }
+  return base;
 }
 
 async function rawPost(
@@ -82,8 +135,10 @@ async function rawPost(
     token?: string;
     modern?: boolean;
     headers?: HeadersMap;
+    preserveHeaders?: boolean;
     signed?: boolean;
     timeout?: number;
+    deviceIdOverride?: string;
   } = {},
 ): Promise<ApiEnvelope> {
   const token = options.token ?? tokenFromStore();
@@ -93,8 +148,38 @@ async function rawPost(
           ...createHeaders(token, null, !!options.modern, await ensureDeviceId()),
           ...(options.headers || {}),
         }
-      : await createSignedHeaders(token, !!options.modern, options.headers || {});
-  return xhrPost(url, data, headers, options.timeout);
+      : await createSignedHeaders(
+          token,
+          !!options.modern,
+          options.headers || {},
+          !!options.preserveHeaders,
+          options.deviceIdOverride,
+        );
+  const res = await xhrPost(url, data, headers, options.timeout);
+  if (
+    token &&
+    options.signed !== false &&
+    !options.preserveHeaders &&
+    options.deviceIdOverride !== '' &&
+    isDeviceMismatchTokenError(res)
+  ) {
+    // 跨设备粘贴纯 token 时服务端 /user/ 会因 appInfo.deviceId 不匹配返回 token解析失败；
+    // 实测带空 deviceId 重试可直接通过，并记录到本次会话缓存以省去后续二次往返。
+    const retryHeaders = await createSignedHeaders(
+      token,
+      !!options.modern,
+      options.headers || {},
+      false,
+      '',
+    );
+    const retryRes = await xhrPost(url, data, retryHeaders, options.timeout);
+    if (responseOk(retryRes)) {
+      if (emptyDeviceTokens.size > 32) emptyDeviceTokens.clear();
+      emptyDeviceTokens.add(token);
+      return retryRes;
+    }
+  }
+  return res;
 }
 
 async function signedHeaders(token?: string, modern = false, patch: HeadersMap = {}) {
@@ -108,6 +193,7 @@ async function pocketPost(
     tokenRequired?: boolean;
     modern?: boolean;
     headers?: HeadersMap;
+    preserveHeaders?: boolean;
     fallback?: string;
     signed?: boolean;
     timeout?: number;
@@ -121,10 +207,11 @@ async function pocketPost(
     token,
     modern: options.modern,
     headers: options.headers,
+    preserveHeaders: options.preserveHeaders,
     signed: options.signed !== false,
     timeout: options.timeout,
   });
-  return assertPocketOk(res, options.fallback);
+  return assertPocketOk(res, options.fallback, options.tokenRequired !== false);
 }
 
 /** GET 版口袋接口（直播装扮类目录接口只接受 GET，POST 会返回 405） */
@@ -133,26 +220,6 @@ async function pocketGet(url: string, options: { modern?: boolean; fallback?: st
   const headers = await createSignedHeaders(token, !!options.modern, {});
   const res = await requestJson<ApiEnvelope>(url, { method: 'GET', headers, timeout: 15000 });
   return assertPocketOk(res, options.fallback);
-}
-
-async function publicMediaPost(url: string, data: unknown, fallback: string) {
-  const res = await requestJson<ApiEnvelope>(url, {
-    method: 'POST',
-    body: data,
-    timeout: 15000,
-    headers: {
-      'app-info': JSON.stringify({
-        vendor: 'google',
-        deviceId: '123',
-        appVersion: '6.0.0',
-        appBuild: '123',
-        osType: 'android',
-        osVersion: '10.0.0',
-        deviceName: 'pixel',
-      }),
-    },
-  });
-  return assertPocketOk(res, fallback);
 }
 
 function pushUniqueId(target: string[], value: unknown) {
@@ -265,12 +332,17 @@ async function tryPocketPost(
   const startedAt = Date.now();
   for (let i = 0; i < attempts.length; i += 1) {
     const attempt = attempts[i];
-    if (opts.deadlineMs && Date.now() - startedAt > opts.deadlineMs) {
+    const remaining = opts.deadlineMs ? opts.deadlineMs - (Date.now() - startedAt) : undefined;
+    if (remaining !== undefined && remaining <= 0) {
       errors.push(
         `[deadline] 超过 ${opts.deadlineMs}ms 预算，已停止（已试 ${i}/${attempts.length}）`,
       );
       break;
     }
+    const timeout =
+      remaining !== undefined
+        ? Math.min(opts.perAttemptTimeout ?? 15000, Math.max(1000, remaining))
+        : opts.perAttemptTimeout;
     try {
       const res = await pocketPost(attempt.url, attempt.payload, {
         modern: attempt.modern,
@@ -278,7 +350,7 @@ async function tryPocketPost(
         signed: attempt.signed,
         headers: attempt.headers,
         fallback: `${fallback}: ${attempt.label}`,
-        timeout: opts.perAttemptTimeout,
+        timeout,
       });
       return {
         ...res,
@@ -288,7 +360,11 @@ async function tryPocketPost(
         },
       };
     } catch (error: unknown) {
-      errors.push(`${attempt.label}: ${error instanceof Error ? error.message : String(error)}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      errors.push(`${attempt.label}: ${msg}`);
+      if (attempt.tokenRequired !== false && isPocketAuthError(msg)) {
+        break;
+      }
     }
   }
   throw new Error(errors.join('\n') || fallback);
@@ -382,12 +458,92 @@ export const pocketApi = {
     return assertPocketOk(result, '登录失败');
   },
 
-  async loginCheckToken() {
-    return pocketPost(
-      `${BASE}/user/api/v1/user/info/reload`,
-      { from: 'appstart' },
-      { fallback: 'Token 无效' },
-    );
+  async loginCheckToken(tokenOverride?: string, deviceIdOverride?: string) {
+    const token = tokenOverride !== undefined ? normalizePocketToken(tokenOverride) : '';
+    const activeToken = token || requireToken();
+    const preferredDeviceId = emptyDeviceTokens.has(activeToken)
+      ? ''
+      : deviceIdOverride?.trim() || undefined;
+    const candidates: Array<{
+      url: string;
+      payload: unknown;
+      headers?: HeadersMap;
+      emptyDevice?: boolean;
+    }> = [
+      // 与桌面版 pocket-runtime + pocket-client-profile 对齐：优先带登录态同款 7.1.45 Android 头，
+      // 若跨设备纯 token 报 deviceId 不匹配，紧接着自动回退空 deviceId 绕过绑定校验，
+      // 再依次兼容 modern iOS (7.1.35+V0)、legacy iOS (7.0.41)、Android 7.1.43、user/info/home 与 seine48 (1.3.5)。
+      {
+        url: `${BASE}/user/api/v1/user/info/reload`,
+        payload: { from: 'appstart' },
+        headers: await createPocketProfileHeaders('pocket48', undefined, null, preferredDeviceId),
+        emptyDevice: preferredDeviceId === '',
+      },
+      ...(preferredDeviceId !== ''
+        ? [
+            {
+              url: `${BASE}/user/api/v1/user/info/reload`,
+              payload: { from: 'appstart' },
+              headers: await createPocketProfileHeaders('pocket48', undefined, null, ''),
+              emptyDevice: true,
+            },
+          ]
+        : []),
+      {
+        url: `${BASE}/user/api/v1/user/info/reload`,
+        payload: { from: 'appstart' },
+        headers: createCheckinHeaders(),
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/reload`,
+        payload: { from: 'appstart' },
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/reload`,
+        payload: { from: 'appstart' },
+        headers: createPocketAndroidHeaders(),
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/home`,
+        payload: {},
+        headers: createPocketAndroidHeaders(),
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/home`,
+        payload: {},
+        headers: createCheckinHeaders(),
+      },
+      {
+        url: `${BASE}/user/api/v1/user/info/reload`,
+        payload: { from: 'appstart' },
+        headers: await createPocketProfileHeaders('seine48', undefined, null, preferredDeviceId),
+      },
+    ];
+    const deadlineMs = 18000;
+    const startedAt = Date.now();
+    let firstError: unknown = null;
+    for (const attempt of candidates) {
+      const remaining = deadlineMs - (Date.now() - startedAt);
+      if (remaining <= 0) break;
+      try {
+        const res = await rawPost(attempt.url, attempt.payload, {
+          token: activeToken,
+          signed: true,
+          preserveHeaders: true,
+          headers: attempt.headers,
+          timeout: Math.min(8000, Math.max(1000, remaining)),
+        });
+        const okRes = assertPocketOk(res, 'Token 无效', true);
+        if (attempt.emptyDevice) {
+          if (emptyDeviceTokens.size > 32) emptyDeviceTokens.clear();
+          emptyDeviceTokens.add(activeToken);
+        }
+        return okRes;
+      } catch (err) {
+        if (!firstError) firstError = err;
+      }
+    }
+    throw firstError instanceof Error ? firstError : new Error('Token 无效');
   },
 
   /** 删除（撤回）自己在成员房间大/小房间发送的消息（官方 im/api/v1/team/msg/delete） */
@@ -431,14 +587,26 @@ export const pocketApi = {
   },
 
   async getUserRenameCount() {
-    return pocketPost(
-      `${BASE}/user/api/v1/user/rename/count`,
-      {},
-      {
-        modern: true,
-        fallback: '获取改名次数失败',
-      },
-    );
+    try {
+      return await pocketPost(
+        `${BASE}/user/api/v1/user/rename/count`,
+        {},
+        {
+          modern: true,
+          fallback: '获取改名次数失败',
+        },
+      );
+    } catch {
+      return pocketPost(
+        `${BASE}/user/api/v1/user/rename/count`,
+        {},
+        {
+          modern: true,
+          preserveHeaders: true,
+          fallback: '获取改名次数失败',
+        },
+      );
+    }
   },
 
   async uploadUserAvatar(params: { uri: string; fileName?: string; mimeType?: string }) {
@@ -639,14 +807,21 @@ export const pocketApi = {
   },
 
   async getFollowedIds() {
-    // ⚠️ 必须带 P-Sign-Type: V0（createCheckinHeaders，上游 createFriendshipHeaders 同款）：
-    // 裸 pocketPost 默认头在这个接口上可能被判签名类型不符 → content.data 缺失/为空 →
-    // 房间列表少人（如周文迪不显示；用户反馈）。
-    return pocketPost(
-      `${BASE}/user/api/v1/friendships/friends/id`,
-      {},
-      { headers: createCheckinHeaders(), fallback: '获取关注房间失败' },
-    );
+    // 优先使用已登录 Android 7.1.45 + P-Sign-Type: V0（与桌面 applyPocketClientHeaders 一致），
+    // 若老账号仅认 iOS 7.1.35 头则回退 preserveHeaders 再试一次。
+    try {
+      return await pocketPost(
+        `${BASE}/user/api/v1/friendships/friends/id`,
+        {},
+        { headers: createCheckinHeaders(), fallback: '获取关注房间失败' },
+      );
+    } catch {
+      return pocketPost(
+        `${BASE}/user/api/v1/friendships/friends/id`,
+        {},
+        { headers: createCheckinHeaders(), preserveHeaders: true, fallback: '获取关注房间失败' },
+      );
+    }
   },
 
   async followMember(memberId: string) {
@@ -926,74 +1101,6 @@ export const pocketApi = {
         nextTime: params.nextTime || 0,
       },
       { fallback: '获取房间相册失败' },
-    );
-  },
-
-  async getOfficialTalkList(params: { ctime?: number; groupId?: number; limit?: number } = {}) {
-    return publicMediaPost(
-      `${BASE}/media/api/media/v1/talk/list`,
-      {
-        ctime: params.ctime || 0,
-        groupId: params.groupId ?? 0,
-        limit: params.limit || 20,
-      },
-      'get talk list failed',
-    );
-  },
-
-  async getOfficialTalk(talkId: string) {
-    return publicMediaPost(
-      `${BASE}/media/api/media/v1/talk`,
-      {
-        resId: String(talkId),
-      },
-      'get talk audio failed',
-    );
-  },
-
-  async getOfficialMusicList(params: { ctime?: number; limit?: number } = {}) {
-    return publicMediaPost(
-      `${BASE}/media/api/media/v1/music/list`,
-      {
-        ctime: params.ctime || 0,
-        limit: params.limit || 20,
-      },
-      'get music list failed',
-    );
-  },
-
-  async getOfficialMusic(musicId: string) {
-    return publicMediaPost(
-      `${BASE}/media/api/media/v1/music`,
-      {
-        resId: String(musicId),
-      },
-      'get music url failed',
-    );
-  },
-
-  async getOfficialVideoList(
-    params: { ctime?: number; typeId?: number; groupId?: number; limit?: number } = {},
-  ) {
-    return publicMediaPost(
-      `${BASE}/media/api/media/v1/video/list`,
-      {
-        ctime: params.ctime || 0,
-        typeId: params.typeId ?? 0,
-        groupId: params.groupId ?? 0,
-        limit: params.limit || 20,
-      },
-      'get video list failed',
-    );
-  },
-
-  async getOfficialVideo(videoId: string) {
-    return publicMediaPost(
-      `${BASE}/media/api/media/v1/video`,
-      {
-        resId: String(videoId),
-      },
-      'get video url failed',
     );
   },
 
@@ -1542,11 +1649,6 @@ export const pocketApi = {
       },
       { fallback: '获取礼物列表失败' },
     );
-  },
-
-  /** 诊断：原始 gift/list 参数探测（定位「记分礼物」分组参数） */
-  async probeGiftList(params: Record<string, unknown>) {
-    return pocketPost(`${BASE}/gift/api/v1/gift/list`, params, { fallback: '获取礼物列表失败' });
   },
 
   async getGiftListByType(liveId: string, giftType = 1) {

@@ -38,20 +38,41 @@ export default function RechargeScreen() {
 
   useEffect(() => {
     // 自身口袋 id（充值页要手输，预填）
+    let active = true;
     void (async () => {
       try {
         const res: any = await pocketApi.loginCheckToken();
-        const id = res?.content?.userInfo?.userId ?? res?.content?.userId ?? '';
-        if (id) setSelfPocketId(String(id));
+        const id =
+          res?.content?.userInfo?.baseUserInfo?.userId ??
+          res?.content?.userInfo?.userId ??
+          res?.content?.baseUserInfo?.userId ??
+          res?.content?.userId ??
+          '';
+        if (id && active) setSelfPocketId(String(id));
       } catch {
         /* 拿不到就不预填，不影响充值页本身 */
       }
     })();
     armSlowTimer();
     return () => {
+      active = false;
       if (slowTimer.current) clearTimeout(slowTimer.current);
     };
   }, [armSlowTimer]);
+
+  useEffect(() => {
+    if (!selfPocketId) return;
+    webViewRef.current?.injectJavaScript(`
+      (function () {
+        try {
+          window.__POCKET_ID__ = ${JSON.stringify(selfPocketId)};
+          var el = document.querySelector('#pocket_id');
+          if (el && !el.value) el.value = window.__POCKET_ID__;
+        } catch (e) {}
+      })();
+      true;
+    `);
+  }, [selfPocketId]);
 
   const reloadWeb = () => {
     setWebError('');
@@ -75,8 +96,8 @@ export default function RechargeScreen() {
           style={styles.web}
           javaScriptEnabled
           domStorageEnabled
-          originWhitelist={['*']}
-          mixedContentMode="always"
+          originWhitelist={['https://*', 'alipays://*', 'weixin://*']}
+          mixedContentMode="never"
           startInLoadingState
           userAgent="Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 PocketFans201807"
           /* 页面内容加载前把自身口袋 id 塞进 window，页面就绪后填入 #pocket_id */

@@ -200,7 +200,6 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
         setHoverIndex(null);
         settle(h * cellWRef.current);
         scaleTo(1);
-        dragStretch.setValue(1);
         Animated.spring(dragStretch, {
           toValue: 1,
           tension: 240,
@@ -260,22 +259,22 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
               },
             ]}
           >
-            <GlassSurface
-              role="selector"
-              radius={999}
-              asBackground
-              // 静止：低调浅灰（不是亮白，避免像一块贴纸）
-              // 拖动：更透但仍保留材质 —— 完全透明等于把玻璃删了，不是液态玻璃；
-              // 拖动要的是「玻璃流过」：白纱变薄 + AGSL 边缘折射/色散更明显。
-              tintColor={
-                hoverIndex !== null
-                  ? isDark
-                    ? 'rgba(255,255,255,0.04)'
-                    : 'rgba(255,255,255,0.20)'
-                  : isDark
-                    ? 'rgba(255,255,255,0.10)'
-                    : 'rgba(232,232,238,0.40)'
-              }
+            {/* 动画胶囊不套 GlassSurface（避免 transform 容器内 BlurView 裁切与双层模糊耗电） */}
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  borderRadius: 999,
+                  backgroundColor:
+                    hoverIndex !== null
+                      ? isDark
+                        ? 'rgba(255,255,255,0.06)'
+                        : 'rgba(255,255,255,0.22)'
+                      : isDark
+                        ? 'rgba(255,255,255,0.10)'
+                        : 'rgba(232,232,238,0.40)',
+                },
+              ]}
             />
           </Animated.View>
           {items.map((item, i) => (

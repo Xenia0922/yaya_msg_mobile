@@ -7,19 +7,14 @@ const path = require('path');
 
 const projectRoot = path.join(__dirname, '..');
 const androidDir = path.join(projectRoot, 'android');
-const apkOutputDir = path.join('E:/yymsg/APK');
+const apkOutputDir = path.resolve(process.env.YAYA_APK_OUTPUT || 'E:/yymsg/APK');
+const noCopy = process.argv.includes('--no-copy');
 const pkg = require(path.join(projectRoot, 'package.json'));
-let branch = '';
-try {
-  branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot }).toString().trim();
-} catch {}
-const requestedFlavor = String(process.env.YAYA_FLAVOR || (branch === 'plus' ? 'plus' : 'public'))
-  .trim()
-  .toLowerCase();
+const { writeBuildChannel, detectFlavor, channelFile } = require('./write-build-channel');
+const requestedFlavor = detectFlavor();
 if (!['plus', 'public'].includes(requestedFlavor))
   throw new Error('YAYA_FLAVOR 必须为 plus 或 public');
 const FLAVOR = requestedFlavor === 'plus' ? 'plus' : '';
-const { writeBuildChannel, channelFile } = require('./write-build-channel');
 const originalChannel = fs.readFileSync(channelFile, 'utf8');
 
 console.log('🔨 Building Android release APK...');
@@ -28,8 +23,9 @@ const gradleCmd = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 // 快速验证（只出一个 ABI + 不打包 universal）：
 //   YAYA_ABIS=x86_64 YAYA_UNIVERSAL=false node scripts/build-apk.js
 //   全量 4 包 + Compose dexing 约 15 分钟；单 ABI 约 1-2 分钟
+const abiList = String(process.env.YAYA_ABIS || 'arm64-v8a,x86_64').trim();
 const extraProps = [
-  process.env.YAYA_ABIS ? `-Pyaya.abis=${process.env.YAYA_ABIS}` : '',
+  `-Pyaya.abis=${abiList}`,
   process.env.YAYA_UNIVERSAL ? `-Pyaya.universal=${process.env.YAYA_UNIVERSAL}` : '',
 ]
   .filter(Boolean)
@@ -72,11 +68,16 @@ const baseName = FLAVOR ? `yaya-msg-mobile-${FLAVOR}` : 'yaya-msg-mobile';
 if (FLAVOR) console.log(`   （打包版本：${FLAVOR}）`);
 
 // v2.6.4 起启用 ABI 分包：arm64-v8a / armeabi-v7a / x86_64 / universal(全量)
-const abiSplits = (process.env.YAYA_ABIS || 'arm64-v8a,x86_64')
+const abiSplits = abiList
   .split(',')
   .map((abi) => abi.trim())
   .filter(Boolean);
 const universalEnabled = String(process.env.YAYA_UNIVERSAL || 'true').toLowerCase() === 'true';
+
+if (noCopy) {
+  console.log('✅ Build finished (--no-copy: skipped copying APKs).');
+  process.exit(0);
+}
 
 // Ensure APK output dir exists
 if (!fs.existsSync(apkOutputDir)) {
@@ -102,7 +103,7 @@ for (const abi of abiSplits) {
 
 const universalSrc = path.join(apkDir, 'app-universal-release.apk');
 if (universalEnabled && fileExists(universalSrc)) {
-  const destName = `${baseName}-v${version}.apk`;
+  const destName = `${baseName}-v${version}-universal.apk`;
   const destApk = path.join(apkOutputDir, destName);
   fs.copyFileSync(universalSrc, destApk);
   copied.push({ abi: 'universal', file: destApk });

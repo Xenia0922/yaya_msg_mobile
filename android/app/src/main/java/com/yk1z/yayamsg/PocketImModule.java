@@ -117,6 +117,11 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     }
   }
 
+  private static String maskId(String raw) {
+    if (TextUtils.isEmpty(raw)) return "";
+    return raw.length() <= 4 ? "****" : "***" + raw.substring(raw.length() - 4);
+  }
+
   private void initOnce(String appKey) {
     if (inited) return;
     SDKOptions options = new SDKOptions();
@@ -126,13 +131,13 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     options.asyncInitSDK = false;
     options.reducedIM = true;
     options.enableBackOffReconnectStrategy = true;
-    // 诊断期打开 SDK 控制台日志（logcat tag: NIM / nim），排查登录 414 后应关闭
-    options.consoleLogEnabled = true;
-    android.util.Log.i(TAG, "init appKey=" + options.appKey);
+    // 仅 Debug 打开 SDK 控制台日志，Release 关闭
+    options.consoleLogEnabled = BuildConfig.DEBUG;
+    if (BuildConfig.DEBUG) android.util.Log.i(TAG, "init appKey=" + options.appKey);
     try {
       NIMClient.init(getReactApplicationContext().getApplicationContext(), null, options);
       inited = true;
-      android.util.Log.i(TAG, "init done, status=" + NIMClient.getStatus());
+      if (BuildConfig.DEBUG) android.util.Log.i(TAG, "init done, status=" + NIMClient.getStatus());
     } catch (Throwable t) {
       android.util.Log.e(TAG, "init failed", t);
       throw t;
@@ -175,7 +180,9 @@ public class PocketImModule extends ReactContextBaseJavaModule {
       public void run() {
         try {
           initOnce(DEFAULT_APP_KEY);
-          android.util.Log.i(TAG, "login accid=" + accid + " tokenLen=" + (token == null ? 0 : token.length()));
+          if (BuildConfig.DEBUG) {
+            android.util.Log.i(TAG, "login accid=" + maskId(accid) + " tokenLen=" + (token == null ? 0 : token.length()));
+          }
           NIMClient.getService(AuthService.class)
               .login(new LoginInfo(accid, token))
               .setCallback(new RequestCallback<LoginInfo>() {
@@ -265,13 +272,15 @@ public class PocketImModule extends ReactContextBaseJavaModule {
           initOnce(DEFAULT_APP_KEY);
           Class<?> pc = Class.forName("com.netease.nimlib.sdk.qchat.param.QChatSubscribeAllChannelParam");
           java.lang.reflect.Constructor<?>[] ctors = pc.getConstructors();
-          StringBuilder dump = new StringBuilder("subscribeAllChannelParam ctors:");
-          for (java.lang.reflect.Constructor<?> c : ctors) {
-            dump.append(" [");
-            for (Class<?> pt : c.getParameterTypes()) dump.append(pt.getSimpleName()).append(',');
-            dump.append(']');
+          if (BuildConfig.DEBUG) {
+            StringBuilder dump = new StringBuilder("subscribeAllChannelParam ctors:");
+            for (java.lang.reflect.Constructor<?> c : ctors) {
+              dump.append(" [");
+              for (Class<?> pt : c.getParameterTypes()) dump.append(pt.getSimpleName()).append(',');
+              dump.append(']');
+            }
+            android.util.Log.d(TAG, dump.toString());
           }
-          android.util.Log.e(TAG, dump.toString());
 
           Object param = null;
           for (java.lang.reflect.Constructor<?> c : ctors) {
@@ -464,6 +473,29 @@ public class PocketImModule extends ReactContextBaseJavaModule {
         }
       }
     });
+  }
+
+  @Override
+  public void invalidate() {
+    main.post(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          if (!inited) return;
+          QChatServiceObserver observer = NIMClient.getService(QChatServiceObserver.class);
+          if (messageObserver != null) {
+            observer.observeReceiveMessage(messageObserver, false);
+            messageObserver = null;
+          }
+          if (systemObserver != null) {
+            observer.observeReceiveSystemNotification(systemObserver, false);
+            systemObserver = null;
+          }
+        } catch (Throwable ignored) {
+        }
+      }
+    });
+    super.invalidate();
   }
 
   @Override

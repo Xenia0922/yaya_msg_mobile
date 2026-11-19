@@ -275,6 +275,10 @@ object NimProtocol {
     ((value shr 24) and 0xff).toByte(),
   )
 
+  fun littleEndianInt64(value: Long): ByteArray = ByteArray(8) { index ->
+    ((value ushr (index * 8)) and 0xffL).toByte()
+  }
+
   fun rsaKeyVersion(): Int = RSA_KEY_VERSION
 
   fun concat(vararg chunks: ByteArray): ByteArray {

@@ -52,13 +52,14 @@ export const useMemberStore = create<MemberState>((set) => ({
 interface UiState {
   tabBarHiddenByRoute: { Media: boolean; Rooms: boolean };
   toastMessage: string;
+  toastTone: 'success' | 'error' | 'info' | null;
   /**
    * 当前屏幕的「玻璃折射背景」：房间页打开时挂成员房间的背景图（+遮罩色），
    * 让房间里的玻璃折射房间背景而不是全局软件背景；离开屏幕清 null 还原全局。
    */
   screenBackdrop: { uri: string; scrim: string } | null;
   setTabBarHidden: (hidden: boolean, route: 'Media' | 'Rooms') => void;
-  showToast: (message: string) => void;
+  showToast: (message: string, tone?: 'success' | 'error' | 'info') => void;
   hideToast: () => void;
   setScreenBackdrop: (v: { uri: string; scrim: string } | null) => void;
 }
@@ -66,6 +67,7 @@ interface UiState {
 export const useUiStore = create<UiState>((set) => ({
   tabBarHiddenByRoute: { Media: false, Rooms: false },
   toastMessage: '',
+  toastTone: null,
   screenBackdrop: null,
   setTabBarHidden: (hidden, route) =>
     set((state) =>
@@ -73,8 +75,8 @@ export const useUiStore = create<UiState>((set) => ({
         ? state
         : { tabBarHiddenByRoute: { ...state.tabBarHiddenByRoute, [route]: hidden } },
     ),
-  showToast: (message) => set({ toastMessage: message }),
-  hideToast: () => set({ toastMessage: '' }),
+  showToast: (message, tone) => set({ toastMessage: message, toastTone: tone ?? null }),
+  hideToast: () => set({ toastMessage: '', toastTone: null }),
   setScreenBackdrop: (v) => set({ screenBackdrop: v }),
 }));
 
@@ -164,8 +166,9 @@ interface UpdateState {
   checkUpdate: (force?: boolean) => Promise<boolean>;
 }
 
-// 请求互斥：并发/连点只发一个请求
+// 请求互斥：并发/连点只发一个请求；seq 防止慢请求 finally 误清后续 force 请求的锁与结果
 let updateChecking = false;
+let updateCheckSeq = 0;
 
 export const useUpdateStore = create<UpdateState>((set) => ({
   hasUpdate: false,
@@ -189,16 +192,18 @@ export const useUpdateStore = create<UpdateState>((set) => ({
     if (updateChecking && !force) return false;
     // 先占锁再做任何 await：原实现把锁放在 AsyncStorage.getItem 之后，并发点按可同时穿透
     updateChecking = true;
+    const seq = ++updateCheckSeq;
     const { lastCheckedAt } = useUpdateStore.getState();
     // 合并内存与持久化的检查时间：非强制且 24h 内已查过则直接跳过（启动静默限流）
     const persisted = await AsyncStorage.getItem(UPDATE_LAST_CHECK_KEY).catch(() => null);
     const persistedTs = persisted ? Number(persisted) || 0 : 0;
     const lastTs = Math.max(lastCheckedAt, persistedTs);
     if (!force && lastTs && Date.now() - lastTs < UPDATE_CHECK_INTERVAL) {
-      updateChecking = false;
+      if (seq === updateCheckSeq) updateChecking = false;
       return false;
     }
     const finish = (has: boolean, tag: string, url: string) => {
+      if (seq !== updateCheckSeq) return;
       const now = Date.now();
       set({
         hasUpdate: has,
@@ -248,7 +253,7 @@ export const useUpdateStore = create<UpdateState>((set) => ({
       finish(false, '', '');
       return false;
     } finally {
-      updateChecking = false;
+      if (seq === updateCheckSeq) updateChecking = false;
     }
   },
 }));

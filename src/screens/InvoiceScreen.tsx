@@ -131,14 +131,10 @@ export default function InvoiceScreen() {
     const disabled = item.invoiceStatus !== 0;
     const selected = item.selected;
     const statusLabel = statusLabels[item.invoiceStatus] || t('未知');
-    const statusColor =
-      item.invoiceStatus === 0
-        ? palette.success
-        : item.invoiceStatus === 2
-          ? palette.fill2
-          : palette.labelTertiary;
+    const statusColor = item.invoiceStatus === 0 ? palette.success : palette.labelTertiary;
     return (
       <View
+        key={item.dataId || String(item.tradeTime)}
         style={[
           styles.orderCard,
           {

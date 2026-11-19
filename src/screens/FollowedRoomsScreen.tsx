@@ -21,6 +21,7 @@ import {
   resetQChatSession,
   sendRoomSticker,
   sendRoomTextMessage,
+  subscribeRoomChannel,
   type RoomSticker,
 } from '../services/pocketNim/qchat';
 import { getNimSessionEpoch, subscribeNimSession } from '../services/pocketNim/session';
@@ -185,7 +186,6 @@ const ToolbarShell = (IS_SAMSUNG ? View : BlurView) as unknown as React.Componen
 >;
 import { useBlurTarget } from '../components/BlurTarget';
 import { GlassSegmented } from '../components/GlassSegmented';
-import { pocketImJoinChannel } from '../native/PocketIm';
 import { setPipPlaying } from '../utils/pip';
 import { ListBottomSpacer } from '../components/ListBottomSpacer';
 type FollowedRoom = {
@@ -914,16 +914,26 @@ function AudioMediaCard({
   // 命中缓存直接用（滚回列表/重渲染不重复探测）
   const cachedDur = media.url ? ROOM_DUR_CACHE.get(media.url) : '';
   const [resolvedDur, setResolvedDur] = useState(media.duration || cachedDur || '');
-  // 主路径：原生 MediaMetadataRetriever 读时长（不起播放器，稳定、快）
+  const [probeFailed, setProbeFailed] = useState(false);
+  // 主路径：原生 MediaMetadataRetriever 读时长；仅失败后才挂载隐藏 <Video> 兜底，避免并发创建多 Exo 实例
   useEffect(() => {
     if (resolvedDur || !media.url) return;
     let alive = true;
-    probeMediaDurationSeconds(media.url).then((sec) => {
-      if (!alive || !(sec > 0)) return;
-      const s = String(Math.round(sec));
-      ROOM_DUR_CACHE.set(media.url, s);
-      setResolvedDur(s);
-    });
+    setProbeFailed(false);
+    probeMediaDurationSeconds(media.url)
+      .then((sec) => {
+        if (!alive) return;
+        if (sec > 0) {
+          const s = String(Math.round(sec));
+          rememberRoomDuration(media.url, s);
+          setResolvedDur(s);
+        } else {
+          setProbeFailed(true);
+        }
+      })
+      .catch(() => {
+        if (alive) setProbeFailed(true);
+      });
     return () => {
       alive = false;
     };
@@ -980,8 +990,8 @@ function AudioMediaCard({
           {playing ? t('暂停') : resolvedDur ? `${resolvedDur}s` : t('播放')}
         </Text>
       </TouchableOpacity>
-      {/* 隐藏探测 Video：只在未知时长时挂载（解析完立即卸载，避免同屏几十个 Exo 实例互相抢资源） */}
-      {!resolvedDur && media.url ? (
+      {/* 隐藏探测 Video：仅在原生探测失败且未知时长时兜底挂载 */}
+      {!resolvedDur && probeFailed && media.url ? (
         <Video
           source={playerSource(media.url)}
           style={{ width: 1, height: 1, opacity: 0, position: 'absolute', top: -9999, left: -9999 }}
@@ -993,7 +1003,7 @@ function AudioMediaCard({
             const d = Number(data?.duration || 0);
             if (d > 0) {
               const sec = String(Math.round(d));
-              if (media.url) ROOM_DUR_CACHE.set(media.url, sec);
+              if (media.url) rememberRoomDuration(media.url, sec);
               setResolvedDur(sec);
             }
           }}
@@ -1010,6 +1020,16 @@ function AudioMediaCard({
 
 /** 房间语音时长缓存（url → "秒"）：探测结果全局复用，避免重复创建 Exo 实例 */
 const ROOM_DUR_CACHE = new Map<string, string>();
+const ROOM_DUR_CACHE_MAX = 200;
+function rememberRoomDuration(url: string, sec: string) {
+  if (!url || !sec) return;
+  if (ROOM_DUR_CACHE.has(url)) ROOM_DUR_CACHE.delete(url);
+  ROOM_DUR_CACHE.set(url, sec);
+  if (ROOM_DUR_CACHE.size > ROOM_DUR_CACHE_MAX) {
+    const first = ROOM_DUR_CACHE.keys().next().value;
+    if (first !== undefined) ROOM_DUR_CACHE.delete(first);
+  }
+}
 
 /** 资料卡头像尺寸（与 styles.userCardAvatar 同步；头像框叠加按此放大） */
 const USER_CARD_AVATAR_SIZE = 64;
@@ -1614,16 +1634,20 @@ export default function FollowedRoomsScreen() {
     };
   }, [selectedRoom]);
 
+  const isWideTablet = Math.min(roomWidth, roomHeight) >= 600;
   useEffect(() => {
     setLiveImmersiveMode(!!roomPlayer && roomPlayerFullscreen);
     if (roomPlayerFullscreen) {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    } else if (isWideTablet && selectedRoom) {
+      ScreenOrientation.unlockAsync().catch(() => {});
     } else {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
     return () => setLiveImmersiveMode(false);
-  }, [roomPlayer, roomPlayerFullscreen]);
+  }, [roomPlayer, roomPlayerFullscreen, isWideTablet, selectedRoom]);
 
+  const closeRoomRef = useRef<() => void>(() => {});
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       // ⚠️ 失焦的 tab 页仍持有订阅：切到别的 tab 后按返回会关掉后台房间而不是当前页（修复）
@@ -1649,13 +1673,7 @@ export default function FollowedRoomsScreen() {
         return true;
       }
       if (selectedRoom) {
-        setRoomPlayer(null);
-        setRoomPlayerFullscreen(false);
-        setPlayingMedia(null);
-        setSelectedRoom(null);
-        setLiveImmersiveMode(false);
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-        setTabBarHidden(false);
+        closeRoomRef.current();
         return true;
       }
       return false;
@@ -1908,8 +1926,8 @@ export default function FollowedRoomsScreen() {
     }
   }, []);
 
-  // 进房/切房：重置展开态并拉取该房间的精华消息
-  const essenceChannelId = String(selectedRoom?.channelId || '');
+  // 进房/切房：重置展开态并拉取该房间的精华消息（大小房间分别拉取对应 channelId）
+  const essenceChannelId = selectedRoom ? roomChannelId(selectedRoom, roomMode) : '';
   useEffect(() => {
     void loadRoomEssences(essenceChannelId);
     setStickerPanelOpen(false);
@@ -1918,6 +1936,11 @@ export default function FollowedRoomsScreen() {
   const handleSendRoomSticker = useCallback(
     async (sticker: RoomSticker) => {
       if (roomSending) return;
+      const followId = String(selectedRoom?.id || selectedRoom?.userId || '');
+      if (followId && !followedIdsRef.current.has(followId)) {
+        setRoomSendHint(t('关注后才能发房间消息'));
+        return;
+      }
       const target = { ...activeRoomRef.current };
       if (!target.channelId) {
         setRoomSendHint(t('房间未就绪'));
@@ -1936,6 +1959,7 @@ export default function FollowedRoomsScreen() {
           { serverId, channelId: target.channelId, bubbleId: sendBubbleId },
           sticker,
         );
+        if (activeRoomRef.current.channelId !== target.channelId) return;
         // 自己发言后视口回到底部（否则冻结快照里看不到刚发的消息）
         roomAtBottomRef.current = true;
         setRoomAtBottom(true);
@@ -1948,7 +1972,7 @@ export default function FollowedRoomsScreen() {
         setRoomSending(false);
       }
     },
-    [roomSending, sendBubbleId, t],
+    [roomSending, sendBubbleId, t, selectedRoom?.id, selectedRoom?.userId],
   );
 
   const handleSendRoomMessage = useCallback(async () => {
@@ -1978,9 +2002,14 @@ export default function FollowedRoomsScreen() {
       if (!serverId || serverId === '0') {
         throw new Error(t('缺少房间 serverId，无法发言'));
       }
+      if (activeRoomRef.current.channelId !== channelId) return;
       await sendRoomTextMessage({ serverId, channelId, bubbleId: sendBubbleId }, text, replyTarget);
+      if (activeRoomRef.current.channelId !== channelId) return;
       setRoomDraft('');
       setReplyTarget(null);
+      roomAtBottomRef.current = true;
+      setRoomAtBottom(true);
+      setRoomFreezeKey(null);
       // ⚠️ 自己发的消息立即上屏：QChat 回显链路不稳定，等 15s 轮询太久（用户反馈）。
       // 发送成功即静默拉最新页合并（mergeMessages 按 msgId 去重，与轮询同路径、不会重复）。
       setTimeout(() => refreshRoomMessagesRef.current?.(), 500);
@@ -2087,6 +2116,7 @@ export default function FollowedRoomsScreen() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     setTabBarHidden(false);
   }, [setScreenBackdrop, setTabBarHidden]);
+  closeRoomRef.current = closeRoom;
 
   /** 置顶状态统一出口：先同步内存/ref，再串行落盘（上一个写完成才写下一个，防止旧快照覆盖新状态） */
   const persistPinned = useCallback(
@@ -2531,14 +2561,13 @@ export default function FollowedRoomsScreen() {
         serverId: String(room.serverId || ''),
         memberId: String(room.id || ''),
       };
-      // ⚠️ 云信圈组：必须 join 频道，服务端才会推送该频道消息。
-      // 此前从未 join → QChat 一条推送都收不到，房间消息只能靠轮询（"不实时"的真正根因）。
+      // 云信圈组：订阅频道（Android commonlink 走 cmd 25/7；保持字符串避免 64 位 ID 丢精度）。
       {
-        const sidNum = Number(room.serverId || 0);
-        const cidNum = Number(channelId || 0);
-        if (sidNum > 0 && cidNum > 0) {
-          void pocketImJoinChannel(sidNum, cidNum).then((ok) => {
-            if (!ok) logWarn(`[qchat] joinChannel 未成功 sid=${sidNum} cid=${cidNum}`);
+        const sidStr = String(room.serverId || '').trim();
+        const cidStr = String(channelId || '').trim();
+        if (sidStr && sidStr !== '0' && cidStr && cidStr !== '0') {
+          void subscribeRoomChannel(sidStr, cidStr).then((ok) => {
+            if (!ok) logWarn(`[qchat] joinChannel 未成功 sid=${sidStr} cid=${cidStr}`);
           });
         }
       }
@@ -2649,7 +2678,7 @@ export default function FollowedRoomsScreen() {
           if (cachedMeta.bg) ensureBgCached(cachedMeta.bg); // 后台补齐/校验本地副本
         } else {
           roomMetaCache.current[channelId] = { name: '', bg: '' };
-          setRoomMetaCached(channelId, { name: '', bg: '' }); // 负结果也落盘：避免每次进房间都白拉一次
+          // 仅内存中占位，不把空值写进持久化缓存；真实元数据回来后再落盘
           // 小房间 room/info 服务端 2001 无权限（实测）→ 塞纳河 server/detail 拿 channelInfoList 房间名 + 背景墙图
           pocketApi
             .getRoomMeta(
@@ -2661,13 +2690,13 @@ export default function FollowedRoomsScreen() {
               // Y22: 期间已切房（seq 过期或 channelId 变化）则丢弃，避免旧房间标题/背景覆盖
               if (openSeq !== roomSeqRef.current || activeChannelRef.current !== channelId) return;
               roomMetaCache.current[channelId] = meta;
-              setRoomMetaCached(channelId, meta); // 落盘：下次启动进房间秒显名字/背景
+              if (meta.name || meta.bg) setRoomMetaCached(channelId, meta);
               setRoomMeta({ ...meta, bg: getBgDisplayUri(meta.bg) });
               if (meta.bg) ensureBgCached(meta.bg); // 后台落盘，下次进房间直接本地显示
             })
             .catch(() => {
+              // 失败仅置内存占位（本次会话不重复打接口），不把空结果持久化覆盖旧缓存
               roomMetaCache.current[channelId] = { name: '', bg: '' };
-              setRoomMetaCached(channelId, { name: '', bg: '' });
             });
         }
         // 进入房间后立即检测该成员上麦状态（驱动房间内上麦按钮；单成员扫描不影响其它成员）
@@ -2840,10 +2869,10 @@ export default function FollowedRoomsScreen() {
    */
   const rejoinActiveChannel = useCallback(() => {
     const target = activeRoomRef.current;
-    const sid = Number(target?.serverId || 0);
-    const cid = Number(target?.channelId || 0);
-    if (sid > 0 && cid > 0) {
-      void pocketImJoinChannel(sid, cid).then((ok) => {
+    const sid = String(target?.serverId || '').trim();
+    const cid = String(target?.channelId || '').trim();
+    if (sid && sid !== '0' && cid && cid !== '0') {
+      void subscribeRoomChannel(sid, cid).then((ok) => {
         if (!ok && __DEV__) logWarn(`[qchat] rejoin 未成功 sid=${sid} cid=${cid}`);
       });
     }
@@ -2919,11 +2948,12 @@ export default function FollowedRoomsScreen() {
           /* 忽略 */
         }
       } else if (next === 'active') {
+        if (!navigation.isFocused()) return;
         setRoomLinkTick((v) => v + 1);
       }
     });
     return () => sub.remove();
-  }, []);
+  }, [navigation]);
 
   /**
    * 房间消息「实时」接收：云信圈组（QChat）推送。
@@ -4488,7 +4518,7 @@ export default function FollowedRoomsScreen() {
               /* 统一播放器（重写）：房间直播/录播 → PlayerScreen（控制条/全屏/内核路由/小窗/贡献榜） */
               <View
                 style={
-                  dual
+                  dual && !roomPlayerFullscreen
                     ? styles.roomPlayerPaneDual
                     : [styles.roomPlayerPage, { backgroundColor: '#000' }]
                 }

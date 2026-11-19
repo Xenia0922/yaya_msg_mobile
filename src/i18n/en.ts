@@ -182,6 +182,8 @@ export const en: Record<string, string> = {
   正在检查Token: 'Checking token...',
   Token有效: 'Token valid',
   'Token无效：{msg}': 'Token invalid: {msg}',
+  '服务端无法解析该 Token（可能已过期或复制不完整），请重新登录或核对完整 Token':
+    'Server could not parse this token (it may be expired or truncated). Please sign in again or check the full token.',
   '正在切换到{name}': 'Switching to {name}...',
   切换失败没有拿到目标账号ID: 'Switch failed: no target account ID',
   '切换账号失败：{msg}': 'Switch failed: {msg}',
@@ -1140,6 +1142,7 @@ export const en: Record<string, string> = {
   房间未就绪: 'Room not ready',
   关注后才能发房间消息: 'Follow the member before sending room messages',
   '复制 Token': 'Copy Token',
+  复制跨设备凭证: 'Copy Cross-Device Bundle',
   复制失败: 'Copy failed',
   '该类型私密翻牌未开放，请换一种类型':
     "This private reply type isn't available. Please choose another type",
@@ -1301,6 +1304,7 @@ export const en: Record<string, string> = {
   sessionRole: 'sessionRole',
   Token: 'Token',
   'Token 已复制': 'Token copied',
+  跨设备凭证已复制: 'Cross-device credentials copied',
   'Token 已失效，请重新获取': 'Token has expired. Please obtain a new one',
   'VIP 标识': 'VIP badge',
   '[链接消息]': '[Link message]',
