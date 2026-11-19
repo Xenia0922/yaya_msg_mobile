@@ -48,7 +48,10 @@
          （系统 dump 里 pictureInPictureParams=null，PiP 被静默拒绝）→「有概率唤不出系统小窗」。
          竖屏/横屏方向已由 JS 侧 expo-screen-orientation 的 lockAsync 全量接管
          （各页面 lockAsync(PORTRAIT_UP)、全屏播放 lockAsync(LANDSCAPE)），manifest 无需再锁。 -->
-    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:supportsPictureInPicture="true" android:resizeableActivity="true">
+    <!-- fontScale/density 必须由 Activity 自己处理：否则系统字体/密度变化会重建 Activity，
+         expo-modules-core 的 ActivityResultLauncher 在重建后可能未注册，选图时报
+         “unregistered ActivityResultLauncher”（背景图/相册选择失败）。 -->
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|fontScale|density|smallestScreenSize|layoutDirection|locale" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:supportsPictureInPicture="true" android:resizeableActivity="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
