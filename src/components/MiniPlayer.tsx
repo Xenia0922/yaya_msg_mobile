@@ -205,23 +205,27 @@ export function MiniPlayer() {
   // 是否已渲染为"后台 PiP 盖层"（全屏纯媒体，盖住页面其它 UI，保证系统悬浮窗画面干净）
   const [pipCover, setPipCover] = useState(false);
 
-  /** 按内容比例自适应小窗高度 + 同步系统 PiP 比例（原生回调与网页内核消息共用） */
-  const applyContentSize = useCallback((w: number, h: number) => {
-    if (!(w > 0 && h > 0)) return;
-    const rawH = Math.round((W * h) / w);
-    if (rawH > 420) {
-      // 超长内容（极高宽比）：cover 填满默认容器，避免小窗过高遮挡
-      boxHRef.current = H_MIN;
-      setBoxH(H_MIN);
-      setHasNatural(false);
-    } else {
-      const hh = Math.max(H_MIN, rawH);
-      boxHRef.current = hh;
-      setBoxH(hh);
-      setHasNatural(true);
-    }
-    setPipAspect(w, h);
-  }, []);
+  /** 按内容比例自适应小窗高度 + 同步系统 PiP 比例（原生回调与网页内核消息共用；直播跳过 naturalSize 避免 1920×1080 覆盖竖屏 9:16） */
+  const applyContentSize = useCallback(
+    (w: number, h: number) => {
+      if (info?.isLive && !info?.audioOnly) return;
+      if (!(w > 0 && h > 0)) return;
+      const rawH = Math.round((W * h) / w);
+      if (rawH > 420) {
+        // 超长内容（极高宽比）：cover 填满默认容器，避免小窗过高遮挡
+        boxHRef.current = H_MIN;
+        setBoxH(H_MIN);
+        setHasNatural(false);
+      } else {
+        const hh = Math.max(H_MIN, rawH);
+        boxHRef.current = hh;
+        setBoxH(hh);
+        setHasNatural(true);
+      }
+      setPipAspect(w, h);
+    },
+    [info?.isLive, info?.audioOnly],
+  );
   // 播放状态 → PiP 标志（小窗切后台自动进系统悬浮窗）
   useEffect(() => {
     // 上麦/纯音频胶囊不参与系统小窗：audioOnly 时始终关闭 PiP 标志，避免「唤出上麦胶囊后召回系统小窗」
@@ -428,23 +432,11 @@ export function MiniPlayer() {
               // 纯音频（上麦/电台）：原生不渲染画面，露出胶囊自己的主题底色（否则是一块黑）
               audioOnly={!!info.audioOnly}
               onSize={(e) => {
-                // 原生 onVideoSizeChanged 回调：按视频实际宽高自适应小窗容器（横屏 16:9 / 竖屏 9:16）
-                const w = e.nativeEvent?.width;
-                const h = e.nativeEvent?.height;
-                if (w > 0 && h > 0) {
-                  const rawH = Math.round((W * h) / w);
-                  if (rawH > 420) {
-                    boxHRef.current = H_MIN;
-                    setBoxH(H_MIN);
-                    setHasNatural(false);
-                  } else {
-                    const hh = Math.max(H_MIN, rawH);
-                    boxHRef.current = hh;
-                    setBoxH(hh);
-                    setHasNatural(true);
-                  }
-                  setPipAspect(w, h);
-                }
+                // 原生 onVideoSizeChanged 回调：按视频实际宽高自适应小窗容器（直播由 applyContentSize 跳过）
+                applyContentSize(
+                  Number(e.nativeEvent?.width) || 0,
+                  Number(e.nativeEvent?.height) || 0,
+                );
               }}
             />
           ) : (
@@ -471,25 +463,10 @@ export function MiniPlayer() {
               playWhenInactive
               ignoreSilentSwitch="ignore"
               onLoad={(e) => {
-                // 按内容比例自适应小窗高度：竖屏内容竖着小窗、横屏 16:9，比例完全贴合 → contain 无黑边
                 const ns = e?.naturalSize;
                 if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) {
-                  const rawH = Math.round((W * Number(ns.height)) / Number(ns.width));
-                  if (rawH > 420) {
-                    // 超长内容（极高宽比）：cover 填满默认容器，避免小窗过高遮挡
-                    boxHRef.current = H_MIN;
-                    setBoxH(H_MIN);
-                    setHasNatural(false);
-                  } else {
-                    const h = Math.max(H_MIN, rawH);
-                    boxHRef.current = h;
-                    setBoxH(h);
-                    setHasNatural(true);
-                  }
-                  // 同步 PiP 窗口比例（切后台的系统悬浮窗也跟随内容方向）
-                  setPipAspect(ns.width, ns.height);
+                  applyContentSize(Number(ns.width), Number(ns.height));
                 } else {
-                  // 拿不到内容比例：cover 填满容器（无黑边），高度退回默认
                   setHasNatural(false);
                 }
                 // 续播到交棒位置（仅录播）

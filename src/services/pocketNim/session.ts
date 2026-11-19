@@ -14,6 +14,7 @@
  */
 
 import { chatroomDisconnect, isPocketNimChatroomAvailable } from '../../native/PocketNimChatroom';
+import { isPocketImAvailable, pocketImLogout } from '../../native/PocketIm';
 import { logInfo } from '../../utils/runtimeLog';
 import { clearNimCredentials } from './credentials';
 import { resetQChatSession } from './qchat';
@@ -52,6 +53,11 @@ export function resetNimSession(reason: string): void {
   }
   try {
     if (isPocketNimChatroomAvailable()) chatroomDisconnect();
+  } catch {
+    /* 忽略 */
+  }
+  try {
+    if (isPocketImAvailable()) pocketImLogout();
   } catch {
     /* 忽略 */
   }

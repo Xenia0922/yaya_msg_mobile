@@ -172,6 +172,12 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
           promise.reject("EBADAPK", "安装包校验失败（不是本应用的安装包）");
           return;
         }
+        // 防降级校验：不允许下载安装 versionCode 低于当前已安装版本的 APK
+        if (isDowngradeApk(pm, ctx.getPackageName(), info)) {
+          if (out.exists()) out.delete();
+          promise.reject("EDOWNGRADE", "安装包版本低于当前版本，已拒绝降级安装");
+          return;
+        }
         // 校验：签名证书必须与本应用一致（防 CDN/自建源被劫持推伪包）
         if (!verifyApkSigner(ctx, out)) {
           if (out.exists()) out.delete();
@@ -198,7 +204,17 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
         promise.reject("ENOENT", "安装包不存在");
         return;
       }
-      // 安装前再验一次签名：防止有人绕过 download() 直接传入被替换的缓存文件
+      // 安装前再验一次签名与版本：防止有人绕过 download() 直接传入被替换的缓存文件或旧包
+      PackageManager pm = getReactApplicationContext().getPackageManager();
+      PackageInfo info = pm.getPackageArchiveInfo(f.getAbsolutePath(), 0);
+      if (info == null || !getReactApplicationContext().getPackageName().equals(info.packageName)) {
+        promise.reject("EBADAPK", "安装包校验失败（不是本应用的安装包）");
+        return;
+      }
+      if (isDowngradeApk(pm, getReactApplicationContext().getPackageName(), info)) {
+        promise.reject("EDOWNGRADE", "安装包版本低于当前版本，已拒绝降级安装");
+        return;
+      }
       if (!verifyApkSigner(getReactApplicationContext(), f)) {
         promise.reject("EBADSIGN", "安装包签名校验失败（签名与本应用不一致，已拒绝安装）");
         return;
@@ -273,6 +289,22 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
    * 好处：不硬编码证书摘要，换签名/多渠道构建不会失效；缺点：若已装的应用本身是伪造包，
    * 则会自我比对通过（该场景需要用户先被诱导安装过一次，属另一层问题）。
    */
+  private static long versionCodeOf(PackageInfo pi) {
+    if (pi == null) return -1L;
+    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? pi.getLongVersionCode() : pi.versionCode;
+  }
+
+  private static boolean isDowngradeApk(PackageManager pm, String pkg, PackageInfo apkInfo) {
+    try {
+      PackageInfo installed = pm.getPackageInfo(pkg, 0);
+      long mine = versionCodeOf(installed);
+      long theirs = versionCodeOf(apkInfo);
+      return mine > 0 && theirs > 0 && theirs < mine;
+    } catch (Throwable ignored) {
+      return false;
+    }
+  }
+
   private boolean verifyApkSigner(ReactApplicationContext ctx, File apk) {
     PackageManager pm = ctx.getPackageManager();
     Set<String> mine = installedSignerDigests(pm, ctx.getPackageName());
@@ -328,7 +360,11 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     try {
       String current = url;
       for (int hop = 0; hop < 5; hop++) {
-        conn = (HttpURLConnection) new URL(current).openConnection();
+        URL parsed = new URL(current);
+        if (!"https".equalsIgnoreCase(parsed.getProtocol())) {
+          throw new Exception("更新下载仅允许 HTTPS 协议");
+        }
+        conn = (HttpURLConnection) parsed.openConnection();
         conn.setInstanceFollowRedirects(false);
         conn.setConnectTimeout(20000);
         conn.setReadTimeout(60000);
@@ -341,7 +377,7 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
           conn.disconnect();
           conn = null;
           if (loc == null || loc.isEmpty()) throw new Exception("重定向地址缺失");
-          current = loc.startsWith("http") ? loc : new URL(new URL(current), loc).toString();
+          current = loc.startsWith("http") ? loc : new URL(parsed, loc).toString();
           continue;
         }
         if (code != 200) throw new Exception("HTTP " + code);
@@ -379,7 +415,7 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
   private void emitProgress(long received, long total) {
     ReactApplicationContext ctx = getReactApplicationContext();
     try {
-      if (!ctx.hasActiveCatalystInstance()) return;
+      if (!ctx.hasActiveReactInstance()) return;
       WritableMap payload = Arguments.createMap();
       payload.putDouble("received", received);
       payload.putDouble("total", total);

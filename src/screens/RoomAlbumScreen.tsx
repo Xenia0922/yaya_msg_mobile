@@ -49,6 +49,7 @@ type AlbumItem = {
   type: 'image' | 'video';
   title: string;
   time: number;
+  duration: number;
   mode: RoomMode;
 };
 
@@ -117,6 +118,7 @@ function toItems(res: any, mode: RoomMode): AlbumItem[] {
         type,
         title: pickText(raw, ['starName', 'senderName', 'senderNickName', 'nickName'], ''),
         time: Number.isFinite(time) ? time : 0,
+        duration: mediaDuration(raw),
         mode,
       };
     })
@@ -295,9 +297,9 @@ export default function RoomAlbumScreen() {
               <View style={styles.playWrap} pointerEvents="none">
                 <MaterialCommunityIcons name="play" size={20} color="#FFFFFF" />
               </View>
-              {mediaDuration(item) > 0 ? (
+              {item.duration > 0 ? (
                 <View style={styles.durationBadge} pointerEvents="none">
-                  <Text style={styles.durationText}>{formatDuration(mediaDuration(item))}</Text>
+                  <Text style={styles.durationText}>{formatDuration(item.duration)}</Text>
                 </View>
               ) : null}
             </>

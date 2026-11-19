@@ -53,7 +53,7 @@ public class SecureVaultModule extends ReactContextBaseJavaModule {
   }
 
   /** 取密钥，不存在则生成（AES-256/GCM，不绑用户认证） */
-  private SecretKey getOrCreateKey() throws Exception {
+  private synchronized SecretKey getOrCreateKey() throws Exception {
     KeyStore ks = KeyStore.getInstance(KEYSTORE);
     ks.load(null);
     if (ks.containsAlias(KEY_ALIAS)) {

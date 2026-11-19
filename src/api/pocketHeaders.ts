@@ -1,14 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSettingsStore } from '../store';
+import { normalizePocketDeviceId } from '../utils/pocketToken';
 
 export type HeadersMap = Record<string, string>;
 
 export const BASE = 'https://pocketapi.48.cn';
 export const APP_VERSION = '7.0.41';
 export const APP_BUILD = '24011601';
-// 塞纳河48 官方客户端身份（取值实测自官方 1.3.5 APK）
-export const SEINE_APP_VERSION = '1.3.5';
-export const SEINE_APP_BUILD = 26102601;
 
 // ── 客户端身份常量（收敛历史上的 9 处硬编码；**取值与原字面量完全一致**，指纹不变）──
 // UA 画像按「接口族」区分（官方不同客户端/接口对不同 UA 敏感，不能统一成一条）。
@@ -29,10 +27,6 @@ export const DEVICE_ID_IOS_UUID_ALT = '7B93DFD0-472F-4736-A628-E85FAE086487';
 export const DEVICE_ID_IOS_HEX = '7b93dfd0472f4736a628e85fae086486';
 
 /** 塞纳河48 登录已合并到口袋48，所有登录与请求统一使用口袋48身份。 */
-export function isSeineProfile(): boolean {
-  return false;
-}
-
 export function createDeviceId(): string {
   const chars = 'QWERTYUIOPASDFGHJKLZXCVBNM1234567890';
   const rand = (length: number) => {
@@ -43,15 +37,17 @@ export function createDeviceId(): string {
   return `${rand(8)}-${rand(4)}-${rand(4)}-${rand(4)}-${rand(12)}`;
 }
 
-// 设备指纹持久化：DEVICE_ID 不再每次冷启动随机（随机 id 会被服务端风控判定为异常设备，
-// 也破坏「同一账号同一设备」的连续性）。首次生成后写入 AsyncStorage，后续启动复用；
-// 进程内同步先落一个临时 id 保证早期请求可用，AsyncStorage 读回后以持久值替换。
+// 进程内同步先落一个临时 id 保证早期请求可用，AsyncStorage 读回后以持久值替换，首次安装时落盘。
 export const DEVICE_ID_KEY = 'yaya_device_id_v1';
 export let DEVICE_ID = createDeviceId();
 export let deviceIdLoaded = false;
 AsyncStorage.getItem(DEVICE_ID_KEY)
   .then((saved) => {
-    if (saved) DEVICE_ID = saved;
+    if (saved) {
+      DEVICE_ID = saved;
+    } else {
+      AsyncStorage.setItem(DEVICE_ID_KEY, DEVICE_ID).catch(() => {});
+    }
     deviceIdLoaded = true;
   })
   .catch(() => {
@@ -74,22 +70,6 @@ export async function ensureDeviceId(): Promise<string> {
 // --- App Info / Headers factories ---
 
 export function appInfo(modern = false, deviceId = DEVICE_ID) {
-  // 塞纳河身份优先于 modern：身份由用户在登录页选择，不能被「现代接口」分支覆盖
-  if (isSeineProfile()) {
-    return {
-      IMEI: deviceId,
-      deviceId,
-      appName: 'seine48',
-      appVersion: SEINE_APP_VERSION,
-      appBuild: SEINE_APP_BUILD,
-      deviceName: 'SM-G9730',
-      osType: 'android',
-      osVersion: '12',
-      phoneName: 'SM-G9730',
-      phoneSystemVersion: '12',
-      vendor: 'Samsung',
-    };
-  }
   if (modern) {
     return {
       vendor: 'apple',
@@ -120,20 +100,16 @@ export function createHeaders(
   modern = false,
   deviceId = DEVICE_ID,
 ): HeadersMap {
-  const seine = isSeineProfile();
   const headers: HeadersMap = {
     'Content-Type': 'application/json;charset=utf-8',
-    'User-Agent': seine
-      ? `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`
-      : modern
-        ? UA_IOS_7135
-        : `PocketFans201807/${APP_VERSION} (iPhone; iOS 16.3.1; Scale/2.00)`,
+    'User-Agent': modern
+      ? UA_IOS_7135
+      : `PocketFans201807/${APP_VERSION} (iPhone; iOS 16.3.1; Scale/2.00)`,
     Host: 'pocketapi.48.cn',
     'Accept-Language': 'zh-Hans-CN;q=1',
     Accept: '*/*',
     appInfo: JSON.stringify(appInfo(modern, deviceId)),
   };
-  if (seine) headers['X-Custom-Device-Type'] = 'ANDROID';
   if (token) headers.token = token;
   if (pa) headers.pa = pa;
   return headers;
@@ -141,8 +117,6 @@ export function createHeaders(
 
 export function createModernHeaders(token?: string, pa?: string | null): HeadersMap {
   const headers = createHeaders(token, pa, true);
-  // 塞纳河身份下保留 createHeaders 生成的 Android 1.3.5 头，不再改写成 iOS
-  if (isSeineProfile()) return headers;
   headers.appInfo = JSON.stringify({
     vendor: 'apple',
     deviceId: DEVICE_ID_IOS_UUID,
@@ -188,75 +162,76 @@ export function createPocketAndroidHeaders(token?: string, pa?: string | null): 
       vendor: 'Samsung',
     }),
   };
-  if (isSeineProfile()) {
-    headers['User-Agent'] =
-      `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`;
-    headers['X-Custom-Device-Type'] = 'ANDROID';
-    headers.appInfo = JSON.stringify({
-      IMEI: DEVICE_ID_IOS_HEX,
-      appBuild: SEINE_APP_BUILD,
-      appName: 'seine48',
-      appVersion: SEINE_APP_VERSION,
-      deviceId: DEVICE_ID_IOS_HEX,
+  if (token) headers.token = token;
+  if (pa) headers.pa = pa;
+  return headers;
+}
+
+/** 把持久化 UUID 规范映射为口袋48 Android 16 位十六进制设备 ID */
+export function derivePocketHexDeviceId(rawId: string): string {
+  return Array.from(
+    String(rawId || '')
+      .replace(/[^a-z0-9]/gi, '')
+      .slice(0, 16),
+    (c) => (c.charCodeAt(0) % 16).toString(16),
+  )
+    .join('')
+    .padEnd(16, '0');
+}
+
+/** 获取本机持久化 deviceId 对应的 16 位十六进制设备标识 */
+export async function getLocalPocketDeviceId(): Promise<string> {
+  return derivePocketHexDeviceId(await ensureDeviceId());
+}
+
+/** 获取当前账号请求应携带的 deviceId（优先使用跨设备导入的绑定值，否则用本机持久化 ID） */
+export async function resolveBoundPocketDeviceId(): Promise<string> {
+  const stored = normalizePocketDeviceId(useSettingsStore.getState().settings.p48DeviceId);
+  if (stored) return stored;
+  return getLocalPocketDeviceId();
+}
+
+/** 与桌面版 `pocket-client-profile.js` 一致的 Android 鉴权请求头（7.1.45 pocket48 / 1.3.5 seine48） */
+export async function createPocketProfileHeaders(
+  profile: 'pocket48' | 'seine48' = 'pocket48',
+  token?: string,
+  pa?: string | null,
+  explicitDeviceId?: string,
+): Promise<HeadersMap> {
+  const deviceId =
+    explicitDeviceId === ''
+      ? ''
+      : normalizePocketDeviceId(explicitDeviceId) || (await resolveBoundPocketDeviceId());
+  const appName = profile === 'seine48' ? 'seine48' : 'pocket48';
+  const appVersion = appName === 'seine48' ? '1.3.5' : '7.1.45';
+  const appBuild = appName === 'seine48' ? 26102601 : '26102701';
+  const headers: HeadersMap = {
+    'Content-Type': 'application/json; charset=UTF-8',
+    'User-Agent': `PocketFans201807/${appVersion}_${appBuild} (SM-G9730:Android 12;Samsung V417IR release-keys)`,
+    'Accept-Language': 'zh-Hans-CN;q=1',
+    appInfo: JSON.stringify({
+      IMEI: deviceId,
+      deviceId,
+      appName,
+      appVersion,
+      appBuild,
       deviceName: 'SM-G9730',
       osType: 'android',
       osVersion: '12',
       phoneName: 'SM-G9730',
       phoneSystemVersion: '12',
       vendor: 'Samsung',
-    });
-  }
+    }),
+  };
+  if (appName === 'seine48') headers['X-Custom-Device-Type'] = 'ANDROID';
   if (token) headers.token = token;
   if (pa) headers.pa = pa;
   return headers;
 }
 
 export async function createPocketLoginHeaders(): Promise<HeadersMap> {
-  const deviceId = Array.from(
-    (await ensureDeviceId()).replace(/[^a-z0-9]/gi, '').slice(0, 16),
-    (c) => (c.charCodeAt(0) % 16).toString(16),
-  )
-    .join('')
-    .padEnd(16, '0');
-  // 登录/注册身份：跟随登录页选择（塞纳河账号用塞纳河客户端身份登录）
-  const seine = isSeineProfile();
-  return {
-    'Content-Type': 'application/json; charset=UTF-8',
-    'User-Agent': seine
-      ? `PocketFans201807/${SEINE_APP_VERSION}_${SEINE_APP_BUILD} (SM-G9730:Android 12;Samsung V417IR release-keys)`
-      : UA_ANDROID_7145,
-    'Accept-Language': 'zh-Hans-CN;q=1',
-    ...(seine ? { 'X-Custom-Device-Type': 'ANDROID' } : {}),
-    appInfo: JSON.stringify(
-      seine
-        ? {
-            IMEI: deviceId,
-            deviceId,
-            appName: 'seine48',
-            appVersion: SEINE_APP_VERSION,
-            appBuild: SEINE_APP_BUILD,
-            deviceName: 'SM-G9730',
-            osType: 'android',
-            osVersion: '12',
-            phoneName: 'SM-G9730',
-            phoneSystemVersion: '12',
-            vendor: 'Samsung',
-          }
-        : {
-            IMEI: deviceId,
-            deviceId,
-            appName: 'pocket48',
-            appVersion: '7.1.45',
-            appBuild: '26102701',
-            deviceName: 'SM-G9730',
-            osType: 'android',
-            osVersion: '12',
-            phoneName: 'SM-G9730',
-            phoneSystemVersion: '12',
-            vendor: 'Samsung',
-          },
-    ),
-  };
+  // 新登录/注册固定使用本机持久化 deviceId，避免被历史导入账号的 p48DeviceId 污染
+  return createPocketProfileHeaders('pocket48', undefined, null, await getLocalPocketDeviceId());
 }
 
 /** Seine（ckg48 新版客户端）Android 头 */

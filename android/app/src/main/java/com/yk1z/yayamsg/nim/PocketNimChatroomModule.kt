@@ -8,6 +8,7 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 云信聊天室（直播弹幕）原生模块 —— commonlink 协议版。
@@ -23,7 +24,7 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
 
   private var client: NimChatroomClient? = null
   /** 连接中的 promise（连上/失败后 resolve/reject） */
-  private var connectPromise: Promise? = null
+  private val connectPromise = AtomicReference<Promise?>(null)
   /** 发送中的 promise 按 idClient 挂起（服务端回执后 resolve） */
   private val sendPromises = mutableMapOf<String, Promise>()
   /** sendPromises 跨线程访问保护：RN 调用线程 vs NIM 回调主线程 */
@@ -54,12 +55,10 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
     override fun onStatus(state: String, detail: String?) {
       when (state) {
         "connected" -> {
-          connectPromise?.resolve(true)
-          connectPromise = null
+          connectPromise.getAndSet(null)?.resolve(true)
         }
         "error" -> {
-          connectPromise?.reject("E_CONNECT", detail ?: "聊天室连接失败")
-          connectPromise = null
+          connectPromise.getAndSet(null)?.reject("E_CONNECT", detail ?: "聊天室连接失败")
         }
         else -> {}
       }
@@ -105,9 +104,10 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
       }
       val next = NimChatroomClient(appKey, account, token, roomId, listener)
       client = next
-      connectPromise = promise
+      connectPromise.getAndSet(promise)?.reject("E_CANCELLED", "已重连")
       next.start()
     } catch (t: Throwable) {
+      connectPromise.compareAndSet(promise, null)
       promise.reject("E_CONNECT", t)
     }
   }
@@ -155,8 +155,7 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
   private fun disconnectInternal() {
     client?.stop()
     client = null
-    connectPromise?.reject("E_CANCELLED", "已断开")
-    connectPromise = null
+    connectPromise.getAndSet(null)?.reject("E_CANCELLED", "已断开")
     val pending = synchronized(sendLock) {
       val list = sendPromises.values.toList()
       sendPromises.clear()

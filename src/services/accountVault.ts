@@ -6,6 +6,8 @@ import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine } from './musicPlayer';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { encryptSecret, decryptSecret } from '../native/SecureVault';
+import { normalizePocketDeviceId, normalizePocketToken } from '../utils/pocketToken';
+import { resolveBoundPocketDeviceId } from '../api/pocketHeaders';
 
 /**
  * 整账号快速切号（不是口袋的「大小号」）。
@@ -23,6 +25,7 @@ export type SavedAccount = {
   id: string;
   label: string;
   token: string;
+  deviceId?: string;
   clientProfile: 'pocket48' | 'seine48';
   addedAt: number;
 };
@@ -88,9 +91,12 @@ export async function listSavedAccounts(): Promise<SavedAccount[]> {
 /** 把当前登录态存进列表；同 token 只更新名字/身份，不重复添加 */
 export function saveCurrentAccount(label = ''): Promise<SavedAccount[]> {
   return withVaultWrite(async () => {
-    const { p48Token } = useSettingsStore.getState().settings;
-    const token = String(p48Token || '').trim();
+    const { p48Token, p48DeviceId } = useSettingsStore.getState().settings;
+    const token = normalizePocketToken(p48Token);
     if (!token) return listSavedAccounts();
+    const deviceId =
+      normalizePocketDeviceId(p48DeviceId) ||
+      normalizePocketDeviceId(await resolveBoundPocketDeviceId());
     const accounts = await listSavedAccounts();
     const id = tokenId(token);
     const index = accounts.findIndex((item) => item.id === id);
@@ -102,6 +108,7 @@ export function saveCurrentAccount(label = ''): Promise<SavedAccount[]> {
       // 自动保存（不传名字）时保留已有名字；新账号用时间做默认名，避免一串「账号 1/2/3」
       label: String(label || '').trim() || prev?.label || `账号 ${stamp}`,
       token,
+      ...(deviceId ? { deviceId } : {}),
       clientProfile: 'pocket48',
       addedAt: prev?.addedAt ?? Date.now(),
     };
@@ -123,7 +130,7 @@ export function removeSavedAccount(id: string): Promise<SavedAccount[]> {
  * 顺序不能反：先写设置再 reset，否则原生通道会用旧 token 重建。
  */
 export async function switchSavedAccount(entry: SavedAccount): Promise<void> {
-  const token = String(entry?.token || '').trim();
+  const token = normalizePocketToken(entry?.token);
   if (!token) throw new Error('该账号没有 Token');
   // 切号前先停掉「在途媒体」：音乐/电台/小窗都是跨页常驻的，若不停，
   // 会出现「用 A 的登录态继续播 B 的资源」以及系统媒体卡显示错乱（R-18）。
@@ -142,6 +149,7 @@ export async function switchSavedAccount(entry: SavedAccount): Promise<void> {
   }
   const patch = {
     p48Token: token,
+    p48DeviceId: normalizePocketDeviceId(entry?.deviceId),
     p48ClientProfile: 'pocket48' as const,
   };
   useSettingsStore.getState().setSettings(patch);

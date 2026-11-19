@@ -6,7 +6,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 
-import { FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  BackHandler,
+  FlatList,
+  Image,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import PlayerScreen from '../player';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -586,7 +595,11 @@ function buildPrivateIms(
         prevTs = 0;
       }
       // 3 分钟内同侧消息并组（组内小圆角），换天 / 换人 / 断档都重新起组
-      const groupStart = prevMine === null || prevMine !== mine || ts - prevTs > 3 * 60 * 1000;
+      // 注意：msgs 按新→旧倒序遍历，需先统一毫秒再取绝对差值，否则 ts - prevTs 恒为负。
+      const curMs = toMs(ts);
+      const prevMs = toMs(prevTs);
+      const groupStart =
+        prevMine === null || prevMine !== mine || Math.abs(prevMs - curMs) > 3 * 60 * 1000;
       /** 每条消息优先用消息自带的发送者头像，取不到再退回会话头像（普通粉丝也能有头像） */
       const senderAvatar = peerAvatarUrl(null, null, item) || peerAvatar;
       // 媒体只解析一次（以前同一行解析三遍，消息多时渲染明显变慢）
@@ -673,10 +686,14 @@ export default function PrivateMessagesScreen() {
     persistPinned(next);
   };
   // 会话按时间分组（今天/昨天/更早）：组头 + 组内会话行
-  const todayStr = (() => {
-    const d = new Date();
+  const { todayStr, yesterdayStr } = (() => {
     const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const now = Date.now();
+    return {
+      todayStr: fmt(new Date(now)),
+      yesterdayStr: fmt(new Date(now - 86400000)),
+    };
   })();
   const convRows = useMemo(() => {
     const groups: { key: string; title: string; items: PrivateConversationWire[] }[] = [
@@ -691,11 +708,7 @@ export default function PrivateMessagesScreen() {
       const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
       const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       if (key === todayStr) return 'today';
-      // 必须用归一化后的毫秒值再减：原来用原始 ts（可能是秒级）减 86400000 毫秒，
-      // 秒级时间戳算出来的「昨天」会落到 1970 年前，所有历史会话被误归到「更早」。
-      const y = new Date(toMs(ts) - 86400000);
-      const yKey = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
-      return key === yKey ? 'yesterday' : 'more';
+      return key === yesterdayStr ? 'yesterday' : 'more';
     };
     const pinnedSet = new Set(pinnedConvs);
     const pinnedItems: PrivateConversationWire[] = [];
@@ -732,7 +745,7 @@ export default function PrivateMessagesScreen() {
       );
     });
     return flat;
-  }, [convs, todayStr, t, pinnedConvs]);
+  }, [convs, todayStr, yesterdayStr, t, pinnedConvs]);
   const [sel, setSel] = useState<PrivateConversationWire | null>(null);
   // 键盘高度：edge-to-edge 下 adjustResize 不生效（窗口不缩），手动把聊天容器底部抬起，
   // 让「消息列表 + 输入框」整体上移（与房间页共用同一 hook）。
@@ -967,12 +980,24 @@ export default function PrivateMessagesScreen() {
     }
   };
 
-  const closeConv = () => {
+  const closeConv = useCallback(() => {
     ++convRequestIdRef.current;
     setSel(null);
     setLoading(false);
-    void loadConvs();
-  };
+    void loadConvsRef.current();
+  }, []);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!navigation.isFocused()) return false;
+      if (sel) {
+        closeConv();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [navigation, sel, closeConv]);
 
   /**
    * 带 targetUserId 直接进会话（房间点粉丝头像 → 用户资料卡「私信」）。

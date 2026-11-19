@@ -335,11 +335,11 @@ export default function ProfileScreen() {
                 <Text style={[styles.sectionTitle, { color: palette.tint }]}>{t('公式照')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {['fullPhoto1', 'fullPhoto2', 'fullPhoto3', 'fullPhoto4']
-                    .filter((k) => raw[k])
+                    .filter((k) => profile[k])
                     .map((k) => (
                       <NetworkImage
                         key={k}
-                        source={{ uri: raw[k] }}
+                        source={{ uri: profile[k] }}
                         style={[styles.photoItem, { backgroundColor: palette.fill2 }]}
                         resizeMode="cover"
                         thumbnail={360}

@@ -23,7 +23,7 @@ import UpdateInstaller from '../components/UpdateInstaller';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { APP_VERSION } from '../constants';
-import { BUILD_TAG } from '../constants/buildChannel';
+import { IS_PLUS_BUILD } from '../constants/channel';
 import { DONATE_QR_URL, DONATE_QR_ASSET } from '../constants/donate';
 import { useUpdateStore, useUiStore } from '../store';
 import { isApkUpdaterAvailable } from '../native/ApkUpdater';
@@ -130,7 +130,8 @@ export default function AboutScreen() {
       .then((has) => {
         const next = useUpdateStore.getState();
         if (has && next.hasUpdate && next.latestUrl && mountedRef.current) {
-          setUpdateVisible(true);
+          if (isApkUpdaterAvailable) setUpdateVisible(true);
+          else Linking.openURL(next.latestUrl).catch(() => {});
         } else if (mountedRef.current) {
           showToast(t('已是最新版本'));
         }
@@ -186,7 +187,7 @@ export default function AboutScreen() {
           </Text>
           <View style={styles.versionRow}>
             <Text style={[styles.versionText, { color: palette.tint }]}>{`v${APP_VERSION}`}</Text>
-            {hasUpdate && BUILD_TAG ? <View style={styles.updateDot} /> : null}
+            {hasUpdate && !IS_PLUS_BUILD ? <View style={styles.updateDot} /> : null}
           </View>
           {hasUpdate && latestVersion ? (
             <Text style={[styles.updateHint, { color: palette.labelSecondary }]}>
@@ -194,7 +195,7 @@ export default function AboutScreen() {
             </Text>
           ) : null}
           <Button
-            title={hasUpdate && BUILD_TAG ? t('有新版本') : t('检查更新')}
+            title={hasUpdate && !IS_PLUS_BUILD ? t('有新版本') : t('检查更新')}
             variant="tinted"
             size="sm"
             onPress={checkVersion}

@@ -215,7 +215,7 @@ public class PipModule extends ReactContextBaseJavaModule {
       PipOverlayController.setHidden(activity, true);
       emitPipChanged(true);
       try {
-        if (activity.enterPictureInPictureMode(buildPipParams())) return;
+        if (activity.enterPictureInPictureMode(buildPipParams(false))) return;
       } catch (Exception ignored) {}
       PipOverlayController.setHidden(activity, false);
       emitPipChanged(false);

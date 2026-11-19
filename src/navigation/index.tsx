@@ -21,7 +21,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
+import { useSettingsStore, useUiStore } from '../store';
 import { setPipEnabled, listenPipToggle, listenPipDenied } from '../utils/pip';
 import { Palettes } from '../theme/colors';
 import { fixDataUriMime } from '../utils/dataUri';
@@ -397,14 +397,7 @@ export default function AppNavigator() {
     };
   }, [pocketToken]);
 
-  // 启动静默检查版本更新（24h 限流；失败静默，有更新时设置页显示红点）
-  useEffect(() => {
-    useUpdateStore
-      .getState()
-      .checkUpdate()
-      .catch(() => {});
-  }, []);
-
+  // 版本检查统一由 App.tsx 启动执行一次（此处不再重复触发）。
   return (
     <ErrorBoundary>
       <>

@@ -15,15 +15,25 @@ import { motion } from '../theme/motion';
 
 type ToastTone = 'success' | 'error' | 'info';
 
-function toastTone(message: string): ToastTone {
-  if (/失败|错误|异常|超时|无法|拒绝|不足|未找到/.test(message)) return 'error';
-  if (/成功|已更新|已保存|已复制|已完成|已是最新|已连接|已发送|已删除|已登录|已退出/.test(message))
+function inferToastTone(message: string): ToastTone {
+  if (
+    /失败|错误|异常|超时|无法|拒绝|不足|未找到|failed|error|timeout|unable|invalid|expired|失敗|エラー|실패|오류/i.test(
+      message,
+    )
+  )
+    return 'error';
+  if (
+    /成功|已更新|已保存|已复制|已完成|已是最新|已连接|已发送|已删除|已登录|已退出|success|saved|copied|updated|completed|connected|sent|deleted|成功|保存|コピー|성공|저장/i.test(
+      message,
+    )
+  )
     return 'success';
   return 'info';
 }
 
 export default function AppToast() {
   const message = useUiStore((state) => state.toastMessage);
+  const explicitTone = useUiStore((state) => state.toastTone);
   const hideToast = useUiStore((state) => state.hideToast);
   const palette = usePalette();
   const insets = useSafeAreaInsets();
@@ -62,7 +72,7 @@ export default function AppToast() {
 
   if (!message) return null;
 
-  const tone = toastTone(message);
+  const tone = explicitTone ?? inferToastTone(message);
   const toneColor =
     tone === 'error' ? palette.danger : tone === 'success' ? palette.success : palette.tint;
   const toneSoft =

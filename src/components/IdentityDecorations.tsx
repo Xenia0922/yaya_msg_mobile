@@ -102,6 +102,7 @@ export default function IdentityDecorations({
   const [catalogTeams, setCatalogTeams] = useState<Option[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [bubblesFailed, setBubblesFailed] = useState(false);
   const [accountFrame, setAccountFrame] = useState('');
   const [settingAccount, setSettingAccount] = useState(false);
   const [settingBubble, setSettingBubble] = useState(false);
@@ -159,6 +160,7 @@ export default function IdentityDecorations({
       setLiveBubbleOptions([]);
       setAccountFrame('');
     }
+    setBubblesFailed(false);
     setStatus(manualRefreshRef.current ? '正在刷新装扮…' : '');
     setLoading(true);
     const framesRequest = accountKey ? pocketApi.getUserPictureFrames() : Promise.resolve(null);
@@ -225,7 +227,11 @@ export default function IdentityDecorations({
         } else if (accountKey) failed.push('勋章');
         if (bubbleResult.status === 'fulfilled' && bubbleResult.value) {
           setBubbleOptions(bubbleResult.value);
-        } else if (accountKey) failed.push('官方气泡');
+          setBubblesFailed(false);
+        } else if (accountKey) {
+          setBubblesFailed(true);
+          failed.push('官方气泡');
+        }
         if (effectResult.status === 'fulfilled' && effectResult.value) {
           setEffectOptions(effectResult.value as LiveDecoration[]);
         } else if (accountKey) failed.push('直播进场特效');
@@ -813,7 +819,7 @@ export default function IdentityDecorations({
                         );
                       })}
                     </View>
-                  ) : !loading && status.includes('官方气泡') ? (
+                  ) : !loading && bubblesFailed ? (
                     <TouchableOpacity onPress={() => setReload((value) => value + 1)}>
                       <Text style={[styles.hint, { color: palette.tint }]}>
                         {t('官方气泡加载失败，点击重试')}
@@ -824,7 +830,7 @@ export default function IdentityDecorations({
                       {t('暂无官方气泡')}
                     </Text>
                   ) : null}
-                  {status && !status.includes('官方气泡') ? (
+                  {status && !bubblesFailed ? (
                     <Text style={[styles.hint, { color: palette.labelSecondary }]}>{status}</Text>
                   ) : null}
                   {loading ? <ActivityIndicator size="small" color={palette.tint} /> : null}

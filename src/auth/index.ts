@@ -42,8 +42,19 @@ export function getWasmError(): string {
   // WebView 是实际依赖的兜底通道：若它未就绪，优先报其错误而非原生引导期的守卫串
   return getWebViewSignerError() || _lastError || '';
 }
+function hasFreshCachedPa(): boolean {
+  if (!_cachedPa) return false;
+  const delta = Date.now() - _cachedPaAt;
+  return delta >= 0 && delta < PA_CACHE_TTL_MS;
+}
+
+export function invalidatePaCache(): void {
+  _cachedPa = null;
+  _cachedPaAt = 0;
+}
+
 export function isWasmReady(): boolean {
-  return (WASM_READY && _paGen !== null) || isWebViewSignerReady() || !!_cachedPa;
+  return (WASM_READY && _paGen !== null) || isWebViewSignerReady() || hasFreshCachedPa();
 }
 
 let _initPromise: Promise<void> | null = null;
@@ -191,8 +202,7 @@ export async function generatePaAsync(options?: { fresh?: boolean }): Promise<st
       /* 原生失败则继续走 WebView 兜底 */
     }
   }
-  const cached =
-    !options?.fresh && _cachedPa && Date.now() - _cachedPaAt < PA_CACHE_TTL_MS ? _cachedPa : null;
+  const cached = !options?.fresh && hasFreshCachedPa() ? _cachedPa : null;
   if (cached) {
     dbg('[generatePaAsync] Using cached PA');
     return cached;

@@ -154,91 +154,106 @@ class NimCommonlinkSession(
     decryptor = NimProtocol.Rc4Stream(rc4Key)
 
     val sock = Socket()
-    sock.tcpNoDelay = true
-    sock.keepAlive = true
-    sock.connect(InetSocketAddress(host, port), 20_000)
-    socket = sock
-    val out = sock.getOutputStream()
-    output = out
-    out.write(handshake)
-    out.flush()
-
-    val input = BufferedInputStream(sock.getInputStream())
-    var buffer = ByteArray(0)
-    var loginSent = false
-    val chunk = ByteArray(8192)
-    var lastHeartbeat = System.currentTimeMillis()
-
-    while (!stopped) {
-      val now = System.currentTimeMillis()
-      if (loggedIn && now - lastHeartbeat >= 15_000) {
-        lastHeartbeat = now
-        synchronized(lock) {
-          out.write(encryptor!!.apply(NimProtocol.makePacket(1, 2, nextSerial())))
-          out.flush()
-        }
-      }
+    try {
+      sock.tcpNoDelay = true
+      sock.keepAlive = true
+      sock.connect(InetSocketAddress(host, port), 20_000)
+      sock.soTimeout = 1_000
+      if (stopped) return
       synchronized(lock) {
-        val iterator = pending.entries.iterator()
-        while (iterator.hasNext()) {
-          val entry = iterator.next()
-          if (entry.value.deadline < now) {
-            iterator.remove()
-            entry.value.reject(IllegalStateException("$tag 请求超时"))
+        socket = sock
+        output = sock.getOutputStream()
+      }
+      val out = output!!
+      out.write(handshake)
+      out.flush()
+
+      val input = BufferedInputStream(sock.getInputStream())
+      var buffer = ByteArray(0)
+      var loginSent = false
+      val chunk = ByteArray(8192)
+      var lastHeartbeat = System.currentTimeMillis()
+
+      while (!stopped) {
+        val now = System.currentTimeMillis()
+        if (loggedIn && now - lastHeartbeat >= 15_000) {
+          lastHeartbeat = now
+          synchronized(lock) {
+            out.write(encryptor!!.apply(NimProtocol.makePacket(1, 2, nextSerial())))
+            out.flush()
           }
         }
-      }
-
-      if (input.available() <= 0) {
-        Thread.sleep(20)
-        continue
-      }
-      val read = input.read(chunk)
-      if (read <= 0) throw IllegalStateException("$tag 连接已断开")
-      buffer = NimProtocol.concat(buffer, decryptor!!.apply(chunk.copyOfRange(0, read)))
-
-      while (true) {
-        val length = NimProtocol.readVarint(buffer, 0, buffer.size) ?: break
-        val frameSize = length.size + length.value
-        if (buffer.size < frameSize) break
-        val raw = buffer.copyOfRange(0, frameSize)
-        buffer = buffer.copyOfRange(frameSize, buffer.size)
-        var packet = NimProtocol.decodePacket(raw) ?: continue
-
-        if (packet.serviceId == 4 && packet.commandId in intArrayOf(1, 2, 10, 11) && packet.body.size > 8) {
-          packet = NimProtocol.decodePacket(packet.body.copyOfRange(8, packet.body.size), embedded = true) ?: continue
+        synchronized(lock) {
+          val iterator = pending.entries.iterator()
+          while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (entry.value.deadline < now) {
+              iterator.remove()
+              entry.value.reject(IllegalStateException("$tag 请求超时"))
+            }
+          }
         }
 
-        when {
-          packet.serviceId == 1 && packet.commandId == 1 -> {
-            if (packet.resultCode != 200) throw IllegalStateException("$tag 握手失败：${packet.resultCode}")
-            if (!loginSent) {
-              loginSent = true
-              synchronized(lock) {
-                out.write(encryptor!!.apply(loginPacket))
-                out.flush()
+        val read = try {
+          input.read(chunk)
+        } catch (_: java.net.SocketTimeoutException) {
+          0
+        }
+        if (read < 0) throw IllegalStateException("$tag 连接已断开")
+        if (read == 0) continue
+        buffer = NimProtocol.concat(buffer, decryptor!!.apply(chunk.copyOfRange(0, read)))
+
+        while (true) {
+          val length = NimProtocol.readVarint(buffer, 0, buffer.size) ?: break
+          val frameSize = length.size + length.value
+          if (buffer.size < frameSize) break
+          val raw = buffer.copyOfRange(0, frameSize)
+          buffer = buffer.copyOfRange(frameSize, buffer.size)
+          var packet = NimProtocol.decodePacket(raw) ?: continue
+
+          if (packet.serviceId == 4 && packet.commandId in intArrayOf(1, 2, 10, 11) && packet.body.size > 8) {
+            packet = NimProtocol.decodePacket(packet.body.copyOfRange(8, packet.body.size), embedded = true) ?: continue
+          }
+
+          when {
+            packet.serviceId == 1 && packet.commandId == 1 -> {
+              if (packet.resultCode != 200) throw IllegalStateException("$tag 握手失败：${packet.resultCode}")
+              if (!loginSent) {
+                loginSent = true
+                synchronized(lock) {
+                  out.write(encryptor!!.apply(loginPacket))
+                  out.flush()
+                }
               }
             }
-          }
-          packet.serviceId == loginServiceId && packet.commandId == loginCommandId -> {
-            if (packet.resultCode != 200) throw IllegalStateException("$tag 登录失败：${packet.resultCode}")
-            if (!loggedIn) {
-              loggedIn = true
-              reconnectAttempt = 0
-              // NIM 连接（serviceId 2）登录成功后补一个 24/1 之外的固定动作由调用方负责
-              post { onConnected() }
+            packet.serviceId == loginServiceId && packet.commandId == loginCommandId -> {
+              if (packet.resultCode != 200) throw IllegalStateException("$tag 登录失败：${packet.resultCode}")
+              if (!loggedIn) {
+                loggedIn = true
+                reconnectAttempt = 0
+                // NIM 连接（serviceId 2）登录成功后补一个 24/1 之外的固定动作由调用方负责
+                post { onConnected() }
+              }
+            }
+            else -> {
+              // 注意：`synchronized` 是 inline，里面的 break/continue 需要 Kotlin 2.2（本项目 2.1.20 编译不过），
+              // 所以同步块只做取值，跳转放到外面。
+              val waiting = synchronized(lock) { pending.remove(packet.serial) }
+              if (waiting != null) {
+                waiting.resolve(packet)
+                continue
+              }
+              post { onPacket(packet) }
             }
           }
-          else -> {
-            // 注意：`synchronized` 是 inline，里面的 break/continue 需要 Kotlin 2.2（本项目 2.1.20 编译不过），
-            // 所以同步块只做取值，跳转放到外面。
-            val waiting = synchronized(lock) { pending.remove(packet.serial) }
-            if (waiting != null) {
-              waiting.resolve(packet)
-              continue
-            }
-            post { onPacket(packet) }
-          }
+        }
+      }
+    } finally {
+      try { sock.close() } catch (_: Throwable) {}
+      synchronized(lock) {
+        if (socket === sock) {
+          socket = null
+          output = null
         }
       }
     }

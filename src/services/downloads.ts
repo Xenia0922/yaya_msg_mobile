@@ -106,7 +106,13 @@ export function guessDownloadName(url: string, type: DownloadType, title?: strin
       .split('?')[0]
       .split('/')
       .pop() || '';
-  const base = sanitizeName(title || decodeURIComponent(fromUrl || `${type}-${Date.now()}`));
+  let decodedFromUrl = fromUrl;
+  try {
+    decodedFromUrl = decodeURIComponent(fromUrl);
+  } catch {
+    decodedFromUrl = fromUrl;
+  }
+  const base = sanitizeName(title || decodedFromUrl || `${type}-${Date.now()}`);
   const hasExt = /\.[a-z0-9]{2,5}$/i.test(base);
   return hasExt ? base : `${base}${extensionFromUrl(url, type)}`;
 }
@@ -546,11 +552,23 @@ export async function openDownloadItem(item: DownloadItem) {
         return;
       }
 
-      // Save to gallery
+      const cachedGalleryUri = (item as DownloadItem & { galleryUri?: string }).galleryUri;
+      if (cachedGalleryUri) {
+        let opened = false;
+        await Linking.openURL(cachedGalleryUri)
+          .then(() => {
+            opened = true;
+          })
+          .catch(() => {});
+        if (opened) return;
+      }
+      // Save to gallery (once; reuse galleryUri on subsequent opens to avoid duplicates)
       const asset = await MediaLibrary.createAssetAsync(target);
       if (asset) {
+        const galleryUri = `content://media/external/file/${asset.id}`;
+        void updateItem(item.id, { galleryUri } as Partial<DownloadItem>).catch(() => undefined);
         // 不建相册：避免 Android「修改此相片」权限弹窗
-        await Linking.openURL(`content://media/external/file/${asset.id}`).catch(async () => {
+        await Linking.openURL(galleryUri).catch(async () => {
           await Linking.openURL(target);
         });
         return;

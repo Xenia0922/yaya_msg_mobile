@@ -49,6 +49,8 @@ class NimQChatClient(
   }
 
   private val main = Handler(Looper.getMainLooper())
+  private val stateLock = Any()
+  private val subscribedServerIds = mutableSetOf<Long>()
   private var nimSession: NimCommonlinkSession? = null
   private var qchatSession: NimCommonlinkSession? = null
 
@@ -57,20 +59,11 @@ class NimQChatClient(
   private fun post(block: () -> Unit) = main.post(block)
 
   fun connect() {
-    if (!stopped) return
-    stopped = false
-    nimSession = NimCommonlinkSession(
-      host = "",
-      port = 0,
-      loginPacket = ByteArray(0),
-      loginServiceId = NIM_LOGIN_SERVICE_ID,
-      loginCommandId = NIM_LOGIN_COMMAND_ID,
-      tag = "NIM",
-      onConnected = { startQChat() },
-      onPacket = { },
-      onStatus = { state, detail -> post { listener.onStatus(state, detail) } },
-    )
-    // 地址要先请求出来，所以这里手动建会话（NimCommonlinkSession 需要 host/port）
+    synchronized(stateLock) {
+      if (!stopped) return
+      stopped = false
+    }
+    // 地址要先请求出来，再建会话（NimCommonlinkSession 需要 host/port）
     Thread({ bootstrap() }, "nim-qchat-boot").also { it.isDaemon = true; it.start() }
   }
 
@@ -90,10 +83,19 @@ class NimQChatClient(
         onPacket = { },
         onStatus = { state, detail -> if (state == "error" || state == "reconnecting") post { listener.onStatus(state, detail) } },
       )
-      nimSession = session
+      synchronized(stateLock) {
+        if (stopped) return
+        val oldNim = nimSession
+        nimSession = session
+        if (oldNim != null && oldNim !== session) {
+          try { oldNim.destroy() } catch (_: Throwable) {}
+        }
+      }
       session.connect()
     } catch (t: Throwable) {
-      post { listener.onStatus("error", t.message ?: t.javaClass.simpleName) }
+      if (!stopped) {
+        post { listener.onStatus("error", t.message ?: t.javaClass.simpleName) }
+      }
     }
   }
 
@@ -112,8 +114,9 @@ class NimQChatClient(
   private fun startQChatBlocking() {
     if (stopped) return
     try {
-      val session = nimSession ?: return
+      val session = synchronized(stateLock) { nimSession } ?: return
       val response = session.request(24, 1, NimProtocol.encodeProperties(mapOf(1 to 0)), 15_000)
+      if (stopped) return
       val addresses = decodeStringArray(response.body)
       if (addresses.isEmpty()) throw IllegalStateException("云信没有返回 QChat 连接地址")
       val (host, port) = parseAddress(addresses[0])
@@ -125,7 +128,21 @@ class NimQChatClient(
         loginServiceId = QCHAT_LOGIN_SERVICE_ID,
         loginCommandId = QCHAT_LOGIN_COMMAND_ID,
         tag = "QChat",
-        onConnected = { post { listener.onStatus("connected", null) } },
+        onConnected = {
+          val sids = synchronized(subscribedServerIds) { subscribedServerIds.toList() }
+          if (sids.isNotEmpty() && !stopped) {
+            Thread({
+              try {
+                val active = synchronized(stateLock) { qchatSession }
+                if (active != null && active.connected && !stopped) {
+                  sendSubscribe(active, sids)
+                }
+              } catch (_: Throwable) {
+              }
+            }, "nim-qchat-resub").also { it.isDaemon = true; it.start() }
+          }
+          post { listener.onStatus("connected", null) }
+        },
         onPacket = { packet ->
           if (packet.serviceId == QCHAT_LOGIN_SERVICE_ID && packet.commandId == QCHAT_MSG_COMMAND_ID && packet.body.isNotEmpty()) {
             try {
@@ -137,17 +154,55 @@ class NimQChatClient(
         onStatus = { state, detail -> post { listener.onStatus(state, detail) } },
       )
       // 重连/重登时旧 QChat 会话必须先销毁，否则旧 socket 与读线程泄漏（P1：onConnected 重复 startQChat）
-      val oldQChat = qchatSession
-      qchatSession = null
+      val oldQChat: NimCommonlinkSession?
+      synchronized(stateLock) {
+        if (stopped) return
+        oldQChat = qchatSession
+        qchatSession = qchat
+      }
       if (oldQChat != null && oldQChat !== qchat) {
         try { oldQChat.destroy() } catch (_: Throwable) {
         }
       }
-      qchatSession = qchat
       qchat.connect()
     } catch (t: Throwable) {
-      post { listener.onStatus("error", "QChat: ${t.message ?: t.javaClass.simpleName}") }
+      if (!stopped) {
+        post { listener.onStatus("error", "QChat: ${t.message ?: t.javaClass.simpleName}") }
+      }
     }
+  }
+
+  /**
+   * 订阅圈组服务器（cmd 25/7 subscribeAllChannels）：
+   * 记录到 subscribedServerIds（重连自动补订），若已连接立即发送 25/7。
+   */
+  fun subscribeServer(serverId: String): Boolean {
+    val sid = serverId.trim().toLongOrNull() ?: return false
+    if (sid <= 0L) return false
+    synchronized(subscribedServerIds) {
+      subscribedServerIds.add(sid)
+    }
+    val session = synchronized(stateLock) { qchatSession }
+    if (stopped || session == null || !session.connected) return false
+    return try {
+      sendSubscribe(session, listOf(sid))
+    } catch (_: Throwable) {
+      false
+    }
+  }
+
+  private fun sendSubscribe(session: NimCommonlinkSession, serverIds: List<Long>): Boolean {
+    if (serverIds.isEmpty()) return false
+    val bodyParts = ArrayList<ByteArray>(2 + serverIds.size)
+    // QChatSubscribeType.CHANNEL_MSG = 1 (LE32) + varint(count) + int64LE(serverId)...
+    bodyParts.add(NimProtocol.littleEndianInt32(1))
+    bodyParts.add(NimProtocol.encodeVarint(serverIds.size.toLong()))
+    for (sid in serverIds) {
+      bodyParts.add(NimProtocol.littleEndianInt64(sid))
+    }
+    val body = NimProtocol.concat(*bodyParts.toTypedArray())
+    val response = session.request(QCHAT_SUBSCRIBE_SERVICE_ID, QCHAT_SUBSCRIBE_ALL_COMMAND_ID, body, 10_000)
+    return response.resultCode == 200 || response.resultCode == 0
   }
 
   /** 发送房间消息：24/10 */
@@ -190,11 +245,18 @@ class NimQChatClient(
   }
 
   fun destroy() {
-    stopped = true
-    qchatSession?.destroy()
-    nimSession?.destroy()
-    qchatSession = null
-    nimSession = null
+    val qchat: NimCommonlinkSession?
+    val nim: NimCommonlinkSession?
+    synchronized(stateLock) {
+      stopped = true
+      subscribedServerIds.clear()
+      qchat = qchatSession
+      nim = nimSession
+      qchatSession = null
+      nimSession = null
+    }
+    qchat?.destroy()
+    nim?.destroy()
     post { listener.onStatus("disconnected", null) }
   }
 
@@ -248,7 +310,11 @@ class NimQChatClient(
       readTimeout = 15_000
       requestMethod = "GET"
     }
-    val text = connection.inputStream.bufferedReader().use { it.readText() }
+    val text = try {
+      connection.inputStream.bufferedReader().use { it.readText() }
+    } finally {
+      try { connection.disconnect() } catch (_: Throwable) {}
+    }
     val link = try {
       JSONObject(text).optJSONObject("common")?.optJSONArray("link")?.optString(0) ?: ""
     } catch (_: Throwable) {
@@ -305,5 +371,7 @@ class NimQChatClient(
     private const val QCHAT_LOGIN_SERVICE_ID = 24
     private const val QCHAT_LOGIN_COMMAND_ID = 2
     private const val QCHAT_MSG_COMMAND_ID = 11
+    private const val QCHAT_SUBSCRIBE_SERVICE_ID = 25
+    private const val QCHAT_SUBSCRIBE_ALL_COMMAND_ID = 7
   }
 }

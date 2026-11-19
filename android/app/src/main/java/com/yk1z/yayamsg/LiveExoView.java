@@ -35,7 +35,7 @@ public class LiveExoView extends FrameLayout {
   private static final int MAX_BUFFER_MS = 20000;
   private static final int PLAYBACK_BUFFER_MS = 1500;
   private static final int REBUFFER_MS = 3000;
-  private static final int MAX_RETRY = 5;
+  private static final int MAX_RETRY = 2;
   private static final long RETRY_DELAY_MS = 1600L;
 
   private final Handler handler = new Handler(Looper.getMainLooper());
@@ -512,7 +512,9 @@ public class LiveExoView extends FrameLayout {
   }
 
   private boolean isRtmp(String value) {
-    return value.toLowerCase().startsWith("rtmp://");
+    if (value == null) return false;
+    String lower = value.toLowerCase();
+    return lower.startsWith("rtmp://") || lower.startsWith("rtmps://");
   }
 
   private void setStatus(String text) {

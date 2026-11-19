@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  ImageBackground,
   Modal,
   Image,
   TouchableOpacity,
@@ -53,7 +52,7 @@ import {
   flushMusicPlayerStorage,
   PlayMode,
 } from './src/store/musicPlayerStore';
-import { MusicEngine } from './src/services/musicPlayer';
+import { MusicEngine, applyNativeSnapshot } from './src/services/musicPlayer';
 import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { startSignatureHealthCheck } from './src/services/signatureHealth';
@@ -292,6 +291,7 @@ function MusicForegroundBridge() {
   // 全局滞回同步（页面无关）：系统卡/媒体键暂停恢复 → App 播放状态跟随
   // 单向安全：paused 900ms 连续、playing 1.2s 连续才回写，杜绝 pause/resume 自激
   const lastNativePlayingRef = useRef(false);
+  const radioStoppedRef = useRef(false);
   const syncPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncResumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearSyncPause = () => {
@@ -357,6 +357,7 @@ function MusicForegroundBridge() {
   useEffect(() => {
     if (playbackStateG === 'idle') {
       lastPushKeyRef.current = '';
+      radioStoppedRef.current = false;
       // 停止后可重新尝试原生（error/超时禁用仅限单次播放会话）
       setNativeExoActive(false);
       setNativeExoDisabled(false);
@@ -391,23 +392,42 @@ function MusicForegroundBridge() {
       subscribeExo((type, p: any) => {
         try {
           if (type === 'progress') {
-            // Exo 激活（原声在播）→ 旧自管服务立即停用（双会话会让 ColorOS 绑旧会话）
+            // Exo 激活（原声在播）→ 旧自管服务停用（每会话仅边沿调用一次，避免每 500ms 触发 Binder IPC）
             const playingN = !!p?.playing;
             lastNativePlayingRef.current = playingN;
             if (playingN) {
               if (!isNativeExoActive()) setNativeExoActive(true);
-              // 原生在播确认 → 旧自管服务必须停。⚠️ 旧守卫 `!isNativeExoActive()` 实际永不触发：
-              // pushExoAfterSwitch 在尝试期已 setNativeExoActive(true)，导致残留 RadioForegroundService
-              // 双会话 → ColorOS/通知栏把媒体卡绑到旧会话 → 系统控件"失灵/像在打架"。
-              try {
-                stopRadioForeground();
-              } catch {}
+              if (!radioStoppedRef.current) {
+                radioStoppedRef.current = true;
+                try {
+                  stopRadioForeground();
+                } catch {}
+              }
             }
             // 真实位置/时长全局同步（后台播放时 store 常真，回音乐页即见实际进度）
             const st = useMusicPlayerStore.getState();
-            // 切歌竞态防护：旧曲心跳(url≠当前)不写位置/时长（防进度条回跳/脏数据）
+            if (!st.queue.length || st.playbackState === 'idle') return;
+            if (!st.url) {
+              applyNativeSnapshot({
+                active: true,
+                url: String(p?.url || ''),
+                trackId: String(p?.trackId || ''),
+                title: String(p?.title || ''),
+                artist: String(p?.artist || ''),
+                album: String(p?.album || ''),
+                position: Math.max(0, Number(p?.position) || 0),
+                duration: Math.max(0, Number(p?.duration) || 0),
+                playing: playingN,
+              });
+              return;
+            }
+            if (st.playbackState === 'loading') return;
+            const current = st.queue[st.currentIndex];
+            const currentId = current ? String(current.musicId || current.id || '') : '';
+            const staleTrack = !!p?.trackId && !!currentId && String(p.trackId) !== currentId;
+            // 切歌竞态防护：旧曲心跳(url/trackId ≠ 当前)不写位置/时长（防进度条回跳/脏数据）
             const staleUrl = !!p?.url && !!st.url && String(p.url) !== String(st.url);
-            if (!staleUrl) {
+            if (!staleUrl && !staleTrack) {
               if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
               if (typeof p?.position === 'number') st.setPosition(p.position);
             }
@@ -421,7 +441,8 @@ function MusicForegroundBridge() {
           } else if (type === 'ended') {
             clearSyncPause();
             clearSyncResume();
-            if (useMusicPlayerStore.getState().playbackState === 'playing') {
+            const st = useMusicPlayerStore.getState();
+            if (st.queue.length && st.playbackState === 'playing' && st.playMode !== 'single') {
               // 播完自动切歌：watch effect 会在 url 就绪后补发原生
               MusicEngine.next().catch(() => {});
             }
@@ -443,29 +464,45 @@ function MusicForegroundBridge() {
                 ? rawIdx
                 : -1;
             const track = idx >= 0 ? st0.queue[idx] : null;
-            if (idx < 0 || !track) return; // 队列与 hint 对不上（旧快照/队列被替换）→ 原生继续播，不强改 UI
-            // 使在途 playTrack 失效：防其 URL 解析完成后回写覆盖本次本地切歌
-            (MusicEngine as any)._playSeq += 1;
-            useMusicPlayerStore.setState({
-              currentIndex: idx,
-              url: urlN,
-              playbackState: 'playing',
-              position: 0,
-              duration: 0,
-              seekTarget: 0,
-              error: null,
-              lyrics: [],
-            });
-            // watch effect 会因 url|index 变化补推原生（同曲去重不重载）；这里补歌词/预热下一首
-            MusicEngine._fetchLyrics(track);
-            MusicEngine._prewarmNextTrack();
+            if (idx >= 0 && track) {
+              // 使在途 playTrack 失效：防其 URL 解析完成后回写覆盖本次本地切歌
+              (MusicEngine as any)._playSeq += 1;
+              useMusicPlayerStore.setState({
+                currentIndex: idx,
+                url: urlN,
+                playbackState: 'playing',
+                position: 0,
+                duration: 0,
+                seekTarget: 0,
+                error: null,
+                lyrics: [],
+              });
+              // watch effect 会因 url|index 变化补推原生（同曲去重不重载）；这里补歌词/预热下一首
+              MusicEngine._fetchLyrics(track);
+              MusicEngine._prewarmNextTrack();
+            } else {
+              applyNativeSnapshot({
+                active: true,
+                url: urlN,
+                trackId: String(p?.trackId || ''),
+                title: String(p?.title || ''),
+                artist: String(p?.artist || ''),
+                album: String(p?.album || ''),
+                position: 0,
+                duration: 0,
+                playing: true,
+              });
+            }
           } else if (type === 'cmd') {
             const c = String(p?.cmd || '');
+            const st = useMusicPlayerStore.getState();
+            if (st.playbackState === 'idle') st.setPlaybackState('loading');
             if (c === 'next') MusicEngine.next().catch(() => {});
             else if (c === 'prev') MusicEngine.prev().catch(() => {});
           } else if (type === 'error') {
             clearSyncPause();
             clearSyncResume();
+            radioStoppedRef.current = false;
             setNativeExoDisabled(true); // 本会话原生判不可用（RNV 降级路径接管）
           }
         } catch {}
@@ -635,11 +672,6 @@ export default function App() {
   const [message, setMessage] = useState('正在初始化...');
   const appTheme = useResolvedTheme();
   const palette = usePalette();
-  const customBackgroundFile = useSettingsStore((state) => state.settings.customBackgroundFile);
-  const customBackgroundUpdatedAt = useSettingsStore(
-    (state) => state.settings.customBackgroundUpdatedAt,
-  );
-  const [backgroundLoadError, setBackgroundLoadError] = useState('');
   const splashBg = palette.background;
 
   // v2.6: Announcement modal
@@ -767,15 +799,6 @@ export default function App() {
     startNativeModuleCheck();
   }, [ready]);
 
-  const backgroundUri = customBackgroundFile?.trim();
-  const backgroundSource = backgroundUri
-    ? {
-        uri: backgroundUri.match(/^[a-z][a-z0-9+.-]*:/i)
-          ? backgroundUri
-          : `file://${backgroundUri}`,
-      }
-    : null;
-
   const content =
     (
       /**
@@ -784,32 +807,8 @@ export default function App() {
        * 在 edge-to-edge 下上报的高度可能远大于真实值，不能直接拿来算布局）。
        */
       <KeyboardProvider>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: backgroundSource ? 'transparent' : palette.background,
-          }}
-        >
+        <View style={{ flex: 1, backgroundColor: palette.background }}>
           <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
-          {backgroundLoadError ? (
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: 10,
-                right: 10,
-                top: 36,
-                zIndex: 9999,
-                padding: 8,
-                borderRadius: 8,
-                backgroundColor: 'rgba(180,0,0,0.82)',
-              }}
-            >
-              <Text style={{ color: '#fff', fontSize: 11 }} numberOfLines={2}>
-                {backgroundLoadError}
-              </Text>
-            </View>
-          ) : null}
           <SafeAreaBridge>
             <AppNavigator />
           </SafeAreaBridge>
@@ -896,34 +895,6 @@ export default function App() {
       {!ready ? (
         // 原生开屏已展示 app 图标（与开屏同色纯背景，避免黑屏闪烁）；签名 WebView 仍在后台预热。
         <View style={{ flex: 1, backgroundColor: splashBg }} />
-      ) : backgroundSource ? (
-        <ImageBackground
-          key={`${backgroundSource.uri}-${customBackgroundUpdatedAt || 0}`}
-          source={backgroundSource}
-          style={{ flex: 1, backgroundColor: palette.background }}
-          resizeMode="cover"
-          onLoad={() => setBackgroundLoadError('')}
-          onError={(event) =>
-            setBackgroundLoadError(
-              `背景图加载失败：${backgroundSource.uri} ${event.nativeEvent?.error || ''}`,
-            )
-          }
-        >
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              top: 0,
-              bottom: 0,
-              backgroundColor:
-                appTheme === 'dark' ? 'rgba(11,11,15,0.88)' : 'rgba(245,245,247,0.92)',
-            }}
-          />
-          {/* 错误边界外扩到 App 级：Modal/WebViewSigner/背景层渲染异常也有兜底（页面级由导航内的 ErrorBoundary 捕获） */}
-          <ErrorBoundary>{content}</ErrorBoundary>
-        </ImageBackground>
       ) : (
         <ErrorBoundary>{content}</ErrorBoundary>
       )}

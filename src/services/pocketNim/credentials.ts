@@ -202,11 +202,13 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
         const res = await pocketApi.loginCheckToken();
         if (requestGeneration !== generation || requestToken !== currentPocketToken()) return null;
         const content = (res && (res.content || res.data)) || {};
-        const u = (content.userInfo || content.user || content) as Record<string, unknown>;
+        const u = (content.userInfo || content.user || content) as Record<string, any>;
         if (base && u && typeof u === 'object') {
-          const nick = String(u.nickName || u.nickname || '').trim();
+          const baseInfo = (u.baseUserInfo || {}) as Record<string, unknown>;
+          const nick = String(baseInfo.nickname || u.nickName || u.nickname || '').trim();
           if (nick) base.nickName = nick;
-          if (u.avatar) base.avatar = absAvatar(String(u.avatar));
+          const rawAvatar = baseInfo.avatar || u.avatar;
+          if (rawAvatar) base.avatar = absAvatar(String(rawAvatar));
           // level/roleId 以 user/info/reload 为准（覆盖 getNimLoginInfo 的值）：
           // 真机实测 roleId 被污染后，普通粉丝发房间消息会被当成员处理（出红点提示）
           base.level = Number(u.level) || 0;
