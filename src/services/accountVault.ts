@@ -88,7 +88,7 @@ export async function listSavedAccounts(): Promise<SavedAccount[]> {
 /** 把当前登录态存进列表；同 token 只更新名字/身份，不重复添加 */
 export function saveCurrentAccount(label = ''): Promise<SavedAccount[]> {
   return withVaultWrite(async () => {
-    const { p48Token, p48ClientProfile } = useSettingsStore.getState().settings;
+    const { p48Token } = useSettingsStore.getState().settings;
     const token = String(p48Token || '').trim();
     if (!token) return listSavedAccounts();
     const accounts = await listSavedAccounts();
@@ -102,7 +102,7 @@ export function saveCurrentAccount(label = ''): Promise<SavedAccount[]> {
       // 自动保存（不传名字）时保留已有名字；新账号用时间做默认名，避免一串「账号 1/2/3」
       label: String(label || '').trim() || prev?.label || `账号 ${stamp}`,
       token,
-      clientProfile: p48ClientProfile === 'seine48' ? 'seine48' : 'pocket48',
+      clientProfile: 'pocket48',
       addedAt: prev?.addedAt ?? Date.now(),
     };
     if (prev) accounts[index] = entry;
@@ -142,8 +142,7 @@ export async function switchSavedAccount(entry: SavedAccount): Promise<void> {
   }
   const patch = {
     p48Token: token,
-    p48ClientProfile:
-      entry.clientProfile === 'seine48' ? ('seine48' as const) : ('pocket48' as const),
+    p48ClientProfile: 'pocket48' as const,
   };
   useSettingsStore.getState().setSettings(patch);
   await saveSettings(patch);

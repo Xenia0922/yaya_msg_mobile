@@ -289,9 +289,6 @@ export default function LoginScreen() {
    * 「发言身份 / 等级 / roleId / sessionRole」这组底部输入框会被键盘直接盖住。
    * 改成和其它聊天页同一套：手动把容器底部抬起。
    */
-  // 登录身份：口袋48 / 塞纳河48（身份决定 appInfo 与 UA，登录后所有接口沿用）
-  const clientProfile: 'pocket48' | 'seine48' =
-    settings.p48ClientProfile === 'seine48' ? 'seine48' : 'pocket48';
   const pollingRef = useRef(true);
   useEffect(() => {
     return () => {
@@ -567,29 +564,8 @@ export default function LoginScreen() {
     }
   };
 
-  const handleClientProfileChange = async (value: string) => {
-    if (loading) return;
-    const next: 'pocket48' | 'seine48' = value === 'seine48' ? 'seine48' : 'pocket48';
-    setRegistration(null);
-    setStatus('');
-    setSettings({ p48ClientProfile: next });
-    try {
-      await saveSettings({ p48ClientProfile: next });
-    } catch {
-      /* 落盘失败仍按内存值走本次会话 */
-    }
-    // 身份也是账号的一部分：同步到快速切号列表，切回来时才能用对身份
-    void saveCurrentAccount()
-      .then(setSavedAccounts)
-      .catch(() => undefined);
-  };
-
   const handleRegister = async () => {
     if (!registration || registrationBusyRef.current) return;
-    if (clientProfile === 'seine48') {
-      setStatus(t('塞纳河48 身份不支持注册，请切换到口袋48'));
-      return;
-    }
     let { encrypted } = registration;
     if (registration.phase === 'new') {
       const problem = validateRegistrationPassword(password, confirmation);
@@ -1136,15 +1112,7 @@ export default function LoginScreen() {
                   pressedScale={0.985}
                 >
                   <View style={{ width: 34, alignItems: 'center' }}>
-                    <MaterialCommunityIcons
-                      name={
-                        entry.clientProfile === 'seine48'
-                          ? 'account-star-outline'
-                          : 'account-outline'
-                      }
-                      size={22}
-                      color={palette.tint}
-                    />
+                    <MaterialCommunityIcons name="account-outline" size={22} color={palette.tint} />
                   </View>
                   <View style={styles.accountTextWrap}>
                     <Text style={[styles.accountName, { color: palette.label }]} numberOfLines={1}>
@@ -1154,7 +1122,7 @@ export default function LoginScreen() {
                       style={[styles.accountMeta, { color: palette.labelTertiary }]}
                       numberOfLines={1}
                     >
-                      {`${entry.clientProfile === 'seine48' ? t('塞纳河48') : t('口袋48')} · ${entry.token.slice(0, 4)}…${entry.token.slice(-4)}`}
+                      {`${t('口袋48')} · ${entry.token.slice(0, 4)}…${entry.token.slice(-4)}`}
                     </Text>
                   </View>
                   {isCurrent ? (
@@ -1195,27 +1163,6 @@ export default function LoginScreen() {
       </FadeInView>
 
       <FadeInView delay={20} duration={280} distance={8}>
-        <Text style={[styles.groupLabel, { color: palette.labelSecondary }]}>{t('登录身份')}</Text>
-        <GlassSegmented
-          options={[
-            { key: 'pocket48', label: t('口袋48') },
-            { key: 'seine48', label: t('塞纳河48') },
-          ]}
-          value={clientProfile}
-          onChange={handleClientProfileChange}
-          height={38}
-          style={{ marginBottom: 6 }}
-        />
-        <Text style={[styles.groupHint, { color: palette.labelTertiary }]}>
-          {t(
-            clientProfile === 'seine48'
-              ? '塞纳河48 身份：按塞纳河客户端请求，用于在塞纳河注册的账号（此身份不支持注册）'
-              : '口袋48 身份：默认身份，注册与登录都在此身份下完成',
-          )}
-        </Text>
-      </FadeInView>
-
-      <FadeInView delay={40} duration={280} distance={8}>
         <Text style={[styles.groupLabel, { color: palette.labelSecondary }]}>{t('登录方式')}</Text>
         {/* 登录方式分段控件：玻璃滑动选中（与全站一致） */}
         <GlassSegmented
@@ -1237,10 +1184,7 @@ export default function LoginScreen() {
         {/* 短信验证码登录 */}
         {mode === 'sms' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
-            <AccountSectionTitle
-              icon="message-text-outline"
-              title={t(clientProfile === 'seine48' ? '塞纳河48验证码登录' : '口袋48验证码登录')}
-            />
+            <AccountSectionTitle icon="message-text-outline" title={t('口袋48验证码登录')} />
             <View style={styles.phoneRow}>
               <View style={[styles.field, styles.areaWrap, { backgroundColor: palette.fill2 }]}>
                 <Text style={[styles.areaPlus, { color: palette.label }]}>+</Text>
@@ -1421,9 +1365,7 @@ export default function LoginScreen() {
                     variant="filled"
                     size="md"
                     onPress={handleRegister}
-                    disabled={
-                      loading || (registration.phase === 'new' && clientProfile === 'seine48')
-                    }
+                    disabled={loading}
                     loading={loading}
                     fullWidth
                   />
@@ -1457,10 +1399,7 @@ export default function LoginScreen() {
 
         {mode === 'password' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
-            <AccountSectionTitle
-              icon="lock-outline"
-              title={t(clientProfile === 'seine48' ? '塞纳河48密码登录' : '口袋48密码登录')}
-            />
+            <AccountSectionTitle icon="lock-outline" title={t('口袋48密码登录')} />
             <TextInput
               underlineColorAndroid="transparent"
               style={[styles.field, { backgroundColor: palette.fill2, color: palette.label }]}
@@ -1501,10 +1440,7 @@ export default function LoginScreen() {
         {/* Token 登录 */}
         {mode === 'token' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
-            <AccountSectionTitle
-              icon="key-variant"
-              title={t(clientProfile === 'seine48' ? '塞纳河48Token登录' : '口袋48Token登录')}
-            />
+            <AccountSectionTitle icon="key-variant" title={t('口袋48Token登录')} />
             <TextInput
               underlineColorAndroid="transparent"
               style={[
@@ -1881,7 +1817,6 @@ const styles = StyleSheet.create({
   // ScreenHeader 在内容容器内会被 16dp 内边距整体右移，抵消后与其它二级页对齐
   headerBleed: { marginHorizontal: -16 },
   groupLabel: { fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 8, marginTop: 3 },
-  groupHint: { fontSize: 11, lineHeight: 16, marginLeft: 4, marginBottom: 12, marginTop: 2 },
   // 分段控件
   // 卡片
   card: {

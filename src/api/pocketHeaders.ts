@@ -28,9 +28,9 @@ export const DEVICE_ID_IOS_UUID = '7B93DFD0-472F-4736-A628-E85FAE086486';
 export const DEVICE_ID_IOS_UUID_ALT = '7B93DFD0-472F-4736-A628-E85FAE086487';
 export const DEVICE_ID_IOS_HEX = '7b93dfd0472f4736a628e85fae086486';
 
-/** 当前是否走塞纳河48 身份（登录页可选，持久化在 p48ClientProfile） */
+/** 塞纳河48 登录已合并到口袋48，所有登录与请求统一使用口袋48身份。 */
 export function isSeineProfile(): boolean {
-  return useSettingsStore.getState().settings.p48ClientProfile === 'seine48';
+  return false;
 }
 
 export function createDeviceId(): string {

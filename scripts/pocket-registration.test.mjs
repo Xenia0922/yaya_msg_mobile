@@ -79,21 +79,14 @@ assert.ok(calls[3].url.endsWith('/user/api/v1/login/app/mobile'));
 assert.equal(calls[3].body.loginType, 'MOBILE_PWD');
 assert.equal(calls[3].headers.token, undefined);
 
-// 登录身份：塞纳河48 身份下 appInfo / UA / 附加头按塞纳河客户端发，切回口袋48 再还原
+// 塞纳河48 登录已合并：旧设置残留也统一按口袋48身份发送
 response = { status: 200, success: true, content: {} };
 mockedSettings.p48ClientProfile = 'seine48';
 await api.loginSendSms('000000', '86');
-const seineCall = calls[calls.length - 1];
-const seineInfo = JSON.parse(seineCall.headers.appInfo);
-assert.equal(seineInfo.appName, 'seine48');
-assert.equal(seineInfo.appVersion, '1.3.5');
-assert.equal(seineInfo.appBuild, 26102601);
-assert.equal(seineCall.headers['X-Custom-Device-Type'], 'ANDROID');
-assert.ok(seineCall.headers['User-Agent'].startsWith('PocketFans201807/1.3.5_26102601'));
-mockedSettings.p48ClientProfile = 'pocket48';
-await api.loginSendSms('000000', '86');
-const pocketCall = calls[calls.length - 1];
-assert.equal(JSON.parse(pocketCall.headers.appInfo).appName, 'pocket48');
-assert.equal(pocketCall.headers['X-Custom-Device-Type'], undefined);
+const unifiedCall = calls[calls.length - 1];
+const unifiedInfo = JSON.parse(unifiedCall.headers.appInfo);
+assert.equal(unifiedInfo.appName, 'pocket48');
+assert.equal(unifiedCall.headers['X-Custom-Device-Type'], undefined);
+assert.ok(unifiedCall.headers['User-Agent'].startsWith('PocketFans201807/7.1.45_26102701'));
 
 console.log('注册、密码协议和登录请求测试通过');
