@@ -23,6 +23,7 @@ import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { usePalette, motion, makeShadows } from '../theme';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { typography } from '../theme/typography';
+import { normalizeImageHost } from '../utils/imageThumb';
 import { MusicEngine } from '../services/musicPlayer';
 import CoverArt from './CoverArt';
 import { useI18n } from '../i18n';
@@ -169,7 +170,7 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
   const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
   const coverUri = rawCover
     ? rawCover.startsWith('http')
-      ? rawCover
+      ? normalizeImageHost(rawCover)
       : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`
     : '';
 

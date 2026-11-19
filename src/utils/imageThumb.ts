@@ -1,5 +1,14 @@
 /** 缩略图专用域名（官方 App 同款） */
 const THUMB_HOST = 'https://source1.48.cn';
+/** source2/source3 是官方备用图床，当前节点会 403；同路径在 source1 可用。 */
+const LEGACY_IMAGE_HOST_RE = /^https?:\/\/source[23]\.48\.cn(?=\/)/i;
+
+/** 把失效的 source2/source3 图片地址统一到 source1，非图片 URL 原样返回。 */
+export function normalizeImageHost(url: any): string {
+  const raw = String(url ?? '').trim();
+  if (!LEGACY_IMAGE_HOST_RE.test(raw)) return raw;
+  return raw.replace(LEGACY_IMAGE_HOST_RE, THUMB_HOST);
+}
 
 /** 视频/音频不做缩略图（会 404） */
 const MEDIA_EXT_RE = /\.(mp4|mov|m4v|m4a|aac|mp3|amr|flv|ts)(\?|$)/i;

@@ -8,6 +8,7 @@
  */
 
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|bmp|heic|avif)$/i;
+const LEGACY_IMAGE_HOST_RE = /^https?:\/\/source[23]\.48\.cn(?=\/)/i;
 
 /** 媒体 URL 可能出现的字段名（顺序与旧版实现一致，imgUrl 在前）。 */
 export const MEDIA_URL_KEYS = [
@@ -97,7 +98,12 @@ export function normalizePrivateMediaUrl(
   const value = String(raw ?? '').trim();
   if (!value) return '';
   if (value.startsWith('//')) return `https:${value}`;
-  if (/^https?:\/\//i.test(value)) return value.replace(/^http:\/\//i, 'https://');
+  if (/^https?:\/\//i.test(value)) {
+    const https = value.replace(/^http:\/\//i, 'https://');
+    return LEGACY_IMAGE_HOST_RE.test(https)
+      ? https.replace(LEGACY_IMAGE_HOST_RE, 'https://source1.48.cn')
+      : https;
+  }
   if (value.startsWith('/mediasource/') || value.startsWith('/imagesource/'))
     return `https://source.48.cn${value}`;
   const base = preferredHost === 'source' ? 'https://source.48.cn' : 'https://mp4.48.cn';
