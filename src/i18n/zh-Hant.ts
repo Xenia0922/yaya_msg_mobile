@@ -178,6 +178,7 @@ export const zhHant: Record<string, string> = {
   正在检查Token: '正在檢查 Token...',
   Token有效: 'Token 有效',
   'Token无效：{msg}': 'Token 無效：{msg}',
+  '登录状态已失效，请重新登录': '登入狀態已失效，請重新登入',
   '正在切换到{name}': '正在切換到 {name}...',
   切换失败没有拿到目标账号ID: '切換失敗：沒有取得目標帳號 ID',
   '切换账号失败：{msg}': '切換帳號失敗：{msg}',

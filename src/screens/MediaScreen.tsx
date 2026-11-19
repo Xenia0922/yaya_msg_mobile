@@ -197,6 +197,7 @@ export default function MediaScreen() {
   const nextCursorRef = useRef(0); // 翻页游标 ref：避免自动翻页闭包读到旧游标重复拉同一页
   const [pageVersion, setPageVersion] = useState(0); // 每次拉取完成 +1：驱动自动翻页 effect 续链
   const [error, setError] = useState('');
+  const [authError, setAuthError] = useState(false);
   const [playerError, setPlayerError] = useState('');
   const [, setUseWebPlayer] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -970,9 +971,10 @@ export default function MediaScreen() {
         setHasMore(next.length > 0 && nextToken > 0 && nextToken !== cursor);
         // 注意：liveList 合法返回 [] 表示当前确实没有直播，立即清空；
         // 参数错误/空壳在 catch 里保留旧列表，不能用“空响应次数”误伤正常空态。
-        if (mode === 'live')
+        if (tab === 'live')
           setLiveList((prev) => (append ? mergeUniqueLiveItems(prev, next) : next));
         else setVodList((prev) => (append ? mergeUniqueLiveItems(prev, next) : next));
+        setAuthError(false);
       } catch (err) {
         // 静默轮询失败（60s 自动刷新）不弹错误条：保留旧列表继续展示，下一轮自愈；
         // 仅首屏/下拉/切 tab（silent=false）失败才提示（列表为空时不会误显示"暂无数据"）。
@@ -987,7 +989,12 @@ export default function MediaScreen() {
         } else {
           liveParamErrorStreakRef.current = 0;
         }
-        if (!silent) setError(message);
+        const tokenIssue =
+          /token\s*(?:解析|parse|invalid|expired|失效)|登录.*(?:失效|过期)|认证.*失败/i.test(
+            message,
+          );
+        setAuthError(tokenIssue);
+        if (!silent) setError(tokenIssue ? t('登录状态已失效，请重新登录') : message);
         setHasMore(false);
       } finally {
         loadingRef.current = false;
@@ -2877,6 +2884,8 @@ export default function MediaScreen() {
               <MediaGridSkeleton />
             ) : groupId === -1 && !token ? (
               <LoginPrompt hint={t('查看关注成员的直播/录播需要登录')} />
+            ) : authError ? (
+              <LoginPrompt hint={t('登录状态已失效，请重新登录')} />
             ) : followFetching ? (
               <View style={styles.followScanWrap}>
                 <ActivityIndicator size="small" color={palette.tint} />
