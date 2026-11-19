@@ -83,10 +83,10 @@ export function MarqueeText({
           toValue: -dist,
           duration,
           easing: Easing.linear,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
         Animated.delay(280),
-        Animated.timing(x, { toValue: 0, duration: 0, useNativeDriver: false }),
+        Animated.timing(x, { toValue: 0, duration: 0, useNativeDriver: true }),
       ]),
     );
     loop.start();

@@ -373,7 +373,7 @@ export default function HomeScreen() {
       if (!focusedRef.current) return;
       // 刷新失败：保留旧数据继续展示（不闪骨架）；完全无数据时才记错误态
       if (!gongyanHasDataRef.current) setGongyanError(e?.message || String(e));
-      // 初次失败 5s 后自动重试（最多 2 次），不必干等 60s 轮询
+      // 初次失败 5s 后自动重试（最多 2 次），不必干等 120s 轮询
       if (gongyanRetryRef.current < 2) {
         gongyanRetryRef.current += 1;
         setTimeout(() => {
@@ -408,11 +408,14 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!isFocused) return;
     fetchGongyanStatus();
-    gongyanTimer.current = setInterval(() => {
-      // 切到后台时暂停轮询，回前台立即补一次（省电 + 不占后台网络）
-      if (AppState.currentState !== 'active') return;
-      fetchGongyanStatus();
-    }, 60 * 1000);
+    gongyanTimer.current = setInterval(
+      () => {
+        // 切到后台时暂停轮询，回前台立即补一次（省电 + 不占后台网络）
+        if (AppState.currentState !== 'active') return;
+        fetchGongyanStatus();
+      },
+      2 * 60 * 1000,
+    );
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') fetchGongyanStatus();
     });
@@ -562,7 +565,7 @@ export default function HomeScreen() {
           if (!focusedRef.current) return;
           // 有缓存/已有列表时网络失败不打断展示（保留内容，仅静默）；
           // 无任何数据时：记错误态 + 5s 后自动重试（最多 3 次，网络抖动自愈，不必等手动点重试）。
-          // 判断依据是当前无可展示数据，避免首屏失败后只剩 60s 轮询兜底。
+          // 判断依据是当前无可展示数据，避免首屏失败后只剩 120s 轮询兜底。
           if (livesRef.current.length === 0) {
             setLivesError(e?.message || String(e));
             if (livesRetryRef.current < 3) {

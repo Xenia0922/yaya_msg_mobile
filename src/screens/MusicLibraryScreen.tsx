@@ -1,4 +1,4 @@
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { USER_AGENT } from '../constants';
@@ -47,12 +47,27 @@ import { ListBottomSpacer } from '../components/ListBottomSpacer';
 import { SearchBar } from '../components/SearchBar';
 
 /** 播放中均衡器：三根柱子错峰跳动（Animated loop + native driver） */
-function EqualizerBars({ color, size = 13 }: { color: string; size?: number }) {
+function EqualizerBars({
+  color,
+  size = 13,
+  active = true,
+}: {
+  color: string;
+  size?: number;
+  active?: boolean;
+}) {
   const bars = useMemo(
     () => [new Animated.Value(0.35), new Animated.Value(0.35), new Animated.Value(0.35)],
     [],
   );
   useEffect(() => {
+    if (!active) {
+      bars.forEach((v) => {
+        v.stopAnimation();
+        v.setValue(0.35);
+      });
+      return;
+    }
     const loops = bars.map((v, i) =>
       Animated.loop(
         Animated.sequence([
@@ -73,7 +88,7 @@ function EqualizerBars({ color, size = 13 }: { color: string; size?: number }) {
     );
     loops.forEach((l) => l.start());
     return () => loops.forEach((l) => l.stop());
-  }, [bars]);
+  }, [bars, active]);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: size }}>
       {bars.map((v, i) => (
@@ -161,6 +176,7 @@ const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
 
 export default function MusicLibraryScreen() {
   const navigation = useNavigation();
+  const screenFocused = useIsFocused();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
@@ -1042,7 +1058,10 @@ export default function MusicLibraryScreen() {
                     />
                     {active ? (
                       <View style={[styles.playingBadge, { backgroundColor: palette.tint }]}>
-                        <EqualizerBars color={palette.onTint} />
+                        <EqualizerBars
+                          color={palette.onTint}
+                          active={screenFocused && playbackState === 'playing'}
+                        />
                       </View>
                     ) : null}
                     <ScalePressable
