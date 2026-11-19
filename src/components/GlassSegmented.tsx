@@ -32,7 +32,17 @@ export interface GlassSegmentOption<T extends string> {
  * 因此观感一致；同时省掉动画期间每帧一次 backdrop 重采样（更省电、更不掉帧）。
  * 需要真模糊时请用 `GlassSurface role="selector"`（静止不动的场景）。
  */
-function SelectorCapsule({ radius, dark }: { radius: number; dark: boolean }) {
+function SelectorCapsule({
+  radius,
+  dark,
+  tintSoft,
+  tint,
+}: {
+  radius: number;
+  dark: boolean;
+  tintSoft: string;
+  tint: string;
+}) {
   return (
     <View
       pointerEvents="none"
@@ -40,9 +50,9 @@ function SelectorCapsule({ radius, dark }: { radius: number; dark: boolean }) {
         StyleSheet.absoluteFill,
         {
           borderRadius: radius,
-          backgroundColor: dark ? 'rgba(255,255,255,0.12)' : 'rgba(232,232,238,0.55)',
+          backgroundColor: tintSoft || (dark ? 'rgba(255,255,255,0.12)' : 'rgba(232,232,238,0.55)'),
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)',
+          borderColor: tint || (dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)'),
         },
       ]}
     />
@@ -181,7 +191,12 @@ export function GlassSegmented<T extends string>({
               },
             ]}
           >
-            <SelectorCapsule radius={(height - pad * 2) / 2} dark={palette.name === 'dark'} />
+            <SelectorCapsule
+              radius={(height - pad * 2) / 2}
+              dark={palette.name === 'dark'}
+              tintSoft={palette.tintSoft}
+              tint={palette.tint}
+            />
           </Animated.View>
         ) : null}
         {options.map((o) => {
@@ -199,7 +214,7 @@ export function GlassSegmented<T extends string>({
                 numberOfLines={1}
                 style={[
                   styles.label,
-                  { color: active ? palette.tint : palette.labelSecondary },
+                  { color: active ? palette.label : palette.labelSecondary },
                   active && styles.labelActive,
                 ]}
               >
@@ -293,7 +308,12 @@ export function GlassSegmentedScroll<T extends string>({
                 { height: height - 6, width: w, transform: [{ translateX: x }] },
               ]}
             >
-              <SelectorCapsule radius={(height - 6) / 2} dark={palette.name === 'dark'} />
+              <SelectorCapsule
+                radius={(height - 6) / 2}
+                dark={palette.name === 'dark'}
+                tintSoft={palette.tintSoft}
+                tint={palette.tint}
+              />
             </Animated.View>
           ) : null}
           {options.map((o, i) => {
@@ -323,7 +343,7 @@ export function GlassSegmentedScroll<T extends string>({
                   numberOfLines={1}
                   style={[
                     styles.label,
-                    { color: active ? palette.tint : palette.labelSecondary },
+                    { color: active ? palette.label : palette.labelSecondary },
                     active && styles.labelActive,
                   ]}
                 >

@@ -61,6 +61,7 @@ export const styles = StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 12,
     paddingBottom: 6,
   },
