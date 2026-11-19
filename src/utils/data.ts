@@ -1,5 +1,6 @@
 import { translate } from '../i18n';
 import { sanitizeText } from './html';
+import { normalizeImageHost } from './imageThumb';
 
 export function getPath(obj: any, path: string): any {
   return path.split('.').reduce((acc, key) => acc?.[key], obj);
@@ -61,7 +62,8 @@ export function normalizeUrl(value: any): string {
   if (!value) return '';
   const raw = String(value).trim();
   if (!raw) return '';
-  if (raw.startsWith('//')) return `https:${raw}`;
+  if (raw.startsWith('//')) return normalizeImageHost(`https:${raw}`);
+  if (/^https?:\/\//i.test(raw)) return normalizeImageHost(raw);
   // ⚠️ 相对路径按「宿主」拼，不能一律拼 source.48.cn：
   // 48 图床（avatar/mediasource/backstage…）→ source.48.cn；
   // 用户徽章/头像框等资源实际在 source1.48.cn（拼错域名 → 勋章框加载 404/不渲染；用户反馈）。

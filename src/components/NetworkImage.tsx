@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Image, ImageProps, Platform, StyleSheet, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { thumbUrl } from '../utils/imageThumb';
+import { normalizeImageHost, thumbUrl } from '../utils/imageThumb';
 
 type NetworkImageProps = ImageProps & {
   /** 加载失败时是否显示回退占位（浅灰底 + 可选图标），默认开启（D4 修复：source.48.cn 偶发拒绝不再留白块） */
@@ -38,10 +38,11 @@ export function NetworkImage({
   /** 缩略图失败过一次 → 本次改用原图 */
   const [useOriginal, setUseOriginal] = useState(false);
   // uri 变化时重置失败态（FlatList 复用实例时不串台）
-  const uri =
+  const rawUri =
     rest.source && typeof rest.source === 'object' && 'uri' in rest.source
       ? (rest.source as any).uri
       : undefined;
+  const uri = rawUri ? normalizeImageHost(rawUri) : undefined;
   // 缩略图：仅当显式传 thumbnail 且是 48 图床图片时改写 URL（失败/不支持时 thumbUrl 原样返回）
   const thumbUri = thumbnail && uri ? thumbUrl(uri, thumbnail) : '';
   /** 是否真的换成了另一条 URL（原样返回 / gif / 非 48 图床都为 false） */

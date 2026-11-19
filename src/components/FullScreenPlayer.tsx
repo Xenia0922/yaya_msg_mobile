@@ -24,6 +24,7 @@ import { useI18n } from '../i18n';
 import { joinMeta } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
 import { GlassSurface } from '../components/GlassSurface';
+import { normalizeImageHost } from '../utils/imageThumb';
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0:00';
@@ -73,7 +74,7 @@ function FullScreenPlayerInner({
   const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
   const coverUri = rawCover
     ? rawCover.startsWith('http')
-      ? rawCover
+      ? normalizeImageHost(rawCover)
       : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`
     : '';
 
@@ -514,7 +515,7 @@ function FullScreenPlayerInner({
                 const cu = (item.coverUrl || item.cover || item.thumbPath || '') as string;
                 const uri = cu
                   ? cu.startsWith('http')
-                    ? cu
+                    ? normalizeImageHost(cu)
                     : `https://source.48.cn${cu.startsWith('/') ? cu : '/' + cu}`
                   : undefined;
                 return (
