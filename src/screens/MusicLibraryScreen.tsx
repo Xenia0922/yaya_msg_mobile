@@ -168,9 +168,8 @@ const GROUP_LABELS: Record<string, string> = {
 };
 // C: 模块级会话缓存——导航进出音乐库（重挂载）直接显示上次列表，不再重复拉取/闪骨架
 let songsCache: any[] | null = null;
-const CHIP_MIN_WIDTH = 56;
+const CHIP_WIDTH = 60;
 const CHIP_GAP = 8;
-const CHIP_FAV_MIN_WIDTH = 82;
 const CHIP_HEIGHT = 36;
 const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
 
@@ -875,7 +874,7 @@ export default function MusicLibraryScreen() {
                 radius={999}
                 onPress={() => onGroupChange(g)}
                 tintColor={group === g ? 'rgba(255,111,145,0.82)' : undefined}
-                style={[styles.gChip, g === 'FAV' ? styles.gChipFav : styles.gChipBase]}
+                style={styles.gChip}
               >
                 <Text
                   numberOfLines={1}
@@ -1289,8 +1288,9 @@ const styles = StyleSheet.create({
     paddingVertical: (TABS_BAR_HEIGHT - CHIP_HEIGHT) / 2, // 垂直居中
   },
   gChip: {
+    width: CHIP_WIDTH,
     height: CHIP_HEIGHT,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1299,9 +1299,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginRight: CHIP_GAP,
   },
-  gChipFav: { minWidth: CHIP_FAV_MIN_WIDTH },
-  gChipBase: { minWidth: CHIP_MIN_WIDTH },
-  gText: { fontSize: 13, fontWeight: '700' },
+  gText: { fontSize: 12, fontWeight: '700' },
   status: { fontSize: 12, fontWeight: '700' },
   statusInfo: { paddingVertical: 16, alignItems: 'center' },
 
