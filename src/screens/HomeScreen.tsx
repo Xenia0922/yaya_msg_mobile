@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, AppState, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -795,48 +795,46 @@ export default function HomeScreen() {
 
   const quick = QUICK.map((i) => ({ ...i, title: t(i.title) }));
 
-  // 私信未读红点：仅在已登录时拉取；失败静默（不打扰）
-  useFocusEffect(
-    useCallback(() => {
-      // 设置里有开关（默认开）：关掉就不再拉取、不显示角标
-      if (!token || settings.yaya_pm_unread_badge === false) {
-        pmUnreadTokenRef.current = '';
-        setPmUnread(0);
-        return;
-      }
-      if (pmUnreadTokenRef.current !== token) {
-        pmUnreadTokenRef.current = token;
-        setPmUnread(0);
-      }
-      let alive = true;
-      let fetching = false;
-      const refreshUnread = () => {
-        if (!alive || fetching || AppState.currentState !== 'active') return;
-        fetching = true;
-        pocketApi
-          .getUnreadMessageCount()
-          .then((res: any) => {
-            if (!alive) return;
-            const count = privateUnreadCount(res);
-            if (count !== null) setPmUnread(count);
-          })
-          .catch(() => {})
-          .finally(() => {
-            fetching = false;
-          });
-      };
-      refreshUnread();
-      const timer = setInterval(refreshUnread, 30000);
-      const sub = AppState.addEventListener('change', (state) => {
-        if (state === 'active') refreshUnread();
-      });
-      return () => {
-        alive = false;
-        clearInterval(timer);
-        sub.remove();
-      };
-    }, [token, settings.yaya_pm_unread_badge]),
-  );
+  // 私信未读红点：进软件/回前台即拉取，之后每 30s 刷新；失败静默（不打扰）
+  useEffect(() => {
+    // 设置里有开关（默认开）：关掉就不再拉取、不显示角标
+    if (!token || settings.yaya_pm_unread_badge === false) {
+      pmUnreadTokenRef.current = '';
+      setPmUnread(0);
+      return;
+    }
+    if (pmUnreadTokenRef.current !== token) {
+      pmUnreadTokenRef.current = token;
+      setPmUnread(0);
+    }
+    let alive = true;
+    let fetching = false;
+    const refreshUnread = () => {
+      if (!alive || fetching || AppState.currentState !== 'active') return;
+      fetching = true;
+      pocketApi
+        .getUnreadMessageCount()
+        .then((res: any) => {
+          if (!alive) return;
+          const count = privateUnreadCount(res);
+          if (count !== null) setPmUnread(count);
+        })
+        .catch(() => {})
+        .finally(() => {
+          fetching = false;
+        });
+    };
+    refreshUnread();
+    const timer = setInterval(refreshUnread, 30000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshUnread();
+    });
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [token, settings.yaya_pm_unread_badge]);
   const toolChips = TOOL_CHIPS.map((i) => ({ ...i, title: t(i.title) }));
 
   const trackTitle = currentTrack?.title || '';

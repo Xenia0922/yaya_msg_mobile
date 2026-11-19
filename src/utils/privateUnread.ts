@@ -6,6 +6,10 @@ export function privateUnreadCount(response: any): number | null {
       ? (content.num ??
         content.noreadNum ??
         content.unreadNum ??
+        content.unreadMessageNum ??
+        content.messageNum ??
+        content.msgNum ??
+        content.privateNum ??
         content.unread ??
         content.count ??
         content.total)

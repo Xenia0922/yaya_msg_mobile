@@ -121,8 +121,8 @@ android {
         // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3000014
-        versionName "2.8.0"
+        versionCode 3000015
+        versionName "2.8.1"
 
         // ABI 统一由下方 splits.abi 控制（真机 armeabi-v7a/arm64-v8a + 模拟器 x86_64）。
         // 不要同时设置 ndk.abiFilters：与 splits 冲突时 AGP 会直接报
