@@ -59,6 +59,8 @@ export function FilterChips({
       </ScrollView>
       <LinearGradient
         pointerEvents="none"
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
         colors={
           palette.name === 'dark'
             ? ['rgba(20,20,26,0)', 'rgba(20,20,26,0.85)']
