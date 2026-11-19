@@ -229,7 +229,7 @@ export default function DownloadScreen() {
         title={t('下载管理')}
         right={
           <HeaderAction
-            label={t('清理完成')}
+            label={t('清理')}
             onPress={clearDone}
             disabled={doneCount + failedCount === 0}
           />
