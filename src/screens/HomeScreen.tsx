@@ -795,7 +795,7 @@ export default function HomeScreen() {
 
   const quick = QUICK.map((i) => ({ ...i, title: t(i.title) }));
 
-  // 私信未读红点：进软件/回前台即拉取，之后每 30s 刷新；失败静默（不打扰）
+  // 私信未读红点：进软件/回前台即拉取，前台每 60s 刷新；后台暂停，失败静默
   useEffect(() => {
     // 设置里有开关（默认开）：关掉就不再拉取、不显示角标
     if (!token || settings.yaya_pm_unread_badge === false) {
@@ -809,6 +809,7 @@ export default function HomeScreen() {
     }
     let alive = true;
     let fetching = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
     const refreshUnread = () => {
       if (!alive || fetching || AppState.currentState !== 'active') return;
       fetching = true;
@@ -824,14 +825,28 @@ export default function HomeScreen() {
           fetching = false;
         });
     };
+    const startPolling = () => {
+      if (!alive || timer) return;
+      timer = setInterval(refreshUnread, 60000);
+    };
+    const stopPolling = () => {
+      if (!timer) return;
+      clearInterval(timer);
+      timer = null;
+    };
     refreshUnread();
-    const timer = setInterval(refreshUnread, 30000);
+    if (AppState.currentState === 'active') startPolling();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refreshUnread();
+      if (state === 'active') {
+        refreshUnread();
+        startPolling();
+      } else {
+        stopPolling();
+      }
     });
     return () => {
       alive = false;
-      clearInterval(timer);
+      stopPolling();
       sub.remove();
     };
   }, [token, settings.yaya_pm_unread_badge]);
