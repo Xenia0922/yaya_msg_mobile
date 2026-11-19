@@ -46,6 +46,8 @@ export default function QuickModule({
             <ScalePressable
               onPress={() => onPressItem(item)}
               pressedScale={0.94}
+              accessibilityRole="button"
+              accessibilityLabel={item.title}
               style={styles.quickCellInner}
             >
               {/* 半透明底色让背景透出，避免为每个入口重复模糊。 */}
