@@ -164,7 +164,7 @@ export default function UsagePreferencesScreen() {
               <ChipRow
                 options={[
                   { label: t('关'), value: false as any },
-                  { label: t('开启'), value: true as any },
+                  { label: t('开'), value: true as any },
                 ]}
                 value={settings.pip_auto}
                 onChange={(v) => {
@@ -184,7 +184,7 @@ export default function UsagePreferencesScreen() {
               <ChipRow
                 options={[
                   { label: t('关'), value: false as any },
-                  { label: t('开启'), value: true as any },
+                  { label: t('开'), value: true as any },
                 ]}
                 value={settings.yaya_pm_unread_badge}
                 onChange={(v) => update('yaya_pm_unread_badge', v)}
@@ -294,7 +294,7 @@ export default function UsagePreferencesScreen() {
               <ChipRow
                 options={[
                   { label: t('关'), value: false as any },
-                  { label: t('开启'), value: true as any },
+                  { label: t('开'), value: true as any },
                 ]}
                 value={settings.yaya_auto_checkin_enabled}
                 onChange={(v) => update('yaya_auto_checkin_enabled', v)}

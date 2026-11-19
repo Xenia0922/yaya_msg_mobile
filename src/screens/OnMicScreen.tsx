@@ -13,7 +13,6 @@ import { usePalette } from '../theme';
 import { useI18n } from '../i18n';
 import { useMemberStore } from '../store';
 import { EmptyState } from '../components/StateViews';
-import { CenterSpinner } from '../components/Loaders';
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -217,11 +216,9 @@ export default function OnMicScreen() {
           hint={error}
           onAction={() => scan({ force: true })}
         />
-      ) : entries.length === 0 && scanning ? (
-        /* 扫描中且尚无结果：显示加载态 —— 以前这里直接落进「暂无成员上麦」空态，
-           看起来像扫完了没结果（用户反馈的「加载显示有问题」） */
-        <CenterSpinner text={t('正在扫描上麦状态…')} />
-      ) : entries.length === 0 ? (
+      ) : entries.length === 0 &&
+        scanning ? /* 扫描中且尚无结果：顶部 scanBar 已显示进度和文案，这里不再放第二个 spinner。 */
+      null : entries.length === 0 ? (
         <EmptyState
           icon="microphone-off"
           title={t('暂无成员上麦')}
