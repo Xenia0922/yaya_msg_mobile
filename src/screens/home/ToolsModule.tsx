@@ -5,7 +5,6 @@
  */
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FadeInView, ScalePressable } from '../../components/Motion';
 import { SectionTitle } from '../../components/SectionTitle';
@@ -72,15 +71,6 @@ export default function ToolsModule({ toolChips, quickCellW, onPressItem }: Tool
               </ScalePressable>
             ))}
           </ScrollView>
-          <LinearGradient
-            pointerEvents="none"
-            colors={
-              palette.name === 'dark'
-                ? ['rgba(11,11,15,0)', 'rgba(11,11,15,0.88)']
-                : ['rgba(236,237,241,0)', 'rgba(236,237,241,0.9)']
-            }
-            style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28 }}
-          />
         </View>
       </FadeInView>
     </View>
