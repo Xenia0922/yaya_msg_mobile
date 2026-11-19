@@ -182,7 +182,6 @@ export const en: Record<string, string> = {
   正在检查Token: 'Checking token...',
   Token有效: 'Token valid',
   'Token无效：{msg}': 'Token invalid: {msg}',
-  '登录状态已失效，请重新登录': 'Login expired. Please sign in again.',
   '正在切换到{name}': 'Switching to {name}...',
   切换失败没有拿到目标账号ID: 'Switch failed: no target account ID',
   '切换账号失败：{msg}': 'Switch failed: {msg}',
