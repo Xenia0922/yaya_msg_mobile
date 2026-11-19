@@ -1063,8 +1063,13 @@ export default function LoginScreen() {
                         loading={switchingUserId === id}
                       />
                     ) : (
-                      <View style={[styles.currentBadge, { backgroundColor: palette.tint }]}>
-                        <Text style={[styles.currentBadgeText, { color: palette.onTint }]}>
+                      <View
+                        style={[
+                          styles.currentBadge,
+                          { backgroundColor: palette.tintSoft, borderColor: palette.tint },
+                        ]}
+                      >
+                        <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
                           {t('当前')}
                         </Text>
                       </View>
@@ -1126,8 +1131,13 @@ export default function LoginScreen() {
                     </Text>
                   </View>
                   {isCurrent ? (
-                    <View style={[styles.currentBadge, { backgroundColor: palette.tint }]}>
-                      <Text style={[styles.currentBadgeText, { color: palette.onTint }]}>
+                    <View
+                      style={[
+                        styles.currentBadge,
+                        { backgroundColor: palette.tintSoft, borderColor: palette.tint },
+                      ]}
+                    >
+                      <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
                         {t('当前')}
                       </Text>
                     </View>
@@ -1964,8 +1974,16 @@ const styles = StyleSheet.create({
   accountTextWrap: { flex: 1, minWidth: 0 },
   accountName: { fontSize: 15, fontWeight: '700', flexShrink: 1 },
   accountMeta: { marginTop: 3, fontSize: 11, flexShrink: 1 },
-  currentBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill },
-  currentBadgeText: { fontSize: 11, fontWeight: '800' },
+  currentBadge: {
+    minHeight: 34,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentBadgeText: { fontSize: 13, fontWeight: '800' },
   verifyBox: {
     padding: 12,
     borderRadius: radii.md,

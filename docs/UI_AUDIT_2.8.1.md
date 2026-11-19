@@ -57,6 +57,8 @@ Tab 切换：直播 0% / 房间 0% / 设置 5.88% / 首页 0%
 - 使用偏好开关统一为「关 / 开」单字标签。
 - 直播筛选条与搜索按钮增加间距，避免贴边重叠。
 - 直播/录播等公开接口不再携带本地旧 token，避免过期 token 被服务端当成解析失败而误报登录错误。
+- 账号设置的「当前」状态改为与切换按钮同高的浅粉状态 chip，避免看起来像另一个可点击按钮。
+- Android Activity 补充 `fontScale/density` 等 configChanges：系统字体变化不再重建 Activity，修复设置背景图时 expo ActivityResultLauncher 未注册的问题；真机选图器已验证可打开。
 
 ## 后续建议
 
