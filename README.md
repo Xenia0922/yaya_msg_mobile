@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-ff6f91" alt="license" /></a>
-  <a href="https://github.com/Xenia0922/yaya_msg_mobile/releases"><img src="https://img.shields.io/badge/release-v2.8.0-ff6f91" alt="release" /></a>
+  <a href="https://github.com/Xenia0922/yaya_msg_mobile/releases"><img src="https://img.shields.io/badge/release-v2.9.0-ff6f91" alt="release" /></a>
   <img src="https://img.shields.io/badge/platform-Android-3DDC84?logo=android" alt="Android" />
 </p>
 
@@ -15,7 +15,7 @@
 
 口袋48 第三方移动客户端（React Native），基于 [yk1z/yaya_msg](https://github.com/yk1z/yaya_msg) 二次开发。
 
-当前版本：**v2.8.0**
+当前版本：**v2.9.0**
 
 ## 功能
 
@@ -33,9 +33,9 @@
 
 Release 包说明：
 
-- `yaya-msg-mobile-v2.8.0-universal.apk`：通用包（全 ABI，体积最大）
-- `yaya-msg-mobile-v2.8.0-v8a.apk`：arm64 真机包（推荐）
-- `yaya-msg-mobile-v2.8.0-x64.apk`：x86_64 模拟器包
+- `yaya-msg-mobile-v2.9.0-universal.apk`：通用包（全 ABI，体积最大）
+- `yaya-msg-mobile-v2.9.0-v8a.apk`：arm64 真机包（推荐）
+- `yaya-msg-mobile-v2.9.0-x64.apk`：x86_64 模拟器包
 
 App 内「检查更新」始终提供通用包直链；真机如需最小体积，请在 Release 页面按架构下载。
 
