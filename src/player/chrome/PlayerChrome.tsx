@@ -5,7 +5,6 @@ import {
   FlatList,
   GestureResponderEvent,
   Image,
-  Keyboard,
   Linking,
   Modal,
   NativeModules,
@@ -25,9 +24,10 @@ import { usePlayerStore } from '../store/playerStore';
 import { isRtmpUrl } from '../resolve/streamResolver';
 import { PlayerFeatures, PocketComment, PocketPlayerInfo } from '../types';
 import { useI18n } from '../../i18n';
-import { usePalette } from '../../theme';
+import { usePalette, fontFamily } from '../../theme';
 import { formatPlayTime } from './FullscreenManager';
 import { useSafeAreaInsets } from '../../hooks/useSafeAreaInsets';
+import { useKeyboardHeight } from '../../hooks/useKeyboardHeight';
 import { enqueueDownload } from '../../services/downloads';
 import { useUiStore } from '../../store';
 import { errorMessage, pickText, unwrapList } from '../../utils/data';
@@ -49,19 +49,18 @@ interface Props {
     onPress: () => void;
   }>;
   onClose?: () => void;
-  /** 内嵌模式：不渲染顶栏（列表页内嵌播放器），仅底坞 + 全屏 */
+
   inline?: boolean;
-  /** 错误重试回调：页面可传「重新解析地址」而非仅重播同 URL（直播流地址有时效） */
+
   onRetry?: () => void;
-  /** 直播弹幕输入条：渲染进底部控制坞，随控制条一起自动隐藏/呼出 */
+
   barrageInput?: React.ReactNode;
 }
 
-/** 控制条自动隐藏间隔 */
 const CONTROLS_HIDE_MS = 3500;
-/** 可用倍速档（点播/回放） */
+
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
-/** 触控色（全屏黑底上固定亮色，不随主题） */
+
 const TINT = '#ff6f91';
 
 function RankAvatar({ uri, overlap }: { uri: string; overlap: boolean }) {
@@ -142,8 +141,8 @@ function PocketCommentFeed({
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const latestId = visible.length ? visible[visible.length - 1]?.id : '';
   const scrollScheduledRef = useRef(false);
+  const draggingRef = useRef(false);
 
-  /** 官方 stackFromEnd 等价：普通列表，新消息追加到末尾，只追最后一项。 */
   const scrollToLatest = useCallback(() => {
     if (!atBottomRef.current) return;
     if (scrollScheduledRef.current) return;
@@ -158,25 +157,57 @@ function PocketCommentFeed({
     if (!visible.length) {
       atBottomRef.current = true;
       setAtBottom(true);
+      setUserScrolledUp(false);
       return;
     }
     scrollToLatest();
   }, [visible.length, latestId, scrollToLatest]);
 
+  const updateScrollStickiness = useCallback((e: any) => {
+    const native = e?.nativeEvent;
+    if (!native) return;
+    const { contentOffset, contentSize, layoutMeasurement } = native;
+    const contentH = Number(contentSize?.height) || 0;
+    const viewH = Number(layoutMeasurement?.height) || 0;
+    const offsetY = Number(contentOffset?.y) || 0;
+    const fitsViewport = contentH <= viewH + 8;
+    const distanceToEnd = contentH - viewH - offsetY;
+    if (fitsViewport || distanceToEnd <= 32) {
+      if (!atBottomRef.current) {
+        atBottomRef.current = true;
+        setAtBottom(true);
+      }
+      setUserScrolledUp(false);
+    } else if (draggingRef.current && distanceToEnd > 48) {
+      if (atBottomRef.current) {
+        atBottomRef.current = false;
+        setAtBottom(false);
+      }
+      setUserScrolledUp(true);
+    }
+  }, []);
+
   const handleScrollBegin = useCallback(() => {
-    // 仅用户主动拖动才关闭跟随，避免内容增长导致的 onScroll 自动回写误判。
-    atBottomRef.current = false;
-    setAtBottom(false);
-    setUserScrolledUp(true);
+    draggingRef.current = true;
   }, []);
 
   const handleScrollEnd = useCallback((e: any) => {
-    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-    const distanceToEnd = contentSize.height - layoutMeasurement.height - (contentOffset.y || 0);
-    if (distanceToEnd <= 12) {
+    draggingRef.current = false;
+    const native = e?.nativeEvent;
+    if (!native) return;
+    const { contentOffset, contentSize, layoutMeasurement } = native;
+    const contentH = Number(contentSize?.height) || 0;
+    const viewH = Number(layoutMeasurement?.height) || 0;
+    const offsetY = Number(contentOffset?.y) || 0;
+    const distanceToEnd = contentH - viewH - offsetY;
+    if (contentH <= viewH + 8 || distanceToEnd <= 32) {
       atBottomRef.current = true;
       setAtBottom(true);
       setUserScrolledUp(false);
+    } else {
+      atBottomRef.current = false;
+      setAtBottom(false);
+      setUserScrolledUp(true);
     }
   }, []);
   const renderComment = (item: PocketComment) => (
@@ -197,15 +228,26 @@ function PocketCommentFeed({
           </Text>
         </View>
       ) : null}
-      <Text
-        allowFontScaling={false}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-        style={[styles.pocketCommentText, { fontSize: Math.max(10, Math.min(15, fontSize - 3)) }]}
-      >
-        {item.nick && item.kind !== 'gift' && item.kind !== 'enter' ? `${item.nick}：` : ''}
-        {item.text}
-      </Text>
+      {(() => {
+        const commentFontSize = Math.max(10, Math.min(15, fontSize - 3));
+        return (
+          <Text
+            allowFontScaling={false}
+            numberOfLines={2}
+            ellipsizeMode="tail"
+            style={[
+              styles.pocketCommentText,
+              {
+                fontSize: commentFontSize,
+                lineHeight: Math.round(commentFontSize * 1.35),
+              },
+            ]}
+          >
+            {item.nick && item.kind !== 'gift' && item.kind !== 'enter' ? `${item.nick}：` : ''}
+            {item.text}
+          </Text>
+        );
+      })()}
     </TouchableOpacity>
   );
   return (
@@ -224,6 +266,8 @@ function PocketCommentFeed({
         maxToRenderPerBatch={16}
         windowSize={5}
         scrollEventThrottle={100}
+        onScroll={updateScrollStickiness}
+        onContentSizeChange={scrollToLatest}
         onScrollBeginDrag={handleScrollBegin}
         onScrollEndDrag={handleScrollEnd}
         onMomentumScrollEnd={handleScrollEnd}
@@ -232,8 +276,10 @@ function PocketCommentFeed({
         <TouchableOpacity
           style={styles.pocketScrollBottom}
           onPress={() => {
+            draggingRef.current = false;
             atBottomRef.current = true;
             setAtBottom(true);
+            setUserScrolledUp(false);
             listRef.current?.scrollToEnd({ animated: true });
           }}
           activeOpacity={0.85}
@@ -246,10 +292,6 @@ function PocketCommentFeed({
   );
 }
 
-/**
- * 唯一播放器控制层（重写核心）：渐变遮罩顶栏 + 悬浮底坞（可拖进度/倍速/弹幕/全屏）+ 更多面板。
- * 所有页面共用；能力按 features 声明渲染。
- */
 export function PlayerChrome({
   pocket,
   features = {},
@@ -368,34 +410,24 @@ export function PlayerChrome({
       active = false;
     };
   }, [hasPocket, screenW, screenH]);
-  // 底坞纵向自适应：不再用一套固定间距（用户反馈「下半控件太高，像是写死高度」）
+
   const dockScale = Math.max(0.82, Math.min(1, screenH / 820));
-  // 安全区：顶栏保留「系统通知栏」冗余（避免弹幕/标题压到状态栏），底坞避开手势导航条
+
   const insets = useSafeAreaInsets();
-  /**
-   * 软键盘高度（仅 Android 用）。
-   *
-   * ⚠️ 播放器页是 `position:absolute` 的全屏浮层，`adjustResize` 缩的是 Activity 根 View
-   * 的高度，而这个 absolute 浮层的高度是「相对父容器」算的 —— 父容器被缩了、浮层不一定跟着缩，
-   * 于是底坞的弹幕输入条会被输入法整个盖住（用户反馈「输入框不顶输入法」）。
-   * 这里直接量键盘高度，把底坞顶上去，行为与窗口模式无关，最稳。
-   */
-  const [kbHeight, setKbHeight] = useState(0);
-  /**
-   * 输入法是否可见。
-   * 用 ref 而不是 state：自动隐藏计时器回调里要读它，但不该因为键盘开合重建
-   * `showControls`（useCallback([]) 锁首帧，改依赖会连带重建整串回调）。
-   */
+
+  const kbHeight = useKeyboardHeight(Platform.OS === 'android');
+  const kbLift = kbHeight > 0 ? kbHeight + 6 : 0;
+
   const kbVisibleRef = useRef(false);
-  /** showControls 的 ref（键盘收起后要重启自动隐藏计时，而 effect 定义在 showControls 之前） */
+
   const showControlsRef = useRef<(() => void) | null>(null);
   const tapRef = useRef<{ t: number; side: 'l' | 'r' } | null>(null);
   const [seekFlash, setSeekFlash] = useState<number | null>(null);
   const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** 单击判定定时器（320ms 等双击）：必须在卸载时清理，否则回调会对已卸载组件 setState */
+
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 控制条淡入淡出
+
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     Animated.timing(controlsOpacity, {
@@ -404,24 +436,16 @@ export function PlayerChrome({
       useNativeDriver: true,
     }).start();
   }, [controlsVisible, controlsOpacity]);
-  // 进度条拖动：比例 → seek（录播定位；进度条触控区加高避免误触）
+
   const progTrackRef = useRef<View>(null);
   const progW = useRef(0);
   const progX = useRef(0);
   const dragRatioRef = useRef<number | null>(null);
-  /** 正在拖进度条：禁止控制条自动隐藏（防 hide 卸载 responder 目标触发闪退） */
+
   const dragLockRef = useRef(false);
-  // 拖动中本地预览比例（UI 显示用）；松手才写 store/seek 一次——避免每帧 setPosition
-  // 高频触发全局订阅组件渲染风暴（实测拖动导致 ANR/闪退、日志来不及落盘）
+
   const [dragRatio, setDragRatio] = useState<number | null>(null);
-  // ⚠️ 拖进度条闪退防护：手势回调任何同步异常都 try/catch 吞掉（冒到 mqt_native_modules 线程 =
-  // JS 致命异常直接闪退且无日志）；拖动期间禁止控制条自动隐藏（3s 定时器若在拖动中 hide，
-  // responder 目标被卸载 → RN 触控分发内部抛 undefined → 同款闪退）。
-  // ⚠️ 关键：PanResponder 由 useRef 只创建一次，闭包锁死「首次渲染作用域」的绑定；
-  // 而 seekTo/onProgDown/onProgUp 在 `if (!source) return null`（更早）之后才声明——
-  // 若首次渲染 source 为空，它们在该作用域永远处于 TDZ，之后每次触碰都抛
-  // "undefined is not a function"（曾导致拖进度条闪退）。解法：回调只经 ref 间接调用，
-  // ref 在每次渲染（有 source 时）重新指向当前函数。
+
   const progCtl = useRef<{ down: (x: number) => void; move: (x: number) => void; up: () => void }>({
     down: () => {},
     move: () => {},
@@ -469,14 +493,11 @@ export function PlayerChrome({
     usePlayerStore.getState().toggleControls(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => {
-      // 打字中（输入法可见）绝不自动隐藏：底坞里的弹幕输入条会被一起淡走，
-      // 用户正在输入却看不到输入框与已输入内容（需求明确要求「有输入法时不自动隐藏」）
       if (kbVisibleRef.current) {
         showControls();
         return;
       }
-      // 播放中才自动隐藏（全屏同样隐藏）；暂停/缓冲保持显示（用户在操作/看画面）
-      // 拖动中绝不离场：hide 会把正在被触摸的 responder 视图卸载 → 原生触控分发崩
+
       if (dragLockRef.current) {
         showControls();
         return;
@@ -488,42 +509,29 @@ export function PlayerChrome({
   }, []);
   showControlsRef.current = showControls;
 
-  /**
-   * 输入法开合 → 控制条显隐。
-   * - 弹出：取消待执行的自动隐藏并保持控制条可见（否则刚点输入框，输入条就淡走了）
-   * - 收起：重启一次自动隐藏计时，恢复「播放中 3s 后隐藏」的既有行为
-   */
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+    if (kbHeight > 0) {
       kbVisibleRef.current = true;
-      setKbHeight(Number(e?.endCoordinates?.height) || 0);
       if (hideTimer.current) clearTimeout(hideTimer.current);
       usePlayerStore.getState().toggleControls(true);
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+    } else if (kbVisibleRef.current) {
       kbVisibleRef.current = false;
-      setKbHeight(0);
       showControlsRef.current?.();
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+    }
+  }, [kbHeight]);
 
   useEffect(() => {
     showControls();
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
-      // ⚠️ 一并清理双击提示与单击判定定时器（此前只清了 hideTimer，卸载后回调仍会 setState）
+
       if (seekFlashTimer.current) clearTimeout(seekFlashTimer.current);
       if (tapTimer.current) clearTimeout(tapTimer.current);
       if (progRaf.current) cancelAnimationFrame(progRaf.current);
     };
   }, [showControls, source?.url]);
 
-  // 双击快进/快退：±10s（点播）；单击唤出/隐藏控制条（延迟 320ms 等双击判定）
   const onVideoTap = useCallback(
     (side: 'l' | 'r') => {
       const now = Date.now();
@@ -539,7 +547,7 @@ export function PlayerChrome({
           const delta = side === 'r' ? 10 : -10;
           const base = s.position;
           const target = Math.max(0, Math.min(s.duration - 0.3, base + delta));
-          // 不依赖闭包 seekTo（useCallback 锁首帧作用域会 TDZ）——直接走 store
+
           s.setPosition(target);
           s.setSeekTarget(target);
           setSeekFlash(delta);
@@ -560,9 +568,6 @@ export function PlayerChrome({
     [showControls],
   );
 
-  // 播放器内下载（替代长按）：点播/回放/音频可下载；HLS 分段与直播不提供
-  // ⚠️ hooks 必须在 line `if (!source) return null`（更下方）之前：source 短暂为空时
-  // 早退会导致 hook 数变化 → "Rendered more hooks"（直播首帧/换源实测触发）
   const showToast = useUiStore((s) => s.showToast);
   const runDownload = useCallback(async () => {
     const s = usePlayerStore.getState();
@@ -579,7 +584,7 @@ export function PlayerChrome({
     }
     showControls();
   }, [showToast, t, showControls]);
-  // 「更多」面板动作 = 页面传入 extraActions + 点播下载（放首位）；source 可能为空 → 短路保护
+
   const downloadAvailable =
     !!source &&
     source.kind !== 'live' &&
@@ -599,15 +604,11 @@ export function PlayerChrome({
     ];
   }, [downloadAvailable, extraActions, runDownload, t, pocket]);
 
-  // ⚠️ 必须声明在 `if (!source) return null` **之前**（修复崩溃）：
-  // 此前它声明在早退之后，当 source 首次渲染为空时该作用域根本没有这个变量，
-  // 卸载时上面 effect 的 cleanup 访问 `progRaf.current` → TypeError
-  // "Cannot read property 'current' of undefined"（实测快速切换播放器必崩）。
   const progRaf = useRef(0);
   const pendingRatio = useRef(0);
   const replayItems = pocket?.replayComments;
   const replayCount = replayItems ? replayDanmakuCount(replayItems, position) : 0;
-  // 弹幕很多时只保留最近 200 条参与渲染（inverted 列表只关心最近），避免全量增长拖垮列表
+
   const replayComments = useMemo(
     () =>
       replayItems?.slice(Math.max(0, replayCount - 200), replayCount).map((item, index) => ({
@@ -624,15 +625,14 @@ export function PlayerChrome({
   if (!source) return null;
 
   const playing = state === 'playing';
-  // 直播判定 = kind 或流形态（rtmp/rtmps/.flv 铁定直播）：防止 kind 误标成 vod 时直播
-  // 出现可拖进度条（拖动 seek 直播流 → RNV 原生异常闪退）与错误的时间样式
+
   const _u = String((source && source.url) || '').toLowerCase();
   const isLive =
     source.kind === 'live' || (source.kind !== 'vod' && (isRtmpUrl(_u) || _u.includes('.flv')));
-  // 卡片内嵌态（inline 且未全屏）：不叠任何控制坞，点击即进全屏
+
   const cardMode = inline && !fullscreen;
   const progRatio = duration > 0 ? Math.max(0, Math.min(1, position / duration)) : 0;
-  // 拖动中显示本地预览比例与目标时间（跟手），不依赖高频 store 写入
+
   const shownRatio = dragRatio != null ? dragRatio : progRatio;
   const shownPos = dragRatio != null && duration > 0 ? dragRatio * duration : position;
   let pocketComments = pocket?.comments || [];
@@ -670,7 +670,7 @@ export function PlayerChrome({
     if (isLive) return;
     const s = usePlayerStore.getState();
     s.setPosition(t);
-    // seek 指令交给 PlayerCore（内核消费后清零）
+
     s.setSeekTarget(t);
     showControls();
   };
@@ -682,7 +682,7 @@ export function PlayerChrome({
   const onProgDown = (pageX: number) => {
     const st = usePlayerStore.getState();
     if (st.source?.kind === 'live' || st.duration <= 0) return;
-    if (st.state !== 'playing' && st.state !== 'paused') return; // loading/error 阶段不可拖（防 seek 未就绪原生崩）
+    if (st.state !== 'playing' && st.state !== 'paused') return;
     const r = ratioFromX(pageX);
     if (r == null) return;
     if (progRaf.current) {
@@ -690,12 +690,9 @@ export function PlayerChrome({
       progRaf.current = 0;
     }
     dragRatioRef.current = r;
-    setDragRatio(r); // 本地预览（不写 store）
+    setDragRatio(r);
   };
-  // 拖动跟手优化（补齐，与 FullScreenPlayer 同款）：
-  // move 事件 60-120Hz，逐事件 setState 会让整页（含大列表/弹幕）每帧重渲染 → 低端机掉帧。
-  // rAF 限帧到 1 次/帧 + 最小跳变 0.4% 才提交渲染。
-  // （progRaf / pendingRatio 已在上方 `if (!source) return null` 之前声明）
+
   const onProgMove = (pageX: number) => {
     if (dragRatioRef.current == null) return;
     const r = ratioFromX(pageX);
@@ -706,9 +703,9 @@ export function PlayerChrome({
       progRaf.current = 0;
       const nr = pendingRatio.current;
       const base = dragRatioRef.current;
-      if (base != null && Math.abs(nr - base) < 0.004) return; // 0.4% 内不重渲染
+      if (base != null && Math.abs(nr - base) < 0.004) return;
       dragRatioRef.current = nr;
-      setDragRatio(nr); // 本地预览
+      setDragRatio(nr);
     });
   };
   const onProgUp = () => {
@@ -722,10 +719,10 @@ export function PlayerChrome({
     if (r != null) {
       const st = usePlayerStore.getState();
       if (st.duration > 0 && (st.state === 'playing' || st.state === 'paused'))
-        seekTo(r * st.duration); // 松手一次写入
+        seekTo(r * st.duration);
     }
   };
-  // 让 PanResponder 经 ref 拿到本次渲染的最新实现（须在定义之后、早退之前赋值）
+
   progCtl.current = { down: onProgDown, move: onProgMove, up: onProgUp };
 
   if (pocket && cleanScreen) {
@@ -744,13 +741,19 @@ export function PlayerChrome({
 
   return (
     <>
-      {/* 顶栏：常规/卡片全屏均显示（卡片全屏必须有返回钮，否则无法退出） */}
       {pocket && (!inline || fullscreen) ? (
         <Animated.View
           style={[styles.pocketTop, { opacity: controlsOpacity, top: insets.top + 4 }]}
           pointerEvents={controlsVisible ? 'box-none' : 'none'}
         >
-          <View style={styles.pocketIdentity}>
+          <TouchableOpacity
+            activeOpacity={pocket.onHostPress ? 0.78 : 1}
+            disabled={!pocket.onHostPress}
+            onPress={pocket.onHostPress}
+            accessibilityRole={pocket.onHostPress ? 'button' : undefined}
+            accessibilityLabel={pocket.onHostPress ? pocket.name || meta.title : undefined}
+            style={styles.pocketIdentity}
+          >
             {pocket.avatar ? (
               <Image source={{ uri: pocket.avatar }} style={styles.pocketAvatar} />
             ) : (
@@ -767,7 +770,15 @@ export function PlayerChrome({
             >
               {pocket.name || meta.title}
             </Text>
-          </View>
+            {pocket.onHostPress ? (
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={15}
+                color="rgba(255,255,255,0.78)"
+                style={{ marginLeft: 1, marginRight: -2 }}
+              />
+            ) : null}
+          </TouchableOpacity>
           <View style={{ flex: 1 }} />
           {pocket.audience ? (
             <View style={styles.pocketAudience}>
@@ -781,7 +792,6 @@ export function PlayerChrome({
             <TouchableOpacity
               accessibilityLabel={t('贡献榜')}
               onPress={() => {
-                // 打开贡献榜时同时刷新顶部贡献头像；榜单明细由各页 openRankPanel 自己拉取。
                 setRankRefreshNonce((n) => n + 1);
                 pocket.onRankPress?.();
               }}
@@ -831,8 +841,6 @@ export function PlayerChrome({
           <TouchableOpacity
             style={styles.topBtn}
             onPress={() => {
-              // 卡片全屏：返回 = 退出全屏回卡片；页面播放器：返回 = 关闭（onClose）
-              // 非 inline 全屏关闭前也要先退全屏，确保 FullscreenManager cleanup 恢复竖屏。
               if (inline && fullscreen) usePlayerStore.getState().setFullscreen(false);
               else {
                 if (fullscreen) usePlayerStore.getState().setFullscreen(false);
@@ -858,16 +866,12 @@ export function PlayerChrome({
         </Animated.View>
       ) : null}
 
-      {/* 错误浮层 */}
       {error ? (
         <View style={styles.errorWrap} pointerEvents="box-none">
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity
             style={styles.errorBtn}
             onPress={() => {
-              // 有 onRetry（页面重新解析）优先；否则强制重建内核重播同一个 URL。
-              // ⚠️ 此前只 clearError：内核 key 不变、retryNonce 不递增，
-              // 已失败的原生/Exo 播放器不会重建 → 点「重试」永远转圈（修复）。
               if (onRetry) onRetry();
               else usePlayerStore.getState().requestKernelRebuild();
               showControls();
@@ -878,10 +882,8 @@ export function PlayerChrome({
         </View>
       ) : null}
 
-      {/* 缓冲/加载中：中央转圈（内核 onLoad 前；仅在非 error 时） */}
       {state === 'loading' && !error ? <LoadingHint /> : null}
 
-      {/* 暂停/停止态：中央播放钮。音频源（语音卡）原地播放；视频卡片点击进全屏续播；页面播放器原地续播 */}
       {!error && !isLive && state !== 'playing' && state !== 'loading' ? (
         <Pressable
           style={styles.centerPlayWrap}
@@ -909,7 +911,6 @@ export function PlayerChrome({
         </Pressable>
       ) : null}
 
-      {/* 双击快进/回退提示 */}
       {seekFlash != null ? (
         <View style={styles.seekFlashWrap} pointerEvents="none">
           <MaterialCommunityIcons
@@ -923,19 +924,15 @@ export function PlayerChrome({
         </View>
       ) : null}
 
-      {/* 底部控制坞：底部渐变压暗层 + 两行（进度行 / 控制行）。
-          唤出层始终可点（控制条隐藏后点屏幕任意处唤出）；渐变/坞内容按 controlsVisible 显隐 */}
-      {/* 双击快进/回退 + 单击唤出层。inline 卡片态：点击直接进全屏（卡片不叠控制坞） */}
       <Pressable
         style={StyleSheet.absoluteFill}
         onPress={(e) => {
           if (inline && !fullscreen) {
-            // 音频/纯音频源：无画面可全屏——点击即播放/暂停（音频条语义）
             if (source.kind === 'audio' || source.audioOnly) {
               togglePlay();
               return;
             }
-            // 视频卡片：点击直接进全屏（卡片态干净无控制坞）
+
             usePlayerStore.getState().setFullscreen(true);
             return;
           }
@@ -958,7 +955,7 @@ export function PlayerChrome({
           bottom={
             Math.max(navigationInset ?? insets.bottom, 10) +
             (controlsVisible ? (isLive ? 56 : 120) : 16) +
-            kbHeight
+            kbLift
           }
         />
       ) : null}
@@ -981,12 +978,11 @@ export function PlayerChrome({
                     Math.round(10 * dockScale),
                   ) +
                   Math.round(4 * dockScale) +
-                  kbHeight,
+                  kbLift,
               },
             ]}
             pointerEvents="box-none"
           >
-            {/* 进度行：当前时间 —— 可拖进度 —— 总时间（直播仅显示 直播） */}
             {!isLive ? (
               <View style={styles.progressRow}>
                 <Text style={styles.timeText}>{formatPlayTime(shownPos)}</Text>
@@ -1009,13 +1005,13 @@ export function PlayerChrome({
                 <Text style={styles.timeText}>{formatPlayTime(duration)}</Text>
               </View>
             ) : null}
-            {/* 直播弹幕输入条：与控制条同一个底坞容器 → 一起自动隐藏/呼出 */}
+
             {!pocket && barrageInput ? (
               <View style={[styles.dockBarrageRow, { marginBottom: Math.round(8 * dockScale) }]}>
                 {barrageInput}
               </View>
             ) : null}
-            {/* 控制行：播放/暂停（主按钮）+ 右侧功能 */}
+
             {pocket ? (
               <View style={styles.pocketBottomRow}>
                 {isLive && barrageInput ? (
@@ -1100,8 +1096,7 @@ export function PlayerChrome({
                     />
                   </TouchableOpacity>
                 ) : null}
-                {/* 「小窗」按钮直接放 dock（用户反馈「小窗在软件内点没用」真因之一：原 extraActions
-                藏在右上「...」二级菜单，用户找不到）。从 extraActions 提 pip 渲染到 dock 直达。 */}
+
                 {(() => {
                   const pipAction = extraActions.find((a) => a.key === 'pip');
                   if (!pipAction) return null;
@@ -1141,7 +1136,6 @@ export function PlayerChrome({
         </View>
       ) : null}
 
-      {/* 倍速抽屉（点播/回放） */}
       <Modal
         visible={rateSheetVisible}
         transparent
@@ -1186,7 +1180,6 @@ export function PlayerChrome({
         </TouchableOpacity>
       </Modal>
 
-      {/* 更多面板 */}
       <Modal
         visible={moreVisible}
         transparent
@@ -1304,6 +1297,24 @@ export function PlayerChrome({
                     </Text>
                   </TouchableOpacity>
                 ) : null}
+                {pocket && (!inline || fullscreen) ? (
+                  <TouchableOpacity
+                    style={styles.moreItem}
+                    onPress={() => {
+                      setMoreVisible(false);
+                      toggleFullscreen();
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name={fullscreen ? 'fullscreen-exit' : 'fullscreen'}
+                      size={28}
+                      color={fullscreen ? palette.tint : '#fff'}
+                    />
+                    <Text style={[styles.moreLabel, styles.pocketMoreLabel]}>
+                      {t(fullscreen ? '退出全屏' : '横屏')}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
                 {pocket && isLive ? (
                   <TouchableOpacity
                     style={styles.moreItem}
@@ -1331,7 +1342,7 @@ export function PlayerChrome({
                     </Text>
                   </TouchableOpacity>
                 ) : null}
-                {}
+
                 <TouchableOpacity
                   style={styles.moreItem}
                   onPress={() => {
@@ -1448,7 +1459,6 @@ export function PlayerChrome({
   );
 }
 
-/** 加载中指示：长时间未出画面给出弱提示（>15s），避免黑屏永转圈无反馈 */
 function LoadingHint() {
   const { t } = useI18n();
   const [slow, setSlow] = useState(false);
@@ -1498,7 +1508,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
-  pocketName: { color: '#fff', fontSize: 12, flexShrink: 1 },
+  pocketName: { color: '#fff', fontSize: 12, fontFamily: fontFamily.system, flexShrink: 1 },
   pocketAudience: {
     flexShrink: 0,
     height: 32,
@@ -1509,7 +1519,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(20,20,24,0.42)',
   },
-  pocketAudienceText: { color: '#fff', fontSize: 12, flexShrink: 0 },
+  pocketAudienceText: { color: '#fff', fontSize: 12, fontFamily: fontFamily.system, flexShrink: 0 },
   pocketRank: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', minHeight: 34 },
   pocketRankAvatar: {
     width: 28,
@@ -1570,11 +1580,11 @@ const styles = StyleSheet.create({
   },
   pocketComment: {
     maxWidth: '100%',
-    height: 30,
+    minHeight: 30,
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 5,
     backgroundColor: 'rgba(18,18,22,0.32)',
   },
@@ -1601,10 +1611,17 @@ const styles = StyleSheet.create({
   pocketCommentLevelText: {
     color: '#fff',
     fontSize: 9,
+    fontFamily: fontFamily.system,
     fontWeight: '700',
     includeFontPadding: false,
   },
-  pocketCommentText: { color: '#fff', fontSize: 14, flexShrink: 1, flexWrap: 'wrap' },
+  pocketCommentText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: fontFamily.system,
+    flexShrink: 1,
+    flexWrap: 'wrap',
+  },
   pocketMoreLabel: { color: '#fff', fontSize: 12, marginTop: 8 },
   topWrap: {
     position: 'absolute',
@@ -1639,6 +1656,7 @@ const styles = StyleSheet.create({
   titleText: {
     color: '#fff',
     fontSize: 14,
+    fontFamily: fontFamily.system,
     fontWeight: '600',
     flexShrink: 1,
     textShadowColor: 'rgba(0,0,0,0.5)',
@@ -1666,12 +1684,13 @@ const styles = StyleSheet.create({
   timeText: {
     color: 'rgba(255,255,255,0.92)',
     fontSize: 11,
+    fontFamily: fontFamily.system,
     fontVariant: ['tabular-nums'],
     marginHorizontal: 8,
     minWidth: 34,
     textAlign: 'center',
   },
-  // 触控高度 30 → 44：进度条是最高频的手势目标，30 低于 44×44 推荐值，容易抓不中
+
   progressTouch: {
     flex: 1,
     height: 44,
@@ -1684,7 +1703,6 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: 3, borderRadius: 2, backgroundColor: '#fff' },
   progressThumb: {
-    // top 随触控高度调整（44/2 - 11/2 = 16.5），保持视觉居中
     position: 'absolute',
     top: 16.5,
     width: 11,
@@ -1710,7 +1728,13 @@ const styles = StyleSheet.create({
     shadowRadius: 7,
     shadowOffset: { width: 0, height: 2 },
   },
-  ctrlHintText: { color: 'rgba(255,255,255,0.6)', fontSize: 11, marginLeft: 8, flexShrink: 1 },
+  ctrlHintText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    marginLeft: 8,
+    flexShrink: 1,
+  },
   ctrlBtn: {
     width: 40,
     height: 40,
@@ -1721,6 +1745,7 @@ const styles = StyleSheet.create({
   rateText: {
     color: '#fff',
     fontSize: 12,
+    fontFamily: fontFamily.system,
     fontWeight: '700',
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
@@ -1764,6 +1789,7 @@ const styles = StyleSheet.create({
   seekFlashText: {
     color: '#fff',
     fontSize: 15,
+    fontFamily: fontFamily.system,
     fontWeight: '800',
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
@@ -1780,7 +1806,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
   },
-  loadingText: { color: '#fff', fontSize: 12, opacity: 0.85 },
+  loadingText: { color: '#fff', fontSize: 12, fontFamily: fontFamily.system, opacity: 0.85 },
   rateMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   rateSheet: {
     borderTopLeftRadius: 18,
@@ -1789,7 +1815,12 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingHorizontal: 16,
   },
-  rateSheetTitle: { fontSize: 12, textAlign: 'center', marginBottom: 10 },
+  rateSheetTitle: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
   rateGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   rateChip: {
     width: '30%',
@@ -1798,7 +1829,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
-  rateChipText: { fontSize: 14, fontWeight: '700' },
+  rateChipText: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '700' },
   errorWrap: {
     position: 'absolute',
     left: 24,
@@ -1810,7 +1841,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
   },
-  errorText: { color: '#fff', fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  errorText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
   errorBtn: {
     marginTop: 10,
     paddingHorizontal: 18,
@@ -1818,7 +1855,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: TINT,
   },
-  errorBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  errorBtnText: { color: '#fff', fontSize: 13, fontFamily: fontFamily.system, fontWeight: '700' },
   modalShade: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   morePanel: {
     borderTopLeftRadius: 18,
@@ -1833,7 +1870,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 10,
   },
-  moreTitle: { fontSize: 16, fontWeight: '700' },
+  moreTitle: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '700' },
   moreGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12 },
   moreItem: { width: '25%', alignItems: 'center', paddingVertical: 12 },
   moreLabel: { fontSize: 11, marginTop: 5, textAlign: 'center' },

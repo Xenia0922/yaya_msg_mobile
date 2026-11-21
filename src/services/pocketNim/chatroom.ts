@@ -1,4 +1,10 @@
-import { buildLiveBarrageExt, parseChatroomMessage, parseLiveUpdate } from './codec';
+import {
+  buildLiveBarrageExt,
+  type LivePkEvent,
+  parseChatroomMessage,
+  parseLivePkEvent,
+  parseLiveUpdate,
+} from './codec';
 import {
   isPocketNimChatroomAvailable,
   chatroomConnect,
@@ -27,7 +33,6 @@ async function resolveChatroomAddresses(): Promise<string[]> {
   if (lbsAddresses && lbsAddresses.length) return lbsAddresses;
   if (!lbsInflight) {
     lbsInflight = (async () => {
-      // 云信新集群聊天室接入点（LBS 实测返回，作解析失败/空结果的兜底）
       const FALLBACK_LBS = [
         'chatwl02.yunxinfw.com:443',
         'weblink-bgp.netease.im:443',
@@ -61,37 +66,29 @@ async function resolveChatroomAddresses(): Promise<string[]> {
           lbsAddresses = merged;
           return merged;
         }
-      } catch {
-        /* LBS 失败落到旧默认地址 */
-      }
+      } catch {}
       return NIM_CHATROOM_ADDRESSES;
     })();
   }
   return lbsInflight;
 }
 
-/** 云信 SDK 内部日志开关（排障时临时改 true；日志经 console → logcat ReactNativeJS） */
 const NIM_DEBUG = false;
 
 export interface LiveChatroomOptions {
-  /** 聊天室 id（live 详情 content.roomId） */
   roomId: string;
-  /** 直播 id（官方 sourceId，用于弹幕 remoteExtension） */
+
   liveId?: string;
   credentials: NimCredentials;
-  /** 'live' 成员直播 / 'public' 公开直播 */
+
   module?: string;
   onMessages: (items: BarrageItem[]) => void;
   onStatus?: (status: ChatroomStatus, detail?: string) => void;
   onLiveInfo?: (info: { audience?: string; rankAvatars?: string[] }) => void;
   onOnlineCount?: (count: number) => void;
+  onPkEvent?: (event: LivePkEvent) => void;
 }
 
-/**
- * 服务端拒绝聊天室登录时的可读文案。
- * 实测：口袋48 的 appKey 对客户端有服务端校验 —— 用账号+token 或匿名登录聊天室都会被拒
- * （IM 登录 414 参数错误 / 聊天室 403 非法操作或没有权限），官方 App 的包名在白名单内。
- */
 function friendlyAuthError(reason: string): string {
   if (/403|非法操作|没有权限/.test(reason)) {
     return '弹幕通道被服务端拒绝（非法操作或没有权限）：该 App 对客户端标识有白名单校验';
@@ -105,12 +102,6 @@ function friendlyAuthError(reason: string): string {
   return reason || '弹幕连接失败';
 }
 
-/**
- * Web/RN 侧 IM 登录探针。
- *
- * 官方 App 进聊天室是「非独立模式」：先完成 IM 登录，聊天室鉴权依赖 IM 会话；
- * 我们此前聊天室裸登（account+token 直连聊天室服务）被 403，可能就是缺这个前置。
- */
 export async function webImLoginProbe(
   credentials: NimCredentials,
 ): Promise<{ ok: boolean; detail: string }> {
@@ -123,9 +114,7 @@ export async function webImLoginProbe(
       settled = true;
       try {
         inst && inst.destroy && inst.destroy();
-      } catch {
-        /* 忽略 */
-      }
+      } catch {}
       resolve({ ok, detail });
     };
     try {
@@ -148,18 +137,17 @@ export async function webImLoginProbe(
   });
 }
 
-/** 单个直播间弹幕连接。dispose 一定要在离开直播间时调用。 */
 export class LiveChatroom {
   private readonly options: LiveChatroomOptions;
   private instance: any = null;
   private disposed = false;
   private status: ChatroomStatus = 'connecting';
-  /** 连接尝试序号：0 = 账号+token，1 = 匿名（只读），2 = 先 IM 登录再进聊天室 */
+
   private attempt = 0;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
-  /** 是否以匿名（只读）方式连上：匿名通道不能发送弹幕 */
+
   private anonymous = false;
-  /** 走原生 commonlink 通道（可过服务端标识校验）；否则退到 JS Web SDK */
+
   private useNative = false;
   private nativeUnsubs: Array<() => void> = [];
 
@@ -183,13 +171,11 @@ export class LiveChatroom {
     }
   }
 
-  /** 当前使用的接入点（LBS 解析结果；解析完成前为旧默认） */
   private addresses: string[] = NIM_CHATROOM_ADDRESSES;
 
   connect(): void {
     if (this.disposed) return;
-    // 首选原生 commonlink 通道：登录包里包名由自己填，能过口袋48 的客户端标识校验；
-    // JS Web SDK 会带浏览器/RN 标识 → 实测 403。原生不可用时才走 JS 那三条 fallback。
+
     if (isPocketNimChatroomAvailable()) {
       this.connectNative();
       return;
@@ -206,7 +192,6 @@ export class LiveChatroom {
       });
   }
 
-  /** 原生 commonlink 通道：连接 + 收消息（消息体复用 parseChatroomMessage 归一化） */
   private async connectNative(): Promise<void> {
     const { credentials, roomId } = this.options;
     this.useNative = true;
@@ -229,7 +214,7 @@ export class LiveChatroom {
     this.nativeUnsubs.push(
       onChatroomMessage((message) => {
         if (this.disposed) return;
-        // 组装成 Web SDK 的消息形态，复用同一套解析（readExt / parseChatroomMessage）
+
         const shaped = {
           type: message.msgType === 0 ? 'text' : 'custom',
           text: message.text,
@@ -242,6 +227,8 @@ export class LiveChatroom {
         };
         const info = parseLiveUpdate(shaped);
         if (info) this.options.onLiveInfo?.(info);
+        const pkEvent = parseLivePkEvent(shaped);
+        if (pkEvent) this.options.onPkEvent?.(pkEvent);
         const item = parseChatroomMessage(shaped);
         if (item) this.options.onMessages([item]);
       }),
@@ -250,13 +237,11 @@ export class LiveChatroom {
       // eslint-disable-next-line no-console
       console.log('[nim] native chatroom connecting');
       await chatroomConnect(NIM_APP_KEY, credentials.accid, credentials.token, roomId);
-      // await 期间可能已 dispose：此时不能留下一条已建立的连接/订阅
+
       if (this.disposed) {
         try {
           chatroomDisconnect();
-        } catch {
-          /* 忽略 */
-        }
+        } catch {}
         return;
       }
       // eslint-disable-next-line no-console
@@ -280,14 +265,13 @@ export class LiveChatroom {
       const SDK = loadNimSdk();
       const profile = credentialsToProfile(credentials);
       const anonymous = attempt === 1;
-      // 若把真实 accid 当昵称带上，聊天室登录会被服务端判「非法操作」直接 403。
+
       const anonNick = `yaya-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
       if (attempt === 2) {
-        // 先完成一次 IM 登录（官方「非独立模式」同款前置：聊天室鉴权依赖 IM 会话）
         // eslint-disable-next-line no-console
         console.log('[nim] web IM login probe...');
         const probeResult = await webImLoginProbe(credentials);
-        // await 期间可能已 dispose：不得再创建 Chatroom 实例/定时器（P1-C10）
+
         if (this.disposed) return;
         // eslint-disable-next-line no-console
         console.log('[nim] web IM login probe result =', probeResult.ok, probeResult.detail);
@@ -315,7 +299,7 @@ export class LiveChatroom {
         chatroomAddresses: this.addresses,
         chatroomNick: profile.nickName || credentials.accid,
         chatroomAvatar: profile.avatar || '',
-        // SDK 内部日志开关：排障时改 true（日志经 console → logcat ReactNativeJS）
+
         debug: NIM_DEBUG,
         db: false,
         dbLog: false,
@@ -329,9 +313,14 @@ export class LiveChatroom {
         onmsgs: (msgs: any[]) => {
           if (this.disposed || !Array.isArray(msgs)) return;
           const items: BarrageItem[] = [];
-          for (const msg of msgs) {
+          const sorted = msgs
+            .slice()
+            .sort((a, b) => (Number(a?.time) || 0) - (Number(b?.time) || 0));
+          for (const msg of sorted) {
             const info = parseLiveUpdate(msg);
             if (info) this.options.onLiveInfo?.(info);
+            const pkEvent = parseLivePkEvent(msg);
+            if (pkEvent) this.options.onPkEvent?.(pkEvent);
             const item = parseChatroomMessage(msg);
             if (item) items.push(item);
           }
@@ -355,7 +344,6 @@ export class LiveChatroom {
         },
       });
 
-      // 静默不连接守卫：8 秒内没连上就换下一种连法（SDK 在这一路失败时不回调 onerror）
       this.clearTimer();
       this.connectTimer = setTimeout(() => {
         if (this.disposed || this.status === 'connected') return;
@@ -374,7 +362,6 @@ export class LiveChatroom {
     }
   }
 
-  /** 当前连法失败 → 试下一种；都失败才置 error */
   private async fallback(reason: string): Promise<void> {
     if (this.disposed) return;
     this.clearTimer();
@@ -394,26 +381,16 @@ export class LiveChatroom {
     if (!instance) return;
     try {
       if (typeof instance.disconnect === 'function') instance.disconnect({ done: () => undefined });
-    } catch {
-      /* 忽略 */
-    }
+    } catch {}
     try {
       if (typeof instance.destroy === 'function') instance.destroy();
-    } catch {
-      /* 忽略 */
-    }
+    } catch {}
   }
 
-  /**
-   * 发送弹幕。
-   * 官方对普通用户用 BARRAGE_NORMAL，成员本人 BARRAGE_MEMBER，超管 BARRAGE_SUPERMAN；
-   * 牙牙账号通常是普通粉丝，因此默认 BARRAGE_NORMAL。
-   */
   async send(text: string, messageType?: string): Promise<void> {
     const content = String(text || '').trim();
     if (!content) return;
     if (this.useNative) {
-      // 发送身份用完整资料（昵称/头像缺失时别人看到的就是无名无像）
       const self = (await loadSelfProfile()) || credentialsToProfile(this.options.credentials);
       const ext = buildLiveBarrageExt({
         roomId: this.options.roomId,
@@ -445,7 +422,7 @@ export class LiveChatroom {
         if (err) reject(new Error(String(err.message || err.code || err)));
         else resolve();
       };
-      // 不同版本 SDK 对自定义扩展的字段名不一致（remoteExtension / custom），依次兜底。
+
       const attempts: Array<Record<string, any>> = [
         { text: content, remoteExtension: ext, done },
         { text: content, custom: JSON.stringify(ext), done },
@@ -454,9 +431,7 @@ export class LiveChatroom {
         try {
           this.instance.sendText(payload);
           return;
-        } catch {
-          /* 换下一种字段名 */
-        }
+        } catch {}
       }
       done(new Error('弹幕发送参数不被当前云信 SDK 接受'));
     });
@@ -469,16 +444,12 @@ export class LiveChatroom {
       this.nativeUnsubs.forEach((off) => {
         try {
           off();
-        } catch {
-          /* 忽略 */
-        }
+        } catch {}
       });
       this.nativeUnsubs = [];
       try {
         chatroomDisconnect();
-      } catch {
-        /* 忽略 */
-      }
+      } catch {}
     }
     this.destroyInstance();
     this.setStatus('closed');

@@ -4,7 +4,6 @@ import { normalizeSong, normalizeArtist, normalizeGroup } from './normalize';
 import { fetchWithTimeout } from './network';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// B5：歌词索引落盘缓存（24h TTL）——冷启动不再每次重拉 lyrics-index.json，弱网下歌词功能稳定
 const INDEX_CACHE_KEY = 'yaya_lyrics_index_v1';
 const INDEX_CACHE_TTL = 24 * 60 * 60 * 1000;
 
@@ -20,9 +19,7 @@ export function buildLyricEntries(raw: RawIndexEntry[]): LyricEntry[] {
   const dedup = new Map<string, LyricEntry>();
   for (const item of raw) {
     if (!item.songTitle || !item.path) continue;
-    // ⚠️ 去重键必须含路径：同名歌曲常有「公演版/专辑版」两套 LRC，
-    // 早期用 group-songTitle 去重会把其中一版直接丢掉 → 播放另一版时时间轴整体错位
-    // （用户反馈「特定几首歌歌词对不上」的根因）。
+
     const id = String(item.path);
     if (dedup.has(id)) continue;
     const ns = normalizeSong(item.songTitle);
@@ -49,7 +46,6 @@ let cachedMatcher: { entries: LyricEntry[]; matcher: any } | null = null;
 export async function getLyricsMatcher() {
   if (cachedMatcher) return cachedMatcher;
 
-  // 1) 落盘缓存优先（24h TTL）
   try {
     const raw = await AsyncStorage.getItem(INDEX_CACHE_KEY);
     if (raw) {
@@ -67,11 +63,8 @@ export async function getLyricsMatcher() {
         }
       }
     }
-  } catch {
-    /* ignore cache errors */
-  }
+  } catch {}
 
-  // 2) 网络拉取 + 写缓存
   const resp = await fetchWithTimeout('https://yaya-data.pages.dev/lyrics-index.json', {}, 10000);
   const raw: RawIndexEntry[] = parseMaybeJson(await resp.text()) || [];
   const entries = buildLyricEntries(raw);
@@ -79,8 +72,6 @@ export async function getLyricsMatcher() {
   cachedMatcher = { entries, matcher };
   try {
     await AsyncStorage.setItem(INDEX_CACHE_KEY, JSON.stringify({ t: Date.now(), index: raw }));
-  } catch {
-    /* ignore cache errors */
-  }
+  } catch {}
   return cachedMatcher;
 }

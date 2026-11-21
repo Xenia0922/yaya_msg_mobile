@@ -18,18 +18,6 @@ import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import java.lang.ref.WeakReference;
 
-/**
- * 直播相关原生能力（**注意：不再包含旧的全原生播放 Activity**）。
- *
- * 历史：本项目曾有一个完全脱离 RN 的原生直播页 `LivePlayerActivity`（自绘控制条/礼物/旋转），
- * 后来统一播放器（PlayerScreen + LiveExoView）接管了 rtmp/flv 直播，`openNativeLivePlayer`
- * 在 JS 侧已无任何调用者 → 整条 Activity 链路（约 445 行）是死代码，2026-11-07 删除。
- *
- * 保留的部分：
- *  - 静态事件通道 `emitLiveSize` / `emitLiveError`：`LiveExoView` 在 bridgeless 下靠它把
- *    「首帧尺寸 / 重试耗尽」回传给 JS（UIManagerModule 在新架构取不到，View 事件会被丢弃）；
- *  - `setImmersive`：统一播放器全屏时隐藏系统栏（多屏在用）。
- */
 public class LivePlayerModule extends ReactContextBaseJavaModule {
   private static WeakReference<ReactApplicationContext> contextRef;
 
@@ -44,15 +32,18 @@ public class LivePlayerModule extends ReactContextBaseJavaModule {
     return "LivePlayerModule";
   }
 
-  /**
-   * 直播首帧尺寸 → JS（事件名 LivePlayer:size，payload = {url,width,height}）。
-   *
-   * 为什么绕到 NativeModule 发事件：LiveExoView 原来经 UIManagerModule 发 View 事件，
-   * 而 RN 0.83 只有新架构（bridgeless）时 UIManagerModule 取不到（返回 null）→ 事件静默丢弃，
-   * 表现就是「画面已经在播、却一直停在『加载中…』」。
-   * NativeModule 的 RCTDeviceEventEmitter 在 bridgeless 下依然可用。
-   */
   public static void emitLiveSize(String url, int width, int height) {
+    emitLiveSize(url, width, height, width, height, width > height, false);
+  }
+
+  public static void emitLiveSize(
+      String url,
+      int width,
+      int height,
+      int visualWidth,
+      int visualHeight,
+      boolean isLandscape,
+      boolean isPillarboxed) {
     ReactApplicationContext context = contextRef == null ? null : contextRef.get();
     if (context == null) return;
     try {
@@ -61,6 +52,10 @@ public class LivePlayerModule extends ReactContextBaseJavaModule {
       payload.putString("url", url == null ? "" : url);
       payload.putInt("width", width);
       payload.putInt("height", height);
+      payload.putInt("visualWidth", visualWidth > 0 ? visualWidth : width);
+      payload.putInt("visualHeight", visualHeight > 0 ? visualHeight : height);
+      payload.putBoolean("isLandscape", isLandscape);
+      payload.putBoolean("isPillarboxed", isPillarboxed);
       context
           .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
           .emit("LivePlayer:size", payload);
@@ -68,7 +63,6 @@ public class LivePlayerModule extends ReactContextBaseJavaModule {
     }
   }
 
-  /** 直播内核重试耗尽 → JS（事件名 LivePlayer:error，payload = {url,message}） */
   public static void emitLiveError(String url, String message) {
     ReactApplicationContext context = contextRef == null ? null : contextRef.get();
     if (context == null) return;
@@ -84,7 +78,6 @@ public class LivePlayerModule extends ReactContextBaseJavaModule {
     }
   }
 
-  /** 全屏时隐藏/恢复系统栏 */
   @ReactMethod
   public void setImmersive(boolean enabled) {
     Activity activity = getCurrentActivity();

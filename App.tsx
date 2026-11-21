@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -41,18 +41,37 @@ import {
   exoPlayTrack,
   exoControl,
   exoSetSkipHints,
+  isNativeExoDisabled,
   setNativeExoActive,
   setNativeExoDisabled,
   isNativeExoActive,
-  isNativeExoDisabled,
+  subscribeNativeExoDisabled,
 } from './src/native/RadioExo';
+import Video from 'react-native-video';
+import {
+  ensureGlobalQChatConnection,
+  pauseQChatSession,
+  subscribeRoomChannelsBatch,
+} from './src/services/pocketNim/qchat';
+import { onQChatMessage } from './src/native/PocketNimQChat';
+import { parseVoiceEvent } from './src/services/pocketNim/voiceEvent';
+import { useOnMicStore } from './src/store/onMicStore';
+import pocketApi from './src/api/pocket48';
+import { unwrapList } from './src/utils/data';
 import { ensureNotificationPermission } from './src/utils/notifications';
 import {
   useMusicPlayerStore,
   flushMusicPlayerStorage,
   PlayMode,
 } from './src/store/musicPlayerStore';
-import { MusicEngine, applyNativeSnapshot } from './src/services/musicPlayer';
+import {
+  MusicEngine,
+  applyNativeSnapshot,
+  isExoRecentlyArmed,
+  noteExoArmed,
+  noteExoProgress,
+  resetExoArm,
+} from './src/services/musicPlayer';
 import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { startSignatureHealthCheck } from './src/services/signatureHealth';
@@ -63,14 +82,10 @@ import { fetchCoverToFile, normalizeCoverUrl } from './src/utils/coverToFile';
 import { usePalette } from './src/theme/colors';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { useSafeAreaInsets } from './src/hooks/useSafeAreaInsets';
-// 安全区上下文：react-native-safe-area-context 的 autolinking 在本工程被排除，
-// 但 Android 端已在 android/settings.gradle / MainApplication.kt 手动 include 并注册
-// SafeAreaContextPackage（原生包已手动注册）。这里用它提供的 JS 上下文给
-// react-navigation 的 BottomTabView/SafeAreaProviderCompat 复用，避免重复创建原生 Provider。
+
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 
-// v2.6.5: 给 react-navigation 提供安全区上下文（原生包已手动链接，这里只桥接 JS 上下文）
 function SafeAreaBridge({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   return (
@@ -82,8 +97,6 @@ function SafeAreaBridge({ children }: { children: React.ReactNode }) {
   );
 }
 
-// 全局 JS 闪退捕获：生产环境红盒不可见，写入本地日志便于排查。
-// 同时保留原有 handler（开发环境红盒 / 默认崩溃行为）。
 function installGlobalErrorHandler() {
   const g = global as unknown as {
     ErrorUtils?: {
@@ -96,35 +109,22 @@ function installGlobalErrorHandler() {
   const prev = eu.getGlobalHandler ? eu.getGlobalHandler() : undefined;
   eu.setGlobalHandler((error: unknown, isFatal?: boolean) => {
     try {
-      // 同步打到 logcat（ReactNativeJS tag），崩溃瞬间也能留下函数链
       const e = error as any;
       console.error('[yaya-crash] ' + String(e && (e.message || e)));
       if (e && e.stack) console.error('[yaya-crash] ' + String(e.stack).slice(0, 1200));
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     logCrash(error, isFatal ? 'global:fatal' : 'global');
     if (prev) {
       try {
         prev(error, isFatal);
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
   });
 }
 
-// 封面落盘逻辑已抽至 src/utils/coverToFile.ts（音乐页 Exo art 与旧通知共用，行为与历史一致）
-
 installGlobalErrorHandler();
 initRuntimeLog().catch(() => {});
 
-/**
- * 音乐前台保活桥（A2）：音乐库/全屏播放器播放时启动 RadioForegroundService
- * （通知栏「停止」+ WAKE_LOCK，后台/锁屏续播、防进程被杀），停止播放时结束服务。
- * 电台（RoomRadioScreen）自带前台服务，两路共用同一 Service，不会同时播放冲突。
- */
-/** 取 pos 时刻命中的歌词行下标（-1 = 无歌词/未开始） */
 function currentLyricIndex(lines: Array<{ time: number; text: string }>, pos: number): number {
   if (!lines || lines.length === 0) return -1;
   let idx = -1;
@@ -135,32 +135,32 @@ function currentLyricIndex(lines: Array<{ time: number; text: string }>, pos: nu
   return idx;
 }
 
-/** 向原生下发当前曲（切歌/恢复的全局兜底：先立即起播不卡封面，封面就绪后补发更新元数据） */
 async function pushExoAfterSwitch() {
   try {
     const st = useMusicPlayerStore.getState();
     const url = st.url;
     const track = st.queue[st.currentIndex];
-    // guard：本次会话已判原生不可用（error/超时）则不再尝试（RNV 兜底路径由页面 nativeOk 接管）
+
     if (isNativeExoDisabled() || st.error || st.playbackState !== 'playing' || !url || !track)
       return;
-    setNativeExoActive(true); // 企图接管即标记（冷启 Home 恢复等首推场景，等待 progress 确认）
+    if (isExoRecentlyArmed(url)) return;
+    setNativeExoActive(true);
     const headers = {
       'User-Agent': USER_AGENT,
       Referer: 'https://h5.48.cn/',
       Origin: 'https://h5.48.cn',
     };
-    // 续播点：resume(记忆恢复)时引擎写入 seekTarget；切歌/点歌恒 0。消费后防重复 seek
+
     let resumeAt = 0;
-    if (Number(st.seekTarget) > 0) {
+    if (st.seekPending && Number(st.seekTarget) > 0) {
       resumeAt = Number(st.seekTarget);
       useMusicPlayerStore.getState().consumeSeekTarget();
     }
     const vol = /(gnz\.hk|gnz-music|music\.gnz)/i.test(url) ? 0.86 : 1;
     const rep = st.playMode === 'single' ? 1 : 0;
     const send = (art: string) => {
-      // 正常路径诊断：每首歌会打两条（立即起播 + 封面补发）。dev 输出，release 编译期消除，
-      // 避免导出日志里被这类高频 WARN 淹没（用户会误以为出错了）。
+      noteExoArmed(url);
+
       if (__DEV__)
         console.warn(
           `[push-global] ${art ? 'art-refresh' : 'initial'} url=${String(url).slice(0, 50)} resumeAt=${resumeAt}`,
@@ -168,6 +168,7 @@ async function pushExoAfterSwitch() {
       exoPlayTrack(
         {
           url,
+          trackId: String((track as any).musicId || (track as any).id || ''),
           title: String(track.title || '音乐'),
           artist: String((track as any).artist || (track as any).groupLabel || ''),
           album: String((track as any).album || ''),
@@ -180,7 +181,7 @@ async function pushExoAfterSwitch() {
         rep,
       );
     };
-    send(''); // 立即起播（不等封面）
+    send('');
     const coverRaw =
       String((track as any).coverUrl || (track as any).cover || (track as any).thumbPath || '') ||
       '';
@@ -196,16 +197,12 @@ async function pushExoAfterSwitch() {
       }
       const st2 = useMusicPlayerStore.getState();
       if (st2.url === url && st2.playbackState === 'playing' && !isNativeExoDisabled()) {
-        send(art || String((track as any).coverUrl || (track as any).cover || '')); // 同曲补发仅刷封面
+        send(art || String((track as any).coverUrl || (track as any).cover || ''));
       }
     }
   } catch {}
 }
 
-// ---------- 系统卡 skip hints（上一首/下一首后台本地切歌，2026-09-06） ----------
-// 与 store.next()/prev() 相同的引擎语义（手动切歌）：
-//  - prev：回绕到队尾（idx<=0 → len-1）
-//  - next：single → 重播当前；random → 排除当前的均匀随机；其余 → (idx+1)%len
 function skipHintIndex(dir: 'next' | 'prev', cur: number, len: number, mode: PlayMode): number {
   if (len <= 0) return -1;
   if (dir === 'prev') return cur <= 0 ? len - 1 : cur - 1;
@@ -219,17 +216,11 @@ function skipHintIndex(dir: 'next' | 'prev', cur: number, len: number, mode: Pla
   return (cur + 1) % len;
 }
 
-/** 封面落盘缓存：hint 目标曲封面 file://（后台本地切歌直接展示，不再等回前台 JS 补推） */
 const skipHintArts: { next: string; prev: string } = { next: '', prev: '' };
 
-/**
- * 向 YayaExoService 推送当前播放语义下的上一首/下一首 hint（url 已解析可直接播）。
- * 触发：播放确立/url/下标/队列/模式任一变化（MusicForegroundBridge effect）。
- * 两段式：先无封面立即推（切歌不等待下载）→ 目标封面落盘后带 art 重推（覆盖同槽位）。
- * 前台执行；停播/切歌竞态时丢弃不推。
- */
 async function pushSkipHints() {
   try {
+    if (isNativeExoDisabled()) return;
     const st = useMusicPlayerStore.getState();
     if (st.playbackState !== 'playing' || !st.url || st.queue.length === 0) return;
     const q = st.queue;
@@ -254,12 +245,12 @@ async function pushSkipHints() {
       nTrack ? MusicEngine.resolvePlayUrl(nTrack) : Promise.resolve(null),
       pTrack ? MusicEngine.resolvePlayUrl(pTrack) : Promise.resolve(null),
     ]);
-    // 在途校验：期间已停/已切走 → 丢弃（防旧 hint 覆盖 + 防 stop 竞态 startService 崩溃）
+
     const s2 = useMusicPlayerStore.getState();
     if (s2.playbackState !== 'playing' || s2.url !== snapUrl) return;
-    // Phase 1：无封面立即推（后台切歌即时性优先）
+
     exoSetSkipHints(mk(nTrack, nUrl, ni, 'next'), mk(pTrack, pUrl, pi, 'prev'));
-    // Phase 2：目标封面落盘后带 art 重推（同槽位覆盖；两首并行下载，共 2.5s 上限）
+
     const coverRawOf = (t: any) =>
       String((t && (t.coverUrl || t.cover || t.thumbPath)) || '') || '';
     const refreshArt = async (t: any, dir: 'next' | 'prev') => {
@@ -288,8 +279,6 @@ async function pushSkipHints() {
 }
 
 function MusicForegroundBridge() {
-  // 全局滞回同步（页面无关）：系统卡/媒体键暂停恢复 → App 播放状态跟随
-  // 单向安全：paused 900ms 连续、playing 1.2s 连续才回写，杜绝 pause/resume 自激
   const lastNativePlayingRef = useRef(false);
   const radioStoppedRef = useRef(false);
   const syncPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -324,8 +313,7 @@ function MusicForegroundBridge() {
         s.setPlaybackState('playing');
     }, 1200);
   };
-  // 原生下发触发（全局兜底）：播放态/曲目变化 → 补推原生（页面未挂载时切歌/恢复不丢）。
-  // 与页面 push 并存；同曲重复由 service 去重（不重载/不打断）
+
   const lastPushKeyRef = useRef('');
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackStateG = useMusicPlayerStore((s) => s.playbackState);
@@ -339,17 +327,17 @@ function MusicForegroundBridge() {
     if (key === lastPushKeyRef.current) return;
     lastPushKeyRef.current = key;
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
-    // 延迟到解析完成/当前 tick 稳定后再发（避免与页面同 tick 双发前一方吞 seekTarget）
+
     pushTimerRef.current = setTimeout(() => {
       pushExoAfterSwitch().catch(() => {});
     }, 20);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackStateG, playUrlG, currentIndexG]);
-  // 播放确立/url/下标/队列/模式变化 → 重推 skip hints（原生本地切歌依赖，须在最新语义后推送）
+
   useEffect(() => {
-    if (playbackStateG !== 'playing' || !playUrlG) return;
+    if (playbackStateG !== 'playing' || !playUrlG || isNativeExoDisabled()) return;
     const t = setTimeout(() => {
-      pushSkipHints().catch(() => {});
+      if (!isNativeExoDisabled()) pushSkipHints().catch(() => {});
     }, 40);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -358,11 +346,11 @@ function MusicForegroundBridge() {
     if (playbackStateG === 'idle') {
       lastPushKeyRef.current = '';
       radioStoppedRef.current = false;
-      // 停止后可重新尝试原生（error/超时禁用仅限单次播放会话）
+      resetExoArm();
+
       setNativeExoActive(false);
       setNativeExoDisabled(false);
-      // ⚠️ 停止必须全局兜底：主页 ✕ 关闭/任何页面清空播放都置 idle，
-      // 停 Exo 服务的逻辑若只在音乐页 effect，页面未挂载时音乐会继续响（22:56 实测）
+
       try {
         exoControl('stop');
       } catch {}
@@ -372,11 +360,8 @@ function MusicForegroundBridge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackStateG]);
 
-  // 播放态 → 原生 单向镜像（App 级常驻，页面无关；替代原音乐页私有 mirror effect）：
-  // 应用内 暂停/继续（全屏播放器/迷你条/主页"继续播放"）必须落到原生 ExoPlayer；
-  // 仅当原生已知状态确实相反才下发（系统卡操作走原生回调已同步的状态不重复下发 → 防回声自激）。
   useEffect(() => {
-    if (isNativeExoDisabled()) return; // RNV 降级：声音/会话由页面 Video + 旧自管服务负责
+    if (isNativeExoDisabled()) return;
     if (playbackStateG === 'paused' && lastNativePlayingRef.current) {
       exoControl('pause');
     } else if (playbackStateG === 'playing' && !lastNativePlayingRef.current) {
@@ -385,14 +370,11 @@ function MusicForegroundBridge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackStateG]);
 
-  // M2：Exo 原生会话事件全局单点 —— 进度/位置实时写 store（离开音乐页后台播放时也同步）、
-  // 播完自动切歌、系统卡上一首/下一首命令、暂停恢复滞回 —— 全部常驻，不依赖音乐页挂载。
   useEffect(
     () =>
       subscribeExo((type, p: any) => {
         try {
           if (type === 'progress') {
-            // Exo 激活（原声在播）→ 旧自管服务停用（每会话仅边沿调用一次，避免每 500ms 触发 Binder IPC）
             const playingN = !!p?.playing;
             lastNativePlayingRef.current = playingN;
             if (playingN) {
@@ -404,7 +386,7 @@ function MusicForegroundBridge() {
                 } catch {}
               }
             }
-            // 真实位置/时长全局同步（后台播放时 store 常真，回音乐页即见实际进度）
+
             const st = useMusicPlayerStore.getState();
             if (!st.queue.length || st.playbackState === 'idle') return;
             if (!st.url) {
@@ -425,9 +407,10 @@ function MusicForegroundBridge() {
             const current = st.queue[st.currentIndex];
             const currentId = current ? String(current.musicId || current.id || '') : '';
             const staleTrack = !!p?.trackId && !!currentId && String(p.trackId) !== currentId;
-            // 切歌竞态防护：旧曲心跳(url/trackId ≠ 当前)不写位置/时长（防进度条回跳/脏数据）
+
             const staleUrl = !!p?.url && !!st.url && String(p.url) !== String(st.url);
             if (!staleUrl && !staleTrack) {
+              if (playingN) noteExoProgress();
               if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
               if (typeof p?.position === 'number') st.setPosition(p.position);
             }
@@ -443,12 +426,9 @@ function MusicForegroundBridge() {
             clearSyncResume();
             const st = useMusicPlayerStore.getState();
             if (st.queue.length && st.playbackState === 'playing' && st.playMode !== 'single') {
-              // 播完自动切歌：watch effect 会在 url 就绪后补发原生
               MusicEngine.next().catch(() => {});
             }
           } else if (type === 'skipped') {
-            // 原生已本地切歌（系统卡/媒体键在后台点按，JS 被冻结时事件排队、恢复后按序到达）：
-            // 按 hint 携带的 index 把 store 对账到目标曲，防止 UI/状态停留旧曲。
             const urlN = String(p?.url || '');
             clearSyncPause();
             clearSyncResume();
@@ -465,7 +445,6 @@ function MusicForegroundBridge() {
                 : -1;
             const track = idx >= 0 ? st0.queue[idx] : null;
             if (idx >= 0 && track) {
-              // 使在途 playTrack 失效：防其 URL 解析完成后回写覆盖本次本地切歌
               (MusicEngine as any)._playSeq += 1;
               useMusicPlayerStore.setState({
                 currentIndex: idx,
@@ -474,10 +453,12 @@ function MusicForegroundBridge() {
                 position: 0,
                 duration: 0,
                 seekTarget: 0,
+                seekPending: false,
+                seekTargetGuard: 0,
                 error: null,
                 lyrics: [],
               });
-              // watch effect 会因 url|index 变化补推原生（同曲去重不重载）；这里补歌词/预热下一首
+
               MusicEngine._fetchLyrics(track);
               MusicEngine._prewarmNextTrack();
             } else {
@@ -503,7 +484,7 @@ function MusicForegroundBridge() {
             clearSyncPause();
             clearSyncResume();
             radioStoppedRef.current = false;
-            setNativeExoDisabled(true); // 本会话原生判不可用（RNV 降级路径接管）
+            setNativeExoDisabled(true);
           }
         } catch {}
       }),
@@ -518,7 +499,7 @@ function MusicForegroundBridge() {
     },
     [],
   );
-  // A: 切后台/失活立即落盘音乐播放记忆（30s 节流窗口内的切歌/进度不丢）
+
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
       if (st !== 'active') flushMusicPlayerStorage();
@@ -529,15 +510,13 @@ function MusicForegroundBridge() {
   const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
   const position = useMusicPlayerStore((s) => s.position);
   const duration = useMusicPlayerStore((s) => s.duration);
-  // 媒体通知（MediaStyle 控制）：只在 切歌/状态变化 时更新通知（不再每 5s 重建——
-  // ColorOS 媒体卡疑似每次通知重建都重置进度观感；进度由服务端 1s ticker 持续推送 session）
+
   const lastNotifySig = useRef('');
-  // 真实位置 500ms 同步到旧自管会话（仅电台/RNV 降级路径；Exo 激活后旧服务已停，禁止再拉活——
-  // 否则 syncPosition 的 startService 会把已 stop 的 RadioForegroundService 复活 → 双会话，ColorOS 绑旧卡死）
+
   useEffect(() => {
     if (playbackState !== 'playing') return;
     const id = setInterval(() => {
-      if (!isNativeExoDisabled()) return; // Exo 可用（含尝试窗口）时旧桥不得掺和；仅 RNV 降级路径走旧桥
+      if (!isNativeExoDisabled()) return;
       try {
         syncRadioPosition(useMusicPlayerStore.getState().position);
       } catch {}
@@ -546,7 +525,7 @@ function MusicForegroundBridge() {
   }, [playbackState]);
   useEffect(() => {
     if (playbackState === 'playing') {
-      if (!isNativeExoDisabled()) return; // Exo 负责系统卡与通知；旧桥不掺和
+      if (!isNativeExoDisabled()) return;
       const st = useMusicPlayerStore.getState();
       const track = st.queue[st.currentIndex];
       const sig = `${st.currentIndex}|${playbackState}|${st.url || ''}`;
@@ -590,9 +569,8 @@ function MusicForegroundBridge() {
           } catch {}
         });
     } else if (playbackState === 'paused') {
-      if (!isNativeExoDisabled()) return; // Exo 已接管暂停态（含尝试窗口）；旧桥不掺和
-      // 暂停态必须同步给服务（isPlaying=false + PAUSED 会话 + 暂停图标）：
-      // 否则服务/系统一直以为在播 → ColorOS 上播放/暂停按钮失效、UI 不重绘
+      if (!isNativeExoDisabled()) return;
+
       const st = useMusicPlayerStore.getState();
       const track = st.queue[st.currentIndex];
       const sigP = `paused|${st.currentIndex}`;
@@ -630,7 +608,7 @@ function MusicForegroundBridge() {
       stopRadioForeground();
     }
   }, [playbackState, currentIndex, position]);
-  // 歌词行变化 → 更新通知展开区歌词（行切换才发，节流无碍）
+
   const lyrics = useMusicPlayerStore((s) => s.lyrics);
   const lastLyricIdx = useRef(-1);
   const playing = playbackState === 'playing';
@@ -640,7 +618,6 @@ function MusicForegroundBridge() {
       return;
     }
     if (!isNativeExoDisabled()) {
-      // Exo 接管（含尝试窗口）：旧服务已停，updateLyric 的 startForegroundService 会拉活旧服务（双会话），跳过
       lastLyricIdx.current = -1;
       return;
     }
@@ -652,7 +629,7 @@ function MusicForegroundBridge() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, lyrics, position]);
-  // 通知栏「停止」→ 暂停音乐 + 结束前台服务
+
   useEffect(
     () =>
       onRadioStopRequested(() => {
@@ -664,6 +641,201 @@ function MusicForegroundBridge() {
       }),
     [],
   );
+
+  const [nativeDisabled, setNativeDisabled] = useState(() => isNativeExoDisabled());
+  useEffect(() => subscribeNativeExoDisabled(setNativeDisabled), []);
+  const playVolumeG = useMemo(() => {
+    const u = String(playUrlG || '').toLowerCase();
+    return /(gnz\.hk|gnz-music|music\.gnz)/.test(u) || /\.r2\.|r2-music/i.test(u) ? 0.86 : 1.0;
+  }, [playUrlG]);
+  const seekPendingG = useMusicPlayerStore((s) => s.seekPending);
+  const seekTargetG = useMusicPlayerStore((s) => s.seekTarget);
+  const seekNonceG = useMusicPlayerStore((s) => s.seekNonce);
+  const fallbackVideoRef = useRef<any>(null);
+  const [fallbackReady, setFallbackReady] = useState(false);
+  const consumedFallbackSeekRef = useRef(0);
+  useEffect(() => {
+    setFallbackReady(false);
+  }, [playUrlG, nativeDisabled]);
+  useEffect(() => {
+    if (!nativeDisabled || !fallbackReady) return;
+    if (!seekPendingG || !seekNonceG || seekNonceG === consumedFallbackSeekRef.current) return;
+    const ref = fallbackVideoRef.current;
+    if (!ref || typeof ref.seek !== 'function') return;
+    try {
+      useMusicPlayerStore.getState().setPosition(seekTargetG);
+      ref.seek(seekTargetG);
+      consumedFallbackSeekRef.current = seekNonceG;
+      useMusicPlayerStore.getState().consumeSeekTarget();
+    } catch {}
+  }, [nativeDisabled, fallbackReady, seekPendingG, seekTargetG, seekNonceG]);
+
+  if (!nativeDisabled || !playUrlG) return null;
+  return (
+    <Video
+      ref={fallbackVideoRef}
+      source={{
+        uri: playUrlG,
+        headers: {
+          'User-Agent': USER_AGENT,
+          Referer: 'https://h5.48.cn/',
+        },
+        bufferConfig: {
+          minBufferMs: 15000,
+          maxBufferMs: 60000,
+          bufferForPlaybackMs: 5000,
+          bufferForPlaybackAfterRebufferMs: 10000,
+          backBufferDurationMs: 30000,
+        },
+      }}
+      style={{ width: 0, height: 0, position: 'absolute', opacity: 0 }}
+      volume={playVolumeG}
+      paused={playbackStateG !== 'playing'}
+      repeat={playModeG === 'single'}
+      ignoreSilentSwitch="ignore"
+      playInBackground
+      playWhenInactive
+      onAudioBecomingNoisy={() => {
+        try {
+          if (useMusicPlayerStore.getState().playbackState === 'playing') {
+            MusicEngine.togglePause();
+          }
+        } catch {}
+      }}
+      onLoad={(e) => {
+        try {
+          setFallbackReady(true);
+          const durRaw = Number((e as any).duration);
+          const dur =
+            Number.isFinite(durRaw) && durRaw > 0
+              ? durRaw
+              : useMusicPlayerStore.getState().duration;
+          useMusicPlayerStore.getState().setDuration(dur);
+          const st = useMusicPlayerStore.getState();
+          if (
+            st.seekPending &&
+            st.seekTarget > 0 &&
+            fallbackVideoRef.current &&
+            typeof fallbackVideoRef.current.seek === 'function'
+          ) {
+            try {
+              fallbackVideoRef.current.seek(st.seekTarget);
+            } catch {}
+            consumedFallbackSeekRef.current = st.seekNonce;
+            useMusicPlayerStore.getState().consumeSeekTarget();
+          }
+        } catch {}
+      }}
+      onProgress={(e) => {
+        try {
+          useMusicPlayerStore.getState().setPosition(e.currentTime || 0);
+        } catch {}
+      }}
+      onEnd={() => {
+        try {
+          if (playModeG !== 'single') MusicEngine.next();
+        } catch {}
+      }}
+      onError={() => {
+        try {
+          const st = useMusicPlayerStore.getState();
+          if (st.queue.length > 1 && st.playMode !== 'single') {
+            MusicEngine.next();
+          } else {
+            const tr = st.queue[st.currentIndex];
+            st.setError(`《${tr?.title || '该歌曲'}》无法播放`);
+            st.setPlaybackState('error');
+          }
+        } catch {}
+      }}
+    />
+  );
+}
+
+function QChatGlobalBridge({ ready }: { ready: boolean }) {
+  const p48Token = useSettingsStore((s) => s.settings.p48Token);
+  const membersLoaded = useMemberStore((s) => s.membersLoaded);
+  const bgPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!ready || !p48Token) return;
+    let disposed = false;
+
+    const connectAndSubscribe = async () => {
+      if (disposed || AppState.currentState !== 'active') return;
+      const ok = await ensureGlobalQChatConnection();
+      if (!ok || disposed) return;
+      try {
+        const res = await pocketApi.getFollowedIds();
+        if (disposed) return;
+        const ids = new Set(
+          unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String),
+        );
+        if (!ids.size) return;
+        const curMembers = useMemberStore.getState().members;
+        const serverIds = curMembers
+          .filter((m) => ids.has(String(m.id || '')) || ids.has(String(m.userId || '')))
+          .map((m) => String(m.serverId || '').trim())
+          .filter((s) => /^\d+$/.test(s) && s !== '0');
+        if (serverIds.length) void subscribeRoomChannelsBatch(serverIds);
+      } catch {}
+    };
+
+    const offMsg = onQChatMessage((message) => {
+      try {
+        let ext: Record<string, any> = {};
+        try {
+          ext = message.ext ? JSON.parse(message.ext) : {};
+        } catch {}
+        let attachment: Record<string, any> = {};
+        try {
+          attachment = message.attachment ? JSON.parse(message.attachment) : {};
+        } catch {}
+        const voiceEvent = parseVoiceEvent({
+          uuid: message.msgIdClient || message.msgIdServer || `${message.time}`,
+          serverId: Number(message.serverId) || 0,
+          channelId: Number(message.channelId) || 0,
+          fromAccount: message.fromAccount,
+          fromNick: message.fromNick || String(ext?.user?.nickName || ''),
+          time: message.time || Date.now(),
+          text: message.body || String(ext?.text || ''),
+          messageType: String(attachment.messageType || ext.messageType || 'TEXT'),
+          attachment,
+          ext,
+        });
+        if (voiceEvent) useOnMicStore.getState().applyVoiceEvent(voiceEvent);
+      } catch {}
+    });
+
+    if (AppState.currentState === 'active') void connectAndSubscribe();
+
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') {
+        if (bgPauseTimer.current) {
+          clearTimeout(bgPauseTimer.current);
+          bgPauseTimer.current = null;
+        }
+        void connectAndSubscribe();
+      } else if (next === 'background') {
+        if (bgPauseTimer.current) clearTimeout(bgPauseTimer.current);
+        bgPauseTimer.current = setTimeout(() => {
+          bgPauseTimer.current = null;
+          pauseQChatSession('切到后台');
+        }, 5000);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      offMsg();
+      sub.remove();
+      if (bgPauseTimer.current) {
+        clearTimeout(bgPauseTimer.current);
+        bgPauseTimer.current = null;
+      }
+    };
+  }, [ready, p48Token, membersLoaded]);
+
   return null;
 }
 
@@ -674,7 +846,6 @@ export default function App() {
   const palette = usePalette();
   const splashBg = palette.background;
 
-  // v2.6: Announcement modal
   const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
   const [announceModal, setAnnounceModal] = useState<{
     title: string;
@@ -683,7 +854,7 @@ export default function App() {
     imageUrl: string;
     link: string;
   } | null>(null);
-  // 公告卡片 spring 入场
+
   const announceAnim = React.useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (announceModal) {
@@ -730,9 +901,9 @@ export default function App() {
       try {
         const settings = await loadSettings();
         useSettingsStore.getState().setSettings(settings);
-        // 下载恢复只应在启动时执行一次；运行期读取不得再把活跃任务改成 failed。
+
         recoverInterruptedDownloads().catch(() => {});
-        // 直播偏好（屏蔽进场/屏蔽特效）在开屏期间恢复，避免进直播间闪特效。
+
         await loadPlayerPrefs();
       } catch (error: any) {
         if (mounted) setMessage(`设置加载失败：${error?.message || String(error)}`);
@@ -749,7 +920,6 @@ export default function App() {
         useMemberStore.getState().setMembers(localMembers);
         if (mounted) setMessage(`已加载随包成员库 ${localMembers.length} 位`);
 
-        // Prefer a previously downloaded update if it is at least as complete.
         const cached = await loadCachedMemberData();
         if (cached && cached.length >= localMembers.length) {
           useMemberStore.getState().setMembers(cached);
@@ -758,8 +928,6 @@ export default function App() {
         if (mounted) setMessage(`成员数据加载失败：${error?.message || String(error)}`);
       }
 
-      // 成员库解析很重（970 位 + roomMap overlay）：全部在开屏期间完成，
-      // 避免首页首帧后再占用 JS 线程造成“刚进来切不动”的体感。
       if (mounted) setReady(true);
     })();
 
@@ -773,13 +941,12 @@ export default function App() {
     const timer = setTimeout(() => {
       runAutoCheckinIfNeeded().catch(() => {});
     }, 1200);
-    // 启动静默检测最新版本：失败/无 Release 一律不打扰，设置页版本号红点由 store 驱动
+
     useUpdateStore
       .getState()
       .checkUpdate()
       .catch(() => {});
-    // R2 音乐列表预取（1MB/gnz.hk 慢）：延迟到启动完全就绪后静默拉取写缓存，
-    // 进音乐库秒开；任何异常均被吞，不影响启动（如 Hermes 无 AbortController polyfill 也仅拉取失败）
+
     const r2Timer = setTimeout(() => {
       prefetchR2Music().catch(() => {});
     }, 15000);
@@ -789,124 +956,115 @@ export default function App() {
     };
   }, [ready]);
 
-  // 签名（pa）健康自检：启动后静默跑一次，把结果写进运行日志（tag = sign.health）。
-  // 目的：上游改签名算法 / 用户手机时间严重不准 / WebView 被回收 时，能在日志里直接看到，
-  // 而不是等用户报「软件全坏了」。全程吞异常，不影响启动与任何功能。
   useEffect(() => {
     if (!ready) return;
     startSignatureHealthCheck();
-    // 原生模块自检（手工注册漏了只会静默失效 → 日志里点名）
+
     startNativeModuleCheck();
   }, [ready]);
 
-  const content =
-    (
-      /**
-       * KeyboardProvider：react-native-keyboard-controller 的根上下文。
-       * 键盘位置/高度改由原生 WindowInsetsAnimation 提供（RN 自带的 keyboardDidShow
-       * 在 edge-to-edge 下上报的高度可能远大于真实值，不能直接拿来算布局）。
-       */
-      <KeyboardProvider>
-        <View style={{ flex: 1, backgroundColor: palette.background }}>
-          <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
-          <SafeAreaBridge>
-            <AppNavigator />
-          </SafeAreaBridge>
-          {/* v2.6: Global announcement modal */}
-          <Modal
-            visible={!!announceModal}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setAnnounceModal(null)}
-          >
-            <View style={anStyles.overlay}>
-              <Animated.View
-                style={[
-                  anStyles.card,
-                  { backgroundColor: palette.surface },
-                  {
-                    opacity: announceAnim,
-                    transform: [
-                      {
-                        scale: announceAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.92, 1],
-                        }),
-                      },
-                      {
-                        translateY: announceAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [16, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                {announceModal?.header ? (
-                  <Text style={[anStyles.header, { color: palette.tint }]}>
-                    {announceModal.header}
-                  </Text>
-                ) : null}
-                {announceModal?.title ? (
-                  <Text style={[anStyles.title, { color: palette.label }]}>
-                    {announceModal.title}
-                  </Text>
-                ) : null}
-                {announceModal?.imageUrl ? (
-                  <Image
-                    source={{ uri: announceModal.imageUrl }}
-                    style={anStyles.image}
-                    resizeMode="contain"
-                  />
-                ) : null}
-                {announceModal?.content ? (
-                  <Text style={[anStyles.content, { color: palette.labelSecondary }]}>
-                    {announceModal.content}
-                  </Text>
-                ) : null}
-                <View style={anStyles.btnRow}>
-                  {announceModal?.link ? (
-                    <TouchableOpacity
-                      style={[anStyles.btn, { backgroundColor: palette.tint }]}
-                      onPress={() => {
-                        if (announceModal?.link) Linking.openURL(announceModal.link);
-                      }}
-                    >
-                      <Text style={anStyles.btnText}>查看详情</Text>
-                    </TouchableOpacity>
-                  ) : null}
+  const content = (
+    <KeyboardProvider>
+      <View style={{ flex: 1, backgroundColor: palette.background }}>
+        <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
+        <SafeAreaBridge>
+          <AppNavigator />
+        </SafeAreaBridge>
+
+        <Modal
+          visible={!!announceModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setAnnounceModal(null)}
+        >
+          <View style={anStyles.overlay}>
+            <Animated.View
+              style={[
+                anStyles.card,
+                { backgroundColor: palette.surface },
+                {
+                  opacity: announceAnim,
+                  transform: [
+                    {
+                      scale: announceAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.92, 1],
+                      }),
+                    },
+                    {
+                      translateY: announceAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [16, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              {announceModal?.header ? (
+                <Text style={[anStyles.header, { color: palette.tint }]}>
+                  {announceModal.header}
+                </Text>
+              ) : null}
+              {announceModal?.title ? (
+                <Text style={[anStyles.title, { color: palette.label }]}>
+                  {announceModal.title}
+                </Text>
+              ) : null}
+              {announceModal?.imageUrl ? (
+                <Image
+                  source={{ uri: announceModal.imageUrl }}
+                  style={anStyles.image}
+                  resizeMode="contain"
+                />
+              ) : null}
+              {announceModal?.content ? (
+                <Text style={[anStyles.content, { color: palette.labelSecondary }]}>
+                  {announceModal.content}
+                </Text>
+              ) : null}
+              <View style={anStyles.btnRow}>
+                {announceModal?.link ? (
                   <TouchableOpacity
-                    style={[anStyles.btn, { backgroundColor: 'rgba(128,128,128,0.2)' }]}
-                    onPress={() => setAnnounceModal(null)}
+                    style={[anStyles.btn, { backgroundColor: palette.tint }]}
+                    onPress={() => {
+                      if (announceModal?.link) Linking.openURL(announceModal.link);
+                    }}
                   >
-                    <Text style={[anStyles.btnText, { color: palette.label }]}>关闭</Text>
+                    <Text style={anStyles.btnText}>查看详情</Text>
                   </TouchableOpacity>
-                </View>
-              </Animated.View>
-            </View>
-          </Modal>
-        </View>
-      </KeyboardProvider>
-    );
+                ) : null}
+                <TouchableOpacity
+                  style={[anStyles.btn, { backgroundColor: 'rgba(128,128,128,0.2)' }]}
+                  onPress={() => setAnnounceModal(null)}
+                >
+                  <Text style={[anStyles.btnText, { color: palette.label }]}>关闭</Text>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </View>
+        </Modal>
+      </View>
+    </KeyboardProvider>
+  );
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       {!ready ? (
-        // 原生开屏已展示 app 图标（与开屏同色纯背景，避免黑屏闪烁）；签名 WebView 仍在后台预热。
         <View style={{ flex: 1, backgroundColor: splashBg }} />
       ) : (
         <ErrorBoundary>{content}</ErrorBoundary>
       )}
-      {/* WebViewSigner 常驻挂载：即使 JS 开屏仍在显示，也提前预热签名模块。 */}
+
       <WebViewSignerHost />
-      {/* 音乐前台保活（后台播放通知栏控制 + 防进程被杀） */}
+
       <MusicForegroundBridge />
+
+      <QChatGlobalBridge ready={ready} />
     </GestureHandlerRootView>
   );
 }
 
-// v2.6: Announcement modal styles
 const anStyles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -915,11 +1073,11 @@ const anStyles = StyleSheet.create({
     alignItems: 'center',
     padding: 24,
   },
-  card: { borderRadius: 16, padding: 20, maxWidth: 400, width: '100%', maxHeight: '80%' }, // 背景色由内联 palette.surface 提供
+  card: { borderRadius: 16, padding: 20, maxWidth: 400, width: '100%', maxHeight: '80%' },
   header: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
-  title: { fontSize: 15, fontWeight: '600', marginBottom: 10 }, // 颜色由内联 palette.label 提供
+  title: { fontSize: 15, fontWeight: '600', marginBottom: 10 },
   image: { width: '100%', height: 160, borderRadius: 10, marginBottom: 10 },
-  content: { fontSize: 14, lineHeight: 22, marginBottom: 16 }, // 颜色由内联 palette.labelSecondary 提供
+  content: { fontSize: 14, lineHeight: 22, marginBottom: 16 },
   btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
   btn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 },
   btnText: { color: '#fff', fontSize: 14, fontWeight: '600' },

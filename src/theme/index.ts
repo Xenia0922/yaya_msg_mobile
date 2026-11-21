@@ -1,4 +1,3 @@
-// 统一主题入口：iOS 26 风格 tokens
 export { usePalette, Palettes, semantic, accent, getPageBackground } from './colors';
 export { typography, fontFamily } from './typography';
 export type { TypographyToken } from './typography';

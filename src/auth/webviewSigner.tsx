@@ -5,14 +5,12 @@ import wasmBase64 from './wasmBase64';
 import wasmGlueSource from './wasmGlueSource';
 import { wasmBase64MatchesPin } from './wasmHash';
 
-// 调试日志：dev 输出，release 编译期消除（__DEV__ 折叠），杜绝 Hermes 环境下 console.debug 的兼容风险
 const dbg = __DEV__ ? (console.debug || console.log).bind(console) : () => {};
 
 const DEFAULT_TIMEOUT = 10000;
-// 后台/息屏时系统会冻结 WebView 渲染进程（Android Freezer），签名请求在此期间不可能有回包。
-// 这段空转不计入超时，改为等回到前台继续，避免「一批请求同时超时、日志刷屏、恢复后依旧不可用」。
+
 const BACKGROUND_WAIT_MS = 60000;
-// 判定签名容器失活后的重建等待上限（重建 WebView + 重新编译 wasm）
+
 const REVIVE_TIMEOUT_MS = 8000;
 
 type PendingRequest = {
@@ -26,12 +24,11 @@ let signerError = '';
 let signerRequest: ((timeoutMs?: number) => Promise<string | null>) | null = null;
 let readyWaiters: Array<(ready: boolean) => void> = [];
 let mountWaiters: Array<(ready: boolean) => void> = [];
-// 单飞：同一时刻只向 WebView 发一条 pa 请求，并发调用共享同一次签名结果。
-// pa 由 wasm 在无参调用下生成（只可能依赖时间/设备信息，不可能依赖具体请求），复用安全。
+
 let inflight: Promise<string | null> | null = null;
 let pending: Record<string, PendingRequest> = {};
 let seq = 1;
-// WebView 重建触发器（由组件注册）
+
 let remount: (() => void) | null = null;
 
 let appActive = AppState.currentState !== 'background' && AppState.currentState !== 'inactive';
@@ -125,8 +122,6 @@ function rejectPending(reason: string) {
   });
 }
 
-// 重建签名容器：清掉「已就绪」标记（否则后续调用会继续往已经死掉的 WebView 发消息，
-// 每次都白等一个超时），并让组件换 key 重挂载 WebView。
 let lastResetAt = 0;
 let hostRemount: (() => void) | null = null;
 let lastHostRemountAt = 0;
@@ -134,7 +129,7 @@ export function registerSignerHost(fn: (() => void) | null) {
   hostRemount = fn;
   if (fn) lastHostRemountAt = 0;
 }
-/** 宿主重挂载节流：避免某个请求连续失败时短时间创建多个 WebView。 */
+
 function requestHostRemount(): boolean {
   if (!hostRemount) return false;
   const now = Date.now();
@@ -148,7 +143,7 @@ export function resetWebViewSigner(reason: string) {
   signerReady = false;
   signerError = '';
   rejectPending(reason || '签名容器重建中');
-  // 渲染进程崩溃触发的 reject 会再走一遍重建，800ms 内合并成一次，避免连续重挂载
+
   const now = Date.now();
   if (now - lastResetAt < 800) return;
   lastResetAt = now;
@@ -165,8 +160,6 @@ export function getWebViewSignerError(): string {
 
 async function attemptPa(timeoutMs: number): Promise<string | null> {
   if (!signerRequest) {
-    // 组件可能因宿主重渲染/系统回收被卸载：先请求宿主重新挂载一次，再等 mount，
-    // 避免每 10 秒都对着不存在的 WebView 空等超时。
     const requested = requestHostRemount();
     const mounted = await waitForMount(requested ? Math.min(timeoutMs, 3000) : timeoutMs);
     dbg('[generatePaViaWebView] waitForMount result:', mounted);
@@ -184,14 +177,12 @@ export async function generatePaViaWebView(timeoutMs = DEFAULT_TIMEOUT): Promise
   bindAppState();
 
   const run = (async () => {
-    // 后台冻结期不发起：等回到前台再算，避免一次超时把签名器误判成失活
     if (!appActive) {
       const back = await waitForAppActive(BACKGROUND_WAIT_MS);
       dbg('[generatePaViaWebView] waited for app active:', back);
     }
 
     const reviveAndRetry = async (reason: string) => {
-      // 永久性失败（wasm 完整性校验挂了）重建也没用，直接放弃
       if (reason.includes('完整性校验')) return null;
       if (!signerRequest) {
         if (!requestHostRemount()) return null;
@@ -209,19 +200,16 @@ export async function generatePaViaWebView(timeoutMs = DEFAULT_TIMEOUT): Promise
     try {
       const pa = await attemptPa(timeoutMs);
       if (pa) return pa;
-      // 初始化超时等可恢复失败也要重建一次：旧实现把 signerError 一直留着，
-      // 之后每次 waitForReady 都立刻判失败，到杀进程为止都签不出名
+
       return signerError ? await reviveAndRetry(signerError) : null;
     } catch (e: any) {
-      // 超时 / 渲染进程被回收：容器已不可用，重建后重试一次（旧实现只报错不恢复，
-      // 一次超时之后整个会话的所有请求都会继续打到一个死掉的 WebView 上）
       dbg('[generatePaViaWebView] first attempt failed:', e?.message);
       return await reviveAndRetry(e?.message || '签名生成失败');
     }
   })();
 
   inflight = run;
-  // 无论成功失败都要放开单飞锁，否则后续请求会一直挂在失败结果上
+
   run
     .finally(() => {
       if (inflight === run) inflight = null;
@@ -281,13 +269,12 @@ let signerInstanceCounter = 0;
 export function WebViewSigner() {
   const webRef = useRef<WebView>(null);
   const [html, setHtml] = useState<string>('');
-  // 换 key 即重挂载 WebView：渲染进程被回收 / 签名请求超时后靠它把签名通道救回来
+
   const [generation, setGeneration] = useState(0);
   const htmlRef = useRef<string>('');
-  /** 只有 wasm 完整性校验通过后才允许生成 HTML，重挂载也不能绕过校验。 */
+
   const verifiedRef = useRef(false);
-  // 实例标识必须随每次重挂载变化：key={generation} 只换 WebView 节点，
-  // 若 instanceId 不变，旧渲染进程的迟到 ready/error 会误通过过滤。
+
   const [instanceId, setInstanceId] = useState(() => `signer-${++signerInstanceCounter}`);
   const instanceIdRef = useRef(instanceId);
 
@@ -300,7 +287,7 @@ export function WebViewSigner() {
       if (!mounted) return;
       signerReady = false;
       signerError = '';
-      // 生成新的实例标识并同步重建 HTML：旧 WebView 的迟到消息会因 instance 不匹配被丢弃。
+
       const nextInstanceId = `signer-${++signerInstanceCounter}`;
       setInstanceId(nextInstanceId);
       if (verifiedRef.current) {
@@ -314,12 +301,10 @@ export function WebViewSigner() {
 
     dbg('[WebViewSigner] Effect mounted, starting wasm injection');
 
-    // 使用构建期内联的 wasm base64，避免运行时 Asset.loadAsync 在 release 包中失效
-    // wasmBase64.ts 由 scripts/gen-wasm-base64.mjs 从同一份 assets/2.wasm 生成，确保字节一致
     (async () => {
       try {
         dbg('[WebViewSigner] Verifying wasmBase64 hash...');
-        // 完整性校验（与原生通道相同的哈希）
+
         if (!wasmBase64MatchesPin(wasmBase64)) {
           throw new Error('内联 wasmBase64 完整性校验失败');
         }
@@ -347,7 +332,6 @@ export function WebViewSigner() {
         !!webRef.current,
       );
       if (!htmlRef.current) {
-        // 等待 wasm 注入完成
         let waited = 0;
         while (!htmlRef.current && waited < timeoutMs) {
           await new Promise((r) => setTimeout(r, 50));
@@ -380,7 +364,7 @@ export function WebViewSigner() {
           reject,
           timer: null as unknown as ReturnType<typeof setTimeout>,
         };
-        // 后台冻结时不计时：重排一次，等回前台再算超时
+
         const arm = (ms: number) => {
           item.timer = setTimeout(() => {
             if (!appActive) {
@@ -407,7 +391,7 @@ export function WebViewSigner() {
     notifyMount(true);
     return () => {
       mounted = false;
-      // 旧实例的 cleanup 不能清掉新实例已经注册的全局引用（host 重挂载存在短暂重叠）
+
       if (remount === myRemount) remount = null;
       if (signerRequest !== myRequest) return;
       signerRequest = null;
@@ -457,7 +441,6 @@ export function WebViewSigner() {
         }
         onError={(e) => console.error('[WebViewSigner] WebView onError:', e.nativeEvent)}
         onRenderProcessGone={() => {
-          // 系统回收渲染进程后原 WebView 已不可用，重建才能继续签名
           console.error('[WebViewSigner] 渲染进程已被系统回收，重建签名容器');
           resetWebViewSigner('渲染进程已被系统回收');
         }}
@@ -468,8 +451,7 @@ export function WebViewSigner() {
           } catch {
             return;
           }
-          // 旧 WebView 实例的迟到消息（ready/error/pa）不得影响新实例：
-          // 每个实例有独立 instance id，非本实例消息一律丢弃。
+
           if (String(payload.instance || '') !== String(instanceId)) return;
           if (payload.type === 'ready') {
             signerReady = true;
@@ -504,7 +486,6 @@ export function WebViewSigner() {
   );
 }
 
-// 启动加载页 HTML（仅显示空白，等待 wasm base64 注入）
 export function WebViewSignerHost() {
   const [generation, setGeneration] = useState(0);
   useEffect(() => {

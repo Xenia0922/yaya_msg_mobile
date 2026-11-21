@@ -1,15 +1,9 @@
-/**
- * 首页共享样式（C4-S3）。
- *
- * 从 HomeScreen 原样搬迁而来，供 HomeScreen 与各 *Module 组件共用，
- * 保证抽模块后视觉零变化（同一套 styles.*）。
- */
-import { StyleSheet } from 'react-native';
-import { spacing } from '../../theme';
+import { Platform, StyleSheet } from 'react-native';
+import { fontFamily, radii, spacing } from '../../theme';
 
 export const styles = StyleSheet.create({
   outer: { flex: 1 },
-  /** 区块外层：统一水平留白 + 区块间距 16（v2.7 压缩，原 24 偏宽） */
+
   sectionOuter: {
     paddingHorizontal: spacing.md,
     marginBottom: 12,
@@ -33,13 +27,14 @@ export const styles = StyleSheet.create({
     paddingVertical: 3,
     gap: 4,
   },
-  liveBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  // 首页全宽直播 banner（16:9 沉浸）
+  liveBadgeText: { color: '#fff', fontSize: 10, fontFamily: fontFamily.system, fontWeight: '600' },
+
   liveBanner: { width: '100%' },
   liveBannerWrap: {
     width: '100%',
     aspectRatio: 16 / 9,
-    borderRadius: 20,
+    borderRadius: radii.lg,
+    borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -63,7 +58,8 @@ export const styles = StyleSheet.create({
   liveBannerTitle: {
     color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
     lineHeight: 24,
     textShadowColor: 'rgba(0,0,0,0.65)',
     textShadowOffset: { width: 0, height: 1 },
@@ -72,6 +68,7 @@ export const styles = StyleSheet.create({
   liveBannerNick: {
     color: 'rgba(255,255,255,0.88)',
     fontSize: 12,
+    fontFamily: fontFamily.system,
     marginTop: 3,
     textShadowColor: 'rgba(0,0,0,0.55)',
     textShadowOffset: { width: 0, height: 1 },
@@ -84,27 +81,29 @@ export const styles = StyleSheet.create({
     gap: 5,
     marginTop: 8,
   },
-  /** 指示点等宽槽位：active 横条与小点中心距均匀（防止横条与相邻点视觉错位） */
+
   dotSlot: { width: 16, alignItems: 'center' },
-  /** 直播行卡：surface + hairline 圆角 16 */
+
   liveRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
-    borderRadius: 20,
+    borderRadius: radii.lg,
+    borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
   },
   liveRowThumb: {
     width: 52,
     height: 52,
     borderRadius: 14,
+    borderCurve: 'continuous',
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  liveRowTitle: { fontSize: 14, fontWeight: '700', lineHeight: 18 },
-  liveRowNick: { fontSize: 12, marginTop: 3, lineHeight: 16 },
-  // 公演直播：呼吸状态点（直播中 success 呼吸）
+  liveRowTitle: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '600', lineHeight: 18 },
+  liveRowNick: { fontSize: 12, fontFamily: fontFamily.system, marginTop: 3, lineHeight: 16 },
+
   gongyanDotWrap: {
     width: 18,
     height: 18,
@@ -119,21 +118,23 @@ export const styles = StyleSheet.create({
     gap: 10,
     padding: 14,
     borderRadius: 20,
+    borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
   },
-  liveStateText: { flex: 1, fontSize: 13, lineHeight: 18 },
-  // 快捷入口胶囊
+  liveStateText: { flex: 1, fontSize: 13, fontFamily: fontFamily.system, lineHeight: 18 },
+
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
+    borderRadius: radii.lg,
+    borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
     height: 46,
     paddingHorizontal: 4,
     gap: 4,
   },
-  /** 工具 chip：左右留白更大 + 不压缩文字，保证「鸡腿榜 / 数据库」完整显示 */
+
   toolChip: { paddingHorizontal: 10, justifyContent: 'flex-start' },
   quickRow: { flexDirection: 'row', gap: 8 },
   quickCell: {},
@@ -146,7 +147,13 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  chipText: { fontSize: 12, lineHeight: 16, fontWeight: '600', flexShrink: 1 },
+  chipText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
   miniBtn: {
     width: 30,
     height: 30,
@@ -157,7 +164,8 @@ export const styles = StyleSheet.create({
   musicCover: {
     width: 52,
     height: 52,
-    borderRadius: 14,
+    borderRadius: radii.md,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -166,8 +174,29 @@ export const styles = StyleSheet.create({
     paddingRight: 8,
     gap: 8,
     paddingHorizontal: spacing.md,
-    // 防横向 ScrollView 高度塌缩：显式 minHeight + 垂直居中，保证图标不被截断
+
     alignItems: 'center',
     minHeight: 46,
+  },
+  headerBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerBrandTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    ...Platform.select({ android: { paddingTop: 1 }, default: null }),
+  },
+  headerBrandDivider: { width: 1, height: 12 },
+  headerBrandSub: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: fontFamily.system,
+    fontWeight: '500',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    ...Platform.select({ android: { paddingTop: 1 }, default: null }),
   },
 });

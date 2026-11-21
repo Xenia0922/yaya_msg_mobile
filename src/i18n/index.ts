@@ -27,7 +27,6 @@ const DICTS: Record<LanguageCode, Record<string, string>> = {
   ko,
 };
 
-/** 跟随系统时的语言检测（Intl 纯 JS 实现，无需原生依赖） */
 export function detectSystemLanguage(): LanguageCode {
   try {
     const locale = (Intl.DateTimeFormat().resolvedOptions().locale || '').toLowerCase();
@@ -52,10 +51,6 @@ function render(text: string, vars?: Record<string, string | number>): string {
   });
 }
 
-/**
- * 组件外/一次性翻译：key 为中文原文，缺翻译回退原文。
- * 不做响应式（仅读取当前设置值），组件内请用 useI18n。
- */
 export function translate(key: string, vars?: Record<string, string | number>): string {
   const setting = useSettingsStore.getState().settings.language ?? 'system';
   const text = DICTS[resolveLanguage(setting)][key] || key;
@@ -64,7 +59,6 @@ export function translate(key: string, vars?: Record<string, string | number>): 
 
 export const t = translate;
 
-/** 组件内响应式翻译：语言设置变化时自动重渲染 */
 export function useI18n() {
   const language = useSettingsStore((s) => s.settings.language ?? 'system');
   const lang = resolveLanguage(language);

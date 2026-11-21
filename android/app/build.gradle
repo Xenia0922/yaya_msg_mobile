@@ -2,6 +2,10 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// 全站只用到 MaterialCommunityIcons，裁剪其余 13 套未用图标字体
+project.ext.vectoricons = [
+    iconFontNames: [ 'MaterialCommunityIcons.ttf' ]
+]
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
@@ -102,7 +106,7 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 // 注意必须同时收紧 ndk.abiFilters —— AGP 会在"splits 与 abiFilters 不一致"时直接报错。
 def yayaAbiOverride = (findProperty('yaya.abis') ?: '').toString()
   .split(',').collect { it.trim() }.findAll { it }
-def yayaAbis = yayaAbiOverride ?: ['armeabi-v7a', 'arm64-v8a', 'x86_64']
+def yayaAbis = yayaAbiOverride ?: ['arm64-v8a', 'x86_64']
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -121,8 +125,8 @@ android {
         // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3000015
-        versionName "2.8.1"
+        versionCode 3000016
+        versionName "2.9.0"
 
         // ABI 统一由下方 splits.abi 控制（真机 armeabi-v7a/arm64-v8a + 模拟器 x86_64）。
         // 不要同时设置 ndk.abiFilters：与 splits 冲突时 AGP 会直接报

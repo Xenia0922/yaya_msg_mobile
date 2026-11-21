@@ -2,28 +2,15 @@ import { StreamKind, PlayerSource } from '../types';
 import { normalizeUrl, pickText, unwrapList } from '../../utils/data';
 import { USER_AGENT } from '../../constants';
 
-/**
- * 统一流解析器（重写核心）：
- * 合并现状三处重复实现 —— FollowedRoomsScreen（classifyMedia/streamScore/pickPlayableUrls/
- * streamNeedsProxy/isLiveStreamUrl）、MediaScreen（streamScore/liveStreamScore/pickPlayableUrls）、
- * musicPlayer（isPlayableHost）。新增流类型只改这里。
- */
-
-// --- URL 分类（classifyMedia 全量规则，扩展名最高优先级） ---
-
 const RE_VIDEO_EXT = /\.(mp4|mov|m4v|3gp)(\?|$)/i;
 const RE_LIVE_EXT = /\.(m3u8|flv|ts)(\?|$)/i;
 const RE_AUDIO_EXT = /\.(mp3|m4a|aac|amr|wav)(\?|$)/i;
 const RE_IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i;
 const RE_RTMP = /^rtmps?:\/\//i;
-/** 无扩展名播放地址的查询参数提示（如 /play?format=hls、/play?type=m3u8） */
+
 const RE_MEDIA_QUERY_HINT =
   /[?&](?:format|type|ext|suffix)=(?:hls|m3u8|flv|mp4|mov|m4v|mp3|m4a|aac|amr|wav)\b/i;
 
-/**
- * RTMP/RTMPS 直播流地址判定 —— 全项目唯一实现（含 rtmps，兼容大小写与首尾空白）。
- * 调用方不要再用 `startsWith('rtmp://')` 各自判断，避免漏掉 rtmps 导致走错内核。
- */
 export function isRtmpUrl(url: string): boolean {
   return RE_RTMP.test(String(url || '').trim());
 }
@@ -35,7 +22,7 @@ export function classifyUrl(url: string, msgType = '', text = ''): StreamKind {
   if (RE_AUDIO_EXT.test(url)) return 'audio';
   if (RE_IMAGE_EXT.test(url) || lower.includes('image') || lower.includes('expressimage'))
     return 'image';
-  // 无扩展名关键字兜底
+
   if (
     lower.includes('live') ||
     lower.includes('playback') ||
@@ -48,8 +35,6 @@ export function classifyUrl(url: string, msgType = '', text = ''): StreamKind {
   return 'link';
 }
 
-// --- 流评分与候选排序（合并 FollowedRooms + MediaScreen 两版，preferLive 语义） ---
-
 export function streamScore(url: string, preferLive = false): number {
   const lower = String(url || '').toLowerCase();
   if (preferLive && isRtmpUrl(lower)) return 130;
@@ -61,7 +46,6 @@ export function streamScore(url: string, preferLive = false): number {
   return 40;
 }
 
-/** 从响应中按 40+ 字段名 + 嵌套流数组提取可播放地址（合并两份实现） */
 const PLAY_URL_FIELDS = [
   'playStreamPath',
   'playUrlPath',
@@ -148,8 +132,6 @@ const STREAM_LIST_KEYS = [
 function collectUrlsDeep(value: any, result: string[] = [], depth = 0): void {
   if (!value || depth > 5) return;
   if (typeof value === 'string') {
-    // 只收「像播放地址」的字符串：http(s) 或 rtmp(s)；图片/封面在 isPlayableMediaUrl
-    // 这一层就被挡掉，避免无有效流时把封面图当视频源交给内核（P2-P3）。
     if (/^(?:https?|rtmps?):\/\//i.test(value) && isPlayableMediaUrl(value)) result.push(value);
     return;
   }
@@ -173,16 +155,13 @@ export function pickPlayableUrls(raw: any, preferLive = false): string[] {
   });
   const deep: string[] = [];
   collectUrlsDeep(raw, deep);
-  // collectUrlsDeep 已按 isPlayableMediaUrl 过滤；这里再并入候选统一排序去重。
+
   deep.forEach((url) => candidates.push(url));
   return Array.from(new Set(candidates.filter(Boolean)))
     .filter((url) => classifyUrl(url) !== 'image')
     .sort((a, b) => streamScore(b, preferLive) - streamScore(a, preferLive));
 }
 
-// --- 直播/内核判定 ---
-
-/** rtmp/http-flv → 必须走原生 ExoKernel（LiveExoView） */
 export function needsNativeExo(url: string): boolean {
   const lower = String(url || '').toLowerCase();
   return isRtmpUrl(lower) || lower.includes('.flv');
@@ -208,7 +187,6 @@ export function isPlayableMediaUrl(url: string): boolean {
   );
 }
 
-/** 口袋48 防盗链头（统一一份；playerSource 语义） */
 export function buildPocketHeaders(cookie?: string): Record<string, string> {
   const headers: Record<string, string> = {
     'User-Agent': USER_AGENT,
@@ -219,7 +197,6 @@ export function buildPocketHeaders(cookie?: string): Record<string, string> {
   return headers;
 }
 
-/** 构建统一 PlayerSource（url 分类 + 内核标记 + 防盗链头） */
 export function resolveSource(
   raw: any,
   opts: {
@@ -235,7 +212,7 @@ export function resolveSource(
   if (!urls.length) return null;
   const url = urls[0];
   let kind = opts.kindHint || classifyUrl(url);
-  // 消息明示回放且非 rtmp 推流 → 按录播处理
+
   if (opts.replayHint && kind === 'live' && !isRtmpUrl(url)) {
     kind = 'vod';
   }

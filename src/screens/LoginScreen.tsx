@@ -1,11 +1,3 @@
-/**
- * LoginScreen · 账号设置 v2.6 布局重做
- * - 登录方式用分段控件（短信验证码 / Token / B站二维码）：fill2 底 + 选中白胶囊
- * - 表单卡：输入框圆角 14 fill2 底 + 主按钮 Button filled 全宽
- * - 账号列表改行卡：头像、昵称、账号类型、「当前」徽标和切换按钮
- * - B站二维码卡：白卡圆角 16 + 二维码居中 + 过期刷新按钮
- * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
- */
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Linking, TouchableOpacity } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,11 +33,12 @@ import {
 } from '../utils/pocketToken';
 import { resolveBoundPocketDeviceId } from '../api/pocketHeaders';
 import { logWarn } from '../utils/runtimeLog';
-import { usePalette, radii, radiiAlias, getPageBackground } from '../theme';
+import { usePalette, radii, getPageBackground, fontFamily } from '../theme';
 import { translate, useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
 import { GlassSegmented } from '../components/GlassSegmented';
+import { SquircleView } from '../components/SquircleView';
 import IdentityDecorations from '../components/IdentityDecorations';
 import {
   ALLOW_CUSTOM_IDENTITY_ROLES,
@@ -116,7 +109,6 @@ function AccountAvatar({ uri, userId }: { uri?: string; userId?: string }) {
 
 const BILI_COOKIE_KEYS = ['SESSDATA', 'bili_jct', 'DedeUserID', 'DedeUserID__ckMd5', 'sid'];
 
-/** 从一段 search/hash 裸参数字符串里提取 B站 cookie（仅用 URLSearchParams，不依赖 Hermes 的 new URL） */
 function biliCookiesFromSearch(search = ''): string {
   try {
     const params = new URLSearchParams(search);
@@ -131,13 +123,6 @@ function biliCookiesFromSearch(search = ''): string {
   }
 }
 
-/**
- * 从扫码确认回调 url/参数串提取 B站 cookie，兼容几种 B站实测/历史形态：
- * 1) 完整 crossDomain URL：query 里带 cookie（https://passport.bilibili.com/x/passport-login/web/crossDomain?DedeUserID=..&SESSDATA=..）
- * 2) hash 里带参数：.../#SESSDATA=..&bili_jct=..
- * 3) 整个 URL 被 encodeURIComponent 嵌了一层（SESSDATA%3D..%26bili_jct%3D..）
- * 4) 裸 key=value 串（无协议无路径）
- */
 function buildBilibiliCookieFromUrl(rawUrl = ''): string {
   const extract = (source: string): string => {
     let search = source;
@@ -153,22 +138,17 @@ function buildBilibiliCookieFromUrl(rawUrl = ''): string {
   const cookie = extract(rawUrl);
   if (cookie.includes('SESSDATA')) return cookie;
 
-  // 嵌套编码：整串先 decode 一层再提取
   try {
     const decoded = decodeURIComponent(rawUrl);
     if (decoded !== rawUrl && decoded.includes('SESSDATA')) {
       const nested = extract(decoded);
       if (nested.includes('SESSDATA')) return nested;
     }
-  } catch {
-    /* 非法编码串，忽略 */
-  }
+  } catch {}
 
   return cookie;
 }
 
-/** 从原生模块返回的 "k=v; k=v"（Set-Cookie 头拼串）里挑出 B站 常用键。
- * 注意与 url query 解析不同：cookie 串按 ';' 分段，值里不含 ';'。 */
 function pickBiliCookies(raw = ''): string {
   const parts = String(raw)
     .split(';')
@@ -254,7 +234,7 @@ function parseAccountInfo(res: any) {
     const id = accountId(user);
     return id && list.findIndex((item) => accountId(item) === id) === index;
   });
-  // 当前账号排最前（切换入口一眼可见），其余保持大号/小号顺序
+
   const currentId = accountId(current);
   if (currentId) {
     const idx = users.findIndex((u) => accountId(u) === currentId);
@@ -276,12 +256,7 @@ export default function LoginScreen() {
   const showToast = useUiStore((state) => state.showToast);
   const palette = usePalette();
   const { t } = useI18n();
-  /**
-   * 键盘避让：Android 侧 edgeToEdgeEnabled=true，系统忽略 adjustResize（窗口不缩），
-   * 而 KeyboardAvoidingView 在本页 Android 分支的 behavior 是 undefined（完全不补偿）——
-   * 「发言身份 / 等级 / roleId / sessionRole」这组底部输入框会被键盘直接盖住。
-   * 改成和其它聊天页同一套：手动把容器底部抬起。
-   */
+
   const pollingRef = useRef(true);
   const goBackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -300,7 +275,7 @@ export default function LoginScreen() {
       if (pollingRef.current) navigation.goBack();
     }, 700);
   };
-  // 账号设置页固定竖屏：避免从横屏播放器进入时内容被横向挤压（布局按竖屏设计）
+
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
@@ -335,15 +310,11 @@ export default function LoginScreen() {
       setManualToken(normalizePocketToken(nextToken));
     }
   }, [settings.p48Token]);
-  const activePollKeyRef = useRef(''); // Y3: 当前活跃轮询的二维码 key（刷新二维码时旧轮询据此退出）
+  const activePollKeyRef = useRef('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [biliStatus, setBiliStatus] = useState('');
-  /**
-   * 二维码是否进入「需要重新获取」的终态（过期/超时）。
-   * 原来靠 `/过期|超时|失败/.test(biliStatus)` 判断：en/ja/ko 界面下 t 把文案翻掉后
-   * 正则不命中 → 「点击刷新」入口不出现，用户只能退出页面重进。
-   */
+
   const [biliExpired, setBiliExpired] = useState(false);
   const [qrHtml, setQrHtml] = useState<string | null>(null);
   const [profileName, setProfileName] = useState('');
@@ -355,7 +326,7 @@ export default function LoginScreen() {
   });
   const accountRequestRef = useRef(0);
   const [switchingUserId, setSwitchingUserId] = useState('');
-  /** 快速切号：整账号（token + 登录身份）列表 */
+
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [switchingVaultId, setSwitchingVaultId] = useState('');
   useEffect(() => {
@@ -392,7 +363,7 @@ export default function LoginScreen() {
       accountRequestRef.current += 1;
     };
   }, [settings.p48Token]);
-  // 短信发送触发风控安全验证（status=2001）：展示问题与选项，选对后带 answer 重发
+
   const [verify, setVerify] = useState<{
     question: string;
     options: string[];
@@ -400,13 +371,11 @@ export default function LoginScreen() {
     area: string;
   } | null>(null);
 
-  /** 个性装扮：只写本地设置，不改账号资料 */
   const saveSendIdentity = (patch: Record<string, string>) => {
     setSettings(patch);
     saveSettings(patch).catch(() => {});
   };
 
-  // 「发言身份」本地输入态（昵称/头像/等级/roleId/sessionRole/VIP），失焦时写入设置
   const [sendNick, setSendNick] = useState(settings.yaya_send_nickname || '');
   const [sendAvatar, setSendAvatar] = useState(settings.yaya_send_avatar || '');
   const [sendLevel, setSendLevel] = useState(settings.yaya_send_level || '');
@@ -414,11 +383,6 @@ export default function LoginScreen() {
   const [sendSessionRole, setSendSessionRole] = useState(settings.yaya_send_session_role || '');
   const [sendVip, setSendVip] = useState(settings.yaya_send_vip || '');
 
-  /**
-   * 自定义头像：选本地图 → 上传到口袋服务器 → 把返回路径写入 yaya_send_avatar。
-   * 与上方「账号头像」共用同一条上传管线（相册权限 + 裁剪 1:1 + uploadUserAvatar），
-   * 区别是**不改账号资料**（`editUserInfo` 只属于账号头像），只落到本地自定义设置。
-   */
   const handlePickSendAvatar = async () => {
     setLoading(true);
     setStatus(t('正在选择并上传发言头像'));
@@ -463,10 +427,9 @@ export default function LoginScreen() {
     try {
       setSettings({ p48Token: clean, p48DeviceId: cleanDeviceId });
       await saveSettings({ p48Token: clean, p48DeviceId: cleanDeviceId });
-      // 账号变了 → 立即重置云信会话（凭证/自身资料/QChat·聊天室登录态 + 原生连接）。
-      // 否则切号后短时间内：弹幕与房间消息仍带旧号身份、且新旧 accid 不匹配导致连不上房间。
+
       resetNimSession('切换/保存口袋账号');
-      // 每次拿到新 token 自动进快速切号列表（同 token 只更新，不重复）
+
       void saveCurrentAccount()
         .then(setSavedAccounts)
         .catch(() => undefined);
@@ -691,7 +654,6 @@ export default function LoginScreen() {
     return { res, ok };
   };
 
-  /** 快速切号：保存 / 切换 / 删除整个账号 */
   const handleSaveCurrentAccount = async () => {
     if (!String(settings.p48Token || '').trim()) {
       setStatus(t('当前没有 Token'));
@@ -759,14 +721,13 @@ export default function LoginScreen() {
     setLoading(true);
     setStatus(t('正在检查Token'));
     try {
-      // 先用待检查 Token 与绑定 deviceId 验证通过后再落盘，避免检查无效粘贴串时覆盖当前登录态
       const { res, ok } = await refreshAccountInfo(token, deviceId);
       const currentBoundDevice = normalizePocketDeviceId(settings.p48DeviceId);
       if (ok && (token !== settings.p48Token || (deviceId && deviceId !== currentBoundDevice))) {
         skipAutoCheckTokenRef.current = token;
         await savePocketToken(token, t('Token有效'), deviceId);
       }
-      // 不要把 JSON.stringify(res) 甩给用户（原来失败时整段裸 JSON 显示在状态行）
+
       const reason = String(
         (res as any)?.msg ||
           (res as any)?.message ||
@@ -818,21 +779,18 @@ export default function LoginScreen() {
   };
 
   const pollBiliLogin = async (key: string) => {
-    // Y3: 抢占——刷新二维码会带新 key 启动新轮询；旧轮询被抢占即退出（此前旧轮询没有退出机制，永不退出）
     activePollKeyRef.current = key;
     let pollWarned = false;
     for (let i = 0; i < 30; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      if (!pollingRef.current) return; // abort if unmounted
-      if (activePollKeyRef.current !== key) return; // 已被更新的二维码轮询抢占
+      if (!pollingRef.current) return;
+      if (activePollKeyRef.current !== key) return;
       try {
         const res = await bilibiliApi.pollQrCode(key);
         if (res.data.code === 0) {
           const rawUrl = String(res.data?.url || '');
           let cookie = buildBilibiliCookieFromUrl(rawUrl);
           if (!cookie.includes('SESSDATA') && /ticket=|crossDomain/i.test(rawUrl)) {
-            // B站 2024+ 新协议：poll 只回 ticket url，cookie 在 crossDomain 302 的 Set-Cookie 里
-            // → 原生 BiliLoginModule（followRedirects=false 读首包）换 cookie
             try {
               cookie = pickBiliCookies(await bilibiliApi.exchangeTicket(rawUrl));
               logWarn(
@@ -1027,20 +985,11 @@ export default function LoginScreen() {
     { key: 'sms', label: t('验证码'), icon: 'message-text-outline' },
     { key: 'password', label: t('密码'), icon: 'lock-outline' },
     { key: 'token', label: t('Token'), icon: 'key-variant' },
-    // 「B站二维码」5 字在等分分段控件里放不下（每格约 63dp 文字宽度，实测被截成「B站二维...」）
-    // 缩成「B站扫码」：信息不丢，卡片标题本来就是「B站登录」
+
     { key: 'bilibili', label: t('B站扫码'), icon: 'qrcode' },
   ];
 
   return (
-    /**
-     * 键盘避让：Android 侧 edgeToEdgeEnabled=true，`KeyboardAvoidingView` 的
-     * `behavior` 在 Android 分支是 undefined（完全不补偿），底部输入框（账号设置·
-     * 个性装扮等）会被键盘直接盖住，且系统自带的 requestRectangleOnScreen 不会
-     * 把聚焦输入框滚进可见区。
-     * 改用 KeyboardAwareScrollView（原生 WindowInsetsAnimation 跟手）：
-     * 按真实 insets 补底部空间，并在键盘动画结束时校验聚焦项没被挡住。
-     */
     <KeyboardAwareScrollView
       style={[styles.container, { backgroundColor: getPageBackground() }]}
       contentContainerStyle={styles.content}
@@ -1050,7 +999,6 @@ export default function LoginScreen() {
       <ScreenHeader title={t('账号设置')} style={styles.headerBleed} />
 
       <FadeInView delay={40} duration={280} distance={8}>
-        {/* 口袋账号切换：账户行卡列表 */}
         <GlassSurface radius={22} role="card" style={styles.card}>
           <View style={styles.cardHead}>
             <AccountSectionTitle icon="account-switch-outline" title={t('口袋账号')} compact />
@@ -1081,58 +1029,63 @@ export default function LoginScreen() {
                   distance={8}
                 >
                   <ScalePressable
-                    style={[
-                      styles.accountRow,
-                      isCurrent
-                        ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
-                        : { backgroundColor: palette.fill3, borderColor: 'transparent' },
-                    ]}
                     onPress={() => handleSwitchPocketAccount(user)}
                     disabled={loading || isCurrent}
                     activeOpacity={0.7}
                     pressedScale={0.985}
                   >
-                    <AccountAvatar
-                      uri={
-                        accountAvatar(user) || (isCurrent ? accountAvatar(accountInfo.current) : '')
-                      }
-                      userId={id}
-                    />
-                    <View style={styles.accountTextWrap}>
-                      <Text
-                        style={[styles.accountName, { color: palette.label }]}
-                        numberOfLines={1}
-                      >
-                        {accountName(user)}
-                      </Text>
-                      <Text
-                        style={[styles.accountMeta, { color: palette.labelTertiary }]}
-                        numberOfLines={1}
-                      >
-                        {accountRole(user, t('账号'))}
-                      </Text>
-                    </View>
-                    {!isCurrent ? (
-                      <Button
-                        title={switchingUserId === id ? t('切换中') : t('切换')}
-                        variant="filled"
-                        size="sm"
-                        onPress={() => handleSwitchPocketAccount(user)}
-                        disabled={loading || switchingUserId === id}
-                        loading={switchingUserId === id}
+                    <SquircleView
+                      radius={16}
+                      style={[
+                        styles.accountRow,
+                        isCurrent
+                          ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
+                          : { backgroundColor: palette.fill3, borderColor: 'transparent' },
+                      ]}
+                    >
+                      <AccountAvatar
+                        uri={
+                          accountAvatar(user) ||
+                          (isCurrent ? accountAvatar(accountInfo.current) : '')
+                        }
+                        userId={id}
                       />
-                    ) : (
-                      <View
-                        style={[
-                          styles.currentBadge,
-                          { backgroundColor: palette.tintSoft, borderColor: palette.tint },
-                        ]}
-                      >
-                        <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
-                          {t('当前')}
+                      <View style={styles.accountTextWrap}>
+                        <Text
+                          style={[styles.accountName, { color: palette.label }]}
+                          numberOfLines={1}
+                        >
+                          {accountName(user)}
+                        </Text>
+                        <Text
+                          style={[styles.accountMeta, { color: palette.labelTertiary }]}
+                          numberOfLines={1}
+                        >
+                          {accountRole(user, t('账号'))}
                         </Text>
                       </View>
-                    )}
+                      {!isCurrent ? (
+                        <Button
+                          title={switchingUserId === id ? t('切换中') : t('切换')}
+                          variant="filled"
+                          size="sm"
+                          onPress={() => handleSwitchPocketAccount(user)}
+                          disabled={loading || switchingUserId === id}
+                          loading={switchingUserId === id}
+                        />
+                      ) : (
+                        <View
+                          style={[
+                            styles.currentBadge,
+                            { backgroundColor: palette.tintSoft, borderColor: palette.tint },
+                          ]}
+                        >
+                          <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
+                            {t('当前')}
+                          </Text>
+                        </View>
+                      )}
+                    </SquircleView>
                   </ScalePressable>
                 </FadeInView>
               );
@@ -1144,7 +1097,6 @@ export default function LoginScreen() {
           )}
         </GlassSurface>
 
-        {/* 快速切号：换的是整个账号（Token + 登录身份），不是口袋大小号 */}
         <GlassSurface radius={22} role="card" style={styles.card}>
           <View style={styles.cardHead}>
             <AccountSectionTitle icon="account-key-outline" title={t('快速切号')} compact />
@@ -1164,62 +1116,73 @@ export default function LoginScreen() {
               return (
                 <ScalePressable
                   key={entry.id}
-                  style={[
-                    styles.accountRow,
-                    isCurrent
-                      ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
-                      : { backgroundColor: palette.fill3, borderColor: 'transparent' },
-                  ]}
                   onPress={() => handleSwitchSavedAccount(entry)}
                   disabled={isCurrent || switchingVaultId === entry.id}
                   activeOpacity={0.7}
                   pressedScale={0.985}
                 >
-                  <View style={{ width: 34, alignItems: 'center' }}>
-                    <MaterialCommunityIcons name="account-outline" size={22} color={palette.tint} />
-                  </View>
-                  <View style={styles.accountTextWrap}>
-                    <Text style={[styles.accountName, { color: palette.label }]} numberOfLines={1}>
-                      {entry.label}
-                    </Text>
-                    <Text
-                      style={[styles.accountMeta, { color: palette.labelTertiary }]}
-                      numberOfLines={1}
-                    >
-                      {`${t('口袋48')} · ${entry.token.slice(0, 4)}…${entry.token.slice(-4)}`}
-                    </Text>
-                  </View>
-                  {isCurrent ? (
-                    <View
-                      style={[
-                        styles.currentBadge,
-                        { backgroundColor: palette.tintSoft, borderColor: palette.tint },
-                      ]}
-                    >
-                      <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
-                        {t('当前')}
+                  <SquircleView
+                    radius={16}
+                    style={[
+                      styles.accountRow,
+                      isCurrent
+                        ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
+                        : { backgroundColor: palette.fill3, borderColor: 'transparent' },
+                    ]}
+                  >
+                    <View style={{ width: 32, alignItems: 'center' }}>
+                      <MaterialCommunityIcons
+                        name="account-outline"
+                        size={20}
+                        color={palette.tint}
+                      />
+                    </View>
+                    <View style={styles.accountTextWrap}>
+                      <Text
+                        style={[styles.accountName, { color: palette.label }]}
+                        numberOfLines={1}
+                      >
+                        {entry.label}
+                      </Text>
+                      <Text
+                        style={[styles.accountMeta, { color: palette.labelTertiary }]}
+                        numberOfLines={1}
+                      >
+                        {`${t('口袋48')} · ${entry.token.slice(0, 4)}…${entry.token.slice(-4)}`}
                       </Text>
                     </View>
-                  ) : (
-                    <Button
-                      title={switchingVaultId === entry.id ? t('切换中') : t('切换')}
-                      variant="filled"
-                      size="sm"
-                      onPress={() => handleSwitchSavedAccount(entry)}
-                      disabled={switchingVaultId === entry.id}
-                      loading={switchingVaultId === entry.id}
-                    />
-                  )}
-                  <TouchableOpacity
-                    onPress={() => handleRemoveSavedAccount(entry.id)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <MaterialCommunityIcons
-                      name="close-circle-outline"
-                      size={18}
-                      color={palette.labelTertiary}
-                    />
-                  </TouchableOpacity>
+                    {isCurrent ? (
+                      <View
+                        style={[
+                          styles.currentBadge,
+                          { backgroundColor: palette.tintSoft, borderColor: palette.tint },
+                        ]}
+                      >
+                        <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
+                          {t('当前')}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Button
+                        title={switchingVaultId === entry.id ? t('切换中') : t('切换')}
+                        variant="filled"
+                        size="sm"
+                        onPress={() => handleSwitchSavedAccount(entry)}
+                        disabled={switchingVaultId === entry.id}
+                        loading={switchingVaultId === entry.id}
+                      />
+                    )}
+                    <TouchableOpacity
+                      onPress={() => handleRemoveSavedAccount(entry.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialCommunityIcons
+                        name="close-circle-outline"
+                        size={19}
+                        color={palette.labelTertiary}
+                      />
+                    </TouchableOpacity>
+                  </SquircleView>
                 </ScalePressable>
               );
             })
@@ -1233,7 +1196,7 @@ export default function LoginScreen() {
 
       <FadeInView delay={20} duration={280} distance={8}>
         <Text style={[styles.groupLabel, { color: palette.labelSecondary }]}>{t('登录方式')}</Text>
-        {/* 登录方式分段控件：玻璃滑动选中（与全站一致） */}
+
         <GlassSegmented
           options={SEGMENTS.map((seg) => ({ key: String(seg.key), label: seg.label }))}
           value={String(mode)}
@@ -1250,7 +1213,6 @@ export default function LoginScreen() {
       </FadeInView>
 
       <FadeInView delay={80} duration={300} distance={8}>
-        {/* 短信验证码登录 */}
         {mode === 'sms' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
             <AccountSectionTitle icon="message-text-outline" title={t('口袋48验证码登录')} />
@@ -1412,7 +1374,11 @@ export default function LoginScreen() {
                           onPress={() => {
                             void Linking.openURL(url).catch(() => setStatus(t('无法打开协议链接')));
                           }}
-                          style={{ color: palette.tint, fontSize: 12 }}
+                          style={{
+                            color: palette.tint,
+                            fontSize: 12,
+                            fontFamily: fontFamily.system,
+                          }}
                         >
                           {t(label)}
                         </Text>
@@ -1506,26 +1472,49 @@ export default function LoginScreen() {
           </GlassSurface>
         ) : null}
 
-        {/* Token 登录 */}
         {mode === 'token' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
-            <AccountSectionTitle icon="key-variant" title={t('口袋48Token登录')} />
-            <TextInput
-              underlineColorAndroid="transparent"
+            <View style={styles.cardHead}>
+              <AccountSectionTitle icon="key-variant" title={t('口袋48Token登录')} compact />
+              <Button
+                title={t('清空')}
+                variant="tinted"
+                size="sm"
+                icon={
+                  <MaterialCommunityIcons
+                    name="close-circle-outline"
+                    size={15}
+                    color={palette.tint}
+                  />
+                }
+                disabled={loading || !manualToken.trim()}
+                onPress={() => {
+                  setManualToken('');
+                  setStatus('');
+                  showToast(t('已清空'));
+                }}
+              />
+            </View>
+            <SquircleView
+              radius={16}
               style={[
-                styles.field,
-                styles.tokenInput,
-                { backgroundColor: palette.fill2, color: palette.label },
+                styles.tokenBox,
+                { backgroundColor: palette.fill2, borderColor: palette.innerStroke },
               ]}
-              placeholder={t('粘贴口袋token')}
-              placeholderTextColor={palette.labelTertiary}
-              value={manualToken}
-              onChangeText={(value) => setManualToken(value.replace(/[\r\n]/g, ''))}
-              autoCapitalize="none"
-              autoCorrect={false}
-              multiline
-              blurOnSubmit
-            />
+            >
+              <TextInput
+                underlineColorAndroid="transparent"
+                style={[styles.tokenInputInner, { color: palette.label }]}
+                placeholder={t('粘贴口袋token')}
+                placeholderTextColor={palette.labelTertiary}
+                value={manualToken}
+                onChangeText={(value) => setManualToken(value.replace(/[\r\n]/g, ''))}
+                autoCapitalize="none"
+                autoCorrect={false}
+                multiline
+                blurOnSubmit
+              />
+            </SquircleView>
             <View style={styles.btnCol}>
               <Button
                 title={t('检查Token')}
@@ -1545,35 +1534,40 @@ export default function LoginScreen() {
                 fullWidth
               />
             </View>
-            {/* 已保存 Token + Token 状态：卡片内普通段落（紧贴按钮列），无独立块背景，
-                避免被误认为\"卡片外独立横条\" */}
+
             {settings.p48Token ? (
               <View style={styles.copyTokenBlock}>
                 <Text style={[styles.copyTokenLabel, { color: palette.labelSecondary }]}>
                   {t('已保存当前账号 Token')}
                 </Text>
                 <View style={styles.copyTokenActions}>
-                  <Button
-                    title={t('复制 Token')}
-                    variant="tinted"
-                    size="sm"
-                    onPress={() => {
-                      Clipboard.setString(
-                        normalizePocketToken(settings.p48Token) || settings.p48Token,
-                      );
-                      showToast(t('Token 已复制'));
-                    }}
-                  />
-                  <Button
-                    title={t('复制跨设备凭证')}
-                    variant="tinted"
-                    size="sm"
-                    onPress={async () => {
-                      const deviceId = await resolveBoundPocketDeviceId();
-                      Clipboard.setString(formatPocketTokenBundle(settings.p48Token, deviceId));
-                      showToast(t('跨设备凭证已复制'));
-                    }}
-                  />
+                  <View style={styles.buttonCell}>
+                    <Button
+                      title={t('复制 Token')}
+                      variant="tinted"
+                      size="sm"
+                      fullWidth
+                      onPress={() => {
+                        Clipboard.setString(
+                          normalizePocketToken(settings.p48Token) || settings.p48Token,
+                        );
+                        showToast(t('Token 已复制'));
+                      }}
+                    />
+                  </View>
+                  <View style={styles.buttonCell}>
+                    <Button
+                      title={t('复制跨设备凭证')}
+                      variant="tinted"
+                      size="sm"
+                      fullWidth
+                      onPress={async () => {
+                        const deviceId = await resolveBoundPocketDeviceId();
+                        Clipboard.setString(formatPocketTokenBundle(settings.p48Token, deviceId));
+                        showToast(t('跨设备凭证已复制'));
+                      }}
+                    />
+                  </View>
                 </View>
               </View>
             ) : null}
@@ -1593,7 +1587,6 @@ export default function LoginScreen() {
           </GlassSurface>
         ) : null}
 
-        {/* B站二维码 */}
         {mode === 'bilibili' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
             <AccountSectionTitle icon="qrcode" title={t('B站登录')} />
@@ -1649,7 +1642,6 @@ export default function LoginScreen() {
           </GlassSurface>
         ) : null}
 
-        {/* 口袋资料 */}
         <GlassSurface radius={22} role="card" style={styles.card}>
           <AccountSectionTitle icon="account-edit-outline" title={t('口袋资料')} />
           {renameCountText ? (
@@ -1710,7 +1702,6 @@ export default function LoginScreen() {
           </View>
         </GlassSurface>
 
-        {/* 自定义展示资料：昵称与头像（收在账号设置页内） */}
         <GlassSurface radius={22} role="card" style={styles.card}>
           <AccountSectionTitle
             icon="auto-fix"
@@ -1852,6 +1843,7 @@ export default function LoginScreen() {
                         style={{
                           color: active ? palette.onTint : palette.labelSecondary,
                           fontSize: 12,
+                          fontFamily: fontFamily.system,
                           fontWeight: '600',
                         }}
                       >
@@ -1879,7 +1871,6 @@ export default function LoginScreen() {
           />
         </GlassSurface>
 
-        {/* 鸡腿充值 */}
         <GlassSurface radius={22} role="card" style={styles.card}>
           <AccountSectionTitle icon="wallet-outline" title={t('鸡腿充值')} />
           <Button
@@ -1898,11 +1889,17 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingBottom: 32, paddingHorizontal: 16 },
-  // ScreenHeader 在内容容器内会被 16dp 内边距整体右移，抵消后与其它二级页对齐
+
   headerBleed: { marginHorizontal: -16 },
-  groupLabel: { fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 8, marginTop: 3 },
-  // 分段控件
-  // 卡片
+  groupLabel: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    marginLeft: 4,
+    marginBottom: 8,
+    marginTop: 3,
+  },
+
   card: {
     borderRadius: radii.md,
     padding: 16,
@@ -1917,13 +1914,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   titleIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', flexShrink: 1 },
+  cardTitle: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '700', flexShrink: 1 },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1932,45 +1929,60 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   field: {
-    height: 42,
-    paddingHorizontal: 12,
-    borderRadius: radiiAlias.input,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderCurve: 'continuous',
     marginBottom: 10,
     fontSize: 14,
+    fontFamily: fontFamily.system,
     borderWidth: 0,
     borderBottomWidth: 0,
   },
-  // 「发言身份 / 个性装扮」卡：标签 + 输入框 + 说明
-  sendIdHint: { fontSize: 11, lineHeight: 16, marginTop: 4 },
+
+  sendIdHint: { fontSize: 11, fontFamily: fontFamily.system, lineHeight: 16, marginTop: 4 },
   sendIdLabel: { fontSize: 12, fontWeight: '600' },
-  /** 自定义头像预览（选择本地图上传后即时可见） */
+
   sendAvatarPreview: { width: 40, height: 40, borderRadius: 20 },
   sendIdInput: {
     marginTop: 6,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderCurve: 'continuous',
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 13,
+    fontFamily: fontFamily.system,
   },
   sendIdChip: {
     paddingHorizontal: 14,
     paddingVertical: 7,
-    borderRadius: 14,
+    borderRadius: radii.pill,
   },
-  tokenInput: {
-    height: undefined,
-    minHeight: 54,
-    maxHeight: 112,
-    textAlignVertical: 'center',
-    paddingVertical: 10,
+  tokenBox: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 10,
+    minHeight: 74,
+    maxHeight: 128,
+  },
+  tokenInputInner: {
+    padding: 0,
+    fontSize: 13.5,
+    fontFamily: fontFamily.system,
+    lineHeight: 20,
+    minHeight: 50,
+    maxHeight: 104,
+    textAlignVertical: 'top',
   },
   btnCol: { gap: 10, marginTop: 4 },
   buttonRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   buttonCell: { flex: 1, minWidth: 0 },
   phoneRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   areaWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 10 },
-  areaPlus: { fontWeight: '700', fontSize: 15, marginRight: 2 },
+  areaPlus: { fontWeight: '700', fontSize: 15, fontFamily: fontFamily.system, marginRight: 2 },
   areaInput: { minWidth: 44, paddingVertical: 12, paddingHorizontal: 0, fontSize: 14 },
   phoneInput: { flex: 1 },
   profileAvatarRow: {
@@ -1981,7 +1993,7 @@ const styles = StyleSheet.create({
     padding: 10,
     marginTop: 14,
   },
-  profileAvatarTitle: { fontSize: 13, fontWeight: '600' },
+  profileAvatarTitle: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '600' },
   biliStatus: {
     marginTop: 10,
     fontSize: 12,
@@ -2020,7 +2032,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 8,
   },
-  qrRetryText: { fontSize: 13, fontWeight: '700' },
+  qrRetryText: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '700' },
   tokenInfo: { fontSize: 12, lineHeight: 18, flexShrink: 0, minHeight: 18, marginTop: 12 },
   copyTokenBlock: {
     marginTop: 12,
@@ -2028,56 +2040,62 @@ const styles = StyleSheet.create({
   },
   copyTokenActions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'center',
+    gap: 10,
   },
-  copyTokenLabel: { fontSize: 12, lineHeight: 18 },
+  copyTokenLabel: { fontSize: 12, fontFamily: fontFamily.system, lineHeight: 18 },
   status: { fontSize: 12, lineHeight: 18, flexShrink: 0, marginTop: 6 },
   metaLine: { marginTop: 8, marginBottom: 10, fontSize: 12, lineHeight: 18, flexShrink: 1 },
   accountSummary: { fontSize: 12, lineHeight: 18 },
-  accountEmpty: { fontSize: 12, lineHeight: 18, marginTop: 8 },
-  // 账号行卡
+  accountEmpty: { fontSize: 12, fontFamily: fontFamily.system, lineHeight: 18, marginTop: 8 },
+
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    borderRadius: radii.md,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     marginTop: 10,
     gap: 12,
   },
   accountAvatar: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   accountTextWrap: { flex: 1, minWidth: 0 },
-  accountName: { fontSize: 15, fontWeight: '700', flexShrink: 1 },
+  accountName: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '700', flexShrink: 1 },
   accountMeta: { marginTop: 3, fontSize: 11, flexShrink: 1 },
   currentBadge: {
-    minHeight: 34,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    minHeight: 28,
+    paddingHorizontal: 11,
+    paddingVertical: 4,
     borderRadius: radii.pill,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  currentBadgeText: { fontSize: 13, fontWeight: '800' },
+  currentBadgeText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
   verifyBox: {
     padding: 12,
-    borderRadius: radii.md,
+    borderRadius: 16,
+    borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 10,
   },
-  verifyQuestion: { fontSize: 13, fontWeight: '700', marginBottom: 8 },
+  verifyQuestion: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
   verifyOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   verifyOption: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radii.pill },
   verifyOptionText: { fontSize: 13, fontWeight: '600' },
   agreementRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  agreementText: { fontSize: 12, flex: 1 },
+  agreementText: { fontSize: 12, fontFamily: fontFamily.system, flex: 1 },
   agreementLinks: {
     flexDirection: 'row',
     flexWrap: 'wrap',

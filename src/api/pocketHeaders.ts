@@ -8,8 +8,6 @@ export const BASE = 'https://pocketapi.48.cn';
 export const APP_VERSION = '7.0.41';
 export const APP_BUILD = '24011601';
 
-// ── 客户端身份常量（收敛历史上的 9 处硬编码；**取值与原字面量完全一致**，指纹不变）──
-// UA 画像按「接口族」区分（官方不同客户端/接口对不同 UA 敏感，不能统一成一条）。
 export const UA_IOS_7135 = 'PocketFans201807/7.1.35 (iPhone; iOS 16.3; Scale/3.00)';
 export const UA_IOS_7138 = 'PocketFans201807/7.1.38 (iPhone; iOS 26.5; Scale/3.00)';
 export const UA_ANDROID_7143 =
@@ -20,13 +18,11 @@ export const UA_SEINE_100 =
   'PocketFans201807/1.0.0_26061101 (SM-G9730:Android 12;Samsung V417IR release-keys)';
 export const UA_AREA48_6022 =
   'PocketFans201807/6.0.22_201128 (SM-G9730:Android 12;Samsung V417IR release-keys)';
-// 设备指纹：以下为历史遗留的固定值（legacy iOS/Android 画像专用），**故意保持固定**——
-// 换成按设备持久化的随机 id 会改变服务端看到的风控指纹，属行为变更，需灰度验证后再动。
+
 export const DEVICE_ID_IOS_UUID = '7B93DFD0-472F-4736-A628-E85FAE086486';
 export const DEVICE_ID_IOS_UUID_ALT = '7B93DFD0-472F-4736-A628-E85FAE086487';
 export const DEVICE_ID_IOS_HEX = '7b93dfd0472f4736a628e85fae086486';
 
-/** 塞纳河48 登录已合并到口袋48，所有登录与请求统一使用口袋48身份。 */
 export function createDeviceId(): string {
   const chars = 'QWERTYUIOPASDFGHJKLZXCVBNM1234567890';
   const rand = (length: number) => {
@@ -37,7 +33,6 @@ export function createDeviceId(): string {
   return `${rand(8)}-${rand(4)}-${rand(4)}-${rand(4)}-${rand(12)}`;
 }
 
-// 进程内同步先落一个临时 id 保证早期请求可用，AsyncStorage 读回后以持久值替换，首次安装时落盘。
 export const DEVICE_ID_KEY = 'yaya_device_id_v1';
 export let DEVICE_ID = createDeviceId();
 export let deviceIdLoaded = false;
@@ -54,7 +49,6 @@ AsyncStorage.getItem(DEVICE_ID_KEY)
     deviceIdLoaded = true;
   });
 
-/** 等待持久化 DEVICE_ID 就绪（最多 ~800ms，超时用内存临时 id 兜底，不阻塞请求） */
 export async function ensureDeviceId(): Promise<string> {
   if (deviceIdLoaded) return DEVICE_ID;
   const deadline = Date.now() + 800;
@@ -62,12 +56,10 @@ export async function ensureDeviceId(): Promise<string> {
     await new Promise((r) => setTimeout(r, 40));
   }
   if (deviceIdLoaded) return DEVICE_ID;
-  // 持久化未回（异常环境）：本次进程使用临时 id，并尝试补写
+
   AsyncStorage.setItem(DEVICE_ID_KEY, DEVICE_ID).catch(() => {});
   return DEVICE_ID;
 }
-
-// --- App Info / Headers factories ---
 
 export function appInfo(modern = false, deviceId = DEVICE_ID) {
   if (modern) {
@@ -140,7 +132,6 @@ export function createCheckinHeaders(token?: string, pa?: string | null): Header
   return headers;
 }
 
-/** Android 客户端头（posts 相册/视频/动态、私信删除等） */
 export function createPocketAndroidHeaders(token?: string, pa?: string | null): HeadersMap {
   const headers: HeadersMap = {
     'Content-Type': 'application/json; charset=UTF-8',
@@ -167,7 +158,6 @@ export function createPocketAndroidHeaders(token?: string, pa?: string | null): 
   return headers;
 }
 
-/** 把持久化 UUID 规范映射为口袋48 Android 16 位十六进制设备 ID */
 export function derivePocketHexDeviceId(rawId: string): string {
   return Array.from(
     String(rawId || '')
@@ -179,19 +169,16 @@ export function derivePocketHexDeviceId(rawId: string): string {
     .padEnd(16, '0');
 }
 
-/** 获取本机持久化 deviceId 对应的 16 位十六进制设备标识 */
 export async function getLocalPocketDeviceId(): Promise<string> {
   return derivePocketHexDeviceId(await ensureDeviceId());
 }
 
-/** 获取当前账号请求应携带的 deviceId（优先使用跨设备导入的绑定值，否则用本机持久化 ID） */
 export async function resolveBoundPocketDeviceId(): Promise<string> {
   const stored = normalizePocketDeviceId(useSettingsStore.getState().settings.p48DeviceId);
   if (stored) return stored;
   return getLocalPocketDeviceId();
 }
 
-/** 与桌面版 `pocket-client-profile.js` 一致的 Android 鉴权请求头（7.1.45 pocket48 / 1.3.5 seine48） */
 export async function createPocketProfileHeaders(
   profile: 'pocket48' | 'seine48' = 'pocket48',
   token?: string,
@@ -230,11 +217,9 @@ export async function createPocketProfileHeaders(
 }
 
 export async function createPocketLoginHeaders(): Promise<HeadersMap> {
-  // 新登录/注册固定使用本机持久化 deviceId，避免被历史导入账号的 p48DeviceId 污染
   return createPocketProfileHeaders('pocket48', undefined, null, await getLocalPocketDeviceId());
 }
 
-/** Seine（ckg48 新版客户端）Android 头 */
 export function createSeineHeaders(token?: string, pa?: string | null): HeadersMap {
   const headers = createPocketAndroidHeaders(token, pa);
   headers.appInfo = JSON.stringify({
@@ -255,7 +240,6 @@ export function createSeineHeaders(token?: string, pa?: string | null): HeadersM
   return headers;
 }
 
-/** Seine iOS 头（公演列表走 ckg48 域名） */
 export function createSeineIosHeaders(): HeadersMap {
   return {
     'Content-Type': 'application/json; charset=UTF-8',
@@ -275,7 +259,6 @@ export function createSeineIosHeaders(): HeadersMap {
   };
 }
 
-/** Area48 社区头（老版 Android 客户端 6.0.22） */
 export function createArea48Headers(token?: string, pa?: string | null): HeadersMap {
   const headers: HeadersMap = {
     'Content-Type': 'application/json; charset=UTF-8',

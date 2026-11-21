@@ -1,8 +1,5 @@
 import { logWarn } from '../utils/runtimeLog';
-/**
- * 原生 Exo 播放桥（M2）：真实音频在 YayaExoService（ExoPlayer + media3 会话）。
- * 引擎仍负责队列/切歌/模式；本模块只做：单曲下发 + 控制 + 事件回流。
- */
+
 import { NativeModules, DeviceEventEmitter, Platform } from 'react-native';
 
 type RadioExoNativeModule = {
@@ -14,7 +11,6 @@ type RadioExoNativeModule = {
 
 const M = NativeModules.RadioExoModule as RadioExoNativeModule | undefined;
 
-/** 运行时取模块：启动早期 NativeModules 可能尚未就绪，不能只依赖模块加载时抓到的 M。 */
 function getModule(): RadioExoNativeModule | undefined {
   return (NativeModules.RadioExoModule as RadioExoNativeModule | undefined) || M;
 }
@@ -25,7 +21,7 @@ export interface ExoTrackItem {
   artist: string;
   album: string;
   trackId?: string;
-  /** 封面：优先 file://（RN 下载落盘，OPPO 可靠）；http(s) 原生会尝试自拉 */
+
   art?: string;
 }
 
@@ -73,7 +69,6 @@ export async function exoGetPlaybackSnapshot(): Promise<ExoPlaybackSnapshot> {
   }
 }
 
-/** 下发当前单曲并播放（media3 系统卡/锁屏/流体云由此驱动） */
 export function exoPlayTrack(
   item: ExoTrackItem,
   positionSec: number,
@@ -102,8 +97,7 @@ export function exoControl(
   positionSec = 0,
 ) {
   if (Platform.OS !== 'android') return;
-  // ⚠️ 不能只依赖模块加载时抓到的 M：启动早期 NativeModules 可能尚未就绪，
-  // 那之后所有控制（尤其 stop）都会静默失效 —— 声音停不下来。
+
   const mod = getModule();
   if (!mod?.control) {
     logWarn(`[exo] control unavailable: ${cmd}`, 'radio');
@@ -116,15 +110,6 @@ export function exoControl(
   }
 }
 
-/**
- * 推送"下一首/上一首"单跳提示到原生 service（后台切歌不依赖 JS 异步链路）。
- *
- * 背景：ColorOS 冻结后台 JS 的 timer/网络，通知栏上/下一首若只 emit cmd=next 给 JS，
- * 引擎的异步 playTrack（setTimeout/网络解析）在后台永不完成 → 切歌无效。
- * 修复：JS 播放确立时把"引擎语义下的下一首/上一首 + 可直接播放的 url"（预热缓存/官方直链）
- * 推给 YayaExoService；service 收到 onSkipToNext/Previous 时优先本地切换，JS 仅在本地无
- * 可用 hint（或 url 相同需重播）时才兜底走 cmd 事件。
- */
 export function exoSetSkipHints(next: ExoTrackItem | null, prev: ExoTrackItem | null) {
   const mod = getModule();
   if (Platform.OS !== 'android' || !mod?.setSkipHints) return;
@@ -133,21 +118,35 @@ export function exoSetSkipHints(next: ExoTrackItem | null, prev: ExoTrackItem | 
   } catch {}
 }
 
-// 原生 Exo 激活标记：激活后旧的自管 MediaSession 服务必须停（避免双会话，ColorOS 绑定旧的→依旧不刷新）
-// ⚠️ 模块级裸变量：JS reload 会失步。但原生 poller 持续推 progress → 收到 progress&&playing 即自愈重新激活。
 let nativeExoActive = false;
-let nativeExoDisabled = false; // 本次会话内原生已判不可用（error/超时）→ 不再尝试（防每曲 4s 静音窗）
+let nativeExoDisabled = false;
+const nativeExoDisabledListeners = new Set<(disabled: boolean) => void>();
 export const setNativeExoActive = (v: boolean) => {
   nativeExoActive = v;
 };
 export const isNativeExoActive = () => nativeExoActive;
 export const setNativeExoDisabled = (v: boolean) => {
-  nativeExoDisabled = v;
-  if (v) nativeExoActive = false;
+  const next = !!v;
+  if (nativeExoDisabled === next) {
+    if (next) nativeExoActive = false;
+    return;
+  }
+  nativeExoDisabled = next;
+  if (next) nativeExoActive = false;
+  nativeExoDisabledListeners.forEach((fn) => {
+    try {
+      fn(next);
+    } catch {}
+  });
 };
 export const isNativeExoDisabled = () => nativeExoDisabled;
+export const subscribeNativeExoDisabled = (cb: (disabled: boolean) => void): (() => void) => {
+  nativeExoDisabledListeners.add(cb);
+  return () => {
+    nativeExoDisabledListeners.delete(cb);
+  };
+};
 
-/** 订阅事件：progress/ended/error/cmd */
 export function subscribeExo(
   cb: (_type: string, _payload: Record<string, unknown>) => void,
 ): () => void {

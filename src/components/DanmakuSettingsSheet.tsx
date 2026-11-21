@@ -1,13 +1,10 @@
-/**
- * 弹幕设置面板（哔哩哔哩风格）：总开关、显示区域、速度、字号、不透明度、重置。
- * 设置来自 useDanmakuSettings，记忆持久化。全主题化（usePalette）+ 统一 Pill/Button。
- */
 import React from 'react';
-import { Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { GlassToggle } from './GlassToggle';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDanmakuSettings, DanmakuArea } from '../store/danmakuSettings';
 import { useI18n } from '../i18n';
-import { usePalette, radii, spacing } from '../theme';
+import { usePalette, radii, spacing, fontFamily } from '../theme';
 import { typography } from '../theme/typography';
 import { Button } from './Button';
 import { GlassSurface } from '../components/GlassSurface';
@@ -47,7 +44,6 @@ export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = fa
   const { t } = useI18n();
   const { enabled, area, speed, fontSize, opacity, set, reset } = useDanmakuSettings();
 
-  /** 选项行 = 玻璃滑动选中块（与底栏同一套） */
   const chipRow = (
     items: { key?: string; label: string; active: boolean; onPress: () => void }[],
   ) => {
@@ -94,24 +90,21 @@ export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = fa
           </View>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-            {/* 总开关 */}
             <View style={styles.row}>
               <Text style={[typography.subhead, { color: palette.label, fontWeight: '600' }]}>
                 {t('显示弹幕')}
               </Text>
-              <Switch
+              <GlassToggle
                 value={enabled}
                 onValueChange={(v) => {
                   set({ enabled: v });
                   if (staticFeed && v && !usePlayerStore.getState().danmakuOn)
                     usePlayerStore.getState().toggleDanmaku();
                 }}
-                thumbColor={enabled ? palette.tint : palette.onTint}
-                trackColor={{ false: palette.fill2, true: palette.tint }}
+                accessibilityLabel={t('显示弹幕')}
               />
             </View>
 
-            {/* 显示区域 */}
             {!staticFeed && (
               <>
                 <Text style={[styles.section, { color: palette.labelTertiary }]}>
@@ -126,7 +119,6 @@ export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = fa
                   })),
                 )}
 
-                {/* 速度 */}
                 <Text style={[styles.section, { color: palette.labelTertiary }]}>
                   {t('滚动速度')}
                 </Text>
@@ -141,7 +133,6 @@ export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = fa
               </>
             )}
 
-            {/* 字号 */}
             <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('字号')}</Text>
             {chipRow(
               SIZES.map((s) => ({
@@ -152,7 +143,6 @@ export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = fa
               })),
             )}
 
-            {/* 不透明度 */}
             <Text style={[styles.section, { color: palette.labelTertiary }]}>{t('不透明度')}</Text>
             {chipRow(
               OPACITIES.map((o) => ({
@@ -210,6 +200,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
   },
-  section: { fontSize: 12, fontWeight: '700', marginTop: 12, marginBottom: 6 },
+  section: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 6,
+  },
   resetWrap: { marginTop: 18, alignItems: 'center' },
 });

@@ -22,16 +22,6 @@ import java.util.concurrent.Executors
 import java.util.zip.ZipInputStream
 import org.libpag.PAGView
 
-/**
- * 礼物全屏特效播放（libpag）。
- *
- * 链路与服务端广播消息一致：直播间 PRESENT_FULLSCREEN(_TWO) 的 giftInfo.zipPath
- * （如 /backstage/2023/1020/xxx.zip）+ zipMd5 → `https://source.48.cn{zipPath}` 下载
- * → 校验 MD5 → 解压出 `giftpag.pag` → 缓存（cacheDir/pag_effects）→ PAGView 全屏播放。
- *
- * 串行队列，最多排 3 条；同一礼物 30s 内不重复播（重连补发 / 发送者自己也收到回投）。
- * PAGView 内部是 TextureView，可直接叠在 RN 界面之上，无需独立窗口。
- */
 class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
@@ -82,7 +72,6 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  /** 退出直播间/切房时清空待播队列 */
   @ReactMethod
   fun clearQueue(promise: Promise) {
     val stop = synchronized(this) {
@@ -124,8 +113,7 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
     val root = activity.window?.decorView as? FrameLayout ?: run { finish(); return }
     val view = PAGView(activity)
     view.setBackgroundColor(Color.TRANSPARENT)
-    // 不挡交互：不吃触摸（无 onClick 的 View 默认不消费，这里再显式关掉可点/可聚焦），
-    // 底部留出输入条高度，避免全屏特效压住弹幕输入框。
+
     view.isClickable = false
     view.isFocusable = false
     view.isFocusableInTouchMode = false
@@ -162,7 +150,7 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
     })
     view.setPath(file.absolutePath)
     view.play()
-    // 兜底：onAnimationEnd 偶发不回调，最多 15s
+
     root.postDelayed({ if (view.isAttachedToWindow) stop() }, 15_000L)
   }
 
@@ -232,7 +220,7 @@ class PocketGiftEffectModule(reactContext: ReactApplicationContext) :
     private const val HOST = "https://source.48.cn"
     private const val UA = "PocketFans201807/7.1.43 (Android)"
     private const val MAX_QUEUE = 3
-    /** 底部避让高度（dp）：弹幕输入条 + 安全区，特效不压住输入框 */
+
     private const val BOTTOM_INSET_DP = 96f
   }
 }

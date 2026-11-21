@@ -1,7 +1,3 @@
-// iOS 26 调色板：双主题（light / dark）、品牌粉、玻璃专用 surface
-// 命名遵循 Apple HIG 的语义色模式：bg / surface / label / separator / tint / glass.*
-
-/** 品牌 accent：保留口袋粉 #ff6f91 同时新增 iOS 26 强调色变体 */
 export const accent = {
   pink: '#ff6f91',
   pinkDark: '#ff8fa8',
@@ -9,17 +5,13 @@ export const accent = {
   pinkOnDark: '#ff8fa8',
 } as const;
 
-/** 官方口袋48风格：白底 + 粉点缀 + 实心卡片（改版）
- * 用户嫌「功能选项底色太白了」+「tab 玻璃感不足」
- * bg #F5F5F7→#ECEDF1、surface 全白 #FFFFFF→#F4F5F9（柔和卡片，非惨白）、
- * muted/glass 系列同调:卡片白块与背景灰层次舒适,iOS 26 group 卡片观感 */
 const neutralLight = {
   background: '#ECEDF1',
   surface: '#F4F5F9',
   surfaceElevated: '#F4F5F9',
   surfaceMuted: '#ECEDF1',
-  surfaceGlass: '#F4F5F9',
-  surfaceGlassStrong: '#F4F5F9',
+  surfaceGlass: 'rgba(255,255,255,0.60)',
+  surfaceGlassStrong: 'rgba(255,255,255,0.72)',
   hairline: 'rgba(0,0,0,0.06)',
   separator: 'rgba(60,60,67,0.14)',
   label: '#111114',
@@ -28,7 +20,7 @@ const neutralLight = {
   fill1: 'rgba(0,0,0,0.06)',
   fill2: 'rgba(0,0,0,0.05)',
   fill3: 'rgba(0,0,0,0.04)',
-  innerStroke: 'rgba(0,0,0,0.06)',
+  innerStroke: 'rgba(255,255,255,0.68)',
 };
 
 const neutralDark = {
@@ -36,8 +28,8 @@ const neutralDark = {
   surface: '#1C1C1F',
   surfaceElevated: '#26262B',
   surfaceMuted: '#17171B',
-  surfaceGlass: '#1C1C1F',
-  surfaceGlassStrong: '#232327',
+  surfaceGlass: 'rgba(28,28,36,0.66)',
+  surfaceGlassStrong: 'rgba(28,28,36,0.76)',
   hairline: 'rgba(255,255,255,0.10)',
   separator: 'rgba(84,84,88,0.40)',
   label: '#F5F5F7',
@@ -46,7 +38,7 @@ const neutralDark = {
   fill1: 'rgba(255,255,255,0.10)',
   fill2: 'rgba(255,255,255,0.08)',
   fill3: 'rgba(255,255,255,0.06)',
-  innerStroke: 'rgba(255,255,255,0.09)',
+  innerStroke: 'rgba(255,255,255,0.12)',
 };
 
 export const semantic = {
@@ -63,7 +55,7 @@ const light = {
   name: 'light' as const,
   tint: accent.pink,
   tintSoft: accent.pinkSoft,
-  /** tint 填充之上的前景色（按钮/胶囊白字） */
+
   onTint: '#FFFFFF',
 } as const;
 
@@ -82,19 +74,12 @@ export type PaletteName = 'light' | 'dark';
 
 export const Palettes = { light, dark } as const;
 
-/** 通过 useAppTheme / useResolvedTheme 选其一返回 */
 import { useResolvedTheme } from '../hooks/useAppTheme';
 
 export function usePalette(): Palette {
   return useResolvedTheme() === 'dark' ? dark : light;
 }
 
-/**
- * 页面根容器背景色：始终透明。
- * - 无自定义背景图 → 露出根层 PageBackdrop（柔和色斑，玻璃的「透」来源）
- * - 有自定义背景图 → 露出根层 ImageBackground
- * 页面内容与玻璃卡直接叠在底衬上，获得真实液态玻璃观感。
- */
 export function getPageBackground(): string {
   return 'transparent';
 }

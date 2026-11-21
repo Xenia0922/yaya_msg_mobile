@@ -61,14 +61,6 @@ export const PLAY_URL_FIELDS = [
   'data.playStreams.0.streamPath',
 ];
 
-/**
- * ⚠️ 本文件的 streamScore / liveStreamScore 与统一解析器
- * `src/player/resolve/streamResolver.ts` 的评分表**不一致**（这里 rtmp=20、https-flv=60；
- * 解析器 rtmp=60、flv=70/110），且 MediaScreen 走的是「录播优先」的权重。
- * 因此**暂不合并**：直接换成解析器的评分会改变候选排序 → 可能改变实际选中的线路，
- * 属于必须真机验证的行为变更（见 P1 记录 R-09）。
- * FollowedRoomsScreen 的旧实现与解析器逐字一致，已改为直接复用（零行为变化）。
- */
 export function streamScore(url: string): number {
   const lower = url.toLowerCase();
   if (lower.includes('.m3u8') || lower.includes('format=hls')) return 100;
@@ -87,11 +79,6 @@ export function liveStreamScore(url: string): number {
   return streamScore(url);
 }
 
-/**
- * 为直播/录播项构造可搜索文本 + 数字串，支持「时间搜索」。
- * 数字串同时给出「补零」与「不补零」两种形态，使 / 0720 / 7-20 / 2026/7/20
- * 等自然输入都能命中，解决原先只能匹配 YYYY-MM-DD HH:mm:ss 单一格式的问题。
- */
 export function buildMediaSearchText(item: any): { text: string; digits: string } {
   const ts = formatTimestamp(item.startTime);
   const d = new Date(String(item.startTime || '').replace(/-/g, '/'));
@@ -115,18 +102,14 @@ export function buildMediaSearchText(item: any): { text: string; digits: string 
   return { text, digits };
 }
 
-// 取录制时间的日期键 YYYY-MM-DD，用于日历筛选精确匹配
 export function dateKeyOf(startTime: any): string {
   let v: any = startTime;
   if (v === null || v === undefined || v === '') return '';
-  // 录播接口 startTime 实际是「字符串形式的毫秒时间戳」（如 "1787214699552"），
-  // 直接 new Date("1787214699552") 是 Invalid Date → 解析成秒/毫秒数字再 new Date
+
   if (typeof v === 'string') {
     const s = v.trim();
-    if (/^\d{10}$/.test(s))
-      v = Number(s) * 1000; // 10 位秒
-    else if (/^\d{13}$/.test(s))
-      v = Number(s); // 13 位毫秒
+    if (/^\d{10}$/.test(s)) v = Number(s) * 1000;
+    else if (/^\d{13}$/.test(s)) v = Number(s);
     else v = s.replace(/-/g, '/');
   }
   if (typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1e10) v *= 1000;
@@ -172,12 +155,10 @@ export function pickPlayableUrl(raw: any): string {
   return pickPlayableUrls(raw)[0] || '';
 }
 
-/** 官方「分享页」URL（老录播/已结束直播常见）：不是媒体流，需按 id 重新解析 */
 export function isSharePageUrl(u: string): boolean {
   return /\.html(\?|$)/i.test(u) || u.includes('h5.48.cn');
 }
 
-/** 分享页 URL → 用其中的 id 重新解析真实媒体流；失败返回 error 文案 key */
 export async function resolveSharePlayableUrls(
   urls: string[],
   preferLive: boolean,
@@ -191,8 +172,7 @@ export async function resolveSharePlayableUrls(
     );
   } catch {}
   if (!shareId) return { urls: [], error: '该录播暂时无法播放' };
-  // 官方公开接口（token 可选）直接取 playStreamPath —— 分享页自身就是这么取的；
-  // 统一走 pocketApi（含 UA/签名/错误语义），不再在 UI 层按原样裸 fetch。
+
   try {
     const json: any = await pocketApi.getLiveOne(shareId);
     const directUrl =
@@ -278,7 +258,6 @@ export function normalizeLiveList(res: any): VODItem[] {
   })) as VODItem[];
 }
 
-/** 按 liveId 在直播/录播列表（首屏）中查找条目，作为详情接口解析失败的兜底 */
 export async function findLiveItemInLists(liveId: string, record: boolean) {
   const calls: Promise<any>[] = [
     pocketApi.getLiveList({ record, debug: true, next: 0, size: 100 }),
@@ -299,9 +278,7 @@ export async function findLiveItemInLists(liveId: string, record: boolean) {
         (it: any) => String(it.liveId || it.id || it.live_id || '') === String(liveId),
       );
       if (found) return found;
-    } catch {
-      /* 尝试下一个源 */
-    }
+    } catch {}
   }
   return null;
 }

@@ -17,25 +17,6 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
-/**
- * 敏感凭证加密仓（AndroidKeyStore + AES-256-GCM）。
- *
- * ── 设计定位 ──
- * 只解决「**落盘明文**」这一个问题：凭据在磁盘上只存密文，密钥由 AndroidKeyStore
- * 生成并保存在 TEE / StrongBox 里，**不可导出**，只有本应用在本机运行时可解密。
- *
- * ── 不影响「复制 Token」等用户功能 ──
- * 加密只作用于「写到磁盘的那一份」。JS 侧在启动时解密一次放进内存，
- * 之后所有同步读取（发请求、复制到剪贴板、显示）照旧读内存。用户零感知。
- *
- * ── 为什么不用 setUserAuthenticationRequired(true) ──
- * 一旦绑定生物识别/锁屏密码，用户改指纹、改密码、锁屏策略变化都会让密钥**永久失效**
- * → 表现为「凭据莫名消失、必须重新登录」。这里刻意不绑，兼顾安全与可用性。
- *
- * ── 返回格式 ──
- * encrypt → Base64( [1 字节 IV 长度][IV][密文+GCM tag] )，NO_WRAP。
- * decrypt → 明文；任何异常返回 null（调用方按「无凭据」处理，不崩溃）。
- */
 public class SecureVaultModule extends ReactContextBaseJavaModule {
   private static final String NAME = "SecureVault";
   private static final String KEY_ALIAS = "yaya_credential_key_v1";
@@ -52,7 +33,6 @@ public class SecureVaultModule extends ReactContextBaseJavaModule {
     return NAME;
   }
 
-  /** 取密钥，不存在则生成（AES-256/GCM，不绑用户认证） */
   private synchronized SecretKey getOrCreateKey() throws Exception {
     KeyStore ks = KeyStore.getInstance(KEYSTORE);
     ks.load(null);
@@ -70,7 +50,7 @@ public class SecureVaultModule extends ReactContextBaseJavaModule {
         .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
         .setKeySize(256)
         .setRandomizedEncryptionRequired(true)
-        // 关键：不要求用户认证。绑定生物识别会在换指纹/改锁屏时使密钥永久失效。
+
         .setUserAuthenticationRequired(false)
         .build());
     return kg.generateKey();
@@ -121,7 +101,7 @@ public class SecureVaultModule extends ReactContextBaseJavaModule {
       byte[] pt = c.doFinal(ct);
       promise.resolve(new String(pt, StandardCharsets.UTF_8));
     } catch (Throwable t) {
-      // 密钥失效 / 数据损坏 / 换机还原：一律按「无凭据」返回 null，绝不抛给 JS 造成崩溃
+
       promise.resolve(null);
     }
   }

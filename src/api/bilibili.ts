@@ -41,10 +41,6 @@ function candidateScore(item: any): number {
   const protocol = String(item.protocolName || '').toLowerCase();
   const codec = String(item.codecName || '').toLowerCase();
 
-  // 优先级：① 可播放性（HLS fmp4/ts 远优先于 http-flv，ExoPlayer 播不了 flv）
-  // ② 画质（qn 越高越好，默认即最高可用画质）
-  // ③ 同画质下编码 tie-break：AVC 略优于 HEVC
-  // 这样默认拿到「能播的最高画质」；若某线路播放失败，上层静默换到下一条。
   if (format === 'fmp4' || format === 'ts' || protocol.includes('hls')) score += 100000;
   score += Number(item.currentQn || 0) * 2;
   if (codec === 'avc') score += 1;
@@ -87,7 +83,6 @@ export interface BiliQuality {
   label: string;
 }
 
-/** 画质选项：优先用接口的 g_qn_desc 文案，缺失时按候选 currentQn 兜底；按 qn 降序 */
 function buildQualities(playInfo: any, candidates: any[]): BiliQuality[] {
   const descList = playInfo?.data?.playurl_info?.playurl?.g_qn_desc || [];
   const labelByQn = new Map<number, string>();
@@ -138,10 +133,6 @@ export const bilibiliApi = {
     return assertBiliOk(res, 'B站扫码状态获取失败');
   },
 
-  /** B站 2024+ 新协议：扫码确认后 poll 只回 ticket 型 crossDomain url（如
-   * https://passport.biligame.com/x/passport-login/web/crossDomain?ticket=xxx&gourl=...），
-   * cookie 由访问该 url 时服务端 Set-Cookie 响应头下发。RN fetch 自动跟随 302 拿不到该头，
-   * 走原生 BiliLoginModule（followRedirects=false 停在首包读 Set-Cookie）。返回 "k=v; k=v" 串。 */
   async exchangeTicket(crossDomainUrl: string) {
     const M: any = (NativeModules as any)?.BiliLoginModule;
     if (Platform.OS !== 'android' || !M?.fetchTicket) {
@@ -159,7 +150,6 @@ export const bilibiliApi = {
     return assertBiliOk(res, 'B站房间信息获取失败');
   },
 
-  /** 房间详情：标题 + 封面（公演直播行展示用） */
   async getRoomInfo(roomId: string) {
     const res = await requestJson<any>(
       `${BILIBILI_LIVE_API}/room/v1/Room/get_info?room_id=${encodeURIComponent(roomId)}`,
@@ -174,7 +164,7 @@ export const bilibiliApi = {
       protocol: '0,1',
       format: '0,1,2',
       codec: '0,1',
-      // 最高画质：qn=10000(原画) + fourk=1 允许 4K/杜比流 + fnval 覆盖 HLS/TS/FMP4/杜比/4K
+
       qn: '10000',
       fourk: '1',
       fnval: '4048',
@@ -189,7 +179,6 @@ export const bilibiliApi = {
   },
 
   async getDanmuInfo(roomId: string) {
-    // 新版接口风控严（未登录/部分网络返回 -352），失败时回退旧版 getConf（两者都返回 token + host 列表）
     try {
       const res = await requestJson<any>(
         `${BILIBILI_LIVE_API}/xlive/web-room/v1/index/getDanmuInfo?id=${encodeURIComponent(roomId)}&type=0`,

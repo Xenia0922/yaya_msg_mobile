@@ -10,7 +10,7 @@ export function getPlayerHtml(
   const poster = posterUrl || '';
   const startTime =
     Number.isFinite(initialTime) && (initialTime as number) > 0 ? (initialTime as number) : 0;
-  // 直播流不挂原生 controls：HTML5 播放条上的进度条/预览对直播无意义且遮挡画面
+
   const videoControls = showControls ? 'controls' : '';
 
   return `<!DOCTYPE html>
@@ -23,10 +23,10 @@ export function getPlayerHtml(
   body{background:#000;display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;overflow:hidden}
   #player-wrapper{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
   video{width:100%;height:auto;max-height:100vh;background:#000}
-  #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#5a5a5a;font-size:14px;font-family:sans-serif}
+  #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#5a5a5a;font-size:14px;font-family:system-ui,-apple-system,sans-serif}
   .spinner{border:2px solid #333;border-top:2px solid #ff6f91;border-radius:50%;width:24px;height:24px;animation:spin 1s linear infinite;margin:0 auto 8px}
   @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
-  #error{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ff4444;font-size:13px;font-family:sans-serif;text-align:center;padding:16px;line-height:1.6}
+  #error{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#ff4444;font-size:13px;font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:16px;line-height:1.6}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.0/dist/hls.min.js"></script>

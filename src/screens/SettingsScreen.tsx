@@ -1,16 +1,16 @@
-/**
- * SettingsScreen · 设置 v2.6 布局重做
- * - 全页 inset 分组：每个 Section 圆角 16 卡片，Section 内行式条目（28 圆角图标底 + 标题 15/600 + 右侧 chevron/状态文字）
- * - 关于区 hero 卡（logo 52 圆角 16 + 名称 + 版本 chip + 红点）
- * - 成员数据统计 2 列卡
- * - 区块直接显示，避免频繁切换时闪烁
- * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
- */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { showDialog } from '../components/AppDialog';
 import { LinearGradient } from 'expo-linear-gradient';
 import { toMs } from '../utils/format';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -19,17 +19,22 @@ import * as ImagePicker from 'expo-image-picker';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore, useUpdateStore } from '../store';
 import { saveSettings } from '../services/settings';
-import pocketApi from '../api/pocket48';
-import ScreenHeader from '../components/ScreenHeader';
+import {
+  FloatingHeaderAction,
+  FloatingTabHeader,
+  getFloatingHeaderOffset,
+} from '../components/FloatingTabHeader';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
+import { usePocketAccountSummary } from '../hooks/usePocketAccountSummary';
 import { ScalePressable } from '../components/Motion';
 import RuntimeLogViewer from '../components/RuntimeLogViewer';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { APP_VERSION } from '../constants';
 import { getMemberDataMeta, MemberDataMeta, updateMemberData } from '../services/memberData';
-import { getLiveUserAvatar, normalizeLiveAvatar } from '../services/liveAvatarCache';
-import { usePalette, getPageBackground } from '../theme';
+import { fontFamily, usePalette, getPageBackground } from '../theme';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
+import { SquircleView } from '../components/SquircleView';
 import { GlassSegmented, GlassSegmentedScroll } from '../components/GlassSegmented';
 import { sniffImageBase64Mime } from '../utils/dataUri';
 import { ListBottomSpacer } from '../components/ListBottomSpacer';
@@ -61,22 +66,14 @@ function Section({
           <Text style={[styles.sectionTitle, { color: palette.label }]}>{title}</Text>
         </View>
       ) : null}
-      {/*
-        ⚠️【描边修复】不要在这里再传 borderWidth / borderColor。
-        GlassSurface 内部已有一层随主题走的描边（MATERIAL.stroke：浅色 rgba(255,255,255,0.66)
-        / 深色 rgba(255,255,255,0.10)），且渲染在 children 之前；
-        外层再叠一道 palette.hairline 会形成「双层描边」——两条线错位、颜色互搏，
-        观感就是用户反馈的「描边没描好」（深浅色主题下都明显）。
-        玻璃的唯一出口是 GlassSurface，描边交给它统一出。
- */}
-      <GlassSurface radius={22} role="card" style={styles.section}>
+
+      <GlassSurface radius={22} role="card" frostedOnly style={styles.section}>
         {children}
       </GlassSurface>
     </View>
   );
 }
 
-/** Section 内行式条目：28 圆角图标底 + 标题 15/600 + 右侧 chevron/状态文字 */
 function Row({
   icon,
   title,
@@ -92,7 +89,7 @@ function Row({
   onPress?: () => void;
   danger?: boolean;
   withChevron?: boolean;
-  /** value 完整显示（允许换行）——仓库地址等长文本用，默认仍单行截断 */
+
   wrapValue?: boolean;
 }) {
   const palette = usePalette();
@@ -154,8 +151,7 @@ function ChipRow<T>({
 }) {
   const segs = options.map((o, i) => ({ key: String(i), label: o.label }));
   const idx = String(options.findIndex((o) => o.value === value));
-  // 选项多或标签长（如语言：跟随系统/简体中文/繁體中文/English/日本語/한국어）用可滚动版，
-  // 等分版会把文字压到看不清
+
   const needScroll = options.length > 4 || options.some((o) => o.label.length > 4);
   if (needScroll) {
     return (
@@ -164,6 +160,7 @@ function ChipRow<T>({
         value={idx}
         onChange={(k) => onChange(options[Number(k)].value)}
         height={34}
+        frostedOnly
       />
     );
   }
@@ -173,6 +170,7 @@ function ChipRow<T>({
       value={idx}
       onChange={(k) => onChange(options[Number(k)].value)}
       height={34}
+      frostedOnly
     />
   );
 }
@@ -187,6 +185,8 @@ function formatTime(ts: number): string {
 export default function SettingsScreen() {
   const navigation = useNavigation<SettingsNavProp>();
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
+  const headerOffset = getFloatingHeaderOffset(insets.top);
   const settings = useSettingsStore((state) => state.settings);
   const setSettings = useSettingsStore((state) => state.setSettings);
   const showToast = useUiStore((state) => state.showToast);
@@ -196,9 +196,9 @@ export default function SettingsScreen() {
   const [meta, setMeta] = useState<MemberDataMeta | null>(null);
   const [logVisible, setLogVisible] = useState(false);
   const [memberSyncing, setMemberSyncing] = useState(false);
-  const [account, setAccount] = useState<{ name: string; avatar: string } | null>(null);
+  const account = usePocketAccountSummary(settings.p48Token);
   const [langVisible, setLangVisible] = useState(false);
-  // 卸载守卫：手动同步耗时较长，期间用户可能退出设置页 → 避免卸载后 setState / 弹 toast
+
   const mountedRef = useRef(true);
   useEffect(
     () => () => {
@@ -213,55 +213,6 @@ export default function SettingsScreen() {
       .catch(() => {});
   }, []);
 
-  // 账号卡：有 token 时拉取当前账号昵称/头像；失败只显示「已登录」
-  useEffect(() => {
-    if (!settings.p48Token) {
-      setAccount(null);
-      return;
-    }
-    let alive = true;
-    pocketApi
-      .loginCheckToken()
-      .then(async (res: any) => {
-        if (!alive) return;
-        const c: any = res?.content || res?.data || res || {};
-        const u: any = c.userInfo || c.user || c.baseUserInfo || c.userList?.[0] || c;
-        const base: any = u?.baseUserInfo || {};
-        const userId = String(base.userId || u.userId || u.id || c.userId || '').trim();
-        const rawName = String(
-          base.nickname ||
-            u.nickname ||
-            u.nickName ||
-            u.name ||
-            u.userName ||
-            c.nickname ||
-            c.nickName ||
-            '',
-        ).trim();
-        // 有些账号的 name 字段是纯数字账号 ID（如 20261006215238），不作为昵称展示
-        const name = rawName;
-        let avatar = normalizeLiveAvatar(
-          base.avatar ||
-            base.faceImage ||
-            u.avatar ||
-            u.userAvatar ||
-            u.headImg ||
-            u.avatarUrl ||
-            c.avatar ||
-            c.userAvatar ||
-            '',
-        );
-        if (!avatar && userId) avatar = await getLiveUserAvatar(userId).catch(() => '');
-        if (!alive) return;
-        if (name || avatar) setAccount({ name, avatar });
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [settings.p48Token]);
-
-  /** 手动更新成员数据库（双源: yk1z 库 + 官方接口） */
   const manualSyncMembers = useCallback(async () => {
     if (memberSyncing || !mountedRef.current) return;
     setMemberSyncing(true);
@@ -298,7 +249,7 @@ export default function SettingsScreen() {
 
   const update = async (key: string, value: any, extra: any = {}) => {
     const patch: Record<string, any> = { [key]: value, ...extra };
-    // 失败回滚：setSettings 是局部覆盖，只需恢复本次 patch 涉及的旧值
+
     const previous: Record<string, any> = {};
     for (const k of Object.keys(patch)) previous[k] = (settings as any)[k];
     setSettings(patch);
@@ -328,14 +279,7 @@ export default function SettingsScreen() {
         showDialog(t('未获取到图片数据'));
         return;
       }
-      /**
-       * ⚠️ MIME 必须按**真实字节**判定，不能信 picker 给的 `mimeType`。
-       * 实测踩坑：用户存的背景图是 `data:image/png;base64,/9j/4AAQSkZJRgAB…`
-       * —— 声明 PNG，实际是 JPEG（FFD8FFE0）。部分解码路径会信这个声明，
-       * 直接解码失败 → 背景层什么都没画出来，透出下层黑底
-       * （用户反馈的「背景图没加载」）。
-       * 这里嗅探 base64 头部魔数，写对真实类型。
-       */
+
       const mime = sniffImageBase64Mime(base64) || result.assets?.[0]?.mimeType || 'image/jpeg';
       await update('customBackgroundFile', `data:${mime};base64,${base64}`, {
         customBackgroundUpdatedAt: Date.now(),
@@ -354,17 +298,32 @@ export default function SettingsScreen() {
   return (
     <>
       <View style={[styles.container, { backgroundColor: getPageBackground() }]}>
-        <ScreenHeader title={t('设置')} hideBack />
+        <FloatingTabHeader
+          left={
+            <Text style={[styles.headerTitle, { color: palette.label }]} numberOfLines={1}>
+              {t('设置')}
+            </Text>
+          }
+          right={
+            <>
+              <FloatingHeaderAction
+                icon={palette.name === 'dark' ? 'white-balance-sunny' : 'weather-night'}
+                accessibilityLabel={t('切换主题')}
+                onPress={() => update('theme', palette.name === 'dark' ? 'light' : 'dark')}
+              />
+              <FloatingHeaderAction
+                icon="tune-variant"
+                accessibilityLabel={t('使用偏好')}
+                onPress={() => navigation.navigate('UsagePreferences' as never)}
+              />
+            </>
+          }
+        />
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingTop: headerOffset }]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.pageSub, { color: palette.labelSecondary }]}>
-            {t('账号、外观与数据管理')}
-          </Text>
-
-          {/* 账号与资料 */}
           <Section title={t('账号与资料')} icon="account-circle-outline">
             <TouchableOpacity
               style={styles.accountCard}
@@ -380,7 +339,8 @@ export default function SettingsScreen() {
                 style={StyleSheet.absoluteFillObject}
                 pointerEvents="none"
               />
-              <View
+              <SquircleView
+                radius={16}
                 style={[
                   styles.accountAvatar,
                   { backgroundColor: palette.tintSoft, borderColor: palette.tint },
@@ -391,7 +351,7 @@ export default function SettingsScreen() {
                 ) : (
                   <MaterialCommunityIcons name="account" size={24} color={palette.tint} />
                 )}
-              </View>
+              </SquircleView>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={[styles.accountName, { color: palette.label }]} numberOfLines={1}>
                   {account?.name || (settings.p48Token ? t('口袋48 账号') : t('点击登录'))}
@@ -416,7 +376,6 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </Section>
 
-          {/* 外观与显示 */}
           <Section title={t('外观与显示')} icon="palette-outline">
             <View style={styles.innerPad}>
               <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>{t('主题')}</Text>
@@ -459,10 +418,7 @@ export default function SettingsScreen() {
               value={languageLabel}
               onPress={() => setLangVisible(true)}
             />
-          </Section>
-
-          {/* 使用与偏好 */}
-          <Section title={t('使用与偏好')} icon="tune-variant">
+            <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
             <Row
               icon="tune-variant"
               title={t('使用偏好')}
@@ -471,7 +427,6 @@ export default function SettingsScreen() {
             />
           </Section>
 
-          {/* 数据与工具 */}
           <Section title={t('数据与工具')} icon="database-outline">
             <TouchableOpacity
               style={styles.memberCompact}
@@ -516,7 +471,6 @@ export default function SettingsScreen() {
             </Text>
           </Section>
 
-          {/* 关于软件：低频信息统一收进独立页面 */}
           <Section title={t('其他')} icon="dots-horizontal">
             <Row
               icon="information-outline"
@@ -540,7 +494,6 @@ export default function SettingsScreen() {
         </ScrollView>
       </View>
 
-      {/* 语言选择弹层：解决 6 语言单行溢出 */}
       <Modal
         visible={langVisible}
         transparent
@@ -596,7 +549,17 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingBottom: 112, paddingHorizontal: 16, paddingTop: 0 },
+  content: { paddingBottom: 112, paddingHorizontal: 16 },
+  headerTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    ...Platform.select({ android: { paddingTop: 1 }, default: null }),
+  },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -612,10 +575,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
-  pageSub: { fontSize: 12, marginTop: 2, marginBottom: 2, paddingHorizontal: 4 },
-  footer: { fontSize: 11, textAlign: 'center', marginTop: 18, marginBottom: 4 },
-  // 描边由 GlassSurface 内部统一出（见 Section 注释），此处不再叠 borderWidth/borderColor
+  sectionTitle: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  footer: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    textAlign: 'center',
+    marginTop: 18,
+    marginBottom: 4,
+  },
+
   section: { overflow: 'hidden' },
   innerPad: { padding: 14 },
   row: {
@@ -632,12 +605,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  rowTitle: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: '600' },
+  rowTitle: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+  },
   rowValueWrap: { flex: 1, textAlign: 'right', flexWrap: 'wrap' },
-  rowValue: { flexShrink: 1, fontSize: 12, marginRight: 6, maxWidth: '48%', textAlign: 'right' },
-  rowLabel: { fontSize: 12, lineHeight: 18, marginBottom: 6 },
+  rowValue: {
+    flexShrink: 1,
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    marginRight: 6,
+    maxWidth: '48%',
+    textAlign: 'right',
+  },
+  rowLabel: { fontSize: 12, fontFamily: fontFamily.system, lineHeight: 18, marginBottom: 6 },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 54 },
-  // 账号卡
+
   accountCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -655,11 +641,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   accountAvatarImg: { width: 48, height: 48 },
-  accountName: { fontSize: 16, fontWeight: '700' },
-  accountSub: { fontSize: 12, marginTop: 3 },
-  accountStatus: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, marginRight: 2 },
-  accountStatusText: { fontSize: 10, fontWeight: '700' },
-  // 成员数据（压缩一行）
+  accountName: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '600' },
+  accountSub: { fontSize: 12, fontFamily: fontFamily.system, marginTop: 3 },
+  accountStatus: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginRight: 2 },
+  accountStatusText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '600' },
+
   memberCompact: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -667,18 +653,25 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
-  memberSub: { fontSize: 11, marginTop: 3 },
+  memberSub: { fontSize: 11, fontFamily: fontFamily.system, marginTop: 3 },
   syncPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 14,
+    borderRadius: 999,
   },
-  syncPillText: { fontSize: 11, fontWeight: '700' },
-  note: { marginHorizontal: 14, marginTop: 8, marginBottom: 14, fontSize: 11, lineHeight: 16 },
-  // 语言弹层
+  syncPillText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '600' },
+  note: {
+    marginHorizontal: 14,
+    marginTop: 8,
+    marginBottom: 14,
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    lineHeight: 16,
+  },
+
   langShade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
   langSheet: {
     paddingHorizontal: 18,
@@ -687,12 +680,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
-  langTitle: { fontSize: 16, fontWeight: '800', marginBottom: 6 },
+  langTitle: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '700', marginBottom: 6 },
   langItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
   },
-  langLabel: { fontSize: 15, fontWeight: '600' },
+  langLabel: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '600' },
 });

@@ -4,30 +4,16 @@ import { useMemberStore, useSettingsStore } from '../store';
 import { isRoomMember } from '../utils/members';
 import { logInfo, logWarn } from '../utils/runtimeLog';
 
-/**
- * 房间映射缓存服务（v2.7.4）：
- * 官方数据（已交叉验证）：
- * - getStarServerMap → content.userServerMap = { "<userId>": "<serverId>" }（大房间 serverId）
- * - im/seine/server/detail(serverId) → content.channelInfoList，顺序固定：
- * [0] = 大房间 channelId（→ member.channelId）
- * [1] = 小房间 channelId（→ member.yklzId）
- * - 大房间的 serverId 就是 userServerMap 的值（张琼予 1148117 / 王秭歆 1181028 均与旧库吻合）
- *
- * 解析结果持久化到 AsyncStorage，避免每次扫描重复请求 seine/server/detail。
- */
-
-// v3：v2 缓存里可能存过「大房间 channelId 被最新消息反推写成小房间/历史房间」的
-// 污染映射（详情见 memberData.ts 反推逻辑注释）。升级 key 丢弃旧缓存，由成员库 + seine 重新播种。
 const ROOM_MAP_KEY = 'yaya_member_room_map_v3';
 
 export interface RoomMapEntry {
-  channelId: string; // 大房间 channelId
-  yklzId: string; // 小房间 channelId
-  serverId: string; // 大房间 serverId
+  channelId: string;
+  yklzId: string;
+  serverId: string;
   updatedAt: number;
-  /** 最近一次「小房间补齐尝试」时间：yklzId 为空时用它做 24h 退避，避免每次扫描重复请求 */
+
   yklzTriedAt?: number;
-  /** 最后一次通过官方频道详情核验的时间。 */
+
   verifiedAt?: number;
 }
 
@@ -35,7 +21,6 @@ let roomMap: Record<string, RoomMapEntry> = {};
 let hydrated = false;
 let hydration: Promise<void> | null = null;
 
-/** 内存映射上限：按 updatedAt 淘汰最旧条目，避免长期运行/扫描导致常驻内存无限增长 */
 const MAX_ENTRIES = 1000;
 
 function trimRoomMap(): void {
@@ -75,11 +60,6 @@ export function getRoomMapEntry(memberId: string): RoomMapEntry | undefined {
   return roomMap[String(memberId)];
 }
 
-/**
- * 把成员 store 中已有的 channelId/yklzId/serverId 写入缓存。
- * 成员库（yk1z+官方双源）为权威：现有缓存条目只补「逐字段缺口」（空值/0 可被库值覆盖），
- * 已有有效值的字段保持不变，避免覆盖运行时 seine 解析出的新映射。
- */
 export function seedRoomMapFromMembers(members: any[]): void {
   let changed = false;
   for (const m of members) {
@@ -112,7 +92,6 @@ export function seedRoomMapFromMembers(members: any[]): void {
   if (changed) persistRoomMap();
 }
 
-/** 写盘串行链：整表 JSON.stringify 的并发写会让旧快照后落盘覆盖新快照 → 映射偶发回退 */
 let persistChain: Promise<void> = Promise.resolve();
 
 function persistRoomMap(): void {
@@ -120,17 +99,10 @@ function persistRoomMap(): void {
     try {
       trimRoomMap();
       await AsyncStorage.setItem(ROOM_MAP_KEY, JSON.stringify(roomMap));
-    } catch {
-      /* 写失败静默：下次字段变更时会再写 */
-    }
+    } catch {}
   });
 }
 
-/**
- * 解析 seine/server/detail 返回：
- * channelInfoList[0]=大房间 channelId、[1]=小房间 channelId；chatServerInfo.serverId=大房间 serverId。
- * 返回 { channelId(大), yklzId(小), serverId }，解析不到则为 ''。
- */
 export function parseSeineDetail(content: any): {
   channelId: string;
   yklzId: string;
@@ -145,7 +117,6 @@ export function parseSeineDetail(content: any): {
   return { channelId, yklzId, serverId };
 }
 
-/** 启动后限并发核验在团成员房间；失败时保留已有映射。 */
 export async function refreshActiveRoomMappings(): Promise<void> {
   const token = useSettingsStore.getState().settings.p48Token;
   if (!token) return;
@@ -236,13 +207,6 @@ export async function refreshActiveRoomMappings(): Promise<void> {
   logInfo(`[roomMap] 启动核验完成：${changed}/${candidates.length}`, 'roomMap');
 }
 
-/**
- * 按 userId 解析房间映射：
- * 1. 缓存命中（且含大房间 channelId）→ 直接返回
- * 2. 缺 serverId 时用 userServerMap 或 store 已有值补（调用方传入）
- * 3. 无缓存或缓存缺 → seine/server/detail(serverId) 解析（channelInfoList[0]/[1]），写缓存 + 回写 store
- * 返回 { channelId, yklzId, serverId, fromCache }
- */
 export async function resolveMemberRooms(
   memberId: string,
   opts: {
@@ -257,20 +221,16 @@ export async function resolveMemberRooms(
   let yklzId = opts.knownYklzId || '';
   let serverId = opts.knownServerId || '';
 
-  // 1) 缓存
   const cached = roomMap[id];
   if (cached) {
     if (!channelId) channelId = cached.channelId || '';
     if (!yklzId) yklzId = cached.yklzId || '';
     if (!serverId) serverId = cached.serverId || '';
-    // ⚠️ 关键：仅当「大房间 + 小房间 mapping 都齐」才能短路返回。
-    // 此前条件是 channelId && serverId —— yklzId 为空也直接返回，导致小房间 channelId
-    // 永远不会被补齐，只在小房间开麦的成员在上麦页永远搜不到。
+
     const yklzReady = !!yklzId || (cached.yklzTriedAt || 0) > Date.now() - 24 * 3600 * 1000;
     if (channelId && serverId && yklzReady) return { channelId, yklzId, serverId, fromCache: true };
   }
 
-  // 2) store 中已有（调用方没传）
   if (!channelId || !yklzId || !serverId) {
     const m = useMemberStore.getState().members.find((x) => String(x.id) === id);
     if (m) {
@@ -291,10 +251,8 @@ export async function resolveMemberRooms(
       };
       return { channelId, yklzId, serverId, fromCache: true };
     }
-    // yklzId 仍缺 → 落到下面走 seine 补齐（带上已有的大房间信息）
   }
 
-  // content={serverId, channelId}；需登录态，未登录/无权限时静默失败）
   if (!serverId && !channelId) {
     try {
       const jres: any = await pocketApi.serverJump(Number(id));
@@ -311,12 +269,9 @@ export async function resolveMemberRooms(
           'roomMap',
         );
       }
-    } catch (_e: any) {
-      // 登录态缺失等，静默失败（不刷日志噪音）
-    }
+    } catch (_e: any) {}
   }
 
-  // 3) seine/server/detail 反查（serverId 是必需入参）；大房间已解析但小房间缺失时也走这里补齐
   if (serverId && (!channelId || !yklzId)) {
     try {
       const res: any = await pocketApi.getSeineServerDetail(Number(serverId));
@@ -327,7 +282,6 @@ export async function resolveMemberRooms(
         if (!yklzId) yklzId = parsed.yklzId;
         if (!serverId) serverId = parsed.serverId || serverId;
       } else {
-        // 诊断：接口返回了但没解析出大房间——输出原始结构便于识别（空频道/结构变化/单频道）
         const listLen = Array.isArray(content?.channelInfoList)
           ? content.channelInfoList.length
           : -1;
@@ -337,7 +291,7 @@ export async function resolveMemberRooms(
           'roomMap',
         );
       }
-      // yklzId 仍未拿到 → 记退避时间（24h 内不再为此人补查，防每轮扫描放大请求）
+
       roomMap[id] = {
         channelId,
         yklzId,

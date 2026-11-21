@@ -21,8 +21,6 @@ import {
   ensureDeviceId,
 } from './pocketHeaders';
 
-// 选举计分（score-*）、花漾（pageantry-*）、QR 登录（login-*-qr）、部分 Area48 话题接口；
-
 function tokenFromStore(): string {
   return normalizePocketToken(useSettingsStore.getState().settings.p48Token);
 }
@@ -42,8 +40,7 @@ function responseOk(data: unknown): boolean {
   if (d.success === true) return true;
   if (d.status === 200) return true;
   if (d.code === 0) return true;
-  // content/data/list 即使为 null，只要字段存在也视为请求成功（如空列表/无内容），
-  // 保持原有语义，避免把合法空结果误报为接口失败。
+
   if (d.content !== undefined || d.data !== undefined || d.list !== undefined) return true;
   return false;
 }
@@ -104,9 +101,7 @@ async function createSignedHeaders(
     ...createHeaders(token, pa, modern, deviceId),
     ...patch,
   };
-  // 与桌面版 pocket-client-context.mjs#applyPocketClientHeaders 对齐：
-  // 登录后所有携带 token 的常规接口统一使用与 loginByCode 一致的 7.1.45_26102701 Android 头
-  // 与持久化 deviceId，保留 P-Sign-Type / Host / Accept 等自定义头。
+
   if (token && !preservePatch && !patch['X-Custom-Device-Type']) {
     const resolvedDeviceOverride =
       deviceIdOverride !== undefined
@@ -163,8 +158,6 @@ async function rawPost(
     options.deviceIdOverride !== '' &&
     isDeviceMismatchTokenError(res)
   ) {
-    // 跨设备粘贴纯 token 时服务端 /user/ 会因 appInfo.deviceId 不匹配返回 token解析失败；
-    // 实测带空 deviceId 重试可直接通过，并记录到本次会话缓存以省去后续二次往返。
     const retryHeaders = await createSignedHeaders(
       token,
       !!options.modern,
@@ -199,9 +192,6 @@ async function pocketPost(
     timeout?: number;
   } = {},
 ): Promise<ApiEnvelope> {
-  // 公开接口（直播列表/详情、成员档案、房间信息等）不携带本地登录 token：
-  // 旧 token 过期时，服务端会对这类“可选 token”请求返回 token 解析失败，导致直播页误判为登录失效。
-  // 需要登录的接口仍由 requireToken() 强制校验。
   const token = options.tokenRequired === false ? '' : requireToken();
   const res = await rawPost(url, data, {
     token,
@@ -214,7 +204,6 @@ async function pocketPost(
   return assertPocketOk(res, options.fallback, options.tokenRequired !== false);
 }
 
-/** GET 版口袋接口（直播装扮类目录接口只接受 GET，POST 会返回 405） */
 async function pocketGet(url: string, options: { modern?: boolean; fallback?: string } = {}) {
   const token = requireToken();
   const headers = await createSignedHeaders(token, !!options.modern, {});
@@ -275,9 +264,7 @@ async function resolveServerIds(channelId: string): Promise<string[]> {
         res?.data?.serverId ||
         res?.serverId,
     );
-  } catch {
-    // Fall through to the server map; some large rooms have stale local serverId values.
-  }
+  } catch {}
   try {
     const res = await pocketPost(
       `${BASE}/im/api/v1/team/star/server/map/get`,
@@ -288,9 +275,7 @@ async function resolveServerIds(channelId: string): Promise<string[]> {
       },
     );
     collectServerIdsForChannel(res, channelId, ids);
-  } catch {
-    // The map is a fallback only.
-  }
+  } catch {}
   return ids;
 }
 
@@ -304,17 +289,6 @@ function rememberServerId(channelId: string, serverId: string) {
   useMemberStore.getState().updateMemberRoomIds(channelId, { serverId });
 }
 
-/**
- * 多候选尝试（抗官方接口路径漂移）。
- *
- * 默认行为与历史一致：按顺序逐个试，任一成功即返回，全失败才抛汇总错误。
- *
- * 新增（修 P0「请求放大」）：
- * - `perAttemptTimeout`：单次尝试超时（默认沿用 pocketPost 的 15s）；
- * - `deadlineMs`：整组尝试的总预算，超时立即停止并抛出「已尝试 N/M」错误。
- * 此前 getRoomMessages 最多 12 个串行 POST × 15s = 最坏 ~180s，用户进房间转圈；
- * 加预算后最坏时长被硬性封顶。
- */
 async function tryPocketPost(
   attempts: Array<{
     url: string;
@@ -375,7 +349,6 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** 房间礼物列表项（清洗后的稳定结构） */
 type GiftEntry = {
   giftId: string;
   giftName: string;
@@ -396,7 +369,6 @@ export const pocketApi = {
     if (answer !== undefined && String(answer).trim() !== '') {
       payload.answer = String(answer).trim();
     } else {
-      // 首次发送：带业务码（登录注册）与风控 token（无顶象 SDK 时为空串，服务端降级为问答题）
       payload.businessCode = 1;
       payload.intelligenceToken = '';
     }
@@ -422,7 +394,6 @@ export const pocketApi = {
     return { success: false, msg: responseMessage(data, '验证码发送失败') };
   },
 
-  /** 短信验证码登录：保留未注册状态，由界面进入注册流程。 */
   async loginByCode(mobile: string, code: string, area = '86') {
     const cleanArea = String(area || '').replace(/[^0-9]/g, '') || '86';
     return rawPost(
@@ -470,9 +441,6 @@ export const pocketApi = {
       headers?: HeadersMap;
       emptyDevice?: boolean;
     }> = [
-      // 与桌面版 pocket-runtime + pocket-client-profile 对齐：优先带登录态同款 7.1.45 Android 头，
-      // 若跨设备纯 token 报 deviceId 不匹配，紧接着自动回退空 deviceId 绕过绑定校验，
-      // 再依次兼容 modern iOS (7.1.35+V0)、legacy iOS (7.0.41)、Android 7.1.43、user/info/home 与 seine48 (1.3.5)。
       {
         url: `${BASE}/user/api/v1/user/info/reload`,
         payload: { from: 'appstart' },
@@ -546,7 +514,6 @@ export const pocketApi = {
     throw firstError instanceof Error ? firstError : new Error('Token 无效');
   },
 
-  /** 删除（撤回）自己在成员房间大/小房间发送的消息（官方 im/api/v1/team/msg/delete） */
   async deleteTeamMsg(params: {
     accId: string;
     msgIdClient: string;
@@ -624,7 +591,7 @@ export const pocketApi = {
       name: fileName,
       type: mimeType,
     } as unknown as Blob);
-    // FormData 上传无法走 requestJson（其会 JSON.stringify body），这里保留 fetch 但补超时取消，防无限挂起
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30000);
     let response: Response;
@@ -701,8 +668,6 @@ export const pocketApi = {
   },
 
   async getNimLoginInfo() {
-    // 官方云信凭证新接口，返回 content.accid/accId/imUserId + pwd/token/imPwd + userId；
-    // 失败再回退旧路径（user/info/reload / user/info/home）多路兜底，防旧接口下线后私信/签到失效。
     try {
       const res = await pocketPost(
         `${BASE}/im/api/v1/im/userinfo`,
@@ -713,9 +678,7 @@ export const pocketApi = {
         },
       );
       if (res?.content) return res;
-    } catch {
-      /* 落到旧多路兜底 */
-    }
+    } catch {}
     return tryPocketPost(
       [
         {
@@ -748,9 +711,7 @@ export const pocketApi = {
   async getUserProfile(userId: string) {
     const id = Number(String(userId || '').trim());
     if (!Number.isFinite(id) || id <= 0) throw new Error('missing userId');
-    // POST /user/api/v1/user/info/home body { userId: <number> } + **Android 头**
-    // 之前移动端用 iOS/modern 头 + 字符串 userId 依次试 info/detail/home，服务端全部
-    // 返回「No message available」（404）→ 资料卡只显示出错文本（用户反馈加载不出来）。
+
     return tryPocketPost(
       [
         {
@@ -807,8 +768,6 @@ export const pocketApi = {
   },
 
   async getFollowedIds() {
-    // 优先使用已登录 Android 7.1.45 + P-Sign-Type: V0（与桌面 applyPocketClientHeaders 一致），
-    // 若老账号仅认 iOS 7.1.35 头则回退 preserveHeaders 再试一次。
     try {
       return await pocketPost(
         `${BASE}/user/api/v1/friendships/friends/id`,
@@ -825,7 +784,6 @@ export const pocketApi = {
   },
 
   async followMember(memberId: string) {
-    // + **P-Sign-Type: V0** 头（createFriendshipHeaders 同款），否则可能被判签名类型不符
     return pocketPost(
       `${BASE}/user/api/v2/friendships/friends/add`,
       { toSourceId: safeNumber(memberId), toType: 1 },
@@ -851,12 +809,6 @@ export const pocketApi = {
     );
   },
 
-  /** 房间精华消息列表（成员在官方端设为精华；响应与房间历史同构：messageList[]） */
-  /**
-   * 房间精华消息（成员在官方端设为精华，服务端存储，全员可见，只读）。
-   * 路径前缀是 /im/（官方 Retrofit base = https://pocketapi.48.cn/im/，实测：
-   * 少前缀直接 nginx 404）；返回 content.essenceMessageList[]（不是 messageList）。
-   */
   async getEssenceMessages(params: { channelId: string }) {
     const channelId = String(params.channelId || '');
     if (!channelId) throw new Error('missing channelId');
@@ -879,7 +831,7 @@ export const pocketApi = {
     const fallbackCid = params.fallbackChannelId ? String(params.fallbackChannelId) : '';
     const originalServerId = String(params.serverId || '');
     if (!channelId) throw new Error('missing channelId');
-    // v2.4.2 logic: resolve serverId when original is empty, and remember it
+
     const resolvedServerId =
       originalServerId && originalServerId !== '0' ? '' : await resolveServerId(channelId);
     const serverIds = [originalServerId, resolvedServerId]
@@ -902,11 +854,9 @@ export const pocketApi = {
     }> = [];
     const limit = params.limit || 100;
     const next = params.nextTime || 0;
-    // Try both channelId and fallbackChannelId
+
     const cids = [channelId, ...(fallbackCid && fallbackCid !== channelId ? [fallbackCid] : [])];
     for (const cid of cids) {
-      // fallbackChannelId 是同一房间的另一个 channelId（大小房间切换），serverId 共用；
-      // 之前这里用空 serverId 过滤，导致 fallback 一个请求都不发 → 小房间历史消息永远为空（P2-D8）。
       const svrs = serverIds;
       for (const serverId of svrs.length ? svrs : ['']) {
         const sid = String(serverId || '');
@@ -942,21 +892,48 @@ export const pocketApi = {
       }
     }
     if (!attempts.length) throw new Error('missing serverId');
-    // 修 P0「请求放大」：单次 8s、整组 24s 预算（此前最多 12×15s ≈ 180s）。
-    // 候选顺序不变（主 channelId + 主 serverId + 首选 url 最先），正常网络首个即中。
+
     return tryPocketPost(attempts, 'get room messages failed', {
       perAttemptTimeout: 8000,
       deadlineMs: 24000,
     });
   },
 
-  /**
-   * 解析房间的圈组 serverId（房间消息通道必需）。
-   *
-   * 房间消息历史接口在 serverId 为空时会内部兜底解析并写回成员库，但**发送**必须显式拿到
-   * serverId —— 为空会直接变成 0，云信圈组返回 414「参数错误」。这里把兜底逻辑暴露出来，
-   * 供发送前调用。
-   */
+  async getLatestRoomMessage(params: {
+    channelId: string;
+    serverId: string;
+    fetchAll?: boolean;
+    timeout?: number;
+  }) {
+    const channelId = String(params.channelId || '').trim();
+    if (!channelId || channelId === '0') return null;
+    const originalServerId = String(params.serverId || '').trim();
+    const resolvedServerId =
+      originalServerId && originalServerId !== '0'
+        ? originalServerId
+        : await resolveServerId(channelId);
+    if (!resolvedServerId || resolvedServerId === '0') return null;
+    if (!originalServerId || originalServerId === '0') {
+      rememberServerId(channelId, resolvedServerId);
+    }
+    const url = params.fetchAll
+      ? `${BASE}/im/api/v1/team/message/list/all`
+      : `${BASE}/im/api/v1/team/message/list/homeowner`;
+    return pocketPost(
+      url,
+      {
+        channelId: safeNumber(channelId),
+        serverId: safeNumber(resolvedServerId),
+        nextTime: 0,
+        limit: 1,
+      },
+      {
+        timeout: params.timeout ?? 4500,
+        fallback: 'get latest room message failed',
+      },
+    );
+  },
+
   async resolveRoomServerId(channelId: string | number): Promise<string> {
     const cid = String(channelId || '');
     if (!cid) return '';
@@ -966,9 +943,7 @@ export const pocketApi = {
         rememberServerId(cid, sid);
         return sid;
       }
-    } catch {
-      /* 解析失败返回空串，由调用方提示 */
-    }
+    } catch {}
     return '';
   },
 
@@ -980,20 +955,13 @@ export const pocketApi = {
     );
   },
 
-  /** 解析房间信息（大/小房间通用）：
-   * 1) room/info → content.channelInfo（单数，FollowedRooms 同款字段）
-   * 2) 小房间（yklzId）实测 room/info 返回 2001 无权限 → 回退【塞纳河接口】
-   * im/api/seine/server/detail（seine48 头）：返回 channelInfoList（大/小房间 channelId+channelName）
-   * + chatServerInfo.serverBgWallImg（背景墙图）+ serverName。
-   * serverId 必须传入（成员数据里有），否则无法走塞纳河兜底。 */
   async getRoomMeta(
     channelId: string | number,
     fallbackChannelId?: string | number,
     serverId?: string | number,
   ) {
     const cid = String(channelId);
-    // 传入 serverId 为空时（成员数据缺 serverId）自动解析，否则无法走塞纳河兜底 → name/bg 全空。
-    // 复刻 getRoomMessages 的 v2.4.2 逻辑：resolveServerId 从 room/info 的 content.serverId 提取并写回 store。
+
     let resolvedSid = serverId;
     if (!resolvedSid || String(resolvedSid) === '0' || String(resolvedSid) === '') {
       try {
@@ -1002,11 +970,9 @@ export const pocketApi = {
           resolvedSid = s;
           rememberServerId(cid, s);
         }
-      } catch {
-        /* 解析失败保持空，下方兜底流程自然跳过塞纳河 */
-      }
+      } catch {}
     }
-    // bgImg|bgImgUrl|backgroundImg|backgroundImgUrl|backImg|backImgUrl|homeBgImg|homeBgImgUrl|bannerUrl
+
     const pickBg = (o: WireRecord | null | undefined): string => {
       if (!o) return '';
       return String(
@@ -1075,11 +1041,9 @@ export const pocketApi = {
             bg: bg ? normalizeUrl(String(bg)) : meta.bg || '',
           };
         }
-      } catch {
-        /* 塞纳河兜底失败忽略 */
-      }
+      } catch {}
     }
-    // 最终兜底：回退同成员大房间背景
+
     if (
       !meta.name &&
       !meta.bg &&
@@ -1188,8 +1152,6 @@ export const pocketApi = {
     );
   },
 
-  // 返回类型保持宽松：ProfileScreen 的 catch 分支注入 { __error } 并读取 content/data，
-  // 收窄为 ApiEnvelope 会让调用方的联合类型无法访问业务字段。
   async getStarArchives(memberId: number): Promise<any> {
     return pocketPost(
       `${BASE}/user/api/v1/user/star/archives`,
@@ -1314,21 +1276,16 @@ export const pocketApi = {
     );
   },
 
-  /**
-   * 直播弹幕（实时）用的云信聊天室坐标。
-   *
-   * 官方 7.1.39 直播弹幕走云信聊天室，房间号 = getLiveOne 的 content.roomId
-   * （LivePlayActivity 里 `m58828(live.getRoomId, liveId)`），sourceId = liveId。
-   * 这里一次取齐，避免调用方再解析一遍返回结构。
-   */
   async getLiveChatroom(liveId: string): Promise<{
     roomId: string;
     sourceId: string;
     title: string;
     audience?: string;
     rankAvatars?: string[];
+    hostId?: string;
     hostName?: string;
     hostAvatar?: string;
+    pkInfo?: { active: boolean; pkId?: string; users: any[] };
   } | null> {
     const id = String(liveId || '');
     if (!id) return null;
@@ -1336,10 +1293,20 @@ export const pocketApi = {
       const res = await pocketApi.getLiveOne(id);
       const content = ((res && (res.content || res.data)) || {}) as WireRecord;
       const roomId = String(content.roomId || content.chatroomId || content.chatRoomId || '');
+      const rawPk =
+        content.pkInfo && typeof content.pkInfo === 'object'
+          ? (content.pkInfo as WireRecord)
+          : null;
+      const pkUsers = Array.isArray(rawPk?.pkUserInfoList) ? rawPk.pkUserInfoList : [];
+      const pkIdRaw =
+        rawPk?.pkId !== undefined && rawPk?.pkId !== null ? String(rawPk.pkId).trim() : '';
+      const pkActive = Boolean(rawPk?.inMicrophonePkConnection) && pkUsers.length > 0;
       return {
         roomId,
         sourceId: id,
         title: String(content.title || content.liveTitle || ''),
+        hostId:
+          pickText(content, ['user.userId', 'user.id', 'userId', 'ownerId', 'starId']) || undefined,
         hostName:
           pickText(content, [
             'user.userName',
@@ -1363,16 +1330,21 @@ export const pocketApi = {
               )
               .filter(Boolean)
           : undefined,
+        ...(pkActive
+          ? {
+              pkInfo: {
+                active: true,
+                pkId: pkIdRaw && pkIdRaw !== '0' ? pkIdRaw : undefined,
+                users: pkUsers,
+              },
+            }
+          : {}),
       };
     } catch {
       return null;
     }
   },
 
-  /**
-   * 获取直播间弹幕（录播回放）。接口失败/无数据返回空数组，绝不抛错，
-   * 保证弹幕只是「锦上添花」，不会拖垮播放。
-   */
   async getLiveBarrage(liveId: string): Promise<
     Array<{
       messageId: string;
@@ -1531,8 +1503,7 @@ export const pocketApi = {
       next: params.next ?? 0,
       record: params.record ?? false,
     };
-    // 服务端原生支持按成员过滤直播/录播，避免「全量加载全局列表再前端筛选」导致的历史数据缺失。
-    // 注意官方坑：next=0 时带 userId 查不到数据，首次查询需先取列表最新 liveId 作为 next（调用方处理）。
+
     if (params.userId !== undefined && params.userId !== null && params.userId !== '') {
       payload.userId = Number(params.userId) || String(params.userId);
     }
@@ -1584,11 +1555,6 @@ export const pocketApi = {
     crm?: string;
     businessCode?: number;
   }) {
-    // 成员直播送礼（协议见官方 GiftManager.m57278 → C7246.m30090 + C9430.m34072）：
-    // - businessCode 默认 0（LivePlay 场景）；liveType=5（公演直播）是 7，由调用方按 liveType 动态下发
-    // - crm 必须透传「直播详情」里的值：它是 DES(key=TT^3m$b#) 加密的聊天室 id，
-    // 服务端靠它把礼物广播进直播间聊天室。缺失 → 只计贡献、成员端零感知（实测）；
-    // 乱填 → 1008「暂不可送礼」（实测）。crm 为空的直播才不发（官方走 sendToRoomId）。
     return pocketPost(
       `${BASE}/gift/api/v1/gift/send`,
       {
@@ -1615,11 +1581,6 @@ export const pocketApi = {
     );
   },
 
-  /**
-   * 直播场景按「收礼成员 + liveId」取完整礼物列表。
-   * 官方 OpenliveGiftDialogViewModel 使用 {memberId, businessCode:1, liveId}；
-   * 旧 getGiftList 只传 businessId/giftType，服务端会漏掉「琴音生花」这类礼物。
-   */
   async getLiveGiftList(liveId: string, memberId: string) {
     return pocketPost(
       `${BASE}/gift/api/v1/gift/list`,
@@ -1632,13 +1593,6 @@ export const pocketApi = {
     );
   },
 
-  /**
-   * 按成员取可送礼物列表（房间场景同一接口，businessCode 固定 5）。
-   * 直播内送礼用 liveId 版常返回空列表（服务端按 liveId 维度无配置），
-   * 房间内此接口已验证可用 → 直播优先用它，空再回退 liveId 版。
-   */
-  /** 按 giftType 拉取（1=普通礼物，2=记分礼物；官方直播礼物面板分两组下发） */
-  /** 记分礼物（如「琴音生花」）：businessCode=5 + giftType=2 + memberId */
   async getScoreGiftListByMember(memberId: string) {
     return pocketPost(
       `${BASE}/gift/api/v1/gift/list`,
@@ -1673,16 +1627,6 @@ export const pocketApi = {
     );
   },
 
-  /**
-   * 房间（非直播）送礼上下文 —— 协议按官方客户端实现 v2.14 fetchMemberRoomGiftContext：
-   * 1) /im/api/v1/im/team/room/info {channelId} → channelInfo：ownerId 即收礼成员；
-   * serverType=0 是队伍房间（官方不支持选人送礼）；userFunction.sendGift===false 时该账号在此房间不能送礼
-   * 2) /user/api/v1/user/info/reload → userRole（官方身份 2-5 时 get_receive_gift_state 的 msgType 用 2，否则 1）
-   * 3) /gift/api/v1/gift/list {memberId, businessCode:5}（房间场景 businessCode 固定 5）
-   * + /gift/api/v1/gift/get_receive_gift_state {moduleType:2, starIds, msgType}（receiveGiftStatus!==1 → 不能收礼，文案取 receiveGiftTips）
-   * + /user/api/v1/user/money（余额）
-   * 返回前对礼物做清洗（清洗规则）：跳过 typeId=888 / 投票礼物 / 口袋礼物无库存 / 价格非法。
-   */
   async getMemberRoomGiftContext(params: {
     serverId: string;
     channelId: string;
@@ -1692,10 +1636,7 @@ export const pocketApi = {
     const serverId = String(params.serverId || '');
     const channelId = String(params.channelId || '');
     if (!/^\d+$/.test(serverId) || !/^\d+$/.test(channelId)) throw new Error('缺少有效的房间 ID');
-    // ⚠️ room/info 对「小房间」（yklzId）会返回 2002「最近30天内赠送过鸡腿礼物…可访问频道」——
-    // 这是小房间的准入门槛（pocketAccessMode），不是送礼接口挂了。送礼上下文的权威源是
-    // 成员「大房间」的 room/info（大房间始终可访问），因此传入 bigChannelId 时优先用它解析
-    // ownerId/权限；拿不到就回退直接拉 gift/list（不依赖 room/info），避免面板空列表。
+
     const infoChannelId = String(params.bigChannelId || '') || channelId;
     let info: WireRecord | null = null;
     let sendGiftOk = true;
@@ -1713,7 +1654,6 @@ export const pocketApi = {
         sendGiftOk = room?.content?.userFunction?.sendGift !== false;
       }
     } catch (e: unknown) {
-      // 大/小房间都拿不到 info（如 2002 准入门槛）→ 不阻断，走 gift/list 直拉
       if (!params.memberId) throw e;
       info = null;
     }
@@ -1801,12 +1741,6 @@ export const pocketApi = {
     };
   },
 
-  /**
-   * 房间送礼（协议按官方客户端实现 v2.14 sendMemberRoomGift）：
-   * - businessCode=5、businessId=serverId、sendToRoomId=channelId（房间场景固定）
-   * - 发送前二次校验：收礼成员未变化、礼物仍可用、价格未变、口袋礼物查库存 / 鸡腿查余额
-   * - 响应 content.giftNum 存在且 <1 → 官方未确认有效赠送（未扣款），按失败处理
-   */
   async sendMemberRoomGift(params: {
     serverId: string;
     channelId: string;
@@ -1818,8 +1752,6 @@ export const pocketApi = {
     bigChannelId?: string;
     memberId?: string;
   }) {
-    // 二次校验复用 openRoomGiftPanel 同一套上下文解析：小房间 room/info 2002（准入门槛）
-    // 时由 bigChannelId/memberId 兜底直拉 gift/list，避免发送前校验误报「房间信息已变化」
     const ctx = await this.getMemberRoomGiftContext({
       serverId: params.serverId,
       channelId: params.channelId,
@@ -1878,8 +1810,6 @@ export const pocketApi = {
       { fallback: '获取直播榜单失败' },
     );
   },
-
-  // --- v2.6 New APIs ---
 
   async getLiveResult(liveId: string) {
     return pocketPost(
@@ -2038,7 +1968,6 @@ export const pocketApi = {
     );
   },
 
-  /** 官方口袋消息气泡列表；bubbleId 与 IM/QChat 消息扩展中的字段一致 */
   async getRoomBubbles() {
     return pocketPost(
       `${BASE}/im/api/v1/room/bubbleList`,
@@ -2050,7 +1979,6 @@ export const pocketApi = {
     );
   },
 
-  /** 设置口袋官方消息气泡；VIP 权限由官方接口返回 */
   async setRoomBubble(bubbleId: string) {
     return pocketPost(
       `${BASE}/im/api/v1/room/chooseBubble`,
@@ -2062,21 +1990,12 @@ export const pocketApi = {
     );
   },
 
-  // --- 直播装扮（进场特效 / 弹幕气泡）：官方 `/live/*` 目录接口只接受 GET ---
-
-  /** 直播进场特效全量目录（含预览图 specialEffectsImgUrl + zip 资源） */
   async getLiveAllSpecialEffects() {
     return pocketGet(`${BASE}/live/api/v1/live/get/all/specialeffects`, {
       fallback: '获取直播进场特效失败',
     });
   },
 
-  /**
-   * 设置账号使用的直播进场特效。
-   * 写入格式：`{ operation: 1|0, specialEffectId }`；
-   * 关闭必须 operation=0 且带上原特效 id。id 走字符串：Long 超出 JS 安全整数范围，
-   * 转 Number 会改尾数导致「特效已过期」。
-   */
   async setLiveSpecialEffect(specialEffectsId: string, enabled = true) {
     return pocketPost(
       `${BASE}/live/api/v1/live/update/user/use/specialeffect`,
@@ -2088,14 +2007,12 @@ export const pocketApi = {
     );
   },
 
-  /** 直播弹幕气泡全量目录（含预览图 liveBubbleUrl） */
   async getLiveAllBubbles() {
     return pocketGet(`${BASE}/live/api/v1/live/get_live_all_bubble`, {
       fallback: '获取直播弹幕气泡失败',
     });
   },
 
-  /** 设置账号使用的直播弹幕气泡 */
   async setLiveBubble(bubbleId: string) {
     return pocketPost(
       `${BASE}/live/api/v1/live/edit_live_my_bubble`,
@@ -2126,8 +2043,6 @@ export const pocketApi = {
       { tokenRequired: false, fallback: '获取翻牌配置失败' },
     );
   },
-
-  // --- Invoice APIs ---
 
   async getInvoiceTips() {
     const res = await requestJson<ApiEnvelope>(`${BASE}/invoice/api/v1/invoice/tips`, {
@@ -2202,8 +2117,6 @@ export const pocketApi = {
     });
   },
 
-  // --- Meet48 APIs ---
-
   async getMeet48LiveList(params: { next?: number; record?: boolean } = {}) {
     const res = await requestJson<ApiEnvelope>(
       'https://meetapi-v2.meet48.xyz/meet48-api/live/api/v1/live/getLiveList',
@@ -2228,7 +2141,6 @@ export const pocketApi = {
     return assertPocketOk(res, 'Meet48 API 错误');
   },
 
-  /** 删除单条私信 */
   async deletePrivateMessage(msgId: string) {
     return pocketPost(
       `${BASE}/message/api/v1/user/message/delete/msg`,
@@ -2239,7 +2151,6 @@ export const pocketApi = {
     );
   },
 
-  /** 私信发送图片消息 */
   async sendPrivateImageMessage(
     targetUserId: string,
     image: {
@@ -2265,7 +2176,6 @@ export const pocketApi = {
     );
   },
 
-  /** 上传图片到口袋（私信图片等，fromType 为空） */
   async uploadPocketImage(params: {
     uri: string;
     fileName?: string;
@@ -2317,7 +2227,6 @@ export const pocketApi = {
     throw new Error(String(source.message || source.msg || `上传失败 HTTP ${response.status}`));
   },
 
-  /** 主页相册（图片动态，Android 头） */
   async getPostImageList(userId: string, nextId = 0, limit = 20) {
     return pocketPost(
       `${BASE}/posts/api/v1/posts/img/list`,
@@ -2330,7 +2239,6 @@ export const pocketApi = {
     );
   },
 
-  /** 主页视频（v2） */
   async getPostVideoList(userId: string, nextId = 0, limit = 20) {
     return pocketPost(
       `${BASE}/posts/api/v2/posts/video/list`,
@@ -2343,7 +2251,6 @@ export const pocketApi = {
     );
   },
 
-  /** 主页动态时间线 */
   async getPostTimelineHome(userId: string, nextId = 0, limit = 20) {
     return pocketPost(
       `${BASE}/posts/api/v1/posts/timeline/home`,
@@ -2356,7 +2263,6 @@ export const pocketApi = {
     );
   },
 
-  /** Seine 公演列表（ckg48 域名，iOS Seine 头） */
   async getSeinePerformanceList(groupId = 0, next = 0) {
     return requestJson<ApiEnvelope>(
       'https://snhapi-v1.ckg48.cn/home/api/seine/home/interaction/list',
@@ -2373,7 +2279,6 @@ export const pocketApi = {
     ).then((res) => assertPocketOk(res, '获取公演列表失败'));
   },
 
-  /** Seine 频道详情（serverId → 房间名映射） */
   async getSeineServerDetail(serverId: number) {
     return pocketPost(
       `${BASE}/im/api/seine/server/detail`,
@@ -2384,7 +2289,6 @@ export const pocketApi = {
     );
   },
 
-  /** 单成员最新消息（team/last/message，push 服务同款） */
   async getLastMessageByServerId(serverId: number) {
     return pocketPost(
       `${BASE}/im/api/v1/team/last/message/get`,
@@ -2395,7 +2299,6 @@ export const pocketApi = {
     );
   },
 
-  /** 社区动态（Area48 最新） */
   async getArea48Newest(nextId = 0) {
     return pocketPost(
       `${BASE}/posts/api/v1/area48/data/newest/new`,
@@ -2406,7 +2309,6 @@ export const pocketApi = {
     );
   },
 
-  /** 社区推荐 */
   async getArea48Recommend(nextId = 0) {
     return pocketPost(
       `${BASE}/posts/api/v1/area48/data/recommend/new`,
@@ -2417,7 +2319,6 @@ export const pocketApi = {
     );
   },
 
-  /** 帖子详情 */
   async getArea48PostDetails(postId: string) {
     return pocketPost(
       `${BASE}/posts/api/v1/posts/details`,
@@ -2430,7 +2331,6 @@ export const pocketApi = {
     );
   },
 
-  /** 帖子评论列表 */
   async getArea48Comments(resourceId: string, next = 0) {
     return pocketPost(
       `${BASE}/comment/api/v1/comment/level1/getCommentList`,
@@ -2444,7 +2344,6 @@ export const pocketApi = {
     );
   },
 
-  /** 发表评论 */
   async addArea48Comment(resourceId: string, commentMsg: string, commentUrl = '') {
     return pocketPost(
       `${BASE}/comment/api/v1/comment/addComment`,
@@ -2459,7 +2358,6 @@ export const pocketApi = {
     );
   },
 
-  /** 社区发帖 */
   async createArea48Post(params: {
     title?: string;
     content: string;
@@ -2479,7 +2377,6 @@ export const pocketApi = {
     );
   },
 
-  /** 屏蔽词列表（发言前过滤） */
   async getPocketMaskWords(clientTime = 0) {
     try {
       const res = await requestJson<ApiEnvelope>(
@@ -2497,8 +2394,6 @@ export const pocketApi = {
     }
   },
 
-  // --- Open Live Participants (web scraping) ---
-
   async getOpenLiveParticipants(liveId: string, _title = '', _dateHint = '') {
     const pageHeaders: HeadersMap = {
       'User-Agent':
@@ -2507,14 +2402,12 @@ export const pocketApi = {
     };
 
     try {
-      // Try the memberhot API first
       const livePageUrl = `https://live.48.cn/Index/inlive/id/${encodeURIComponent(liveId)}`;
       const html = await requestJson<string>(livePageUrl, {
         method: 'GET',
         headers: pageHeaders,
-      }); // Returns raw HTML as string
+      });
 
-      // Extract hidden input values
       const extractInput = (inputId: string) => {
         const pattern = new RegExp(
           `<input[^>]+id=["']${inputId}["'][^>]+value=["']([^"']*)["']`,
@@ -2567,12 +2460,9 @@ export const pocketApi = {
           if (participants.length) {
             return { success: true, content: { participants, source: 'memberhot' } };
           }
-        } catch {
-          // Fall through to HTML parsing
-        }
+        } catch {}
       }
 
-      // Fallback: extract names from HTML
       const nameMatches = String(html || '').matchAll(
         /<p class="listname">\s*([^<\r\n]+?)\s*(?:<em|<\/p>)/gi,
       );
@@ -2587,9 +2477,7 @@ export const pocketApi = {
       if (htmlParticipants.length) {
         return { success: true, content: { participants: htmlParticipants, source: 'html' } };
       }
-    } catch {
-      // All attempts failed
-    }
+    } catch {}
 
     return { success: false, msg: '未找到参与成员' };
   },

@@ -1,17 +1,17 @@
-/**
- * AppToast · iOS 26 顶部通知胶囊
- * - 顶部悬浮、自适应宽度，图标 + 单/双行正文
- * - 长消息自动延长停留时间，避免「还没看完就消失」
- * - 消息清空后立即卸载，避免 Toast 永远停留
- */
 import React, { useEffect, useRef } from 'react';
-import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { useUiStore } from '../store';
-import { usePalette, radiiAlias } from '../theme';
+import { usePalette } from '../theme';
 import { typography } from '../theme/typography';
-import { motion } from '../theme/motion';
 
 type ToastTone = 'success' | 'error' | 'info';
 
@@ -37,36 +37,41 @@ export default function AppToast() {
   const hideToast = useUiStore((state) => state.hideToast);
   const palette = usePalette();
   const insets = useSafeAreaInsets();
-  const ty = useRef(new Animated.Value(-14)).current;
-  const op = useRef(new Animated.Value(0)).current;
+  const ty = useSharedValue(-8);
+  const op = useSharedValue(0);
+  const seqRef = useRef(0);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: op.value,
+    transform: [{ translateY: ty.value }],
+  }));
 
   useEffect(() => {
-    if (!message) return;
-    // 每条新消息都从「上方 + 透明」重新入场；不要在 message 清空后保留组件，
-    // 否则退场动画的完成回调可能因原生节点已卸载而不触发，旧 Toast 会永久停留。
-    ty.setValue(-14);
-    op.setValue(0);
-    const enter = Animated.parallel([
-      Animated.spring(ty, { toValue: 0, ...motion.spring.bouncy, useNativeDriver: true }),
-      Animated.timing(op, { toValue: 1, duration: motion.duration.base, useNativeDriver: true }),
-    ]);
-    enter.start();
-    // 长消息（如成员库同步详情）按长度延长到最多 5 秒，短消息保持轻快。
-    const duration = Math.min(5000, Math.max(2400, 1600 + message.length * 28));
-    let exit: Animated.CompositeAnimation | null = null;
+    if (!message) {
+      ty.value = -8;
+      op.value = 0;
+      return;
+    }
+    const seq = ++seqRef.current;
+
+    ty.value = -8;
+    op.value = 0;
+    const enterEase = Easing.out(Easing.cubic);
+    ty.value = withTiming(0, { duration: 150, easing: enterEase });
+    op.value = withTiming(1, { duration: 150, easing: enterEase });
+
+    const duration = Math.min(5000, Math.max(2200, 1500 + message.length * 28));
     const timer = setTimeout(() => {
-      exit = Animated.parallel([
-        Animated.timing(op, { toValue: 0, duration: 180, useNativeDriver: true }),
-        Animated.timing(ty, { toValue: -8, duration: 180, useNativeDriver: true }),
-      ]);
-      exit.start(({ finished }) => {
-        if (finished) hideToast();
+      const exitEase = Easing.in(Easing.cubic);
+      ty.value = withTiming(-6, { duration: 140, easing: exitEase });
+      op.value = withTiming(0, { duration: 140, easing: exitEase }, (finished) => {
+        if (finished && seqRef.current === seq) {
+          runOnJS(hideToast)();
+        }
       });
     }, duration);
     return () => {
       clearTimeout(timer);
-      enter.stop();
-      exit?.stop();
     };
   }, [hideToast, message, op, ty]);
 
@@ -92,25 +97,23 @@ export default function AppToast() {
       style={[
         styles.outer,
         {
-          top: Math.max(insets.top, 14) + 6,
-          opacity: op,
-          transform: [{ translateY: ty }],
+          top: Math.max(insets.top, 8) + 8,
         },
+        animStyle,
       ]}
     >
-      <Animated.View
+      <View
         style={[
           styles.banner,
           {
-            backgroundColor:
-              palette.name === 'dark' ? 'rgba(38,38,43,0.94)' : 'rgba(255,255,255,0.95)',
-            borderColor: palette.hairline,
-            shadowColor: palette.name === 'dark' ? '#000000' : '#555560',
+            backgroundColor: palette.name === 'dark' ? '#24242A' : '#FFFFFF',
+            borderColor: palette.innerStroke,
+            shadowColor: palette.name === 'dark' ? '#000000' : '#404556',
           },
         ]}
       >
         <View style={[styles.iconWrap, { backgroundColor: toneSoft }]}>
-          <MaterialCommunityIcons name={iconName} size={18} color={toneColor} />
+          <MaterialCommunityIcons name={iconName} size={17} color={toneColor} />
         </View>
         <Text
           numberOfLines={2}
@@ -119,7 +122,7 @@ export default function AppToast() {
         >
           {message}
         </Text>
-      </Animated.View>
+      </View>
     </Animated.View>
   );
 }
@@ -133,35 +136,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   banner: {
-    width: '100%',
-    maxWidth: 560,
-    minHeight: 48,
+    alignSelf: 'center',
+    minWidth: 168,
+    maxWidth: 460,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: radiiAlias.card,
+    paddingLeft: 9,
+    paddingRight: 16,
+    paddingVertical: 7,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
     ...Platform.select({
       ios: {
         shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.16,
-        shadowRadius: 16,
+        shadowOpacity: 0.14,
+        shadowRadius: 14,
       },
       android: { elevation: 6 },
       default: null,
     }),
   },
   iconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   message: {
-    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
     fontWeight: '600',
     lineHeight: 18,

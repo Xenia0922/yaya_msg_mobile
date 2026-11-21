@@ -15,48 +15,46 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../i18n';
+import { fontFamily } from '../theme';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 export interface DanmakuListEntry {
   id: string;
-  /** 出现时间（秒）。录播 = 播放时间轴；直播无时间轴（传 0） */
+
   time: number;
-  /** 发送者昵称 */
+
   nick: string;
-  /** 正文 */
+
   text: string;
-  /** 类别（直播弹幕用：member/gift/enter/...），用于高亮与配色 */
+
   kind?: string;
-  /** 发送者口袋 userId（直播弹幕有；录播 LRC 无） */
+
   userId?: number | string;
-  /** 发送者头像（直播弹幕有；录播 LRC 无） */
+
   avatar?: string;
 }
 
 export interface DanmakuListSheetProps {
   visible: boolean;
   onClose: () => void;
-  /** 弹幕条目。录播请按时间升序传入；直播请按最新在前传入 */
+
   entries: DanmakuListEntry[];
-  /** 当前播放时间（秒）；直播不传 */
+
   currentTime?: number;
-  /** 点击条目跳转（秒）；直播不传 */
+
   onSeek?: (time: number) => void;
-  /** 直播模式：隐藏时间列与跟随，按实时列表展示 */
+
   live?: boolean;
-  /** 弹幕仍在加载 */
+
   loading?: boolean;
-  /** 面板标题（默认「弹幕列表」） */
+
   title?: string;
-  /** 点发送者昵称 → 打开个人资料（不传则退回「只看 TA」筛选行为） */
+
   onOpenProfile?: (entry: DanmakuListEntry) => void;
 }
 
-/**
- * 行最小高度（仅作为紧凑基线；实际行高随弹幕文本折行增长）。
- * 不使用 getItemLayout，避免长弹幕折行后固定行高与实际布局错位。
- */
 const ROW_H = 40;
-/** 发送者榜最多展示的发送者数 */
+
 const USER_TOP = 60;
 const FOLLOW_KEY = 'yaya_danmu_list_follow_v1';
 
@@ -69,7 +67,6 @@ function fmtTime(sec: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`;
 }
 
-/** 直播弹幕类别 → 强调色（成员/礼物/进场用主色与弱化色区分，普通观众保持白色） */
 function kindColor(kind: string | undefined): string | null {
   switch (kind) {
     case 'member':
@@ -126,7 +123,6 @@ export function DanmakuListSheet({
     });
   }, []);
 
-  // 关闭时清掉搜索与筛选，下次打开是干净态（筛选容易忘记自己开着 → 误以为弹幕丢了）
   useEffect(() => {
     if (!visible) {
       setQuery('');
@@ -172,7 +168,6 @@ export function DanmakuListSheet({
       .slice(0, USER_TOP);
   }, [entries, t]);
 
-  /** 当前播放位置对应的条目下标（仅录播；filtered 为升序，二分查找，长录播也不卡） */
   const activeIndex = useMemo(() => {
     if (live || !filtered.length) return -1;
     const target = currentTime + 0.05;
@@ -191,7 +186,6 @@ export function DanmakuListSheet({
     return idx;
   }, [filtered, currentTime, live]);
 
-  // 跟随播放：把当前条目滚到列表上方 1/3 处（提词器式，不做动画避免逐帧重排）
   useEffect(() => {
     if (!visible || !follow || activeIndex < 0) return;
     const list = listRef.current;
@@ -202,9 +196,7 @@ export function DanmakuListSheet({
         animated: false,
         viewPosition: 0,
       });
-    } catch {
-      /* 列表尚未渲染完成 */
-    }
+    } catch {}
   }, [activeIndex, follow, visible]);
 
   const jumpTo = useCallback(
@@ -221,7 +213,6 @@ export function DanmakuListSheet({
     setTab('list');
   }, []);
 
-  /** 面板高度拖拽（原生 PanResponder，避免引入 reanimated 依赖） */
   const dragStartRef = useRef(panelH);
   const pan = useMemo(
     () =>
@@ -262,8 +253,6 @@ export function DanmakuListSheet({
             <Text
               style={[styles.nick, accent ? { color: accent } : null]}
               onPress={(e) => {
-                // 点昵称：有 onOpenProfile → 打开个人资料；否则退回「只看 TA」筛选。
-                // 必须阻止冒泡，否则同一手势还会触发外层「跳转到该时间」
                 e?.stopPropagation?.();
                 if (!item.nick) return;
                 if (onOpenProfile) onOpenProfile(item);
@@ -296,7 +285,7 @@ export function DanmakuListSheet({
       <TouchableOpacity
         style={styles.row}
         activeOpacity={0.75}
-        // 整行 = 只看 TA（原行为）；右侧漏斗是显式入口，头像/昵称区在有 onOpenProfile 时改为看资料
+
         onPress={() => filterByUser(item.nick)}
       >
         <MaterialCommunityIcons
@@ -336,9 +325,17 @@ export function DanmakuListSheet({
     [filterByUser, onOpenProfile, t],
   );
 
+  const kbHeight = useKeyboardHeight(visible);
   const body = (
-    <View style={[styles.sheet, { height: panelH, paddingBottom: Math.max(insets.bottom, 8) }]}>
-      {/* 拖拽手柄 + 标题行 */}
+    <View
+      style={[
+        styles.sheet,
+        {
+          height: panelH,
+          paddingBottom: Math.max(insets.bottom, 8) + (kbHeight > 0 ? kbHeight : 0),
+        },
+      ]}
+    >
       <View {...pan.panHandlers} style={styles.handleArea}>
         <View style={styles.handle} />
       </View>
@@ -379,7 +376,6 @@ export function DanmakuListSheet({
         </TouchableOpacity>
       </View>
 
-      {/* 分段：弹幕 / 发送者（发送者榜点行即筛） */}
       <View style={styles.tabRow}>
         {(['list', 'users'] as const).map((key) => {
           const on = tab === key;
@@ -449,8 +445,6 @@ export function DanmakuListSheet({
             windowSize={9}
             keyboardShouldPersistTaps="handled"
             onScrollToIndexFailed={({ index, averageItemLength }) => {
-              // 动态行高下首次 scrollToIndex 可能尚未测量到目标项：先按平均值定位，
-              // 再在下一帧重试一次，避免「跟随」在长弹幕列表中失效。
               try {
                 listRef.current?.scrollToOffset({
                   offset: Math.max(0, index * (averageItemLength || ROW_H)),
@@ -467,7 +461,7 @@ export function DanmakuListSheet({
                 }, 80);
               } catch {}
             }}
-            // 手动滚动 = 用户在看历史 → 自动暂停跟随（再点「跟随」可恢复）
+
             onScrollBeginDrag={() => follow && toggleFollow()}
             ListEmptyComponent={
               <Text style={styles.empty}>
@@ -483,7 +477,10 @@ export function DanmakuListSheet({
           />
           <TouchableOpacity
             style={styles.scrollBottomBtn}
-            onPress={() => listRef.current?.scrollToEnd({ animated: true })}
+            onPress={() => {
+              if (live) listRef.current?.scrollToOffset({ offset: 0, animated: true });
+              else listRef.current?.scrollToEnd({ animated: true });
+            }}
             activeOpacity={0.85}
             accessibilityLabel={t('回到底部')}
           >
@@ -515,7 +512,6 @@ export function DanmakuListSheet({
       onRequestClose={onClose}
     >
       <View style={styles.root}>
-        {/* 点空白处关闭；面板自身是兄弟节点，不会误触关闭 */}
         <Pressable style={styles.backdrop} onPress={onClose} />
         {body}
       </View>
@@ -544,7 +540,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     overflow: 'hidden',
   },
-  // 手柄命中区做高一些（22px）：太窄会「拖不动面板」
+
   handleArea: { alignItems: 'center', justifyContent: 'center', height: 22 },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.35)' },
   headerRow: {
@@ -554,7 +550,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingBottom: 8,
   },
-  title: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.94)', flexShrink: 1 },
+  title: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.94)',
+    flexShrink: 1,
+  },
   total: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginLeft: 'auto' },
   followBtn: {
     flexDirection: 'row',
@@ -566,7 +568,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   followBtnOn: { backgroundColor: '#FF6FA5' },
-  followText: { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.75)' },
+  followText: {
+    fontSize: 10,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.75)',
+  },
   tabRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 8 },
   tab: {
     paddingHorizontal: 10,
@@ -575,7 +582,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
   tabOn: { backgroundColor: 'rgba(255,255,255,0.9)' },
-  tabText: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.75)' },
+  tabText: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.75)',
+  },
   tabTextOn: { color: '#111' },
   searchRow: {
     flexDirection: 'row',
@@ -587,7 +599,13 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
-  searchInput: { flex: 1, fontSize: 12, color: 'rgba(255,255,255,0.94)', padding: 0 },
+  searchInput: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    color: 'rgba(255,255,255,0.94)',
+    padding: 0,
+  },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -595,13 +613,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
   },
-  filterLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', flexShrink: 1 },
+  filterLabel: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    color: 'rgba(255,255,255,0.7)',
+    flexShrink: 1,
+  },
   filterClear: { fontSize: 11, fontWeight: '700', color: '#FF6FA5' },
   listContent: { paddingTop: 6, paddingBottom: 12 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    // 动态行高：长弹幕折行时行高自动增长，不再用固定 height 截断
+
     minHeight: ROW_H,
     paddingHorizontal: 14,
     paddingVertical: 4,
@@ -616,11 +639,23 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#FF6FA5',
   },
-  time: { fontSize: 11, color: 'rgba(255,255,255,0.45)', width: 52, fontVariant: ['tabular-nums'] },
+  time: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    color: 'rgba(255,255,255,0.45)',
+    width: 52,
+    fontVariant: ['tabular-nums'],
+  },
   rowText: { flex: 1, fontSize: 12.5, lineHeight: 18, color: 'rgba(255,255,255,0.92)' },
   nick: { fontWeight: '700', color: 'rgba(255,255,255,0.72)' },
   count: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
-  empty: { textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.5)', paddingVertical: 28 },
+  empty: {
+    textAlign: 'center',
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    color: 'rgba(255,255,255,0.5)',
+    paddingVertical: 28,
+  },
 });
 
 export default DanmakuListSheet;

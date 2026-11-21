@@ -1,8 +1,3 @@
-/**
- * 分享远程图片：先下载到本地缓存，再调系统分享面板。
- * 直接 Share.share({ url }) 在 Android 上只会把 URL 交给微信等应用，
- * 对方重新拉取时缺 Referer/UA 会「获取资源失败」→ 必须先落本地文件。
- */
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { USER_AGENT } from '../constants';

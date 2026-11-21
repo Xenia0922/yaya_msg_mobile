@@ -27,8 +27,6 @@ export interface DownloadItem {
 const STORAGE_KEY = 'yaya_download_items_v1';
 const DOWNLOAD_DIR = `${FileSystem.documentDirectory || ''}downloads/`;
 
-// 缓存上限：4GB LRU。
-// 超过后按「创建时间最早优先」淘汰已完成的下载文件，避免无限增长占满存储。
 const MAX_CACHE_BYTES = 4 * 1024 * 1024 * 1024;
 
 function sanitizeName(name: string) {
@@ -77,11 +75,6 @@ async function exportToPublicDownloads(localUri: string, name: string): Promise<
   return native.saveToDownloads(localUri, name, mimeTypeForDownload(name));
 }
 
-/**
- * 导出到系统下载目录是「锦上添花」：原生模块缺失（旧版 APK / 开发包）或写入失败时
- * 只记录 exportError，文件已经在应用目录里，下载本身仍算成功。
- * 此前直接 await，一次导出失败会把已完成的下载判成 failed。
- */
 async function tryExportToPublicDownloads(
   localUri: string,
   name: string,
@@ -122,19 +115,13 @@ export async function loadDownloadItems(): Promise<DownloadItem[]> {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    // 运行期读取必须原样返回：调用方包括进度刷新、配额清理和删除逻辑。
-    // 中断恢复只在启动时由 recoverInterruptedDownloads 执行一次，否则会把
-    // 其他仍在下载的任务改成 failed，随后被“清理完成”误删文件。
+
     return Array.isArray(parsed) ? (parsed as DownloadItem[]) : [];
   } catch {
     return [];
   }
 }
 
-/**
- * 写路径专用读取：记录损坏时必须显式失败，绝不能以 [] 作为写入基线。
- * 否则一次 JSON 损坏后的 updateItem/清理会把整张下载记录覆盖为空。
- */
 async function loadDownloadItemsForWrite(): Promise<DownloadItem[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
   if (!raw) return [];
@@ -150,10 +137,6 @@ async function loadDownloadItemsForWrite(): Promise<DownloadItem[]> {
 
 let recoveryPromise: Promise<void> | null = null;
 
-/**
- * 启动时恢复：下载执行器只存在于当前进程，重启后没有任务会继续这些状态，
- * 统一恢复为可重试失败项。重复调用无副作用。
- */
 export function recoverInterruptedDownloads(): Promise<void> {
   if (recoveryPromise) return recoveryPromise;
   recoveryPromise = withDownloadWrite(async () => {
@@ -181,10 +164,6 @@ export async function saveDownloadItems(items: DownloadItem[]) {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
-/**
- * 写盘串行链：updateItem / enqueue 都是「读整表 → 改 → 写整表」，
- * 两个下载同时进行时，各自的整表写会覆盖对方最新状态 → 进度丢失或回跳（修复）。
- */
 let downloadWriteChain: Promise<unknown> = Promise.resolve();
 function withDownloadWrite<T>(fn: () => Promise<T>): Promise<T> {
   const run = downloadWriteChain.then(fn);
@@ -195,7 +174,6 @@ function withDownloadWrite<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** 当前进程内真正在下载的任务；清理/配额/删除不得把它们当历史项。 */
 const activeDownloadIds = new Set<string>();
 const activeCancelHandlers = new Map<string, () => Promise<void> | void>();
 
@@ -221,8 +199,6 @@ export async function enqueueDownload(params: {
   const url = String(params.url || '').trim();
   if (!/^https?:\/\//i.test(url)) throw new Error('下载地址无效');
 
-  // HLS（m3u8）是分段索引，直接下载只会得到几 KB 的 playlist，
-  // 无法得到完整录播。明确报错，避免用户误以为下载成功。
   if (/\.m3u8(\?|$)/i.test(url)) {
     throw new Error('HLS 录播流（m3u8）暂不支持直接下载，请使用桌面工具或浏览器插件下载');
   }
@@ -244,14 +220,14 @@ export async function enqueueDownload(params: {
   await withDownloadWrite(async () => {
     const existing = await loadDownloadItemsForWrite();
     replaced = existing.filter((old) => old.url === url);
-    // 同 URL 重新入队前先取消仍在跑的旧任务，避免两个写入器抢同一个 localUri。
+
     for (const old of replaced) {
       const cancelOld = activeCancelHandlers.get(old.id);
       if (cancelOld) await cancelOld();
     }
     await saveDownloadItems([item, ...existing.filter((old) => old.url !== url)]);
   });
-  // 旧记录被替换后其 localUri/publicUri 不再被任何列表引用，必须同步删除，否则成为配额外的孤儿文件。
+
   await Promise.all(
     replaced.map(async (old) => {
       if (old.localUri)
@@ -267,9 +243,7 @@ export async function enqueueDownload(params: {
     cancelled = true;
     try {
       await resumable?.pauseAsync?.();
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   };
   activeCancelHandlers.set(item.id, cancel);
 
@@ -330,7 +304,7 @@ export async function enqueueDownload(params: {
       }
       const downloadedUri = result?.uri;
       const savedUri = downloadedUri || localUri;
-      // 图片只进系统相册（MediaLibrary），不再额外导出到 Downloads，否则一次下载会存两份
+
       const exported =
         item.type === 'image' ? {} : await tryExportToPublicDownloads(savedUri, item.name);
       const done = {
@@ -341,16 +315,14 @@ export async function enqueueDownload(params: {
         exportError: exported.exportError,
       };
       await updateItem(item.id, done);
-      // 下载完成后按额度淘汰最早的缓存（离线优先但不过度占存储）
+
       await enforceCacheQuota().catch(() => undefined);
 
-      // Auto-save to gallery so user can find it (图片/视频/录播均进系统相册)
       if (item.type === 'image' || item.type === 'video' || item.type === 'replay') {
         try {
           const { status } = await MediaLibrary.requestPermissionsAsync();
           if (status === 'granted') {
             await MediaLibrary.createAssetAsync(done.localUri || localUri);
-            // 不调用 createAlbumAsync：Android 会弹「允许修改此相片」，拒绝后资源已入库造成“拒绝仍保存”
           }
         } catch {}
       }
@@ -379,13 +351,11 @@ export async function enqueueDownload(params: {
     await updateItem(item.id, done);
     await enforceCacheQuota().catch(() => undefined);
 
-    // Auto-save to gallery so user can find it (图片/视频/录播均进系统相册)
     if (item.type === 'image' || item.type === 'video' || item.type === 'replay') {
       try {
         const { status } = await MediaLibrary.requestPermissionsAsync();
         if (status === 'granted') {
           await MediaLibrary.createAssetAsync(done.localUri || localUri);
-          // 不调用 createAlbumAsync：避免 Android「修改此相片」权限弹窗
         }
       } catch (e) {
         logError(e, 'downloads.saveToGallery');
@@ -443,16 +413,11 @@ export async function clearFinishedDownloads() {
   });
 }
 
-/**
- * 缓存额度淘汰（LRU by 创建时间）。
- * 在每次下载完成时调用：超出 MAX_CACHE_BYTES 后，从最早的「已完成」项开始删文件，直到回到额度内。
- */
 export async function enforceCacheQuota(maxBytes: number = MAX_CACHE_BYTES): Promise<void> {
   return withDownloadWrite(async () => {
     let items = await loadDownloadItemsForWrite();
     const done = items.filter((i) => i.status === 'done' && i.localUri);
-    // totalBytes 可能缺失（服务端无 Content-Length / fallback 路径下载），这类文件
-    // 之前永不参与淘汰。这里用实际文件大小兜底，确保 4GB 额度对全部完成项生效。
+
     const entries = (
       await Promise.all(
         done.map(async (i) => {
@@ -481,10 +446,6 @@ export async function enforceCacheQuota(maxBytes: number = MAX_CACHE_BYTES): Pro
   });
 }
 
-/**
- * 离线优先解析播放地址 —— 被动观看缓存与主动下载共用同一缓存。
- * 若该 url 已有「已完成」的本地下载且文件仍在，直接返回本地路径，省流量、可离线。
- */
 export async function resolvePlayableUri(url: string): Promise<string | null> {
   const target = String(url || '').trim();
   if (!/^https?:\/\//i.test(target)) return null;
@@ -514,13 +475,11 @@ export async function openDownloadItem(item: DownloadItem) {
   }
   let target: string | undefined = item.localUri || undefined;
 
-  // 离线兜底：本地文件若已被系统清理/丢失，优雅降级而非崩溃
   if (target) {
     const info = await FileSystem.getInfoAsync(target).catch(() => null);
     if (!info || !info.exists) target = undefined;
   }
   if (!target && /^https?:\/\//i.test(item.url || '')) {
-    // 缓存缺失时回退在线地址（忽略缓存错误，保证可播）
     target = item.url;
   }
   if (!target) {
@@ -528,12 +487,10 @@ export async function openDownloadItem(item: DownloadItem) {
     return;
   }
 
-  // For images/videos: save to device gallery then open
   if (item.type === 'image' || item.type === 'video') {
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
-        // Fall back to direct open
         if (Platform.OS === 'android' && target.startsWith('file://')) {
           try {
             const getContentUriAsync = (FileSystem as any).getContentUriAsync;
@@ -562,23 +519,20 @@ export async function openDownloadItem(item: DownloadItem) {
           .catch(() => {});
         if (opened) return;
       }
-      // Save to gallery (once; reuse galleryUri on subsequent opens to avoid duplicates)
+
       const asset = await MediaLibrary.createAssetAsync(target);
       if (asset) {
         const galleryUri = `content://media/external/file/${asset.id}`;
         void updateItem(item.id, { galleryUri } as Partial<DownloadItem>).catch(() => undefined);
-        // 不建相册：避免 Android「修改此相片」权限弹窗
+
         await Linking.openURL(galleryUri).catch(async () => {
           await Linking.openURL(target);
         });
         return;
       }
-    } catch {
-      // fall through
-    }
+    } catch {}
   }
 
-  // Generic file open
   if (target.startsWith('file://') && Platform.OS === 'android') {
     try {
       const getContentUriAsync = (FileSystem as any).getContentUriAsync;

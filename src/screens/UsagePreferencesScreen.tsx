@@ -1,13 +1,6 @@
-/**
- * SettingsScreen · 设置 v2.6 布局重做
- * - 全页 inset 分组：每个 Section 圆角 16 卡片，Section 内行式条目（28 圆角图标底 + 标题 15/600 + 右侧 chevron/状态文字）
- * - 关于区 hero 卡（logo 52 圆角 16 + 名称 + 版本 chip + 红点）
- * - 成员数据统计 2 列卡
- * - 区块直接显示，避免频繁切换时闪烁
- * 业务逻辑 / API / 数据流 / 路由 / i18n 原文一律不动，仅重组布局。
- */
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { GlassToggle } from '../components/GlassToggle';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -20,7 +13,7 @@ import { ScalePressable } from '../components/Motion';
 import RuntimeLogViewer from '../components/RuntimeLogViewer';
 import UpdateInstaller from '../components/UpdateInstaller';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { usePalette, getPageBackground } from '../theme';
+import { fontFamily, usePalette, getPageBackground } from '../theme';
 import { useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
 import { GlassSegmented, GlassSegmentedScroll } from '../components/GlassSegmented';
@@ -53,15 +46,8 @@ function Section({
           <Text style={[styles.sectionTitle, { color: palette.label }]}>{title}</Text>
         </View>
       ) : null}
-      {/*
-        ⚠️【描边修复】不要在这里再传 borderWidth / borderColor。
-        GlassSurface 内部已有一层随主题走的描边（MATERIAL.stroke：浅色 rgba(255,255,255,0.66)
-        / 深色 rgba(255,255,255,0.10)），且渲染在 children 之前；
-        外层再叠一道 palette.hairline 会形成「双层描边」——两条线错位、颜色互搏，
-        观感就是用户反馈的「描边没描好」（深浅色主题下都明显）。
-        玻璃的唯一出口是 GlassSurface，描边交给它统一出。
- */}
-      <GlassSurface radius={22} role="card" style={styles.section}>
+
+      <GlassSurface radius={22} role="card" frostedOnly style={styles.section}>
         {children}
       </GlassSurface>
     </View>
@@ -79,8 +65,7 @@ function ChipRow<T>({
 }) {
   const segs = options.map((o, i) => ({ key: String(i), label: o.label }));
   const idx = String(options.findIndex((o) => o.value === value));
-  // 选项多或标签长（如语言：跟随系统/简体中文/繁體中文/English/日本語/한국어）用可滚动版，
-  // 等分版会把文字压到看不清
+
   const needScroll = options.length > 4 || options.some((o) => o.label.length > 4);
   if (needScroll) {
     return (
@@ -89,6 +74,7 @@ function ChipRow<T>({
         value={idx}
         onChange={(k) => onChange(options[Number(k)].value)}
         height={34}
+        frostedOnly
       />
     );
   }
@@ -98,6 +84,7 @@ function ChipRow<T>({
       value={idx}
       onChange={(k) => onChange(options[Number(k)].value)}
       height={34}
+      frostedOnly
     />
   );
 }
@@ -115,7 +102,7 @@ export default function UsagePreferencesScreen() {
 
   const update = async (key: string, value: any, extra: any = {}) => {
     const patch: Record<string, any> = { [key]: value, ...extra };
-    // 失败回滚：setSettings 是局部覆盖，只需恢复本次 patch 涉及的旧值
+
     const previous: Record<string, any> = {};
     for (const k of Object.keys(patch)) previous[k] = (settings as any)[k];
     setSettings(patch);
@@ -128,14 +115,12 @@ export default function UsagePreferencesScreen() {
     }
   };
 
-  /** C4：设置页「首页模块」——按当前顺序列出全部模块（含已关闭项，便于排序） */
   const orderedHomeModules = orderHomeModules(settings.home_modules_order);
   const toggleHomeModule = (key: HomeModuleKey, visible: boolean) => {
     const cur = ((settings.home_modules_hidden || []) as string[]).filter((k) => k !== key);
     update('home_modules_hidden', (visible ? cur : [...cur, key]) as any);
   };
   const moveHomeModule = (key: HomeModuleKey, dir: -1 | 1) => {
-    // 先写入「当前 resolve 后的完整顺序」，再交换相邻项，避免空数组=默认顺序的语义歧义
     const keys = orderHomeModules(settings.home_modules_order).map((m) => m.key);
     const i = keys.indexOf(key);
     const j = i + dir;
@@ -191,6 +176,23 @@ export default function UsagePreferencesScreen() {
               />
               <Text style={[styles.inlineNote, { color: palette.labelTertiary }]}>
                 {t('关闭后首页不再拉取私信未读数，也不显示红点角标')}
+              </Text>
+            </View>
+            <View style={[styles.settingsDivider, { backgroundColor: palette.innerStroke }]} />
+            <View style={styles.innerPad}>
+              <Text style={[styles.rowLabel, { color: palette.labelSecondary }]}>
+                {t('房间列表显示消息时间')}
+              </Text>
+              <ChipRow
+                options={[
+                  { label: t('关'), value: false as any },
+                  { label: t('开'), value: true as any },
+                ]}
+                value={settings.yaya_room_list_time !== false}
+                onChange={(v) => update('yaya_room_list_time', v)}
+              />
+              <Text style={[styles.inlineNote, { color: palette.labelTertiary }]}>
+                {t('开启后在房间列表行尾展示大、小房间最新一条消息时间')}
               </Text>
             </View>
             <View style={[styles.settingsDivider, { backgroundColor: palette.innerStroke }]} />
@@ -262,13 +264,10 @@ export default function UsagePreferencesScreen() {
                           color={palette.labelSecondary}
                         />
                       </ScalePressable>
-                      <Switch
+                      <GlassToggle
                         value={visible}
                         onValueChange={(v) => toggleHomeModule(def.key, !!v)}
                         accessibilityLabel={t(def.titleKey)}
-                        trackColor={{ false: palette.fill3, true: palette.tint }}
-                        thumbColor="#FFFFFF"
-                        ios_backgroundColor={palette.fill3}
                       />
                     </View>
                   </View>
@@ -281,7 +280,14 @@ export default function UsagePreferencesScreen() {
                 accessibilityLabel={t('恢复默认顺序')}
                 style={{ marginTop: 10, alignSelf: 'flex-start', paddingVertical: 4 }}
               >
-                <Text style={{ color: palette.tint, fontSize: 12, fontWeight: '600' }}>
+                <Text
+                  style={{
+                    color: palette.tint,
+                    fontSize: 12,
+                    fontFamily: fontFamily.system,
+                    fontWeight: '600',
+                  }}
+                >
                   {t('恢复默认顺序')}
                 </Text>
               </TouchableOpacity>
@@ -338,18 +344,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
-  pageSub: { fontSize: 12, marginTop: 2, marginBottom: 2, paddingHorizontal: 4 },
-  // 描边由 GlassSurface 内部统一出（见 Section 注释），此处不再叠 borderWidth/borderColor
+  sectionTitle: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  pageSub: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    marginTop: 2,
+    marginBottom: 2,
+    paddingHorizontal: 4,
+  },
+
   section: { overflow: 'hidden' },
   innerPad: { padding: 16 },
-  rowLabel: { fontSize: 13, lineHeight: 19, marginBottom: 6, fontWeight: '600' },
+  rowLabel: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    lineHeight: 19,
+    marginBottom: 6,
+    fontWeight: '600',
+  },
   settingsDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 14 },
-  // 关于 hero
-  // 成员数据
-  inlineNote: { marginTop: 8, fontSize: 11, lineHeight: 16 },
-  // 首页模块（C4 优化）：一行 = 名称 + ↑↓ + Switch
+
+  inlineNote: { marginTop: 8, fontSize: 11, fontFamily: fontFamily.system, lineHeight: 16 },
+
   moduleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  moduleName: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: '600' },
+  moduleName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 14,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+  },
   moduleCtrl: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 });

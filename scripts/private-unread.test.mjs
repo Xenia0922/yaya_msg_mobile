@@ -11,9 +11,18 @@ const code = ts.transpileModule(source, {
 }).outputText;
 const module = { exports: {} };
 vm.runInNewContext(code, { module, exports: module.exports });
-const { privateUnreadCount } = module.exports;
+const { privateUnreadCount, sumPrivateConversationUnread } = module.exports;
 assert.equal(privateUnreadCount({ content: { noreadNum: 7 } }), 7);
 assert.equal(privateUnreadCount({ content: { unreadNum: '3' } }), 3);
+assert.equal(privateUnreadCount({ content: { userMessageNum: 4 } }), 4);
+assert.equal(
+  privateUnreadCount({ content: { userMessageList: [{ noreadNum: 2 }, { unreadNum: '3' }] } }),
+  5,
+);
+assert.equal(
+  sumPrivateConversationUnread([{ noreadNum: 1 }, { noreadNum: '2' }, { noreadNum: -1 }]),
+  3,
+);
 assert.equal(privateUnreadCount({ content: 0 }), 0);
 assert.equal(privateUnreadCount({ data: '5' }), 5);
 assert.equal(privateUnreadCount({ content: { messageNum: 9 } }), 9);

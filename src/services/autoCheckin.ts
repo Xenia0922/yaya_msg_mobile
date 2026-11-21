@@ -3,8 +3,6 @@ import { saveSettings } from './settings';
 import { useSettingsStore } from '../store';
 
 function todayKey() {
-  // 必须用本地时区日期而非 UTC（toISOString 在北京 00:00-08:00 会落到前一日，
-  // 导致凌晨打卡记错日期、8 点后 UTC 日期推进再次触发重复签到）。
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -12,7 +10,6 @@ function todayKey() {
   return `${y}-${m}-${day}`;
 }
 
-/** token 只用于区分账号；落盘的是不可逆指纹，绝不能把 token 片段写进设置 JSON。 */
 function tokenFingerprint(token: string): string {
   let hash = 2166136261;
   for (let i = 0; i < token.length; i += 1) {

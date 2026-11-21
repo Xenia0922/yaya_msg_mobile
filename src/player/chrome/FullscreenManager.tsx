@@ -1,14 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { BackHandler } from 'react-native';
+import { AppState, BackHandler } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { usePlayerStore } from '../store/playerStore';
 import { setLiveImmersiveMode } from '../../native/LivePlayer';
 import { setPipPlaying } from '../../utils/pip';
 
-/**
- * 唯一全屏/横屏/沉浸/PiP 管理器（重写核心）：
- * 替代现状 MediaScreen/BilibiliLiveScreen/FollowedRoomsScreen 三套独立实现。
- */
 let nextPipSource = 0;
 
 export function FullscreenManager() {
@@ -19,7 +15,6 @@ export function FullscreenManager() {
   const state = usePlayerStore((s) => s.state);
   const source = usePlayerStore((s) => s.source);
 
-  // 全屏 ↔ 横屏 ↔ 沉浸式
   useEffect(() => {
     if (fullscreen) {
       setLiveImmersiveMode(true);
@@ -29,34 +24,32 @@ export function FullscreenManager() {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
     return () => {
-      // 卸载/关闭播放器时兜底恢复竖屏锁定：否则页面关闭后设备仍停留在横屏。
       setLiveImmersiveMode(false);
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
   }, [fullscreen]);
 
-  // PiP 标志：播放中（含全屏）即可在切后台时进系统悬浮窗。
-  // 统一写点：所有视频（原生/Exo/网页内核）的 PiP 身份都从这里下发；
-  // 页面的私有播放器/小窗各自经 setPipPlaying 覆写此标志（播放确立时由 PlayerCore 事件驱动）。
-  //
-  // ⚠️ 原条件带 `&& !fullscreen` → 用户全屏看直播/录播时按 Home，videoPlaying 恒 false，
-  // MainActivity.onUserLeaveHint 直接 return，**永远换不出系统小窗**（反馈）。
-  // Manifest 已声明 keyboad|orientation|screenSize|screenLayout 的 configChanges，
-  // 进 PiP 不会重建 Activity，横屏状态可保留；PiP 窗口比例由 setPipAspect 控制。
   useEffect(() => {
-    // 录播缓冲/暂停时也保留 PiP 身份：VOD 的 state 在起播前后可能短暂为 loading，
-    // 若只在 playing 时置 true，按 Home 的瞬间刚好处在 loading/暂停态就不会弹系统小窗。
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') return;
+      const s = usePlayerStore.getState();
+      if (!s.source) return;
+      if (s.fullscreen) {
+        setLiveImmersiveMode(true);
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
     const vodActive = source?.kind === 'vod' && (state === 'loading' || state === 'paused');
     const on = !!source?.url && (state === 'playing' || vodActive);
     setPipPlaying(on, pipSource);
-    // 视频（非音乐）成为前台媒体时，若音乐服务只是"暂停残留"，可留待原生 PiP 入口统一清理
   }, [source, state, pipSource]);
 
-  // 卸载（播放器关闭）兜底复位：防"最后置位 true 后页面已关，再按 Home 误进无内容悬浮窗"
   useEffect(() => () => setPipPlaying(false, pipSource), [pipSource]);
 
-  // 返回键：先退全屏，再关闭播放器（R4：优先调页面 onClose 清理播放器页状态，
-  // 避免 VideoLibrary/Bilibili 等"黑屏需按两次返回"）
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       const s = usePlayerStore.getState();
@@ -83,7 +76,6 @@ export function FullscreenManager() {
   return null;
 }
 
-/** 时间格式化 mm:ss / h:mm:ss */
 export function formatPlayTime(t: number): string {
   const sec = Math.max(0, Math.floor(t || 0));
   const h = Math.floor(sec / 3600);

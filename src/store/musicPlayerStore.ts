@@ -2,20 +2,13 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/**
- * 写节流包装：音乐 store 的 position 在 onProgress 下每 ~250ms 更新一次，
- * zustand persist 默认每次 set 都全量序列化（含整个 queue）写入 AsyncStorage——
- * 高频大写入伤 IO 与存储寿命。这里按 key 节流（12s trailing 合并），
- * 读取/删除不受影响；App 被杀时最多丢最近 12s 的进度（短播+杀进程不丢位置，防点回重头）。
- * 暂停/切歌/失活时另显式 flush（flushMusicPlayerStorage）。
- */
 function createThrottleStorage(
   storage: {
     getItem: (name: string) => Promise<string | null>;
     setItem: (name: string, value: string) => Promise<void>;
     removeItem: (name: string) => Promise<void>;
   },
-  ms = 12000,
+  ms = 2500,
 ) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const pending = new Map<string, string>();
@@ -54,11 +47,11 @@ function createThrottleStorage(
       }
       return storage.removeItem(name);
     },
-    // A: 切后台/杀进程前强制落盘（否则 30s 节流窗口内的切歌/进度丢失 →「记忆记不住」）
+
     flushAll,
   };
 }
-// A: 供 App 层在切后台时调用（throttle 拦截了 zustand persist.flush，需直通底层）
+
 export function flushMusicPlayerStorage() {
   throttleFlushRef?.();
 }
@@ -67,10 +60,6 @@ let throttleFlushRef: (() => void) | null = null;
 export type PlayMode = 'sequential' | 'random' | 'single';
 export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
-/**
- * 精简后的曲目接口：不再包含 [key: string]: any。
- * 封面由 CoverArt 内部自决 raw 字段（coverUrl / cover / thumbPath），store 不参与拼 URL。
- */
 export interface Track {
   musicId?: string;
   id?: string;
@@ -85,7 +74,7 @@ export interface Track {
   thumbPath?: string;
   groupLabel?: string;
   mp3?: string;
-  /** 其他字段（音轨/时长等）通过此兜底保留但不用 any 污染索引 */
+
   extra?: Record<string, unknown>;
 }
 
@@ -95,42 +84,35 @@ export interface LyricLine {
 }
 
 interface MusicPlayerState {
-  // Track list
   queue: Track[];
   currentIndex: number;
-  // Playback
+
   playbackState: PlaybackState;
   playMode: PlayMode;
-  // Timing
+
   url: string;
   duration: number;
   position: number;
-  // Lyrics
+
   lyrics: LyricLine[];
-  // Error
+
   error: string | null;
-  // Favorites (persisted)
+
   favorites: string[];
-  /**
-   * Seek 指令：组件写，Video onLoad / effect 检测后执行 seek 并清零。
-   * 不持久化（持久化 seek 位置通过 position 字段实现）。
-   */
+
   seekTarget: number;
+  seekPending: boolean;
+  seekTargetGuard: number;
   seekNonce: number;
-  /**
-   * seek 粘滞守卫（根因修复「进度条回弹」）：
-   * seek 发出瞬间记住「旧位置」与时间戳；守卫窗口内，若播放器仍在上报旧位置
-   * （离目标比出发时更远），就丢弃该上报——否则进度条会先跳到目标、再被旧值拽回去。
-   */
+
   seekFrom: number;
   seekIssuedAt: number;
 
-  // Actions
   setQueue: (tracks: Track[]) => void;
   addToQueue: (track: Track) => void;
   removeFromQueue: (id: string) => void;
   clearQueue: () => void;
-  /** 载入曲目到队列并置为 loading 态（不自动播放）。URL 由 MusicEngine 异步解析后 setUrl。 */
+
   play: (track: Track, queue?: Track[], keepPosition?: boolean) => void;
   setUrl: (url: string) => void;
   setPlaybackState: (state: PlaybackState) => void;
@@ -141,21 +123,17 @@ interface MusicPlayerState {
   setError: (e: string | null) => void;
   setSeekTarget: (t: number) => void;
   consumeSeekTarget: () => void;
+  refreshSeekGuard: () => void;
   isFavorite: (id: string, track?: any) => boolean;
   toggleFavorite: (id: string, track?: any) => void;
   next: () => Track | null;
   prev: () => Track | null;
 }
 
-/**
- * 收藏键历史：曾用 musicId / title|artist / title|artist|album（版本级）。
- * 现收藏单位 = title|artist|album（搜到哪版收哪版）；旧键由 toggleFavorite 渐进升级/兼容。
- */
 function nextIndex(current: number, length: number, mode: PlayMode): number {
   if (length === 0) return -1;
   if (mode === 'single') return current;
   if (mode === 'random') {
-    // 随机模式排除当前曲（否则可能"切到同一首"，用户以为没切歌）
     if (length <= 1) return current;
     let n = Math.floor(Math.random() * (length - 1));
     if (n >= current) n += 1;
@@ -178,6 +156,8 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
       error: null,
       favorites: [],
       seekTarget: 0,
+      seekPending: false,
+      seekTargetGuard: 0,
       seekNonce: 0,
       seekFrom: 0,
       seekIssuedAt: 0,
@@ -202,19 +182,21 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
           return { queue: newQueue, currentIndex: newIdx };
         }),
 
-      clearQueue: () => set({ queue: [], currentIndex: -1 }),
+      clearQueue: () => {
+        set({
+          queue: [],
+          currentIndex: -1,
+          position: 0,
+          duration: 0,
+          seekTarget: 0,
+          seekPending: false,
+          seekTargetGuard: 0,
+          seekIssuedAt: 0,
+        });
+        flushMusicPlayerStorage();
+      },
 
-      /**
-       * 载入曲目到队列并置为 loading 态，但暂不写新 url —— url 由 MusicEngine 异步解析后
-       * 通过 setUrl 单独写入。B2 修复：**保留旧 url**（不置空），Video 常驻下始终有合法 source，
-       * 消除「url:'' → 新 url」空源翻转导致的偶发 onError/黑屏/误触发跳歌。
-       * loading 态 paused=true，旧画面/旧音不发声，解析完成后 setUrl 切换。
-       *
-       * keepPosition=true（主页「继续播放」/ 记忆恢复）：保留当前 position 并把其转成
-       * seekTarget，等 Video onLoad 就绪后 seek 回去 —— 否则 play 会把进度清零，
-       * 播放记忆形同虚设。
-       */
-      play: (track, queue, keepPosition = false) =>
+      play: (track, queue, keepPosition = false) => {
         set((s) => {
           const q = queue || s.queue;
           const idx = q.findIndex(
@@ -226,61 +208,66 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
             queue: q,
             currentIndex: idx >= 0 ? idx : 0,
             playbackState: 'loading',
-            url: s.url, // B2：保留旧 url（不置空），消除空 source 翻转
+            url: s.url,
             duration: resumePos > 0 ? s.duration : 0,
             position: resumePos,
             lyrics: [],
             error: null,
             seekTarget: resumePos,
+            seekPending: resumePos > 0,
+            seekTargetGuard: resumePos,
             seekNonce: resumePos > 0 ? s.seekNonce + 1 : s.seekNonce,
             seekFrom: s.position,
             seekIssuedAt: resumePos > 0 ? Date.now() : 0,
           };
-        }),
+        });
+        flushMusicPlayerStorage();
+      },
 
-      setUrl: (url) => set({ url }),
+      setUrl: (url) =>
+        set((s) => ({
+          url,
+          ...(s.seekPending && s.seekTarget > 0
+            ? { seekIssuedAt: Date.now(), seekTargetGuard: s.seekTarget, seekFrom: s.position }
+            : null),
+        })),
 
       setPlaybackState: (playbackState) => {
-        set({ playbackState });
-        // 暂停/停止立即落盘：进程被杀时进度不丢（防「点回软件被重头加载」）
+        set((s) => ({
+          playbackState,
+          ...(playbackState === 'playing' && s.seekPending && s.seekTarget > 0
+            ? { seekIssuedAt: Date.now(), seekTargetGuard: s.seekTarget, seekFrom: s.position }
+            : null),
+        }));
+
         if (playbackState === 'paused' || playbackState === 'idle') flushMusicPlayerStorage();
       },
 
       setMode: (playMode) => set({ playMode }),
 
-      // 只存当前曲时长（进度条用）；不再维护 durations 映射（列表已不显示时长）。
-      // 心跳每 0.5s 报一次相同时长——值没变就不写 store，避免无谓重渲染与持久化序列化。
       setDuration: (duration) => {
         if (Math.abs(Number(get().duration) - Number(duration)) < 0.5) return;
         set({ duration });
       },
 
-      /**
-       * 位置上报唯一入口（原生 onProgress / Exo 回调都走这里）。
-       *
-       * seek 粘滞守卫：seek 发出后的守卫窗口内，只接受「离目标不比出发时更远」的上报；
-       * 播放器还没真正跳过去时上报的旧位置一律丢弃 —— 这才是「进度条回弹」的根因修复，
-       * 上层不需要再写 heldRatio 之类的补丁（补丁会在超时后照样弹一次）。
-       */
       setPosition: (position) => {
         const s = get();
         if (!Number.isFinite(position) || position < 0 || position === s.position) return;
-        const GUARD_MS = 1500;
-        const seekPending = s.seekIssuedAt > 0 && Date.now() - s.seekIssuedAt < GUARD_MS;
-        if (seekPending) {
-          const dNow = Math.abs(position - s.seekTarget);
-          const dFrom = Math.abs(s.seekFrom - s.seekTarget) + 0.3;
-          if (dNow > dFrom) return; // 旧位置（还没跳到目标）→ 丢弃，防回弹
-          // ⚠️ seek 窗口内必须直接放行（含向后 seek）。
-          // 此前落到下面的「回退守卫」：s.position 仍是 seek 前的旧值，新位置更小 → 被当陈旧帧丢掉，
-          // 表现为「点了/拖了进度，音乐跳了但进度条和歌词定在原地，等播放追上旧位置才恢复」。
-          set({ position });
+        const GUARD_MS = 3000;
+        const guardActive =
+          s.seekPending || (s.seekIssuedAt > 0 && Date.now() - s.seekIssuedAt < GUARD_MS);
+        if (guardActive) {
+          const target = s.seekTargetGuard;
+          const dNow = Math.abs(position - target);
+          const dFrom = Math.abs(s.seekFrom - target) + 0.3;
+          if (dNow > dFrom) return;
+          set({
+            position,
+            ...(!s.seekPending && dNow <= 1.2 ? { seekIssuedAt: 0 } : null),
+          });
           return;
         }
-        // 无 seek 时的回退守卫：
-        // 每次进音乐页/进度条重新挂载，原生或 JS 播放器会先推一帧 0 或早期帧，
-        // 进度条就会「先缩到 0.00 → 再跳到当前 → 附近抖动」。非 seek 场景下
-        // 进度倒退超过 3s 一律视为陈旧帧丢弃；真正的后退都走 setSeekTarget。
+
         const naturalSingleLoop =
           s.playMode === 'single' &&
           s.duration > 0 &&
@@ -300,30 +287,35 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
 
       setError: (error) => set({ error, playbackState: error ? 'error' : 'idle' }),
 
-      /** 下发 seek 指令，并记录「出发位置 + 时间戳」给 setPosition 的粘滞守卫用 */
-      setSeekTarget: (seekTarget) =>
+      setSeekTarget: (seekTarget) => {
+        const prevState = get().playbackState;
         set((s) => ({
           seekTarget,
+          seekPending: true,
+          seekTargetGuard: seekTarget,
           seekNonce: s.seekNonce + 1,
           seekFrom: s.position,
           seekIssuedAt: Date.now(),
-          // 乐观跳转：进度条/歌词立即到目标位，原生心跳到达后自然校准。
-          // 只在 target > 0 时写（消费完毕会把 seekTarget 清 0，不能把 position 也清掉）。
-          position: seekTarget >= 0 ? seekTarget : s.position,
-        })),
-      consumeSeekTarget: () => set({ seekTarget: 0 }),
 
-      /**
-       * B7 收藏键归一：收藏统一存 `title|artist` 键（旧数据仍为 musicId，双兼容）——
-       * 官方曲（数字 musicId）与 R2 曲（R2- 前缀）同一首歌共享同一收藏，换源不再"丢收藏"。
-       */
+          position: seekTarget >= 0 ? seekTarget : s.position,
+        }));
+        if (prevState !== 'playing') flushMusicPlayerStorage();
+      },
+
+      consumeSeekTarget: () => set({ seekTarget: 0, seekPending: false }),
+      refreshSeekGuard: () =>
+        set((s) =>
+          s.seekPending && s.seekTarget > 0
+            ? { seekIssuedAt: Date.now(), seekTargetGuard: s.seekTarget, seekFrom: s.position }
+            : s,
+        ),
+
       isFavorite: (id, track) => {
         const f = get().favorites;
-        if (f.includes(id)) return true; // 旧 musicId 键兼容
-        // 传入 track 优先（列表/播放器持有 item——queue 空时列表收藏判断曾全失）
+        if (f.includes(id)) return true;
+
         const t = track || get().queue.find((x) => String(x.musicId || x.id) === String(id));
         if (t) {
-          // 收藏精度 = 版本（title|artist|album）：搜到哪版收哪版；兼容旧整歌键(两段)
           const k2 = `${String(t.title || '').trim()}|${String(t.artist || '').trim()}`.trim();
           const k3 = `${k2}|${String(t.album || '').trim()}`.trim();
           if (k3 !== '||' && f.includes(k3)) return true;
@@ -343,18 +335,16 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
             const hasK2 = k2 !== '|' && s.favorites.includes(k2);
             const hasId = s.favorites.includes(id);
             if (hasK3) {
-              // 取消收藏：只取消当前精确版本
               return { favorites: s.favorites.filter((f) => f !== k3) };
             }
             if (hasId || hasK2) {
-              // 旧整歌/musicId 收藏 → 升级为「当前版本」精确收藏（remove 旧键 + add 版本键）
               const rest = s.favorites.filter((f) => f !== id && f !== k2);
               return { favorites: [...rest, k3 !== '||' ? k3 : id] };
             }
-            // 新收藏：精确版本
+
             return { favorites: [...s.favorites, k3 !== '||' ? k3 : k2 !== '|' ? k2 : id] };
           }
-          // 无 track：按原 id/键切换
+
           if (s.favorites.includes(id)) return { favorites: s.favorites.filter((f) => f !== id) };
           return { favorites: [...s.favorites, id] };
         }),
@@ -370,7 +360,11 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
           lyrics: [],
           error: null,
           seekTarget: 0,
+          seekPending: false,
+          seekTargetGuard: 0,
+          seekIssuedAt: 0,
         });
+        flushMusicPlayerStorage();
         return s.queue[idx] || null;
       },
 
@@ -385,7 +379,11 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
           lyrics: [],
           error: null,
           seekTarget: 0,
+          seekPending: false,
+          seekTargetGuard: 0,
+          seekIssuedAt: 0,
         });
+        flushMusicPlayerStorage();
         return s.queue[idx] || null;
       },
     }),
@@ -406,13 +404,27 @@ export const useMusicPlayerStore = create<MusicPlayerState>()(
         duration: s.duration,
       }),
       onRehydrateStorage: () => (state) => {
-        // 收藏键不再自动归并（保留版本信息；旧 title|artist 键由 toggle 渐进升级为版本键）
         if (state && state.currentIndex >= 0 && state.queue.length > 0) {
-          // 续播：把持久化的 position 转成 seekTarget，等 Video onLoad 就绪后 seek 回去。
-          // （此前 position 只写不读，重启后进度记忆形同虚设，音频永远从 0 开始）
-          const pos = state.position || 0;
-          useMusicPlayerStore.setState({ playbackState: 'paused' });
-          if (pos > 0) state.setSeekTarget(pos);
+          const pos = Number(state.position) || 0;
+          useMusicPlayerStore.setState({
+            playbackState: 'paused',
+            ...(pos > 0
+              ? {
+                  position: pos,
+                  seekTarget: pos,
+                  seekPending: true,
+                  seekTargetGuard: pos,
+                  seekNonce: 1,
+                  seekFrom: pos,
+                  seekIssuedAt: Date.now(),
+                }
+              : {
+                  seekTarget: 0,
+                  seekPending: false,
+                  seekTargetGuard: 0,
+                  seekIssuedAt: 0,
+                }),
+          });
         }
       },
     },

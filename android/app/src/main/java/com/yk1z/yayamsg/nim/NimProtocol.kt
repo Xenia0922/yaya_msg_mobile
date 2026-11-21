@@ -1,47 +1,27 @@
 package com.yk1z.yayamsg.nim
 
 import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.Inflater
 import javax.crypto.Cipher
+import org.json.JSONObject
 
-/**
- * 云信「commonlink」协议编解码（移植自桌面版 yk1z/yaya_msg 的
- * `src/common/nim-commonlink-chatroom.js`，字段/顺序保持一致）。
- *
- * 为什么要自己实现协议，而不是用官方 SDK：
- *   官方 Native/Web SDK 都会把「客户端标识」带上，口袋48 的 appKey 在服务端做了白名单校验，
- *   非官方包名一律 414/403；而这条协议里**包名字段（属性 25）是我们自己填的**，
- *   填白名单内的包名即可通过（桌面版就是这么做的）。
- *
- * 帧格式：varint(5 + bodyLen) | serviceId(1) | commandId(1) | serial(LE16) | tag(1) | body
- *   - tag & 2 → body 前 2 字节是 resultCode(LE16)
- *   - tag & 1 → body 前 4 字节是解压后长度(LE32)，其余是 zlib 压缩体
- * 属性表：varint(count) + 每项 {varint(key), varint(len) + bytes}
- */
 object NimProtocol {
 
-  /**
-   * SDK 版本（数字 + 人类可读 + UA）——这三个必须**成对同步**：
-   * 桌面版是 91701 / 9.17.1 / Native/9.17.1.13231，Go bot（更新、实测可用）是
-   * 92110 / 9.21.10 / Native/9.21.10.14184，这里统一取后者。
-   * （曾出现 6=92110 但 40="8.0.0"、42="Native/9.17.1.13231" 的混搭，服务端做客户端风控时是明显异常特征。）
-   */
   const val ANDROID_SDK_VERSION = 92110
   const val ANDROID_SDK_HUMAN_VERSION = "9.21.10"
   const val ANDROID_USER_AGENT = "Native/9.21.10.14184"
-  /**
-   * 聊天室登录属性 4 的固定值 —— 官方 / 桌面 / Go bot 三家都写 "8.0.0"，
-   * 与 SDK 版本无关，**不要**和 ANDROID_SDK_HUMAN_VERSION 混用。
-   */
+
   const val APP_VERSION_FIELD = "8.0.0"
   const val ANDROID_PACKAGE_NAME = "com.seine48.app"
 
   private const val RSA_KEY_VERSION = 0
 
-  /** 云信内置 RSA 公钥（桌面版里同一份，PKCS1 分块 117 字节） */
   private const val RSA_PUBLIC_KEY_B64 =
     "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCBxLuL8+xpQSddSnSvPkvNOHdcr5Euqw+kkOSzO/buDMheCfFILRC/v5+nv8BsL7/YZWVpDA8sIBTxfNRqSCu0uLjlbJqT/sMnPT1xxdQrkb1HSnuSyTbZbqaInQ13tBE2SfcAhsQZJJ1hKQSE2QyKOMxQPhP583qcsIhDbdExvwIDAQAB"
 
@@ -49,8 +29,6 @@ object NimProtocol {
     val der = android.util.Base64.decode(RSA_PUBLIC_KEY_B64, android.util.Base64.DEFAULT)
     KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(der))
   }
-
-  // ---------------- varint ----------------
 
   fun encodeVarint(value: Long): ByteArray {
     var v = value
@@ -76,7 +54,7 @@ object NimProtocol {
       val byte = buffer[index].toInt() and 0xff
       value = value or ((byte and 0x7f).toLong() shl shift)
       if ((byte and 0x80) == 0) {
-        // 5 字节最多 35 位；超过 Int.MAX_VALUE 视为畸形，避免溢出成负数
+
         if (value > Int.MAX_VALUE.toLong()) return null
         return Varint(value.toInt(), index - offset + 1)
       }
@@ -91,7 +69,6 @@ object NimProtocol {
 
   fun encodeBytes(value: String): ByteArray = encodeBytes(value.toByteArray(Charsets.UTF_8))
 
-  /** 属性表编码：数字 key 升序，值统一按 UTF-8 字符串写（与桌面版一致） */
   fun encodeProperties(input: Map<Int, Any?>): ByteArray {
     val entries = input.entries
       .filter { it.value != null && it.value.toString().isNotEmpty() }
@@ -105,7 +82,6 @@ object NimProtocol {
     return out.toByteArray()
   }
 
-  /** 通道（心跳/ack）用的重载：值是原始字节 */
   fun encodePropertyBytes(input: Map<Int, ByteArray?>): ByteArray {
     val entries = input.entries.filter { it.value != null }.sortedBy { it.key }
     val out = ByteArrayOutputStream()
@@ -128,15 +104,13 @@ object NimProtocol {
       offset += key.size
       val len = readVarint(buffer, offset, buffer.size) ?: break
       offset += len.size
-      // 长度必须非负且不能越界（旧实现负数长度会抛 StringIndexOutOfBounds）
+
       if (len.value < 0 || len.value > buffer.size || offset > buffer.size - len.value) break
       properties[key.value] = String(buffer, offset, len.value, Charsets.UTF_8)
       offset += len.value
     }
     return properties
   }
-
-  // ---------------- 包 ----------------
 
   fun makePacket(serviceId: Int, commandId: Int, serial: Int, body: ByteArray = ByteArray(0), tag: Int = 0): ByteArray {
     val header = ByteArray(5)
@@ -155,11 +129,10 @@ object NimProtocol {
     val serial: Int,
     val resultCode: Int,
     val body: ByteArray,
-    /** 整包长度（含 varint 头），用于流式拆包 */
+
     val frameSize: Int,
   )
 
-  /** 从缓冲区头部解一个包；不足一包或非法时返回 null */
   fun decodePacket(raw: ByteArray, embedded: Boolean = false): Packet? {
     val frameLength = readVarint(raw, 0, raw.size) ?: return null
     if (frameLength.value < 0) return null
@@ -213,7 +186,7 @@ object NimProtocol {
         if (n <= 0 && inflater.needsInput()) break
         if (n > 0) {
           total += n
-          if (total > maxOutput) return null // 防御 zip bomb / 畸形包
+          if (total > maxOutput) return null
           out.write(chunk, 0, n)
         }
       }
@@ -225,9 +198,6 @@ object NimProtocol {
     }
   }
 
-  // ---------------- 握手加密 ----------------
-
-  /** RC4 流（收发各一个实例，密钥相同） */
   class Rc4Stream(key: ByteArray) {
     private val state = IntArray(256) { it }
     private var x = 0
@@ -254,7 +224,6 @@ object NimProtocol {
     }
   }
 
-  /** RSA/PKCS1 分块加密（117 字节/块，与桌面版一致） */
   fun encryptHandshakePayload(payload: ByteArray): ByteArray {
     val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
     cipher.init(Cipher.ENCRYPT_MODE, publicKey)
@@ -290,5 +259,73 @@ object NimProtocol {
       offset += chunk.size
     }
     return out
+  }
+
+  private val dohCache = ConcurrentHashMap<String, Pair<String, Long>>()
+  private const val DOH_TTL_MS = 5 * 60_000L
+
+  fun isSyntheticOrBogonIpv4(ip: String): Boolean {
+    val parts = ip.trim().split('.')
+    if (parts.size != 4) return false
+    val a = parts[0].toIntOrNull() ?: return false
+    val b = parts[1].toIntOrNull() ?: return false
+    val c = parts[2].toIntOrNull() ?: return false
+    val d = parts[3].toIntOrNull() ?: return false
+    if (a !in 0..255 || b !in 0..255 || c !in 0..255 || d !in 0..255) return false
+    return a == 0 ||
+      a == 10 ||
+      a == 28 ||
+      a == 127 ||
+      (a == 100 && b in 64..127) ||
+      (a == 169 && b == 254) ||
+      (a == 172 && b in 16..31) ||
+      (a == 192 && b == 168) ||
+      (a == 198 && (b == 18 || b == 19)) ||
+      a >= 224
+  }
+
+  fun isIpv4Literal(host: String): Boolean {
+    val parts = host.trim().split('.')
+    return parts.size == 4 && parts.all { p -> p.toIntOrNull()?.let { it in 0..255 } == true }
+  }
+
+  fun resolveRealIpv4(host: String): String? {
+    val trimmed = host.trim()
+    if (trimmed.isEmpty() || isIpv4Literal(trimmed)) return trimmed.ifEmpty { null }
+    val now = System.currentTimeMillis()
+    dohCache[trimmed]?.let { (ip, exp) ->
+      if (now < exp) return ip
+    }
+    val urls = listOf(
+      "https://dns.alidns.com/resolve?name=$trimmed&type=1",
+      "https://doh.pub/dns-query?name=$trimmed&type=1",
+    )
+    for (dohUrl in urls) {
+      try {
+        val conn = (URL(dohUrl).openConnection() as HttpURLConnection).apply {
+          connectTimeout = 4_000
+          readTimeout = 4_000
+          requestMethod = "GET"
+          setRequestProperty("Accept", "application/dns-json")
+        }
+        val body = try {
+          conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+          try { conn.disconnect() } catch (_: Throwable) {}
+        }
+        val answers = JSONObject(body).optJSONArray("Answer") ?: continue
+        for (i in 0 until answers.length()) {
+          val ans = answers.optJSONObject(i) ?: continue
+          if (ans.optInt("type", 0) != 1) continue
+          val ip = ans.optString("data", "").trim()
+          if (isIpv4Literal(ip) && !isSyntheticOrBogonIpv4(ip)) {
+            dohCache[trimmed] = ip to (now + DOH_TTL_MS)
+            return ip
+          }
+        }
+      } catch (_: Throwable) {
+      }
+    }
+    return null
   }
 }

@@ -1,14 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Animated,
-  PanResponder,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from './GlassSurface';
 import { usePalette, motion } from '../theme';
@@ -26,72 +24,74 @@ export interface AppTabBarProps {
   onSelect: (key: string) => void;
 }
 
-/** 底栏左右内边距（与 styles.bar.paddingHorizontal 保持一致） */
-const BAR_PAD = 8;
+const BAR_HEIGHT = 64;
+const BAR_PAD = 4;
+const INNER_RADIUS = (BAR_HEIGHT - BAR_PAD * 2) / 2;
 
-function TabCell({
+const PILL_SPRING = { damping: 22, stiffness: 300 } as const;
+
+const TabCell = React.memo(function TabCell({
   item,
   active,
-  onSelect,
   width,
 }: {
   item: TabBarItem;
   active: boolean;
-  onSelect: () => void;
   width: number;
 }) {
   const palette = usePalette();
-  const pop = useRef(new Animated.Value(1)).current;
+  const popSV = useSharedValue(1);
+  const prevActiveRef = useRef(active);
 
   useEffect(() => {
-    pop.stopAnimation();
-    if (active) {
-      pop.setValue(0.92);
-      const animation = Animated.spring(pop, {
-        toValue: 1,
-        tension: 240,
-        friction: 26,
-        useNativeDriver: true,
-      });
-      animation.start();
-      return () => animation.stop();
-    } else {
-      pop.setValue(1);
+    const prev = prevActiveRef.current;
+    prevActiveRef.current = active;
+    if (active && !prev) {
+      popSV.value = 0.92;
+      popSV.value = withSpring(1, { damping: 20, stiffness: 320 });
+    } else if (!active && prev) {
+      popSV.value = 1;
     }
-  }, [active, pop]);
+  }, [active, popSV]);
+
+  const iconAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: popSV.value }],
+  }));
 
   return (
-    <Pressable
+    <View
+      accessible
       accessibilityRole="tab"
+      accessibilityLabel={item.label}
       accessibilityState={{ selected: active }}
-      hitSlop={6}
-      onPress={onSelect}
-      style={({ pressed }) => [
-        { ...styles.cell, width },
-        pressed && { transform: [{ scale: 0.97 }] },
-      ]}
+      style={[styles.cell, { width }]}
     >
-      <Animated.View style={[styles.cellIcon, { transform: [{ scale: pop }] }]}>
+      <Reanimated.View style={[styles.cellIcon, iconAnimStyle]}>
         {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 23 })}
-      </Animated.View>
+      </Reanimated.View>
       <Text
         numberOfLines={1}
         style={[
           typography.caption2,
           {
             color: active ? palette.tint : palette.labelSecondary,
-            fontWeight: active ? '700' : '600',
+            fontWeight: active ? '600' : Platform.OS === 'android' ? '500' : '600',
+            includeFontPadding: false,
             marginTop: 3,
           },
         ]}
       >
         {item.label}
       </Text>
-    </Pressable>
+    </View>
   );
-}
+});
 
-export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
+export const AppTabBar = React.memo(function AppTabBar({
+  items,
+  activeKey,
+  onSelect,
+}: AppTabBarProps) {
   const palette = usePalette();
   const isDark = palette.name === 'dark';
   const { width: winW } = useWindowDimensions();
@@ -100,197 +100,267 @@ export function AppTabBar({ items, activeKey, onSelect }: AppTabBarProps) {
     0,
     items.findIndex((it) => it.key === activeKey),
   );
-  // D7：单格宽按屏宽/格数自适应；极窄屏允许低于 64，保证底栏整体不溢出屏幕
+
   const availableW = Math.min(winW, 520) - 32 - BAR_PAD * 2;
   const cellW = Math.max(1, Math.floor(availableW / Math.max(1, items.length)));
-  // PanResponder 只创建一次，闭包里用 ref 读最新格宽（格数/屏宽变化时不出错）
-  const cellWRef = useRef(cellW);
-  cellWRef.current = cellW;
 
-  const indX = useRef(new Animated.Value(activeIndex * cellWRef.current)).current;
-  const indXRef = useRef(activeIndex * cellWRef.current);
-  const startXRef = useRef(0);
-  /** 拖动时选中玻璃"液化"：跟随拖动距离横向拉长（苹果/Kyant0 拖动的形变） */
-  const dragStretch = useRef(new Animated.Value(1)).current;
-  /** 拖动时选中玻璃放大（对应 Apple「按住拖动时玻璃膨起」） */
-  const dragScale = useRef(new Animated.Value(1)).current;
-  const scaleTo = useCallback(
-    (v: number) => {
-      Animated.spring(dragScale, {
-        toValue: v,
-        tension: 240,
-        friction: 26,
-        useNativeDriver: true,
-      }).start();
-    },
-    [dragScale],
-  );
-  /** 拖动中手指当前悬停的格子（用于给「将要选中」的那个 tab 上色） */
+  const posSV = useSharedValue(activeIndex * cellW);
+  const dragStartSV = useSharedValue(activeIndex * cellW);
+  const dragScaleSV = useSharedValue(1);
+  const dragStretchSV = useSharedValue(1);
+  const draggingSV = useSharedValue(false);
+  const followFingerSV = useSharedValue(false);
+  const cellWSV = useSharedValue(cellW);
+  const countSV = useSharedValue(items.length);
+  const idxSV = useSharedValue(activeIndex);
+  const targetIdxSV = useSharedValue(activeIndex);
+  const lastHoverSV = useSharedValue(-1);
+
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const hoverRef = useRef<number | null>(null);
-
-  // 外部切页（含导航状态变化）或屏宽/格数变化时把指示器弹到位
-  useEffect(() => {
-    if (hoverRef.current != null) return; // 拖动中不要被外部状态拽走
-    const target = activeIndex * cellW;
-    indXRef.current = target;
-    Animated.spring(indX, {
-      toValue: target,
-      tension: 240,
-      friction: 26,
-      useNativeDriver: true,
-    }).start();
-  }, [activeIndex, cellW, indX]);
-
-  const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
+  const rollbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTargetRef = useRef<{ idx: number; ts: number } | null>(null);
+  const lastSpringIdxRef = useRef(activeIndex);
+  const lastCellWRef = useRef(cellW);
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const activeKeyRef = useRef(activeKey);
   activeKeyRef.current = activeKey;
   const activeIndexRef = useRef(activeIndex);
   activeIndexRef.current = activeIndex;
+  const cellWRef = useRef(cellW);
+  cellWRef.current = cellW;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
-  const settle = useCallback(
-    (x: number) => {
-      indXRef.current = x;
-      Animated.spring(indX, {
-        toValue: x,
-        tension: 240,
-        friction: 26,
-        useNativeDriver: true,
-      }).start();
+  useLayoutEffect(() => {
+    cellWSV.value = cellW;
+    countSV.value = items.length;
+    idxSV.value = activeIndex;
+    const widthChanged = Math.abs(lastCellWRef.current - cellW) > 0.5;
+    const pending = pendingTargetRef.current;
+
+    if (pending) {
+      if (activeIndex === pending.idx) {
+        pendingTargetRef.current = null;
+        if (rollbackTimerRef.current) {
+          clearTimeout(rollbackTimerRef.current);
+          rollbackTimerRef.current = null;
+        }
+      } else if (Date.now() - pending.ts < 800 && !widthChanged) {
+        return;
+      }
+    }
+    if (rollbackTimerRef.current) {
+      clearTimeout(rollbackTimerRef.current);
+      rollbackTimerRef.current = null;
+    }
+    const idxChanged = activeIndex !== lastSpringIdxRef.current;
+    lastCellWRef.current = cellW;
+    targetIdxSV.value = activeIndex;
+    if (!draggingSV.value && (idxChanged || widthChanged)) {
+      lastSpringIdxRef.current = activeIndex;
+      posSV.value = withSpring(activeIndex * cellW, PILL_SPRING);
+    }
+  }, [activeIndex, cellW, items.length, cellWSV, countSV, draggingSV, idxSV, posSV, targetIdxSV]);
+
+  useEffect(
+    () => () => {
+      if (rollbackTimerRef.current) clearTimeout(rollbackTimerRef.current);
     },
-    [indX],
+    [],
   );
 
-  const pan = useRef(
-    PanResponder.create({
-      // 点击不抢：只有横向拖动才接管，保证 tab 的点击照常触发
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderGrant: () => {
-        indX.stopAnimation((v: number) => {
-          indXRef.current = v;
-          startXRef.current = v;
-        });
-        hoverRef.current = Math.round(indXRef.current / cellWRef.current);
-        setHoverIndex(hoverRef.current);
-        scaleTo(1.12);
-        dragStretch.setValue(1.04);
-      },
-      onPanResponderMove: (_, g) => {
-        const limit = Math.max(0, (itemsRef.current.length - 1) * cellWRef.current);
-        const nx = Math.min(limit, Math.max(0, startXRef.current + g.dx));
-        indXRef.current = nx;
-        indX.setValue(nx);
-        // 液化：拖得越远，胶囊沿拖动方向拉得越长（iOS 26 拖动的形变）
-        const moved = Math.abs(nx - startXRef.current) / cellWRef.current;
-        dragStretch.setValue(Math.min(1.32, 1.04 + moved * 0.26));
-        const h = Math.round(nx / cellWRef.current);
-        if (h !== hoverRef.current) {
-          hoverRef.current = h;
-          setHoverIndex(h);
+  const commitIndex = useCallback(
+    (nextIdx: number) => {
+      const target = itemsRef.current[nextIdx];
+      if (!target) return;
+      lastSpringIdxRef.current = nextIdx;
+      pendingTargetRef.current = { idx: nextIdx, ts: Date.now() };
+      if (target.key === activeKeyRef.current) return;
+      if (rollbackTimerRef.current) clearTimeout(rollbackTimerRef.current);
+      onSelectRef.current(target.key);
+
+      rollbackTimerRef.current = setTimeout(() => {
+        rollbackTimerRef.current = null;
+        if (pendingTargetRef.current?.idx === nextIdx) {
+          pendingTargetRef.current = null;
         }
-      },
-      onPanResponderRelease: () => {
-        const n = itemsRef.current.length;
-        const h = Math.min(n - 1, Math.max(0, Math.round(indXRef.current / cellWRef.current)));
-        hoverRef.current = null;
-        setHoverIndex(null);
-        settle(h * cellWRef.current);
-        scaleTo(1);
-        Animated.spring(dragStretch, {
-          toValue: 1,
-          tension: 240,
-          friction: 26,
-          useNativeDriver: true,
-        }).start();
-        const target = itemsRef.current[h];
-        if (target && target.key !== activeKeyRef.current) onSelectRef.current(target.key);
-      },
-      onPanResponderTerminate: () => {
-        hoverRef.current = null;
-        setHoverIndex(null);
-        settle(activeIndexRef.current * cellWRef.current);
-        scaleTo(1);
-        Animated.spring(dragStretch, {
-          toValue: 1,
-          tension: 240,
-          friction: 26,
-          useNativeDriver: true,
-        }).start();
-      },
-    }),
-  ).current;
+        if (!draggingSV.value && activeIndexRef.current !== nextIdx) {
+          lastSpringIdxRef.current = activeIndexRef.current;
+          targetIdxSV.value = activeIndexRef.current;
+          posSV.value = withSpring(activeIndexRef.current * cellWRef.current, PILL_SPRING);
+        }
+      }, 1800);
+    },
+    [draggingSV, posSV, targetIdxSV],
+  );
+
+  const finishDrag = useCallback(
+    (nextIdx: number, shouldCommit: boolean) => {
+      setHoverIndex(null);
+      if (shouldCommit) commitIndex(nextIdx);
+    },
+    [commitIndex],
+  );
+
+  const composedGesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .activeOffsetX([-14, 14])
+      .failOffsetY([-12, 12])
+      .maxPointers(1)
+      .onStart((e) => {
+        'worklet';
+        const cw = cellWSV.value;
+        const n = countSV.value;
+        if (cw <= 0 || n <= 1) return;
+        const limit = (n - 1) * cw;
+        draggingSV.value = true;
+        dragScaleSV.value = withSpring(1.08, { damping: 20, stiffness: 320 });
+        dragStretchSV.value = withSpring(1.04, { damping: 20, stiffness: 320 });
+        const fingerX = e.x - BAR_PAD;
+        const indCenter = posSV.value + cw / 2;
+        if (Math.abs(fingerX - indCenter) <= cw * 0.65) {
+          followFingerSV.value = false;
+          dragStartSV.value = posSV.value;
+        } else {
+          followFingerSV.value = true;
+          const next = Math.min(limit, Math.max(0, fingerX - cw / 2));
+          dragStartSV.value = next;
+          posSV.value = withSpring(next, { damping: 24, stiffness: 360 });
+        }
+        const h = Math.min(n - 1, Math.max(0, Math.round(posSV.value / cw)));
+        lastHoverSV.value = h;
+        runOnJS(setHoverIndex)(h);
+      })
+      .onUpdate((e) => {
+        'worklet';
+        const cw = cellWSV.value;
+        const n = countSV.value;
+        if (cw <= 0 || n <= 1) return;
+        const limit = (n - 1) * cw;
+        const nx = followFingerSV.value
+          ? Math.min(limit, Math.max(0, e.x - BAR_PAD - cw / 2))
+          : Math.min(limit, Math.max(0, dragStartSV.value + e.translationX));
+        posSV.value = nx;
+        const moved = Math.abs(nx - dragStartSV.value) / cw;
+        dragStretchSV.value = Math.min(1.24, 1.04 + moved * 0.2);
+        const h = Math.min(n - 1, Math.max(0, Math.round(nx / cw)));
+        if (h !== lastHoverSV.value) {
+          lastHoverSV.value = h;
+          runOnJS(setHoverIndex)(h);
+        }
+      })
+      .onEnd((e, success) => {
+        'worklet';
+        const cw = cellWSV.value;
+        const n = countSV.value;
+        draggingSV.value = false;
+        dragScaleSV.value = withSpring(1, PILL_SPRING);
+        dragStretchSV.value = withSpring(1, PILL_SPRING);
+        lastHoverSV.value = -1;
+        if (cw <= 0 || n <= 0) {
+          runOnJS(finishDrag)(idxSV.value, false);
+          return;
+        }
+        const curIdx = idxSV.value;
+        if (!success) {
+          posSV.value = withSpring(curIdx * cw, PILL_SPRING);
+          runOnJS(finishDrag)(curIdx, false);
+          return;
+        }
+        let h = Math.min(n - 1, Math.max(0, Math.round(posSV.value / cw)));
+
+        if (
+          !followFingerSV.value &&
+          h === curIdx &&
+          (Math.abs(e.translationX) >= Math.min(18, cw * 0.22) || Math.abs(e.velocityX) >= 120)
+        ) {
+          h = Math.min(n - 1, Math.max(0, curIdx + (e.translationX > 0 ? 1 : -1)));
+        }
+        targetIdxSV.value = h;
+        posSV.value = withSpring(h * cw, PILL_SPRING);
+        runOnJS(finishDrag)(h, h !== curIdx);
+      });
+
+    const tap = Gesture.Tap()
+      .maxDistance(12)
+      .onEnd((e, success) => {
+        'worklet';
+        if (!success) return;
+        const cw = cellWSV.value;
+        const n = countSV.value;
+        if (cw <= 0 || n <= 0) return;
+        const h = Math.min(n - 1, Math.max(0, Math.floor((e.x - BAR_PAD) / cw)));
+        if (h !== targetIdxSV.value) {
+          targetIdxSV.value = h;
+          posSV.value = withSpring(h * cw, PILL_SPRING);
+          runOnJS(commitIndex)(h);
+        }
+      });
+
+    return Gesture.Race(pan, tap);
+  }, [
+    cellWSV,
+    commitIndex,
+    countSV,
+    dragScaleSV,
+    dragStartSV,
+    dragStretchSV,
+    draggingSV,
+    finishDrag,
+    followFingerSV,
+    idxSV,
+    lastHoverSV,
+    posSV,
+    targetIdxSV,
+  ]);
+
+  const indicatorAnimStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: posSV.value },
+      { scaleX: dragStretchSV.value },
+      { scaleY: dragScaleSV.value },
+    ],
+  }));
 
   const litIndex = hoverIndex ?? activeIndex;
 
   return (
     <View pointerEvents="box-none" style={[styles.outer, { paddingBottom: 16 }]}>
-      {/* 作者结构：tab 与选中指示器都作为玻璃的 children ——
-          children 会被排除在 backdrop 捕获之外，玻璃只折射底栏背后的内容，
-          不会再把 tab 自己折射一遍。PanResponder 挂在外层容器上。 */}
-      <View {...pan.panHandlers}>
-        <GlassSurface role="bar" radius={28} style={styles.bar}>
-          {}
-          <Animated.View
+      <GestureDetector gesture={composedGesture}>
+        <GlassSurface role="bar" radius={BAR_HEIGHT / 2} style={styles.bar}>
+          <Reanimated.View
             pointerEvents="none"
-            style={[
-              styles.indicator,
-              {
-                width: cellW,
-                // 选中胶囊 = 底面 + 柔和投影。
-                // ⚠️ 阴影必须是「灰色」：黑色投影压在浅色玻璃上会显脏（用户明确要求）。
-                // Android 端 RN 会把 shadowColor 映射到 outline shadow 颜色（API 28+），
-                // 所以两边都设成同一个灰。
-                backgroundColor: isDark ? 'rgba(30,30,36,0.86)' : 'rgba(242,242,246,0.80)',
-                ...Platform.select({
-                  ios: {
-                    shadowColor: '#9A9AA2',
-                    shadowOpacity: 0.42,
-                    shadowRadius: 7,
-                    shadowOffset: { width: 0, height: 2 },
-                  },
-                  android: { shadowColor: '#9A9AA2', elevation: 4 },
-                  default: null,
-                }),
-                transform: [{ translateX: indX }, { scaleX: dragStretch }, { scaleY: dragScale }],
-              },
-            ]}
+            style={[styles.indicator, { width: cellW }, indicatorAnimStyle]}
           >
-            {/* 动画胶囊不套 GlassSurface（避免 transform 容器内 BlurView 裁切与双层模糊耗电） */}
             <View
               style={[
                 StyleSheet.absoluteFill,
                 {
-                  borderRadius: 999,
+                  borderRadius: INNER_RADIUS,
+                  borderCurve: 'continuous',
                   backgroundColor:
                     hoverIndex !== null
                       ? isDark
-                        ? 'rgba(255,255,255,0.06)'
-                        : 'rgba(255,255,255,0.22)'
+                        ? 'rgba(255,255,255,0.09)'
+                        : 'rgba(232,232,238,0.42)'
                       : isDark
-                        ? 'rgba(255,255,255,0.10)'
-                        : 'rgba(232,232,238,0.40)',
+                        ? 'rgba(255,255,255,0.12)'
+                        : 'rgba(232,232,238,0.55)',
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)',
                 },
               ]}
             />
-          </Animated.View>
+          </Reanimated.View>
           {items.map((item, i) => (
-            <TabCell
-              key={item.key}
-              item={item}
-              active={i === litIndex}
-              width={cellW}
-              onSelect={() => onSelect(item.key)}
-            />
+            <TabCell key={item.key} item={item} active={i === litIndex} width={cellW} />
           ))}
         </GlassSurface>
-      </View>
+      </GestureDetector>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   outer: {
@@ -303,10 +373,11 @@ const styles = StyleSheet.create({
   },
   bar: {
     flexDirection: 'row',
-    borderRadius: 28,
-    paddingVertical: 6,
+    borderRadius: BAR_HEIGHT / 2,
+    borderCurve: 'continuous',
+    paddingVertical: BAR_PAD,
     paddingHorizontal: BAR_PAD,
-    minHeight: 64,
+    minHeight: BAR_HEIGHT,
     overflow: 'hidden',
     ...Platform.select({
       ios: {
@@ -319,25 +390,24 @@ const styles = StyleSheet.create({
       default: null,
     }),
   },
-  /** 选中指示器：绝对定位 + translateX/scale 驱动（native driver），普通染色胶囊 */
+
   indicator: {
     position: 'absolute',
-    top: 6,
-    bottom: 6,
+    top: BAR_PAD,
+    bottom: BAR_PAD,
     left: BAR_PAD,
-    borderRadius: 28,
+    borderRadius: INNER_RADIUS,
   },
   cell: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
     paddingHorizontal: 4,
-    borderRadius: 28,
+    borderRadius: INNER_RADIUS,
   },
   cellIcon: { alignItems: 'center', justifyContent: 'center' },
 });
 
-// 辅助：复用项目里的 MaterialCommunityIcons
 export function MCI(name: string) {
   return ({ color, size }: { color: string; size: number }) => (
     <MaterialCommunityIcons name={name} color={color} size={size} />

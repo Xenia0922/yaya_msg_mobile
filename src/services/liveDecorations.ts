@@ -1,14 +1,5 @@
 import pocketApi from '../api/pocket48';
 
-/**
- * 直播装扮目录（进场特效 / 弹幕气泡）。
- *
- * 官方接口（反编译 `live/get/all/specialeffects`、`live/get_live_all_bubble`，均为 GET）：
- * - 进场特效：`{ list: [{ specialEffectsId, specialEffectsName, specialEffectsImgUrl, describeText, androidUrl }] }`
- * - 弹幕气泡：`{ list: [{ bubbleId, liveBubbleName, liveBubbleUrl, description, androidUrl, bubbleType }] }`
- * 两者都带预览图，可直接进选择器；zip/pag 资源用于客户端播放动画（我们只做选择与同步）。
- */
-
 export type LiveDecoration = {
   id: string;
   name: string;
@@ -70,10 +61,8 @@ let bubbleCache: LiveDecoration[] | null = null;
 let bubbleRequest: Promise<LiveDecoration[]> | null = null;
 let bubbleGeneration = 0;
 
-/** 直播进场特效全量目录 */
 export function getLiveEffects(force = false): Promise<LiveDecoration[]> {
   if (force) {
-    // 使旧的 in-flight 请求失效：晚到的旧响应不能回写覆盖新结果
     effectGeneration += 1;
     effectCache = null;
     effectRequest = null;
@@ -99,7 +88,6 @@ export function getLiveEffects(force = false): Promise<LiveDecoration[]> {
   return request;
 }
 
-/** 直播弹幕气泡全量目录 */
 export function getLiveBubbles(force = false): Promise<LiveDecoration[]> {
   if (force) {
     bubbleGeneration += 1;

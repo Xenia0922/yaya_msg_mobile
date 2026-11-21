@@ -1,20 +1,24 @@
-/**
- * LiveModule · 成员直播（C4-S3）
- *
- * 纯展示：数据（lives/livesOk/livesError）与轮询/SWR 状态留在 HomeScreen，
- * banner 轮播动画值（fadeAnim/slideAnim）与下标由屏内驱动，本组件只渲染。
- */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { NetworkImage } from '../../components/NetworkImage';
 import { Skeleton } from '../../components/Skeleton';
 import { GlassSurface } from '../../components/GlassSurface';
+import { SquircleView } from '../../components/SquircleView';
 import { Button } from '../../components/Button';
 import { FadeInView, ScalePressable } from '../../components/Motion';
 import { SectionTitle } from '../../components/SectionTitle';
-import { usePalette } from '../../theme';
+import { radii, spacing, usePalette } from '../../theme';
 import { useI18n } from '../../i18n';
 import { styles } from './styles';
 import type { LiveCardItem } from './types';
@@ -25,29 +29,27 @@ export interface LiveModuleProps {
   livesError: string;
   bannerCount: number;
   safeBannerIndex: number;
-  fadeAnim: Animated.Value;
-  slideAnim: Animated.Value;
   onRetry: () => void;
   onPressAll: () => void;
   onPressLive: (_item: LiveCardItem) => void;
   onSelectBanner: (_index: number) => void;
+  onBannerDragChange?: (_dragging: boolean) => void;
 }
 
-/** 首页全宽沉浸直播 banner（16:9）：渐变 + 白字上浮 + 直播中红标 */
 function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void }) {
   const { t } = useI18n();
   const palette = usePalette();
   const [broken, setBroken] = useState(false);
   const retriedRef = useRef(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 卸载清理重试定时器：否则 3s 后对已卸载组件 setState（RN 会告警，且可能误改新页面状态）
+
   useEffect(
     () => () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     },
     [],
   );
-  // B3 修复：封面失败 3s 后自动重试一次（封面 URL 偶发 403/超时），再次失败才保持兜底
+
   const handleCoverError = () => {
     if (!retriedRef.current) {
       retriedRef.current = true;
@@ -69,12 +71,13 @@ function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void
       accessibilityRole="button"
       accessibilityLabel={item.nickname ? `${item.nickname} ${item.title}` : item.title}
     >
-      <View
+      <SquircleView
+        radius={radii.lg}
         style={[
           styles.liveBannerWrap,
           {
             backgroundColor: palette.fill3,
-            borderColor: palette.hairline,
+            borderColor: palette.innerStroke,
             borderWidth: StyleSheet.hairlineWidth,
           },
         ]}
@@ -85,9 +88,7 @@ function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void
             style={styles.liveBannerCover}
             resizeMode="cover"
             fallback={false}
-            // 16:9 全宽横幅：显示约 1080×609px（480dpi），请求「装进 1080 盒子」即可
-            // —— 服务端等比 contain，3:4 竖图会回 ~810×1080，不放大也不损失清晰度，
-            // 体积却从原图 ~780KB 降到约 1/8（此前不传 thumbnail = 每张都下原图）
+
             thumbnail={1080}
             onError={handleCoverError}
           />
@@ -96,7 +97,7 @@ function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void
             <MaterialCommunityIcons name="video" color={palette.labelTertiary} size={44} />
           </View>
         )}
-        {/* 底部平滑渐变（顶部透明 → 底部 0.68 黑），替代多层色阶遮罩；0.68 保证浅色封面下白字可读 */}
+
         <LinearGradient
           pointerEvents="none"
           colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.88)']}
@@ -114,7 +115,7 @@ function LiveBanner({ item, onPress }: { item: LiveCardItem; onPress: () => void
             {item.nickname}
           </Text>
         </View>
-      </View>
+      </SquircleView>
     </ScalePressable>
   );
 }
@@ -136,7 +137,7 @@ function AnimatedDots({
   const c = useRef(new Animated.Value(active ? 1 : 0)).current;
   React.useEffect(() => {
     Animated.timing(w, { toValue: active ? 16 : 6, duration: 220, useNativeDriver: false }).start();
-    // 颜色不逐帧动画（JS driver 开销），直接切换；宽度脉冲已提供动效反馈
+
     c.setValue(active ? 1 : 0);
   }, [active, w, c]);
   return (
@@ -171,33 +172,50 @@ export default function LiveModule({
   livesError,
   bannerCount,
   safeBannerIndex,
-  fadeAnim,
-  slideAnim,
   onRetry,
   onPressAll,
   onPressLive,
   onSelectBanner,
+  onBannerDragChange,
 }: LiveModuleProps) {
   const { width: screenWidth } = useWindowDimensions();
-  const bannerSkeletonH = Math.round(((screenWidth - 32) * 9) / 16);
+  const bannerW = Math.max(200, Math.round(screenWidth - spacing.md * 2));
+  const bannerSkeletonH = Math.round((bannerW * 9) / 16);
   const { t } = useI18n();
   const palette = usePalette();
-  const banner = lives[safeBannerIndex];
-  // 横向滑动切 banner；只在明显横向位移时接管，避免和页面纵向滚动冲突。
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_evt, gesture) =>
-          Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderRelease: (_evt, gesture) => {
-          if (bannerCount <= 1) return;
-          if (Math.abs(gesture.dx) < 40 && Math.abs(gesture.vx) < 0.35) return;
-          const step = gesture.dx < 0 ? 1 : -1;
-          onSelectBanner((safeBannerIndex + step + bannerCount) % bannerCount);
-        },
-      }),
-    [bannerCount, onSelectBanner, safeBannerIndex],
+  const bannerItems = lives.slice(0, bannerCount);
+  const pagerRef = useRef<ScrollView | null>(null);
+  const draggingRef = useRef(false);
+  const prevBannerWRef = useRef(bannerW);
+  const prevScrollIdxRef = useRef(safeBannerIndex);
+
+  useEffect(() => {
+    if (bannerCount <= 1) return;
+    const widthChanged = Math.abs(prevBannerWRef.current - bannerW) > 1;
+    const idxChanged = prevScrollIdxRef.current !== safeBannerIndex;
+    prevBannerWRef.current = bannerW;
+    prevScrollIdxRef.current = safeBannerIndex;
+    if (!draggingRef.current && (widthChanged || idxChanged)) {
+      pagerRef.current?.scrollTo({
+        x: safeBannerIndex * bannerW,
+        animated: !widthChanged,
+      });
+    }
+  }, [bannerCount, bannerW, safeBannerIndex]);
+
+  const handleSettle = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      draggingRef.current = false;
+      onBannerDragChange?.(false);
+      if (bannerCount <= 1 || bannerW <= 0) return;
+      const offsetX = e.nativeEvent?.contentOffset?.x ?? 0;
+      const nextIdx = Math.min(bannerCount - 1, Math.max(0, Math.round(offsetX / bannerW)));
+      prevScrollIdxRef.current = nextIdx;
+      if (nextIdx !== safeBannerIndex) {
+        onSelectBanner(nextIdx);
+      }
+    },
+    [bannerCount, bannerW, onBannerDragChange, onSelectBanner, safeBannerIndex],
   );
 
   return (
@@ -209,16 +227,21 @@ export default function LiveModule({
         onAction={onPressAll}
       />
 
-      {/* 加载中渲染骨架（此前是 null → 首屏该区块只有标题、下方空白，弱网下像坏了） */}
       {!livesOk && !livesError ? (
-        <Skeleton width="100%" height={bannerSkeletonH} radius={22} style={{ marginTop: 0 }} />
+        <Skeleton
+          width="100%"
+          height={bannerSkeletonH}
+          radius={radii.lg}
+          style={{ marginTop: 0 }}
+        />
       ) : livesError && !livesOk ? (
         <GlassSurface
-          radius={22}
+          radius={20}
           role="card"
+          frostedOnly
           style={[
             styles.liveStateCard,
-            { backgroundColor: 'transparent', borderColor: palette.hairline },
+            { backgroundColor: 'transparent', borderColor: palette.innerStroke },
           ]}
         >
           <MaterialCommunityIcons name="wifi-off" size={20} color={palette.labelTertiary} />
@@ -229,11 +252,12 @@ export default function LiveModule({
         </GlassSurface>
       ) : livesOk && lives.length === 0 ? (
         <GlassSurface
-          radius={22}
+          radius={20}
           role="card"
+          frostedOnly
           style={[
             styles.liveStateCard,
-            { backgroundColor: 'transparent', borderColor: palette.hairline },
+            { backgroundColor: 'transparent', borderColor: palette.innerStroke },
           ]}
         >
           <MaterialCommunityIcons name="video-off" size={20} color={palette.labelTertiary} />
@@ -243,19 +267,37 @@ export default function LiveModule({
         </GlassSurface>
       ) : livesOk ? (
         <FadeInView delay={0} duration={320}>
-          {banner ? (
+          {bannerItems.length > 0 ? (
             <View style={{ marginBottom: 12 }}>
-              {/* crossfade + 位移动画包裹 banner；横向手势切上/下一条 */}
-              <Animated.View
-                {...panResponder.panHandlers}
-                style={{ opacity: fadeAnim, transform: [{ translateX: slideAnim }] }}
+              <ScrollView
+                ref={pagerRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                decelerationRate="fast"
+                nestedScrollEnabled
+                scrollEnabled={bannerCount > 1}
+                scrollEventThrottle={16}
                 accessibilityHint={t('左右滑动切换直播')}
+                onScrollBeginDrag={() => {
+                  draggingRef.current = true;
+                  onBannerDragChange?.(true);
+                }}
+                onScrollEndDrag={(e) => {
+                  const vx = Math.abs(e.nativeEvent?.velocity?.x ?? 0);
+                  if (vx < 0.08) handleSettle(e);
+                }}
+                onMomentumScrollEnd={handleSettle}
               >
-                <LiveBanner key={banner.liveId} item={banner} onPress={() => onPressLive(banner)} />
-              </Animated.View>
+                {bannerItems.map((live) => (
+                  <View key={live.liveId} style={{ width: bannerW }}>
+                    <LiveBanner item={live} onPress={() => onPressLive(live)} />
+                  </View>
+                ))}
+              </ScrollView>
               {bannerCount > 1 ? (
                 <View style={styles.bannerDots}>
-                  {lives.slice(0, bannerCount).map((live, i) => (
+                  {bannerItems.map((live, i) => (
                     <AnimatedDots
                       key={live.liveId}
                       active={i === safeBannerIndex}

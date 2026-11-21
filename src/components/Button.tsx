@@ -1,13 +1,3 @@
-/**
- * 按钮 —— 保留原 API（title / onPress / variant / size / disabled / loading /
- * icon / style / textStyle / fullWidth），全站调用点无需改动。
- *
- * 变体：
- * - filled：实心 tint 底 + 白字（主操作；不做玻璃，实心底下玻璃不可见）
- * - tinted：玻璃胶囊 + tint 字（次操作，玻璃质感）
- * - plain：纯文字按钮（无底）
- * 旧 reactnatively Button 已移除，实现走 GlassSurface。
- */
 import React from 'react';
 import {
   ActivityIndicator,
@@ -20,7 +10,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { GlassSurface } from './GlassSurface';
-import { usePalette } from '../theme';
+import { SquircleView } from './SquircleView';
+import { fontFamily, usePalette } from '../theme';
 
 export type ButtonVariant = 'filled' | 'tinted' | 'plain';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -81,7 +72,12 @@ export function Button({
 
   const box: StyleProp<ViewStyle> = [
     styles.box,
-    { paddingHorizontal: s.padH, paddingVertical: s.padV, borderRadius: s.radius },
+    {
+      paddingHorizontal: s.padH,
+      paddingVertical: s.padV,
+      borderRadius: s.radius,
+      borderCurve: 'continuous',
+    },
     fullWidth ? styles.full : null,
     variant === 'filled' ? { backgroundColor: palette.tint } : null,
     dim ? styles.dim : null,
@@ -105,6 +101,23 @@ export function Button({
     );
   }
 
+  if (variant === 'filled') {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={dim}
+        style={fullWidth ? styles.full : undefined}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ disabled: dim, busy: !!loading }}
+      >
+        <SquircleView radius={s.radius} style={box}>
+          {inner}
+        </SquircleView>
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable
       onPress={onPress}
@@ -124,5 +137,9 @@ const styles = StyleSheet.create({
   full: { alignSelf: 'stretch' },
   dim: { opacity: 0.5 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  label: { fontWeight: '600' },
+  label: {
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    includeFontPadding: false,
+  },
 });

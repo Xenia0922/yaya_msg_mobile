@@ -13,9 +13,9 @@ export interface VoiceEvent {
   kind: VoiceEventKind;
   serverId: string;
   channelId: string;
-  /** VOICE_OPERATE：房间当前是否在语聊 */
+
   active?: boolean;
-  /** TEAM_VOICE：openVoice/upVoice/closeVoice/downVoice */
+
   operateType?: string;
   streamUrl?: string;
   users: VoiceEventUser[];
@@ -33,11 +33,6 @@ function pickUser(raw: any): VoiceEventUser | null {
   };
 }
 
-/**
- * 解析官方客户端的语音事件：
- * - TEAM_VOICE：LiveEventAttachment.voiceInfo { operateType, streamUrl, voiceStarInfoList }
- * - VOICE_OPERATE：ChatSystemMessage.operateType.targetChannel.isInVoiceChatting
- */
 export function parseVoiceEvent(message: RoomLiveMessage): VoiceEvent | null {
   const messageType = String(message.messageType || message.attachment?.messageType || '');
   if (messageType !== 'TEAM_VOICE' && messageType !== 'VOICE_OPERATE') return null;

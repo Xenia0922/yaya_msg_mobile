@@ -1,8 +1,8 @@
 {
   "source": "https://pocketapi.48.cn/user/api/v1/client/update/group_team_star",
-  "fetchedAt": "2026-11-07T06:35:41.378Z",
+  "fetchedAt": "2026-11-20T07:19:02.286Z",
   "count": 910,
-  "sha256": "d61e0835d45e4bbda01696142b1610697e4f0b32608d591960bb97be92e6f812",
+  "sha256": "b1e22711e2adfc154ccf2c7cfebd7c6b0d78cf2b248d435a04f03c0746956bfa",
   "members": [
     {
       "teamName": "荣誉毕业生",
@@ -18533,7 +18533,7 @@
       "status": 2
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM NIII",
       "birthday": "01-14",
       "specialty": "国画、书法、摄影、导演、韩语",
       "groupId": 12,
@@ -18547,7 +18547,7 @@
       "periodId": 2101,
       "starRegion": "追寻双子座，追寻的一周，6.11-6.18",
       "joinTime": "2023-05-31",
-      "utime": 1789409092221,
+      "utime": 1795146755789,
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30207_4.jpg",
       "avatar": "https://www.snh48.com/images/member/zp_30207.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30207_3.jpg",
@@ -18560,7 +18560,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30207_2.jpg",
       "hobbies": "看番（纸片人yyds、追小说、宅舞、rap又菜又爱唱",
       "fullPhoto1": "https://www.snh48.com/images/member/gs4_30207_1.jpg",
-      "teamId": 1207,
+      "teamId": 1202,
       "wbUid": "7841160458",
       "status": 1
     },
@@ -24037,7 +24037,7 @@
       "status": 2
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM NIII",
       "birthday": "04-12",
       "specialty": "舞蹈",
       "groupId": 12,
@@ -24051,7 +24051,7 @@
       "periodId": 2104,
       "starRegion": "白羊座",
       "joinTime": "2025-05-02",
-      "utime": 1789409092221,
+      "utime": 1795146670157,
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30206_4.jpg",
       "avatar": "https://www.snh48.com/images/member/zp_30206.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30206_3.jpg",
@@ -24064,7 +24064,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30206_2.jpg",
       "hobbies": "打游戏",
       "fullPhoto1": "https://www.snh48.com/images/member/gs4_30206_1.jpg",
-      "teamId": 1207,
+      "teamId": 1202,
       "wbUid": "-",
       "status": 1
     },
@@ -24677,7 +24677,7 @@
       "status": 1
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM NIII",
       "birthday": "09-29",
       "specialty": "特能躺、情绪稳定",
       "groupId": 12,
@@ -24691,7 +24691,7 @@
       "periodId": 1219,
       "starRegion": "天秤座",
       "joinTime": "2025-10-08",
-      "utime": 1789409092221,
+      "utime": 1795146701018,
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30193_4.jpg",
       "avatar": "https://www.snh48.com/images/member/zp_30193.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30193_3.jpg",
@@ -24704,7 +24704,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30193_2.jpg",
       "hobbies": "旅游、摄影、睡觉",
       "fullPhoto1": "https://www.snh48.com/images/member/gs4_30193_1.jpg",
-      "teamId": 1207,
+      "teamId": 1202,
       "wbUid": "-",
       "status": 1
     },
@@ -24805,7 +24805,7 @@
       "status": 1
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM NIII",
       "birthday": "01-31",
       "specialty": "动耳朵",
       "groupId": 12,
@@ -24819,7 +24819,7 @@
       "periodId": 1219,
       "starRegion": "水瓶座",
       "joinTime": "2025-10-08",
-      "utime": 1789409092221,
+      "utime": 1795146742718,
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30197_4.jpg",
       "avatar": "https://www.snh48.com/images/member/zp_30197.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30197_3.jpg",
@@ -24832,7 +24832,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30197_2.jpg",
       "hobbies": "拍vlog、公园发呆、做手帐、特爱吃冰淇淋",
       "fullPhoto1": "https://www.snh48.com/images/member/gs4_30197_1.jpg",
-      "teamId": 1207,
+      "teamId": 1202,
       "wbUid": "-",
       "status": 1
     },
@@ -26067,7 +26067,7 @@
       "periodId": 1220,
       "starRegion": "巨蟹座",
       "joinTime": "2026-02-08",
-      "utime": 1787297019326,
+      "utime": 1794217762893,
       "fullPhoto4": "https://source.48.cn/backstage/2026/0206/3vj0cfn5xr1uv25w4frz1bg.jpg",
       "avatar": "https://source.48.cn/backstage/2026/0206/bxzet8fuzjavkd4zup5r8ed.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0206/o1yukfnuq82iey95298vrb0.jpg",
@@ -26082,7 +26082,7 @@
       "fullPhoto1": "https://source.48.cn/backstage/2026/0206/fdsn9q29lx5dng5uo0v694q.jpg",
       "teamId": 1207,
       "wbUid": "-",
-      "status": 2
+      "status": 1
     },
     {
       "teamName": "预备生",
@@ -26117,7 +26117,7 @@
       "status": 1
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM NIII",
       "birthday": "11-23",
       "specialty": "跳舞",
       "groupId": 12,
@@ -26131,7 +26131,7 @@
       "periodId": 1220,
       "starRegion": "射手座",
       "joinTime": "2026-02-08",
-      "utime": 1789409092221,
+      "utime": 1795146715358,
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_30202_4.jpg",
       "avatar": "https://www.snh48.com/images/member/zp_30202.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_30202_3.jpg",
@@ -26144,7 +26144,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_30202_2.jpg",
       "hobbies": "跳舞、密室、高空项目、追剧、吃菠萝包",
       "fullPhoto1": "https://www.snh48.com/images/member/gs4_30202_1.jpg",
-      "teamId": 1207,
+      "teamId": 1202,
       "wbUid": "-",
       "status": 1
     },
@@ -26693,7 +26693,7 @@
       "status": 1
     },
     {
-      "teamName": "TEAM NII",
+      "teamName": "预备生",
       "birthday": "03-02",
       "specialty": "-",
       "groupId": 10,
@@ -26707,7 +26707,7 @@
       "periodId": 1024,
       "starRegion": "双鱼白羊座，新生的交界，3.19-3.24",
       "joinTime": "2026-05-01",
-      "utime": 1790668286313,
+      "utime": 1794224492463,
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_10368_4.jpg",
       "avatar": "https://www.snh48.com/images/member/zp_10368.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_10368_3.jpg",
@@ -26720,7 +26720,7 @@
       "fullPhoto2": "https://www.snh48.com/images/member/gs4_10368_2.jpg",
       "hobbies": "-",
       "fullPhoto1": "https://www.snh48.com/images/member/gs4_10368_1.jpg",
-      "teamId": 1002,
+      "teamId": 1007,
       "wbUid": "-",
       "status": 1
     },
@@ -27251,7 +27251,7 @@
       "periodId": 2107,
       "starRegion": "天蝎座",
       "joinTime": "2026-09-12",
-      "utime": 1789409746178,
+      "utime": 1794465502022,
       "fullPhoto4": "https://www.snh48.com/images/member/gs4_60073_4.jpg",
       "avatar": "https://www.snh48.com/images/member/zp_60073.jpg",
       "fullPhoto3": "https://www.snh48.com/images/member/gs4_60073_3.jpg",
@@ -27266,7 +27266,7 @@
       "fullPhoto1": "https://www.snh48.com/images/member/gs4_60073_1.jpg",
       "teamId": 2103,
       "wbUid": "-",
-      "status": 1
+      "status": 2
     },
     {
       "teamName": "预备生",
@@ -27429,7 +27429,7 @@
       "status": 1
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM Z",
       "birthday": "08-04",
       "specialty": "腿特长",
       "groupId": 12,
@@ -27443,7 +27443,7 @@
       "periodId": 1221,
       "starRegion": "狮子座",
       "joinTime": "2026-09-17",
-      "utime": 1789647461911,
+      "utime": 1795146775016,
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/k4fcpvxyjodt4ftvdxbgksm.jpg",
       "avatar": "https://source.48.cn/backstage/2026/0916/k785upvqil3akqr9nby4tm7.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/4u25le4vf9d7k01vc5x8v7o.jpg",
@@ -27456,12 +27456,12 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/s1qumgzi53qc8b5mu1xezcz.jpg",
       "hobbies": "跳舞、听歌",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0916/sc6gobyy6i4jbt6tbveerit.jpg",
-      "teamId": 1207,
+      "teamId": 1203,
       "wbUid": "-",
       "status": 1
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM NIII",
       "birthday": "01-06",
       "specialty": "美声",
       "groupId": 12,
@@ -27475,7 +27475,7 @@
       "periodId": 1221,
       "starRegion": "摩羯座",
       "joinTime": "2026-09-17",
-      "utime": 1789647437194,
+      "utime": 1795146687063,
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/q4rcjpi0qy634aq3nviu8zq.jpg",
       "avatar": "https://source.48.cn/backstage/2026/0916/g207k126r4cm7soqg3ni2z3.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/mvf6nv4tqr1ym9p2bze1rmq.jpg",
@@ -27488,7 +27488,7 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/3u8q2tioqv2thhztz19bsg7.jpg",
       "hobbies": "唱歌、拍照、吃零食、玩游戏",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0916/0eznwqiux8i83z7tfzxmjzv.jpg",
-      "teamId": 1207,
+      "teamId": 1202,
       "wbUid": "-",
       "status": 1
     },
@@ -27653,7 +27653,7 @@
       "status": 1
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM G",
       "birthday": "03-15",
       "specialty": "睡觉时间特长",
       "groupId": 12,
@@ -27667,7 +27667,7 @@
       "periodId": 1221,
       "starRegion": "双鱼座",
       "joinTime": "2026-09-17",
-      "utime": 1789647285033,
+      "utime": 1795146644367,
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/7mtjv85t2f15b11wbnujhlj.jpg",
       "avatar": "https://source.48.cn/backstage/2026/0916/82a6z844wpx6o35ynz0sck3.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/y0ioej3dpvmnczc7n9b5xmk.jpg",
@@ -27680,12 +27680,12 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/1m304qbz6rx08ew11zx8c89.jpg",
       "hobbies": "跳舞、看动漫、烘焙",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0916/8p8sifqa1tq9kik4qtfr4r9.jpg",
-      "teamId": 1207,
+      "teamId": 1201,
       "wbUid": "-",
       "status": 1
     },
     {
-      "teamName": "预备生",
+      "teamName": "TEAM NIII",
       "birthday": "01-01",
       "specialty": "跳舞、唱歌、辩论",
       "groupId": 12,
@@ -27699,7 +27699,7 @@
       "periodId": 1221,
       "starRegion": "摩羯座",
       "joinTime": "2026-09-17",
-      "utime": 1789647259416,
+      "utime": 1795146730062,
       "fullPhoto4": "https://source.48.cn/backstage/2026/0916/0qykq5765862ryoh9f5rj85.jpg",
       "avatar": "https://source.48.cn/backstage/2026/0916/jho74gkuyk0qmp1kn16mtbb.jpg",
       "fullPhoto3": "https://source.48.cn/backstage/2026/0916/1y4rwg19xj895l19j3aiji3.jpg",
@@ -27712,7 +27712,7 @@
       "fullPhoto2": "https://source.48.cn/backstage/2026/0916/fnvoj3wfzs2kmwl0rrtsd2d.jpg",
       "hobbies": "听歌、跳舞、看书、唱歌、Cosplay",
       "fullPhoto1": "https://source.48.cn/backstage/2026/0916/20z0z5vtzv6v3upo8s3w0u9.jpg",
-      "teamId": 1207,
+      "teamId": 1202,
       "wbUid": "-",
       "status": 1
     },

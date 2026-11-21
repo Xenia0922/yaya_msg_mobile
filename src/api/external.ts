@@ -3,7 +3,6 @@ import { BilibiliLiveRoom } from '../types';
 import { fetchJson } from '../utils/network';
 import { unwrapList } from '../utils/data';
 
-/** B 站直播配置接口的原始行（字段名随上游版本变化，宽松解析） */
 interface BilibiliRoomRaw {
   roomId?: string | number;
   id?: string | number;
@@ -19,10 +18,6 @@ async function fetchList<T>(url: string, keys: string[] = [], cacheTtl = 0): Pro
 }
 
 export const externalApi = {
-  /**
-   * B站直播官方房间配置（低频变化）：
-   * 会话内 5 分钟 TTL 内存缓存，避免反复进出直播页重复拉取。
-   */
   async fetchBilibiliConfig(): Promise<BilibiliLiveRoom[]> {
     const rooms = await fetchList<BilibiliRoomRaw>(
       BILIBILI_LIVE_CONFIG_URL,

@@ -18,7 +18,7 @@ import { Pill } from '../components/Pill';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
-import { usePalette, radiiAlias } from '../theme';
+import { usePalette, radiiAlias, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
 
@@ -133,20 +133,21 @@ export default function InvoiceScreen() {
     const statusLabel = statusLabels[item.invoiceStatus] || t('未知');
     const statusColor = item.invoiceStatus === 0 ? palette.success : palette.labelTertiary;
     return (
-      <View
+      <GlassSurface
         key={item.dataId || String(item.tradeTime)}
+        radius={22}
+        role="card"
+        frostedOnly
         style={[
           styles.orderCard,
           {
-            backgroundColor: palette.surfaceGlassStrong,
-            borderColor: selected ? palette.tint : palette.hairline,
+            backgroundColor: 'transparent',
+            borderColor: selected ? palette.tint : palette.innerStroke,
             borderWidth: StyleSheet.hairlineWidth,
-            borderRadius: 20,
           },
           disabled && styles.cardDisabled,
         ]}
       >
-        {/* 订单信息 */}
         <View style={styles.orderInfo}>
           <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>
             {item.goodsName}
@@ -155,9 +156,9 @@ export default function InvoiceScreen() {
             {item.tradeTime}
           </Text>
         </View>
-        {/* 金额 15/800 */}
+
         <Text style={[styles.orderAmount, { color: palette.label }]}>¥{item.totalFee}</Text>
-        {/* 状态徽标 */}
+
         <View
           style={[
             styles.statusPill,
@@ -173,7 +174,7 @@ export default function InvoiceScreen() {
             {statusLabel}
           </Text>
         </View>
-        {/* 操作：可开票 → 去开票 Pill；否则占位勾选 */}
+
         {!disabled ? (
           <Pill
             label={selected ? t('已选') : t('去开票')}
@@ -194,7 +195,7 @@ export default function InvoiceScreen() {
             ]}
           />
         )}
-      </View>
+      </GlassSurface>
     );
   };
 
@@ -396,7 +397,7 @@ export default function InvoiceScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   scroll: { padding: 16, paddingBottom: 60 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', marginBottom: 8 },
+  sectionTitle: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '800', marginBottom: 8 },
   orderCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -407,7 +408,7 @@ const styles = StyleSheet.create({
   },
   cardDisabled: { opacity: 0.5 },
   orderInfo: { flex: 1, minWidth: 0, paddingRight: 8 },
-  orderName: { fontSize: 13, fontWeight: '600' },
+  orderName: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '600' },
   orderMeta: { fontSize: 11, marginTop: 3 },
   orderAmount: { flexShrink: 0, fontSize: 15, fontWeight: '800', marginRight: 10 },
   statusPill: {
@@ -416,7 +417,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  statusPillText: { fontSize: 10, fontWeight: '700' },
+  statusPillText: { fontSize: 10, fontFamily: fontFamily.system, fontWeight: '700' },
   checkbox: {
     width: 22,
     height: 22,
@@ -445,6 +446,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: radiiAlias.input,
     fontSize: 14,
+    fontFamily: fontFamily.system,
   },
   fillInput: {},
   submitBtn: { marginTop: 20 },

@@ -4,11 +4,6 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import NetworkImage from './NetworkImage';
 import { radii } from '../theme';
 
-// 口袋48官网源的音乐对象只有 mp3/artist/title，没有封面图。
-// 封面来自官网 records（专辑记录）：buildTracks 已按 专辑/歌名/音频分组 四级匹配，
-// 实测 100% 歌曲能拿到有效封面 URL（数据验证）。
-// 这里用「歌名哈希 -> 固定调色板」生成确定性渐变封面（每首歌配色稳定），
-// 叠加一个旋转半透明层模拟斜向渐变 + 音符图标，作为「加载中 / 无封面 / 加载失败」兜底。
 const PALETTE: [string, string][] = [
   ['#ff9a9e', '#fecfef'],
   ['#a18cd1', '#fbc2eb'],
@@ -36,32 +31,16 @@ function hashStr(s: string): number {
 interface Props {
   uri?: string;
   title: string;
-  /** 固定尺寸（黑胶/迷你栏用）；列表用 fill 撑满父容器 */
+
   size?: number;
-  /** 撑满父容器（列表方格） */
+
   fill?: boolean;
-  /** 圆形（黑胶/迷你栏） */
+
   round?: boolean;
-  /** 当前播放中：右上角高亮点 */
+
   active?: boolean;
 }
 
-/**
- * 封面显示（重写版）——不再依赖 onLoad 回调：
- *
- * 历史教训：早期用「onLoad 门控 + opacity」方案——Image 未 onLoad 前透明，
- * onLoad 后淡入。但 RN Android（Fresco）对命中缓存/部分 ROM 的图可能不触发
- * onLoad，导致透明度永远停在 0：图其实加载完成了，却永远不可见 =「封面丢失」。
- *
- * 重写原则：
- * 1. Image 常驻且**不透明**（opacity 恒 1）——Fresco 加载完成会自动显示图片，
- * 加载中显示透明占位（底层渐变可见），成功路径完全不依赖 onLoad。
- * 2. 失败路径靠 onError 隐藏（回退渐变+音符），首次失败 3s 后自动重试一次
- * （封面 URL 偶发 403/超时场景）。
- * 3. 15s 超时兜底：既未成功也未触发 onError 的罕见「死块」场景（HTTP 200 非图等），
- * 强制回退渐变，绝不永久白屏。
- * 4. key={uri}：uri 变化（FlatList 复用/切歌）时强制重建实例，杜绝状态串台。
- */
 export default function CoverArt({ uri, title, size, fill, round, active }: Props) {
   const [c1, c2] = PALETTE[hashStr(title || '♪') % PALETTE.length];
   const [errored, setErrored] = React.useState(false);
@@ -74,13 +53,12 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     mounted.current = true;
     return () => {
       mounted.current = false;
-      // 卸载时清理 3s 重试定时器，防止卸载后仍对已卸载组件 setState
+
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     };
   }, []);
 
-  // uri 变化重置（FlatList 回收单元格复用本组件实例时，避免上一首的状态串到新歌）
   React.useEffect(() => {
     setErrored(false);
     setLoaded(false);
@@ -91,8 +69,6 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     }
   }, [uri]);
 
-  // 15s 超时兜底：从未成功加载（loaded=false）时强制回退渐变，防「死块」永久遮挡。
-  // loaded 成功后不再受超时影响（图已正常显示）。
   React.useEffect(() => {
     if (!uri || loaded) return;
     const timer = setTimeout(() => {
@@ -101,7 +77,6 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     return () => clearTimeout(timer);
   }, [uri, loaded]);
 
-  // onError：首次失败延迟 3s 自动重试一次，再次失败才永久回退
   const handleImageError = React.useCallback(() => {
     if (!retried.current) {
       retried.current = true;
@@ -116,12 +91,6 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     }
   }, []);
 
-  // ⚠️ fill 必须用「绝对定位四边贴齐」，不能用 width/height:'100%'（封面消失复发根因）：
-  // 列表卡的封面容器是 width:'100%' + aspectRatio:1，高度由父级反推；
-  // 百分比高度的子节点在这种父级下不参与父级 measure，一旦父级因描边宽度变化触发重排
-  // （切歌时 active 的 borderWidth 0↔2），Yoga 复用的旧测量会把子节点算成 0 高 →
-  // 整块 CoverArt（含渐变兜底）全部不可见，只剩父容器底色 = 用户看到的「封面没了」。
-  // 绝对定位的边距解析在父级最终尺寸确定后做，不依赖父级缓存测量，彻底规避该问题。
   const boxStyle: any = fill
     ? { ...StyleSheet.absoluteFillObject, borderRadius: round ? radii.pill : 0 }
     : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
@@ -142,7 +111,7 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
           source={{ uri }}
           style={[StyleSheet.absoluteFill, { borderRadius: round ? radii.pill : 0 }]}
           resizeMode="cover"
-          // scale：保留原图分辨率由 GPU 缩放，比 resize 预解码缩放更锐利（修复封面发糊）
+
           resizeMethod="scale"
           fadeDuration={200}
           fallback={false}

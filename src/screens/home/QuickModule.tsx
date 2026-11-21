@@ -1,14 +1,10 @@
-/**
- * QuickModule · 快捷入口（C4-S3）
- *
- * 纯展示：4 格胶囊；私信未读红点数值由 HomeScreen 传入。
- */
 import React from 'react';
 import { Text, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { FadeInView, ScalePressable } from '../../components/Motion';
 import { SectionTitle } from '../../components/SectionTitle';
-import { usePalette } from '../../theme';
+import { GlassSurface } from '../../components/GlassSurface';
+import { usePalette, fontFamily, radii } from '../../theme';
 import { useI18n } from '../../i18n';
 import { styles } from './styles';
 import type { NavItem } from './types';
@@ -50,15 +46,15 @@ export default function QuickModule({
               accessibilityLabel={item.title}
               style={styles.quickCellInner}
             >
-              {/* 半透明底色让背景透出，避免为每个入口重复模糊。 */}
-              <View
+              <GlassSurface
+                radius={radii.lg}
+                role="card"
+                frostedOnly
                 style={[
                   styles.chip,
                   {
-                    backgroundColor:
-                      palette.name === 'dark' ? 'rgba(28,28,34,0.68)' : 'rgba(255,255,255,0.58)',
-                    borderColor:
-                      palette.name === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.66)',
+                    backgroundColor: 'transparent',
+                    borderColor: palette.innerStroke,
                   },
                 ]}
               >
@@ -68,28 +64,35 @@ export default function QuickModule({
                 <Text style={[styles.chipText, { color: palette.label }]} numberOfLines={1}>
                   {item.title}
                 </Text>
-                {/* 私信未读红点角标 */}
-                {item.route === 'PrivateMessagesScreen' && pmUnread > 0 && showPmBadge ? (
-                  <View
+              </GlassSurface>
+
+              {item.route === 'PrivateMessagesScreen' && pmUnread > 0 && showPmBadge ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    minWidth: 17,
+                    height: 17,
+                    borderRadius: 9,
+                    backgroundColor: palette.danger,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Text
                     style={{
-                      position: 'absolute',
-                      top: -4,
-                      right: -4,
-                      minWidth: 17,
-                      height: 17,
-                      borderRadius: 9,
-                      backgroundColor: palette.danger,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      paddingHorizontal: 4,
+                      color: '#FFFFFF',
+                      fontSize: 10,
+                      fontFamily: fontFamily.system,
+                      fontWeight: '800',
                     }}
                   >
-                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>
-                      {pmUnread > 99 ? '99+' : String(pmUnread)}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
+                    {pmUnread > 99 ? '99+' : String(pmUnread)}
+                  </Text>
+                </View>
+              ) : null}
             </ScalePressable>
           </FadeInView>
         ))}

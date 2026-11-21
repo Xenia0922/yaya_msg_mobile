@@ -6,7 +6,6 @@ import android.view.ViewGroup;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** 同步隐藏播放器 UI，避免系统小窗切换时等待 JS 渲染。 */
 public final class PipOverlayController {
   private static final String OVERLAY_ID = "yaya.pip.overlay";
   private static final Map<View, Integer> hiddenViews = new WeakHashMap<>();

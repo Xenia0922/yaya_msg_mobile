@@ -4,7 +4,9 @@ import { CenterSpinner } from '../components/Loaders';
 
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,7 +25,7 @@ import { ScalePressable } from '../components/Motion';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import { LoginPrompt } from '../components/LoginPrompt';
 import { RootStackParamList } from '../navigation/types';
-import { useSettingsStore, useUiStore } from '../store';
+import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
 import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
@@ -32,11 +34,16 @@ import { logInfo } from '../utils/runtimeLog';
 import { formatTimestamp, toMs } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
 import { enqueueDownload } from '../services/downloads';
-import { usePalette, radii, radiiAlias } from '../theme';
+import { readFollowedIdsCache } from '../services/followedIds';
+import { isRoomMember } from '../utils/members';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
+import { usePalette, radii, radiiAlias, fontFamily } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
 import { FilterChips } from '../components/FilterChips';
+import { SearchBar } from '../components/SearchBar';
+import { NetworkImage } from '../components/NetworkImage';
 
 type FlipNavProp = StackNavigationProp<RootStackParamList, 'FlipScreen'>;
 type FlipRouteProp = RouteProp<RootStackParamList, 'FlipScreen'>;
@@ -93,8 +100,7 @@ function normalizePriceList(res: any): FlipPriceConfig[] {
   ]);
 
   const source = list.length ? list : res?.content?.customs ? [res.content.customs] : [];
-  // ⚠️ 修复：customs 是「配置对象数组」时须原样保留；只有 customs 是「{type:{cfg}} 对象表」才展开 values。
-  // 旧实现把对象拆成 数值数组(1,725,88...) → answerType 全丢 → filter 后恒空 → "未开通/不显示"。
+
   return source
     .flatMap((item: any) => {
       if (Array.isArray(item)) return item;
@@ -172,7 +178,6 @@ function parseMedia(raw: string): { text: string; url: string; duration: number 
   }
 }
 
-/** 翻牌答案媒体 URL：相对路径按桌面端规则拼 https://mp4.48.cn（与 yk1z 桌面版一致） */
 function flipMediaUrl(value: any): string {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -196,8 +201,7 @@ function parseAnswer(
     duration = m.duration;
     text = m.text;
   }
-  // 兜底：语音/视频的 URL 与时长可能不在 answerContent 里，而在条目自身字段上。
-  //（用户反馈：翻牌统计里语音翻牌没有播放按钮、也没有秒数 —— 之前只解析 answerContent）
+
   if (!url) {
     url = flipMediaUrl(
       pickText(item, [
@@ -221,16 +225,15 @@ function parseAnswer(
     );
     duration = Number.isFinite(d) ? Math.round(d) : 0;
   }
-  // For audio/video, set appropriate text labels
+
   if (Number(item.answerType) === 2 && !text) text = voiceLabel;
   if (Number(item.answerType) === 3 && !text) text = videoLabel;
-  // Fallback to raw text if nothing else
+
   if (!text && !url) text = raw;
   else if (!text && url) text = raw || url;
   return { text, url, duration };
 }
 
-/** 排障：记录语音/视频翻牌实际 URL（设置→运行日志可导出） */
 function logFlipAnswer(item: any) {
   try {
     const a = parseAnswer(item);
@@ -269,17 +272,9 @@ export default function FlipScreen() {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [status, setStatus] = useState('');
-  /**
-   * 状态是「错误」还是「信息」：以前靠 `/失败|错误/.test(status)` 反推，切到英文/繁體
-   * 就失效（错误提示被染成主题色、重试按钮也不出现）。改成显式状态。
-   * 公版没有 flashStatus（那是 plus 的自动消失方案），这里只维护配色/重试用的标记。
-   */
+
   const [statusError, setStatusError] = useState(false);
-  /**
-   * 成功/信息类状态的自动消失定时器。
-   * 状态行在 FlatList 之外，常驻会一直占一行高度，列表滚动时内容从它下面经过，
-   * 顶部那条会被切掉一半（用户反馈「功能被挡住字」）。错误态仍然常驻（要配重试按钮）。
-   */
+
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashStatus = useCallback((text: string, ms = 2600) => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
@@ -307,7 +302,23 @@ export default function FlipScreen() {
   const [content, setContent] = useState('');
   const [balance, setBalance] = useState('');
   const [memberFilter, setMemberFilter] = useState('');
+  const [memberSheetOpen, setMemberSheetOpen] = useState(false);
+  const [memberSheetQuery, setMemberSheetQuery] = useState('');
+  const [followedIds, setFollowedIds] = useState<Set<string>>(() => new Set());
+  const members = useMemberStore((state) => state.members);
+  const p48Token = useSettingsStore((state) => state.settings.p48Token || '');
+  const insets = useSafeAreaInsets();
   const [playingAnswerUrl, setPlayingAnswerUrl] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    void readFollowedIdsCache(p48Token).then((cached) => {
+      if (alive && cached.cached) setFollowedIds(new Set(cached.ids));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [p48Token]);
 
   const selectedPrice = useMemo(
     () => prices.find((item) => item.answerType === answerType),
@@ -325,7 +336,7 @@ export default function FlipScreen() {
         const res = await pocketApi.getFlipList((nextPage - 1) * 100, 100);
         const list = normalizeFlipList(res);
         setFlips((prev) => (replace ? list : [...prev, ...list]));
-        // G5: offset 分页恰好 100 条时下一页为空——空页即终止（否则 onEnd 无限空拉）
+
         setHasMore(list.length >= 100 && list.length > 0);
         if (list.length === 0 && replace) {
           setStatus('');
@@ -462,15 +473,67 @@ export default function FlipScreen() {
 
   const pageStyle = styles.container;
 
-  // 翻牌记录按提问月份分组（倒序）
-  // 注意：必须在所有条件 return 之前调用（hooks 规则），否则 view↔send 切换时
-  // 「Rendered fewer hooks than expected」崩溃，发送页打不开。
-  // 成员筛选（原「数据统计」页的翻牌成员筛选，搬到本页）
-  const flipMemberNames = useMemo(() => {
-    const set = new Set<string>();
-    for (const f of flips) set.add(memberName(f as any, t('成员')));
-    return ['全部成员', ...Array.from(set).sort()];
+  const flipMemberCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const f of flips) {
+      const n = memberName(f as any, t('成员'));
+      counts.set(n, (counts.get(n) || 0) + 1);
+    }
+    return counts;
   }, [flips, t]);
+
+  const flipMemberNames = useMemo(() => {
+    const names = Array.from(flipMemberCounts.keys()).sort((a, b) => {
+      const diff = (flipMemberCounts.get(b) || 0) - (flipMemberCounts.get(a) || 0);
+      return diff !== 0 ? diff : a.localeCompare(b);
+    });
+    return ['全部成员', ...names];
+  }, [flipMemberCounts]);
+
+  const quickMembers = useMemo(() => {
+    const byId = new Map<string, Member>();
+    const picked: Member[] = [];
+    const seen = new Set<string>();
+    const addMember = (m?: Member) => {
+      if (!m || !isRoomMember(m) || seen.has(m.id)) return;
+      seen.add(m.id);
+      picked.push(m);
+    };
+    for (const m of members) {
+      byId.set(String(m.id), m);
+      if (m.userId) byId.set(String(m.userId), m);
+    }
+    for (const f of flips) {
+      const fid = String((f as any)?.memberId || (f as any)?.userId || '');
+      addMember(byId.get(fid));
+      if (picked.length >= 10) break;
+    }
+    for (const fid of followedIds) {
+      addMember(byId.get(String(fid)));
+      if (picked.length >= 16) break;
+    }
+    return picked;
+  }, [members, flips, followedIds]);
+
+  const memberAvatarByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of members) {
+      const uri = normalizeUrl(m.avatar || '');
+      if (!uri) continue;
+      const shortName = m.ownerName.split('-').pop() || m.ownerName;
+      if (shortName && !map.has(shortName)) map.set(shortName, uri);
+      if (m.ownerName && !map.has(m.ownerName)) map.set(m.ownerName, uri);
+    }
+    return map;
+  }, [members]);
+
+  const sheetMemberRows = useMemo(() => {
+    const q = memberSheetQuery.trim().toLowerCase();
+    return flipMemberNames.filter((name) => {
+      if (name === '全部成员') return !q;
+      return !q || name.toLowerCase().includes(q);
+    });
+  }, [flipMemberNames, memberSheetQuery]);
   const filteredFlips = useMemo(
     () =>
       !memberFilter || memberFilter === '全部成员'
@@ -498,8 +561,7 @@ export default function FlipScreen() {
     const flat: { type: 'header' | 'item'; key: string; title?: string; item?: any }[] = [];
     for (const k of order) {
       flat.push({ type: 'header', key: `h-${k}`, title: k });
-      // key 兜底用「组内序号」而非 Math.random：random 会在每次渲染/滚动时重算，
-      // 导致项身份不稳定、触发整列重挂载与入场动画重放。
+
       map.get(k)!.forEach((it, idx) =>
         flat.push({
           type: 'item',
@@ -511,7 +573,6 @@ export default function FlipScreen() {
     return flat;
   }, [filteredFlips, t]);
 
-  /** 翻牌统计：原「数据统计」页的翻牌统计已删除，改为本页整页呈现（任务 #5） */
   const flipStatsView = useMemo(() => {
     let totalCost = 0;
     let durSum = 0;
@@ -561,7 +622,7 @@ export default function FlipScreen() {
 
   const statsHeader = (
     <View style={styles.statsWrap}>
-      <GlassSurface radius={22} role="card" style={styles.statsOverview}>
+      <GlassSurface radius={22} role="card" frostedOnly style={styles.statsOverview}>
         <View style={styles.statCell}>
           <Text
             numberOfLines={1}
@@ -597,7 +658,7 @@ export default function FlipScreen() {
         </View>
       </GlassSurface>
 
-      <GlassSurface radius={22} role="card" style={styles.statsGroup}>
+      <GlassSurface radius={22} role="card" frostedOnly style={styles.statsGroup}>
         <Text style={[styles.groupLabel, { color: palette.label }]}>{t('类型分布')}</Text>
         {[
           { key: 'text', label: t('文字'), count: flipStatsView.typeStats.text },
@@ -615,7 +676,6 @@ export default function FlipScreen() {
               ]}
             >
               {(() => {
-                // 0 值/分母 0 时不再铺满（此前 0/0=NaN → 全宽灰条，像加载占位）
                 const pct =
                   flipStatsView.typeMax > 0
                     ? Math.max(0, Math.min(100, (row.count / flipStatsView.typeMax) * 100))
@@ -633,10 +693,16 @@ export default function FlipScreen() {
       </GlassSurface>
 
       {flipStatsView.memberRank.length > 1 ? (
-        <GlassSurface radius={22} role="card" style={styles.statsGroup}>
+        <GlassSurface radius={22} role="card" frostedOnly style={styles.statsGroup}>
           <Text style={[styles.groupLabel, { color: palette.label }]}>{t('成员排名')}</Text>
           {flipStatsView.memberRank.slice(0, 10).map((m, idx) => (
-            <View key={`${m.name}-${idx}`} style={styles.rankRow}>
+            <ScalePressable
+              key={`${m.name}-${idx}`}
+              pressedScale={0.98}
+              activeOpacity={0.8}
+              onPress={() => setMemberFilter((prev) => (prev === m.name ? '' : m.name))}
+              style={styles.rankRow}
+            >
               <Text style={[styles.rankNo, { color: palette.tint }]}>{idx + 1}</Text>
               <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>
                 {m.name}
@@ -644,21 +710,62 @@ export default function FlipScreen() {
               <Text style={[styles.rankVal, { color: palette.labelSecondary }]}>
                 {m.cost} · {m.count}
               </Text>
-            </View>
+            </ScalePressable>
           ))}
         </GlassSurface>
       ) : null}
-      {/* 成员筛选（原数据统计页的翻牌成员筛选） */}
-      <FilterChips
-        wrap
-        style={styles.filterWrap}
-        items={flipMemberNames.map((name) => ({
-          key: name,
-          label: name === '全部成员' ? t(name) : name,
-        }))}
-        value={memberFilter || '全部成员'}
-        onSelect={(name) => setMemberFilter(name === '全部成员' ? '' : name)}
-      />
+
+      <View style={styles.filterBarRow}>
+        <FilterChips
+          style={styles.filterRail}
+          items={flipMemberNames.slice(0, 14).map((name) => {
+            const count = flipMemberCounts.get(name);
+            return {
+              key: name,
+              label:
+                name === '全部成员'
+                  ? `${t(name)} (${flips.length})`
+                  : count
+                    ? `${name} · ${count}`
+                    : name,
+            };
+          })}
+          value={memberFilter || '全部成员'}
+          onSelect={(name) => setMemberFilter(name === '全部成员' ? '' : name)}
+        />
+        {flipMemberNames.length > 4 ? (
+          <ScalePressable
+            pressedScale={0.95}
+            activeOpacity={0.85}
+            onPress={() => {
+              setMemberSheetQuery('');
+              setMemberSheetOpen(true);
+            }}
+            style={[
+              styles.filterMoreBtn,
+              {
+                backgroundColor: memberFilter ? palette.tintSoft : palette.fill2,
+                borderColor: memberFilter ? palette.tint : palette.hairline,
+              },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="account-search-outline"
+              size={15}
+              color={memberFilter ? palette.tint : palette.labelSecondary}
+            />
+            <Text
+              style={[
+                styles.filterMoreText,
+                { color: memberFilter ? palette.tint : palette.labelSecondary },
+              ]}
+              numberOfLines={1}
+            >
+              {memberFilter || t('筛选成员')}
+            </Text>
+          </ScalePressable>
+        ) : null}
+      </View>
       <Text style={[styles.sectionTitle, { color: palette.labelSecondary }]}>
         {t('翻牌明细 · 共 {count} 条', { count: flipStatsView.totalCount })}
       </Text>
@@ -679,13 +786,13 @@ export default function FlipScreen() {
           <ScreenHeader title={t('发送翻牌')} />
 
           <FadeInView delay={60} duration={300}>
-            {/* 成员选择行 */}
             <GlassSurface
               radius={22}
               role="card"
+              frostedOnly
               style={[
                 styles.sendGroup,
-                { backgroundColor: 'transparent', borderColor: palette.hairline },
+                { backgroundColor: 'transparent', borderColor: palette.innerStroke },
               ]}
             >
               <View style={styles.groupRowTop}>
@@ -698,16 +805,23 @@ export default function FlipScreen() {
                 </View>
                 <Text style={[styles.groupLabel, { color: palette.label }]}>{t('选择成员')}</Text>
               </View>
-              <MemberPicker selectedMember={selectedMember} onSelect={selectMemberForPrice} />
+              <MemberPicker
+                compact
+                showTeams
+                collapsible
+                quickMembers={quickMembers}
+                selectedMember={selectedMember}
+                onSelect={selectMemberForPrice}
+              />
             </GlassSurface>
 
-            {/* 回复形式 */}
             <GlassSurface
               radius={22}
               role="card"
+              frostedOnly
               style={[
                 styles.sendGroup,
-                { backgroundColor: 'transparent', borderColor: palette.hairline },
+                { backgroundColor: 'transparent', borderColor: palette.innerStroke },
               ]}
             >
               <View style={styles.groupRowTop}>
@@ -741,13 +855,13 @@ export default function FlipScreen() {
               ) : null}
             </GlassSurface>
 
-            {/* 公开设置 */}
             <GlassSurface
               radius={22}
               role="card"
+              frostedOnly
               style={[
                 styles.sendGroup,
-                { backgroundColor: 'transparent', borderColor: palette.hairline },
+                { backgroundColor: 'transparent', borderColor: palette.innerStroke },
               ]}
             >
               <View style={styles.groupRowTop}>
@@ -774,13 +888,13 @@ export default function FlipScreen() {
               </View>
             </GlassSurface>
 
-            {/* 输入区 */}
             <GlassSurface
               radius={22}
               role="card"
+              frostedOnly
               style={[
                 styles.sendGroup,
-                { backgroundColor: 'transparent', borderColor: palette.hairline },
+                { backgroundColor: 'transparent', borderColor: palette.innerStroke },
               ]}
             >
               <View style={styles.groupRowTop}>
@@ -901,7 +1015,7 @@ export default function FlipScreen() {
           data={flipRows}
           keyExtractor={(row) => row.key}
           ListHeaderComponent={statsHeader}
-          // 末条不再贴死屏幕底（手势导航条会压住最后一行文字）
+
           contentContainerStyle={{ paddingBottom: 32 }}
           keyboardDismissMode="on-drag"
           initialNumToRender={12}
@@ -954,12 +1068,15 @@ export default function FlipScreen() {
                   })
                 : '';
             return (
-              <View
+              <GlassSurface
+                radius={radiiAlias.card}
+                role="card"
+                frostedOnly
                 style={[
                   styles.card,
                   {
-                    backgroundColor: palette.surfaceGlassStrong,
-                    borderColor: palette.hairline,
+                    backgroundColor: 'transparent',
+                    borderColor: palette.innerStroke,
                     borderWidth: StyleSheet.hairlineWidth,
                   },
                 ]}
@@ -976,7 +1093,7 @@ export default function FlipScreen() {
                         {t(privacyLabel(flip.type))}
                       </Text>
                     </View>
-                    {/* 状态徽标 */}
+
                     {Number(flip.status) === 1 ? (
                       <View style={[styles.statusBadge, { backgroundColor: palette.tintSoft }]}>
                         <Text style={[styles.statusBadgeText, { color: palette.tint }]}>
@@ -1040,7 +1157,7 @@ export default function FlipScreen() {
                     <Text style={[styles.cardA, { color: palette.labelSecondary }]}>
                       {t('答：{text}', { text: answer })}
                     </Text>
-                    {/* 语音/视频翻牌：回复时长（此前只解析不显示，用户反馈「秒数没了」） */}
+
                     {ansDur > 0 && (flipAnswerType === 2 || flipAnswerType === 3) ? (
                       <Text style={[styles.answerDur, { color: palette.labelTertiary }]}>
                         {`${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`}
@@ -1063,7 +1180,7 @@ export default function FlipScreen() {
                             color={palette.tint}
                           />
                         </ScalePressable>
-                        {/* 下载按钮（此前缺失） */}
+
                         <ScalePressable
                           style={[styles.answerBtn, { backgroundColor: palette.fill2 }]}
                           pressedScale={0.96}
@@ -1098,7 +1215,6 @@ export default function FlipScreen() {
 
                 {playingAnswerUrl === answerUrl && answerUrl ? (
                   <View style={styles.answerMediaCard}>
-                    {/* 统一播放器（重写）：翻牌答案 → 内嵌 PlayerScreen */}
                     <PlayerScreen
                       inline
                       source={{
@@ -1121,13 +1237,13 @@ export default function FlipScreen() {
                     ? ` · ${t('回复于 {time}', { time: formatTimestamp(flip.answerTime) })}`
                     : ''}
                 </Text>
-              </View>
+              </GlassSurface>
             );
           }}
           onEndReached={() => {
             if (loadingRef.current || !hasMore) return;
             const nextPage = pageRef.current + 1;
-            // 仅成功后推进 pageRef：失败不前进，避免重试跳页/漏页
+
             void loadFlips(nextPage).then((ok) => {
               if (ok) pageRef.current = nextPage;
             });
@@ -1136,9 +1252,7 @@ export default function FlipScreen() {
           ListEmptyComponent={
             !useSettingsStore.getState().settings.p48Token ? (
               <LoginPrompt hint={t('查看翻牌记录需要登录')} />
-            ) : // ⚠️ 必须区分「加载中」与「真的没有」：此前缺 loading 分支，
-            // 首屏/切页在数据回来前就显示「暂无翻牌记录」，用户以为没数据（修复）
-            loading ? (
+            ) : loading ? (
               <CenterSpinner />
             ) : statusError ? (
               <ErrorState
@@ -1159,21 +1273,119 @@ export default function FlipScreen() {
           }
         />
       </FadeInView>
+
+      {memberSheetOpen ? (
+        <Modal
+          visible
+          transparent
+          animationType="slide"
+          onRequestClose={() => setMemberSheetOpen(false)}
+        >
+          <Pressable style={styles.sheetShade} onPress={() => setMemberSheetOpen(false)}>
+            <Pressable
+              style={[
+                styles.sheetPanel,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.hairline,
+                  paddingBottom: Math.max(20, insets.bottom + 10),
+                },
+              ]}
+              onPress={() => undefined}
+            >
+              <View style={styles.sheetHead}>
+                <Text style={[styles.groupLabel, { color: palette.label }]}>{t('筛选成员')}</Text>
+                <ScalePressable
+                  pressedScale={0.94}
+                  onPress={() => setMemberSheetOpen(false)}
+                  style={[styles.sheetCloseBtn, { backgroundColor: palette.fill2 }]}
+                >
+                  <MaterialCommunityIcons name="close" size={18} color={palette.labelSecondary} />
+                </ScalePressable>
+              </View>
+              <SearchBar
+                value={memberSheetQuery}
+                onChangeText={setMemberSheetQuery}
+                placeholder={t('搜索成员...')}
+                style={styles.sheetSearch}
+              />
+              <ScrollView keyboardShouldPersistTaps="handled" style={styles.sheetList}>
+                {sheetMemberRows.map((name) => {
+                  const isAll = name === '全部成员';
+                  const active = isAll ? !memberFilter : memberFilter === name;
+                  const count = isAll ? flips.length : flipMemberCounts.get(name) || 0;
+                  const avatarUri = isAll ? '' : memberAvatarByName.get(name) || '';
+                  return (
+                    <ScalePressable
+                      key={name}
+                      pressedScale={0.98}
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        setMemberFilter(isAll ? '' : name);
+                        setMemberSheetOpen(false);
+                      }}
+                      style={[
+                        styles.sheetRow,
+                        {
+                          backgroundColor: active ? palette.tintSoft : 'transparent',
+                          borderBottomColor: palette.hairline,
+                        },
+                      ]}
+                    >
+                      {avatarUri ? (
+                        <NetworkImage
+                          source={{ uri: avatarUri }}
+                          style={[styles.sheetAvatar, { backgroundColor: palette.fill2 }]}
+                          fallbackIcon="account"
+                          thumbnail={96}
+                        />
+                      ) : (
+                        <View style={[styles.sheetAvatar, { backgroundColor: palette.fill2 }]}>
+                          <MaterialCommunityIcons
+                            name={isAll ? 'account-group-outline' : 'account'}
+                            size={16}
+                            color={active ? palette.tint : palette.labelTertiary}
+                          />
+                        </View>
+                      )}
+                      <Text
+                        style={[
+                          styles.sheetRowName,
+                          { color: active ? palette.tint : palette.label },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {isAll ? t(name) : name}
+                      </Text>
+                      <Text style={[styles.sheetRowCount, { color: palette.labelTertiary }]}>
+                        {count}
+                      </Text>
+                      {active ? (
+                        <MaterialCommunityIcons name="check" size={18} color={palette.tint} />
+                      ) : null}
+                    </ScalePressable>
+                  );
+                })}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  answerDur: { fontSize: 12, fontWeight: '700', marginLeft: 6 },
+  answerDur: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700', marginLeft: 6 },
   container: { flex: 1, backgroundColor: 'transparent' },
   sendContainer: { paddingBottom: 48 },
   retryWrap: { alignItems: 'center', marginTop: 6 },
-  // 发送表单分组
+
   sendGroup: {
     padding: 14,
     marginHorizontal: 16,
     marginVertical: 6,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
   },
   groupRowTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
@@ -1185,7 +1397,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 8,
   },
-  groupLabel: { fontSize: 15, fontWeight: '700' },
+  groupLabel: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '700' },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   optionPill: { marginBottom: 0 },
   optionDisabled: { opacity: 0.45 },
@@ -1194,6 +1406,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: radiiAlias.input,
     fontSize: 14,
+    fontFamily: fontFamily.system,
     lineHeight: 20,
   },
   inputMetaRow: {
@@ -1210,7 +1423,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  costLabel: { fontSize: 13, fontWeight: '700', marginRight: 8 },
+  costLabel: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '700', marginRight: 8 },
   costInput: { flex: 1, paddingVertical: 6, fontSize: 14 },
   costHint: { marginTop: 8, fontSize: 12 },
   rechargeBtn: {
@@ -1221,50 +1434,109 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     minHeight: 40,
   },
-  rechargeText: { fontSize: 13, fontWeight: '700' },
+  rechargeText: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '700' },
   hint: { marginTop: 8, fontSize: 12 },
   balanceText: { fontSize: 13, fontWeight: '600' },
   sendFooter: { marginTop: 16, marginHorizontal: 16 },
-  // 翻牌统计（本页整页呈现）
+
   statsWrap: { paddingBottom: 8 },
   statsOverview: {
     flexDirection: 'row',
     padding: 14,
     marginHorizontal: 16,
     marginVertical: 6,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
   },
   statCell: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 18, fontWeight: '900' },
+  statValue: { fontSize: 18, fontFamily: fontFamily.system, fontWeight: '900' },
   statLabel: { fontSize: 11, marginTop: 2 },
   statsGroup: {
     padding: 14,
     marginHorizontal: 16,
     marginVertical: 6,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
   },
   typeRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
-  // ⚠️ 文字格一律 minWidth 不用 width：系统字体放大后固定宽度会把「文字/语音/视频」裁掉半个字
-  typeRowLabel: { minWidth: 34, fontSize: 12 },
+
+  typeRowLabel: { minWidth: 34, fontSize: 12, fontFamily: fontFamily.system },
   typeTrack: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', marginHorizontal: 8 },
   typeFill: { height: 8, borderRadius: 4 },
   typeCount: { minWidth: 30, fontSize: 11, textAlign: 'right' },
   rankRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
-  rankNo: { minWidth: 22, fontSize: 12, fontWeight: '900' },
+  rankNo: { minWidth: 22, fontSize: 12, fontFamily: fontFamily.system, fontWeight: '900' },
   rankName: { flex: 1, fontSize: 13 },
   rankVal: { fontSize: 12, marginLeft: 8 },
   sectionTitle: { fontSize: 12, marginHorizontal: 16, marginTop: 12, marginBottom: 4 },
-  filterWrap: {
+  filterBarRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 8,
     marginHorizontal: 16,
     marginTop: 10,
   },
-  statusText: { margin: 12, textAlign: 'center', fontSize: 13 },
-  // 历史记录行卡
+  filterRail: { flex: 1, minWidth: 0 },
+  filterMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    minHeight: 36,
+    maxWidth: 120,
+    borderRadius: radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  filterMoreText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
+  sheetShade: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    justifyContent: 'flex-end',
+  },
+  sheetPanel: {
+    maxHeight: '72%',
+    borderTopLeftRadius: radii.sheet,
+    borderTopRightRadius: radii.sheet,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  sheetCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetSearch: { marginHorizontal: 0, marginBottom: 8 },
+  sheetList: { maxHeight: 400 },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sheetAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetRowName: { flex: 1, fontSize: 14, fontFamily: fontFamily.system, fontWeight: '600' },
+  sheetRowCount: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '600' },
+  statusText: { margin: 12, textAlign: 'center', fontSize: 13, fontFamily: fontFamily.system },
+
   card: {
     padding: 14,
     marginHorizontal: 16,
@@ -1277,16 +1549,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  cardDate: { fontSize: 11, fontWeight: '500' },
+  cardDate: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '500' },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexWrap: 'wrap' },
   typeTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.xs },
   typeTagText: { fontSize: 11, fontWeight: '700' },
   privacyTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.xs },
-  privacyTagText: { fontSize: 11, fontWeight: '700' },
+  privacyTagText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.xs },
   statusBadgeText: { fontSize: 11, fontWeight: '700' },
   memberName: { fontSize: 13, fontWeight: '700', marginBottom: 6 },
-  cardQ: { fontSize: 14, marginBottom: 8, lineHeight: 20 },
+  cardQ: { fontSize: 14, fontFamily: fontFamily.system, marginBottom: 8, lineHeight: 20 },
   cardA: { fontSize: 13, lineHeight: 19, flex: 1, marginRight: 10 },
   answerRow: { flexDirection: 'row', alignItems: 'center' },
   answerBtn: {
@@ -1298,7 +1570,7 @@ const styles = StyleSheet.create({
     paddingLeft: 2,
   },
   answerMediaCard: { marginTop: 8 },
-  cardPending: { fontSize: 13, fontWeight: '700' },
+  cardPending: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '700' },
   cardMeta: { fontSize: 11, marginTop: 8 },
   monthGroup: {
     fontSize: 13,

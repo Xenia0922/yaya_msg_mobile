@@ -1,7 +1,3 @@
-/**
- * AboutScreen · 关于软件（从设置页拆出的独立入口）
- * 低频信息全部收在这里，设置页只保留一个「关于软件」入口。
- */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
@@ -28,9 +24,8 @@ import { DONATE_QR_URL, DONATE_QR_ASSET } from '../constants/donate';
 import { useUpdateStore, useUiStore } from '../store';
 import { isApkUpdaterAvailable } from '../native/ApkUpdater';
 import { useI18n } from '../i18n';
-import { usePalette, getPageBackground } from '../theme';
+import { usePalette, getPageBackground, fontFamily } from '../theme';
 
-// 法律文本保持中文原文（官方中文声明为准；不做机器翻译）
 const PRIVACY_BODY = `本应用是开源、本地优先的客户端。应用设置、账号凭证、缓存、下载文件和运行日志均保存在本机，不会上传到开发者服务器；不收集聊天内容、通讯录或精确位置，也不接入广告或第三方统计 SDK。
 
 为展示内容，应用会直接访问口袋48/塞纳河48官方接口及必要的 GitHub 服务，相关请求由设备直接发起。相册、存储和通知权限仅用于保存图片、下载内容和本地播放提醒，可在系统设置中随时关闭。
@@ -304,6 +299,7 @@ export default function AboutScreen() {
                     style={{
                       color: feedbackKind === k ? palette.onTint : palette.labelSecondary,
                       fontSize: 12,
+                      fontFamily: fontFamily.system,
                       fontWeight: '700',
                     }}
                   >
@@ -382,7 +378,6 @@ export default function AboutScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* 开源协议与隐私：本地优先说明 */}
       <Modal
         visible={privacyVisible}
         transparent
@@ -439,18 +434,19 @@ const styles = StyleSheet.create({
   logoWrap: {
     width: 72,
     height: 72,
-    borderRadius: 24,
+    borderRadius: 18,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  logo: { width: 72, height: 72, borderRadius: 24 },
-  appName: { fontSize: 22, fontWeight: '800', marginTop: 12 },
+  logo: { width: 72, height: 72, borderRadius: 18 },
+  appName: { fontSize: 22, fontFamily: fontFamily.system, fontWeight: '800', marginTop: 12 },
   appSub: { fontSize: 12, marginTop: 4 },
   versionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   versionText: { fontSize: 12, fontWeight: '700' },
   updateDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FF4D67' },
-  updateHint: { fontSize: 11, marginTop: 5 },
+  updateHint: { fontSize: 11, fontFamily: fontFamily.system, marginTop: 5 },
   checkBtn: { marginTop: 10 },
   sectionTitleRow: {
     flexDirection: 'row',
@@ -467,7 +463,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
+  sectionTitle: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
   section: { overflow: 'hidden' },
   row: {
     flexDirection: 'row',
@@ -483,7 +484,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowTitle: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: '600' },
+  rowTitle: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+  },
   rowValue: { fontSize: 12, flexShrink: 1, maxWidth: '45%', textAlign: 'right' },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 54 },
   shade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
@@ -500,7 +507,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 14,
   },
-  sheetTitle: { fontSize: 16, fontWeight: '800' },
+  sheetTitle: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '800' },
   kindRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   kindChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 14 },
   feedbackInput: {
@@ -509,6 +516,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
+    fontFamily: fontFamily.system,
     lineHeight: 19,
   },
   actions: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 16 },
@@ -520,7 +528,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  qrTitle: { fontSize: 14, fontWeight: '700' },
+  qrTitle: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '700' },
   qrNote: { fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 10 },
   legalText: { fontSize: 12, lineHeight: 20 },
 });

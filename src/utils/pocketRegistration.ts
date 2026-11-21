@@ -1,6 +1,5 @@
 const forge = require('node-forge');
 
-// 口袋客户端密码协议使用的公开兼容常量，账号密码不会存入本地设置。
 const PROTOCOL_KEY = '7yy4tjcw12aipo2c';
 
 export function validateRegistrationPassword(password: string, confirmation: string): string {

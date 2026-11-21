@@ -12,21 +12,20 @@ interface Props {
   source: PlayerSource;
   paused: boolean;
   rate: number;
-  /** 音量（B站流响度补偿用，默认 1） */
+
   volume?: number;
-  /** 续播起点（onLoad 后 seek） */
+
   resumeAt?: number;
   onLoad: (duration: number, naturalSize?: { width: number; height: number }) => void;
   onProgress: (t: number) => void;
   onEnd: () => void;
   onError: (detail: string) => void;
-  /** 首帧上屏（诊断 + 结束 loading） */
+
   onFirstFrame?: () => void;
-  /** 缓冲开始/结束（诊断卡顿） */
+
   onBufferChange?: (buffering: boolean) => void;
 }
 
-/** RNV 内核：HLS/mp4/mp3/flac 等 ExoPlayer 支持的流 */
 export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function NativeKernel(
   {
     source,
@@ -75,8 +74,7 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
         uri: source.url,
         ...(source.headers ? { headers: source.headers } : {}),
       }}
-      // AWS/CDN 流播放中偶发缓冲耗尽卡顿：加大 Exo 缓冲池 + 30s 回看缓冲。
-      // ⚠️ react-native-video v6 要求 bufferConfig 是顶层 prop，放进 source 内不会生效。
+
       bufferConfig={{
         minBufferMs: 15000,
         maxBufferMs: 60000,
@@ -85,9 +83,9 @@ export const NativeKernel = forwardRef<NativeKernelHandle, Props>(function Nativ
         backBufferDurationMs: 30000,
       }}
       style={StyleSheet.absoluteFill}
-      // 系统 PiP 从 SurfaceView 切 TextureView：避免进入/双击缩放小窗时长时间黑屏。
+
       viewType={ViewType.TEXTURE}
-      // 系统小窗内始终 contain：Android 双击放大/缩小时不能被 cover 裁掉画面边缘。
+
       resizeMode={inPip ? 'contain' : cover ? 'cover' : 'contain'}
       paused={paused}
       rate={rate}

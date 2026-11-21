@@ -1,9 +1,3 @@
-/**
- * ResumeModule · 最近播放（C4-S3）
- *
- * 纯展示：miniPlayer（musicPlayerStore）订阅/歌词逐行计算全部留在 HomeScreen，
- * 这里只接收当前曲目、歌词当前行、播放状态与回调。
- */
 import React from 'react';
 import { Text, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -12,7 +6,7 @@ import { GlassCard } from '../../components/GlassCard';
 import { FadeInView, ScalePressable } from '../../components/Motion';
 import { MarqueeText } from '../../components/MarqueeText';
 import { SectionTitle } from '../../components/SectionTitle';
-import { usePalette } from '../../theme';
+import { usePalette, fontFamily } from '../../theme';
 import { typography } from '../../theme/typography';
 import { useI18n } from '../../i18n';
 import { AVATAR_THUMB_WIDTH } from '../../utils/imageThumb';
@@ -55,7 +49,6 @@ export default function ResumeModule({
     <View style={styles.sectionOuter}>
       <SectionTitle icon="history" title={t('最近播放')} />
       <FadeInView delay={0} duration={320}>
-        {/* 音乐 minibar：封面 + 标题 + 当前一句歌词 + 上一首/暂停/下一首，状态与正在播放的音乐同步 */}
         <GlassCard strong padding={12} radius={22}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <ScalePressable onPress={onOpenLibrary} pressedScale={0.94} hitSlop={4}>
@@ -79,7 +72,12 @@ export default function ResumeModule({
             >
               <Text
                 style={[
-                  { fontSize: 16, lineHeight: 21, fontWeight: '600' },
+                  {
+                    fontSize: 16,
+                    fontFamily: fontFamily.system,
+                    lineHeight: 21,
+                    fontWeight: '600',
+                  },
                   { color: palette.label },
                 ]}
                 numberOfLines={1}
@@ -93,7 +91,7 @@ export default function ResumeModule({
                 {trackArtist || resumeLabel}
               </Text>
             </ScalePressable>
-            {/* 控制区：主按钮（播放/暂停）实心高对比，切歌为次级描边，视觉层级分明 */}
+
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <ScalePressable
                 onPress={onPrev}
@@ -141,7 +139,7 @@ export default function ResumeModule({
               ) : null}
             </View>
           </View>
-          {/* 歌词独占一行、整卡宽：窄列里跑马灯只能看到 7-9 个字，怎么滚都像被截断 */}
+
           <ScalePressable onPress={onOpenLibrary} pressedScale={0.99} style={{ marginTop: 6 }}>
             <MarqueeText
               text={lyricLine || t('暂无歌词')}

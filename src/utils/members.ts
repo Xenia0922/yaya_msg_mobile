@@ -1,5 +1,70 @@
 import { Member } from '../types';
 
+export const OFFICIAL_TEAM_LOGOS: Array<[string, string]> = [
+  ['SNH48 · SII', '/mediasource/teamLogo2/all/snh48_s2.png'],
+  ['SNH48 · NII', '/mediasource/teamLogo2/all/snh48_n2.png'],
+  ['SNH48 · HII', '/mediasource/teamLogo2/all/snh48_h2.png'],
+  ['SNH48 · X', '/mediasource/teamLogo2/all/snh48_x.png'],
+  ['GNZ48 · G', '/mediasource/teamLogo2/all/gnz48_g.png'],
+  ['GNZ48 · NIII', '/mediasource/teamLogo2/all/gnz48_n3.png'],
+  ['GNZ48 · Z', '/mediasource/teamLogo/all/gnz_z_log2.png'],
+  ['BEJ48 · B', '/mediasource/teamLogo2/all/bej48_b.png'],
+  ['BEJ48 · E', '/mediasource/teamLogo2/all/bej48_e.png'],
+  ['CKG48 · C', '/mediasource/teamLogo/all/ckg_c.png'],
+  ['CKG48 · K', '/mediasource/teamLogo/all/ckg_k.png'],
+  ['预备生', '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png'],
+];
+
+const TEAM_LOGO_BY_ID: Record<string, string> = {
+  '1001': '/mediasource/teamLogo2/all/snh48_s2.png',
+  '1002': '/mediasource/teamLogo2/all/snh48_n2.png',
+  '1003': '/mediasource/teamLogo2/all/snh48_h2.png',
+  '1004': '/mediasource/teamLogo2/all/snh48_x.png',
+  '1007': '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png',
+  '1101': '/mediasource/teamLogo2/all/bej48_b.png',
+  '1102': '/mediasource/teamLogo2/all/bej48_e.png',
+  '1104': '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png',
+  '1201': '/mediasource/teamLogo2/all/gnz48_g.png',
+  '1202': '/mediasource/teamLogo2/all/gnz48_n3.png',
+  '1203': '/mediasource/teamLogo/all/gnz_z_log2.png',
+  '1207': '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png',
+  '1401': '/mediasource/teamLogo/all/ckg_c.png',
+  '1402': '/mediasource/teamLogo/all/ckg_k.png',
+  '1405': '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png',
+  '2103': '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png',
+};
+
+const TEAM_LOGO_BY_NAME: Record<string, string> = {
+  'TEAM SII': '/mediasource/teamLogo2/all/snh48_s2.png',
+  'TEAM NII': '/mediasource/teamLogo2/all/snh48_n2.png',
+  'TEAM HII': '/mediasource/teamLogo2/all/snh48_h2.png',
+  'TEAM X': '/mediasource/teamLogo2/all/snh48_x.png',
+  'TEAM G': '/mediasource/teamLogo2/all/gnz48_g.png',
+  'TEAM NIII': '/mediasource/teamLogo2/all/gnz48_n3.png',
+  'TEAM Z': '/mediasource/teamLogo/all/gnz_z_log2.png',
+  'TEAM B': '/mediasource/teamLogo2/all/bej48_b.png',
+  'TEAM E': '/mediasource/teamLogo2/all/bej48_e.png',
+  'TEAM C': '/mediasource/teamLogo/all/ckg_c.png',
+  'TEAM K': '/mediasource/teamLogo/all/ckg_k.png',
+  预备生: '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png',
+};
+
+export function resolveOfficialTeamLogo(source?: {
+  teamId?: string | number;
+  team?: string;
+  teamName?: string;
+}): string {
+  if (!source) return '';
+  const tid = String(source.teamId ?? '').trim();
+  if (tid && TEAM_LOGO_BY_ID[tid]) return TEAM_LOGO_BY_ID[tid];
+  const tname = String(source.team || source.teamName || '')
+    .trim()
+    .toUpperCase();
+  if (tname && TEAM_LOGO_BY_NAME[tname]) return TEAM_LOGO_BY_NAME[tname];
+  if (tname.includes('预备生')) return TEAM_LOGO_BY_NAME.预备生;
+  return '';
+}
+
 let memberDatabase: Member[] = [];
 const memberMap: Map<string, Member> = new Map();
 
@@ -38,7 +103,7 @@ export function pinyinInitials(value: any): string {
 export function memberSearchText(member: Member): string {
   const short = member.ownerName.split('-').pop() || '';
   const rawPinyin = (member.pinyin || '').trim();
-  // split camelCase: "BaoYuXin" → ["Bao","Yu","Xin"]; "baoyuxin" → ["baoyuxin"]
+
   const camelParts = rawPinyin.split(/(?=[A-Z])/).filter(Boolean);
   const pinyinLower = rawPinyin.toLowerCase();
   const initials = camelParts
@@ -73,18 +138,15 @@ export function classifyMemberState(raw: any): string {
       if (status === 1) return 'graduated';
       if (status === 2) return 'left';
       if (status === 3) return 'paused';
-      // ⚠️ 上游（data.gnz.hk）自 起不再返回 status / roomId / liveRoomId 字段，
-      // 无 status 时旧逻辑返回 'unknown' → 资料卡状态栏空白、按状态分组的地方全丢。
-      // 改为按「已毕业」兜底：库判 isInGroup=false 的成员绝大多数是已毕业/已离团。
-      // 注意上麦页不依赖 state 判定在团（它用 isInGroup !== false），故无副作用。
+
       return 'graduated';
     }
-    // isInGroup=true：在团（status 2/3 视为退团/暂休）
+
     if (status === 2) return 'left';
     if (status === 3) return 'paused';
     return 'active';
   }
-  // 仅官方（库未收录的新成员）：官方 status 编码
+
   if (status === 2) return 'left';
   if (status === 3) return 'paused';
   if (status === 1) {
@@ -95,7 +157,6 @@ export function classifyMemberState(raw: any): string {
   return 'unknown';
 }
 
-/** 房间搜索排除数据库明确标记为离团或毕业的成员，未知状态保留。 */
 export function isRoomMember(member: Pick<Member, 'isInGroup' | 'state'>): boolean {
   return member.isInGroup !== false && member.state !== 'left' && member.state !== 'graduated';
 }
@@ -115,12 +176,12 @@ export function normalizeMember(raw: any): Member {
     avatar: text(raw?.avatar),
     groupName: text(raw?.groupName),
     teamId: text(raw?.teamId),
+    teamLogo: text(raw?.teamLogo || raw?.teamLogoUrl) || resolveOfficialTeamLogo(raw),
     isInGroup: raw?.isInGroup !== false,
     state: classifyMemberState(raw),
   };
 }
 
-/** 把官方新增的 48 系成员加入现有成员库，不重复添加，也不混入其他团体。 */
 export function appendOfficialGroupMembers(members: Member[], official: any[]): Member[] {
   const groups = new Set(['SNH48', 'GNZ48', 'BEJ48', 'CKG48', 'CGT48', 'SHY48']);
   const ids = new Set(members.map((member) => String(member.id)));

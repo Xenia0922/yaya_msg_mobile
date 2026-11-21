@@ -1,18 +1,3 @@
-/**
- * 房间相册 —— 重写版
- *
- * 旧实现（531 行，`0ee880f` 以「有问题未实现」删除后本轮短暂恢复）实测三处硬伤，本版针对性重写：
- * 1. **2 列网格整行塌成一张全宽变形图、50 张图一张都看不见** —— 旧版每个网格项外面包了
- * `FadeInView` 但没给它宽度，内层卡片的 `flex:1` 没有可依据的宽度。
- * 本版：**格容器自己 `width:'50%'`**（不用 flex:1，奇数张时最后一张也不会被拉成整行），
- * 且**不再逐项包 FadeInView**（50 项逐个入场动画既卡又容易出布局问题）。
- * 2. **相册页顶部挂着一张房间背景大图** —— 相册页不该出现房间背景图，本版**整块删除**，
- * 连带那次多余的 roomMeta 请求（房间名对浏览相册没有价值，模式由分段控件表达）。
- * 3. **状态文案混乱**：`status` 初值就是「暂无数据」，加载完成后又同时弹 toast + 行内文字。
- * 本版：状态机收敛为「未选成员 / 加载中 / 失败 / 空 / 列表」五态，只在一处渲染。
- *
- * 列表图片一律走 48 图床缩略图（`NetworkImage thumbnail`），滚动不拉原图；点开大图才用原图。
- */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -37,7 +22,7 @@ import { useI18n } from '../i18n';
 import { shareRemoteImage } from '../services/shareImage';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import { formatDuration } from '../utils/format';
-import { usePalette, radiiAlias } from '../theme';
+import { usePalette, radiiAlias, fontFamily } from '../theme';
 import { typography } from '../theme/typography';
 import type { Member } from '../types';
 
@@ -54,10 +39,9 @@ type AlbumItem = {
 };
 
 const COLUMNS = 2;
-/** 网格态缩略图宽度（48 图床 resize 参数） */
+
 const THUMB_W = 360;
 
-/** 相册条目正文可能被双层转义成字符串（\" → "），逐层降级解析 */
 function parseAlbumBody(item: any): any {
   const raw = item?.bodys ?? item?.body ?? item?.msgContent ?? item?.content ?? item?.message;
   if (raw && typeof raw === 'object') return raw;
@@ -94,7 +78,6 @@ function mediaDuration(item: any): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** 列表 → 视图模型（丢掉没解析出 url 的脏条目） */
 function toItems(res: any, mode: RoomMode): AlbumItem[] {
   const list = unwrapList(res, [
     'content.messageList',
@@ -125,7 +108,6 @@ function toItems(res: any, mode: RoomMode): AlbumItem[] {
     .filter((item: AlbumItem) => !!item.url);
 }
 
-/** 下一页游标：优先取响应体，退化到本页最早一条的时间戳 */
 function nextCursor(res: any, list: AlbumItem[]): number {
   const direct = Number(
     pickText(res, ['content.nextTime', 'content.next', 'data.nextTime', 'nextTime']),
@@ -150,7 +132,6 @@ export default function RoomAlbumScreen() {
   const [preview, setPreview] = useState<AlbumItem | null>(null);
   const [playing, setPlaying] = useState<AlbumItem | null>(null);
 
-  /** 请求序号：切成员/切房间时丢弃过期响应（否则旧请求会把新列表覆盖回去） */
   const reqRef = useRef(0);
   const busyRef = useRef(false);
   const cursorRef = useRef(0);
@@ -177,7 +158,7 @@ export default function RoomAlbumScreen() {
           channelId: String(channelId),
           nextTime: sentCursor,
         });
-        if (rid !== reqRef.current) return; // 已切走，丢弃
+        if (rid !== reqRef.current) return;
         const page = toItems(res, roomMode);
         const next = nextCursor(res, page);
         setItems((prev) => {
@@ -185,7 +166,7 @@ export default function RoomAlbumScreen() {
           const seen = new Set(prev.map((item) => item.id));
           return [...prev, ...page.filter((item) => !seen.has(item.id))];
         });
-        // 游标没前进（或本页为空）就终止，防死循环
+
         const advanced = next > 0 && next !== sentCursor;
         cursorRef.current = advanced ? next : cursorRef.current;
         setCursor(cursorRef.current);
@@ -243,7 +224,6 @@ export default function RoomAlbumScreen() {
     load(member, mode, true);
   }, [member, mode, loading, hasMore, load]);
 
-  /** 长按下载（图片/视频都以原图地址入队） */
   const download = useCallback(
     async (item: AlbumItem) => {
       try {
@@ -322,7 +302,6 @@ export default function RoomAlbumScreen() {
     return null;
   }, [loading, items.length, hasMore, palette.labelTertiary, t]);
 
-  // 视频播放：整页交给统一播放器（控制条/全屏/内核切换/错误重试都在里面）
   if (playing) {
     return (
       <View style={styles.playerPage}>
@@ -359,6 +338,7 @@ export default function RoomAlbumScreen() {
 
       <View style={styles.top}>
         <MemberPicker
+          compact
           activeOnly
           selectedMember={member}
           onSelect={pickMember}
@@ -441,7 +421,6 @@ export default function RoomAlbumScreen() {
   );
 }
 
-/** 首屏骨架：与真实网格同构（2 列 · 3:4），避免「先空后跳」的观感 */
 function SkeletonGrid() {
   return (
     <View style={styles.skeletonWrap}>
@@ -465,12 +444,13 @@ const styles = StyleSheet.create({
   countText: { ...typography.footnote },
 
   grid: { paddingHorizontal: 11, paddingTop: 2, paddingBottom: 110 },
-  /** 格：自己占半宽。**不用 flex:1** —— 奇数张时最后一张不会被拉成整行 */
+
   cell: { width: `${100 / COLUMNS}%` as any, padding: 5 },
   card: {
     width: '100%',
     aspectRatio: 3 / 4,
     borderRadius: radiiAlias.cardCompact,
+    borderCurve: 'continuous',
     overflow: 'hidden',
   },
 
@@ -494,18 +474,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderCurve: 'continuous',
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
-  durationText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  durationText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+  },
 
   footer: { ...typography.footnote, textAlign: 'center', paddingVertical: 14 },
 
   skeletonWrap: { paddingHorizontal: 11, paddingTop: 2 },
   skeletonRow: { flexDirection: 'row' },
-  /** 用 aspectRatio 撑出与真实卡片同高的占位 */
+
   skeletonCard: { width: '100%' as any, aspectRatio: 3 / 4, height: undefined },
 
   playerPage: { flex: 1, backgroundColor: '#000000' },

@@ -1,7 +1,7 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,39 +10,25 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassSurface } from './GlassSurface';
-import { usePalette } from '../theme';
+import { fontFamily, usePalette } from '../theme';
 
 export interface GlassSegmentOption<T extends string> {
   key: T;
   label: string;
+
+  dot?: boolean;
 }
 
-/**
- * 选中胶囊（**刻意不用 BlurView**）。
- *
- * ⚠️ 实测修复「切换页签瞬间胶囊被挤压/变形」：
- * expo-blur 的 BlurView 在 Android 上用**原生驱动 transform** 位移时，backdrop 的裁剪框
- * 不跟随视图移动 → 移出旧裁剪框的部分被**竖直切掉**（连拍实拍：胶囊左圆头整块消失、
- * 左边缘是一条硬直线），用户看到的就是「切换时被挤一下」。
- *
- * 这里改用与 `SELECTOR` 材质**等价的不透明层**（深色主题 = 12% 白 + 10% 白描边；
- * 浅色 = 55% 浅灰 + 45% 白描边）。胶囊底下是纯色/平滑渐变的轨道，模糊在视觉上本就看不出来，
- * 因此观感一致；同时省掉动画期间每帧一次 backdrop 重采样（更省电、更不掉帧）。
- * 需要真模糊时请用 `GlassSurface role="selector"`（静止不动的场景）。
- */
-function SelectorCapsule({
-  radius,
-  dark,
-  tintSoft,
-  tint,
-}: {
-  radius: number;
-  dark: boolean;
-  tintSoft: string;
-  tint: string;
-}) {
+function SelectorCapsule({ radius, dark }: { radius: number; dark: boolean }) {
   return (
     <View
       pointerEvents="none"
@@ -50,9 +36,10 @@ function SelectorCapsule({
         StyleSheet.absoluteFill,
         {
           borderRadius: radius,
-          backgroundColor: tintSoft || (dark ? 'rgba(255,255,255,0.12)' : 'rgba(232,232,238,0.55)'),
+          borderCurve: 'continuous',
+          backgroundColor: dark ? 'rgba(255,255,255,0.12)' : 'rgba(232,232,238,0.55)',
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: tint || (dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)'),
+          borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)',
         },
       ]}
     />
@@ -64,8 +51,12 @@ interface Props<T extends string> {
   value: T;
   onChange: (_key: T) => void;
   style?: StyleProp<ViewStyle>;
-  /** 轨道高度，默认 36 */
+
   height?: number;
+
+  labelFontSize?: number;
+
+  frostedOnly?: boolean;
 }
 
 export function GlassSegmented<T extends string>({
@@ -74,6 +65,8 @@ export function GlassSegmented<T extends string>({
   onChange,
   style,
   height = 36,
+  labelFontSize = 14,
+  frostedOnly = false,
 }: Props<T>) {
   const palette = usePalette();
   const [trackW, setTrackW] = useState(0);
@@ -83,36 +76,72 @@ export function GlassSegmented<T extends string>({
   );
   const pad = 3;
   const cellW = trackW > 0 && options.length > 0 ? (trackW - pad * 2) / options.length : 0;
-  // 点击、拖动和松手共用同一个位置，避免父级更新前先回到旧索引。
-  const position = useRef(new Animated.Value(0)).current;
-  const positionRef = useRef(0);
-  const dragStartRef = useRef(0);
-  const draggingRef = useRef(false);
-  const rollbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ref 化最新值：PanResponder 只创建一次，闭包会捕到过期的 options/value
-  const cellWRef = useRef(cellW);
-  cellWRef.current = cellW;
+  const posSV = useSharedValue(0);
+  const dragStartSV = useSharedValue(0);
+  const dragScaleSV = useSharedValue(1);
+  const draggingSV = useSharedValue(false);
+  const followFingerSV = useSharedValue(false);
+  const cellWSV = useSharedValue(cellW);
+  const countSV = useSharedValue(options.length);
+  const idxSV = useSharedValue(idx);
+
+  const rollbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const idxRef = useRef(idx);
   idxRef.current = idx;
+  const cellWRef = useRef(cellW);
+  cellWRef.current = cellW;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  const settle = (target: number) => {
-    positionRef.current = target;
-    position.setValue(target);
-  };
+  const commitIndex = useCallback(
+    (nextIdx: number) => {
+      const target = optionsRef.current[nextIdx];
+      const current = optionsRef.current[idxRef.current];
+      if (!target || target.key === current?.key) return;
+      if (rollbackTimerRef.current) clearTimeout(rollbackTimerRef.current);
+      onChangeRef.current(target.key);
+
+      rollbackTimerRef.current = setTimeout(() => {
+        rollbackTimerRef.current = null;
+        if (!draggingSV.value && cellWRef.current > 0) {
+          posSV.value = withSpring(idxRef.current * cellWRef.current, {
+            damping: 22,
+            stiffness: 300,
+          });
+        }
+      }, 1000);
+    },
+    [draggingSV, posSV],
+  );
+
+  const prevCellWRef = useRef(0);
+  const prevIdxRef = useRef(idx);
   useLayoutEffect(() => {
-    if (draggingRef.current) return;
+    cellWSV.value = cellW;
+    countSV.value = options.length;
+    idxSV.value = idx;
+    if (draggingSV.value) return;
     if (rollbackTimerRef.current) {
       clearTimeout(rollbackTimerRef.current);
       rollbackTimerRef.current = null;
     }
-    if (cellW > 0) settle(idx * cellW);
+    if (cellW > 0) {
+      const idxChanged = prevIdxRef.current !== idx;
+      const layoutReady = prevCellWRef.current > 0 && Math.abs(prevCellWRef.current - cellW) < 0.5;
+      prevCellWRef.current = cellW;
+      prevIdxRef.current = idx;
+      const target = idx * cellW;
+      if (layoutReady && idxChanged) {
+        posSV.value = withSpring(target, { damping: 22, stiffness: 300 });
+      } else {
+        posSV.value = target;
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, cellW]);
+  }, [idx, cellW, options.length]);
   useEffect(
     () => () => {
       if (rollbackTimerRef.current) clearTimeout(rollbackTimerRef.current);
@@ -120,140 +149,215 @@ export function GlassSegmented<T extends string>({
     [],
   );
 
-  const pan = useRef(
-    PanResponder.create({
-      // 点击不抢：只有横向拖动才接管，保证各格 Pressable 的点击照常触发
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderGrant: () => {
-        draggingRef.current = true;
-        if (rollbackTimerRef.current) {
-          clearTimeout(rollbackTimerRef.current);
-          rollbackTimerRef.current = null;
-        }
-        dragStartRef.current = positionRef.current;
-      },
-      onPanResponderMove: (_, g) => {
-        const n = optionsRef.current.length;
-        const cw = cellWRef.current;
-        if (!cw) return;
-        const limit = Math.max(0, (n - 1) * cw);
-        const nx = Math.min(limit, Math.max(0, dragStartRef.current + g.dx));
-        settle(nx);
-      },
-      onPanResponderRelease: () => {
-        draggingRef.current = false;
-        const n = optionsRef.current.length;
-        const cw = cellWRef.current;
-        if (!cw) return;
-        const h = Math.min(n - 1, Math.max(0, Math.round(positionRef.current / cw)));
-        settle(h * cw);
-        const target = optionsRef.current[h];
-        if (target && target.key !== optionsRef.current[idxRef.current]?.key) {
-          onChangeRef.current(target.key);
-          // 父级拒绝切换时恢复当前值；正常更新由上面的 effect 取消此定时器。
-          rollbackTimerRef.current = setTimeout(() => {
-            rollbackTimerRef.current = null;
-            if (!draggingRef.current) settle(idxRef.current * cellWRef.current);
-          }, 1000);
-        }
-      },
-      onPanResponderTerminate: () => {
-        draggingRef.current = false;
-        settle(idxRef.current * cellWRef.current);
-      },
-    }),
-  ).current;
+  const composedGesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .activeOffsetX([-3, 3])
+      .failOffsetY([-14, 14])
+      .onStart((e) => {
+        'worklet';
+        const cw = cellWSV.value;
+        const n = countSV.value;
+        if (cw <= 0 || n <= 1) return;
+        const limit = (n - 1) * cw;
+        const curIdx = idxSV.value;
+        const pillLeft = pad + curIdx * cw;
+        const pillRight = pillLeft + cw;
+        draggingSV.value = true;
+        dragScaleSV.value = withSpring(1.04, { damping: 20, stiffness: 320 });
 
-  // 空选项：没有任何可渲染内容，同时也避免 options.length=0 时出现 NaN/Infinity 宽度
+        if (e.x >= pillLeft - 6 && e.x <= pillRight + 6) {
+          followFingerSV.value = false;
+          dragStartSV.value = posSV.value;
+        } else {
+          followFingerSV.value = true;
+          const next = Math.min(limit, Math.max(0, e.x - pad - cw / 2));
+          dragStartSV.value = next;
+          posSV.value = withSpring(next, { damping: 24, stiffness: 360 });
+        }
+      })
+      .onUpdate((e) => {
+        'worklet';
+        const cw = cellWSV.value;
+        const n = countSV.value;
+        if (cw <= 0 || n <= 1) return;
+        const limit = (n - 1) * cw;
+        if (followFingerSV.value) {
+          posSV.value = Math.min(limit, Math.max(0, e.x - pad - cw / 2));
+        } else {
+          posSV.value = Math.min(limit, Math.max(0, dragStartSV.value + e.translationX));
+        }
+      })
+      .onEnd((e, success) => {
+        'worklet';
+        const cw = cellWSV.value;
+        const n = countSV.value;
+        draggingSV.value = false;
+        dragScaleSV.value = withSpring(1, { damping: 20, stiffness: 300 });
+        if (cw <= 0 || n <= 0) return;
+        const curIdx = idxSV.value;
+        if (!success) {
+          posSV.value = withSpring(curIdx * cw, { damping: 22, stiffness: 300 });
+          return;
+        }
+        let h = Math.min(n - 1, Math.max(0, Math.round(posSV.value / cw)));
+
+        if (
+          !followFingerSV.value &&
+          h === curIdx &&
+          (Math.abs(e.translationX) >= Math.min(18, cw * 0.22) || Math.abs(e.velocityX) >= 120)
+        ) {
+          h = Math.min(n - 1, Math.max(0, curIdx + (e.translationX > 0 ? 1 : -1)));
+        }
+        posSV.value = withSpring(h * cw, { damping: 22, stiffness: 300 });
+        if (h !== curIdx) {
+          runOnJS(commitIndex)(h);
+        }
+      });
+
+    const tap = Gesture.Tap()
+      .maxDistance(12)
+      .onEnd((e, success) => {
+        'worklet';
+        if (!success) return;
+        const cw = cellWSV.value;
+        const n = countSV.value;
+        if (cw <= 0 || n <= 0) return;
+        const h = Math.min(n - 1, Math.max(0, Math.floor((e.x - pad) / cw)));
+        posSV.value = withSpring(h * cw, { damping: 22, stiffness: 300 });
+        if (h !== idxSV.value) {
+          runOnJS(commitIndex)(h);
+        }
+      });
+
+    return Gesture.Race(pan, tap);
+  }, [
+    cellWSV,
+    commitIndex,
+    countSV,
+    dragScaleSV,
+    dragStartSV,
+    draggingSV,
+    followFingerSV,
+    idxSV,
+    posSV,
+  ]);
+
+  const pillAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: posSV.value }, { scale: dragScaleSV.value }],
+  }));
+
   if (!options.length) return null;
 
   return (
-    <GlassSurface role="chip" radius={height / 2} style={[styles.track, { height }, style]}>
-      <View
-        style={styles.row}
-        {...pan.panHandlers}
-        onLayout={(e) => {
-          const w = e.nativeEvent.layout.width;
-          setTrackW((prev) => (Math.abs(prev - w) < 0.5 ? prev : w));
-        }}
-      >
-        {cellW > 0 ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.pillPos,
-              {
-                left: pad,
-                width: cellW,
-                height: height - pad * 2,
-                transform: [{ translateX: position }],
-              },
-            ]}
-          >
-            <SelectorCapsule
-              radius={(height - pad * 2) / 2}
-              dark={palette.name === 'dark'}
-              tintSoft={palette.tintSoft}
-              tint={palette.tint}
-            />
-          </Animated.View>
-        ) : null}
-        {options.map((o) => {
-          const active = o.key === value;
-          return (
-            <Pressable
-              key={o.key}
-              style={styles.cell}
-              onPress={() => onChange(o.key)}
-              accessibilityRole="button"
-              accessibilityLabel={o.label}
-              accessibilityState={{ selected: active }}
+    <GlassSurface
+      role="chip"
+      radius={height / 2}
+      frostedOnly={frostedOnly}
+      style={[styles.track, { height }, style]}
+    >
+      <GestureDetector gesture={composedGesture}>
+        <View
+          style={styles.row}
+          onLayout={(e) => {
+            const w = e.nativeEvent.layout.width;
+            if (w > 0 && options.length > 0 && prevCellWRef.current === 0) {
+              const cw = (w - pad * 2) / options.length;
+              posSV.value = idx * cw;
+              cellWSV.value = cw;
+              countSV.value = options.length;
+              idxSV.value = idx;
+              prevCellWRef.current = cw;
+              prevIdxRef.current = idx;
+            }
+            setTrackW((prev) => (Math.abs(prev - w) < 0.5 ? prev : w));
+          }}
+        >
+          {cellW > 0 ? (
+            <Reanimated.View
+              pointerEvents="none"
+              style={[
+                styles.pillPos,
+                {
+                  left: pad,
+                  width: cellW,
+                  height: height - pad * 2,
+                },
+                pillAnimatedStyle,
+              ]}
             >
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.label,
-                  { color: active ? palette.label : palette.labelSecondary },
-                  active && styles.labelActive,
-                ]}
+              <SelectorCapsule radius={(height - pad * 2) / 2} dark={palette.name === 'dark'} />
+            </Reanimated.View>
+          ) : null}
+          {options.map((o) => {
+            const active = o.key === value;
+            return (
+              <View
+                key={o.key}
+                style={styles.cell}
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={o.label}
+                accessibilityState={{ selected: active }}
               >
-                {o.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+                <View style={styles.labelWrap}>
+                  {o.dot ? (
+                    <View style={[styles.optDot, { backgroundColor: palette.tint }]} />
+                  ) : null}
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.label,
+                      {
+                        fontSize: labelFontSize,
+                        color: active ? palette.tint : palette.labelSecondary,
+                      },
+                      active && styles.labelActive,
+                    ]}
+                  >
+                    {o.label}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </GestureDetector>
     </GlassSurface>
   );
 }
 
 const styles = StyleSheet.create({
   scrollRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 },
-  // left 必须是 0：cell 的 onLayout.x 已经包含行的 paddingHorizontal(3)
+
   scrollPill: { position: 'absolute', left: 0, top: 3, borderRadius: 999, overflow: 'hidden' },
   scrollCell: { paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
-  // alignSelf stretch：轨道宽度必须由父容器决定，不能被文字长短撑开/缩窄
-  // （否则切换 tab 时 trackW 变化 → 等分胶囊重算 → 视觉上被「二次修正」）
+
   track: { overflow: 'hidden', alignSelf: 'stretch' },
   row: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 3 },
-  /** 胶囊外层定位（不含 overflow hidden —— 圆角裁剪由内层 GlassSurface 自己负责） */
+
   pillPos: { position: 'absolute', left: 3, top: 3 },
-  cell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  label: { fontSize: 14 },
-  labelActive: { fontWeight: '800' },
+  cell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  labelWrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  optDot: { width: 6, height: 6, borderRadius: 3 },
+  label: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: fontFamily.system,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    ...Platform.select({ android: { paddingTop: 1 }, default: null }),
+  },
+  labelActive: { fontWeight: Platform.OS === 'android' ? '600' : '800' },
 });
 
-/**
- * 可横向滚动的滑动选中块 —— 选项多（如分组筛选 7 个）时用这个：
- * 不给每个格子等分宽度，而是测量每项的实际位置/宽度，让玻璃胶囊滑过去。
- */
 export function GlassSegmentedScroll<T extends string>({
   options,
   value,
   onChange,
   style,
   height = 38,
+  labelFontSize = 14,
+  frostedOnly = false,
 }: Props<T>) {
   const palette = usePalette();
   const [layouts, setLayouts] = useState<{ x: number; w: number }[]>([]);
@@ -268,9 +372,9 @@ export function GlassSegmentedScroll<T extends string>({
   const lastXRef = useRef<number | null>(null);
   useEffect(() => {
     if (!target) return;
-    // 宽度瞬时到位：宽度动画与位置动画是两条独立弹簧，收敛节奏不同 → 看起来像被「二次修正」。
+
     w.setValue(target.w);
-    // 首次测量 / 仅宽度变化 → 直接落位，避免「从左边滑过去」
+
     if (lastXRef.current === null) {
       lastXRef.current = target.x;
       x.setValue(target.x);
@@ -289,11 +393,15 @@ export function GlassSegmentedScroll<T extends string>({
     }).start();
   }, [target, x, w]);
 
-  // 空选项直接不渲染
   if (!options.length) return null;
 
   return (
-    <GlassSurface role="chip" radius={height / 2} style={[styles.track, { height }, style]}>
+    <GlassSurface
+      role="chip"
+      radius={height / 2}
+      frostedOnly={frostedOnly}
+      style={[styles.track, { height }, style]}
+    >
       <View style={{ flex: 1, position: 'relative' }}>
         <ScrollView
           horizontal
@@ -308,12 +416,7 @@ export function GlassSegmentedScroll<T extends string>({
                 { height: height - 6, width: w, transform: [{ translateX: x }] },
               ]}
             >
-              <SelectorCapsule
-                radius={(height - 6) / 2}
-                dark={palette.name === 'dark'}
-                tintSoft={palette.tintSoft}
-                tint={palette.tint}
-              />
+              <SelectorCapsule radius={(height - 6) / 2} dark={palette.name === 'dark'} />
             </Animated.View>
           ) : null}
           {options.map((o, i) => {
@@ -326,7 +429,7 @@ export function GlassSegmentedScroll<T extends string>({
                   const { x: lx, width: lw } = e.nativeEvent.layout;
                   setLayouts((prev) => {
                     const cur = prev[i];
-                    // 数值没变就不 setState：否则「量测 → 重渲染 → 再量测」会持续抖动
+
                     if (cur && Math.abs(cur.x - lx) < 0.5 && Math.abs(cur.w - lw) < 0.5)
                       return prev;
                     const next = [...prev];
@@ -339,16 +442,24 @@ export function GlassSegmentedScroll<T extends string>({
                 accessibilityLabel={o.label}
                 accessibilityState={{ selected: active }}
               >
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.label,
-                    { color: active ? palette.label : palette.labelSecondary },
-                    active && styles.labelActive,
-                  ]}
-                >
-                  {o.label}
-                </Text>
+                <View style={styles.labelWrap}>
+                  {o.dot ? (
+                    <View style={[styles.optDot, { backgroundColor: palette.tint }]} />
+                  ) : null}
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.label,
+                      {
+                        fontSize: labelFontSize,
+                        color: active ? palette.tint : palette.labelSecondary,
+                      },
+                      active && styles.labelActive,
+                    ]}
+                  >
+                    {o.label}
+                  </Text>
+                </View>
               </Pressable>
             );
           })}
@@ -359,10 +470,18 @@ export function GlassSegmentedScroll<T extends string>({
           end={{ x: 1, y: 0.5 }}
           colors={
             palette.name === 'dark'
-              ? ['rgba(28,28,31,0)', 'rgba(28,28,31,0.92)']
-              : ['rgba(244,245,249,0)', 'rgba(244,245,249,0.94)']
+              ? ['rgba(28,28,31,0)', 'rgba(28,28,31,0.45)']
+              : ['rgba(255,255,255,0)', 'rgba(255,255,255,0.42)']
           }
-          style={{ position: 'absolute', right: 0, top: 3, bottom: 3, width: 24 }}
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: 22,
+            borderTopRightRadius: height / 2,
+            borderBottomRightRadius: height / 2,
+          }}
         />
       </View>
     </GlassSurface>

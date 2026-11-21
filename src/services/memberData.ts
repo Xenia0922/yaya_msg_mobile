@@ -9,11 +9,8 @@ import pocketApi from '../api/pocket48';
 import { logInfo, logWarn } from '../utils/runtimeLog';
 import { hydrateRoomMap, seedRoomMapFromMembers, getRoomMapEntry } from './roomMapCache';
 
-// v7 结构：修正「最新消息反推 channelId」把大房间写成小房间/历史房间的污染
-// （v6 缓存里存过被污染的 channelId，升级 key 强制重建，见日志）
 const CACHE_KEY = 'yaya_member_data_cache_v7';
 
-/** 历史缓存版本 key：更新成功后清理，避免 AsyncStorage 库被旧行撑大（曾触发 SQLITE_FULL） */
 const OLD_CACHE_KEYS = [
   'yaya_member_data_cache_v1',
   'yaya_member_data_cache_v2',
@@ -23,18 +20,10 @@ const OLD_CACHE_KEYS = [
   'yaya_member_data_cache_v6',
 ];
 
-/**
- * 成员库缓存 TTL（由 6h 下调）：
- * - 超过 TTL：启动路径上等待同步（保证进 App 看到的就是最新）
- * - 未超过 TTL：也仍做一次**后台静默刷新**，不阻塞启动、不打断 UI
- * 上游由境内机中继每 2 分钟探测、变化即同步，故这里只需控制客户端请求频率。
- */
 const MEMBER_CACHE_TTL = 10 * 60 * 1000;
 
-/** 覆盖前备份键：数据源退化导致误覆盖时，可从这里回滚（只保留最近一份） */
 const BACKUP_KEY = 'yaya_member_data_cache_bak';
 
-/** 统计房间映射字段覆盖率（护栏用：判断新数据是否比本地劣化） */
 function countMapping(list: Member[]): { channel: number; yklz: number; server: number } {
   let channel = 0,
     yklz = 0,
@@ -47,7 +36,6 @@ function countMapping(list: Member[]): { channel: number; yklz: number; server: 
   return { channel, yklz, server };
 }
 
-/** 从备份键恢复成员库（数据误覆盖后的兜底入口） */
 export async function restoreMemberDataFromBackup(): Promise<{ restored: boolean; count: number }> {
   try {
     const raw = await AsyncStorage.getItem(BACKUP_KEY);
@@ -107,11 +95,10 @@ export interface MemberUpdateResult {
   count: number;
   message: string;
   source: 'official' | 'none';
-  /** 官方接口诊断摘要（目录/映射/字段覆盖），供页面直接展示 */
+
   detail: string;
 }
 
-/** 采样首条记录的字段键，用于确认官方目录到底带哪些房间/档案字段 */
 function sampleKeys(list: any[], label: string) {
   const first = list.find((i: any) => i && typeof i === 'object');
   if (!first) return;
@@ -136,19 +123,12 @@ function sampleKeys(list: any[], label: string) {
   );
 }
 
-/**
- * 拉取成员库（房间映射权威源）。
- * 优先自建镜像库（MEMBERS_URL_SELF：上游 yk1z 同步 + 我们自己的 overrides），
- * 失败自动回退上游 yk1z 库 —— 自建挂掉或还没上线时行为与旧版完全一致。
- * 官方接口只给档案字段 + userId→serverId 字典，不给 channelId/yklzId；
- * 房间消息/大小房间切换必须靠本库的 channelId（大房间）/yklzId（小房间）/serverId。
- */
 async function fetchYk1zDb(): Promise<{ members: Member[]; updatedAt: number }> {
-  // 镜像多 CDN 端点依次重试，全失败才退上游 —— 单域名不可达时不再直接掉到官方目录
-  const sources = [...MEMBERS_URL_SELF_LIST, MEMBERS_URL].filter(Boolean);
+  const sources = [MEMBERS_URL, ...MEMBERS_URL_SELF_LIST].filter(Boolean);
   const previousUpdatedAt = (await getMemberDataMeta())?.sourceUpdatedAt || 0;
   let lastErr: any = null;
   for (const url of sources) {
+    const isMirror = MEMBERS_URL_SELF_LIST.includes(url);
     try {
       const res = await fetchWithTimeout(
         `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`,
@@ -156,17 +136,14 @@ async function fetchYk1zDb(): Promise<{ members: Member[]; updatedAt: number }> 
           method: 'GET',
           headers: { Accept: 'application/json' },
         },
-        12000,
+        isMirror ? 12000 : 7000,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = parseMaybeJson(await res.text());
-      const parsedTime = MEMBERS_URL_SELF_LIST.includes(url)
-        ? Date.parse(String(json?.updatedAt || ''))
-        : NaN;
+      const parsedTime = isMirror ? Date.parse(String(json?.updatedAt || '')) : NaN;
       const updatedAt =
         Number.isFinite(parsedTime) && parsedTime <= Date.now() + 86400000 ? parsedTime : 0;
-      // updatedAt = 0 表示「该源没有版本信息」（上游 yk1z 恒为 0），不是过期：
-      // 只在双方都有版本号时比较，否则自建镜像一旦不可用，上游 fallback 会被永久拒绝（P1-C8）。
+
       if (previousUpdatedAt && updatedAt > 0 && updatedAt < previousUpdatedAt) {
         throw new Error('成员库版本早于本地缓存');
       }
@@ -188,7 +165,7 @@ async function fetchYk1zDb(): Promise<{ members: Member[]; updatedAt: number }> 
       return { members, updatedAt };
     } catch (e: any) {
       lastErr = e;
-      // 单镜像失败降为 info，避免启动日志一片 WARN（用户反馈）；全部失败才告警
+
       logInfo(`[memberData] 成员库源失败（${url}）：${e?.message || String(e)}`, 'memberData');
     }
   }
@@ -196,23 +173,10 @@ async function fetchYk1zDb(): Promise<{ members: Member[]; updatedAt: number }> 
   throw lastErr || new Error('成员库拉取失败');
 }
 
-/**
- * 官方成员库（v2.7.4 双源合并，修复大小房间回归）：
- * 1. yk1z 数据库（MEMBERS_URL）→ 权威房间映射：channelId(大)/yklzId(小)/serverId，全量 900+ 位
- * 2. group_team_star → content.starInfo（871 位现役，档案字段；officialInfo 仅运营账号勿用）
- * 3. star/server/map/get → content.userServerMap（userId→serverId，补齐无库成员的 serverId）
- * 4. 关注成员 latestMessage 反推 channelId（消息带 channelId，补最后缺口）
- * 5. seine/server/detail 由 roomMapCache 按需执行（运行时兜底）
- *
- * 合并规则：房间映射以 yk1z 库为权威（无条件覆盖官方缺失值），官方只补缺口——
- * 与 2.7.3 行为一致（大小房间正确、小房间 channelId 可查），同时档案/花名册动态化。
- */
-/** 上一次 fetchOfficialMembers 是否成功拿到 yk1z 成员库（房间映射的唯一权威源） */
 let lastDbSourceOk = true;
 let lastDbSourceUpdatedAt = 0;
 
 export async function fetchOfficialMembers(): Promise<Member[]> {
-  // 并行拉取三源，任一失败不阻断整体（官方目录失败时退化为仅 yk1z 库）
   const [dbSettled, catalogSettled, mapSettled] = await Promise.allSettled([
     fetchYk1zDb(),
     pocketApi.getGroupTeamStar(),
@@ -238,7 +202,6 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     logInfo(`[memberData] yk1z 成员库：${dbMembers.length} 位（成员库底座）`, 'memberData');
   }
 
-  // 官方成员目录
   let catalogRes: any = null;
   if (catalogSettled.status === 'fulfilled') {
     catalogRes = catalogSettled.value;
@@ -255,13 +218,28 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
   const content = catalogRes?.content || catalogRes?.data || {};
   const starInfo = Array.isArray(content.starInfo) ? content.starInfo : [];
   const officialInfo = content.officialInfo;
+
+  const officialTeamLogoById = new Map<string, string>();
+  const officialTeamLogoByName = new Map<string, string>();
+  for (const list of [content.teamInfo, content.teamList, content.teams]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const logo = String(item?.teamLogo || item?.teamLogoUrl || item?.logo || '').trim();
+      if (!logo) continue;
+      const tid = String(item?.teamId ?? item?.id ?? '').trim();
+      const tname = String(item?.teamName || item?.name || '')
+        .trim()
+        .toUpperCase();
+      if (tid && !officialTeamLogoById.has(tid)) officialTeamLogoById.set(tid, logo);
+      if (tname && !officialTeamLogoByName.has(tname)) officialTeamLogoByName.set(tname, logo);
+    }
+  }
   logInfo(
     `[memberData] group_team_star keys=${Object.keys(content).join(',')} starInfo=${starInfo.length} officialInfo=${Array.isArray(officialInfo) ? officialInfo.length : '?'}`,
     'memberData',
   );
   if (starInfo.length) sampleKeys(starInfo, 'group_team_star starInfo');
 
-  // 官方 userId→serverId 字典（补齐服务器映射缺口）
   const userServerMap = new Map<string, string>();
   if (mapSettled.status === 'fulfilled') {
     const mapRes = mapSettled.value;
@@ -291,7 +269,6 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     );
   }
 
-  // 保留现有房间映射，并补充官方目录中的 48 系新成员。
   let members: Member[] = [];
   if (dbMembers.length) {
     const officialById = new Map<string, any>();
@@ -299,16 +276,24 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
       officialById.set(String(raw?.userId ?? raw?.id ?? raw?.starId), raw);
     members = dbMembers.map((db) => {
       const off = officialById.get(String(db.id));
-      if (!off) return db; // 库独有成员：保持原样（2.7.3 语义，分类用库字段）
+      if (!off) return db;
       const m: any = { ...db };
-      // 官方补缺口（库字段已有值一律不动，保证与 yk1z 库对得上）
+
       if (!m.avatar) m.avatar = String(off.avatar || '');
       if (!m.pinyin) m.pinyin = String(off.pinyin || '');
       if (!m.groupName) m.groupName = String(off.groupName || '');
       if (!m.team) m.team = String(off.teamName || '');
       if (!m.teamId) m.teamId = String(off.teamId || '');
-      // 队伍 Logo（官方 field 名有 teamLogo / teamLogoUrl 两种）
-      if (!m.teamLogo) m.teamLogo = String(off.teamLogo || off.teamLogoUrl || '');
+
+      const ykTeamId = String(m.teamId || off.teamId || '').trim();
+      const ykTeamKey = String(m.team || off.teamName || '')
+        .trim()
+        .toUpperCase();
+      const dynamicTeamLogo =
+        (ykTeamId ? officialTeamLogoById.get(ykTeamId) : '') ||
+        (ykTeamKey ? officialTeamLogoByName.get(ykTeamKey) : '') ||
+        String(off.teamLogo || off.teamLogoUrl || '').trim();
+      if (dynamicTeamLogo) m.teamLogo = dynamicTeamLogo;
       if (!m.liveRoomId) m.liveRoomId = String(off.liveRoomId || '');
       if (!m.periodName) m.periodName = off.periodName ? String(off.periodName) : m.periodName;
       if (!m.fullPhoto1) m.fullPhoto1 = off.fullPhoto1 ? String(off.fullPhoto1) : m.fullPhoto1;
@@ -318,8 +303,7 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
       if (!m.wbName) m.wbName = off.wbName ? String(off.wbName) : m.wbName;
       if (!m.wbUid) m.wbUid = off.wbUid ? String(off.wbUid) : m.wbUid;
       if (!m.birthday) m.birthday = off.birthday ? String(off.birthday) : m.birthday;
-      // 档案详情扩展字段：随成员库同步一起落盘，避免 ProfileScreen 只能读旧缓存。
-      // 官方 starInfo 字段名与本地历史字段名并存（joinTime/jtime 等），两边都合并兜底。
+
       const profileDetailFields = [
         'birthplace',
         'constellation',
@@ -350,7 +334,7 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
           (m as any)[key] = typeof incoming === 'number' ? incoming : String(incoming);
         }
       }
-      // 只有杨添淩 1 人库 isInGroup=true 是在团），state 保持库语义
+
       return m;
     });
     const before = members.length;
@@ -360,14 +344,12 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
       'memberData',
     );
   } else {
-    // yk1z 库拉取失败 → 退化为官方目录（房间映射会缺，日志警告）
     members = starInfo
       .map((raw: any) => normalizeMember(raw))
       .filter((m: Member) => m.id && m.ownerName);
     logWarn(`[memberData] yk1z 库不可用，退化为官方目录 ${members.length} 位`, 'memberData');
   }
 
-  // 用 userServerMap 补 serverId（仅无库映射的成员会走到这里）
   if (userServerMap.size) {
     let patched = 0;
     for (const m of members) {
@@ -382,7 +364,6 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     logInfo(`[memberData] userServerMap 补齐 serverId：${patched} 位`, 'memberData');
   }
 
-  // 关注成员 latestMessage 反推 channelId（补最后缺口）
   try {
     const followedRes = await pocketApi.getFollowedIds();
     const followedContent = followedRes?.content || followedRes?.data || {};
@@ -409,10 +390,7 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
         .filter((n: number) => n > 0);
       const BATCH = 50;
       const serverToChannel = new Map<string, string>();
-      // ⚠️ lastMsgList 对同一 serverId 会返回**多条**（大房间 + 小房间 + 历史房间，顺序不固定；
-      // 实测方琪一个 serverId 返回 11 条）。旧逻辑「后写覆盖前写」→ 留下的常是小房间/历史房间 id，
-      // 填进 channelId 后表现为「大房间变成小房间」且被持久化、无法自愈（修复）。
-      // 两道防线：① 小房间 id 一律不当大房间；② 同一 serverId 只认第一条。
+
       const yklzIds = new Set(
         members.map((m) => String(m.yklzId || '')).filter((v) => v && v !== '0'),
       );
@@ -429,8 +407,8 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
           const sid = String(msg?.serverId || '');
           const cid = String(msg?.channelId || '');
           if (!sid || !cid || sid === '0' || cid === '0') continue;
-          if (yklzIds.has(cid)) continue; // 小房间 id 不能当大房间
-          if (!serverToChannel.has(sid)) serverToChannel.set(sid, cid); // 只认第一条
+          if (yklzIds.has(cid)) continue;
+          if (!serverToChannel.has(sid)) serverToChannel.set(sid, cid);
         }
       }
       if (serverToChannel.size) {
@@ -454,7 +432,6 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     );
   }
 
-  // 统计房间字段覆盖情况
   const withServer = members.filter((m) => m.serverId && m.serverId !== '0').length;
   const withChannel = members.filter((m) => m.channelId && m.channelId !== '0').length;
   const withYklz = members.filter((m) => m.yklzId && m.yklzId !== '0').length;
@@ -463,7 +440,6 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     'memberData',
   );
 
-  // 成员状态分类覆盖（官方优先；上麦扫描据此跳过退团/暂休）
   const stateCounts: Record<string, number> = {};
   for (const m of members) {
     const s = m.state || 'unknown';
@@ -475,7 +451,7 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
       .join(' / ')}`,
     'memberData',
   );
-  // IDFT 抽样（官方 teamName=IDFT 且库在团 = 真 IDFT，应只有杨添淩；其余官方 IDFT 标的为毕业）
+
   const idftOfficial = new Map<string, any>();
   for (const raw of starInfo) idftOfficial.set(String(raw?.userId ?? raw?.id ?? raw?.starId), raw);
   const idft = members.filter((m) =>
@@ -489,7 +465,6 @@ export async function fetchOfficialMembers(): Promise<Member[]> {
     );
   }
 
-  // 预热房间映射缓存（为上麦/播放页按需 seine 补齐做准备）
   try {
     await hydrateRoomMap();
     seedRoomMapFromMembers(members);
@@ -517,26 +492,14 @@ async function persist(
   );
 }
 
-/** 内部实现：真正的双源拉取 + 护栏 + 落盘。对外统一走下面的 updateMemberData（带去重）。 */
 async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
   const members = await fetchOfficialMembers();
 
-  // ---- 防丢失护栏（历史教训：某次云端源退化/字段变少 → 直接覆盖缓存 → 大量成员房间映射丢失）----
-  // 1) 字段回填：新数据缺失的映射字段（channelId/yklzId/serverId）用本地旧值补，避免「新源字段更少」造成退化
-  // 2) 劣化拒绝：条数骤降或映射字段覆盖率大跌时拒绝写入，保留本地数据
-  // 3) 写入前备份旧缓存，便于回滚/诊断
   let prev: Member[] = [];
   try {
     prev = (await loadCachedMemberData()) ?? [];
-  } catch {
-    /* 忽略 */
-  }
+  } catch {}
 
-  // ⚠️ 退化保护：yk1z 成员库不可用时，成员库会退化成官方目录 ——
-  // 实测 starInfo 恰好 900 位，且 channelId / roomId / serverId / isInGroup **全部为空**
-  // （零房间映射）。此时房间只能靠 latestMessage 反推，而该接口对同一 serverId 会返回多条
-  // （大房间 + 小房间 + 历史房间，顺序不定）→ 大房间被写成小房间 = 用户可见的「大小房间错位」，
-  // 且人数从 ~909 掉到 900。只要本地已有缓存，就宁可保留本地数据，绝不接受这种退化。
   if (!lastDbSourceOk && prev.length) {
     logWarn(
       `[memberData] yk1z 成员库不可用 → 拒绝退化为「无房间映射」的官方目录（900 位），保留本地 ${prev.length} 位`,
@@ -594,18 +557,13 @@ async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
     try {
       const raw = await AsyncStorage.getItem(CACHE_KEY);
       if (raw) await AsyncStorage.setItem(BACKUP_KEY, raw);
-    } catch {
-      /* 备份失败不阻断 */
-    }
+    } catch {}
   }
 
   const withServer = members.filter((m) => m.serverId && m.serverId !== '0').length;
   const withChannel = members.filter((m) => m.channelId && m.channelId !== '0').length;
   const withYklz = members.filter((m) => m.yklzId && m.yklzId !== '0').length;
 
-  // ---- 本地 overlay 固化（自维护数据基础）----
-  // 运行时用 seine/server/detail 解析出的房间映射存在 roomMapCache；这里回填进成员库并落盘，
-  // 使「手动更新」把自愈成果固化 —— 云端库缺字段时不必每次重新联网解析。
   try {
     await hydrateRoomMap();
     let overlayPatched = 0;
@@ -634,18 +592,14 @@ async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
     }
     if (overlayPatched)
       logInfo(`[memberData] 本地 overlay 固化房间映射 ${overlayPatched} 处`, 'memberData');
-    seedRoomMapFromMembers(members); // 反向播种：库里的映射写回 roomMap 缓存（补缺口）
-  } catch {
-    // overlay 失败不影响主流程
-  }
+    seedRoomMapFromMembers(members);
+  } catch {}
 
   await persist(members, 'official', lastDbSourceUpdatedAt);
-  // 清理历史版本缓存行（防 AsyncStorage 6MB 上限被旧行撑爆 → SQLITE_FULL）
+
   try {
     await AsyncStorage.multiRemove(OLD_CACHE_KEYS);
-  } catch {
-    // 清理失败不影响主流程
-  }
+  } catch {}
   useMemberStore.getState().setMembers(members);
   const detail = `成员 ${members.length} · serverId ${withServer} · channelId ${withChannel} · yklzId ${withYklz}（yk1z 库+官方双源）`;
   logInfo(`[memberData] 已载入成员库 ${members.length} 位（${detail}）`, 'memberData');
@@ -658,15 +612,9 @@ async function runMemberDataUpdate(): Promise<MemberUpdateResult> {
   };
 }
 
-/** 同步进行中的 Promise（去重：启动静默刷新与设置页「手动更新」可能并发） */
 let memberUpdateInFlight: Promise<MemberUpdateResult> | null = null;
 let memberUpdateGeneration = 0;
 
-/**
- * v2.7.4：成员库为双源合并——yk1z 数据库（权威房间映射）+ 官方接口（档案/花名册/serverId）。
- * 成功 → 写缓存 + 入 store；失败 → 抛错（保留旧缓存仅作展示）。
- * 并发调用共享同一次拉取（避免重复请求与并发写缓存）。
- */
 export function updateMemberData(): Promise<MemberUpdateResult> {
   if (!memberUpdateInFlight) {
     memberUpdateGeneration += 1;
@@ -677,16 +625,9 @@ export function updateMemberData(): Promise<MemberUpdateResult> {
   return memberUpdateInFlight;
 }
 
-/**
- * 应用启动时的成员数据库引导：
- * 1. 先同步展示本地缓存（避免空白）；
- * 2. 缓存新鲜（< TTL）→ 启动路径不等待，但**仍后台静默刷新一次**；
- * 3. 缓存过期 → 在启动路径上等待双源拉取（失败静默保留缓存，但记日志）。
- */
 export async function ensureMemberData(): Promise<void> {
   const generation = memberUpdateGeneration;
-  // App 启动阶段已经同步解析过随包/本地缓存；导航挂载时不要再把同一份
-  // 970 位缓存 JSON 读一遍并 setMembers，否则首屏后会产生第二次大对象解析峰值。
+
   const currentMembers = (useMemberStore.getState() as { members?: unknown[] }).members;
   const alreadyHydrated = Array.isArray(currentMembers) && currentMembers.length > 0;
   if (alreadyHydrated) {
@@ -709,8 +650,7 @@ export async function ensureMemberData(): Promise<void> {
       logWarn('[memberData] 读取本地缓存失败', 'memberData');
     }
   }
-  // 缓存新鲜度只决定「是否在启动路径上等待」；未过期也仍做后台静默刷新，
-  // 这样每次冷启动都会顺带把最新成员库拉回来（不阻塞 UI、不改变启动速度）。
+
   let fresh = false;
   try {
     const meta = await getMemberDataMeta();
@@ -727,9 +667,7 @@ export async function ensureMemberData(): Promise<void> {
         'memberData',
       );
     }
-  } catch {
-    // 元数据读取失败则按需要同步处理
-  }
+  } catch {}
 
   if (fresh) {
     void updateMemberData().catch((e: any) =>

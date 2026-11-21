@@ -17,17 +17,17 @@ interface MatchRequest {
   song: string;
   artist?: string;
   group?: string;
-  /** 专辑/公演名：同名多版本时用它挑对那一版 LRC */
+
   album?: string;
 }
 
 interface MatchResult {
   entry: LyricEntry;
-  tier: number; // 1-6
+  tier: number;
   score: number;
 }
 
-const manualCache = new Map<string, string>(); // songName → filePath
+const manualCache = new Map<string, string>();
 
 export function setManualMatch(songName: string, filePath: string) {
   manualCache.set(songName, filePath);
@@ -40,10 +40,6 @@ export class LyricsMatcher {
     this.entries = entries;
   }
 
-  /**
-   * 同名多版本优选：按 LRC 路径里的文件夹（专辑/公演名）与曲目 album 的相似度挑一版。
-   * 没有 album 或只有一个候选时退化为第一条。
-   */
   private pickVersion(list: LyricEntry[], album?: string): LyricEntry {
     if (list.length <= 1 || !album) return list[0];
     const alb = normalizeSong(album).medium;
@@ -72,14 +68,12 @@ export class LyricsMatcher {
     const reqArtist = req.artist ? normalizeArtist(req.artist) : null;
     const reqGroup = req.group ? normalizeGroup(req.group) : null;
 
-    // Tier 1: manual cache
     const cached = manualCache.get(req.song);
     if (cached) {
       const entry = this.entries.find((e) => e.filePath === cached);
       if (entry) return { entry, tier: 1, score: 1 };
     }
 
-    // Tier 2: strict exact (song + artist + group)
     if (reqArtist && reqGroup) {
       const hits = this.entries.filter(
         (e) =>
@@ -90,7 +84,6 @@ export class LyricsMatcher {
       if (hits.length) return { entry: this.pickVersion(hits, req.album), tier: 2, score: 1 };
     }
 
-    // Tier 3: medium exact (song + group)
     if (reqGroup) {
       const hits = this.entries.filter(
         (e) =>
@@ -100,7 +93,6 @@ export class LyricsMatcher {
       if (hits.length) return { entry: this.pickVersion(hits, req.album), tier: 3, score: 1 };
     }
 
-    // Tier 4: medium exact (song + artist)
     if (reqArtist) {
       const hit = this.entries.find(
         (e) =>
@@ -110,7 +102,6 @@ export class LyricsMatcher {
       if (hit) return { entry: hit, tier: 4, score: 1 };
     }
 
-    // Tier 5: loose exact song + artist similarity sort
     if (reqArtist) {
       const candidates = this.entries.filter((e) => e.normalized.song.loose === reqSong.loose);
       if (candidates.length > 0) {
@@ -121,7 +112,6 @@ export class LyricsMatcher {
       }
     }
 
-    // Tier 6: fuzzy (loose song similarity > 0.9)
     const fuzzy = this.entries
       .map((e) => ({ entry: e, sim: similarity(reqSong.loose, e.normalized.song.loose) }))
       .filter((f) => f.sim > 0.9)

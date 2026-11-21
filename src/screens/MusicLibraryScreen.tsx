@@ -1,52 +1,58 @@
 import { useIsFocused, useNavigation } from '@react-navigation/native';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { USER_AGENT } from '../constants';
 
 import {
+  ActivityIndicator,
   Animated,
   BackHandler,
   Easing,
-  ScrollView,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import Video from 'react-native-video';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import officialMediaApi from '../api/officialMedia';
 import { loadOfficialSiteMusic } from '../api/officialSiteMusic';
 import { loadR2Music } from '../api/r2Music';
 import { useUiStore } from '../store';
-import { useMusicPlayerStore } from '../store/musicPlayerStore';
+import { flushMusicPlayerStorage, useMusicPlayerStore } from '../store/musicPlayerStore';
 import MiniPlayerBar from '../components/MiniPlayerBar';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import {
   MusicEngine,
   mediaUrl as buildMediaUrl,
   isPlayableHost,
+  isExoRecentlyArmed,
+  noteExoArmed,
+  resetExoArm,
   syncNativePlaybackSnapshot,
 } from '../services/musicPlayer';
 import { exoPlayTrack, exoControl, subscribeExo, setNativeExoDisabled } from '../native/RadioExo';
 import { errorMessage } from '../utils/data';
-import { logError, logWarn } from '../utils/runtimeLog';
+import { logWarn } from '../utils/runtimeLog';
 import { fetchCoverToFile, normalizeCoverUrl } from '../utils/coverToFile';
-import { joinMeta } from '../utils/format';
-import ScreenHeader from '../components/ScreenHeader';
-import { HeaderAction } from '../components/HeaderAction';
+import { formatTrackSubtitle } from '../utils/format';
+import {
+  FloatingHeaderAction,
+  FloatingTabHeader,
+  getFloatingHeaderOffset,
+} from '../components/FloatingTabHeader';
 import CoverArt from '../components/CoverArt';
 import { NetworkImage } from '../components/NetworkImage';
 import { Skeleton } from '../components/Skeleton';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import { ScalePressable } from '../components/Motion';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { usePalette, radii } from '../theme';
+import { usePalette, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
-import { GlassSurface } from '../components/GlassSurface';
-import { ListBottomSpacer } from '../components/ListBottomSpacer';
+import { GlassSegmentedScroll } from '../components/GlassSegmented';
 import { SearchBar } from '../components/SearchBar';
+import { SquircleView } from '../components/SquircleView';
 
-/** 播放中均衡器：三根柱子错峰跳动（Animated loop + native driver） */
 function EqualizerBars({
   color,
   size = 13,
@@ -107,9 +113,6 @@ function EqualizerBars({
   );
 }
 
-/** 拼接歌曲元信息并去重：专辑/歌手/团体名常重复（如 album=SNH48 + artist=SNH48），只保留一份 */
-// 收藏紧跟全部之后（用户要求：放太后面翻不到）；其余按团体排列。
-// 7SENSES 是 SNH48 旗下子团（还有 BLUEV/DEMOON/HO2/Color Girls 等），不单列 tab、归入 SNH48 段。
 const SNH_FAMILY = new Set([
   'SNH48',
   '7SENSES',
@@ -120,10 +123,10 @@ const SNH_FAMILY = new Set([
   'Color Girls',
   '塞纳河组合',
 ]);
-/** 团体 → 主团（子团归一，如 7SENSES→SNH48） */
+
 const groupFamily = (g: string): string =>
   SNH_FAMILY.has(String(g || '').trim()) ? 'SNH48' : String(g || '').trim();
-/** 段序：SNH48 系(含子团) → GNZ48 → BEJ48 → …（用户要求） */
+
 const albumGroupOrder = (g: string): number => {
   const up = groupFamily(g).toUpperCase();
   if (up === 'SNH48') return 0;
@@ -166,22 +169,192 @@ const GROUP_LABELS: Record<string, string> = {
   '7SENSES': '7SENSES',
   FAV: '收藏',
 };
-// C: 模块级会话缓存——导航进出音乐库（重挂载）直接显示上次列表，不再重复拉取/闪骨架
+
 let songsCache: any[] | null = null;
-const CHIP_WIDTH = 60;
-const CHIP_GAP = 8;
-const CHIP_HEIGHT = 36;
-const TABS_BAR_HEIGHT = 44; // 标签栏总高度（含上下内边距）
+
+function normTrackField(v: unknown): string {
+  return String(v || '')
+    .trim()
+    .toLowerCase();
+}
+
+function isSameTrackItem(a: any, b: any): boolean {
+  if (!a || !b) return false;
+  const idA = String(a.musicId || a.id || '');
+  const idB = String(b.musicId || b.id || '');
+  if (!idA || idA !== idB) return false;
+  return (
+    normTrackField(a.title) === normTrackField(b.title) &&
+    normTrackField(a.artist || a.joinMemberNames) ===
+      normTrackField(b.artist || b.joinMemberNames) &&
+    normTrackField(a.album || a.albumName) === normTrackField(b.album || b.albumName)
+  );
+}
+
+function isTrackInFavSet(favSet: Set<string>, track: any): boolean {
+  if (!favSet.size || !track) return false;
+  const id = String(track.musicId || track.id || '');
+  if (id && favSet.has(id)) return true;
+  const k2 = `${String(track.title || '').trim()}|${String(track.artist || '').trim()}`.trim();
+  const k3 = `${k2}|${String(track.album || '').trim()}`.trim();
+  return (k3 !== '||' && favSet.has(k3)) || (k2 !== '|' && favSet.has(k2));
+}
+
+const AlbumGridCard = React.memo(function AlbumGridCard({
+  item,
+  fill2Color,
+  labelColor,
+  labelTertiaryColor,
+  unknownGroupText,
+  songsUnitText,
+  onPress,
+}: {
+  item: { key: string; groupLabel: string; album: string; cover: string; count: number };
+  fill2Color: string;
+  labelColor: string;
+  labelTertiaryColor: string;
+  unknownGroupText: string;
+  songsUnitText: string;
+  onPress: (album: { groupLabel: string; album: string }) => void;
+}) {
+  return (
+    <View style={styles.albumItem}>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => onPress({ groupLabel: item.groupLabel, album: item.album })}
+      >
+        <SquircleView radius={16} style={[styles.albumCover, { backgroundColor: fill2Color }]}>
+          {item.cover ? (
+            <NetworkImage
+              source={{ uri: item.cover }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+              thumbnail={600}
+            />
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <MaterialCommunityIcons name="album" size={40} color={labelTertiaryColor} />
+            </View>
+          )}
+          <View style={styles.albumCountPill}>
+            <Text style={styles.albumCountText}>
+              {item.count} {songsUnitText}
+            </Text>
+          </View>
+        </SquircleView>
+        <Text numberOfLines={1} style={[styles.songTitle, { color: labelColor, marginTop: 6 }]}>
+          {item.album}
+        </Text>
+        <Text numberOfLines={1} style={[styles.songArtist, { color: labelTertiaryColor }]}>
+          {item.groupLabel || unknownGroupText}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+const SongGridCard = React.memo(function SongGridCard({
+  item,
+  active,
+  isPlaying,
+  isLoading,
+  isFav,
+  tintColor,
+  onTintColor,
+  dangerColor,
+  fill2Color,
+  labelColor,
+  labelTertiaryColor,
+  untitledText,
+  officialText,
+  onPlay,
+  onToggleFav,
+}: {
+  item: any;
+  active: boolean;
+  isPlaying: boolean;
+  isLoading: boolean;
+  isFav: boolean;
+  tintColor: string;
+  onTintColor: string;
+  dangerColor: string;
+  fill2Color: string;
+  labelColor: string;
+  labelTertiaryColor: string;
+  untitledText: string;
+  officialText: string;
+  onPlay: (item: any) => void;
+  onToggleFav: (item: any) => void;
+}) {
+  const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
+  return (
+    <View style={styles.albumItem}>
+      <TouchableOpacity activeOpacity={0.8} onPress={() => onPlay(item)}>
+        <SquircleView
+          radius={16}
+          style={[
+            styles.albumCover,
+            {
+              backgroundColor: fill2Color,
+              borderWidth: 2,
+              borderColor: active ? tintColor : 'transparent',
+            },
+          ]}
+        >
+          <CoverArt uri={coverUrl || undefined} title={item.title || '♪'} fill active={active} />
+          {active ? (
+            <View style={[styles.playingBadge, { backgroundColor: tintColor }]}>
+              {isLoading ? (
+                <ActivityIndicator size="small" color={onTintColor} />
+              ) : (
+                <EqualizerBars color={onTintColor} active={isPlaying} />
+              )}
+            </View>
+          ) : null}
+          <ScalePressable
+            style={styles.favBtn}
+            pressedScale={0.85}
+            activeOpacity={0.6}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            onPress={(e) => {
+              e.stopPropagation();
+              onToggleFav(item);
+            }}
+          >
+            <MaterialCommunityIcons
+              name={isFav ? 'heart' : 'heart-outline'}
+              size={16}
+              color={isFav ? dangerColor : onTintColor}
+            />
+          </ScalePressable>
+        </SquircleView>
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={[styles.songTitle, { color: labelColor, marginTop: 6 }]}
+        >
+          {item.title || untitledText}
+        </Text>
+        <View style={styles.songMetaLine}>
+          <Text style={[styles.songArtist, { color: labelTertiaryColor }]} numberOfLines={1}>
+            {formatTrackSubtitle(item) || officialText}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+});
 
 export default function MusicLibraryScreen() {
   const navigation = useNavigation();
   const screenFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
   const palette = usePalette();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
   const playUrl = useMusicPlayerStore((s) => s.url);
-  // 音量归一：R2（gnz.hk/music.gnz.hk）母带普遍比 48 官方源响 10-15%，统一压到 0.86；
+
   const playVolume = useMemo(() => {
     const u = String(playUrl || '').toLowerCase();
     return /(gnz\.hk|gnz-music|music\.gnz)/.test(u) || /\.r2\.|r2-music/i.test(u) ? 0.86 : 1.0;
@@ -193,6 +366,7 @@ export default function MusicLibraryScreen() {
   const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
   const seekTarget = useMusicPlayerStore((s) => s.seekTarget);
   const seekNonce = useMusicPlayerStore((s) => s.seekNonce);
+  const seekPending = useMusicPlayerStore((s) => s.seekPending);
   const [nativeSnapshotReady, setNativeSnapshotReady] = useState(false);
   const nativeSnapshotBlockedRef = useRef(false);
   const nativeSnapshotBlockedKeyRef = useRef({ index: -1, url: '' });
@@ -229,10 +403,11 @@ export default function MusicLibraryScreen() {
     songsCache = list;
     setSongs(list);
   };
-  // 搜索词 / 分团：纯 local state（不再镜像到 store，避免双写）。
+
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [group, setGroup] = useState('ALL');
-  // 视图切换：单曲列表 / 专辑分组；albumFilter = 专辑详情过滤（进入专辑曲目视图）
+
   const [viewMode, setViewMode] = useState<'songs' | 'albums'>('songs');
   const [albumFilter, setAlbumFilter] = useState<{ groupLabel: string; album: string } | null>(
     null,
@@ -244,28 +419,19 @@ export default function MusicLibraryScreen() {
     setGroup(g);
   };
   const [status, setStatus] = useState('');
-  /**
-   * 状态条是否为错误态。
-   * 原来用 `/失败|错误/.test(status)` 判断，英文/日文/韩文界面下 t 会把文案翻掉，
-   * 正则不命中 → 加载失败时不显示「重试」按钮，只剩一条不可点的信息条。
-   */
+
   const [statusIsError, setStatusIsError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [, setHasMore] = useState(true);
   const loadingRef = useRef(false);
-  const videoRef = useRef<any>(null);
   const consumedSeekNonceRef = useRef(0);
 
-  // 收藏计数：与 FAV 列表（isFavorite 过滤）一致，避免显示旧 id 键造成的虚高
-  // 收藏数 = 收藏版本数（与 FAV 列表一致）
-  const favCount = useMemo(() => {
-    void favorites;
-    return songs.filter((t) =>
-      useMusicPlayerStore.getState().isFavorite(String(t.musicId || t.id || ''), t),
-    ).length;
-  }, [songs, favorites]);
+  const favSet = useMemo(() => new Set(favorites), [favorites]);
+  const favCount = useMemo(
+    () => songs.filter((t) => isTrackInFavSet(favSet, t)).length,
+    [songs, favSet],
+  );
   const filteredSongs = useMemo(() => {
-    void favorites;
     const keyword = query.trim().toLowerCase();
     let list = songs;
     if (albumFilter)
@@ -274,10 +440,7 @@ export default function MusicLibraryScreen() {
           String(item.groupLabel || '') === albumFilter.groupLabel &&
           String(item.album || '') === albumFilter.album,
       );
-    else if (group === 'FAV')
-      list = list.filter((item) =>
-        useMusicPlayerStore.getState().isFavorite(String(item.musicId || item.id || ''), item),
-      );
+    else if (group === 'FAV') list = list.filter((item) => isTrackInFavSet(favSet, item));
     else if (group !== 'ALL') list = list.filter((item) => groupFamily(item.groupLabel) === group);
     if (keyword)
       list = list.filter((item) =>
@@ -288,10 +451,23 @@ export default function MusicLibraryScreen() {
           .includes(keyword),
       );
     return list;
-  }, [query, songs, group, favorites, albumFilter]);
-  const queueSource = useMemo(() => filteredSongs.map((t) => ({ ...t })), [filteredSongs]);
+  }, [query, songs, group, favSet, albumFilter]);
 
-  // 专辑分组：按 团体+专辑 聚合（封面取组内第一张、统计曲目数与总时长）
+  const groupSegOptions = useMemo(
+    () =>
+      GROUP_TABS.map((g) => ({
+        key: g,
+        label:
+          g === 'FAV'
+            ? t('收藏{count}', { count: favCount ? `(${favCount})` : '' })
+            : t(GROUP_LABELS[g] || g),
+      })),
+    [favCount, t],
+  );
+  const curTrack = queue[currentIndex];
+  const hasMiniPlayer = queue.length > 0 && playbackState !== 'idle';
+  const listBottomSpacerHeight = hasMiniPlayer ? 104 + Math.max(10, insets.bottom - 32) : 20;
+
   const albums = useMemo(() => {
     const map = new Map<
       string,
@@ -313,7 +489,6 @@ export default function MusicLibraryScreen() {
       map.set(key, entry);
     }
     return [...map.values()].sort((a, b) => {
-      // 段序 SNH48 系(含 7SENSES 等子团) → GNZ48 → BEJ48 → …（用户要求，勿改回字母序）
       const oa = albumGroupOrder(a.groupLabel);
       const ob = albumGroupOrder(b.groupLabel);
       if (oa !== ob) return oa - ob;
@@ -324,8 +499,6 @@ export default function MusicLibraryScreen() {
     });
   }, [filteredSongs]);
 
-  // 双源合并：官方源（口袋48官网静态 JS）+ R2 音乐库（music.gnz.hk 公演音频，1559 首）。
-  // 去重键 title|artist（官方源优先）；任一源失败不阻塞另一源，合并结果为空才报错。
   const loadAll = async (force = false) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
@@ -344,11 +517,10 @@ export default function MusicLibraryScreen() {
           (officialRes as PromiseRejectedResult).reason || (r2Res as PromiseRejectedResult).reason;
         throw err instanceof Error ? err : new Error('音乐列表加载失败');
       }
-      // 去重键 title|artist|album（同曲不同专辑/公演版本各自保留）；
-      // 同名同专辑合并时 **R2 优先**（用户要求：R2 字段完整/时长准；官方同曲只作 R2 缺失时的补充）
+
       const seen = new Set<string>();
       const merged: any[] = [];
-      // 大小写不敏感：SAY NO / Say No 视为同一专辑，避免重复条目
+
       const dedupKey = (t: any) =>
         `${String(t.title || '')
           .trim()
@@ -365,12 +537,11 @@ export default function MusicLibraryScreen() {
       });
       official.forEach((t: any) => {
         const key = dedupKey(t);
-        if (seen.has(key)) return; // R2 已有同曲 → 跳过官方版
+        if (seen.has(key)) return;
         seen.add(key);
         merged.push(t);
       });
-      // 段序 SNH48 系(含 7SENSES/BLUEV/DEMOON/HO2/Color Girls/塞纳河组合) → GNZ → ...；
-      // 同段内按 sourceIndex（官方源小在前，R2 公演源大在后），R2 内再按子团聚合后按标题
+
       merged.sort((a: any, b: any) => {
         const oa = albumGroupOrder(a.groupLabel);
         const ob = albumGroupOrder(b.groupLabel);
@@ -389,7 +560,7 @@ export default function MusicLibraryScreen() {
       });
       applySongs(merged);
       setHasMore(false);
-      // 静默提示各源状态（不打扰）：仅当 R2 失败时提示「官方源可用」，双失败已在上面抛错
+
       if (r2Res.status === 'rejected' && officialRes.status === 'fulfilled') {
         setStatus(t('官方音乐已加载（R2 源暂不可用）'));
         setStatusIsError(false);
@@ -405,17 +576,15 @@ export default function MusicLibraryScreen() {
   const loadAllRef = useRef(loadAll);
   loadAllRef.current = loadAll;
 
-  // 注入 URL resolver（供 MusicEngine 使用），避免循环引用
   useEffect(() => {
     loadAllRef.current();
     MusicEngine.setUrlResolver(async (track: any) => {
-      // 官方源歌曲的 mp3 直链即可播放
       if (track?.mp3 && /^https?:/i.test(String(track.mp3))) {
         const u = String(track.mp3);
         if (!isPlayableHost(u)) throw new Error(t('不支持的播放源'));
         return u;
       }
-      // 回退：个别非官网源曲目尝试移动端接口解析地址
+
       try {
         const res = await officialMediaApi.getMusic(String(track.musicId || track.id));
         const data = res?.content?.data || res?.content || res?.data || {};
@@ -433,9 +602,7 @@ export default function MusicLibraryScreen() {
           if (!isPlayableHost(url)) throw new Error(t('不支持的播放源'));
           return url;
         }
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       const fb = buildMediaUrl(
         String(
           (track as any).filePath ||
@@ -452,17 +619,8 @@ export default function MusicLibraryScreen() {
     });
   }, [t]);
 
-  // 处理 seekTarget：Video 挂载后检测到 seekTarget > 0 即执行 seek 并清零。
-  // mediaReady 门控：媒体未就绪时 seek 无效（ExoPlayer 未 prepare），
-  // 续播位置在 onLoad 时消费，拖动进度条在就绪后消费。
-  const [mediaReady, setMediaReady] = useState(false);
   const [showFullScreen, setShowFullScreen] = useState(false);
 
-  /**
-   * 硬件返回分层：
-   * 全屏播放器/专辑详情都是本页的浮层状态，不接管返回键时按一下会直接把整页 pop 掉
-   * → 用户看到「从全屏播放器返回却回到软件主页」。这里逐层关闭后再交给导航。
-   */
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!navigation.isFocused()) return false;
@@ -478,58 +636,29 @@ export default function MusicLibraryScreen() {
     });
     return () => sub.remove();
   }, [navigation, showFullScreen, albumFilter]);
+
   useEffect(() => {
-    if (!seekNonce || seekNonce === consumedSeekNonceRef.current) return;
-    // Exo 原生接管时跳过 Video seek（Exo seek 由下方 nativeOk 分支的 effect 消费；
-    // 若两者都消费 seekTarget，会竞争清零 → 拖进度在原生路径失效）
-    if (nativeOkRef.current) {
+    if (!seekPending || !seekNonce || seekNonce === consumedSeekNonceRef.current) return;
+    if (nativeOkRef.current && !nativeDisabledRef.current) {
       const st = useMusicPlayerStore.getState();
       st.setPosition(seekTarget);
       exoControl('seek', seekTarget);
       consumedSeekNonceRef.current = seekNonce;
       st.consumeSeekTarget();
-      return;
     }
-    if (mediaReady && videoRef.current && typeof videoRef.current.seek === 'function') {
-      // 乐观回写本地位置（RNV onProgress 随后校准；消除拖动松手回跳）
-      const st0 = useMusicPlayerStore.getState();
-      st0.setPosition(seekTarget);
-      try {
-        videoRef.current.seek(seekTarget);
-      } catch (err) {
-        logWarn(`[MusicLibraryScreen] seekTarget error: ${String(err)}`);
-      }
-      consumedSeekNonceRef.current = seekNonce;
-      st0.consumeSeekTarget();
-    }
-  }, [seekTarget, seekNonce, mediaReady]);
+  }, [seekTarget, seekNonce, seekPending]);
 
-  // ===== M2 原生 Exo 驱动（media3 会话承担系统媒体卡；失败自动降级 RNV Video）=====
-  // nativeOk=true：Exo 拥有真实声音（Video 静音暂停占位）。候选期（下发后未确认）即静音，
-  // 消除 M2 旧实现的"双音窗口"（旧逻辑等收到 progress 才停 Video，期间两路同响）。
-  // 降级：error 事件 或 下发后 4s 无任何 progress/error（服务起不来/异常无事件）→ nativeOk=false
-  // 且 nativeDisabled=true（本次 JS 会话不再尝试原生，避免每首歌都等 4s 静音窗）。
   const [, setNativeOk] = useState(false);
   const nativeOkRef = useRef(false);
   const nativeDisabledRef = useRef(false);
-  /**
-   * ⚠️ 渲染层可用的「降级」标志（nativeDisabledRef 的镜像）。
-   *
-   * 实测踩坑：Video 的 paused/volume 此前只看 nativeOk，而 nativeOk 在**下发时就被乐观置 true**
-   * （387 行 setNativeState(true)），且 effect 在渲染之后才跑 —— 于是点歌后首帧里
-   * Video 以 `paused=false + volume=正常音量` 真的起播，并向系统**请求音频焦点**，
-   * 把刚下发的原生 Exo 服务判为失焦直接暂停（logcat 实测：PLAYING → requestAudioFocus
-   * 来自 ReactExoplayerView → PAUSED，间隔仅 29ms）→ 表现为「点一次歌 1 秒后自动暂停」。
-   *
-   * 规则改为：**只有降级后（nativeDisabled）Video 才允许出声**；原生候选期内一律
-   * `paused=true + volume=0` —— Video 从未起播，自然不会抢焦点。
-   */
-  const [nativeDisabled, setNativeDisabled] = useState(false);
-  // 页面挂载期间由本页负责推流；卸载后交给引擎兜底（后台/切 Tab 也能自动下一首）
+
+  const [, setNativeDisabled] = useState(false);
+
   useEffect(() => {
     MusicEngine.setScreenAttached(true);
     return () => {
       MusicEngine.setScreenAttached(false);
+      flushMusicPlayerStorage();
     };
   }, []);
 
@@ -549,12 +678,7 @@ export default function MusicLibraryScreen() {
       armTimer.current = null;
     }
   };
-  /**
-   * 卸载时取消「原生候选 4s 降级」定时器。
-   * 原来只在 playbackState 回到 idle 时清理：用户起播后 4s 内切到别的页面，
-   * 定时器仍会在后台触发 → 全局 setNativeExoDisabled(true) 并弹「已切换兼容播放器」，
-   * 之后所有歌曲都走兼容内核。属于跨页面的隐性状态污染。
-   */
+
   useEffect(
     () => () => {
       if (armTimer.current) {
@@ -564,21 +688,10 @@ export default function MusicLibraryScreen() {
     },
     [],
   );
-  /** 已在原生下发的曲目 url（暂停/恢复同曲不重推）；idle/切歌时清空 */
+
   const armedUrlRef = useRef('');
-  /** 最近一次收到原生 progress 的时间戳（判断原生活跃度，失联 >8s 允许重推） */
+
   const lastProgressTsRef = useRef(0);
-  /**
-   * 最近一次镜像到 store 的 playing 状态：progress 事件里 `playing` 边沿变化时
-   * 才回写 store.playbackState（系统控件暂停/恢复、上首/下首后的真实态会随下一次
-   * progress 推过来），避免高频心跳反复 setState 触发全树重渲与转盘动画抖动。
-   * 注释里"App 全局 MusicForegroundBridge 常驻处理"实际从未实现——这是用户反馈
-   *「系统控件点恢复后回 App 黑胶转盘不转」的真因：原生已在播但 JS 侧 store 永远停在 paused。
-   */
-  // ⚠️ 系统卡 暂停/恢复/上一首/下一首/播完切歌 统一由 App 全局 MusicForegroundBridge 常驻处理
-  // （页面无关；页面只做「下发 + 确认 + 降级」，不再私有处理 cmd/ended/pause-mirror——
-  // 旧实现页面挂载时与 App 全局双监听，行为随导航状态漂移：音乐页在/不在，系统控件手感不一致）。
-  // 页面只负责原生播放确认和降级；进度与播放态由全局桥统一更新。
 
   useEffect(
     () =>
@@ -587,25 +700,23 @@ export default function MusicLibraryScreen() {
           const st = useMusicPlayerStore.getState();
           if (type === 'progress') {
             const playingN = !!p?.playing;
-            // 切歌竞态防护：旧曲心跳不写位置/时长，**也不得改写播放态**
-            //（旧曲末尾那条 playing=false 心跳曾把新歌打成 paused → 用户看到「点卡片变暂停、不放」）
+
             const staleUrl = !!p?.url && !!st.url && String(p.url) !== String(st.url);
             if (playingN && !staleUrl) {
               lastProgressTsRef.current = Date.now();
-              cancelArmTimer(); // 当前曲目确认后取消原生候选超时
+              cancelArmTimer();
             }
           } else if (type === 'error') {
-            // 原生播放失败 → 本次会话降级 RNV（Video volume/paused 由 nativeOk=false 自动接管）
             if (!nativeDisabledRef.current) {
               setNativeDisabledBoth(true);
-              setNativeExoDisabled(true); // 全局同步：App watch/全局 push 也停止尝试原生
+              setNativeExoDisabled(true);
               cancelArmTimer();
               armSeqRef.current += 1;
               setNativeState(false);
               try {
                 exoControl('stop');
               } catch {}
-              // Video 此前全程静音暂停（自身时钟在 0）：降级后从 store 已就绪位置续播
+
               const stNow = useMusicPlayerStore.getState();
               if (stNow.position > 0) stNow.setSeekTarget(stNow.position);
             }
@@ -615,9 +726,6 @@ export default function MusicLibraryScreen() {
     [],
   );
 
-  // 推当前曲到 Exo：URL/曲目变化或恢复播放（paused→playing）时下发；同曲仍在原生且有心跳则跳过
-  // （暂停→恢复走下方 control resume 原位续播，避免 setMediaItems 重缓冲）。
-  // 封面先 RN 落盘为 file://（OPPO 唯一可靠），下载限时 1.5s，超时用原 http 直推（声音不等待）。
   useEffect(() => {
     if (
       !nativeSnapshotReady ||
@@ -626,10 +734,17 @@ export default function MusicLibraryScreen() {
       playbackState !== 'playing'
     )
       return;
-    if (nativeDisabledRef.current) return; // 已降级：声音全交给 Video
-    // 声音权交给 Exo：只要未降级，无论本次是否实际下发，Video 都要静音占位（杜绝 RNV 双放/抢焦点）
+    if (nativeDisabledRef.current) return;
+
     if (!nativeOkRef.current) setNativeState(true);
-    if (armedUrlRef.current === playUrl && Date.now() - lastProgressTsRef.current < 8000) return; // 原生仍持有本曲
+    if (
+      (armedUrlRef.current === playUrl && Date.now() - lastProgressTsRef.current < 8000) ||
+      isExoRecentlyArmed(playUrl)
+    ) {
+      armedUrlRef.current = playUrl;
+      lastProgressTsRef.current = Date.now();
+      return;
+    }
     const st = useMusicPlayerStore.getState();
     const tr = st.queue[st.currentIndex];
     if (!tr) return;
@@ -643,19 +758,20 @@ export default function MusicLibraryScreen() {
     };
     const volume = playVolume > 0 ? playVolume : 1;
     const repeat = playMode === 'single' ? 1 : 0;
-    const doPush = (art: string) => {
+    const doPush = (art: string, armWatchdog = true) => {
       if (seq !== armSeqRef.current) return;
       const st2 = useMusicPlayerStore.getState();
       if (!st2.url || st2.url !== playUrl || st2.playbackState !== 'playing') return;
       const progressAtArm = lastProgressTsRef.current;
-      if (__DEV__)
-        logWarn(
-          `[push-page] ${art ? 'art-refresh' : 'initial'} resumeAt=${Number(st2.seekTarget) > 0 ? st2.seekTarget : 0}`,
-        );
-      // 起始位置只认 seekTarget：MusicEngine 切歌/点歌会清 0，resume(记忆续播)才写入位置；
-      // 不能读 store.position —— 那是「上一首歌」的进度残留，会造成切歌从旧秒数开始（19:15 实测）
-      const resumeAt = Number(st2.seekTarget) > 0 ? Number(st2.seekTarget) : 0;
-      if (resumeAt > 0) st2.consumeSeekTarget(); // 消费续播点（由本次下发承担）
+
+      const resumeAt =
+        !art && st2.seekPending && Number(st2.seekTarget) > 0 ? Number(st2.seekTarget) : 0;
+      if (__DEV__) logWarn(`[push-page] ${art ? 'art-refresh' : 'initial'} resumeAt=${resumeAt}`);
+      if (resumeAt > 0) {
+        consumedSeekNonceRef.current = st2.seekNonce;
+        st2.consumeSeekTarget();
+      }
+      noteExoArmed(playUrl);
       exoPlayTrack(
         {
           url: playUrl,
@@ -671,7 +787,8 @@ export default function MusicLibraryScreen() {
         volume,
         repeat,
       );
-      // 候选确认超时：Exo 正常 1-3s 内必有 progress；4s 无 → 服务没起来/异常无事件 → 降级
+      if (!armWatchdog) return;
+
       cancelArmTimer();
       armTimer.current = setTimeout(() => {
         if (lastProgressTsRef.current <= progressAtArm && !nativeDisabledRef.current) {
@@ -685,10 +802,10 @@ export default function MusicLibraryScreen() {
           if (stNow.position > 0) stNow.setSeekTarget(stNow.position);
           showToast(t('已切换兼容播放器'));
         }
-      }, 4000);
+      }, 7000);
     };
-    // 立即下发（不带封面先出音，避免等 1.5s 封面下载才起播 —— 系统卡切歌不跟手）；封面就绪后再补发更新
-    doPush('');
+
+    doPush('', true);
     const coverRaw =
       String((tr as any).coverUrl || (tr as any).cover || (tr as any).thumbPath || '') || '';
     if (coverRaw) {
@@ -704,18 +821,13 @@ export default function MusicLibraryScreen() {
         }
         const stC = useMusicPlayerStore.getState();
         if (stC.url === playUrl && stC.playbackState === 'playing') {
-          // 同曲补发：service 同 url 不重载，仅刷新元数据/封面
-          doPush(art || String((tr as any).coverUrl || (tr as any).cover || ''));
+          doPush(art || String((tr as any).coverUrl || (tr as any).cover || ''), false);
         }
       })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playUrl, currentIndex, playbackState, playMode, playVolume, nativeSnapshotReady]);
 
-  // 播放/暂停同步 Exo → 已由 App 全局 MusicForegroundBridge 常驻镜像处理（页面无关：
-  // 页面挂载/卸载都应一致，避免"返回主页后系统控件才生效"的导航依赖手感）。
-
-  // 播放模式（单曲循环）→ 原生 REPEAT_MODE_ONE（其余模式 Exo 播完发 ended 由 JS 引擎切歌）
   useEffect(
     () => () => {
       try {
@@ -728,25 +840,13 @@ export default function MusicLibraryScreen() {
     exoControl('repeat', playMode === 'single' ? 1 : 0);
   }, [playMode, playbackState]);
 
-  // 拖动进度 → Exo seek（消费后清 0）
-  useEffect(() => {
-    if (seekNonce && seekNonce !== consumedSeekNonceRef.current && nativeOkRef.current) {
-      // 乐观回写本地位置：松手立即停在新位置，不等原生 500ms 心跳校准（去回跳感）
-      const st = useMusicPlayerStore.getState();
-      st.setPosition(seekTarget);
-      exoControl('seek', seekTarget);
-      consumedSeekNonceRef.current = seekNonce;
-      st.consumeSeekTarget();
-    }
-  }, [seekTarget, seekNonce]);
-
-  // 停止/清除 → Exo stop；清 armed/候选计时；下次播放重新尝试原生（模块 disabled 由 App 全局在 idle 重置）
   useEffect(() => {
     if (playbackState === 'idle') {
       cancelArmTimer();
       armSeqRef.current += 1;
       armedUrlRef.current = '';
       lastProgressTsRef.current = 0;
+      resetExoArm();
       setNativeDisabledBoth(false);
       try {
         exoControl('stop');
@@ -754,144 +854,152 @@ export default function MusicLibraryScreen() {
     }
   }, [playbackState]);
 
-  const playSong = (item: any) => {
+  const filteredSongsRef = useRef(filteredSongs);
+  filteredSongsRef.current = filteredSongs;
+
+  const playSong = useCallback((item: any) => {
     const st = useMusicPlayerStore.getState();
     const cur = st.queue[st.currentIndex];
     const sameAsCurrent = !!cur && (cur.musicId || cur.id) === (item.musicId || item.id);
     if (sameAsCurrent && st.playbackState === 'playing') {
-      // 用户要求：点一下只启动/停在 minibar，不自动进全屏（进全屏靠 minibar 里的展开按钮）
       return;
     }
-    // 同一首（记忆恢复/暂停中）：走 resume 保留进度续播，而不是 playTrack 从 0 开始
+
     if (sameAsCurrent && st.position > 0) {
       MusicEngine.resume();
       return;
     }
-    // 克隆队列：播放器 store 与列表 songs 解耦（避免引用共享反噬渲染）。
-    // queueSource 由 useMemo 缓存——仅在 filteredSongs 变化时克隆一次，点歌零克隆开销
-    MusicEngine.playTrack(item, queueSource);
-    // 不 setShowFullScreen(true)：只出 minibar
-  };
+
+    MusicEngine.playTrack(
+      item,
+      filteredSongsRef.current.map((t) => ({ ...t })),
+    );
+  }, []);
+
+  const handleToggleFav = useCallback(
+    (item: any) => {
+      const fid = String(item.musicId || item.id || '');
+      if (fid) toggleFavorite(fid, item);
+    },
+    [toggleFavorite],
+  );
+
+  const playAllFiltered = useCallback(() => {
+    const list = filteredSongsRef.current;
+    if (!list.length) return;
+    MusicEngine.playTrack(
+      list[0],
+      list.map((x) => ({ ...x })),
+    );
+  }, []);
+
+  const shuffleFiltered = useCallback(() => {
+    const list = filteredSongsRef.current;
+    if (!list.length) return;
+    useMusicPlayerStore.getState().setMode('random');
+    const pick = list[Math.floor(Math.random() * list.length)];
+    MusicEngine.playTrack(
+      pick,
+      list.map((x) => ({ ...x })),
+    );
+  }, []);
+
+  const headerOffset = getFloatingHeaderOffset(insets.top);
+  const showSearch = searchOpen || query.length > 0;
 
   return (
     <View style={styles.container}>
-      <ScreenHeader
-        title={t('音乐')}
-        right={
-          <HeaderAction
-            label={t('刷新')}
-            onPress={() => loadAll(true)}
-            loading={loading}
-            disabled={loading}
-          />
-        }
-      />
-      {/* 搜索框：液态玻璃（用户要求与全站玻璃语言一致）。
-          内容必须是玻璃的 children（铁律），否则玻璃 absoluteFill 铺底 + 内容当兄弟 → 不吃触摸/不折射 */}
-      <SearchBar
-        value={query}
-        onChangeText={onQueryChange}
-        placeholder={t('搜索歌曲、成员、专辑')}
-        style={styles.searchBar}
-        right={
-          !albumFilter ? (
-            <ScalePressable
-              onPress={() => setViewMode((v) => (v === 'songs' ? 'albums' : 'songs'))}
-              pressedScale={0.9}
-              activeOpacity={0.6}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{ marginLeft: 4 }}
-            >
-              <MaterialCommunityIcons
-                name={viewMode === 'songs' ? 'album' : 'playlist-music'}
-                size={18}
-                color={viewMode === 'songs' ? palette.labelTertiary : palette.tint}
-              />
-            </ScalePressable>
-          ) : null
-        }
-      />
-      {/* 专辑详情条：返回 + 专辑名 + 曲目数 + 播放全部（替代分团 tab 栏） */}
-      {albumFilter ? (
-        <View style={[styles.tabsBarBase, { borderBottomColor: palette.separator }]}>
-          <View style={styles.albumBarRow}>
-            <ScalePressable
-              onPress={() => setAlbumFilter(null)}
-              pressedScale={0.9}
-              activeOpacity={0.7}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <MaterialCommunityIcons name="arrow-left" size={18} color={palette.tint} />
-            </ScalePressable>
-            <View style={{ flex: 1, marginLeft: 8, minWidth: 0 }}>
-              <Text
-                numberOfLines={1}
-                style={[styles.gText, { color: palette.label, fontWeight: '800' }]}
-              >
-                {albumFilter.album}
-              </Text>
-              <Text
-                numberOfLines={1}
-                style={[styles.gText, { color: palette.labelTertiary, fontSize: 11 }]}
-              >
-                {albumFilter.groupLabel || t('未知团体')} · {filteredSongs.length} {t('首')}
-              </Text>
+      <FloatingTabHeader
+        onLeftPress={() => {
+          if (albumFilter) setAlbumFilter(null);
+          else navigation.goBack();
+        }}
+        leftAccessibilityLabel={t('关闭')}
+        left={
+          <View style={styles.headerLeftRow}>
+            <View style={styles.headerBackIcon}>
+              <MaterialCommunityIcons name="arrow-left" size={20} color={palette.label} />
             </View>
-            <ScalePressable
-              onPress={() => {
-                // 播放全部：以专辑内曲目为队列
-                if (!filteredSongs.length) return;
-                MusicEngine.playTrack(
-                  filteredSongs[0],
-                  filteredSongs.map((x) => ({ ...x })),
-                );
-                setShowFullScreen(true);
-              }}
-              pressedScale={0.95}
-              activeOpacity={0.8}
-              style={[styles.playAllBtn, { backgroundColor: palette.tint }]}
-            >
-              <MaterialCommunityIcons name="play" size={14} color={palette.onTint} />
-              <Text style={[styles.playAllText, { color: palette.onTint }]}>{t('播放全部')}</Text>
-            </ScalePressable>
+            <Text style={[styles.headerTitle, { color: palette.label }]} numberOfLines={1}>
+              {albumFilter ? albumFilter.album : t('音乐')}
+            </Text>
           </View>
+        }
+        right={
+          <>
+            {!albumFilter ? (
+              <FloatingHeaderAction
+                icon={showSearch ? 'close' : 'magnify'}
+                active={showSearch}
+                accessibilityLabel={showSearch ? t('关闭') : t('搜索歌曲、成员、专辑')}
+                onPress={() => {
+                  if (showSearch) {
+                    setSearchOpen(false);
+                    setQuery('');
+                  } else {
+                    setSearchOpen(true);
+                  }
+                }}
+              />
+            ) : null}
+            {!albumFilter ? (
+              <FloatingHeaderAction
+                icon={viewMode === 'songs' ? 'album' : 'music-note-outline'}
+                active={viewMode === 'albums'}
+                accessibilityLabel={viewMode === 'songs' ? t('专辑') : t('单曲')}
+                onPress={() => setViewMode((v) => (v === 'songs' ? 'albums' : 'songs'))}
+              />
+            ) : null}
+            {filteredSongs.length > 0 ? (
+              <FloatingHeaderAction
+                icon="shuffle-variant"
+                accessibilityLabel={t('随机播')}
+                onPress={shuffleFiltered}
+              />
+            ) : null}
+            {filteredSongs.length > 0 ? (
+              <FloatingHeaderAction
+                icon="play"
+                iconColor={palette.tint}
+                accessibilityLabel={t('播放全部')}
+                onPress={playAllFiltered}
+              />
+            ) : null}
+            {!albumFilter ? (
+              <FloatingHeaderAction
+                icon="refresh"
+                active={loading}
+                accessibilityLabel={t('刷新')}
+                onPress={() => loadAll(true)}
+              />
+            ) : null}
+          </>
+        }
+      />
+
+      {showSearch && !albumFilter ? (
+        <View style={{ paddingTop: headerOffset }}>
+          <SearchBar
+            value={query}
+            onChangeText={onQueryChange}
+            placeholder={t('搜索歌曲、成员、专辑')}
+            style={styles.searchBar}
+          />
+        </View>
+      ) : null}
+
+      {!albumFilter ? (
+        <View style={[styles.tabsBarWrap, { paddingTop: showSearch ? 2 : headerOffset }]}>
+          <GlassSegmentedScroll
+            options={groupSegOptions}
+            value={group}
+            onChange={onGroupChange}
+            height={36}
+            labelFontSize={12}
+          />
         </View>
       ) : (
-        /* 横向标签栏：使用 flex:1 的 ScrollView + flexDirection: row，配合固定宽度 chip，
-           彻底避免 Yoga 在屏幕外 item 重新测量导致的拉伸问题。 */
-        <View style={[styles.tabsBarBase, { borderBottomColor: palette.separator }]}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            removeClippedSubviews={false}
-            collapsable={false}
-            contentContainerStyle={[styles.tabsContent, { paddingRight: 26 }]}
-          >
-            {GROUP_TABS.map((g) => (
-              <GlassSurface
-                key={g}
-                role="chip"
-                radius={999}
-                onPress={() => onGroupChange(g)}
-                tintColor={group === g ? 'rgba(255,111,145,0.82)' : undefined}
-                style={styles.gChip}
-              >
-                <Text
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  style={[
-                    styles.gText,
-                    { color: group === g ? palette.onTint : palette.labelSecondary },
-                  ]}
-                >
-                  {g === 'FAV'
-                    ? t('收藏{count}', { count: favCount ? `(${favCount})` : '' })
-                    : t(GROUP_LABELS[g] || g)}
-                </Text>
-              </GlassSurface>
-            ))}
-          </ScrollView>
-        </View>
+        <View style={{ height: headerOffset }} />
       )}
       {status ? (
         statusIsError ? (
@@ -949,282 +1057,57 @@ export default function MusicLibraryScreen() {
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listContent}
-          ListFooterComponent={<ListBottomSpacer hasDock={false} />}
+          ListFooterComponent={<View style={{ height: listBottomSpacerHeight }} />}
           removeClippedSubviews={false}
           renderItem={({ item }) => (
-            <View style={styles.albumItem}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setAlbumFilter({ groupLabel: item.groupLabel, album: item.album })}
-              >
-                <View style={[styles.albumCover, { backgroundColor: palette.fill2 }]}>
-                  {item.cover ? (
-                    <NetworkImage
-                      source={{ uri: item.cover }}
-                      style={{ width: '100%', height: '100%' }}
-                      resizeMode="cover"
-                      thumbnail={600}
-                    />
-                  ) : (
-                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                      <MaterialCommunityIcons
-                        name="album"
-                        size={40}
-                        color={palette.labelTertiary}
-                      />
-                    </View>
-                  )}
-                  <View style={styles.albumCountPill}>
-                    <Text style={styles.albumCountText}>
-                      {item.count} {t('首')}
-                    </Text>
-                  </View>
-                </View>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.songTitle, { color: palette.label, marginTop: 6 }]}
-                >
-                  {item.album}
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.songArtist, { color: palette.labelTertiary }]}
-                >
-                  {item.groupLabel || t('未知团体')}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <AlbumGridCard
+              item={item}
+              fill2Color={palette.fill2}
+              labelColor={palette.label}
+              labelTertiaryColor={palette.labelTertiary}
+              unknownGroupText={t('未知团体')}
+              songsUnitText={t('首')}
+              onPress={setAlbumFilter}
+            />
           )}
         />
       ) : (
         <PerfFlatList
           data={filteredSongs}
-          // extraData：FlatList 为 PureComponent，data 引用不变时不重渲染 renderItem——
-          // 切歌/收藏后 active 高亮与爱心状态需随 currentIndex/favorites 变化刷新
-          extraData={`${currentIndex}:${favorites.length}`}
+
+          extraData={`${currentIndex}:${playbackState}:${favorites.length}`}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           keyExtractor={(item, index) =>
             `${item.groupKey || ''}-${item.musicId || item.id || ''}-${index}`
           }
           numColumns={2}
-          // 不自定义 columnWrapperStyle（避免 width:'48%' + space-between + aspectRatio:1 的
-          // 组合在 Android 上切歌重渲染后左列塌陷的布局 bug——左列整列不可见，含兜底元素）。
-          // FlatList 默认等分两列，item 用 flex:1 + 自身内边距即可。
+
           removeClippedSubviews={false}
           contentContainerStyle={styles.listContent}
-          ListFooterComponent={<ListBottomSpacer hasDock={false} />}
-          renderItem={({ item }) => {
-            const id = String(item.musicId || item.id || '');
-            // ⚠️ 只比 musicId 会误伤：官方源与 R2 源存在同 id 不同曲的情况，
-            // 两首歌会同时被判为「正在播放」（一张变浅、边框加粗后内容下移几个像素）。
-            // 改为复合键：musicId + 标题 + 艺人 + 专辑，全部一致才算当前曲。
-            const curTrack = queue[currentIndex];
-            const norm = (v: any) =>
-              String(v || '')
-                .trim()
-                .toLowerCase();
-            const active =
-              !!curTrack &&
-              String(curTrack.musicId || curTrack.id || '') === id &&
-              norm(curTrack.title) === norm(item.title) &&
-              norm(curTrack.artist || curTrack.joinMemberNames) ===
-                norm(item.artist || item.joinMemberNames) &&
-              norm(curTrack.album || curTrack.albumName) === norm(item.album || item.albumName);
-            const coverUrl = item.coverUrl || item.cover || item.thumbPath || '';
-            return (
-              <View style={styles.albumItem}>
-                <TouchableOpacity activeOpacity={0.8} onPress={() => playSong(item)}>
-                  {/* 与「专辑」网格同款：封面 + 卡外文字（不再有灰色信息块 → 也就没有左右竖带） */}
-                  <View
-                    style={[
-                      styles.albumCover,
-                      {
-                        backgroundColor: palette.fill2,
-                        // ⚠️ 描边宽度必须恒定（非播放态用 transparent 占位）：
-                        // 切歌时 active 变化会让 borderWidth 0↔2，content box 随之变化 → 触发封面重排，
-                        // 百分比/绝对定位的封面内容在某些 Android 机型上会算成 0 尺寸 =「上一首播完后封面消失」。
-                        borderWidth: 2,
-                        borderColor: active ? palette.tint : 'transparent',
-                      },
-                    ]}
-                  >
-                    <CoverArt
-                      uri={coverUrl || undefined}
-                      title={item.title || '♪'}
-                      fill
-                      active={active}
-                    />
-                    {active ? (
-                      <View style={[styles.playingBadge, { backgroundColor: palette.tint }]}>
-                        <EqualizerBars
-                          color={palette.onTint}
-                          active={screenFocused && playbackState === 'playing'}
-                        />
-                      </View>
-                    ) : null}
-                    <ScalePressable
-                      style={styles.favBtn}
-                      pressedScale={0.85}
-                      activeOpacity={0.6}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        const fid = String(item.musicId || item.id || '');
-                        if (fid) toggleFavorite(fid, item);
-                      }}
-                    >
-                      <MaterialCommunityIcons
-                        name={
-                          useMusicPlayerStore
-                            .getState()
-                            .isFavorite(String(item.musicId || item.id || ''), item)
-                            ? 'heart'
-                            : 'heart-outline'
-                        }
-                        size={20}
-                        color={
-                          useMusicPlayerStore
-                            .getState()
-                            .isFavorite(String(item.musicId || item.id || ''), item)
-                            ? palette.danger
-                            : palette.onTint
-                        }
-                      />
-                    </ScalePressable>
-                  </View>
-                  <Text
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    style={[styles.songTitle, { color: palette.label, marginTop: 6 }]}
-                  >
-                    {item.title || t('无标题')}
-                  </Text>
-                  <View style={styles.songMetaLine}>
-                    <Text
-                      style={[styles.songArtist, { color: palette.labelTertiary }]}
-                      numberOfLines={1}
-                    >
-                      {joinMeta([item.groupLabel, item.artist, item.album]) || t('官方音乐')}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            );
-          }}
+          ListFooterComponent={<View style={{ height: listBottomSpacerHeight }} />}
+          renderItem={({ item }) => (
+            <SongGridCard
+              item={item}
+              active={isSameTrackItem(curTrack, item)}
+              isPlaying={screenFocused && playbackState === 'playing'}
+              isLoading={playbackState === 'loading'}
+              isFav={isTrackInFavSet(favSet, item)}
+              tintColor={palette.tint}
+              onTintColor={palette.onTint}
+              dangerColor={palette.danger}
+              fill2Color={palette.fill2}
+              labelColor={palette.label}
+              labelTertiaryColor={palette.labelTertiary}
+              untitledText={t('无标题')}
+              officialText={t('官方音乐')}
+              onPlay={playSong}
+              onToggleFav={handleToggleFav}
+            />
+          )}
         />
       )}
-      {/* 原生 Exo 通道可用时**完全不挂载** Video：ReactExoplayerView 挂载即 prepare 并向系统
-          请求音频焦点 → 与 YayaExoService 的 Exo 互相判失焦、双方都暂停（现象：没声音 +
-          App 进度条不动 + 系统进度条一秒归零再跳回）。降级是单向的，这里只会有一次挂载。 */}
-      {nativeDisabled ? (
-        <Video
-          ref={videoRef}
-          source={{
-            uri: playUrl || '',
-            headers: {
-              'User-Agent': USER_AGENT,
-              Referer: 'https://h5.48.cn/',
-            },
-            // AWS 流播放中偶发卡顿（缓冲耗尽 rebuffer）：加大 Exo 缓冲池 + 回看缓冲，
-            // 瞬时网络抖动不出进度条回退；backBufferDurationMs 支持后退 30s 不二次缓冲
-            bufferConfig: {
-              minBufferMs: 15000,
-              maxBufferMs: 60000,
-              bufferForPlaybackMs: 5000,
-              bufferForPlaybackAfterRebufferMs: 10000,
-              backBufferDurationMs: 30000,
-            },
-          }}
-          style={styles.tinyPlayer}
-          // ⚠️ 只有降级后（nativeDisabled）Video 才是真正的播放器；原生候选期必须
-          // paused=true + volume=0，否则它会起播并抢音频焦点（详见上方 nativeDisabled 注释）
-          volume={nativeDisabled ? playVolume : 0}
-          paused={nativeDisabled ? playbackState !== 'playing' : true}
-          // 单曲循环用原生 repeat（无缝、无 seek(0) 重新缓冲的卡顿）；onEnd 仅处理顺序/随机切歌
-          repeat={playMode === 'single'}
-          ignoreSilentSwitch="ignore"
-          playInBackground
-          playWhenInactive
-          onAudioBecomingNoisy={() => {
-            // 拔耳机/蓝牙断开：暂停播放，避免外放打扰
-            try {
-              if (useMusicPlayerStore.getState().playbackState === 'playing') {
-                MusicEngine.togglePause();
-                showToast(t('耳机已断开，已暂停播放'));
-              }
-            } catch (err) {
-              logError(err, 'MusicLibrary.onAudioBecomingNoisy');
-            }
-          }}
-          onLoad={(e) => {
-            try {
-              setMediaReady(true);
-              // 仅有限正时长才写入：部分 R2 FLAC onLoad 给 0/NaN/Infinity，覆盖会毁掉已就绪时长
-              const durRaw = Number((e as any).duration);
-              const dur =
-                Number.isFinite(durRaw) && durRaw > 0
-                  ? durRaw
-                  : useMusicPlayerStore.getState().duration;
-              useMusicPlayerStore.getState().setDuration(dur);
-              // 续播回写：rehydrate 恢复的 position 已在 store 转成 seekTarget，
-              // 媒体就绪后立即 seek（此后 onProgress 接管进度）
-              const st = useMusicPlayerStore.getState();
-              if (
-                st.seekTarget > 0 &&
-                videoRef.current &&
-                typeof videoRef.current.seek === 'function'
-              ) {
-                try {
-                  videoRef.current.seek(st.seekTarget);
-                } catch (err) {
-                  logWarn(`[MusicLibraryScreen] resume seek error: ${String(err)}`);
-                }
-                consumedSeekNonceRef.current = st.seekNonce;
-                useMusicPlayerStore.getState().consumeSeekTarget();
-              }
-            } catch (err) {
-              logWarn(`[MusicLibraryScreen] onLoad error: ${String(err)}`);
-            }
-          }}
-          onProgress={(e) => {
-            try {
-              useMusicPlayerStore.getState().setPosition(e.currentTime || 0);
-            } catch (err) {
-              logError(err, 'MusicLibrary.onProgress');
-            }
-          }}
-          onEnd={() => {
-            try {
-              // 单曲模式由 repeat 无缝循环（不触发 onEnd）；其余模式自动切下一首
-              if (playMode !== 'single') MusicEngine.next();
-            } catch (err) {
-              logWarn(`[MusicLibraryScreen] onEnd error: ${String(err)}`);
-            }
-          }}
-          onError={(err) => {
-            try {
-              logError(err, 'MusicLibrary.onError');
-              const track = queue[currentIndex];
-              const st = useMusicPlayerStore.getState();
-              // single 模式/仅一首：next 会绕回同曲（nextIndex 返回 current），
-              // 无条件 next 会造成无限重试 + toast 刷屏；停在 error 态由用户手动处理
-              const canSkip = st.queue.length > 1 && st.playMode !== 'single';
-              if (canSkip) {
-                showToast(t('《{title}》无法播放，已跳过', { title: track?.title || t('该歌曲') }));
-                MusicEngine.next();
-              } else {
-                const title = track?.title || t('该歌曲');
-                st.setError(t('《{title}》无法播放', { title }));
-                st.setPlaybackState('error');
-                showToast(t('《{title}》无法播放，请尝试其他歌曲', { title }));
-              }
-            } catch (e) {
-              logError(e, 'MusicLibrary.onErrorHandler');
-            }
-          }}
-        />
-      ) : null}
+
       <MiniPlayerBar onOpenFullScreen={() => setShowFullScreen(true)} />
       <FullScreenPlayer visible={showFullScreen} onClose={() => setShowFullScreen(false)} />
     </View>
@@ -1232,27 +1115,16 @@ export default function MusicLibraryScreen() {
 }
 
 const styles = StyleSheet.create({
-  /** 网格卡内层容器（替代逐卡 GlassSurface） */
-  /** 实心卡内容容器：圆角与外层一致并裁切（封面贴边、无内边距） */
   container: { flex: 1, backgroundColor: 'transparent' },
-  albumBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  playAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  playAllText: { fontSize: 12, fontWeight: '700' },
-  // 显式半宽：flex:1 在 FlatList cell 上会把单张专辑拉伸成整行大图
+
   albumItem: { width: '48.5%', marginBottom: 12, marginHorizontal: 5 },
-  albumCover: { width: '100%', aspectRatio: 1, borderRadius: 14, overflow: 'hidden' },
+  albumCover: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 22,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+  },
   albumCountPill: {
     position: 'absolute',
     right: 6,
@@ -1262,59 +1134,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  albumCountText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  albumCountText: { color: '#fff', fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     marginHorizontal: 16,
     marginBottom: 8,
-    paddingHorizontal: 12,
-    height: 40,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
   },
 
-  // 标签栏容器：固定高度，底部分隔线（颜色在组件里动态切换）
-  tabsBarBase: {
-    height: TABS_BAR_HEIGHT,
-    paddingHorizontal: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  tabsContent: {
+  headerLeftRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingVertical: (TABS_BAR_HEIGHT - CHIP_HEIGHT) / 2, // 垂直居中
+    gap: 6,
+    maxWidth: 165,
   },
-  gChip: {
-    width: CHIP_WIDTH,
-    height: CHIP_HEIGHT,
-    paddingHorizontal: 8,
-    borderRadius: radii.pill,
+  headerBackIcon: {
+    width: 24,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
-    flexGrow: 0,
-    overflow: 'hidden',
-    marginRight: CHIP_GAP,
   },
-  gText: { fontSize: 12, fontWeight: '700' },
+  headerTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    flexShrink: 1,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    ...Platform.select({ android: { paddingTop: 1 }, default: null }),
+  },
+  tabsBarWrap: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
   status: { fontSize: 12, fontWeight: '700' },
   statusInfo: { paddingVertical: 16, alignItems: 'center' },
 
-  // 列表内容：顶部留出标签栏高度，底部留出迷你播放器空间
-  listContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 120 },
+  listContent: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 16 },
   emptyWrap: { flex: 1, alignItems: 'stretch' },
-  // 去掉 gridRow（width:'48%'+space-between 在 Android FlatList 上切歌后左列塌陷）。
-  // 现由 FlatList numColumns=2 默认等分两列，songItem 用 flex:1 + 自身 padding 自适应。
+
   playingBadge: {
     position: 'absolute',
     left: 8,
     bottom: 8,
-    width: 26,
-    height: 26,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1322,14 +1186,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 6,
-    width: 32,
-    height: 32,
-    borderRadius: 20,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.32)',
+    backgroundColor: 'rgba(0,0,0,0.28)',
   },
-  songTitle: { fontSize: 15, fontWeight: '800', lineHeight: 20 },
+  songTitle: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '800', lineHeight: 20 },
   songMetaLine: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1337,6 +1201,5 @@ const styles = StyleSheet.create({
     marginTop: 4,
     gap: 6,
   },
-  songArtist: { fontSize: 12, flex: 1 },
-  tinyPlayer: { width: 0, height: 0 },
+  songArtist: { fontSize: 12, fontFamily: fontFamily.system, flex: 1 },
 });

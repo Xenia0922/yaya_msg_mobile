@@ -1,10 +1,3 @@
-/**
- * bilibiliDanmaku · B站直播弹幕（WebSocket 直连弹幕服务器）
- * - getDanmuInfo 取 token + host_list → wss 连接
- * - 认证包 protover=0：服务器以未压缩 JSON 下发（免 pako/免 brotli）
- * - 30s 心跳保活；断线 5s 自动重连
- * - 仅解析 DANMU_MSG 文本，回调给上层渲染
- */
 import bilibiliApi from '../api/bilibili';
 import pako from 'pako';
 
@@ -73,21 +66,19 @@ function utf8Decode(bytes: Uint8Array): string {
   return out;
 }
 
-/** 组包：16 字节头 + JSON 体（大端序） */
 function encodePacket(op: number, body: string): ArrayBuffer {
   const bodyBytes = utf8Encode(body);
   const buf = new ArrayBuffer(16 + bodyBytes.length);
   const dv = new DataView(buf);
-  dv.setUint32(0, 16 + bodyBytes.length); // 包长
-  dv.setUint16(4, 16); // 头长
-  dv.setUint16(6, 1); // 协议版本
-  dv.setUint16(8, op); // 操作码
-  dv.setUint32(12, 1); // 序号
+  dv.setUint32(0, 16 + bodyBytes.length);
+  dv.setUint16(4, 16);
+  dv.setUint16(6, 1);
+  dv.setUint16(8, op);
+  dv.setUint32(12, 1);
   new Uint8Array(buf, 16).set(bodyBytes);
   return buf;
 }
 
-/** 从 ArrayBuffer / string 中解出所有 op=5 的弹幕文本（支持协议 0 JSON 与协议 2 zlib 压缩） */
 function extractDanmaku(data: any): string[] {
   const texts: string[] = [];
   const parseBody = (body: string) => {
@@ -95,9 +86,7 @@ function extractDanmaku(data: any): string[] {
       const obj = JSON.parse(body);
       if (obj?.cmd === 'DANMU_MSG' && Array.isArray(obj.info) && obj.info[1])
         texts.push(String(obj.info[1]));
-    } catch {
-      /* ignore 单条坏包 */
-    }
+    } catch {}
   };
   if (typeof data === 'string') {
     parseBody(data);
@@ -119,7 +108,6 @@ function extractDanmaku(data: any): string[] {
       if (ver === 0) {
         parseBody(utf8Decode(payload));
       } else if (ver === 2) {
-        // zlib 压缩：解压后可能是多条 op=5 报文，递归解析
         try {
           const inflated = pako.inflate(payload);
           texts.push(
@@ -127,9 +115,7 @@ function extractDanmaku(data: any): string[] {
               inflated.buffer.slice(inflated.byteOffset, inflated.byteOffset + inflated.byteLength),
             ),
           );
-        } catch {
-          /* 解压失败忽略 */
-        }
+        } catch {}
       }
     }
     offset += len;
@@ -145,7 +131,7 @@ export class BilibiliDanmaku {
   private handlers: BiliDanmakuHandlers | null = null;
   private closed = true;
   private targets: { url: string; token: string }[] = [];
-  /** 连接代际：切房/重连时递增，旧 socket/旧 fetch 回调一律失效（防止旧 onclose 打断新连接）。 */
+
   private generation = 0;
 
   connect(roomId: string, handlers: BiliDanmakuHandlers): void {
@@ -165,7 +151,6 @@ export class BilibiliDanmaku {
       });
   }
 
-  /** 取弹幕服务器列表：新接口失败自动回退旧接口（bilibiliApi 已封装），并展开多端口候选 */
   private async fetchTargets(): Promise<{ url: string; token: string }[]> {
     const info: DanmuInfo = await bilibiliApi.getDanmuInfo(this.roomId);
     const token = info?.token || '';
@@ -214,18 +199,15 @@ export class BilibiliDanmaku {
         if (this.ws !== ws || generation !== this.generation) return;
         try {
           for (const text of extractDanmaku(event.data)) this.handlers?.onMessage(text);
-        } catch {
-          /* ignore */
-        }
+        } catch {}
       };
       ws.onerror = () => {};
       ws.onclose = () => {
-        // 旧 socket 的 onclose 绝不允许关掉/重连当前新连接（切房竞态根因）。
         if (this.ws !== ws) return;
         this.ws = null;
         if (generation !== this.generation) return;
         this.stopHeartbeat();
-        // 当前目标失败 → 换下一个目标；全部失败 → 稍后重连
+
         const next = attempt + 1;
         if (!this.closed && next < this.targets.length) {
           this.openSocket(this.targets[next].url, this.targets[next].token, next, generation);
@@ -243,11 +225,9 @@ export class BilibiliDanmaku {
     this.heartbeatTimer = setInterval(() => {
       try {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.send(encodePacket(2, '{}')); // 心跳包需合法 JSON 文本（原传 [object Object] 会被 B站忽略/断连）
+          this.ws.send(encodePacket(2, '{}'));
         }
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }, 30000);
   }
 
@@ -276,7 +256,7 @@ export class BilibiliDanmaku {
 
   disconnect(): void {
     this.closed = true;
-    this.generation += 1; // 作废旧 socket 事件与在途 fetch 回调
+    this.generation += 1;
     this.stopHeartbeat();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
@@ -284,9 +264,7 @@ export class BilibiliDanmaku {
       try {
         this.ws.onclose = null;
         this.ws.close();
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       this.ws = null;
     }
     this.handlers = null;

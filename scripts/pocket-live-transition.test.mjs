@@ -25,10 +25,17 @@ function load(path, imports = {}) {
 const types = load('../src/services/pocketNim/types.ts');
 const htmlMod = load('../src/utils/html.ts');
 const runtimeLogMod = { logInfo: () => {}, logWarn: () => {}, logError: () => {} };
-const { parseChatroomMessage, isLiveStreamTransition, parseLiveUpdate } = load(
-  '../src/services/pocketNim/codec.ts',
-  { './types': types, '../../utils/html': htmlMod, '../../utils/runtimeLog': runtimeLogMod },
-);
+const {
+  parseChatroomMessage,
+  isLiveStreamTransition,
+  parseLiveUpdate,
+  parseLivePkEvent,
+  reduceLivePkState,
+} = load('../src/services/pocketNim/codec.ts', {
+  './types': types,
+  '../../utils/html': htmlMod,
+  '../../utils/runtimeLog': runtimeLogMod,
+});
 for (const type of [
   'MULTI_MIC_PK_START',
   'MULTI_MIC_PK_AGREE',
@@ -166,4 +173,95 @@ assert.equal(
   'https://source.48.cn/avatar/test.png',
   '识别资料接口 baseUserInfo 中的头像',
 );
+
+// ── PK vs 连麦状态机：仅 PK 正式开始后显示 PK 成员，连麦或 PK 结束后立即隐藏 ──
+let pkState = { active: false, users: [] };
+// 1) 普通连麦不激活 PK 成员浮层
+pkState = reduceLivePkState(pkState, {
+  messageType: 'MICROPHONE_CONNECTION_AGREE_V2',
+  users: [{ nickname: 'A' }, { nickname: 'B' }],
+});
+assert.equal(pkState.active, false);
+assert.equal(pkState.users.length, 0);
+
+// 2) PK 邀请 / 同意阶段仍未正式开打
+pkState = reduceLivePkState(pkState, {
+  messageType: 'MULTI_MIC_PK_START',
+  pkId: '1001',
+  users: [{ nickname: 'A' }, { nickname: 'B' }],
+});
+assert.equal(pkState.active, false);
+pkState = reduceLivePkState(pkState, {
+  messageType: 'MULTI_MIC_PK_AGREE',
+  pkId: '1001',
+  users: [{ nickname: 'A' }, { nickname: 'B' }],
+});
+assert.equal(pkState.active, false);
+
+// 3) MULTI_MIC_PK_SUCCESS 才是 PK 正式开始
+const pkSuccessEv = parseLivePkEvent({
+  type: 'custom',
+  remoteExtension: {
+    messageType: 'MULTI_MIC_PK_SUCCESS',
+    pkId: 1001,
+    userInfoList: [{ nickname: '成员甲' }, { nickname: '成员乙' }],
+  },
+});
+assert.ok(pkSuccessEv && pkSuccessEv.users.length === 2);
+pkState = reduceLivePkState(pkState, pkSuccessEv);
+assert.equal(pkState.active, true);
+assert.equal(pkState.users.map((u) => u.nickname).join(','), '成员甲,成员乙');
+
+// 4) MULTI_MIC_PK_SCORE 在不切流的前提下可同步/更新 PK 成员
+const pkScoreEv = parseLivePkEvent({
+  type: 'custom',
+  remoteExtension: {
+    messageType: 'MULTI_MIC_PK_SCORE',
+    pkId: '1001',
+    pkUserInfoList: [{ nickname: '成员甲' }, { nickname: '成员丙' }],
+  },
+});
+assert.ok(pkScoreEv);
+pkState = reduceLivePkState(pkState, pkScoreEv);
+assert.equal(pkState.active, true);
+assert.equal(pkState.users.map((u) => u.nickname).join(','), '成员甲,成员丙');
+
+// 5) MULTI_MIC_PK_FINISH 立即清空 PK 状态；随后到达的同 pkId 延迟 SCORE 不得复活
+const pkFinishEv = parseLivePkEvent({
+  type: 'custom',
+  remoteExtension: {
+    messageType: 'MULTI_MIC_PK_FINISH',
+    pkId: '1001',
+    pkStatus: 3,
+    multiMicUserInfoList: [{ nickname: '成员甲' }, { nickname: '成员丙' }],
+  },
+});
+pkState = reduceLivePkState(pkState, pkFinishEv);
+assert.equal(pkState.active, false);
+assert.equal(pkState.users.length, 0);
+
+pkState = reduceLivePkState(pkState, pkScoreEv);
+assert.equal(pkState.active, false, '已结束的同 pkId 延迟分数包不得再次拉起浮层');
+
+// 6) MICROPHONE_CONNECTION_SETTLEMENT 不得在结束后把连麦列表当 PK 挂出来
+const settlementEv = parseLivePkEvent({
+  type: 'custom',
+  remoteExtension: {
+    messageType: 'MICROPHONE_CONNECTION_SETTLEMENT',
+    multiMicUserInfoList: [{ nickname: '成员甲' }, { nickname: '成员丙' }],
+  },
+});
+pkState = reduceLivePkState({ active: true, users: [{ nickname: '成员甲' }] }, settlementEv);
+assert.equal(pkState.active, false);
+assert.equal(pkState.users.length, 0);
+
+// 7) 中途进房仅收到新一场 MULTI_MIC_PK_SCORE 也可显示进行中的 PK 成员
+pkState = reduceLivePkState(pkState, {
+  messageType: 'MULTI_MIC_PK_SCORE',
+  pkId: '1002',
+  users: [{ nickname: '成员丁' }, { nickname: '成员戊' }],
+});
+assert.equal(pkState.active, true);
+assert.equal(pkState.users.length, 2);
+
 console.log('连麦切换消息识别与头像缓存测试通过');

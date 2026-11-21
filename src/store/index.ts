@@ -24,7 +24,9 @@ interface MemberState {
     channelId: string,
     patch: Partial<Pick<Member, 'serverId' | 'channelId' | 'yklzId'>>,
   ) => void;
-  /** 按 userId 回写房间映射（seine 解析结果），供 roomMapCache 使用 */
+
+  batchUpdateSmallRooms: (updates: Array<{ channelId: string; yklzId: string }>) => void;
+
   patchMemberByUserId: (
     memberId: string,
     patch: Partial<Pick<Member, 'serverId' | 'channelId' | 'yklzId' | 'roomId' | 'liveRoomId'>>,
@@ -41,6 +43,20 @@ export const useMemberStore = create<MemberState>((set) => ({
         String(member.channelId) === String(channelId) ? { ...member, ...patch } : member,
       ),
     })),
+  batchUpdateSmallRooms: (updates) => {
+    if (!updates.length) return;
+    const byChannel = new Map<string, string>();
+    for (const item of updates) {
+      if (item.channelId && item.yklzId) byChannel.set(String(item.channelId), item.yklzId);
+    }
+    if (!byChannel.size) return;
+    set((state) => ({
+      members: state.members.map((member) => {
+        const yklzId = byChannel.get(String(member.channelId));
+        return yklzId && member.yklzId !== yklzId ? { ...member, yklzId } : member;
+      }),
+    }));
+  },
   patchMemberByUserId: (memberId, patch) =>
     set((state) => ({
       members: state.members.map((member) =>
@@ -53,15 +69,14 @@ interface UiState {
   tabBarHiddenByRoute: { Media: boolean; Rooms: boolean };
   toastMessage: string;
   toastTone: 'success' | 'error' | 'info' | null;
-  /**
-   * 当前屏幕的「玻璃折射背景」：房间页打开时挂成员房间的背景图（+遮罩色），
-   * 让房间里的玻璃折射房间背景而不是全局软件背景；离开屏幕清 null 还原全局。
-   */
+
   screenBackdrop: { uri: string; scrim: string } | null;
+  pmUnread: number;
   setTabBarHidden: (hidden: boolean, route: 'Media' | 'Rooms') => void;
   showToast: (message: string, tone?: 'success' | 'error' | 'info') => void;
   hideToast: () => void;
   setScreenBackdrop: (v: { uri: string; scrim: string } | null) => void;
+  setPmUnread: (count: number) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -69,6 +84,7 @@ export const useUiStore = create<UiState>((set) => ({
   toastMessage: '',
   toastTone: null,
   screenBackdrop: null,
+  pmUnread: 0,
   setTabBarHidden: (hidden, route) =>
     set((state) =>
       state.tabBarHiddenByRoute[route] === hidden
@@ -77,10 +93,19 @@ export const useUiStore = create<UiState>((set) => ({
     ),
   showToast: (message, tone) => set({ toastMessage: message, toastTone: tone ?? null }),
   hideToast: () => set({ toastMessage: '', toastTone: null }),
-  setScreenBackdrop: (v) => set({ screenBackdrop: v }),
+  setScreenBackdrop: (v) =>
+    set((state) => {
+      const prev = state.screenBackdrop;
+      if (prev === v) return state;
+      if (prev && v && prev.uri === v.uri && prev.scrim === v.scrim) return state;
+      return { screenBackdrop: v };
+    }),
+  setPmUnread: (count) =>
+    set((state) => {
+      const normalized = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+      return state.pmUnread === normalized ? state : { pmUnread: normalized };
+    }),
 }));
-
-// --- v2.6: Announcement store ---
 
 const ANNOUNCEMENT_SEEN_KEY = 'yaya_announcement_seen';
 
@@ -106,7 +131,6 @@ export const useAnnouncementStore = create<AnnouncementState>((set) => ({
   setLastFetched: (ts) => set({ lastFetched: ts }),
 }));
 
-// Persist seen announcement ids so the modal doesn't re-pop on every cold launch.
 AsyncStorage.getItem(ANNOUNCEMENT_SEEN_KEY)
   .then((raw) => {
     const ids: string[] = raw ? JSON.parse(raw) : [];
@@ -119,16 +143,14 @@ AsyncStorage.getItem(ANNOUNCEMENT_SEEN_KEY)
     useAnnouncementStore.setState({ hydrated: true });
   });
 
-// --- 版本更新检测 ---
-
 const GITHUB_RELEASES_URL =
   'https://api.github.com/repos/Xenia0922/yaya_msg_mobile/releases/latest';
-// 降级源：GitHub release 页面 HTML（无 API 匿名限流；共享出口 IP 触发 403 时自动切换）
+
 const GITHUB_RELEASES_PAGE = 'https://github.com/Xenia0922/yaya_msg_mobile/releases/latest';
-// 更新跳转链接：统一指向用户自建下载页（夸克网盘 + GitHub 双渠道，可随时改页内链接无需发版）
+
 const UPDATE_DOWNLOAD_PAGE = 'https://gnz48.tech/app/';
 const UPDATE_TIMEOUT = 8000;
-// 检查结果持久化，24h 内不重复打 GitHub API（未认证限流 60/h，冷启全打会快速耗尽）
+
 const UPDATE_LAST_CHECK_KEY = 'yaya_update_last_check';
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 
@@ -140,7 +162,6 @@ function parseVersion(v: string): number[] {
     .filter((n) => !Number.isNaN(n));
 }
 
-/** candidate 是否比 current 新（纯数字段比较，如 2.6.6 > 2.6.5） */
 export function isNewerVersion(candidate: string, current: string): boolean {
   const a = parseVersion(candidate);
   const b = parseVersion(current);
@@ -155,18 +176,16 @@ export function isNewerVersion(candidate: string, current: string): boolean {
 }
 
 interface UpdateState {
-  /** 是否有可用更新（本地版本低于 GitHub 最新 Release 版本） */
   hasUpdate: boolean;
-  /** 最新版本号（如 v2.6.6），无更新时为空 */
+
   latestVersion: string;
-  /** 最新版 APK 直链（releases/download，免登录直接下载）；无 APK 附件时为空 */
+
   latestUrl: string;
-  /** 本次会话已检查的时间戳，0 表示未检查 */
+
   lastCheckedAt: number;
   checkUpdate: (force?: boolean) => Promise<boolean>;
 }
 
-// 请求互斥：并发/连点只发一个请求；seq 防止慢请求 finally 误清后续 force 请求的锁与结果
 let updateChecking = false;
 let updateCheckSeq = 0;
 
@@ -175,26 +194,19 @@ export const useUpdateStore = create<UpdateState>((set) => ({
   latestVersion: '',
   latestUrl: '',
   lastCheckedAt: 0,
-  // 应用启动时静默检测一次（限流 24h）；失败（网络/无 Release/超时）静默视为无更新，
-  // 绝不打扰用户 —— 没有红点就当作没有更新。
-  // force=true 为设置页手动「检查更新」：绕过 24h 限流立即请求。
-  // 任何失败都不抛错、一律视为「无更新」（返回 false），成功/失败都写缓存限流；
-  // 手动 force 不受缓存影响，随时可重试。
+
   checkUpdate: async (force = false) => {
-    // 内部构建不读取公开 Release，也不构造公开资产 URL；否则会显示 HTTP 404。
-    // 公开版仍按 GitHub Release 检查更新。
     if (IS_PLUS_BUILD) {
       set({ hasUpdate: false, latestVersion: '', latestUrl: '', lastCheckedAt: Date.now() });
       return false;
     }
-    // 并发锁：静默检查进行中时，普通调用直接跳过；force（手动检查）必须继续，
-    // 否则启动静默检查未结束时手动点「检查更新」会被吞 → 误报「已是最新版本」
+
     if (updateChecking && !force) return false;
-    // 先占锁再做任何 await：原实现把锁放在 AsyncStorage.getItem 之后，并发点按可同时穿透
+
     updateChecking = true;
     const seq = ++updateCheckSeq;
     const { lastCheckedAt } = useUpdateStore.getState();
-    // 合并内存与持久化的检查时间：非强制且 24h 内已查过则直接跳过（启动静默限流）
+
     const persisted = await AsyncStorage.getItem(UPDATE_LAST_CHECK_KEY).catch(() => null);
     const persistedTs = persisted ? Number(persisted) || 0 : 0;
     const lastTs = Math.max(lastCheckedAt, persistedTs);
@@ -214,7 +226,6 @@ export const useUpdateStore = create<UpdateState>((set) => ({
       AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, String(now)).catch(() => {});
     };
     try {
-      // 源1：GitHub API（未认证匿名限流 60/h，共享出口 IP 时可能 403）
       let tag = '';
       try {
         const res = await Promise.race([
@@ -229,7 +240,6 @@ export const useUpdateStore = create<UpdateState>((set) => ({
         const data: any = parseMaybeJson(await res.text());
         tag = String(data.tag_name || data.name || '');
       } catch {
-        // 源2：GitHub release 页面 HTML（无 API 匿名限流）：重定向 URL 提取 tag
         const UA =
           'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36';
         const page = await Promise.race([
@@ -244,12 +254,11 @@ export const useUpdateStore = create<UpdateState>((set) => ({
         tag = tagMatch ? decodeURIComponent(tagMatch[1]) : '';
         if (!tag) throw new Error('page missing tag');
       }
-      // 有比当前更新的 release 版本时，跳转链接统一用自建下载页（用户可随时改页内下载渠道）
+
       const has = !!tag && isNewerVersion(tag, APP_VERSION);
       finish(has, tag, has ? UPDATE_DOWNLOAD_PAGE : '');
       return has;
     } catch {
-      // 检查失败（网络不通/两个源都不可用）：视为无更新，不抛错不打扰
       finish(false, '', '');
       return false;
     } finally {

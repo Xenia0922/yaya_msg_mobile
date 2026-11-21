@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   FlatList,
+  Image,
   Modal,
   PanResponder,
   Pressable,
@@ -18,10 +20,10 @@ import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine } from '../services/musicPlayer';
 import { lyricIndexAt, lyricTimeForIndex } from '../utils/lyrics';
 import CoverArt from './CoverArt';
-import { usePalette, radii, spacing, motion } from '../theme';
+import { usePalette, radii, spacing, motion, fontFamily } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
-import { joinMeta } from '../utils/format';
+import { formatTrackSubtitle } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
 import { GlassSurface } from '../components/GlassSurface';
 import { normalizeImageHost } from '../utils/imageThumb';
@@ -35,69 +37,46 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-interface FullScreenPlayerInnerProps {
-  // Injected data from parent selectors (hooks always called in parent)
-  track: any;
-  isPlaying: boolean;
-  progress: number;
-  duration: number;
-  position: number;
-  playMode: string;
-  lyrics: any[];
-  favorites: string[];
-  toggleFavorite: (_id: string, _track?: any) => void;
-  currentIndex: number;
-  queue: any[];
-  onClose: () => void;
+const QUEUE_ROW_HEIGHT = 62;
+
+interface FullScreenProgressBarProps {
+  tintColor: string;
+  backgroundColor: string;
+  trackColor: string;
+  timeColor: string;
 }
 
-function FullScreenPlayerInner({
-  onClose,
-  track,
-  isPlaying,
-  progress,
-  duration,
-  position,
-  playMode,
-  lyrics,
-  toggleFavorite,
-  currentIndex,
-  queue,
-}: FullScreenPlayerInnerProps) {
-  const { t } = useI18n();
-  const palette = usePalette();
-  const { width: screenWidth } = useWindowDimensions();
-  const screenWidthRef = useRef(screenWidth);
-  screenWidthRef.current = screenWidth;
-  const trackFavId = track ? String(track.musicId || track.id || '') : '';
-  const isFav = trackFavId ? useMusicPlayerStore.getState().isFavorite(trackFavId, track) : false;
-  const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
-  const coverUri = rawCover
-    ? rawCover.startsWith('http')
-      ? normalizeImageHost(rawCover)
-      : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`
-    : '';
+const FullScreenProgressBar = React.memo(function FullScreenProgressBar({
+  tintColor,
+  backgroundColor,
+  trackColor,
+  timeColor,
+}: FullScreenProgressBarProps) {
+  const duration = useMusicPlayerStore((s) => s.duration);
+  const position = useMusicPlayerStore((s) => s.position);
+  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
 
-  const lrcIdx = lyricIndexAt(lyrics, position);
   const progRef2 = useRef<View>(null);
   const progW2 = useRef(0);
-  const progX2 = useRef(0); // 进度条在屏幕上的绝对 X（拖动换算用）
+  const progX2 = useRef(0);
   const [dragRatio, setDragRatio] = useState<number | null>(null);
   const dragRatioRef = useRef<number>(0);
   const gestureActive = useRef(false);
-  const [showQueue, setShowQueue] = useState(false);
+  const progRaf = useRef(0);
+  const pendingRatio = useRef(0);
 
-  // 用 pageX - 条起点换算：locationX 在 Android 上相对「事件目标视图」，
-  // 手指滑出条身（滑到两侧时间文字上）会突变到 0 → 进度闪回 0:00 再回来
+  useEffect(
+    () => () => {
+      if (progRaf.current) cancelAnimationFrame(progRaf.current);
+    },
+    [],
+  );
+
   const ratioFromX = (pageX: number): number | null => {
     const w = progW2.current;
     if (!w || w < 2) return null;
     return Math.max(0, Math.min(1, (pageX - progX2.current) / w));
   };
-  // 拖动跟手优化：move 事件（~60-120Hz）不全量 setState——rAF 限帧 1 次/帧 + 最小跳变 0.4% 才触发渲染，
-  // 视觉仍贴手（全屏页含歌词等高成本子树，逐事件渲染是卡顿源）
-  const progRaf = useRef(0);
-  const pendingRatio = useRef(0);
   const onProgGrant = (e: any) => {
     const r = ratioFromX(e.nativeEvent.pageX);
     if (r == null) {
@@ -119,7 +98,7 @@ function FullScreenPlayerInner({
     progRaf.current = requestAnimationFrame(() => {
       progRaf.current = 0;
       const nr = pendingRatio.current;
-      if (Math.abs(nr - dragRatioRef.current) < 0.004) return; // 0.4% 内不重渲染
+      if (Math.abs(nr - dragRatioRef.current) < 0.004) return;
       dragRatioRef.current = nr;
       setDragRatio(nr);
     });
@@ -132,9 +111,6 @@ function FullScreenPlayerInner({
       const target = r * duration;
       const st = useMusicPlayerStore.getState();
       st.setSeekTarget(target);
-      // 乐观写：进度条立即停在松手位置。
-      // 「回弹」的根因修复在 store.setPosition 的 seek 粘滞守卫里 ——
-      // 播放器还没真正跳过去时上报的旧位置会被丢弃，这里不再需要 heldRatio 补丁。
       st.setPosition(target);
     }
     gestureActive.current = false;
@@ -144,10 +120,68 @@ function FullScreenPlayerInner({
   };
   const shownRatio = dragRatio ?? progress;
 
-  const [showLyrics, setShowLyrics] = useState(false);
-  const [lyricSize, setLyricSize] = useState(17);
+  return (
+    <View style={styles.progressRow}>
+      <Text style={[styles.progTime, { color: timeColor }]}>{formatTime(position)}</Text>
+      <View
+        ref={progRef2}
+        style={styles.progBg}
+        onLayout={(e) => {
+          progW2.current = e.nativeEvent.layout.width;
+          progRef2.current?.measureInWindow?.((x) => {
+            progX2.current = x;
+          });
+        }}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={onProgGrant}
+        onResponderMove={onProgMove}
+        onResponderRelease={onProgRelease}
+        onResponderTerminate={onProgRelease}
+      >
+        <View style={[styles.progTrack, { backgroundColor: trackColor }]} />
+        <View
+          style={[
+            styles.progFg,
+            { width: `${shownRatio * 100}%` as any, backgroundColor: tintColor },
+          ]}
+        />
+        <View
+          style={[
+            styles.progThumb,
+            {
+              left: `${shownRatio * 100}%` as any,
+              backgroundColor: tintColor,
+              borderColor: backgroundColor,
+            },
+          ]}
+        />
+      </View>
+      <Text style={[styles.progTime, { color: timeColor }]}>{formatTime(duration)}</Text>
+    </View>
+  );
+});
+
+interface FullScreenLyricsListProps {
+  lyrics: any[];
+  lrcIdx: number;
+  lyricSize: number;
+  tintColor: string;
+  tintSoftColor: string;
+  mutedColor: string;
+  emptyText: string;
+}
+
+const FullScreenLyricsList = React.memo(function FullScreenLyricsList({
+  lyrics,
+  lrcIdx,
+  lyricSize,
+  tintColor,
+  tintSoftColor,
+  mutedColor,
+  emptyText,
+}: FullScreenLyricsListProps) {
   const [spacerH, setSpacerH] = useState(160);
-  const slideAnim = useRef(new Animated.Value(0)).current;
   const lyricScrollRef = useRef<ScrollView>(null);
   const lrcScrollH = useRef(400);
   const lineYOffsets = useRef<number[]>([]);
@@ -156,43 +190,8 @@ function FullScreenPlayerInner({
     lineYOffsets.current = new Array(lyrics.length).fill(0);
   }, [lyrics]);
 
-  // 唱片旋转：模块级单例（见 useVinylSpin）——跨详情页重进有记忆，切歌归零，暂停冻结。
-  const spinValue = useVinylSpin(track?.id, isPlaying);
-  const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  // 下拉关闭：手势方向（dy）与动画方向（translateY）一致
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 15,
-      onPanResponderMove: (_, gs) => {
-        if (Math.abs(gs.dy) > 15) slideAnim.setValue(gs.dy);
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dy > 60) {
-          Animated.timing(slideAnim, {
-            toValue: screenWidthRef.current,
-            duration: motion.duration.fast,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }).start(() => onCloseRef.current());
-        } else {
-          Animated.spring(slideAnim, {
-            toValue: 0,
-            ...motion.spring.bouncy,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    }),
-  ).current;
-
   useEffect(() => {
-    if (lrcIdx < 0 || !showLyrics || !lyricScrollRef.current) return;
-    // 切到歌词页时行 onLayout 尚未完成 → offset 全 0 → 首次居中到顶部，等下一句才纠正（体验=等好久）。
-    // 自愈轮询：60ms 重试直到当前行 y 就绪（≤1s），随后精确居中；后续句子切换直接命中已就绪 offset。
+    if (lrcIdx < 0 || !lyricScrollRef.current) return;
     const lineH = lyricSize * 1.6 + 16;
     let tries = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -212,14 +211,261 @@ function FullScreenPlayerInner({
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [lrcIdx, showLyrics, lyricSize, lyrics]);
+  }, [lrcIdx, lyricSize, lyrics]);
+
+  return (
+    <ScrollView
+      ref={lyricScrollRef}
+      style={styles.lyricScroll}
+      showsVerticalScrollIndicator={false}
+      onLayout={(e) => {
+        lrcScrollH.current = e.nativeEvent.layout.height;
+        setSpacerH(Math.max(120, lrcScrollH.current / 2));
+      }}
+    >
+      <View style={{ height: spacerH }} />
+      {lyrics.length > 0 ? (
+        lyrics.map((l, i) => (
+          <Pressable
+            key={i}
+            onLayout={(e) => {
+              lineYOffsets.current[i] = e.nativeEvent.layout.y;
+            }}
+            onPress={() => {
+              const time = lyricTimeForIndex(lyrics, i);
+              if (time >= 0) useMusicPlayerStore.getState().setSeekTarget(time);
+            }}
+          >
+            <Text
+              style={[
+                styles.lyricLine,
+                {
+                  fontSize: lyricSize,
+                  lineHeight: lyricSize * 1.6,
+                  color: mutedColor,
+                },
+                i === lrcIdx && {
+                  color: tintColor,
+                  fontWeight: '900',
+                  textShadowColor: tintSoftColor,
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 8,
+                },
+              ]}
+            >
+              {l.text}
+            </Text>
+          </Pressable>
+        ))
+      ) : (
+        <Text style={[styles.lyricLine, { color: mutedColor }]}>{emptyText}</Text>
+      )}
+      <View style={{ height: spacerH }} />
+    </ScrollView>
+  );
+});
+
+function FullScreenLyricsPanel({
+  lyrics,
+  lyricSize,
+  onDecreaseSize,
+  onIncreaseSize,
+  onBackToCover,
+}: {
+  lyrics: any[];
+  lyricSize: number;
+  onDecreaseSize: () => void;
+  onIncreaseSize: () => void;
+  onBackToCover: () => void;
+}) {
+  const { t } = useI18n();
+  const palette = usePalette();
+  const position = useMusicPlayerStore((s) => s.position);
+  const lrcIdx = useMemo(() => lyricIndexAt(lyrics, position), [lyrics, position]);
+
+  return (
+    <>
+      <View style={styles.lyricToolRow}>
+        <Pressable
+          onPress={onDecreaseSize}
+          accessibilityRole="button"
+          accessibilityLabel="A-"
+          style={({ pressed }) => [
+            styles.lyricToolBtn,
+            { backgroundColor: palette.fill2 },
+            pressed && { opacity: 0.6 },
+          ]}
+        >
+          <Icon name="format-font-size-decrease" size={16} color={palette.labelSecondary} />
+        </Pressable>
+        <Pressable
+          onPress={onIncreaseSize}
+          accessibilityRole="button"
+          accessibilityLabel="A+"
+          style={({ pressed }) => [
+            styles.lyricToolBtn,
+            { backgroundColor: palette.fill2 },
+            pressed && { opacity: 0.6 },
+          ]}
+        >
+          <Icon name="format-font-size-increase" size={16} color={palette.labelSecondary} />
+        </Pressable>
+        <Pressable
+          onPress={onBackToCover}
+          accessibilityRole="button"
+          accessibilityLabel={t('单曲')}
+          style={({ pressed }) => [
+            styles.lyricToolBtn,
+            { backgroundColor: palette.fill2 },
+            pressed && { opacity: 0.6 },
+          ]}
+        >
+          <Icon name="disc" size={16} color={palette.labelSecondary} />
+        </Pressable>
+      </View>
+      <FullScreenLyricsList
+        lyrics={lyrics}
+        lrcIdx={lrcIdx}
+        lyricSize={lyricSize}
+        tintColor={palette.tint}
+        tintSoftColor={palette.tintSoft}
+        mutedColor={palette.labelTertiary}
+        emptyText={t('暂无歌词')}
+      />
+    </>
+  );
+}
+
+interface FullScreenPlayerInnerProps {
+  track: any;
+  isPlaying: boolean;
+  isSpinning: boolean;
+  isLoading: boolean;
+  playMode: string;
+  lyrics: any[];
+  favorites: string[];
+  toggleFavorite: (_id: string, _track?: any) => void;
+  currentIndex: number;
+  queue: any[];
+  onClose: () => void;
+}
+
+function FullScreenPlayerInner({
+  onClose,
+  track,
+  isPlaying,
+  isSpinning,
+  isLoading,
+  playMode,
+  lyrics,
+  toggleFavorite,
+  currentIndex,
+  queue,
+}: FullScreenPlayerInnerProps) {
+  const { t } = useI18n();
+  const palette = usePalette();
+  const { height: screenHeight } = useWindowDimensions();
+  const screenHeightRef = useRef(screenHeight);
+  screenHeightRef.current = screenHeight;
+  const trackFavId = track ? String(track.musicId || track.id || '') : '';
+  const isFav = trackFavId ? useMusicPlayerStore.getState().isFavorite(trackFavId, track) : false;
+  const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
+  const coverUri = useMemo(
+    () =>
+      rawCover
+        ? rawCover.startsWith('http')
+          ? normalizeImageHost(rawCover)
+          : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`
+        : '',
+    [rawCover],
+  );
+
+  const [showLyrics, setShowLyrics] = useState(false);
+  const showLyricsRef = useRef(showLyrics);
+  showLyricsRef.current = showLyrics;
+  const [lyricSize, setLyricSize] = useState(17);
+  const [showQueue, setShowQueue] = useState(false);
+  const queueListRef = useRef<FlatList<any>>(null);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  const trackSpinKey = String(track?.musicId || track?.id || track?.title || '') || undefined;
+  const spinValue = useVinylSpin(trackSpinKey, isSpinning);
+  const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        !showLyricsRef.current && gs.dy > 14 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.2,
+      onPanResponderMove: (_, gs) => {
+        if (!showLyricsRef.current && gs.dy > 0) slideAnim.setValue(gs.dy);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (!showLyricsRef.current && gs.dy > 80) {
+          Animated.timing(slideAnim, {
+            toValue: screenHeightRef.current,
+            duration: motion.duration.fast,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }).start(() => onCloseRef.current());
+        } else {
+          Animated.spring(slideAnim, {
+            toValue: 0,
+            ...motion.spring.bouncy,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    }),
+  ).current;
+
+  const scrollQueueToCurrent = useCallback(
+    (animated = true) => {
+      if (!queue.length || currentIndex < 0 || currentIndex >= queue.length) return;
+      try {
+        queueListRef.current?.scrollToIndex({
+          index: currentIndex,
+          animated,
+          viewPosition: 0.35,
+        });
+      } catch {}
+    },
+    [currentIndex, queue.length],
+  );
+
+  useEffect(() => {
+    if (!showQueue) return;
+    const timer = setTimeout(() => scrollQueueToCurrent(false), 60);
+    return () => clearTimeout(timer);
+  }, [showQueue, scrollQueueToCurrent]);
+
+  const decLyricSize = useCallback(() => setLyricSize((s) => Math.max(13, s - 2)), []);
+  const incLyricSize = useCallback(() => setLyricSize((s) => Math.min(24, s + 2)), []);
 
   const iconSecondary = palette.labelSecondary;
   const iconStrong = palette.label;
+  const isDark = palette.name === 'dark';
 
   return (
     <View style={styles.root}>
       <View style={[styles.backdrop, { backgroundColor: palette.background }]} />
+      {coverUri ? (
+        <Image
+          source={{ uri: coverUri }}
+          blurRadius={60}
+          resizeMode="cover"
+          style={styles.backdrop}
+        />
+      ) : null}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.backdrop,
+          { backgroundColor: isDark ? 'rgba(12,12,16,0.78)' : 'rgba(246,247,251,0.84)' },
+        ]}
+      />
       <Animated.View
         style={[styles.page, { transform: [{ translateY: slideAnim }] }]}
         {...panResponder.panHandlers}
@@ -227,9 +473,11 @@ function FullScreenPlayerInner({
         <View style={styles.topBar}>
           <Pressable
             onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('关闭')}
             style={({ pressed }) => [styles.topBtn, pressed && { opacity: 0.6 }]}
           >
-            <Text style={[styles.topBtnT, { color: palette.label }]}>▾</Text>
+            <Icon name="chevron-down" size={28} color={palette.label} />
           </Pressable>
           <View style={styles.topCenter}>
             <Text style={[typography.headline, { color: palette.label }]} numberOfLines={1}>
@@ -239,145 +487,99 @@ function FullScreenPlayerInner({
               style={[typography.caption1, { color: palette.labelTertiary, marginTop: 2 }]}
               numberOfLines={1}
             >
-              {joinMeta([track.groupLabel, track.artist, track.album]) || t('官方音乐')}
+              {formatTrackSubtitle(track) || t('官方音乐')}
             </Text>
           </View>
           <View style={styles.topBtn} />
         </View>
 
         {showLyrics ? (
-          <>
-            <View style={styles.lyricToolRow}>
-              <Pressable
-                onPress={() => setLyricSize((s) => Math.max(13, s - 2))}
-                style={({ pressed }) => [
-                  styles.lyricToolBtn,
-                  { backgroundColor: palette.fill2 },
-                  pressed && { opacity: 0.6 },
-                ]}
-              >
-                <Text style={[styles.lyricToolT, { color: palette.labelSecondary }]}>A-</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setLyricSize((s) => Math.min(24, s + 2))}
-                style={({ pressed }) => [
-                  styles.lyricToolBtn,
-                  { backgroundColor: palette.fill2 },
-                  pressed && { opacity: 0.6 },
-                ]}
-              >
-                <Text style={[styles.lyricToolT, { color: palette.labelSecondary }]}>A+</Text>
-              </Pressable>
-            </View>
-            <ScrollView
-              ref={lyricScrollRef}
-              style={styles.lyricScroll}
-              showsVerticalScrollIndicator={false}
-              onLayout={(e) => {
-                lrcScrollH.current = e.nativeEvent.layout.height;
-                setSpacerH(Math.max(120, lrcScrollH.current / 2));
-              }}
-            >
-              <View style={{ height: spacerH }} />
-              {lyrics.length > 0 ? (
-                lyrics.map((l, i) => (
-                  <Pressable
-                    key={i}
-                    onLayout={(e) => {
-                      lineYOffsets.current[i] = e.nativeEvent.layout.y;
-                    }}
-                    onPress={() => {
-                      const time = lyricTimeForIndex(lyrics, i);
-                      if (time >= 0) useMusicPlayerStore.getState().setSeekTarget(time);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.lyricLine,
-                        {
-                          fontSize: lyricSize,
-                          lineHeight: lyricSize * 1.6,
-                          color: palette.labelTertiary,
-                        },
-                        i === lrcIdx && {
-                          color: palette.tint,
-                          fontWeight: '900',
-                          textShadowColor: palette.tintSoft,
-                          textShadowOffset: { width: 0, height: 0 },
-                          textShadowRadius: 8,
-                        },
-                      ]}
-                    >
-                      {l.text}
-                    </Text>
-                  </Pressable>
-                ))
-              ) : (
-                <Text style={[styles.lyricLine, { color: palette.labelTertiary }]}>
-                  {t('暂无歌词')}
-                </Text>
-              )}
-              <View style={{ height: spacerH }} />
-            </ScrollView>
-          </>
+          <FullScreenLyricsPanel
+            lyrics={lyrics}
+            lyricSize={lyricSize}
+            onDecreaseSize={decLyricSize}
+            onIncreaseSize={incLyricSize}
+            onBackToCover={() => setShowLyrics(false)}
+          />
         ) : (
-          <View style={styles.discWrap}>
-            <Animated.View style={[styles.disc, { transform: [{ rotate: spin }] }]}>
+          <Pressable
+            style={styles.discWrap}
+            onPress={() => setShowLyrics(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('轻点封面看歌词')}
+          >
+            <Animated.View
+              style={[
+                styles.disc,
+                {
+                  borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.85)',
+                  transform: [{ rotate: spin }],
+                },
+              ]}
+            >
               <CoverArt
                 key={coverUri || track.title || '♪'}
                 uri={coverUri || undefined}
                 title={track.title || '♪'}
-                size={240}
+                size={248}
                 round
               />
             </Animated.View>
-          </View>
+          </Pressable>
         )}
 
         <View style={styles.ctrlWrap}>
-          <View style={styles.progressRow}>
-            <Text style={[styles.progTime, { color: palette.labelTertiary }]}>
-              {formatTime(position)}
-            </Text>
-            <View
-              ref={progRef2}
-              style={styles.progBg}
-              onLayout={(e) => {
-                progW2.current = e.nativeEvent.layout.width;
-                progRef2.current?.measureInWindow?.((x) => {
-                  progX2.current = x;
-                });
-              }}
-              onStartShouldSetResponder={() => true}
-              onMoveShouldSetResponder={() => true}
-              onResponderGrant={onProgGrant}
-              onResponderMove={onProgMove}
-              onResponderRelease={onProgRelease}
-              onResponderTerminate={onProgRelease}
-            >
-              <View style={[styles.progTrack, { backgroundColor: palette.fill3 }]} />
-              <View
-                style={[
-                  styles.progFg,
-                  { width: `${shownRatio * 100}%` as any, backgroundColor: palette.tint },
-                ]}
-              />
-              <View
-                style={[
-                  styles.progThumb,
-                  {
-                    left: `${shownRatio * 100}%` as any,
-                    backgroundColor: palette.tint,
-                    borderColor: palette.background,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={[styles.progTime, { color: palette.labelTertiary }]}>
-              {formatTime(duration)}
-            </Text>
-          </View>
+          <FullScreenProgressBar
+            tintColor={palette.tint}
+            backgroundColor={palette.background}
+            trackColor={palette.fill3}
+            timeColor={palette.labelTertiary}
+          />
           <View style={styles.btnRow}>
+            <Pressable
+              onPress={() => {
+                void MusicEngine.prev().catch(() => {});
+              }}
+              style={({ pressed }) => [styles.transportBtn, pressed && { opacity: 0.6 }]}
+            >
+              <Icon name="skip-previous" size={32} color={iconStrong} />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                try {
+                  if (isLoading) {
+                    MusicEngine.stop();
+                    return;
+                  }
+                  if (useMusicPlayerStore.getState().playbackState === 'error') {
+                    void MusicEngine.resume();
+                    return;
+                  }
+                  MusicEngine.togglePause();
+                } catch {}
+              }}
+              style={({ pressed }) => [
+                styles.playBtn,
+                { backgroundColor: palette.tint },
+                pressed && { transform: [{ scale: 0.94 }] },
+              ]}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color={palette.onTint} />
+              ) : (
+                <Icon name={isPlaying ? 'pause' : 'play'} size={36} color={palette.onTint} />
+              )}
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                void MusicEngine.next().catch(() => {});
+              }}
+              style={({ pressed }) => [styles.transportBtn, pressed && { opacity: 0.6 }]}
+            >
+              <Icon name="skip-next" size={32} color={iconStrong} />
+            </Pressable>
+          </View>
+          <View style={styles.utilityRow}>
             <Pressable
               onPress={() => {
                 if (trackFavId) toggleFavorite(trackFavId, track);
@@ -390,7 +592,7 @@ function FullScreenPlayerInner({
             >
               <Icon
                 name={isFav ? 'heart' : 'heart-outline'}
-                size={22}
+                size={21}
                 color={isFav ? palette.danger : iconSecondary}
               />
             </Pressable>
@@ -408,62 +610,40 @@ function FullScreenPlayerInner({
                       ? 'shuffle-variant'
                       : 'repeat'
                 }
-                size={22}
+                size={21}
                 color={iconSecondary}
               />
             </Pressable>
             <Pressable
-              onPress={() => {
-                void MusicEngine.prev().catch(() => {});
-              }}
-              style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}
-            >
-              <Icon name="skip-previous" size={30} color={iconStrong} />
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                try {
-                  MusicEngine.togglePause();
-                } catch {}
-              }}
-              style={({ pressed }) => [
-                styles.playBtn,
-                { backgroundColor: palette.tint },
-                pressed && { transform: [{ scale: 0.94 }] },
-              ]}
-            >
-              <Icon name={isPlaying ? 'pause' : 'play'} size={38} color={palette.onTint} />
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                void MusicEngine.next().catch(() => {});
-              }}
-              style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}
-            >
-              <Icon name="skip-next" size={30} color={iconStrong} />
-            </Pressable>
-            <Pressable
               onPress={() => setShowLyrics(!showLyrics)}
+              accessibilityRole="button"
+              accessibilityLabel={t('点击任意歌词跳播')}
               style={({ pressed }) => [
                 styles.sideBtn,
                 showLyrics && { backgroundColor: palette.tintSoft },
                 pressed && { opacity: 0.6 },
               ]}
             >
-              <Text
-                style={[
-                  typography.callout,
-                  { fontWeight: '800', color: showLyrics ? palette.tint : iconSecondary },
-                ]}
-              >
-                {t('词')}
-              </Text>
+              <Icon
+                name="script-text-outline"
+                size={21}
+                color={showLyrics ? palette.tint : iconSecondary}
+              />
             </Pressable>
             <Pressable
               onPress={() => setShowQueue(true)}
-              style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('播放列表（{count}）', { count: queue.length })}
+              style={({ pressed }) => [
+                styles.topQueuePill,
+                { backgroundColor: palette.fill2 },
+                pressed && { opacity: 0.65 },
+              ]}
             >
-              <Icon name="playlist-music" size={22} color={iconSecondary} />
+              <Icon name="playlist-music" size={15} color={palette.labelSecondary} />
+              <Text style={[styles.topQueueText, { color: palette.labelSecondary }]}>
+                {queue.length > 0 ? `${Math.max(1, currentIndex + 1)}/${queue.length}` : '0'}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -482,6 +662,7 @@ function FullScreenPlayerInner({
           <GlassSurface
             radius={22}
             role="card"
+            tintColor={palette.name === 'dark' ? 'rgba(22,22,26,0.92)' : 'rgba(255,255,255,0.94)'}
             style={[
               styles.queueSheet,
               {
@@ -494,21 +675,61 @@ function FullScreenPlayerInner({
           >
             <View style={[styles.queueHandle, { backgroundColor: palette.fill3 }]} />
             <View style={styles.queueHeader}>
-              <Text style={[typography.headline, { color: palette.label }]}>
-                {t('播放列表（{count}）', { count: queue.length })}
-              </Text>
               <TouchableOpacity
-                onPress={() => setShowQueue(false)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                activeOpacity={0.6}
+                onPress={() => scrollQueueToCurrent(true)}
+                activeOpacity={0.7}
+                style={styles.queueHeaderTitle}
               >
-                <Icon name="close" size={20} color={iconSecondary} />
+                <Icon name="playlist-music" size={18} color={palette.tint} />
+                <Text style={[styles.queueCountText, { color: palette.label }]}>
+                  {queue.length}
+                </Text>
               </TouchableOpacity>
+              <View style={styles.queueActions}>
+                <TouchableOpacity
+                  onPress={() => {
+                    MusicEngine.stop();
+                    useMusicPlayerStore.getState().clearQueue();
+                    setShowQueue(false);
+                    onClose();
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('清空')}
+                  style={[styles.queueActionBtn, { backgroundColor: palette.fill2 }]}
+                >
+                  <Icon name="trash-can-outline" size={17} color={palette.labelSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowQueue(false)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.6}
+                  style={[styles.queueActionBtn, { backgroundColor: palette.fill2 }]}
+                >
+                  <Icon name="close" size={17} color={iconSecondary} />
+                </TouchableOpacity>
+              </View>
             </View>
             <FlatList
+              ref={queueListRef}
               data={queue}
               keyExtractor={(t, i) => String(t.musicId || t.id || i)}
-              initialNumToRender={12}
+              initialNumToRender={14}
+              maxToRenderPerBatch={14}
+              getItemLayout={(_, index) => ({
+                length: QUEUE_ROW_HEIGHT,
+                offset: QUEUE_ROW_HEIGHT * index,
+                index,
+              })}
+              onScrollToIndexFailed={(info) => {
+                setTimeout(() => {
+                  queueListRef.current?.scrollToIndex({
+                    index: Math.min(info.index, Math.max(0, queue.length - 1)),
+                    animated: false,
+                  });
+                }, 80);
+              }}
               renderItem={({ item, index }) => {
                 const active = index === currentIndex;
                 const id = String(item.musicId || item.id || index);
@@ -549,12 +770,12 @@ function FullScreenPlayerInner({
                           ]}
                           numberOfLines={1}
                         >
-                          {joinMeta([item.groupLabel, item.artist, item.album]) || t('官方音乐')}
+                          {formatTrackSubtitle(item) || t('官方音乐')}
                         </Text>
                       </View>
                       {active ? <Icon name="volume-high" size={18} color={palette.tint} /> : null}
                     </TouchableOpacity>
-                    {/* 从播放列表移除（不关闭弹层） */}
+
                     <Pressable
                       onPress={() => {
                         MusicEngine.removeFromQueue(id).catch(() => {});
@@ -562,7 +783,7 @@ function FullScreenPlayerInner({
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={({ pressed }) => [styles.queueRemove, pressed && { opacity: 0.5 }]}
                     >
-                      <Icon name="trash-can-outline" size={17} color={palette.labelTertiary} />
+                      <Icon name="close" size={17} color={palette.labelTertiary} />
                     </Pressable>
                   </View>
                 );
@@ -585,18 +806,15 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
   const queue = useMusicPlayerStore((s) => s.queue);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
   const playMode = useMusicPlayerStore((s) => s.playMode);
-  const duration = useMusicPlayerStore((s) => s.duration);
-  const position = useMusicPlayerStore((s) => s.position);
   const lyrics = useMusicPlayerStore((s) => s.lyrics);
   const favorites = useMusicPlayerStore((s) => s.favorites);
   const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
 
   const track = queue[currentIndex] || null;
-  // loading(切歌/解析)期保持暂停图标，避免按钮闪「播放」动画
-  const isPlaying = playbackState === 'playing' || playbackState === 'loading';
-  const progress = duration > 0 ? position / duration : 0;
+  const isLoading = playbackState === 'loading';
+  const isSpinning = playbackState === 'playing';
+  const isPlaying = isSpinning || isLoading;
 
-  // Conditional render BEFORE inner component hooks
   if (!visible || !track) return null;
 
   return (
@@ -604,9 +822,8 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
       onClose={onClose}
       track={track}
       isPlaying={isPlaying}
-      progress={progress}
-      duration={duration}
-      position={position}
+      isSpinning={isSpinning}
+      isLoading={isLoading}
       playMode={playMode}
       lyrics={lyrics}
       favorites={favorites}
@@ -635,31 +852,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topBtnT: { fontSize: 22 },
-  topCenter: { flex: 1, alignItems: 'center' },
-  discWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  disc: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
+  topQueuePill: {
+    minWidth: 44,
+    height: 30,
+    paddingHorizontal: 9,
+    borderRadius: 15,
+    borderCurve: 'continuous',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 8,
+    gap: 4,
+  },
+  topQueueText: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  topCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
+  discWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  disc: {
+    width: 248,
+    height: 248,
+    borderRadius: 124,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
     elevation: 8,
   },
   lyricScroll: { flex: 1 },
-  lyricToolRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, paddingVertical: 6 },
-  lyricToolBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: radii.sm },
-  lyricToolT: { fontSize: 12, fontWeight: '700' },
+  lyricToolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  lyricToolBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.sm },
   lyricLine: { textAlign: 'center', paddingVertical: 8 },
-  ctrlWrap: { paddingHorizontal: 20, paddingBottom: 32 },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  progTime: { fontSize: 10, width: 40, textAlign: 'center' },
+  ctrlWrap: { paddingHorizontal: 24, paddingBottom: 26 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 18 },
+  progTime: { fontSize: 10, fontFamily: fontFamily.system, width: 40, textAlign: 'center' },
   progBg: { flex: 1, height: 28, justifyContent: 'center' },
   progTrack: { position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 2 },
   progFg: { position: 'absolute', left: 0, height: 4, borderRadius: 2 },
@@ -672,18 +910,37 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     transform: [{ translateX: -7 }],
   },
-  btnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  btnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 36,
+  },
+  transportBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  utilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingHorizontal: 10,
+  },
   sideBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   playBtn: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -704,14 +961,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
-  queueItemRow: { flexDirection: 'row', alignItems: 'center' },
+  queueHeaderTitle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  queueCountText: {
+    fontSize: 15,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  queueActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  queueActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderCurve: 'continuous',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  queueItemRow: { height: QUEUE_ROW_HEIGHT, flexDirection: 'row', alignItems: 'center' },
   queueItem: {
     flex: 1,
+    height: QUEUE_ROW_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
   },
   queueRemove: {
     width: 40,

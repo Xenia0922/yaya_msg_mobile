@@ -1,12 +1,10 @@
-/**
- * DisclaimerScreen · 免责声明（独立页，不放在设置/关于里）
- */
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ScreenHeader from '../components/ScreenHeader';
+import { GlassSurface } from '../components/GlassSurface';
 import { useI18n } from '../i18n';
-import { usePalette, getPageBackground } from '../theme';
+import { fontFamily, radii, usePalette, getPageBackground } from '../theme';
 
 const DISCLAIMER = `1. 本应用为第三方非官方客户端，与上海丝芭文化传媒集团有限公司及其关联公司（含 SNH48、GNZ48、BEJ48、CKG48、CGT48 等）不存在任何隶属、授权、合作或关联关系。
 
@@ -28,8 +26,9 @@ export default function DisclaimerScreen() {
     <View style={[styles.container, { backgroundColor: getPageBackground() }]}>
       <ScreenHeader title={t('免责声明')} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.title, { color: palette.label }]}>{t('免责声明')}</Text>
-        <Text style={[styles.body, { color: palette.labelSecondary }]}>{DISCLAIMER}</Text>
+        <GlassSurface role="card" radius={radii.lg} style={styles.card}>
+          <Text style={[styles.body, { color: palette.labelSecondary }]}>{DISCLAIMER}</Text>
+        </GlassSurface>
       </ScrollView>
     </View>
   );
@@ -37,7 +36,7 @@ export default function DisclaimerScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingBottom: 40 },
-  title: { fontSize: 18, fontWeight: '800', marginBottom: 14 },
-  body: { fontSize: 13, lineHeight: 22 },
+  content: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 40 },
+  card: { padding: 18 },
+  body: { fontSize: 13.5, fontFamily: fontFamily.system, lineHeight: 23 },
 });

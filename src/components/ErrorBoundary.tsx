@@ -53,8 +53,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <ErrorFallback
           error={this.state.error}
-          // ⚠️ 递增 retryNonce 并把它作为子树 key（修复）：
-          // 只清 error 时，若错误由稳定数据引起会「重试 → 立刻再崩」死循环；换 key 强制重建子树。
+
           onRetry={() => this.setState((s) => ({ error: null, retryNonce: s.retryNonce + 1 }))}
         />
       );

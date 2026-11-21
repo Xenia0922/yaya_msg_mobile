@@ -10,7 +10,6 @@ import com.facebook.react.uimanager.ViewManager;
 import java.util.Collections;
 import java.util.List;
 
-/** 媒体时长探测（MediaMetadataRetriever） */
 public class MediaProbePackage implements ReactPackage {
   @NonNull
   @Override

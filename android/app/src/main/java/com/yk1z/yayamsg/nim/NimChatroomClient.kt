@@ -12,10 +12,9 @@ import java.net.URL
 import java.util.UUID
 import kotlin.math.min
 
-/** 归一化后的聊天室消息（字段对齐桌面版 normalizeMessage） */
 data class NimChatroomMessage(
   val uuid: String,
-  /** 0 = 文本，100 = 自定义（弹幕/礼物/进场等走 remoteExtension） */
+
   val msgType: Int,
   val text: String,
   val fromNick: String,
@@ -23,34 +22,26 @@ data class NimChatroomMessage(
   val fromAccount: String,
   val time: Long,
   val remoteExtension: JSONObject,
-  /** 原始属性表（排查用） */
+
   val raw: Map<Int, String>,
 )
 
-/**
- * 云信聊天室客户端（commonlink 协议，移植自桌面版 yk1z/yaya_msg）。
- *
- * 与官方 SDK 的区别：**包名字段由我们自己填**（NimProtocol.ANDROID_PACKAGE_NAME），
- * 因此能通过口袋48 appKey 的客户端标识校验（官方 SDK 会用真实包名 → 414/403）。
- *
- * 线程模型：单条工作线程跑 socket 读写；回调统一 post 到主线程。
- */
 class NimChatroomClient(
   private val appKey: String,
   private val account: String,
   private val token: String,
   private val roomId: String,
   private val listener: Listener,
-  /** 聊天室 LBS（chat.jsp 是聊天室专用；IM 用 conf.jsp） */
+
   private val lbsUrl: String = "https://lbs.netease.im/lbs/chat.jsp",
 ) {
 
   interface Listener {
-    /** connecting | connected | reconnecting | disconnected | error */
+
     fun onStatus(state: String, detail: String?)
     fun onMessage(message: NimChatroomMessage)
     fun onOnlineCount(count: Int)
-    /** 弹幕发送结果（idClient 可对上发送时返回的） */
+
     fun onSendResult(idClient: String, ok: Boolean, detail: String?)
   }
 
@@ -68,7 +59,7 @@ class NimChatroomClient(
   private var decryptor: NimProtocol.Rc4Stream? = null
   private val pending = mutableMapOf<Int, PendingSend>()
   private var worker: Thread? = null
-  /** 工作线程代号：stop/start 后旧线程看到代号变化即退出，避免双 worker 并发读写 socket */
+
   @Volatile private var workerGeneration = 0
 
   private class PendingSend(val idClient: String, val deadline: Long)
@@ -101,7 +92,7 @@ class NimChatroomClient(
     var oldWorker: Thread? = null
     var abandoned: List<PendingSend> = emptyList()
     synchronized(lock) {
-      workerGeneration += 1 // 让旧线程即使观察到 stopped=false 也不再继续
+      workerGeneration += 1
       try { socket?.close() } catch (_: Throwable) {}
       socket = null
       output = null
@@ -110,19 +101,17 @@ class NimChatroomClient(
       abandoned = pending.values.toList()
       pending.clear()
     }
-    // join 限时：等待旧 worker 退出，避免 stop→start 瞬间两个线程并存
+
     if (oldWorker != null && oldWorker !== Thread.currentThread()) {
       try { oldWorker.join(2_000) } catch (_: InterruptedException) {}
     }
-    // 断开时清空待回执：否则 sendPromise 永远悬挂
+
     for (p in abandoned) {
       post { listener.onSendResult(p.idClient, false, "聊天室已断开") }
     }
     post { listener.onStatus("disconnected", null) }
   }
 
-  /** 发弹幕；返回 idClient（发送结果经 [Listener.onSendResult] 回来）。
-   *  [beforeWrite] 在写入 socket 之前回调，供调用方先登记 idClient→Promise，避免服务端回执过快导致丢 Promise。 */
   fun sendText(text: String, custom: JSONObject, beforeWrite: ((String) -> Unit)? = null): String {
     val out = output ?: throw IllegalStateException("聊天室尚未连接")
     val enc = encryptor ?: throw IllegalStateException("聊天室尚未连接")
@@ -169,14 +158,12 @@ class NimChatroomClient(
     return (packet[offset + 2].toInt() and 0xff) or ((packet[offset + 3].toInt() and 0xff) shl 8)
   }
 
-  // ---------------- 主循环 ----------------
-
   private fun runLoop(generation: Int) {
     while (!stopped && generation == workerGeneration) {
       try {
         post { listener.onStatus("connecting", null) }
         openConnection(generation)
-        // openConnection 正常返回意味着连接已断开
+
       } catch (t: Throwable) {
         if (!stopped && generation == workerGeneration) post { listener.onStatus("error", t.message ?: t.javaClass.simpleName) }
       }
@@ -222,11 +209,11 @@ class NimChatroomClient(
       val chunk = ByteArray(8192)
       reconnectAt = System.currentTimeMillis()
       var lastHeartbeat = System.currentTimeMillis()
-      // 进房后立刻取一次在线人数，之后每 ONLINE_REFRESH_MS 一次（桌面 danmaku-service 同节奏）
+
       var lastOnlineRequest = 0L
 
       while (!stopped && generation == workerGeneration) {
-        // 心跳（15s）：serviceId=1, commandId=2
+
         val now = System.currentTimeMillis()
         if (now - lastHeartbeat >= 15_000) {
           lastHeartbeat = now
@@ -235,7 +222,7 @@ class NimChatroomClient(
             out.flush()
           }
         }
-        // 在线人数：13/13 取聊天室信息（响应经 13/13 分支 → handleOnlineCount → onOnlineCount）
+
         if (connected && now - lastOnlineRequest >= ONLINE_REFRESH_MS) {
           lastOnlineRequest = now
           synchronized(lock) {
@@ -244,7 +231,6 @@ class NimChatroomClient(
           }
         }
 
-        // 发送超时清理
         synchronized(lock) {
           val iterator = pending.entries.iterator()
           while (iterator.hasNext()) {
@@ -275,7 +261,6 @@ class NimChatroomClient(
           buffer = buffer.copyOfRange(frameSize, buffer.size)
           var packet = NimProtocol.decodePacket(raw) ?: continue
 
-          // 4/{1,2,10,11} 是"内嵌包"，需要再解一层（前 8 字节是固定头）
           if (packet.serviceId == 4 && packet.commandId in intArrayOf(1, 2, 10, 11) && packet.body.size > 8) {
             val embedded = NimProtocol.decodePacket(packet.body.copyOfRange(8, packet.body.size), embedded = true) ?: continue
             packet = embedded
@@ -336,7 +321,7 @@ class NimChatroomClient(
         13 to deviceId,
         18 to appKey,
         19 to account,
-        // 关键：伪装的客户端包名（服务端标识校验看这一项）
+
         25 to NimProtocol.ANDROID_PACKAGE_NAME,
         1000 to token,
       )
@@ -377,7 +362,6 @@ class NimChatroomClient(
     )
     post { listener.onMessage(message) }
 
-    // 属性 38 == "1" 时需要回 ack（服务端要求）
     if (properties[38] == "1" && message.uuid.isNotEmpty()) {
       val ack = NimProtocol.makePacket(
         13,
@@ -442,7 +426,6 @@ class NimChatroomClient(
   }
 }
 
-/** 从聊天室信息包里挖在线人数（属性 101 或嵌套层） */
 fun extractOnlineMemberNum(buffer: ByteArray, depth: Int = 0): Int? {
   if (buffer.isEmpty() || depth > 4) return null
   val properties = try {

@@ -1,11 +1,3 @@
-/**
- * 口袋48 云信消息原生桥（Android）。
- *
- * 原生实现见 android/app/src/main/java/com/yk1z/yayamsg/PocketImModule.java：
- * 只有「房间消息 = 云信圈组（QChat）」这一条链路必须走原生（官方 Web/RN SDK 不含圈组收发）。
- * iOS/其他平台没有该模块，调用方需用 isPocketImAvailable 判断。
- */
-
 import { DeviceEventEmitter, NativeModules, Platform } from 'react-native';
 
 interface PocketImNative {
@@ -21,7 +13,7 @@ interface PocketImNative {
     extJson: string,
   ): Promise<boolean>;
   observeMessages(enable: boolean): Promise<boolean>;
-  /** 加入（订阅）圈组频道：未 join 的频道不会推送消息 */
+
   joinChannel(serverId: number, channelId: number): Promise<boolean>;
 }
 
@@ -31,7 +23,6 @@ export function isPocketImAvailable(): boolean {
   return Platform.OS === 'android' && !!native;
 }
 
-/** 与官方一致的云信 appKey（原生侧常量，取不到时用同值兜底） */
 const FALLBACK_APP_KEY = '632feff1f4c838541ab75195d1ceb3fa';
 
 export function pocketImAppKey(): string {
@@ -72,10 +63,6 @@ export async function pocketImObserveMessages(enable: boolean): Promise<void> {
   await native.observeMessages(enable);
 }
 
-/**
- * 加入（订阅）圈组频道。云信 QChat 只有 join 过的频道才会推送消息 ——
- * 进房时必须调用，否则原生一条消息都不 emit（只能靠轮询）。
- */
 export async function pocketImJoinChannel(serverId: number, channelId: number): Promise<boolean> {
   if (!native) return false;
   try {
@@ -85,7 +72,6 @@ export async function pocketImJoinChannel(serverId: number, channelId: number): 
   }
 }
 
-/** 圈组消息事件（原生 PocketIm:message 推送，元素为扁平化后的消息） */
 export interface PocketImMessage {
   uuid: string;
   serverId: number;
@@ -94,19 +80,14 @@ export interface PocketImMessage {
   fromNick: string;
   time: number;
   content: string;
-  /** QChat 消息类型（text/qchatCustom/notification…） */
+
   msgType?: string;
-  /** 自定义消息 attachment 的 JSON 字符串（TEAM_VOICE 等） */
+
   attachment?: string;
-  /** remoteExtension 的 JSON 字符串 */
+
   extension: string;
 }
 
-/**
- * 事件用 DeviceEventEmitter（原生侧经 RCTDeviceEventEmitter.emit 发送）。
- * ⚠️ 不要写成 `new NativeEventEmitter(NativeModules.PocketIm)`：原生模块没有
- * addListener/removeListeners 时 RN 会告警且收不到事件。
- */
 export function addPocketImMessageListener(listener: (messages: PocketImMessage[]) => void): {
   remove: () => void;
 } {

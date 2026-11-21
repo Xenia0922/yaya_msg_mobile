@@ -5,21 +5,14 @@ import { useMemberStore } from '../store';
 import type { Member } from '../types';
 import { isRtmpUrl } from '../player/resolve/streamResolver';
 
-/** 上麦/电台流是否 rtmp（react-native-video 不支持，需原生 LiveExoView） */
 export function isRtmpRadioUrl(url: string): boolean {
   return isRtmpUrl(url);
 }
 
-/**
- * 拉取成员电台/上麦流地址（房间映射缺失时自动补齐）。
- * 从 RoomRadioScreen 内的 fetchRadioUrl 抽出，供「房间内直接播放」复用。
- * 返回 null 表示接口成功但当前未开麦；抛 NO_CHANNEL 表示缺少房间映射。
- */
 export async function fetchMemberRadioUrl(
   member: Member,
   mode: 'big' | 'small' = 'big',
 ): Promise<string | null> {
-  // 语义保持 2.7.3：小房间=member.yklzId，大房间=member.channelId
   let channelId = mode === 'small' ? member.yklzId || member.channelId : member.channelId;
   let serverId = member.serverId;
   const needResolve =

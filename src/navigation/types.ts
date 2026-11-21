@@ -8,7 +8,7 @@ export type RootStackParamList = {
   RechargeScreen: undefined;
   FetchScreen: undefined;
   FlipScreen: { mode?: 'view' | 'send' } | undefined;
-  // 成员档案：支持从房间/消息点头像直接带成员进来（自动加载档案，无需再搜索）
+
   ProfileScreen: { memberId?: string; member?: Member; nonce?: number } | undefined;
   PhotosScreen: undefined;
   RoomRadioScreen:
