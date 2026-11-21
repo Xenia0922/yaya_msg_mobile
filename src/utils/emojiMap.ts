@@ -1,7 +1,5 @@
 import EMOJI_FILES from './emojiAssets';
 
-// 官方 PopoEmoticons 表情映射（107 tag → 本地表情图 require 资源）。
-// 文本消息 [xx] 标签渲染为图片（与官方客户端一致），见 replaceEmojiText。
 const EMOJI_MAP: Record<string, any> = {
   '[呲牙]': EMOJI_FILES['[呲牙]'],
   '[调皮]': EMOJI_FILES['[调皮]'],
@@ -110,7 +108,7 @@ const EMOJI_MAP: Record<string, any> = {
   '[左太极]': EMOJI_FILES['[左太极]'],
   '[右太极]': EMOJI_FILES['[右太极]'],
   '[闭嘴]': EMOJI_FILES['[闭嘴]'],
-  // 非官方/历史别名（旧映射遗留）→ 退化为相近 emoji 字符
+
   '[生病]': '😷',
   '[愉快]': '😊',
   '[悠闲]': '😌',

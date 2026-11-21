@@ -1,7 +1,3 @@
-/**
- * Skeleton：iOS 26 玻璃色块骨架屏
- * - 浅色脉冲（rgba(0,0,0,0.06) ~ rgba(0,0,0,0.12)）双主题适应
- */
 import React from 'react';
 import { Animated, Easing, StyleProp, ViewStyle } from 'react-native';
 import { usePalette, radii } from '../theme';

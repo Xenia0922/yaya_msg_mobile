@@ -1,11 +1,3 @@
-/**
- * 统一状态组件 —— 空态 / 错误态（含重试）
- *
- * 设计原则：
- * - 空态：居中小图标 + 标题 + 可选说明 + 可选操作按钮；
- * - 错误态：警示图标 + 错误信息 + 「重试」主按钮；
- * - 全主题化（usePalette），操作按钮复用统一 Button 组件。
- */
 import React from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -21,7 +13,7 @@ interface StateViewProps {
   actionLabel?: string;
   onAction?: () => void;
   style?: StyleProp<ViewStyle>;
-  /** 错误态样式（红色系图标） */
+
   error?: boolean;
 }
 
@@ -68,12 +60,10 @@ export function StateView({
   );
 }
 
-/** 空态快捷封装 */
 export function EmptyState(props: Omit<StateViewProps, 'error'>) {
   return <StateView {...props} />;
 }
 
-/** 错误态快捷封装（默认带「重试」按钮） */
 export function ErrorState(props: Omit<StateViewProps, 'error'>) {
   const { t } = useI18n();
   return <StateView error {...props} actionLabel={props.actionLabel || t('重试')} />;

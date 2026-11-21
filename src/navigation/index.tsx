@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
 import {
   NavigationContainer,
@@ -27,7 +27,7 @@ import { Palettes } from '../theme/colors';
 import { fixDataUriMime } from '../utils/dataUri';
 import { ensureMemberData } from '../services/memberData';
 import { refreshActiveRoomMappings } from '../services/roomMapCache';
-// 副作用导入：安装音乐引擎的全局桥（系统媒体控件动作 / 播完自动切歌 / 后台推流）
+
 import '../services/musicPlayer';
 import { RootStackParamList, TabParamList } from './types';
 import { AppTabBar, MCI } from '../components/AppTabBar';
@@ -76,20 +76,12 @@ const TAB_LABELS: Record<string, { icon: string; label: string }> = {
   Settings: { icon: 'cog', label: '设置' },
 };
 
-/**
- * 页面包装：直接渲染，不做入场动画。
- * 规范依据（emilkowalski/animate-expo）：tab 切换属「100+ 次/天」频次 → 不该有动画；
- * 且入场淡入依赖 native driver，在 New Architecture 下若 native 动画不生效会把
- * opacity 卡在 0（表现：页面内容闪一下就消失 / 整屏空白，只有 tab bar）。
- */
 function withPageMotion<T extends object>(
   Screen: React.ComponentType<T>,
   _duration = ui.motion.tabDuration,
   _distance = 8,
   _hideTabBar = false,
 ) {
-  // 关键：tab 切换只改变 wrapper 的 focused 状态，不能因此重渲染整个大页面。
-  // 否则 Home/Media/FollowedRooms 每次切 tab 都整页 reconcile，dock 会卡 2s。
   const MemoizedScreen = React.memo(Screen) as React.ComponentType<T>;
   return function PageMotionScreen(props: T) {
     const focused = useIsFocused();
@@ -109,8 +101,6 @@ function withPageMotion<T extends object>(
   };
 }
 
-// 4 个 tab 的页面直接挂载：启动阶段由 App 开屏遮罩盖住，等壳和首屏数据都就位后再撤，
-// 用户看到的第一个完整页面就是可交互状态（不能拿 tab 首次切换流畅度换启动速度）。
 const HomeTabScreen = withPageMotion(HomeScreen);
 const MediaTabScreen = withPageMotion(MediaScreen);
 const RoomsTabScreen = withPageMotion(FollowedRoomsScreen);
@@ -162,46 +152,54 @@ function MainTabBar({
   hidden,
 }: BottomTabBarProps & { hidden: boolean }) {
   const { t } = useI18n();
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const descriptorsRef = useRef(descriptors);
+  descriptorsRef.current = descriptors;
+
+  const items = useMemo(
+    () =>
+      state.routes.map((route) => {
+        const tabMeta = TAB_LABELS[route.name];
+        const descLabel = descriptorsRef.current[route.key]?.options?.tabBarLabel;
+        const fallback = tabMeta
+          ? { icon: MCI(tabMeta.icon), label: t(tabMeta.label) }
+          : {
+              icon: MCI('circle'),
+              label: typeof descLabel === 'string' ? t(descLabel) : route.name,
+            };
+        return {
+          key: route.name,
+          icon: fallback.icon,
+          label: fallback.label,
+        };
+      }),
+    [state.routes, t],
+  );
+
+  const handleSelect = useCallback(
+    (key: string) => {
+      const curState = stateRef.current;
+      const index = curState.routes.findIndex((r) => r.name === key);
+      if (index < 0) return;
+      const route = curState.routes[index];
+      const event = navigation.emit({
+        type: 'tabPress',
+        target: route.key,
+        canPreventDefault: true,
+      });
+      if (curState.index !== index && !event.defaultPrevented) {
+        navigation.navigate(route.name);
+      }
+    },
+    [navigation],
+  );
+
   if (hidden) return null;
 
-  const items = state.routes.map((route, index) => {
-    const tabMeta = TAB_LABELS[route.name];
-    const fallback = tabMeta
-      ? { icon: MCI(tabMeta.icon), label: t(tabMeta.label) }
-      : {
-          icon: MCI('circle'),
-          label:
-            typeof descriptors[route.key]?.options?.tabBarLabel === 'string'
-              ? t(descriptors[route.key]?.options?.tabBarLabel as string)
-              : route.name,
-        };
-    return {
-      key: route.name,
-      icon: fallback.icon,
-      label: fallback.label,
-      onPress: () => {
-        const event = navigation.emit({
-          type: 'tabPress',
-          target: route.key,
-          canPreventDefault: true,
-        });
-        if (state.index !== index && !event.defaultPrevented) navigation.navigate(route.name);
-      },
-    };
-  });
-
   const activeKey = state.routes[state.index]?.name || 'Home';
-  // 自制玻璃底栏（LiquidGlassView 真折射），透光可调
-  return (
-    <AppTabBar
-      items={items}
-      activeKey={activeKey}
-      onSelect={(key) => {
-        const target = items.find((it) => it.key === key);
-        target?.onPress();
-      }}
-    />
-  );
+
+  return <AppTabBar items={items} activeKey={activeKey} onSelect={handleSelect} />;
 }
 
 function MainTabs() {
@@ -225,9 +223,8 @@ function MainTabs() {
       screenOptions={{
         lazy: false,
         swipeEnabled: false,
-        // dock 点击必须即时切页：material-top-tabs 默认会播放 pager 滑动动画，
-        // 与页面重渲染叠加时表现为「点一下卡一会才切」。页面本身已无入场动画。
-        animationEnabled: false,
+
+        animationEnabled: true,
       }}
     >
       <Tab.Screen name="Home" component={HomeTabScreen} options={{ tabBarLabel: '主页' }} />
@@ -262,25 +259,12 @@ const AppDarkTheme = {
   },
 };
 
-/**
- * 全局「返回先收键盘」桥（Android）。
- *
- * 问题：edge-to-edge + 手势导航下，系统不一定先收起输入法就直接把页面退了 →
- * ① 用户想关键盘却退出了页面；
- * ② 更隐蔽的连带伤害：页面已切走、输入法还开着，`keyboardDidHide` 可能不触发，
- * 靠键盘高度做布局的页面（聊天/房间 `paddingBottom: kb`）会**卡在非 0 高度**，
- * 背景图被顶掉一条（「房间背景图显示不完全」就是这么来的）。
- *
- * 这里统一接管：键盘可见时，本次返回只收键盘并消费事件，不进下一步；再返回一次才走页面返回。
- * 注意 BackHandler 是「后注册先执行」，本桥在导航根注册（最早），因此页面自己的返回
- * 处理优先 —— 页面若自行消费返回，建议也先调一次 Keyboard.dismiss。
- */
 function KeyboardBackBridge() {
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (Keyboard.isVisible()) {
         Keyboard.dismiss();
-        return true; // 消费本次返回：只收键盘
+        return true;
       }
       return false;
     });
@@ -289,14 +273,7 @@ function KeyboardBackBridge() {
   return null;
 }
 
-/**
- * 系统 PiP（小窗）⏯ 点击 → 切换"当前正在小窗里播的媒体"的播放/暂停。
- * 优先级：应用内小窗接管中 → 切小窗；否则统一播放器 source 在播 → 切它（store.state
- * 变化驱动 native/exo paused prop 与 web postMessage，PlayerCore 已接 web 指令）。
- * 全局只挂一次（导航根），PiP 期间 JS 存活即可达。
- */
 function PipToggleBridge() {
-  // 画中画开关 → 原生（默认关：不主动调用不弹 App 外系统小窗；设置页开启后切后台才自动 PiP）
   const pipAuto = useSettingsStore((s) => s.settings.pip_auto);
   useEffect(() => {
     setPipEnabled(!!pipAuto);
@@ -318,7 +295,6 @@ function PipToggleBridge() {
     });
   }, []);
 
-  // 进系统小窗被拒（ROM 关掉了画中画权限 / 调用失败）→ 明确提示，别再静默失败
   useEffect(() => {
     return listenPipDenied((reason) => {
       const msg =
@@ -333,14 +309,12 @@ function PipToggleBridge() {
 
 export default function AppNavigator() {
   const navRef = useNavigationContainerRef();
-  // 系统媒体卡「播放列表」按钮 → 打开音乐库（事件由 musicPlayer 桥接发出）
+
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('OpenMusicLibrary', () => {
       try {
         if (navRef.isReady()) (navRef as any).navigate('MusicLibraryScreen');
-      } catch {
-        /* 导航未就绪时忽略 */
-      }
+      } catch {}
     });
     return () => sub.remove();
   }, [navRef]);
@@ -352,20 +326,11 @@ export default function AppNavigator() {
   );
   const pocketToken = useSettingsStore((state) => state.settings.p48Token);
   const memberBootRef = useRef<Promise<void> | null>(null);
-  /**
-   * 渲染前修正 data URI 的 mime：历史数据里存在「声明 image/png、实际是 JPEG」的脏值，
-   * 部分解码路径会信声明而解码失败 → 背景一片黑（用户反馈的「背景图没加载」）。
-   * 在这里修可以**顺带修好已保存的旧值**，不用用户重新选图。
-   */
+
   const customBg = useMemo(() => fixDataUriMime(customBgRaw), [customBgRaw]);
   const hasBackground = !!customBg;
   const navTheme = theme === 'dark' ? AppDarkTheme : AppTheme;
-  // 导航层永远透明：液态玻璃的透光来源是根层 PageBackdrop/背景图，
-  // card 不透明会把底衬完全盖住 → 玻璃无从谈起
-  /**
-   * 默认背景（定稿）：浅色/深色各一张内置图，用户自定义背景优先。
-   * 内置换成 require 资源（打包进 APK），不再依赖 PageBackdrop 的纯色渐变兜底。
-   */
+
   const defaultBg =
     theme === 'dark'
       ? require('../../assets/defaults/bg-dark.jpg')
@@ -375,11 +340,9 @@ export default function AppNavigator() {
     ...navTheme,
     colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' },
   };
-  // 自定义背景暗化遮罩：浅色主题压一层白雾保证深色文字可读，深色主题压一层黑幕保证浅色文字可读。
-  // 取值克制（<=0.35），既保证可读性又不至于「看不清背景图」。
+
   const bgScrim = theme === 'dark' ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.34)';
 
-  // 启动即同步成员数据库（开屏遮罩期间完成；失败静默，不阻塞后续导航）。
   useEffect(() => {
     memberBootRef.current = ensureMemberData().catch(() => {});
   }, []);
@@ -397,14 +360,11 @@ export default function AppNavigator() {
     };
   }, [pocketToken]);
 
-  // 版本检查统一由 App.tsx 启动执行一次（此处不再重复触发）。
   return (
     <ErrorBoundary>
       <>
         <BlurTargetProvider>
           <BlurTargetSurface>
-            {/* 房间页打开时：blur 目标层挂房间背景图（+遮罩），让房间里的玻璃折射房间背景。
-            玻璃只录这一层 —— 房间背景若只渲染在页面里，玻璃折射到的仍是全局背景。 */}
             {screenBackdrop?.uri ? (
               <View pointerEvents="none" style={StyleSheet.absoluteFill}>
                 <ImageBackground
@@ -428,7 +388,7 @@ export default function AppNavigator() {
                   pointerEvents="none"
                   style={[
                     StyleSheet.absoluteFill,
-                    // 内置默认图是柔和渐变：遮罩压淡（0.18/0.10），自定义图仍用原强度保证可读性
+
                     {
                       backgroundColor: hasBackground
                         ? bgScrim
@@ -441,13 +401,9 @@ export default function AppNavigator() {
               </View>
             )}
           </BlurTargetSurface>
-          {/* 全局自绘对话框宿主：替代原生 Alert（样式统一，Android 不限按钮数） */}
+
           <AppDialogHost />
-          {/*
-        onStateChange：任何一次导航（含手势返回被 navigator 自己处理掉、不经过
-        BackHandler 的情况）都兜底收起输入法 —— 否则键盘可能跟着旧页面留着，
-        而靠键盘高度做布局的页面会卡在非 0 高度（背景被顶掉一条）。
- */}
+
           <NavigationContainer
             ref={navRef}
             theme={themed}
@@ -461,12 +417,9 @@ export default function AppNavigator() {
                   headerShown: false,
                   animation: 'none',
                   cardOverlayEnabled: false,
-                  // 被压住的页面必须 detach：否则上一个页面仍留在原生视图树里，会透在
-                  // 新推入的页面上面（与 tab 的 freezeOnBlur 同一个道理）。
+
                   detachPreviousScreen: true,
-                  // 冻结渲染：反复进出头像资料卡/二级页时不再重复跑重渲染。
-                  // ✅ 走 react-freeze（Suspense，纯 JS），不是原生 detach/re-attach，
-                  // 不会引入 Fabric「同一事务 detach+attach」的崩溃。
+
                   freezeOnBlur: true,
                   cardStyle: { backgroundColor: 'transparent' },
                 }}
@@ -493,11 +446,11 @@ export default function AppNavigator() {
                 <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
               </Stack.Navigator>
               <AppToast />
-              {/* 应用内悬浮小窗播放器（全局挂载，导航上下文内可用） */}
+
               <MiniPlayer />
-              {/* 系统 PiP ⏯ → 当前媒体切换（全局单次监听） */}
+
               <PipToggleBridge />
-              {/* 返回键/手势返回 → 先收输入法（避免「退页了键盘还在」及其连带的布局卡死） */}
+
               <KeyboardBackBridge />
             </>
           </NavigationContainer>

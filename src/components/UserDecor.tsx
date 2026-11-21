@@ -1,14 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Image, View, StyleSheet, Text } from 'react-native';
 
-/**
- * 用户身份装饰（官方 UserIconShowView 语义，按 用户要求精简）：
- * - 成员（isStar/roleId 2-5）：只显示 teamLogo 队标（官方成员不带粉丝徽章）
- * - 普通用户：**只要「账号等级」+「头像框」**，不显示勋章行（badge[] 是勋章图，
- * 头像框是 pfUrl —— 两者语义不能互换；此前把 badge 当框、pfUrl 当勋章都渲染了，实测错位）
- * 官方 level → 图标映射见 android.os.hg.m13906（1-20 用 contributionlist_one…ershi，
- * 21-30 用 level21…level30，>30 封顶 level30）。
- */
 export type UserDecor = {
   isStar?: boolean;
   roleId?: number | string;
@@ -18,8 +10,7 @@ export type UserDecor = {
   level?: number | string;
 };
 
-/** 相对路径按宿主拼（队标在 source.48.cn）——与 utils/data.normalizeUrl 同步 */
-function absUrl(u: string): string {
+export function absDecorUrl(u: string): string {
   const raw = String(u || '').trim();
   if (!raw) return '';
   if (raw.startsWith('//')) return `https:${raw}`;
@@ -28,17 +19,12 @@ function absUrl(u: string): string {
   return raw;
 }
 
-/** 官方 1-30 级档位（超过 30 封顶 30）；0/非法不渲染 */
 export function levelBadgeNumber(level?: number | string): number {
   const n = Math.floor(Number(level));
   if (!Number.isFinite(n) || n <= 0) return 0;
   return n > 30 ? 30 : n;
 }
 
-/**
- * 等级标识：tint 描边小胶囊 + 「Lv.N」—— 与官方 levelLogo 同槽位。
- * 不用官方 PNG 图（未随资源提出），文字胶囊风格与 App 一致。
- */
 function LevelChip({ level, size }: { level?: number | string; size: number }) {
   const n = levelBadgeNumber(level);
   if (!n) return null;
@@ -69,35 +55,39 @@ function LevelChip({ level, size }: { level?: number | string; size: number }) {
   );
 }
 
-/**
- * 队标图片：加载失败就整块不渲染。
- * 原来裸 Image 没 onError —— 队标地址 404 时会在名字旁留一块 size*1.6 宽的透明占位，
- * 看起来像「头像/名字被挤开」，且等级徽章也不会回落。
- */
-function TeamLogoImage({ uri, size }: { uri: string; size: number }) {
+export function TeamLogoImage({
+  uri,
+  size,
+  widthRatio = 1.6,
+  fallback = null,
+}: {
+  uri?: string;
+  size: number;
+  widthRatio?: number;
+  fallback?: React.ReactNode;
+}) {
+  const resolved = absDecorUrl(String(uri || ''));
   const [failed, setFailed] = useState(false);
-  // 地址变化（切换用户/刷新数据）时重置失败态，否则同一组件实例会一直空白
+
   useEffect(() => {
     setFailed(false);
-  }, [uri]);
-  if (failed) return null;
+  }, [resolved]);
+  if (!resolved || failed) return <>{fallback}</>;
   return (
     <Image
-      source={{ uri }}
-      style={{ width: size * 1.6, height: size }}
+      source={{ uri: resolved }}
+      style={{ width: size * widthRatio, height: size }}
       resizeMode="contain"
       onError={() => setFailed(true)}
     />
   );
 }
 
-/** 队标（成员）/ 等级胶囊（粉丝）。尺寸：队标 18 高；等级胶囊按 size 缩放 */
 export function UserDecorRow({ decor, size = 14 }: { decor?: UserDecor | null; size?: number }) {
   if (!decor) return null;
   const isMember = !!decor.isStar || [2, 3, 4, 5].includes(Number(decor.roleId));
-  const teamLogo = absUrl(String(decor.teamLogo || ''));
-  // 队标优先且不再限定成员身份：消息里带了 teamLogo 就画。
-  // （此前只有成员会渲染队标，普通账号在「个性装扮」里选了队标也永远看不到效果）
+  const teamLogo = absDecorUrl(String(decor.teamLogo || ''));
+
   if (teamLogo) {
     return (
       <View style={styles.row}>
@@ -115,10 +105,6 @@ export function UserDecorRow({ decor, size = 14 }: { decor?: UserDecor | null; s
   );
 }
 
-/**
- * 头像 + 头像框叠加（pfUrl）。头像框是覆盖在头像上的 PNG，
- * 尺寸比头像略大（官方 HeaderView 1.42x），contain 居中。
- */
 export function AvatarWithFrame({
   avatarUri,
   frameUri,
@@ -134,7 +120,7 @@ export function AvatarWithFrame({
   fallbackColor?: string;
   fallbackBg?: string;
 }) {
-  const frame = absUrl(String(frameUri || ''));
+  const frame = absDecorUrl(String(frameUri || ''));
   return (
     <View style={{ width: size, height: size }}>
       {avatarUri ? (

@@ -15,7 +15,7 @@ import { HeaderAction } from '../components/HeaderAction';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import pocketApi from '../api/pocket48';
 import { enqueueDownload } from '../services/downloads';
-import { usePalette, radii } from '../theme';
+import { usePalette, radii, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
 import { shareRemoteImage } from '../services/shareImage';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -123,7 +123,7 @@ export default function PhotosScreen() {
           pocketApi.getMemberPhotos(member.id).catch(() => null),
           pocketApi.getStarArchives(Number(member.id)).catch(() => null),
         ]);
-        // 竞态防护：快速切换成员时丢弃过期响应
+
         if (runId !== runIdRef.current) return;
         const list = unwrapList(photoRes, [
           'content.nftList',
@@ -238,7 +238,6 @@ export default function PhotosScreen() {
     [downloadPhoto, palette, photoUrls],
   );
 
-  /** 首屏网格骨架占位（与 3 列网格同构） */
   const renderSkeletonGrid = () => {
     const rows = [0, 1, 2];
     return (
@@ -304,7 +303,7 @@ export default function PhotosScreen() {
             <MaterialCommunityIcons name="chevron-down" size={20} color={palette.labelTertiary} />
           </GlassSurface>
           <View style={styles.pickerBody}>
-            <MemberPicker selectedMember={selectedMember} onSelect={loadPhotos} />
+            <MemberPicker compact selectedMember={selectedMember} onSelect={loadPhotos} />
           </View>
           {status && !loading ? (
             <Text style={[styles.status, { color: palette.labelSecondary }]}>{status}</Text>
@@ -381,7 +380,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
   avatar: {
@@ -394,12 +393,12 @@ const styles = StyleSheet.create({
   },
   avatarImg: { width: '100%', height: '100%' },
   pickerInfo: { flex: 1, minWidth: 0, marginLeft: 12, marginRight: 8 },
-  pickerName: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
+  pickerName: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '600', lineHeight: 20 },
   pickerSub: { fontSize: 12, marginTop: 2 },
-  pickerBody: { marginTop: 6 },
+  pickerBody: { marginTop: 10 },
   status: { marginTop: 10, fontSize: 12, textAlign: 'center' },
   list: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 96 },
-  photoCell: { flex: 1, margin: 3, borderRadius: radii.sm, overflow: 'hidden', aspectRatio: 1 },
+  photoCell: { flex: 1, margin: 3, borderRadius: radii.md, overflow: 'hidden', aspectRatio: 1 },
   photo: { width: '100%', height: '100%' },
   photoFallback: { alignItems: 'center', justifyContent: 'center' },
   skeletonWrap: { paddingHorizontal: 6, paddingTop: 6 },

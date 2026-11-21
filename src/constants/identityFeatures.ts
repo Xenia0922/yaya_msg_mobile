@@ -1,6 +1,5 @@
 import { IS_PLUS_BUILD } from './channel';
 
-/** 普通版使用账号真实发言资料；Plus 可自定义发言资料和身份权限。 */
 export const ALLOW_CUSTOM_SENDER_PROFILE = IS_PLUS_BUILD;
 export const ALLOW_CUSTOM_TEAM_LOGO = IS_PLUS_BUILD;
 export const ALLOW_CUSTOM_IDENTITY_ROLES = IS_PLUS_BUILD;

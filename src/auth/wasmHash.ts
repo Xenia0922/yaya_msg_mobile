@@ -1,11 +1,3 @@
-// 签名 wasm 的完整性锚点 + 纯 JS SHA-256（Hermes 无 crypto.subtle 时也能跑）。
-//
-// 安全说明：
-// - assets/2.wasm 是随 APK 打包的可信产物，其 SHA-256 钉在 WASM_SHA256。
-// - fetchWasm 从 GitHub 代理下载 wasm 后必须用本哈希校验，任一代理被投毒即拒绝执行（供应链止血点）。
-// - wasmBase64.ts（WebView 兜底用的内联副本）必须由 scripts/gen-wasm-base64.mjs 从同一份
-// assets/2.wasm 生成，确保两端字节一致；更新 wasm 时务必同步本常量。
-
 export const WASM_SHA256 = '764de771c46d9eb3e545deb7d72ee23f3a8ded8f63ac0fe56d3b0521bd027528';
 
 export function sha256Hex(buf: ArrayBuffer): string {

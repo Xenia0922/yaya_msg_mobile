@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import pocketApi from '../api/pocket48';
 import type { RoomSticker } from '../services/pocketNim/qchat';
-import { usePalette } from '../theme';
+import { usePalette, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import emojiAssets from '../utils/emojiAssets';
@@ -134,7 +134,11 @@ export default function RoomStickerPanel({
               ]}
             >
               <Text
-                style={{ color: selected === i ? palette.onTint : palette.label, fontSize: 12 }}
+                style={{
+                  color: selected === i ? palette.onTint : palette.label,
+                  fontSize: 12,
+                  fontFamily: fontFamily.system,
+                }}
                 numberOfLines={1}
               >
                 {name}
@@ -146,14 +150,26 @@ export default function RoomStickerPanel({
       </ScrollView>
       {error ? (
         <Text
-          style={{ color: palette.labelSecondary, fontSize: 11, marginHorizontal: 12 }}
+          style={{
+            color: palette.labelSecondary,
+            fontSize: 11,
+            fontFamily: fontFamily.system,
+            marginHorizontal: 12,
+          }}
           numberOfLines={1}
         >
           {t('表情包加载失败')}：{error}
         </Text>
       ) : null}
       {selected > 0 && groups[selected - 1]?.vip ? (
-        <Text style={{ color: palette.labelSecondary, fontSize: 10, marginHorizontal: 4 }}>
+        <Text
+          style={{
+            color: palette.labelSecondary,
+            fontSize: 10,
+            fontFamily: fontFamily.system,
+            marginHorizontal: 4,
+          }}
+        >
           免责声明：{VIP_FEATURE_NOTICE}
         </Text>
       ) : null}

@@ -1,4 +1,3 @@
-// 分级标准化：严格/中等/宽松三档
 export type NormLevel = 'strict' | 'medium' | 'loose';
 
 function removeBrackets(s: string): string {
@@ -10,8 +9,8 @@ function removeBrackets(s: string): string {
 
 function removeNoise(s: string): string {
   return s
-    .replace(/[\(\（\[].*?[\)\）\]]/g, '') // 括号内容
-    .replace(/[～～\~\-\–\—\:\：\|\/\.\,\，\、\!\！]/g, ' ') // 标点
+    .replace(/[\(\（\[].*?[\)\）\]]/g, '')
+    .replace(/[～～\~\-\–\—\:\：\|\/\.\,\，\、\!\！]/g, ' ')
     .replace(
       /\b(feat\.?|ft\.?|ver\.?|version|live|inst\.?|instrumental|off vocal|伴奏|remix|cover|翻唱)\b/gi,
       '',

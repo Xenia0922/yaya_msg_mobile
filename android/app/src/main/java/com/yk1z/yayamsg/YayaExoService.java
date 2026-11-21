@@ -40,32 +40,16 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * 原生 ExoPlayer + 单一 framework MediaSession（OPPO/ColorOS 终版，2026-09-05）。
- *
- * 调试结论（PJZ110 实测多轮）：
- *  - media3 MediaSessionService 会话：系统卡能渲染进度条，但 ColorOS 对 PLAY_PAUSE 命令不路由；
- *  - framework android.media.session.MediaSession：全部命令可达（暂停/播放/seek/切歌），
- *    但 ColorOS 卡单独靠 pushState 不刷新 —— 需「每秒重建带 MediaStyle + token 的完整通知」助推
- *    （main 版 RadioForegroundService 验证过的 ColorOS workaround）。
- *  - 双会话并存 = 命令随机路由、两卡互抢 → 禁止（19:33 实测“像在打架”）。
- *
- * 因此收敛为单一 framework 会话：命令直达 ExoPlayer（即时生效），进度/状态 500ms 推 session +
- * 每秒重建 MediaStyle 通知助推卡刷新；上一首/下一首拦截回 JS 引擎（队列/模式/URL 在 JS）。
- */
 public class YayaExoService extends Service {
   public static final String ACTION_PLAY_QUEUE = "yaya.exo.play_queue";
-  /** 会话重声明：App 回前台/即将离开（Home键）时由 Activity 触发——重新 setActive + 重推状态 + 重建通知。
-   *  修复：从音乐页返回 App 首页后再切后台，ColorOS 偶发把媒体卡绑定到过期会话/旧状态，
-   *  表现为通知栏/锁屏控件"失灵"；每次前台恢复/离开前重声明一次，卡必绑到当前唯一活跃会话。 */
+
   public static final String ACTION_REASSERT = "yaya.exo.reassert";
-  /** 下一首/上一首单跳提示：JS 播放确立时推送，service 手动 skip 时优先本地切换
-   * （后台 JS 被 ColorOS 冻结 timer/网络时，cmd=next 事件到 JS 后异步链路永不完成 → 切歌无效） */
+
   public static final String ACTION_SET_HINTS = "yaya.exo.set_hints";
-  /** 服务进程存活标记：MainActivity 在视频进 PiP 前据它决定是否给音乐服务发 stop（释放会话防劫持系统控件） */
+
   public static volatile boolean serviceAlive = false;
   private static volatile YayaExoService runningInstance;
-  /** 音乐是否"真的在出声"（playWhenReady 且 Exo 就绪）：非实播态（暂停/未起播）才允许被视频 PiP 停止 */
+
   public static volatile boolean musicActuallyPlaying = false;
   private static final String CHANNEL_ID = "yaya_radio_v3";
   private static final int NOTIFICATION_ID = 2024;
@@ -73,26 +57,26 @@ public class YayaExoService extends Service {
 
   private final Map<String, String> currentHeaders = new HashMap<>();
   private ExoPlayer exo;
-  private MediaSession session;              // framework MediaSession（唯一会话）
+  private MediaSession session;
   private boolean pollRunning = false;
   private int currentRepeat = Player.REPEAT_MODE_OFF;
   private long lastNotifyMs = 0;
-  // progress 事件变更检测（暂停态稳态不发，省每 3s 空唤醒 JS）
+
   private long lastEmitPosMs = Long.MIN_VALUE;
   private boolean lastEmitPlaying = false;
-  // 元数据（来自 playQueue JSON）
+
   private String title = "";
-  private String lastTrackUrl = ""; // 当前已下发曲目 url（progress 事件带出，供 JS 去竞态）
+  private String lastTrackUrl = "";
   private String lastTrackId = "";
   private String artist = "";
   private String album = "";
   private String artPath = "";
   private Bitmap artBitmap;
-  /** 封面下载/解码单线程执行器：快速连续切歌时不再为每次切换新建线程，也避免并发解码 OOM */
+
   private final ExecutorService artLoader = Executors.newSingleThreadExecutor();
-  /** 当前封面请求 URL，后台任务返回时校验，过期请求直接丢弃 */
+
   private volatile String artRequestUrl = "";
-  /** 队列内每首曲目的元数据（url → 元数据），供 onMediaItemTransition 同步当前曲 */
+
   private final Map<String, TrackMeta> queueMeta = new HashMap<>();
 
   private static class TrackMeta {
@@ -112,14 +96,11 @@ public class YayaExoService extends Service {
       this.art = art == null ? "" : art;
     }
   }
-  // 元数据指纹：title|artist|album|artPath|duration 任一变化才重发 session metadata（含整图 bitmap，
-  // 每 500ms tick 都重发 = 每半秒一次全图 Binder 拷贝，功耗大头）
+
   private String lastMetaSig = "";
-  // 通知点击跳转 PI：构建昂贵（getLaunchIntentForPackage + PendingIntent），懒建一次复用
+
   private PendingIntent cachedContentPi;
-  // skip hints（单跳）：服务端本地切歌用，结构 = {url,title,artist,album,art?,index?}
-  // index = 引擎语义下的队列下标（供 JS 恢复对账定位曲目）；-1 = 未知
-  // art = 封面 file://（JS 已落盘）；后台本地切歌直接展示，不等回前台 JS 补推
+
   private String nextUrl = "", nextTrackId = "", nextTitle = "", nextArtist = "", nextAlbum = "", nextArt = "";
   private String prevUrl = "", prevTrackId = "", prevTitle = "", prevArtist = "", prevAlbum = "", prevArt = "";
   private int nextIndexHint = -1, prevIndexHint = -1;
@@ -128,9 +109,8 @@ public class YayaExoService extends Service {
     @Override public void run() {
       boolean playing = isPlaying();
       emitProgress();
-      pushState(); // framework 会话（真实位置）；元数据内部已按需缓存（仅切曲才重发）
-      // ColorOS workaround：播放中每 3s 重建 MediaStyle 完整通知助推卡刷新（疑仅重绘最近一次完整通知）。
-      // 暂停/结束态不重建（内容静止，3s 一次轻量会话保活即可），省通知构建 + 包管理器 IPC。
+      pushState();
+
       if (playing) {
         long now = System.currentTimeMillis();
         if (now - lastNotifyMs >= 3000) {
@@ -149,16 +129,16 @@ public class YayaExoService extends Service {
   private final Player.Listener playerListener = new Player.Listener() {
     @Override public void onPlaybackStateChanged(int state) {
       if (state == Player.STATE_ENDED) {
-        // 播完 → 不是"实播"状态；否则 MainActivity.stopMusicIfIdle 会误判仍在播放
+
         musicActuallyPlaying = false;
-        // 播完 → JS 引擎切下一首（单曲循环 REPEAT_MODE_ONE 不会到这）
+
         RadioExoModule.emitJs(getApplicationContext(), "ended", null);
       }
       emitProgress();
       pushState();
     }
     @Override public void onMediaItemTransition(@Nullable MediaItem m, int reason) {
-      // 播放器自动/手动切曲后，用队列元数据同步当前曲（修复 lastTrackUrl/lastTrackId 永远停在第一首）
+
       String url = currentMediaUrl();
       TrackMeta meta = url == null ? null : queueMeta.get(url);
       if (meta != null) {
@@ -178,23 +158,26 @@ public class YayaExoService extends Service {
       Map<String, Object> extra = new HashMap<>();
       extra.put("message", String.valueOf(error.getMessage()));
       RadioExoModule.emitJs(getApplicationContext(), "error", extra);
-      // 播放器致命错误 → 立即收尾：JS error 分支会禁用原生路径转 RNV 兜底，
-      // 若不自杀，本服务会一直前台 + 轮询，与兜底路径双会话/双通知（ColorOS"像在打架"）。
+
       stopServiceCleanly();
     }
   };
 
-  /** 收尾停服务：撤前台通知 + 停轮询 + 自杀（onPlayerError / stop 命令 / 空 exo 分支共用）。
-   *  避免残留：前台通知幽灵卡 / 双前台服务并存 / 播放器对象空挂。 */
   private void stopServiceCleanly() {
     stopPolling();
+    musicActuallyPlaying = false;
+    destroySession();
+    if (exo != null) {
+      try { exo.stop(); exo.clearMediaItems(); } catch (Throwable ignored) {}
+      try { exo.release(); } catch (Throwable ignored) {}
+      exo = null;
+    }
     try {
       ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
     } catch (Throwable ignored) {}
     try { stopSelf(); } catch (Throwable ignored) {}
   }
 
-  /** 远端封面 → 单线程后台下载 + 采样解码 → 主线程刷新卡片（失败静默，不影响播放） */
   private void downloadArt(final String url) {
     if (url == null || url.isEmpty()) return;
     artRequestUrl = url;
@@ -217,7 +200,7 @@ public class YayaExoService extends Service {
             in.close();
             final byte[] data = bos.toByteArray();
             if (data.length == 0) return;
-            // 下载期间已切歌 → 不再解码
+
             if (!url.equals(artRequestUrl) || !url.equals(artPath)) return;
             final Bitmap bmp = decodeSampled(data, 1024);
             if (bmp == null) return;
@@ -229,7 +212,7 @@ public class YayaExoService extends Service {
                 }
                 recycleArt();
                 artBitmap = bmp;
-                lastMetaSig = null; // 强制重发 metadata（含新封面）
+                lastMetaSig = null;
                 pushState();
               }
             });
@@ -242,7 +225,6 @@ public class YayaExoService extends Service {
     } catch (Throwable ignored) {}
   }
 
-  /** 按最长边 maxDim 采样解码本地文件（避免整图全尺寸解码占内存） */
   private Bitmap decodeSampledFile(String path) {
     try {
       BitmapFactory.Options bounds = new BitmapFactory.Options();
@@ -278,7 +260,6 @@ public class YayaExoService extends Service {
     return sample;
   }
 
-  /** 应用一首曲目的元数据（当前曲切换统一入口；只有封面变化才解码/下载） */
   private void applyTrackMeta(TrackMeta meta) {
     if (meta == null) return;
     title = meta.title;
@@ -319,7 +300,6 @@ public class YayaExoService extends Service {
     ensureChannel();
   }
 
-  /** 由 React Native 在主线程读取，提供回前台时的真实播放状态。 */
   public static Map<String, Object> getPlaybackSnapshot() {
     Map<String, Object> result = new HashMap<>();
     YayaExoService s = runningInstance;
@@ -349,7 +329,6 @@ public class YayaExoService extends Service {
     } catch (Throwable ignored) {}
   }
 
-  /** 建真实播放器 + framework 会话（headers 变化才重建） */
   private void ensurePlayer(Map<String, String> headers) {
     if (headers != null && headers.equals(currentHeaders) && exo != null) return;
     stopPolling();
@@ -362,14 +341,13 @@ public class YayaExoService extends Service {
         .setUserAgent("PocketFans201807/7.0.41 (iPhone; iOS 16.3.1; Scale/2.00)")
         .setDefaultRequestProperties(currentHeaders)
         .setAllowCrossProtocolRedirects(true);
-    // handleAudioFocus=true：来电/蓝牙等标准暂停（18:08 自激根因是 RNV 占位 Video 当时也在抢焦点，
-    // 已由 JS nativeOk 修复（Exo 下发即静音 Video）消除；恢复标准焦点行为）
+
     exo = new ExoPlayer.Builder(this, new DefaultMediaSourceFactory(ds))
         .setRenderersFactory(new DefaultRenderersFactory(this).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER))
         .setAudioAttributes(new AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-            .build(), /* handleAudioFocus */ true)
+            .build(),  true)
         .setWakeMode(C.WAKE_MODE_NETWORK)
         .build();
     exo.setHandleAudioBecomingNoisy(true);
@@ -377,7 +355,7 @@ public class YayaExoService extends Service {
 
     session = new MediaSession(this, "yaya-music");
     session.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
-    // media-button 接收标记：让 ColorOS 把面板/媒体键命令路由给本会话
+
     session.setMediaButtonReceiver(
         PendingIntent.getBroadcast(this, 200,
             new Intent(this, MediaButtonProxyReceiver.class).setAction(Intent.ACTION_MEDIA_BUTTON),
@@ -395,9 +373,7 @@ public class YayaExoService extends Service {
 
     });
     session.setActive(true);
-    // ⚠️ 不再无条件清空封面（2026-10-18）：回主页/后台唤醒会重建会话，
-    // 清空后又没有页面再推元数据 → 系统卡只剩标题没有封面。
-    // 保留 artPath，并在本地文件仍存在时重新解码出 bitmap。
+
     if (artPath != null && artPath.startsWith("file://")) {
       recycleArt();
       artBitmap = decodeSampledFile(artPath.substring("file://".length()));
@@ -408,13 +384,11 @@ public class YayaExoService extends Service {
     pushState();
   }
 
-  /** 收藏 / 播放列表两个自定义按钮 → JS（音乐引擎桥接） */
   private void handleCustom(String action) {
     Log.i("YayaExo", "CMD custom " + action);
     if (action == null || action.isEmpty()) return;
     com.yk1z.yayamsg.RadioServiceModule.emitControl(getApplicationContext(), action);
   }
-
 
   private void destroySession() {
     if (session != null) {
@@ -427,17 +401,21 @@ public class YayaExoService extends Service {
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
     if (intent == null) return START_NOT_STICKY;
-    // 任意命令都可能通过 startForegroundService 到达；即使播放器尚未创建，
-    // 也要先满足系统前台服务契约，再处理空服务或停止命令。
-    if (exo == null) {
+
+    ensureChannel();
+    if (exo == null || Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       try {
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, minimalFg(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        Notification fg = exo != null && !title.isEmpty() ? buildNotification() : minimalFg();
+        if (fg == null) fg = minimalFg();
+        if (fg != null) {
+          ServiceCompat.startForeground(this, NOTIFICATION_ID, fg, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        }
       } catch (Throwable ignored) {}
     }
     String action = intent.getAction();
     if (ACTION_PLAY_QUEUE.equals(action)) {
       try {
-        // ⚠️ startForegroundService 5s 契约：解析 JSON/建会话可能耗时，先占位进前台（防 RemoteServiceException）
+
         try {
           ServiceCompat.startForeground(this, NOTIFICATION_ID, minimalFg(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
         } catch (Throwable ignored) {}
@@ -467,12 +445,9 @@ public class YayaExoService extends Service {
         if (items.isEmpty()) throw new IllegalStateException("empty queue");
         int safeIndex = Math.max(0, Math.min(index, items.size() - 1));
         String targetUrl = arr.getJSONObject(safeIndex).optString("url", "");
-        // 按 index 设置「当前曲」元数据（原实现循环覆盖，最终永远是队列最后一项）
+
         applyTrackMeta(queueMeta.get(targetUrl));
-        // 同曲去重：离开音乐页后再进入，页面 armed 状态重置会重推同一首 → 原生已在播则不重载
-        // （重载会 setMediaItems(posMs) 从头/从旧位置打断后台播放）；仅按需 play()/seekTo(posMs)
-        // ⚠️ mediaId 可能为 null（setUri 未显式设 mediaId）→ 必须回退取 localConfiguration.uri，
-        //    否则同曲比较恒 false → 每次重复下发都整曲重载（22:53 实测 0.18s 内 4 连 SET-ITEMS）
+
         MediaItem cur = exo.getCurrentMediaItem();
         String curUrl = cur == null ? null
             : (cur.mediaId != null && !cur.mediaId.isEmpty() ? cur.mediaId
@@ -493,6 +468,9 @@ public class YayaExoService extends Service {
           } else if (exo.getPlayWhenReady()) {
             exo.pause();
           }
+
+          lastEmitPosMs = Long.MIN_VALUE;
+          emitProgress();
         } else {
           Log.i("YayaExo", "SET-ITEMS posMs=" + posMs + " sameTrack=" + sameTrack + " curState=" + (exo.getPlaybackState()));
           exo.setMediaItems(items, Math.max(0, Math.min(index, items.size() - 1)), posMs);
@@ -513,11 +491,9 @@ public class YayaExoService extends Service {
         RadioExoModule.emitJs(getApplicationContext(), "error", extra);
       }
     } else if (ACTION_REASSERT.equals(action)) {
-      // 会话重声明：App 每次回前台 / 用户按 Home 离开前触发（见 MainActivity）。
-      // ColorOS 在 App 内导航/页面堆栈变化后偶发把媒体卡绑到过期会话状态 → 控件失灵；
-      // 这里强制 setActive + 重推状态 + 重建 MediaStyle 通知，确保系统卡绑定当前会话。
+
       if (exo == null) {
-        // 未在播：不建通知不留活口（避免凭空冒一个媒体卡）
+
         stopServiceCleanly();
         return START_NOT_STICKY;
       }
@@ -530,19 +506,17 @@ public class YayaExoService extends Service {
       } catch (Throwable ignored) {}
       return START_NOT_STICKY;
     } else if (ACTION_SET_HINTS.equals(action)) {
-      // JS 播放确立/状态变化时推送的 skip hint：更新槽位（不建播放器不播）
+
       applySkipHints(intent.getStringExtra("next"), intent.getStringExtra("prev"));
       if (exo == null) {
-        // 未在播还收到 hint（停播竞态残留）→ 立即停，避免 startForegroundService 5s 契约崩溃
+
         stopServiceCleanly();
       }
       return START_NOT_STICKY;
     } else {
       String cmd = intent.getStringExtra("cmd");
       if ("stop".equals(cmd)) {
-        // 视频进 PiP / 页面明确要求停音乐：即使 exo 尚未起播也必须收尾（空服务发 stop
-        // 若走 minimalFg 分支会凭空挂一个前台占位通知 → 先满足 startForegroundService
-        // 5s 契约再自杀，否则 RemoteServiceException 崩溃；stopForeground(REMOVE) 已清通知）
+
         if (exo != null) { try { exo.stop(); exo.clearMediaItems(); } catch (Throwable ignored) {} }
         musicActuallyPlaying = false;
         try {
@@ -577,9 +551,6 @@ public class YayaExoService extends Service {
     return exo != null && exo.getPlayWhenReady() && exo.getPlaybackState() != Player.STATE_ENDED;
   }
 
-  // ---------- skip hints + 本地切歌（ColorOS 冻结后台 JS 的根治） ----------
-
-  /** JS 推来的 hint JSON：{url,title,artist,album,art?,index?}；null/空串 → 清空该方向槽位 */
   private void applySkipHints(String nextJson, String prevJson) {
     try {
       if (nextJson != null && nextJson.startsWith("{")) {
@@ -618,7 +589,6 @@ public class YayaExoService extends Service {
   private void clearNextHint() { setNextHint("", "", "", "", "", "", -1); }
   private void clearPrevHint() { setPrevHint("", "", "", "", "", "", -1); }
 
-  /** 当前已下发曲目 url（mediaId/localConfiguration.uri 双回退，与 playQueue 同曲去重逻辑一致） */
   private String currentMediaUrl() {
     MediaItem cur = exo == null ? null : exo.getCurrentMediaItem();
     if (cur == null) return null;
@@ -627,16 +597,9 @@ public class YayaExoService extends Service {
     return null;
   }
 
-  /**
-   * 上/下一首本地切歌（后台冻结 JS 也能生效）：
-   * hint 有 url → 直接换 MediaItem 播放（同 url 视为重播 seek0），元数据/通知/会话即时更新，
-   * 并把刚离开的曲目塞进反方向槽位（一步回退即回原曲，符合引擎语义）；hint 缺失才兜底 emitJs cmd。
-   */
   private void localSkip(boolean isNext) {
     if (exo == null) return;
-    // ⚠️ 本地 hint 优先：ColorOS 冻结 JS 时 emitJs 只是把事件放进队列，返回 true 并不代表
-    // JS 已处理；旧实现据此提前 return，本地 hint 永远不执行（P1-P7）。
-    // hint 缺失才把指令交给 JS 引擎解析新 URL。
+
     String u = isNext ? nextUrl : prevUrl;
     if (u.isEmpty()) {
       RadioExoModule.emitJs(getApplicationContext(), "cmd", mapOf("cmd", isNext ? "next" : "prev"));
@@ -648,8 +611,7 @@ public class YayaExoService extends Service {
     String nAlbum = isNext ? nextAlbum : prevAlbum;
     String nArt = isNext ? nextArt : prevArt;
     int nIndex = isNext ? nextIndexHint : prevIndexHint;
-    // 反方向槽位 = 刚离开的当前曲（一步 prev/next 可回原曲，含其封面）；已用方向槽位清空
-    // （无下一跳元数据，避免二次点击重放同曲；前台 JS 会即刻按新 index 重新推送）
+
     if (isNext) { setPrevHint(lastTrackUrl, lastTrackId, title, artist, album, artPath, -1); clearNextHint(); }
     else { setNextHint(lastTrackUrl, lastTrackId, title, artist, album, artPath, -1); clearPrevHint(); }
     title = nTitle; artist = nArtist; album = nAlbum; lastTrackUrl = u; lastTrackId = nTrackId;
@@ -657,11 +619,11 @@ public class YayaExoService extends Service {
     boolean same = curU != null && curU.equals(u);
     try {
       if (same) {
-        exo.seekTo(0); // 同一曲（single 重播）→ 不重载直接从头（封面不变）
+        exo.seekTo(0);
       } else {
         exo.setMediaItems(java.util.Collections.singletonList(new MediaItem.Builder().setUri(u).build()), 0, 0);
         exo.prepare();
-        // 换曲后套用 hint 封面（file:// 已落盘）；无/不可用 → 清旧封面防错配
+
         artPath = nArt;
         artRequestUrl = "";
         recycleArt();
@@ -682,7 +644,7 @@ public class YayaExoService extends Service {
       Notification n = buildNotification();
       if (nm != null && n != null) nm.notify(NOTIFICATION_ID, n);
     } catch (Throwable ignored) {}
-    // 通知 JS 对账（store 下标/url/歌词）；JS 冻结时事件排队，恢复后按序到达即自愈
+
     Map<String, Object> ev = new HashMap<>();
     ev.put("cmd", isNext ? "next" : "prev");
     ev.put("url", u);
@@ -694,7 +656,6 @@ public class YayaExoService extends Service {
     RadioExoModule.emitJs(getApplicationContext(), "skipped", ev);
   }
 
-  /** 5s 契约占位通知（最快构建，随后由 buildNotification 覆盖更新） */
   private Notification minimalFg() {
     try {
       Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
@@ -729,9 +690,6 @@ public class YayaExoService extends Service {
     h.removeCallbacks(progressPoller);
   }
 
-  /** JS 进度回流（App 内进度条/播放态）；带当前曲 url 供 JS 丢弃切歌竞态的旧曲心跳 */
-  /** JS 进度回流（App 内进度条/播放态）；带当前曲 url 供 JS 丢弃切歌竞态的旧曲心跳。
-   *  变更检测：仅 position 或 playing 状态变化才 emit —— 暂停态稳态不再每 3s 空唤醒 JS（功耗）。 */
   private void emitProgress() {
     if (exo == null) return;
     try {
@@ -754,23 +712,20 @@ public class YayaExoService extends Service {
     } catch (Throwable ignored) {}
   }
 
-  /** framework 会话状态推送（真实播放器数据）；元数据仅变化时重发（见 lastMetaSig） */
   private void pushState() {
     if (session == null || exo == null) return;
     try {
-      // 全量标准动作位：PLAY_PAUSE|PLAY|PAUSE|STOP|SEEK|NEXT|PREV —— ColorOS 面板按 actions 位决定
-      // 按钮可用性；此前漏 NEXT/PREV 会导致上一首/下一首按钮"看着在、点着没反应"。
+
       long actions = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
           | PlaybackState.ACTION_PLAY_PAUSE
           | PlaybackState.ACTION_STOP
           | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS
           | PlaybackState.ACTION_SEEK_TO;
       boolean playing = exo.getPlayWhenReady() && exo.getPlaybackState() != Player.STATE_ENDED;
-      // ⚠️ updated 必须用 elapsedRealtime（单调时钟）：SystemUI 用 (now-updated)×speed+position 演算进度，
-      // 用墙钟 currentTimeMillis 会让 ColorOS 算出异常差值 → 播放态进度错乱/归 0（19:59 实测）
+
       PlaybackState ps = new PlaybackState.Builder()
           .setActions(actions)
-          // 系统媒体卡额外按钮：API21+ 的 PlaybackState.CustomAction（收藏／播放列表）
+
           .addCustomAction(new PlaybackState.CustomAction.Builder("favorite",
               com.yk1z.yayamsg.RadioServiceModule.isFavoriteState() ? "已收藏" : "收藏",
               com.yk1z.yayamsg.RadioServiceModule.isFavoriteState() ? R.drawable.ic_heart : R.drawable.ic_heart_outline).build())
@@ -779,7 +734,7 @@ public class YayaExoService extends Service {
               exo.getCurrentPosition(), playing ? 1.0f : 0f, android.os.SystemClock.elapsedRealtime())
           .build();
       session.setPlaybackState(ps);
-      // 元数据仅在切曲/封面变化时重发（含 artBitmap 的 binder 拷贝；duration 就绪也算变化）
+
       long dur = exo.getDuration();
       String sig = title + "|" + artist + "|" + album + "|" + artPath + "|" + (dur > 0 ? dur : 0);
       if (sig.equals(lastMetaSig)) return;
@@ -798,7 +753,7 @@ public class YayaExoService extends Service {
     try {
       String sub = artist.isEmpty() ? "牙牙消息" : artist + (album.isEmpty() ? "" : " · " + album);
       if (cachedContentPi == null) {
-        // 懒建一次（getLaunchIntentForPackage 是包管理器 IPC，每 3s 一次太贵）
+
         Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
         if (open != null) {
           cachedContentPi = PendingIntent.getActivity(this, 0, open,
@@ -809,8 +764,7 @@ public class YayaExoService extends Service {
           ? new Notification.Builder(this, CHANNEL_ID)
           : new Notification.Builder(this);
       if (artBitmap != null) builder.setLargeIcon(artBitmap);
-      // 极简系统媒体通知：控制按钮只放系统媒体卡（QS/锁屏由 session 提供），
-      // 通知栏仅保留 MediaStyle 收纳条目（可在 系统设置-通知-牙牙消息-后台播放 关闭）
+
       builder.setSmallIcon(R.mipmap.ic_launcher)
           .setContentTitle(title.isEmpty() ? "牙牙消息" : title)
           .setContentText(sub)
@@ -847,7 +801,7 @@ public class YayaExoService extends Service {
     stopPolling();
     try { artLoader.shutdownNow(); } catch (Throwable ignored) {}
     try {
-      // 防御：撤前台通知（部分 ColorOS ROM 不随 onDestroy 自动撤，残留幽灵媒体卡）
+
       ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
     } catch (Throwable ignored) {}
     destroySession();

@@ -38,30 +38,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 口袋48 消息通道（云信官方 Android SDK 桥）。
- *
- * 为什么要走原生：口袋48 的「房间消息」= 云信圈组（QChat），而云信只有 Android/iOS 官方 SDK
- * 支持圈组，Web/RN 版 SDK（nim-web-sdk）里 qchat 仅有取地址能力、没有收发命令。
- * 逆向依据（口袋48 7.1.39）：
- *   com.pocket.snh48.lib.yunxin.im.group.MessageManger#sendTextMessage
- *     → new QChatSendMessageParam(serverId, channelId, MsgTypeEnum.text)
- *       + setBody(text) + setExtension(ChatMsgUtil.getChannelBaseParams(...))
- *   com.pocket.snh48.lib.yunxin.im.NIMStrategy#getOptions → appKey 明文
- *
- * RN 侧入口：NativeModules.PocketIm（见 src/native/PocketIm.ts）。
- * 事件：PocketIm:message / PocketIm:status。
- */
 public class PocketImModule extends ReactContextBaseJavaModule {
   private static final String TAG = "PocketIm";
 
-  /** JS number 只能精确表示 ±(2^53-1)；超出后 (long) 强转会静默丢精度，必须提前拒绝。 */
   private static boolean isSafeJsLong(double value) {
     return !Double.isNaN(value) && !Double.isInfinite(value)
         && value >= 0 && value <= 9007199254740991.0
         && value == Math.floor(value);
   }
-  /** 与官方一致的云信 appKey（NIMStrategy.getOptions 明文） */
+
   private static final String DEFAULT_APP_KEY = "632feff1f4c838541ab75195d1ceb3fa";
 
   private static volatile boolean inited = false;
@@ -79,10 +64,6 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     return "PocketIm";
   }
 
-  /**
-   * 云信错误码 → 文案（对齐 com.pocket.snh48.lib.yunxin.model.ChatCodeHelper）。
-   * 414 的文案按上下文区分：登录 414 与服务端 App 标识校验相关，发送 414 才是 roomId/channelId 参数问题。
-   */
   private static String describe(int code, boolean loginContext) {
     switch (code) {
       case 302: return "帐号或密码错误";
@@ -113,7 +94,7 @@ public class PocketImModule extends ReactContextBaseJavaModule {
       if (ctx == null || !ctx.hasActiveReactInstance()) return;
       ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit(event, payload);
     } catch (Throwable ignored) {
-      // RN 上下文已销毁（页面退出）时忽略
+
     }
   }
 
@@ -131,7 +112,7 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     options.asyncInitSDK = false;
     options.reducedIM = true;
     options.enableBackOffReconnectStrategy = true;
-    // 仅 Debug 打开 SDK 控制台日志，Release 关闭
+
     options.consoleLogEnabled = BuildConfig.DEBUG;
     if (BuildConfig.DEBUG) android.util.Log.i(TAG, "init appKey=" + options.appKey);
     try {
@@ -216,11 +197,10 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     try {
       if (inited) NIMClient.getService(AuthService.class).logout();
     } catch (Throwable ignored) {
-      // 忽略：退出登录失败不影响 UI
+
     }
   }
 
-  /** JSON → Map（圈组扩展段结构简单，仅基础类型） */
   private static Map<String, Object> jsonToMap(String json) {
     Map<String, Object> map = new HashMap<>();
     if (TextUtils.isEmpty(json)) return map;
@@ -244,19 +224,11 @@ public class PocketImModule extends ReactContextBaseJavaModule {
         }
       }
     } catch (Throwable ignored) {
-      // 扩展段非法时退化为空 map（消息正文仍可发出）
+
     }
     return map;
   }
 
-  /**
-   * 订阅圈组（收消息）。
-   *
-   * 云信 QChat 订阅是 **server 级**：SDK 对应 `QChatServerService.subscribeAllChannel(
-   * QChatSubscribeAllChannelParam)`（对应协议包 cmd 25/7 subscribeAllChannels）。
-   * 参数类的构造签名随 SDK 版本变化，这里枚举常见构造（单 long / List<Long> / long[] /
-   * long+枚举 / 空构造+setter）逐个尝试，并打印全部构造签名便于排查。
-   */
   @ReactMethod
   public void joinChannel(final double serverIdD, final double channelIdD, final Promise promise) {
     if (!isSafeJsLong(serverIdD) || !isSafeJsLong(channelIdD)) {
@@ -287,7 +259,7 @@ public class PocketImModule extends ReactContextBaseJavaModule {
             if (param != null) break;
             Class<?>[] pts = c.getParameterTypes();
             try {
-              // 实际签名（qchat 10.9.11）：(QChatSubscribeType, List<Long>)
+
               if (pts.length == 2 && pts[0].isEnum() && java.util.List.class.isAssignableFrom(pts[1])) {
                 Object[] ecs = pts[0].getEnumConstants();
                 StringBuilder tn = new StringBuilder();
@@ -333,14 +305,6 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     });
   }
 
-  /**
-   * 发送房间（圈组）文本消息。
-   *
-   * @param serverId  圈组 serverId
-   * @param channelId 频道 channelId
-   * @param text      正文
-   * @param extJson   扩展段 JSON（对齐 ChatMsgUtil.getChannelBaseParams：channelRole/bubbleId/module/user）
-   */
   @ReactMethod
   public void sendChannelText(final double serverId, final double channelId, final String text,
                               final String extJson, final Promise promise) {
@@ -397,7 +361,6 @@ public class PocketImModule extends ReactContextBaseJavaModule {
     });
   }
 
-  /** 注册/注销圈组消息监听（含自己发出的消息） */
   @ReactMethod
   public void observeMessages(final boolean enable, final Promise promise) {
     main.post(new Runnable() {
@@ -424,8 +387,7 @@ public class PocketImModule extends ReactContextBaseJavaModule {
                     item.putDouble("time", msg.getTime());
                     item.putString("content", msg.getContent());
                     item.putString("msgType", String.valueOf(msg.getMsgType()));
-                    // 圈组自定义消息（TEAM_VOICE 等）的 attachment 在 attachStr 里；
-                    // 旧实现只转 content/extension，导致 48 官方的上下麦事件在 JS 侧丢失。
+
                     item.putString("attachment", msg.getAttachStr() == null ? "" : msg.getAttachStr());
                     Map<String, Object> ext = msg.getRemoteExtension();
                     item.putString("extension", ext == null ? "{}" : new JSONObject(ext).toString());

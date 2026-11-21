@@ -6,7 +6,6 @@ const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 type CacheEntry = { savedAt: number; ids: string[] };
 
 function cacheKey(token: string): string {
-  // 不把 token 明文写进 key/值；只使用稳定哈希做账号区分。
   let hash = 5381;
   for (let i = 0; i < token.length; i += 1) hash = ((hash << 5) + hash + token.charCodeAt(i)) | 0;
   return `${CACHE_PREFIX}_${Math.abs(hash)}`;
@@ -35,7 +34,5 @@ export async function writeFollowedIdsCache(token: string, ids: string[]): Promi
       cacheKey(token),
       JSON.stringify({ savedAt: Date.now(), ids: ids.map(String) }),
     );
-  } catch {
-    /* cache is best-effort */
-  }
+  } catch {}
 }

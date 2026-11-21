@@ -11,7 +11,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -20,6 +19,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import PlayerScreen, { buildPocketHeaders } from '../player';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
+import { SearchBar } from '../components/SearchBar';
 import { useSettingsStore, useUiStore } from '../store';
 import { FadeInView, ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
@@ -31,7 +31,7 @@ import { translate, useI18n } from '../i18n';
 import { enqueueDownload } from '../services/downloads';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import { formatTimestamp } from '../utils/format';
-import { usePalette } from '../theme';
+import { usePalette, fontFamily } from '../theme';
 import { GlassSurface } from '../components/GlassSurface';
 
 interface OpenLiveItem {
@@ -199,8 +199,6 @@ export default function OpenLiveScreen() {
     rows: { id: string; name: string; avatar: string; team: string }[];
   } | null>(null);
 
-  // 播放器生命周期已由统一 PlayerScreen/FullscreenManager 管理（横屏/竖屏/PiP/返回键）
-
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!navigation.isFocused() || !playing) return false;
@@ -271,10 +269,7 @@ export default function OpenLiveScreen() {
     setStatus(t('正在解析播放地址...'));
     try {
       const url = await resolveStream(item);
-      // 统一走 RN 播放器（PlayerScreen 含小窗按钮 → MiniPlayer），
-      // 原先 rtmp/.flv 分支走原生 LivePlayerActivity 完全脱离 RN，找不到小窗按钮
-      // （用户反馈「成员直播小窗在软件内点没用」的真因）。RN 端用同内核 LiveExoView
-      // 渲染 rtmp/flv，与 native 播放器画面/音频一致，应用内小窗从此可达。
+
       setPlaying({ url, title: item.title });
       setStatus(t('播放地址已就绪'));
     } catch (error) {
@@ -332,7 +327,6 @@ export default function OpenLiveScreen() {
   };
 
   if (playing) {
-    // 统一播放器（重写）：公演回放 → PlayerScreen（控制条/全屏/内核切换/错误重试内置）
     return (
       <View style={styles.playerPage}>
         <PlayerScreen
@@ -370,34 +364,19 @@ export default function OpenLiveScreen() {
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <View style={styles.controls}>
           <MemberPicker
+            compact
             selectedMember={member}
             onSelect={(next) => loadMemberShows(next, false)}
             placeholder={t('搜索成员并打开公演记录...')}
           />
-          <View style={[styles.searchBar, { backgroundColor: palette.fill2 }]}>
-            <MaterialCommunityIcons name="magnify" size={16} color={palette.labelTertiary} />
-            <TextInput
-              style={[styles.searchInput, { color: palette.label }]}
-              placeholder={t('筛选标题、成员、liveId...')}
-              placeholderTextColor={palette.labelTertiary}
+
+          {items.length > 0 || query.trim() ? (
+            <SearchBar
               value={query}
               onChangeText={setQuery}
-              returnKeyType="search"
+              placeholder={t('筛选标题、成员、liveId...')}
             />
-            {query ? (
-              <ScalePressable
-                onPress={() => setQuery('')}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                activeOpacity={0.7}
-              >
-                <MaterialCommunityIcons
-                  name="close-circle"
-                  size={16}
-                  color={palette.labelTertiary}
-                />
-              </ScalePressable>
-            ) : null}
-          </View>
+          ) : null}
           {member && status ? (
             <Text style={[styles.status, { color: palette.labelSecondary }]}>
               {loading && !items.length ? '' : status}
@@ -463,16 +442,16 @@ export default function OpenLiveScreen() {
               onPress={() => playItem(item)}
               onLongPress={() => downloadItem(item)}
             >
-              {/* 列表卡不用玻璃：每卡一个 BlurView 滚动会逐帧重算模糊（用户反馈卡顿）——半透明实底卡 */}
-              <View
+              <GlassSurface
+                radius={22}
+                role="card"
+                frostedOnly
                 style={[
                   styles.card,
                   {
-                    backgroundColor: palette.surfaceGlassStrong,
-                    borderColor: palette.hairline,
+                    backgroundColor: 'transparent',
+                    borderColor: palette.innerStroke,
                     borderWidth: StyleSheet.hairlineWidth,
-                    borderRadius: 20,
-                    overflow: 'hidden',
                   },
                 ]}
               >
@@ -530,7 +509,7 @@ export default function OpenLiveScreen() {
                   color={palette.labelTertiary}
                   style={styles.chevron}
                 />
-              </View>
+              </GlassSurface>
             </ScalePressable>
           )}
         />
@@ -610,30 +589,21 @@ export default function OpenLiveScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  controls: { paddingHorizontal: 14, gap: 8, marginBottom: 8 },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 40,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  searchInput: { flex: 1, fontSize: 15, padding: 0, margin: 0 },
+  controls: { paddingHorizontal: 16, gap: 8, marginBottom: 8 },
   status: { fontSize: 12, lineHeight: 18 },
-  list: { padding: 14, paddingBottom: 112 },
+  list: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 112 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    padding: 12,
     marginVertical: 4,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
   },
   cover: { width: 56, height: 56, borderRadius: 14 },
   coverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1, minWidth: 0, paddingLeft: 12 },
-  cardTitle: { fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  cardTitle: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '700', lineHeight: 20 },
   meta: { fontSize: 12, marginTop: 3 },
   cardFoot: {
     flexDirection: 'row',
@@ -641,7 +611,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 6,
   },
-  time: { fontSize: 11 },
+  time: { fontSize: 11, fontFamily: fontFamily.system },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -650,7 +620,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 999,
   },
-  badgeText: { fontSize: 11, fontWeight: '700' },
+  badgeText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
   chevron: { marginLeft: 6 },
   footerText: { marginVertical: 14, textAlign: 'center', fontSize: 12, fontWeight: '700' },
   playerPage: { flex: 1, backgroundColor: '#000000' },
@@ -678,9 +648,9 @@ const styles = StyleSheet.create({
   skeletonCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    padding: 12,
     marginVertical: 4,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
   },
 });

@@ -10,24 +10,15 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * 云信聊天室（直播弹幕）原生模块 —— commonlink 协议版。
- *
- * 为什么不用 JS 侧现成的云信 Web SDK：它的登录包只能带浏览器/RN 客户端标识，
- * 会被口袋48 appKey 的服务端白名单拒掉（实测 403）；这条原生化实现里
- * **包名字段自己填**，所以能过（桌面版 yk1z/yaya_msg 同做法）。
- *
- * 事件：PocketNimChatroom:status / :message / :sendResult / :online
- */
 class PocketNimChatroomModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
   private var client: NimChatroomClient? = null
-  /** 连接中的 promise（连上/失败后 resolve/reject） */
+
   private val connectPromise = AtomicReference<Promise?>(null)
-  /** 发送中的 promise 按 idClient 挂起（服务端回执后 resolve） */
+
   private val sendPromises = mutableMapOf<String, Promise>()
-  /** sendPromises 跨线程访问保护：RN 调用线程 vs NIM 回调主线程 */
+
   private val sendLock = Any()
   private var lastStatus: String = "idle"
   private var lastStatusDetail: String? = null
@@ -126,7 +117,7 @@ class PocketNimChatroomModule(private val reactContext: ReactApplicationContext)
       } catch (_: Throwable) {
         JSONObject()
       }
-      // 先登记 Promise 再写 socket：服务端回执可能比 sendText 返回更快（旧实现回执先到 → Promise 丢）
+
       active.sendText(text, custom) { id ->
         registeredId = id
         synchronized(sendLock) { sendPromises[id] = promise }

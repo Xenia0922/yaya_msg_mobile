@@ -64,9 +64,7 @@ export function normalizeUrl(value: any): string {
   if (!raw) return '';
   if (raw.startsWith('//')) return normalizeImageHost(`https:${raw}`);
   if (/^https?:\/\//i.test(raw)) return normalizeImageHost(raw);
-  // ⚠️ 相对路径按「宿主」拼，不能一律拼 source.48.cn：
-  // 48 图床（avatar/mediasource/backstage…）→ source.48.cn；
-  // 用户徽章/头像框等资源实际在 source1.48.cn（拼错域名 → 勋章框加载 404/不渲染；用户反馈）。
+
   if (raw.startsWith('/'))
     return `https://${/^(avatar|mediasource|backstage)\b/i.test(raw.slice(1)) ? 'source.48.cn' : 'source1.48.cn'}${raw}`;
   return raw;
@@ -76,13 +74,11 @@ export function parseMaybeJson(value: any): any {
   if (!value) return null;
   if (typeof value === 'object') return value;
   if (typeof value !== 'string') return null;
-  // ⚠️ 必须先替换长数字再 parse：JSON.parse 对 15+ 位数字**不会失败**，只会静默丢精度，
-  // 「先 parse 失败再修」的写法永远走不到修复分支（审计 D3）。
+
   const fixed = value.replace(/:\s*([0-9]{15,})/g, ':"$1"');
   try {
     return JSON.parse(fixed);
   } catch {
-    // 替换后仍失败 → 按原始文本再试一次（可能是转义/编码问题，非长数字导致）
     try {
       return JSON.parse(value);
     } catch {
@@ -91,14 +87,10 @@ export function parseMaybeJson(value: any): any {
   }
 }
 
-// 表情映射：官方 PopoEmoticons 107 tag → 本地表情图（require 资源，与官方客户端同款表情）。
-// 文本里的 [xx] 标签渲染为表情图片而非 unicode 近似字符（[发呆] 等此前直接漏渲染；用户反馈）。
-// 映射表见 ./emojiMap（生成自官方 emoji.xml Tag↔File）。
 import EMOJI_MAP from './emojiMap';
 
 export type EmojiPart = string | { emoji: string; source: any };
 
-/** 把文本按 [表情] 标签切成 文本/表情图 片段（供消息气泡内联渲染） */
 export function splitEmojiParts(text: string): EmojiPart[] {
   if (!text) return [];
   const parts: EmojiPart[] = [];
@@ -120,7 +112,7 @@ export function replaceEmojiText(text: string): string {
   if (!text) return text;
   return text.replace(/\[([^\]]+)\]/g, (match: string) => {
     const src = EMOJI_MAP[match];
-    // 图片映射在纯文本场景（消息列表预览/搜索）保留原始 [xx] 标签（避免出现 [object Object]）
+
     return typeof src === 'string' ? src : match;
   });
 }
@@ -131,8 +123,6 @@ export function messagePayload(item: any): any {
   if (body?.message) return parseMaybeJson(body.message);
   if (body?.msg) return parseMaybeJson(body.msg);
   if (body && typeof body === 'object') {
-    // 实时推送把官方 bodys 原文塞进了 bodys.text（JSON 字符串）。不解析的话，
-    // REPLY 消息在气泡里会原样显示 {"replyInfo":{...},"messageType":"REPLY"}。
     const inlineText = typeof body.text === 'string' ? body.text.trim() : '';
     if (inlineText.startsWith('{')) {
       const inner = parseMaybeJson(inlineText);
@@ -163,10 +153,6 @@ export function messagePayload(item: any): any {
   return null;
 }
 
-/**
- * 复制 / 引用用的兜底：如果拿到的仍是整段 JSON（别人把 REPLY 原文当文本粘出来了），
- * 只取正文，别让 {"replyInfo":...} 继续被复制、引用、再发出去。
- */
 export function humanizeRawMessageText(raw: string): string {
   const text = String(raw || '').trim();
   if (!text.startsWith('{')) return text;
@@ -189,7 +175,6 @@ function messageTextRaw(item: any): string {
     item?.msgType || body?.msgType || body?.messageType || body?.type || '',
   ).toUpperCase();
 
-  // Media types: don't return raw body (file names, URLs) — let media card handle it
   if (
     type === 'AUDIO' ||
     type === 'AUDIO_REPLY' ||
@@ -202,7 +187,6 @@ function messageTextRaw(item: any): string {
     type === 'EXPRESSIMAGE' ||
     type === 'EXPRESS'
   ) {
-    // Only return text if there's a meaningful caption alongside the media
     if (body && typeof body === 'object') {
       const caption =
         (body as any).text || (body as any).caption || (body as any).description || '';
@@ -219,8 +203,6 @@ function messageTextRaw(item: any): string {
 
   if (typeof body === 'string') return replaceEmojiText(body);
 
-  // last/message/get 返回的 lastMsgList[] 只有 msgContent（无 bodys/msgType）——
-  // 房间列表大/小房间预览走的就是这条，缺这段兜底会导致「有最新消息但预览空白」
   const lastPreview = item?.msgContent ?? item?.content ?? item?.message;
   if (
     typeof lastPreview === 'string' &&
@@ -237,7 +219,7 @@ function messageTextRaw(item: any): string {
       const t = b.text || b.bodys || b.body || b.msgContent || b.content;
       if (t) return replaceEmojiText(String(t));
     }
-    // Fallback: try raw fields on item directly
+
     const raw =
       item?.bodys ?? item?.body ?? item?.msgContent ?? item?.content ?? item?.message ?? '';
     if (typeof raw === 'string' && raw.trim() && !raw.startsWith('{') && !raw.startsWith('[')) {
@@ -259,7 +241,7 @@ function messageTextRaw(item: any): string {
     giftReplyInfo?.giftInfo ||
     giftReplyInfo?.replyGiftInfo ||
     body?.bodys?.giftInfo;
-  // 只认明确的礼物类型或真实礼物载荷，不能把普通文本的 msgType=7 当礼物。
+
   const hasGiftPayload = Boolean(giftInfo || body?.giftName || body?.giftId || body?.giftNum);
   const isGift = type.includes('GIFT') || (hasGiftPayload && !type.includes('LIVE'));
   const isGiftReplyType = type.includes('GIFT') && (type.includes('REPLY') || !!giftReplyInfo);
@@ -295,8 +277,7 @@ function messageTextRaw(item: any): string {
       giftReplyInfo.text ||
       body?.text ||
       (typeof body?.body === 'string' && !body.body.startsWith('{') ? body.body : '');
-    // 礼物回复（GIFTREPLY / AUDIO_GIFT_REPLY）没有独立正文时保持为空，
-    // 交给房间页的礼物卡/语音卡渲染；绝不能把 replyName（送礼人）当正文。
+
     if (isGiftReplyType) {
       return typeof replyText === 'string' ? replyText.trim() : '';
     }
@@ -316,7 +297,6 @@ function messageTextRaw(item: any): string {
     'title',
   ]);
   if (!text && body && typeof body === 'object') {
-    // search deeper for text in nested objects
     for (const [_key, val] of Object.entries(body as Record<string, any>)) {
       if (
         typeof val === 'string' &&
@@ -330,7 +310,7 @@ function messageTextRaw(item: any): string {
       if (val && typeof val === 'object') {
         const t = pickText(val, ['text', 'body', 'content', 'message', 'title', 'description']);
         if (t) return replaceEmojiText(String(t));
-        // try first string value of nested object
+
         for (const [_k2, v2] of Object.entries(val)) {
           if (typeof v2 === 'string' && v2.trim() && !v2.startsWith('http') && v2.length < 500) {
             return replaceEmojiText(v2);
@@ -358,7 +338,6 @@ function messageTextRaw(item: any): string {
     : '';
 }
 
-/** 对外入口：先做 HTML 清洗（官方富文本消息不再把 <div>/<span> 当文字显示） */
 export function messageText(item: any): string {
   return sanitizeText(messageTextRaw(item));
 }
@@ -371,8 +350,7 @@ export function messageImageUrl(item: any): string {
 export function errorMessage(error: any): string {
   if (!error) return translate('未知错误');
   if (typeof error === 'string') return error;
-  // 统一出口：把工具/网络层抛出的中文错误过一次字典（有 key 则翻译，
-  // 无 key 或动态内容原样回退；en/ja/ko 用户不再看到中文报错）
+
   const raw = error?.message || error?.msg || JSON.stringify(error).slice(0, 240);
   return translate(String(raw));
 }

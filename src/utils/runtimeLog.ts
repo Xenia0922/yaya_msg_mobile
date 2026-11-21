@@ -3,7 +3,6 @@ import { Platform } from 'react-native';
 import { APP_VERSION } from '../constants';
 import { BUILD_CHANNEL, BUILD_TAG } from '../constants/buildChannel';
 
-/** 包身份：版本 + 渠道 + 出包标识。远程排障先看这一行，避免把公版日志当权限版分析。 */
 export function buildLabel(): string {
   return BUILD_TAG || BUILD_CHANNEL;
 }
@@ -12,19 +11,19 @@ export type LogLevel = 'info' | 'warn' | 'error' | 'crash';
 
 export interface LogEntry {
   id: string;
-  t: number; // epoch ms
+  t: number;
   level: LogLevel;
   msg: string;
   stack?: string;
-  ctx?: string; // 可选上下文（如页面/函数名）
+  ctx?: string;
 }
 
 const STORAGE_KEY = 'yaya_runtime_log_v1';
 const MAX_ENTRIES = 500;
 
 let loaded = false;
-let buffer: LogEntry[] = []; // 已落盘的日志（加载完成后使用）
-let pending: LogEntry[] = []; // 加载完成前暂存
+let buffer: LogEntry[] = [];
+let pending: LogEntry[] = [];
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let consoleInstalled = false;
 
@@ -44,22 +43,20 @@ function trim(arr: LogEntry[]): LogEntry[] {
 }
 
 function redactSensitive(value: string): string {
-  return (
-    value
-      .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [REDACTED]')
-      // Cookie/Set-Cookie 头常见形式是分号串，先整行脱敏，避免只掩盖第一个键值。
-      .replace(/\b(?:Set-)?Cookie\b\s*[:=]\s*[^\r\n]+/gi, 'Cookie: [REDACTED]')
-      .replace(
-        /\b(SESSDATA|bili_jct|DedeUserID__ckMd5|bilibiliCookie|p48Token|access[_-]?token|refresh[_-]?token|authorization|cookie|ticket|token)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi,
-        '$1$2[REDACTED]',
-      )
-      // 云信/流地址凭据：accid（云信账号）、nimToken、以及播放地址里的 wsSecret（等同播放密钥）
-      .replace(
-        /\b(accid|nimToken|imToken|nimPwd)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi,
-        '$1$2[REDACTED]',
-      )
-      .replace(/([?&](?:wsSecret|wsTime|wSecret)=)[^&\s"']+/gi, '$1[REDACTED]')
-  );
+  return value
+    .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [REDACTED]')
+
+    .replace(/\b(?:Set-)?Cookie\b\s*[:=]\s*[^\r\n]+/gi, 'Cookie: [REDACTED]')
+    .replace(
+      /\b(SESSDATA|bili_jct|DedeUserID__ckMd5|bilibiliCookie|p48Token|access[_-]?token|refresh[_-]?token|authorization|cookie|ticket|token)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi,
+      '$1$2[REDACTED]',
+    )
+
+    .replace(
+      /\b(accid|nimToken|imToken|nimPwd)\b(["']?\s*(?:=|:|%3D)\s*["']?)([^&;\s"',}]+)/gi,
+      '$1$2[REDACTED]',
+    )
+    .replace(/([?&](?:wsSecret|wsTime|wSecret)=)[^&\s"']+/gi, '$1[REDACTED]');
 }
 
 function redactEntry(entry: LogEntry): LogEntry {
@@ -97,9 +94,6 @@ function extractStack(args: unknown[]): string | undefined {
   return err?.stack;
 }
 
-// ===== 对外 API =====
-
-/** console.debug 转发：logcat（ReactNativeJS tag）可见，且不被 installConsoleCapture 捕获 → 不重复 */
 function tee(
   level: 'info' | 'warn' | 'error',
   tag: string | undefined,
@@ -111,9 +105,7 @@ function tee(
     if (level === 'error')
       console.debug(`[ERR] ${line}${stack ? `\n${redactSensitive(stack)}` : ''}`);
     else console.debug(line);
-  } catch {
-    /* 忽略 */
-  }
+  } catch {}
 }
 
 export function logInfo(msg: string, ctx?: string) {
@@ -140,7 +132,6 @@ export function logCrash(err: unknown, ctx?: string) {
 }
 
 export function getLogEntries(): LogEntry[] {
-  // 最新在前
   return [...buffer].reverse().map(redactEntry);
 }
 
@@ -157,7 +148,7 @@ export async function clearLog() {
 }
 
 export function exportLogText(entries?: LogEntry[]): string {
-  const src = (entries ?? buffer).slice().reverse().map(redactEntry); // 与现有顺序保持一致（最新在前）
+  const src = (entries ?? buffer).slice().reverse().map(redactEntry);
   const os = `${Platform.OS} ${String(Platform.Version)}`;
   const header = `牙牙消息 v${APP_VERSION} · ${buildLabel()} · ${os} · 日志导出 ${new Date().toLocaleString()}\n${'='.repeat(40)}`;
   const body = src
@@ -172,10 +163,8 @@ export function exportLogText(entries?: LogEntry[]): string {
   return `${header}\n${body}\n`;
 }
 
-// 初始化：加载历史 + 会话标记 + 接管 console
 export async function initRuntimeLog() {
   if (loaded) {
-    // 已初始化，仅补一个会话开始的标记
     const os = `${Platform.OS} ${String(Platform.Version)}`;
     logInfo(`会话恢复 · 牙牙消息 v${APP_VERSION} · ${buildLabel()} · ${os}`);
     return;
@@ -186,12 +175,10 @@ export async function initRuntimeLog() {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) buffer = trim((parsed as LogEntry[]).map(redactEntry));
     }
-  } catch {
-    /* 忽略损坏数据 */
-  }
+  } catch {}
   loaded = true;
-  persist(); // 历史日志中的敏感字段也需覆盖落盘
-  // 合并初始化前暂存的条目
+  persist();
+
   if (pending.length) {
     buffer = trim(buffer.concat(pending));
     pending = [];
@@ -202,7 +189,6 @@ export async function initRuntimeLog() {
   installConsoleCapture();
 }
 
-// 接管 console.*，让全应用已有的 console.warn/error 自动入日志
 function installConsoleCapture() {
   if (consoleInstalled) return;
   consoleInstalled = true;
@@ -248,7 +234,7 @@ function installConsoleCapture() {
   console.log = (...args: unknown[]) => {
     const safeArgs = args.map((arg) => redactSensitive(stringifyArg(arg)));
     origLog(...safeArgs);
-    // log 量大，仅记录前若干字符，避免刷屏
+
     const text = safeArgs.join(' ');
     if (text.length > 200) return;
     write({ id: genId(), t: Date.now(), level: 'info', msg: text, ctx: 'console' });

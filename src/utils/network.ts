@@ -1,10 +1,5 @@
 type JsonValue = any;
 
-/**
- * 带超时的 fetch 封装（Hermes 兼容）。
- * 注意：不能用 AbortSignal.timeout —— 该 API 在 React Native Hermes 中不存在，
- * 调用会抛 "undefined is not a function"（历史教训：曾导致音乐库/弹幕 LRC/歌词/成员库全部静默失败）。
- */
 export function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
@@ -12,8 +7,7 @@ export function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  // 外部 signal 与内部超时需同时生效：此前直接优先使用外部 signal，导致调用方传入
-  // signal（如卸载取消）后自身 timeout 完全失效 → 请求可无限挂起
+
   const ext = options.signal;
   const onExtAbort = () => controller.abort();
   if (ext) {
@@ -26,15 +20,9 @@ export function fetchWithTimeout(
   };
   return fetch(url, { ...options, signal: controller.signal })
     .then((res) => {
-      // 超时必须覆盖响应体读取，而不只是响应头：服务器常常先返回 200，
-      // 随后长时间不发送 body；旧实现 fetch resolve 后立刻清 timer，
-      // 调用方 await res.text/arrayBuffer 会永久挂起。
       const bodyMethods = new Set(['text', 'json', 'arrayBuffer', 'blob', 'formData']);
       return new Proxy(res, {
         get(target, prop) {
-          // 必须用 target 作为 receiver：Node/undici 的 Response 属性是原生 getter，
-          // 传入 Proxy 会抛 "Cannot read private member #state..."（RN 的 whatwg-fetch
-          // 恰好把属性做成自有属性，所以只在部分环境暴露）。
           const value = Reflect.get(target, prop, target);
           if (typeof prop === 'string' && bodyMethods.has(prop)) {
             return async (...args: unknown[]) => {
@@ -45,7 +33,7 @@ export function fetchWithTimeout(
               }
             };
           }
-          // 其他方法（clone 等）也绑定到真实 Response，避免 this 指向 Proxy。
+
           return typeof value === 'function' ? value.bind(target) : value;
         },
       });
@@ -59,25 +47,17 @@ export function fetchWithTimeout(
 interface RequestOptions {
   method?: 'GET' | 'POST';
   body?: any;
-  /** POST body 编码，默认 JSON；raw 用于 form-urlencoded 等已序列化请求。 */
+
   bodyType?: 'json' | 'raw';
   headers?: Record<string, string>;
-  /** 超时时间（毫秒），默认 GET=10000 / POST=15000 */
+
   timeout?: number;
-  /** GET 响应缓存有效期（毫秒），0 或不传表示不缓存。仅对 GET 生效。 */
+
   cacheTtl?: number;
-  /** 外部取消信号（如组件卸载时取消请求），与 timeout 互斥触发 */
+
   signal?: AbortSignal;
 }
 
-/**
- * 解析响应文本，兼容口袋48 接口把超大数字（如 15+ 位 ID）以 JSON 数字返回的情况。
- *
- * ⚠️ 必须**先**把 15+ 位整数转成字符串再 JSON.parse：JSON.parse 对合法 JSON 里的
- * 超大数字不会报错，只会静默舍入（691322274260520960 → 691322274260521000），
- * 导致 giftId 这类 18 位 ID 失真、服务端回 1004「礼物不存在」。
- * 正则若误伤了字符串内容导致解析失败，则回退解析原文（退化为无大整数保护，但不破坏数据）。
- */
 function parseResponse(text: string): JsonValue {
   if (!text) return null;
   const fixed = text.replace(/:\s*([0-9]{15,})\s*([,}\]])/g, ':"$1"$2');
@@ -92,11 +72,9 @@ function parseResponse(text: string): JsonValue {
   }
 }
 
-// --- 请求级优化：并发去重 + GET 缓存 ---
-// 同一时刻相同 URL 的并发请求只发一次；GET 可带 TTL 短缓存，降低弱网/重复拉取开销。
 const inflight = new Map<string, Promise<any>>();
 const responseCache = new Map<string, { ts: number; data: JsonValue }>();
-/** 缓存容量上限：超限时按插入顺序淘汰最旧项（此前 Map 无上限、过期项永不删除 → 长跑内存增长） */
+
 const CACHE_MAX = 200;
 function trimCache(map: Map<string, any>) {
   while (map.size > CACHE_MAX) {
@@ -106,21 +84,13 @@ function trimCache(map: Map<string, any>) {
   }
 }
 
-/**
- * 统一的 JSON 请求封装。
- * - 基于 fetch + AbortController，支持超时取消与 signal 外部取消；
- * - GET 支持并发去重与可选 TTL 缓存；
- * - 保留原 XHR 实现的解析修正与错误消息提取逻辑。
- */
 function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method || 'GET';
   const cacheTtl = options.cacheTtl ?? 0;
-  // 带调用方 headers 的请求可能属于不同账号；POST 也可能修改状态。
-  // 只有公开 GET 可共用响应，且不把凭证写进缓存键。
+
   const shareable = method === 'GET' && !options.headers;
   const key = shareable ? `GET ${url}` : '';
 
-  // 命中 GET 缓存
   if (shareable && cacheTtl > 0) {
     const hit = responseCache.get(key);
     if (hit && Date.now() - hit.ts < cacheTtl) {
@@ -128,7 +98,6 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
     }
   }
 
-  // 并发去重：相同请求在途时复用（仅在无外部 signal 时去重，避免误取消）
   if (shareable && !options.signal && inflight.has(key)) {
     return inflight.get(key) as Promise<T>;
   }
@@ -137,7 +106,7 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
     const controller = new AbortController();
     const timeout = options.timeout ?? (method === 'GET' ? 10000 : 15000);
     const timer = setTimeout(() => controller.abort(), timeout);
-    // 外部 signal 也要生效：外部中止时联动内部 controller（否则 timeout 形同虚设）
+
     let extAbort: (() => void) | null = null;
     if (options.signal) {
       if (options.signal.aborted) controller.abort();
@@ -163,14 +132,10 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
               ? String(options.body ?? '')
               : JSON.stringify(options.body ?? {})
             : undefined,
-        // ⚠️ 必须始终用内部 controller.signal：超时（setTimeout → controller.abort）挂的是它。
-        // 此前写成 `options.signal ?? controller.signal`，一旦调用方传了外部 signal，
-        // 内部 controller 的 signal 就没挂到 fetch 上 → **超时彻底失效，请求可永久挂起**。
-        // 外部取消仍生效：由上方 extAbort 监听联动 controller.abort（见 106-114 行）。
+
         signal: controller.signal,
       });
 
-      // 不清 timer：响应体可能迟迟不到，超时必须覆盖 res.text 的等待。
       const text = await res.text();
       const body = parseResponse(text);
 
@@ -190,19 +155,15 @@ function requestJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
     } catch (error: any) {
       clearTimeout(timer);
       if (error?.name === 'AbortError') {
-        // 区分「外部主动取消（切页/卸载）」与「超时」：此前统一报超时，
-        // 用户在切页瞬间会看到凭空出现的「网络请求超时」错误态
         if (options.signal?.aborted) throw new Error('请求已取消');
         throw new Error('网络请求超时');
       }
-      // fetch 网络层失败（无连接等）抛 TypeError
+
       if (error instanceof TypeError) {
         throw new Error('网络请求失败');
       }
       throw error;
     } finally {
-      // ⚠️ 清理统一放 finally：此前只在成功路径移除 abort 监听，失败/超时路径会残留 →
-      // 长生命周期的外部 signal 反复请求会持续累积监听（内存泄漏， 修复）
       clearTimeout(timer);
       if (extAbort && options.signal) options.signal.removeEventListener('abort', extAbort);
       if (shareable) inflight.delete(key);

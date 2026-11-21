@@ -2,12 +2,12 @@ package com.yk1z.yayamsg.nim
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 
-/** 归一化后的房间（圈组）消息，字段对齐桌面版 normalizeIncomingMessage */
 data class NimQChatMessage(
   val serverId: String,
   val channelId: String,
@@ -15,7 +15,7 @@ data class NimQChatMessage(
   val fromClientType: Int,
   val fromNick: String,
   val time: Long,
-  /** 9: 0 = 文本，100 = 自定义 */
+
   val type: Int,
   val body: String,
   val attachment: String,
@@ -24,17 +24,6 @@ data class NimQChatMessage(
   val msgIdServer: String,
 )
 
-/**
- * 成员房间消息（云信 QChat / 圈组）—— commonlink 协议版。
- *
- * 移植自桌面版 `src/common/nim-commonlink-qchat.js`。两条连接：
- *   1) NIM 会话（LBS conf.jsp → TCP，登录包 2/2，鉴权属性 25 填白名单包名）
- *      → `24/1` 取 QChat 接入地址列表
- *   2) QChat 会话（地址列表首项，登录包 24/2）
- *      → 收消息 `24/11`、发消息 `24/10`
- *
- * 与直播弹幕（聊天室）共用 [NimCommonlinkSession] 传输层。
- */
 class NimQChatClient(
   private val appKey: String,
   private val account: String,
@@ -51,6 +40,7 @@ class NimQChatClient(
   private val main = Handler(Looper.getMainLooper())
   private val stateLock = Any()
   private val subscribedServerIds = mutableSetOf<Long>()
+  private val deviceId = UUID.randomUUID().toString()
   private var nimSession: NimCommonlinkSession? = null
   private var qchatSession: NimCommonlinkSession? = null
 
@@ -63,7 +53,7 @@ class NimQChatClient(
       if (!stopped) return
       stopped = false
     }
-    // 地址要先请求出来，再建会话（NimCommonlinkSession 需要 host/port）
+
     Thread({ bootstrap() }, "nim-qchat-boot").also { it.isDaemon = true; it.start() }
   }
 
@@ -71,7 +61,6 @@ class NimQChatClient(
     try {
       post { listener.onStatus("connecting", null) }
       val address = requestNimAddress()
-      val deviceId = UUID.randomUUID().toString()
       val session = NimCommonlinkSession(
         host = address.first,
         port = address.second,
@@ -99,13 +88,6 @@ class NimQChatClient(
     }
   }
 
-  /**
-   * NIM 登录完成后：24/1 取 QChat 地址 → 连 QChat。
-   *
-   * ⚠️ 必须切到工作线程：[NimCommonlinkSession] 的回调（含 onConnected）都 post 到**主线程**，
-   * 而 24/1 是阻塞 socket 请求 —— 直接在回调里跑就是 NetworkOnMainThreadException
-   * （真机首测实锤：房间页报 `QChat: NetworkOnMainThreadException`，收发全断）。
-   */
   private fun startQChat() {
     if (stopped) return
     Thread({ startQChatBlocking() }, "nim-qchat-link").also { it.isDaemon = true; it.start() }
@@ -118,9 +100,11 @@ class NimQChatClient(
       val response = session.request(24, 1, NimProtocol.encodeProperties(mapOf(1 to 0)), 15_000)
       if (stopped) return
       val addresses = decodeStringArray(response.body)
+      Log.i("NimCommonlink", "[QChat] 24/1 code=${response.resultCode} addrs=$addresses")
       if (addresses.isEmpty()) throw IllegalStateException("云信没有返回 QChat 连接地址")
-      val (host, port) = parseAddress(addresses[0])
-      val deviceId = UUID.randomUUID().toString()
+      val parsedEndpoints = addresses.mapNotNull { runCatching { parseAddress(it) }.getOrNull() }
+      if (parsedEndpoints.isEmpty()) throw IllegalStateException("云信返回的 QChat 连接地址无效")
+      val (host, port) = parsedEndpoints[0]
       val qchat = NimCommonlinkSession(
         host = host,
         port = port,
@@ -152,8 +136,10 @@ class NimQChatClient(
           }
         },
         onStatus = { state, detail -> post { listener.onStatus(state, detail) } },
+        embedLoginInHandshake = false,
+        endpoints = parsedEndpoints,
       )
-      // 重连/重登时旧 QChat 会话必须先销毁，否则旧 socket 与读线程泄漏（P1：onConnected 重复 startQChat）
+
       val oldQChat: NimCommonlinkSession?
       synchronized(stateLock) {
         if (stopped) return
@@ -172,20 +158,22 @@ class NimQChatClient(
     }
   }
 
-  /**
-   * 订阅圈组服务器（cmd 25/7 subscribeAllChannels）：
-   * 记录到 subscribedServerIds（重连自动补订），若已连接立即发送 25/7。
-   */
   fun subscribeServer(serverId: String): Boolean {
-    val sid = serverId.trim().toLongOrNull() ?: return false
-    if (sid <= 0L) return false
+    return subscribeServers(listOf(serverId))
+  }
+
+  fun subscribeServers(serverIds: List<String>): Boolean {
+    val validIds = serverIds.mapNotNull { it.trim().toLongOrNull() }.filter { it > 0L }.distinct()
+    if (validIds.isEmpty()) return false
+    val newIds: List<Long>
     synchronized(subscribedServerIds) {
-      subscribedServerIds.add(sid)
+      newIds = validIds.filter { subscribedServerIds.add(it) }
     }
+    val toSend = if (newIds.isNotEmpty()) newIds else validIds
     val session = synchronized(stateLock) { qchatSession }
     if (stopped || session == null || !session.connected) return false
     return try {
-      sendSubscribe(session, listOf(sid))
+      sendSubscribe(session, toSend)
     } catch (_: Throwable) {
       false
     }
@@ -194,7 +182,7 @@ class NimQChatClient(
   private fun sendSubscribe(session: NimCommonlinkSession, serverIds: List<Long>): Boolean {
     if (serverIds.isEmpty()) return false
     val bodyParts = ArrayList<ByteArray>(2 + serverIds.size)
-    // QChatSubscribeType.CHANNEL_MSG = 1 (LE32) + varint(count) + int64LE(serverId)...
+
     bodyParts.add(NimProtocol.littleEndianInt32(1))
     bodyParts.add(NimProtocol.encodeVarint(serverIds.size.toLong()))
     for (sid in serverIds) {
@@ -202,10 +190,10 @@ class NimQChatClient(
     }
     val body = NimProtocol.concat(*bodyParts.toTypedArray())
     val response = session.request(QCHAT_SUBSCRIBE_SERVICE_ID, QCHAT_SUBSCRIBE_ALL_COMMAND_ID, body, 10_000)
+    Log.i("NimCommonlink", "[QChat] 25/7 subscribe count=${serverIds.size} code=${response.resultCode}")
     return response.resultCode == 200 || response.resultCode == 0
   }
 
-  /** 发送房间消息：24/10 */
   fun sendText(serverId: String, channelId: String, text: String, extJson: String): String {
     return sendMessage(serverId, channelId, text, extJson, null)
   }
@@ -260,8 +248,6 @@ class NimQChatClient(
     post { listener.onStatus("disconnected", null) }
   }
 
-  // ---------------- 内部 ----------------
-
   private fun makeNimLoginPacket(deviceId: String): ByteArray = NimProtocol.makePacket(
     2, 2, 1,
     NimProtocol.encodeProperties(
@@ -296,8 +282,7 @@ class NimQChatClient(
         10 to 1,
         11 to NimProtocol.ANDROID_USER_AGENT,
         14 to NimProtocol.ANDROID_SDK_HUMAN_VERSION,
-        // Go bot 的 QChat 登录包里带包名（属性 32）：与 2/2 的属性 25 同一作用，
-        // 用来过服务端「客户端 App 标识」校验（官方 SDK 就死在 414/403）
+
         32 to NimProtocol.ANDROID_PACKAGE_NAME,
       )
     )
@@ -350,7 +335,6 @@ class NimQChatClient(
     )
   }
 
-  /** varint(count) + 每项 varint(len)+bytes（桌面版 decodeStringArray） */
   private fun decodeStringArray(buffer: ByteArray): List<String> {
     val out = mutableListOf<String>()
     val count = NimProtocol.readVarint(buffer, 0, buffer.size) ?: return out

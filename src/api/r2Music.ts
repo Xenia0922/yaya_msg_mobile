@@ -3,7 +3,7 @@ import { parseMaybeJson } from '../utils/data';
 import { fetchWithTimeout } from '../utils/network';
 
 const R2_MUSIC_URL = 'https://gnz.hk/api/r2-music?metadata_v=3';
-// v2：列表结构新增 durationSec（旧缓存里只有 duration 字符串，等于没有时长）
+
 const CACHE_KEY = 'yaya_r2_music_cache_v2';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
@@ -14,17 +14,17 @@ export interface R2MusicTrack {
   album: string;
   artist: string;
   albumArtist: string;
-  /** 专辑分类，如「公演专辑」 */
+
   grouping: string;
   albumDate: string;
   genre: string;
   trackNumber: number;
   discNumber: number;
-  /** 时长文本，如 "3:38" */
+
   duration: string;
   groupKey: string;
   groupLabel: string;
-  /** 实际音频地址（mp3/flac），music.gnz.hk 子域 */
+
   mp3: string;
   coverUrl: string;
   size: number;
@@ -33,7 +33,6 @@ export interface R2MusicTrack {
   source: string;
 }
 
-/** "3:38" / "1:02:05" → 秒 */
 export function parseR2Duration(durationText: string): number {
   const parts = String(durationText || '')
     .trim()
@@ -47,8 +46,6 @@ export function parseR2Duration(durationText: string): number {
 }
 
 async function fetchR2MusicRaw(): Promise<R2MusicTrack[]> {
-  // 超时统一由 fetchWithTimeout 负责（含响应体读取）；再套一层 AbortController
-  // 只会让两个定时器互相竞争，且 finally 可能提前清掉外层计时。
   const resp = await fetchWithTimeout(R2_MUSIC_URL, {}, 20000);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const json: any = parseMaybeJson(await resp.text());
@@ -56,7 +53,6 @@ async function fetchR2MusicRaw(): Promise<R2MusicTrack[]> {
   return json.tracks as R2MusicTrack[];
 }
 
-/** 归一化为与官方源一致的曲目结构（musicId / title / artist / album / groupLabel / mp3 / coverUrl） */
 export function normalizeR2Tracks(tracks: R2MusicTrack[]): any[] {
   return (tracks || [])
     .filter((t) => t && t.title && t.mp3)
@@ -86,14 +82,13 @@ export function normalizeR2Tracks(tracks: R2MusicTrack[]): any[] {
 }
 
 let inflight: Promise<any[]> | null = null;
-/** 后台刷新去重标志（见 refreshR2MusicInBackground 注释，防无限递归） */
+
 let refreshing = false;
-/** 上次后台刷新**尝试**时间：失败也记，避免网络长期不可用时每次调用都重试 */
+
 let lastRefreshAttempt = 0;
-/** 后台刷新最小重试间隔 */
+
 const REFRESH_RETRY_MIN_MS = 10 * 60 * 1000;
 
-/** 读缓存（无论是否过期） */
 async function readR2Cache(): Promise<any[] | null> {
   try {
     const raw = await AsyncStorage.getItem(CACHE_KEY);
@@ -101,25 +96,10 @@ async function readR2Cache(): Promise<any[] | null> {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.list) && parsed.list.length) return parsed.list;
     }
-  } catch {
-    /* ignore cache errors */
-  }
+  } catch {}
   return null;
 }
 
-/**
- * 真正拉取 + 写缓存（模块级 in-flight 去重；网络失败回退旧缓存）。
- *
- * ⚠️【必须与 loadR2Music 分开】旧实现里「过期 → 后台刷新」直接调
- * `prefetchR2Music` → `loadR2Music(false)`，而后者又会命中**同一份过期缓存**、
- * 直接 `return parsed.list` —— 于是：
- * ① 刷新链每次都在「读缓存 + JSON.parse(1MB)」后就返回，**从不真正发网络请求**，
- * 缓存永远保持过期；
- * ② 每次命中过期缓存都会再起一次刷新 → **无限递归**。
- * 实测后果（Hermes CPU Profile）：`[Native] jsonParse` 占 21.6%、`[GC Young Gen]` 占 34.4%，
- * App 空闲即吃 **129% CPU（1.3 核）**，且切后台不停、无网络、无日志、不渲染。
- * 所以后台刷新必须走这条**只负责真正拉取**的路径。
- */
 async function fetchR2MusicAndCache(): Promise<any[]> {
   if (inflight) return inflight;
 
@@ -129,9 +109,7 @@ async function fetchR2MusicAndCache(): Promise<any[]> {
     if (!normalized.length) throw new Error('R2 音乐列表为空');
     try {
       await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), list: normalized }));
-    } catch {
-      /* ignore cache errors */
-    }
+    } catch {}
     return normalized;
   })();
 
@@ -146,22 +124,18 @@ async function fetchR2MusicAndCache(): Promise<any[]> {
   }
 }
 
-/** 后台刷新（去重 + 最小重试间隔 + 真正走网络） */
 function refreshR2MusicInBackground(): void {
   if (refreshing || inflight) return;
   if (Date.now() - lastRefreshAttempt < REFRESH_RETRY_MIN_MS) return;
   lastRefreshAttempt = Date.now();
   refreshing = true;
   fetchR2MusicAndCache()
-    .catch(() => {
-      /* 静默：预取/刷新失败不影响使用，下次命中过期缓存时再试 */
-    })
+    .catch(() => {})
     .finally(() => {
       refreshing = false;
     });
 }
 
-/** 加载 R2 音乐列表。force=true 绕过缓存强制重拉（页面「刷新」按钮）。 */
 export async function loadR2Music(force = false): Promise<any[]> {
   if (!force) {
     const raw = await AsyncStorage.getItem(CACHE_KEY).catch(() => null);
@@ -169,30 +143,19 @@ export async function loadR2Music(force = false): Promise<any[]> {
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed.list) && parsed.list.length) {
-          // stale-while-revalidate：缓存（含过期）先返回秒开；过期时后台刷新不阻塞
           if (parsed.t && Date.now() - parsed.t >= CACHE_TTL) refreshR2MusicInBackground();
           return parsed.list;
         }
-      } catch {
-        /* fallthrough to network */
-      }
+      } catch {}
     }
   }
   return fetchR2MusicAndCache();
 }
 
-/**
- * 启动静默预取（列表 1MB、gnz.hk 传输慢 ~9s）：App 启动后台拉取写缓存，
- * 用户进音乐库时直接命中缓存秒开，不再干等首拉。
- */
 export async function prefetchR2Music(): Promise<void> {
-  // 节流（用户要求不施压 API）：非 force——24h 缓存新鲜则不请求；
-  // 过期时 stale-while-revalidate 自动后台刷新；绝不每次冷启动全量拉 R2（1MB）
   try {
     await loadR2Music(false);
-  } catch {
-    /* 静默：预取失败不影响启动，用户进音乐库时再正常加载 */
-  }
+  } catch {}
 }
 
 export default { loadR2Music };

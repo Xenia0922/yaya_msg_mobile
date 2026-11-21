@@ -11,21 +11,11 @@ import { useI18n } from '../i18n';
 
 const RECHARGE_URL = 'https://live.48.cn/Recharge/';
 
-/**
- * 鸡腿充值：直接全屏打开官方充值页。
- *
- * 历史包袱（删除）：原实现顶部挂了一张「余额卡」——
- * - 调 /user/api/v1/user/money 拉余额，但该接口在 token 过期时恒返回 401003，
- * 卡片退化成「一个图标 + 刷新」的空壳，还占掉近 1/4 屏幕把充值页挤成一条；
- * - 官方充值页本身就有账户/余额/套餐的完整界面，重复展示没有意义。
- * 现在只保留「全屏官方页 + 预填口袋ID + 15s 加载兜底」，导航栏刷新 = 重载充值页。
- */
 export default function RechargeScreen() {
   const palette = usePalette();
   const { t } = useI18n();
   const [webError, setWebError] = useState('');
-  /** 官方充值页（live.48.cn/Recharge/）本身无自动登录态：它要用户手输「口袋ID」。
-   * App 已持有登录态，这里把自身 id 取出来预填，省一步。 */
+
   const [selfPocketId, setSelfPocketId] = useState('');
   const [webSlow, setWebSlow] = useState(false);
   const webViewRef = useRef<WebView>(null);
@@ -37,7 +27,6 @@ export default function RechargeScreen() {
   }, []);
 
   useEffect(() => {
-    // 自身口袋 id（充值页要手输，预填）
     let active = true;
     void (async () => {
       try {
@@ -49,9 +38,7 @@ export default function RechargeScreen() {
           res?.content?.userId ??
           '';
         if (id && active) setSelfPocketId(String(id));
-      } catch {
-        /* 拿不到就不预填，不影响充值页本身 */
-      }
+      } catch {}
     })();
     armSlowTimer();
     return () => {
@@ -88,7 +75,6 @@ export default function RechargeScreen() {
         right={<HeaderAction label={t('刷新')} onPress={reloadWeb} />}
       />
 
-      {/* 官方充值页全屏（原先顶部还有一张余额卡，见文件头注释） */}
       <View style={[styles.webCard, { borderColor: palette.hairline, overflow: 'hidden' }]}>
         <WebView
           ref={webViewRef}
@@ -100,7 +86,7 @@ export default function RechargeScreen() {
           mixedContentMode="never"
           startInLoadingState
           userAgent="Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 PocketFans201807"
-          /* 页面内容加载前把自身口袋 id 塞进 window，页面就绪后填入 #pocket_id */
+
           injectedJavaScriptBeforeContentLoaded={
             selfPocketId
               ? `window.__POCKET_ID__ = ${JSON.stringify(selfPocketId)}; true;`

@@ -12,7 +12,7 @@ import { ScalePressable } from '../components/Motion';
 import { Button } from '../components/Button';
 import { EmptyState } from '../components/StateViews';
 import { NetworkImage } from '../components/NetworkImage';
-import { usePalette, radii } from '../theme';
+import { usePalette, radii, fontFamily } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
 import {
@@ -87,7 +87,7 @@ export default function DownloadScreen() {
 
   const refresh = useCallback(async () => {
     const list = await loadDownloadItems();
-    // 列表排序：进行中 > 失败 > 已完成，组内新任务在前 —— 进行中的任务始终置顶可见
+
     const order: Record<string, number> = { downloading: 0, failed: 1, done: 2 };
     setItems(
       [...list].sort(
@@ -102,7 +102,6 @@ export default function DownloadScreen() {
     }, [refresh]),
   );
 
-  // G2: 下载进度节流——每块进度都全表刷新太频（进度回调密集时列表持续重建）
   const lastRefreshRef = useRef(0);
   const throttledRefresh = useCallback(() => {
     const now = Date.now();
@@ -145,12 +144,10 @@ export default function DownloadScreen() {
         name: task.name,
         onProgress: throttledRefresh,
       });
-      // 删除原失败记录，避免同 URL 双任务
+
       try {
         await deleteDownloadItem(task.id);
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       showToast(t('已重新加入下载'));
     } catch (error: any) {
       showToast(t('重试失败：{msg}', { msg: error?.message || error }));
@@ -160,7 +157,6 @@ export default function DownloadScreen() {
   };
 
   const remove = async (id: string) => {
-    // 删除下载记录 + 本地文件不可恢复，二次确认
     showDialog(t('删除下载'), t('将删除该下载项及本地文件，确定？'), [
       { text: t('取消'), style: 'cancel' },
       {
@@ -169,9 +165,7 @@ export default function DownloadScreen() {
         onPress: async () => {
           try {
             await deleteDownloadItem(id);
-          } catch {
-            /* ignore */
-          }
+          } catch {}
           refresh();
         },
       },
@@ -179,7 +173,6 @@ export default function DownloadScreen() {
   };
 
   const clearDone = async () => {
-    // 清理全部已完成/失败项 + 本地文件，不可恢复，二次确认
     showDialog(t('清理完成'), t('将删除所有已完成和失败的下载项及本地文件，确定？'), [
       { text: t('取消'), style: 'cancel' },
       {
@@ -188,9 +181,7 @@ export default function DownloadScreen() {
         onPress: async () => {
           try {
             await clearFinishedDownloads();
-          } catch {
-            /* ignore */
-          }
+          } catch {}
           refresh();
         },
       },
@@ -201,7 +192,6 @@ export default function DownloadScreen() {
   const failedCount = items.filter((item) => item.status === 'failed').length;
   const activeCount = items.length - doneCount - failedCount;
 
-  // 任务按状态分组：下载中 → 已完成 → 失败（组头 + 任务行）
   const rows = useMemo(() => {
     const groups: { key: string; title: string; items: DownloadItem[] }[] = [
       { key: 'active', title: t('下载中'), items: [] },
@@ -354,17 +344,18 @@ export default function DownloadScreen() {
             const progress = Math.round((task.progress || 0) * 100);
             const thumbUri = task.type === 'image' ? task.localUri || task.url : '';
             return (
-              <View
+              <GlassSurface
+                radius={22}
+                role="card"
+                frostedOnly
                 style={[
                   styles.task,
                   {
-                    backgroundColor: palette.surfaceGlassStrong,
-                    borderColor: palette.hairline,
-                    borderRadius: 20,
+                    backgroundColor: 'transparent',
+                    borderColor: palette.innerStroke,
                   },
                 ]}
               >
-                {/* 缩略图 44 圆角 10：图片用本地/网络缩略，其余回退为类型图标 */}
                 {thumbUri ? (
                   <NetworkImage
                     source={{ uri: thumbUri }}
@@ -487,7 +478,7 @@ export default function DownloadScreen() {
                     />
                   </ScalePressable>
                 </View>
-              </View>
+              </GlassSurface>
             );
           }}
         />
@@ -513,13 +504,13 @@ export default function DownloadScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  manualCard: { marginHorizontal: 16, marginBottom: 8, padding: 14, borderRadius: 20 },
+  manualCard: { marginHorizontal: 16, marginBottom: 8, padding: 14, borderRadius: radii.lg },
   manualHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  manualTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
-  urlInput: { minHeight: 42, paddingHorizontal: 14, borderRadius: 14, fontSize: 13 },
+  manualTitle: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '700', flex: 1 },
+  urlInput: { minHeight: 42, paddingHorizontal: 14, borderRadius: 18, fontSize: 13 },
   addBtn: { marginTop: 10, alignSelf: 'stretch' },
   list: { padding: 4, paddingBottom: 112 },
-  // 状态概览卡（3 列统计：value 20/800 + label 11，中间分隔）
+
   overviewCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -527,15 +518,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 6,
     paddingVertical: 16,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
   overviewItem: { flex: 1, alignItems: 'center' },
-  overviewNum: { fontSize: 20, fontWeight: '800' },
+  overviewNum: { fontSize: 20, fontFamily: fontFamily.system, fontWeight: '800' },
   overviewLabel: { fontSize: 11, marginTop: 2 },
   overviewDivider: { width: StyleSheet.hairlineWidth, height: 32, alignSelf: 'center' },
   groupTitle: {
     fontSize: 13,
+    fontFamily: fontFamily.system,
     fontWeight: '700',
     marginTop: 18,
     marginBottom: 8,
@@ -547,14 +539,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginVertical: 4,
     padding: 12,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
   taskThumb: { width: 44, height: 44, borderRadius: 10, marginRight: 12 },
   taskThumbIcon: { alignItems: 'center', justifyContent: 'center' },
   taskBody: { flex: 1, minWidth: 0 },
   taskTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  taskName: { fontSize: 14, fontWeight: '600', flex: 1 },
+  taskName: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '600', flex: 1 },
   taskTypePill: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
   taskTypeText: { fontSize: 10, fontWeight: '700' },
   progressTrack: {
@@ -566,7 +558,7 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: 4, borderRadius: 2 },
   taskMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  taskStatus: { fontSize: 11, flex: 1 },
+  taskStatus: { fontSize: 11, fontFamily: fontFamily.system, flex: 1 },
   taskPercent: { fontSize: 11, fontWeight: '800' },
   taskActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 10 },
   actionBtn: {

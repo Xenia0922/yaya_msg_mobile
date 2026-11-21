@@ -21,7 +21,6 @@ function assertOk(res: any, fallback: string) {
   throw new Error(responseMessage(res, fallback));
 }
 
-/** 统一走 utils/network 的 requestJson：超时覆盖 body、错误语义一致、无自建 XHR。 */
 async function desktopPost(
   path: string,
   payload: Record<string, any>,

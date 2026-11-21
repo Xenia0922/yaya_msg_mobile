@@ -7,14 +7,6 @@ import { WebKernel, WebKernelHandle } from './WebKernel';
 import { kernelForSource } from '../store/playerStore';
 import { isRtmpUrl } from '../resolve/streamResolver';
 
-/**
- * PlayerCore：内核路由（重写核心）。
- * 按 store.activeKernel 渲染对应内核，并统一回调写回 store。
- * 内核选择规则（由 streamResolver + 用户切换共同决定）：
- * - rtmp/flv → exo（原生 LiveExoView，自带 5 次重试）
- * - hls/mp4/audio → native（RNV）
- * - 用户切网页 / 原生失败 → web（flv.js + hls.js）
- */
 export function PlayerCore({
   onVideoSize,
   resumeAt: externalResumeAt,
@@ -29,9 +21,9 @@ export function PlayerCore({
   const position = usePlayerStore((s) => s.position);
   const nativeRef = useRef<NativeKernelHandle>(null);
   const webRef = useRef<WebKernelHandle>(null);
-  /** 诊断去重：记录上次已打日志的内核|源（⚠️ 必须放所有条件 return 之前——Hook 铁律） */
+
   const lastLogged = useRef('');
-  // 公演默认网页失败→原生 的自动回退标记（按源复位）
+
   const webFallbackDone = useRef(false);
   const sourceChangedRef = useRef('');
 
@@ -47,37 +39,32 @@ export function PlayerCore({
   const setError = usePlayerStore((s) => s.setError);
   const setActiveKernel = usePlayerStore((s) => s.setActiveKernel);
   const setUseWebKernel = usePlayerStore((s) => s.setUseWebKernel);
-  // seek 指令序号：用自增序号判定「有待处理指令」，不再拿 seekTarget>0 当哨兵
-  //（否则「拖到最左 / 双击退到开头」这种 target=0 的合法 seek 会被永久丢弃）
+
   const seekNonce = usePlayerStore((s) => s.seekNonce);
   const rebuildNonce = usePlayerStore((s) => s.rebuildNonce);
 
-  // 重试按钮（页面未提供 onRetry 时）→ 递增本地 retryNonce，使内核 key 变化、重新拉流。
-  // 此前无 onRetry 只 clearError，内核不重建 → 点「重试」永远转圈（修复）。
   useEffect(() => {
     if (!rebuildNonce) return;
     usePlayerStore.getState().clearError();
     setRetryNonce((n) => n + 1);
   }, [rebuildNonce]);
 
-  // seek 指令消费：UI 拖动进度条 → 当前内核 seek（native/exo 直调；web 经 postMessage）→ 清零
   useEffect(() => {
     if (!seekNonce) return;
     const seekTarget = usePlayerStore.getState().seekTarget;
     const su = String(source?.url || '').toLowerCase();
     const liveShape = source?.kind === 'live' || isRtmpUrl(su) || su.includes('.flv');
     if (liveShape) {
-      // 直播流 seek 无意义且可能原生崩溃（Exo 对直播 HLS/RTMP seek 抛异常）→ 丢弃指令
       usePlayerStore.getState().clearSeekTarget();
       return;
     }
-    // 非有限时长 = 误标 VOD 的直播 HLS（Exo 对其 seek 会在原生线程抛异常闪退）→ 丢弃指令
+
     const sd = usePlayerStore.getState().duration;
     if (!Number.isFinite(sd) || sd <= 0) {
       usePlayerStore.getState().clearSeekTarget();
       return;
     }
-    // clamp：不得 seek 到流末尾之外（Exo 对末尾边界 seek 行为异常，易触发原生异常）
+
     const target = Math.max(0, Math.min(sd - 0.3, seekTarget));
     usePlayerStore.getState().markSeekIssued(target);
     if (!useWebKernel && activeKernel === 'native' && nativeRef.current) {
@@ -94,7 +81,7 @@ export function PlayerCore({
       }
     }
   }, [seekNonce, useWebKernel, activeKernel, source?.kind, source?.url]);
-  // rate 同步：web 内核每次倍速变化下发（native 经 prop 实时生效）
+
   const rate = usePlayerStore((s) => s.rate);
   useEffect(() => {
     if (useWebKernel && webRef.current && rate > 0) {
@@ -102,12 +89,9 @@ export function PlayerCore({
     }
   }, [rate, useWebKernel]);
 
-  // 播放/暂停驱动：native/exo 经 paused prop 由 store.state 直达；web 内核的 <video> 不在 RN
-  // 控制下（html autoplay 起播），必须显式 postMessage 才能暂停/续播——
-  // 修复：网页直播/录播按控制条或系统 PiP ⏯ 暂停时画面继续播/声音不停（控件"失灵"）。
   const kernelForState = useWebKernel ? 'web' : activeKernel;
   const webPauseRef = useRef<boolean | null>(null);
-  // 内核切换 / 源变化 → html 整页重载（autoplay 起播），旧暂停指令作废：复位去重哨兵
+
   useEffect(() => {
     webPauseRef.current = null;
   }, [kernelForState, source?.url]);
@@ -128,8 +112,14 @@ export function PlayerCore({
     (duration: number, naturalSize?: { width: number; height: number }) => {
       setDuration(duration);
       setState('playing');
-      if (onVideoSize && naturalSize) {
-        onVideoSize(naturalSize.width, naturalSize.height);
+      if (naturalSize && naturalSize.width > 0 && naturalSize.height > 0) {
+        usePlayerStore
+          .getState()
+          .setVideoMeta(
+            { w: naturalSize.width, h: naturalSize.height },
+            naturalSize.width > naturalSize.height,
+          );
+        onVideoSize?.(naturalSize.width, naturalSize.height);
       }
     },
     [setDuration, setState, onVideoSize],
@@ -142,9 +132,6 @@ export function PlayerCore({
     [state, setPosition],
   );
 
-  // 原生 → 网页兜底（内核互切）
-  // ⚠️ 全部 hooks 必须在条件 return 之前（source null 时提前返回会导致
-  // hooks 数量变化 → "Rendered more hooks than during the previous render" 崩溃）
   const switchToWeb = useCallback(() => {
     setUseWebKernel(true);
     setError('');
@@ -153,12 +140,10 @@ export function PlayerCore({
 
   const kernelError = useCallback(
     (msg: string) => {
-      // 诊断：内核失败原因写 runtimeLog（设置→日志可导出）
       try {
         logWarn(`[player] kernel fail ${msg}`, 'player.kernelError');
       } catch {}
-      // 音频（语音翻牌等）：原生 ExoPlayer 报 IO/解码异常时，自动切网页内核再试一次。
-      // 日志见 [player.kernelError] handleIoException；部分 m4a/amr 在 RNV/Exo 上失败但 Chromium 可播。
+
       if (source?.kind === 'audio' && !webFallbackDone.current && !useWebKernel) {
         webFallbackDone.current = true;
         try {
@@ -170,11 +155,9 @@ export function PlayerCore({
         return;
       }
 
-      // 有候选线路 → 自动切换下一线路（B站多线路/官方多备用地址）；全部失败才进 error 态
       const switched = usePlayerStore.getState().nextCandidate();
       if (switched) return;
-      // 直播断流：候选线路耗尽后仍自动重连（1.5s/3s/6s 退避，最多 3 次），期间保持加载态；
-      // 重连 = 递增 retryNonce → 内核 key 变化 → 重新拉流。录播不动（断流多为文件问题，重试无益）。
+
       const uNow = String(source?.url || '').toLowerCase();
       const isLive = source?.kind === 'live' || isRtmpUrl(uNow) || uNow.includes('.flv');
       if (isLive && liveRetry.current.count < 3) {
@@ -199,7 +182,6 @@ export function PlayerCore({
     [setError, setState, setUseWebKernel, source?.kind, source?.url, useWebKernel],
   );
 
-  // 开播成功（playing）= 本次重连成功 → 复位计数；换源也要复位
   useEffect(() => {
     if (state === 'playing') liveRetry.current.count = 0;
   }, [state]);
@@ -210,9 +192,7 @@ export function PlayerCore({
       liveRetry.current.timer = null;
     }
   }, [source?.url]);
-  // WebKernel fallback 标记按 source.url 复位。⚠️ 不能在 render 中复位：否则
-  // WebKernel 首次失败后的下一次 render 会把标记清掉，再次 fallback 却不会重建内核，
-  // 最终永久 loading、没有错误态。useEffect 在每次换源后只复位一次。
+
   useEffect(() => {
     const url = source?.url || '';
     if (sourceChangedRef.current === url) return;
@@ -226,13 +206,8 @@ export function PlayerCore({
     [],
   );
 
-  // 内核选择（仅依赖 store，不依赖 source，须在条件 return 前算出）
   const kernel = useWebKernel ? 'web' : activeKernel;
 
-  // ⚠️ 上报「实际渲染的内核」（修复）：此前 activeKernel 只由 store 的 kernelForSource
-  // 决定（native|exo），**永不为 'web'** → PlayerScreen 的「网页内核失败不自动重试」守卫
-  //（activeKernel === 'web'）恒不成立，网页内核实失败时会做无意义的自动重解析。
-  // 每次 open 都会把 activeKernel 重置回 kernelForSource，故此处只需单向补报 web。
   useEffect(() => {
     if (useWebKernel) {
       if (usePlayerStore.getState().activeKernel !== 'web') setActiveKernel('web');
@@ -244,7 +219,7 @@ export function PlayerCore({
   if (!source || !source.url) return null;
 
   const paused = state !== 'playing';
-  // 诊断：每次开播记录所选内核与源（runtimeLog；非 hook，可放 return 后）
+
   if (lastLogged.current !== `${kernel}|${source.url}`) {
     lastLogged.current = `${kernel}|${source.url}`;
     try {
@@ -267,8 +242,8 @@ export function PlayerCore({
         onFirstFrame={() => {
           if (usePlayerStore.getState().state === 'loading') setState('playing');
         }}
+        onVideoSize={onVideoSize}
         onError={(msg) => {
-          // 公演默认网页（forceWebOnce）失败 → 自动回退原生一次，避免网页拉不动整场看不了
           const st0 = usePlayerStore.getState();
           if (st0.forceWebOnce && !webFallbackDone.current) {
             webFallbackDone.current = true;
@@ -286,10 +261,10 @@ export function PlayerCore({
       <ExoKernel
         key={`exo-${source.url}-${retryNonce}`}
         source={source}
+        onVideoSize={onVideoSize}
         onError={(msg) => {
           kernelError(msg);
-          // 网页兜底仅对浏览器可播的 http 流（HLS/mp4）；rtmp/rtmps/flv 是 LiveExoView 专属，
-          // 切网页内核必黑屏（23:19 实测成员直播 rtmp fail 后误切 web 加载不出）→ 保留 error 态走重试
+
           const uWeb = String(source.url || '').toLowerCase();
           const webable =
             !source.audioOnly &&
@@ -316,15 +291,13 @@ export function PlayerCore({
       onProgress={handleProgress}
       onEnd={() => setState('paused')}
       onFirstFrame={() => {
-        // 首帧上屏：保险起见确保 state 已 playing（加载转圈结束）
         if (usePlayerStore.getState().state === 'loading') setState('playing');
       }}
       onBufferChange={(buffering) => {
         try {
           logWarn(`[vod] buffer ${buffering ? 'start' : 'end'}`, 'player.native');
         } catch {}
-        // ⚠️ 缓冲时至少让控制条保持可见（修复）：此前只打日志，
-        // 画面卡住而控制条已自动隐藏 → 用户无法判断是「卡了」还是「播完了」。
+
         if (buffering) usePlayerStore.getState().toggleControls(true);
       }}
       onError={(detail) => kernelError(`原生播放器失败：${detail}`)}

@@ -1,17 +1,8 @@
-/**
- * MiniPlayerBar · iOS 26 Liquid Glass 浮层
- * - 玻璃感悬浮胶囊（顶部浮出 + 阴影）
- * - 圆角 28，大封面旋转动画
- * - 进度条可拖动
- * - 上下手势：下滑隐藏、上滑复位
- * - 弹簧按压反馈
- * - 所有音乐控制逻辑（play/pause/next/mode/seek）保持原状
- */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Easing,
-  GestureResponderEvent,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -27,7 +18,7 @@ import { normalizeImageHost } from '../utils/imageThumb';
 import { MusicEngine } from '../services/musicPlayer';
 import CoverArt from './CoverArt';
 import { useI18n } from '../i18n';
-import { joinMeta } from '../utils/format';
+import { formatTrackSubtitle } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
 import { GlassSurface } from '../components/GlassSurface';
 
@@ -35,7 +26,7 @@ interface Props {
   onOpenFullScreen?: () => void;
 }
 
-export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
+export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
   const palette = usePalette();
   const shadows = makeShadows(palette.name === 'dark');
   const insets = useSafeAreaInsets();
@@ -48,141 +39,79 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
   const position = useMusicPlayerStore((s) => s.position);
 
   const track = queue[currentIndex] || null;
-  // 切歌/加载(loading)瞬间也保持「暂停」图标：否则 loading→playing 会让播放键闪「播放」动画
-  const showPause = playbackState === 'playing' || playbackState === 'loading';
+  const isLoading = playbackState === 'loading';
+  const isError = playbackState === 'error';
+
+  const showPause = playbackState === 'playing' || isLoading;
   const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
 
-  const progRef = useRef<View>(null);
-  const translateY = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  // 展示进度：跟随播放位置平滑移动（快进/拖动后不再「弹一下」跳变）
-  const [progWidth, setProgWidth] = useState(0);
-  const progWidthRef = useRef(0);
-  const progXRef = useRef(0); // 进度条在屏幕上的绝对 X（拖动换算用）
   const displayPos = useRef(new Animated.Value(0)).current;
-  // 拖动/点击后的保持目标：播放器位置追上之前不回落（去「松手回弹」）
-  const [heldRatio, setHeldRatio] = useState<number | null>(null);
-  const heldRef = useRef<number | null>(null);
-  const lastSeekAt = useRef(0);
-  const displayTarget = heldRatio ?? progress;
   useEffect(() => {
     Animated.timing(displayPos, {
-      toValue: displayTarget,
+      toValue: progress,
       duration: 180,
       easing: Easing.inOut(Easing.quad),
       useNativeDriver: true,
     }).start();
-  }, [displayTarget, displayPos]);
-  // 播放器上报追上目标（或 2.5s 超时）后释放保持，恢复跟随实时进度
-  useEffect(() => {
-    if (heldRatio == null) return;
-    if (Math.abs(progress - heldRatio) < 0.012 || Date.now() - lastSeekAt.current > 2500) {
-      heldRef.current = null;
-      setHeldRatio(null);
-    }
-  }, [progress, heldRatio]);
-  const thumbX = displayPos.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, Math.max(0, progWidth - 12)],
-  });
+  }, [progress, displayPos]);
 
-  // 拖动手势只更新展示位置，松手才真正 seek（避免拖动过程反复 seek 造成进度条乱弹）。
-  // 用 pageX - 条起点换算：locationX 在 Android 上相对「事件目标视图」，
-  // 手指滑出条身（滑到时间/封面上）会突变，导致进度闪回 0:00。
-  const ratioAt = (pageX: number): number | null => {
-    const w = progWidthRef.current;
-    if (!w || w < 2) return null;
-    return Math.max(0, Math.min(1, (pageX - progXRef.current) / w));
-  };
-  const onProgGrant = (px: number) => {
-    if (useMusicPlayerStore.getState().duration <= 0) return;
-    const ratio = ratioAt(px);
-    if (ratio == null) return;
-    heldRef.current = ratio;
-    // 直接写 Animated 值：拇指/进度即时贴手，不做 180ms 补间（那会「追尾拖影」）
-    displayPos.setValue(ratio);
-    setHeldRatio(ratio);
-  };
-  const onProgMove = (px: number) => {
-    const ratio = ratioAt(px);
-    if (ratio == null) return;
-    heldRef.current = ratio;
-    // 移动帧只写 Animated（零 setState → 零重渲染），松手才 seek
-    displayPos.setValue(ratio);
-  };
-  const onProgRelease = () => {
-    const ratio = heldRef.current;
-    const dur = useMusicPlayerStore.getState().duration;
-    if (ratio != null && dur > 0) {
-      lastSeekAt.current = Date.now();
-      useMusicPlayerStore.getState().setSeekTarget(ratio * dur);
-    }
-  };
-
-  const progPanMini = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e: GestureResponderEvent) => onProgGrant(e.nativeEvent.pageX),
-      onPanResponderMove: (e: GestureResponderEvent) => onProgMove(e.nativeEvent.pageX),
-      onPanResponderRelease: () => onProgRelease(),
-      onPanResponderTerminate: () => onProgRelease(),
-    }),
-  ).current;
-
-  // 唱片旋转：模块级单例（见 useVinylSpin）——跨详情页重进有记忆，切歌归零，暂停冻结。
-  const spinValue = useVinylSpin(
-    track?.id,
-    playbackState === 'playing' || playbackState === 'loading',
-  );
+  const trackSpinKey = String(track?.musicId || track?.id || track?.title || '') || undefined;
+  const spinValue = useVinylSpin(trackSpinKey, playbackState === 'playing');
   const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  const onOpenFullScreenRef = useRef(onOpenFullScreen);
+  onOpenFullScreenRef.current = onOpenFullScreen;
 
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 8,
-      onPanResponderMove: (_, gs) => {
-        if (Math.abs(gs.dy) > 8) translateY.setValue(gs.dy);
-      },
-      onPanResponderRelease: (_, _gs) => {
-        // 仅回弹复位：去掉「下滑隐藏」（隐藏后无恢复入口 = 半成品手势）
-        Animated.spring(translateY, {
-          toValue: 0,
-          ...motion.spring.bouncy,
-          useNativeDriver: true,
-        }).start();
+      onMoveShouldSetPanResponder: (_, gs) =>
+        gs.dy < -16 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.4,
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy < -24) onOpenFullScreenRef.current?.();
       },
     }),
   ).current;
 
-  const pressIn = () =>
-    Animated.spring(scaleAnim, {
-      toValue: 0.94,
-      ...motion.spring.bouncy,
-      useNativeDriver: true,
-    }).start();
-  const pressOut = () =>
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      ...motion.spring.bouncy,
-      useNativeDriver: true,
-    }).start();
+  const pressIn = useCallback(
+    () =>
+      Animated.spring(scaleAnim, {
+        toValue: 0.94,
+        ...motion.spring.bouncy,
+        useNativeDriver: true,
+      }).start(),
+    [scaleAnim],
+  );
+  const pressOut = useCallback(
+    () =>
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        ...motion.spring.bouncy,
+        useNativeDriver: true,
+      }).start(),
+    [scaleAnim],
+  );
 
   const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
-  const coverUri = rawCover
-    ? rawCover.startsWith('http')
-      ? normalizeImageHost(rawCover)
-      : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`
-    : '';
+  const coverUri = useMemo(
+    () =>
+      rawCover
+        ? rawCover.startsWith('http')
+          ? normalizeImageHost(rawCover)
+          : `https://source.48.cn${rawCover.startsWith('/') ? rawCover : '/' + rawCover}`
+        : '',
+    [rawCover],
+  );
 
-  // ⚠️ 不可在此处加 isPlayableHost(playUrl) 门卫：记忆恢复/暂停态 url=''（url 不持久化），
-  // 门卫会静默拦截 → MiniBar 点播放"概率不触发"；FullScreenPlayer 无此门卫故正常。
-  // togglePause 内部已含完整保护：url 非法/空→禁止翻转，url 空且有当前曲→重新解析开播。
   const handleToggle = useCallback(() => {
     try {
-      // loading 时 MusicEngine.togglePause 内部会直接 return（防重复解析），
-      // 导致小窗的暂停按钮看似失效；这里显式停止本次加载，给出可感知结果。
-      if (useMusicPlayerStore.getState().playbackState === 'loading') {
+      const curState = useMusicPlayerStore.getState().playbackState;
+      if (curState === 'loading') {
         MusicEngine.stop();
+        return;
+      }
+      if (curState === 'error') {
+        void MusicEngine.resume();
         return;
       }
       MusicEngine.togglePause();
@@ -205,73 +134,32 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
     } catch {}
   }, []);
 
-  // B3 修复：显隐仅由「有曲目且非 idle」决定——url 未就绪（R2 FLAC 解析慢/记忆恢复）
-  // 时 bar 保持可见（按钮由 togglePause 内部保护），不再闪烁消失
   if (!track || playbackState === 'idle') return null;
 
   return (
     <GlassSurface
-      radius={22}
-      role="card"
-      // 提高不透明度：此前太透，后面卡片的爱心/封面会透出来（用户反馈「有点乱」）
-      tintColor={palette.name === 'dark' ? 'rgba(22,22,26,0.90)' : 'rgba(255,255,255,0.90)'}
+      radius={26}
+      role="bar"
+      tintColor={palette.name === 'dark' ? 'rgba(26,26,32,0.74)' : 'rgba(255,255,255,0.72)'}
       style={[
         styles.bar,
         shadows.md,
         {
           backgroundColor: 'transparent',
           borderColor: palette.innerStroke,
-          transform: [{ translateY }],
-          // 音乐页为栈页面（无悬浮 TabBar），贴底悬浮；覆盖 shadows.md 的 elevation（过高会渲染深色边缘）
-          // 位置修正：insets.bottom 是硬编码的系统栏估算，直接贴底（与 dock 一致，不再浮高）
-          // 音乐页为栈页面（无悬浮 TabBar），贴底悬浮
           bottom: Math.max(10, insets.bottom - 32),
-          elevation: 3,
+          elevation: 4,
         },
       ]}
       {...panResponder.panHandlers}
     >
-      <View
-        ref={progRef}
-        style={styles.progressBar}
-        onLayout={(e) => {
-          const w = e.nativeEvent.layout.width;
-          setProgWidth(w);
-          progWidthRef.current = w;
-          progRef.current?.measureInWindow?.((x) => {
-            progXRef.current = x;
-          });
-        }}
-        {...progPanMini.panHandlers}
-      >
-        <View style={[styles.progressTrack, { backgroundColor: palette.fill3 }]} />
-        <Animated.View
-          style={[
-            styles.progressFill,
-            {
-              backgroundColor: palette.tint,
-              transform: [{ scaleX: displayPos }],
-              transformOrigin: 'left',
-            },
-          ]}
-        />
-        <Animated.View style={[styles.progressThumbWrap, { transform: [{ translateX: thumbX }] }]}>
-          <View
-            style={[
-              styles.progressThumb,
-              { backgroundColor: palette.tint, borderColor: palette.surfaceGlassStrong },
-            ]}
-          />
-        </Animated.View>
-      </View>
-
       <Pressable onPress={onOpenFullScreen} style={styles.row}>
         <Animated.View style={[styles.cover, { transform: [{ rotate: spin }] }]}>
           <CoverArt
             key={coverUri || track.title || '♪'}
             uri={coverUri || undefined}
             title={track.title || '♪'}
-            size={48}
+            size={42}
             round
           />
         </Animated.View>
@@ -280,7 +168,7 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
             numberOfLines={1}
             style={[
               typography.subhead,
-              { color: palette.label, fontWeight: '700', lineHeight: 20 },
+              { color: palette.label, fontWeight: '700', lineHeight: 19 },
             ]}
           >
             {track.title || t('未知')}
@@ -289,10 +177,10 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
             numberOfLines={1}
             style={[
               typography.caption1,
-              { color: palette.labelTertiary, lineHeight: 14, marginTop: 2 },
+              { color: palette.labelTertiary, lineHeight: 14, marginTop: 1 },
             ]}
           >
-            {joinMeta([track.groupLabel, track.artist, track.album]) || t('官方音乐')}
+            {formatTrackSubtitle(track) || t('官方音乐')}
           </Text>
         </View>
         <View style={styles.actions}>
@@ -320,7 +208,7 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
             onPressOut={pressOut}
             style={styles.smallCtrlBtn}
           >
-            <Icon name="skip-previous" size={26} color={palette.label} />
+            <Icon name="skip-previous" size={24} color={palette.label} />
           </Pressable>
           <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
             <Pressable
@@ -328,12 +216,18 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
               onPressIn={pressIn}
               onPressOut={pressOut}
               style={styles.playBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isLoading ? t('取消') : showPause ? t('暂停') : t('播放')}
             >
-              <Icon
-                name={showPause ? 'pause-circle' : 'play-circle'}
-                size={36}
-                color={palette.tint}
-              />
+              {isLoading ? (
+                <ActivityIndicator size="small" color={palette.tint} />
+              ) : (
+                <Icon
+                  name={isError ? 'refresh-circle' : showPause ? 'pause-circle' : 'play-circle'}
+                  size={34}
+                  color={isError ? palette.danger : palette.tint}
+                />
+              )}
             </Pressable>
           </Animated.View>
           <Pressable
@@ -342,62 +236,78 @@ export default function MiniPlayerBar({ onOpenFullScreen }: Props) {
             onPressOut={pressOut}
             style={styles.smallCtrlBtn}
           >
-            <Icon name="skip-next" size={26} color={palette.label} />
+            <Icon name="skip-next" size={24} color={palette.label} />
           </Pressable>
         </View>
       </Pressable>
+
+      <View pointerEvents="none" style={[styles.progressTrack, { backgroundColor: palette.fill3 }]}>
+        <Animated.View
+          style={[
+            styles.progressFill,
+            {
+              backgroundColor: palette.tint,
+              transform: [{ scaleX: displayPos }],
+              transformOrigin: 'left',
+            },
+          ]}
+        />
+      </View>
     </GlassSurface>
   );
-}
+});
 
 const styles = StyleSheet.create({
   bar: {
     position: 'absolute',
     left: 12,
     right: 12,
-    borderRadius: 28,
+    borderRadius: 26,
+    borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
-    paddingTop: 6,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
+    paddingTop: 9,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
     overflow: 'hidden',
   },
-  progressBar: { height: 28, justifyContent: 'center', paddingHorizontal: 4 },
-  progressTrack: { position: 'absolute', left: 4, right: 4, top: 12.5, height: 3, borderRadius: 2 },
-  progressFill: { position: 'absolute', left: 4, right: 4, top: 12.5, height: 3, borderRadius: 2 },
-  progressThumbWrap: { position: 'absolute', left: 4, top: 7, width: 14, height: 14 },
-  progressThumb: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
+  progressTrack: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 0,
+    height: 2.5,
+    borderRadius: 2,
+    overflow: 'hidden',
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 4, paddingRight: 4 },
+  progressFill: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
   cover: {
-    width: 48,
-    height: 48,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#1a1a1a',
     overflow: 'hidden',
   },
   info: { flex: 1, minWidth: 0 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   playBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-  },
-  smallCtrlBtn: {
-    width: 34,
+    width: 38,
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
+    borderRadius: 19,
+  },
+  smallCtrlBtn: {
+    width: 32,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
   },
   modeBtn: {
-    width: 34,
+    width: 32,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',

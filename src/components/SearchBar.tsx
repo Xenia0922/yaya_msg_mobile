@@ -1,15 +1,17 @@
 import React, { type ReactNode } from 'react';
-import { StyleSheet, TextInput, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  StyleSheet,
+  TextInput,
+  type ReturnKeyTypeOptions,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from './GlassSurface';
 import { ScalePressable } from './Motion';
-import { usePalette } from '../theme';
+import { fontFamily, usePalette } from '../theme';
 import { useI18n } from '../i18n';
 
-/**
- * 玻璃搜索框（C2 公共件）。
- * 统一「音乐库 / 房间 / 私信」等处的搜索输入样式；内容必须是 GlassSurface 的 children（玻璃铁律）。
- */
 export function SearchBar({
   value,
   onChangeText,
@@ -17,6 +19,10 @@ export function SearchBar({
   right,
   style,
   autoFocus,
+  autoCorrect = false,
+  returnKeyType = 'search',
+  onSubmitEditing,
+  onClear,
 }: {
   value: string;
   onChangeText: (text: string) => void;
@@ -24,11 +30,15 @@ export function SearchBar({
   right?: ReactNode;
   style?: StyleProp<ViewStyle>;
   autoFocus?: boolean;
+  autoCorrect?: boolean;
+  returnKeyType?: ReturnKeyTypeOptions;
+  onSubmitEditing?: () => void;
+  onClear?: () => void;
 }) {
   const palette = usePalette();
   const { t } = useI18n();
   return (
-    <GlassSurface radius={14} role="chip" style={[styles.bar, style]}>
+    <GlassSurface radius={20} role="chip" style={[styles.bar, style]}>
       <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
       <TextInput
         value={value}
@@ -37,11 +47,17 @@ export function SearchBar({
         placeholderTextColor={palette.labelTertiary}
         style={[styles.input, { color: palette.label }]}
         autoFocus={autoFocus}
+        autoCorrect={autoCorrect}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
         accessibilityLabel={placeholder}
       />
       {value ? (
         <ScalePressable
-          onPress={() => onChangeText('')}
+          onPress={() => {
+            onChangeText('');
+            onClear?.();
+          }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           pressedScale={0.9}
           activeOpacity={0.6}
@@ -57,6 +73,13 @@ export function SearchBar({
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40 },
-  input: { flex: 1, fontSize: 15, padding: 0, minHeight: 40 },
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderCurve: 'continuous',
+  },
+  input: { flex: 1, fontSize: 15, fontFamily: fontFamily.system, padding: 0, minHeight: 40 },
 });

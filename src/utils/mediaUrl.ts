@@ -1,16 +1,6 @@
-/**
- * 私信媒体 URL 解析（按官方客户端实现 private-message-formatters-feature.js）。
- *
- * 旧版实现的做法：
- * - 图片字段优先 imgUrl（口袋私信图片就是这个词），再 imageUrl / pictureUrl / picUrl / photoUrl / cover / url / path
- * - 地址归一化：相对路径 → source.48.cn（图片）/ mp4.48.cn（音视频），/mediasource、/imagesource → source.48.cn
- * - 类型判断：扩展名优先，其次看 messageType 里的 IMAGE / AUDIO / VIDEO
- */
-
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|bmp|heic|avif)$/i;
 const LEGACY_IMAGE_HOST_RE = /^https?:\/\/source[23]\.48\.cn(?=\/)/i;
 
-/** 媒体 URL 可能出现的字段名（顺序与旧版实现一致，imgUrl 在前）。 */
 export const MEDIA_URL_KEYS = [
   'imgUrl',
   'imageUrl',
@@ -34,7 +24,6 @@ export const MEDIA_URL_KEYS = [
   'msg.url',
 ];
 
-/** 图片消息里可能包着图片信息的外层字段（旧版实现会单独作为候选）。 */
 export const MEDIA_INFO_KEYS = [
   'imageInfo',
   'imgInfo',
@@ -45,10 +34,6 @@ export const MEDIA_INFO_KEYS = [
   'replyInfo',
 ];
 
-/**
- * 兜底深扫时要跳过的字段：这些位置放的是头像、徽章、礼物图标等，
- * 不是本条消息的媒体。不跳过的话，纯文字私信会被渲染成对方的头像图片。
- */
 const NON_MEDIA_KEYS = new Set([
   'user',
   'userinfo',
@@ -87,10 +72,6 @@ export function isImageLikeUrl(value: unknown): boolean {
   return IMAGE_EXT_RE.test(pathnameOf(String(value ?? '').trim()));
 }
 
-/**
- * 相对路径补全。
- * @param preferredHost 'source' = 图片（source.48.cn），其它 = 音视频（mp4.48.cn）
- */
 export function normalizePrivateMediaUrl(
   raw: unknown,
   preferredHost: 'source' | 'mp4' = 'mp4',
@@ -110,7 +91,6 @@ export function normalizePrivateMediaUrl(
   return `${base}${value.startsWith('/') ? '' : '/'}${value}`;
 }
 
-/** 递归找第一个像图片地址的字符串（深度有上限，防止大对象/嵌套 JSON 拖慢渲染）。 */
 export function deepFindImageUrl(source: unknown, depth = 3): string {
   if (source == null || depth < 0) return '';
   if (typeof source === 'string') {
@@ -137,10 +117,6 @@ export function deepFindImageUrl(source: unknown, depth = 3): string {
   return '';
 }
 
-/**
- * 私信头像可能出现的字段（会话对象、消息发送者、成员库记录都适用）。
- * 旧版实现读的是 `item.user.avatar`，相对路径同样拼 source.48.cn。
- */
 export const AVATAR_KEYS = [
   'user.avatar',
   'user.headImg',
@@ -163,10 +139,6 @@ function readPath(source: any, path: string): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-/**
- * 按优先级取私信对方头像：消息发送者 → 会话对象 → 成员库记录。
- * 以前只查成员库，普通粉丝（非成员）私信永远没有头像，只剩一个首字母。
- */
 export function resolvePrivateAvatar(...sources: any[]): string {
   for (const source of sources) {
     if (!source || typeof source !== 'object') continue;

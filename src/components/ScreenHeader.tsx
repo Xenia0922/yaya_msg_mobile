@@ -1,24 +1,24 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Platform, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../i18n';
-import { usePalette } from '../theme';
-import { typography } from '../theme/typography';
+import { fontFamily, usePalette } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ScalePressable } from './Motion';
 import { GlassSurface } from './GlassSurface';
+import { FLOATING_BAR_HEIGHT } from './FloatingTabHeader';
 
 interface Props {
   title: string;
   onBack?: () => void;
   right?: React.ReactNode;
-  /** 标题左侧的额外元素（如私信会话页的对方头像），传了才占位 */
+
   leading?: React.ReactNode;
   style?: ViewStyle;
-  /** 图片背景页（如直播间）传 true：返回键用玻璃胶囊，标题加轻阴影保证可读 */
+
   overlay?: boolean;
-  /** tab 根页传 true：不渲染返回键，但保留左槽位，标题位置与二级页完全一致 */
+
   hideBack?: boolean;
 }
 
@@ -39,7 +39,43 @@ export default function ScreenHeader({
     if (onBack) onBack();
     else navigation.goBack();
   }, [onBack, navigation]);
-  const topPad = insets.top + 10;
+  const topPad = insets.top + 8;
+
+  const leftContent = (
+    <GlassSurface
+      role="bar"
+      radius={FLOATING_BAR_HEIGHT / 2}
+      style={[
+        styles.leftGlass,
+        hideBack ? styles.leftGlassNoBack : null,
+        hideBack ? styles.islandShadow : null,
+        hideBack ? { maxWidth: right ? '68%' : '96%' } : null,
+      ]}
+    >
+      {!hideBack ? (
+        <View style={styles.backIcon}>
+          <MaterialCommunityIcons name="arrow-left" color={palette.label} size={20} />
+        </View>
+      ) : null}
+      {leading ? <View style={styles.leading}>{leading}</View> : null}
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.title,
+          { color: palette.label },
+          overlay
+            ? {
+                textShadowColor: 'rgba(0,0,0,0.30)',
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 3,
+              }
+            : null,
+        ]}
+      >
+        {title}
+      </Text>
+    </GlassSurface>
+  );
 
   return (
     <View style={[styles.header, { paddingTop: topPad }, style]}>
@@ -48,28 +84,25 @@ export default function ScreenHeader({
           onPress={goBack}
           accessibilityRole="button"
           accessibilityLabel={t('返回')}
-          pressedScale={0.9}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          pressedScale={0.96}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          style={[styles.leftWrap, styles.islandShadow, { maxWidth: right ? '68%' : '96%' }]}
         >
-          <GlassSurface role="chip" radius={999} style={styles.backBtn}>
-            <MaterialCommunityIcons name="chevron-left" color={palette.label} size={26} />
-          </GlassSurface>
+          {leftContent}
         </ScalePressable>
+      ) : (
+        leftContent
+      )}
+
+      {right ? (
+        <GlassSurface
+          role="bar"
+          radius={FLOATING_BAR_HEIGHT / 2}
+          style={[styles.rightGlass, styles.islandShadow]}
+        >
+          {right}
+        </GlassSurface>
       ) : null}
-      {leading ? <View style={styles.leading}>{leading}</View> : null}
-      <Text
-        numberOfLines={1}
-        style={[
-          styles.title,
-          {
-            color: palette.label,
-            textShadowColor: overlay ? 'rgba(0,0,0,0.30)' : 'transparent',
-          },
-        ]}
-      >
-        {title}
-      </Text>
-      <View style={styles.sideRight}>{right}</View>
     </View>
   );
 }
@@ -79,29 +112,66 @@ const styles = StyleSheet.create({
     position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingBottom: 12,
-    marginBottom: 2,
-    gap: 8,
+    paddingBottom: 10,
+    gap: 10,
   },
-  sideRight: { minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' },
-  leading: { alignItems: 'center', justifyContent: 'center' },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  islandShadow: {
+    borderRadius: FLOATING_BAR_HEIGHT / 2,
+    borderCurve: 'continuous',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+      },
+      android: { elevation: 4 },
+      default: null,
+    }),
+  },
+  leftWrap: {
+    flexShrink: 1,
+  },
+  leftGlass: {
+    height: FLOATING_BAR_HEIGHT,
+    paddingLeft: 10,
+    paddingRight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    gap: 6,
+  },
+  leftGlassNoBack: {
+    paddingLeft: 16,
+  },
+  rightGlass: {
+    height: FLOATING_BAR_HEIGHT,
+    minWidth: FLOATING_BAR_HEIGHT,
+    paddingHorizontal: 4,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    // 不要 borderWidth：RN 里 borderWidth 不给 borderColor 会画默认黑边，
-    // 而描边本来就由 GlassSurface 的材质描边负责（白 0.66），叠黑边会显脏。
+    gap: 4,
+    flexShrink: 0,
+  },
+  leading: { alignItems: 'center', justifyContent: 'center' },
+  backIcon: {
+    width: 26,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
-    textAlign: 'left',
-    // 统一走排版 token（B3：页面标题只有一个来源）
-    ...typography.pageTitle,
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    ...Platform.select({ android: { paddingTop: 1 }, default: null }),
   },
 });

@@ -38,10 +38,11 @@ import {
   unwrapList,
 } from '../utils/data';
 import pocketApi from '../api/pocket48';
-import { usePalette, getPageBackground } from '../theme';
+import { usePalette, getPageBackground, fontFamily, radii } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
+import { sumPrivateConversationUnread } from '../utils/privateUnread';
 import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import { NetworkImage } from '../components/NetworkImage';
 import ZoomImageModal from '../components/ZoomImageModal';
@@ -60,7 +61,6 @@ import type {
   WireRecord,
 } from '../types';
 
-/** 私密翻牌价格行（getFlipPrices 返回；answerType/privateCost 为业务字段） */
 type FlipPriceRow = {
   answerType?: number;
   privateCost?: number | string;
@@ -87,7 +87,6 @@ function convName(conv: PrivateConversationWire): string {
   );
 }
 
-/** 对方头像：消息发送者 → 会话对象 → 成员库（普通粉丝也能有头像）。 */
 function peerAvatarUrl(
   conv: PrivateConversationWire | null,
   member?: MemberSummary | null,
@@ -104,7 +103,7 @@ function realServerMsgId(msg: PrivateMessageWire): string | null {
 function msgId(msg: PrivateMessageWire): string {
   const direct = msg.messageId || msg.msgId || msg.id || msg.clientMsgId || msg.uuid;
   if (direct) return String(direct);
-  // 无稳定 id：用 时间+发送者+内容 作近似键（不含 index，避免同消息在不同批次 index 不同导致去重失败）
+
   const time = msgTimeNumber(msg);
   const from = msgFromId(msg);
   const body = messageText(msg);
@@ -244,7 +243,6 @@ type MediaInfo = {
   height?: number;
 } | null;
 
-/** 私信消息 → 聊天库 IMessage（original 回指原始消息，供头像/媒体渲染复用） */
 type PrivateChatIM = {
   _id: string;
   text: string;
@@ -277,10 +275,6 @@ function answerTypeFromContext(source: unknown): number {
   return Number(src?.answerType || src?.answerTypeConfig || src?.type || 0);
 }
 
-/**
- * 消息类型字符串。旧版实现读的是 `message.messageType` / `content.messageType`，
- * 服务端私信也是这两个字段；我们以前只看 msgType，导致「IMAGE 但地址没扩展名」的图片消息判断不出来。
- */
 function messageTypeOf(...sources: unknown[]): string {
   for (const source of sources) {
     if (!source || typeof source !== 'object') continue;
@@ -338,8 +332,7 @@ function collectPrivateMessageMediaCandidates(msg: PrivateMessageWire): WireReco
     for (const key of flipKeys) {
       if (record[key]) candidates.push(parseMaybeJson(record[key]));
     }
-    // 旧版实现同样把 imageInfo / voiceInfo 等外层单独当候选：图片信息常包在这层里，
-    // 只扫顶层字段会取不到 imgUrl（私信图片不显示的根因之一）
+
     for (const key of MEDIA_INFO_KEYS) {
       if (!record[key]) continue;
       const parsed = parseMaybeJson(record[key]);
@@ -404,7 +397,6 @@ function makeMedia(
   };
 }
 
-/** 图片原始尺寸（旧版实现 <img width height> 同源字段），用于按比例摆放气泡图片。 */
 function pickImageSize(sources: unknown[]): { width: number; height: number } {
   for (const src of sources) {
     if (!src || typeof src !== 'object') continue;
@@ -420,7 +412,6 @@ function pickImageSize(sources: unknown[]): { width: number; height: number } {
   return { width: 0, height: 0 };
 }
 
-/** 气泡内图片展示盒：最宽 200、最高 260，等比缩放，避免长图被裁成方块。 */
 function imageBox(width?: number, height?: number) {
   const w = Number(width) || 0;
   const h = Number(height) || 0;
@@ -441,8 +432,6 @@ function privateMessageMedia(msg: PrivateMessageWire): MediaInfo {
   for (const item of candidates) {
     let rawUrl = pickText(item, MEDIA_URL_KEYS);
     if (rawUrl) {
-      // 类型先判断、再按类型选宿主域名（旧版实现：图片一律 source.48.cn，音视频 mp4.48.cn）。
-      // 以前是先按扩展名归一化再判类型 → 没扩展名的图片地址被拼到 mp4.48.cn，加载必失败。
       const type = messageTypeOf(item, msg, content, p);
       const answerType =
         answerTypeFromContext(item) || answerTypeFromContext(msg) || answerTypeFromContext(content);
@@ -528,7 +517,6 @@ function privateMessageMedia(msg: PrivateMessageWire): MediaInfo {
     }
   }
 
-  // 兜底：字段名不认识（新版服务端/嵌套 JSON）时，按图片扩展名整棵对象扫一遍
   const deepImage = deepFindImageUrl(msg) || deepFindImageUrl(content) || deepFindImageUrl(payload);
   if (deepImage)
     return makeMedia(normalizePrivateMediaUrl(deepImage, 'source'), 'image', [
@@ -551,17 +539,7 @@ function flipTypeName(value: unknown) {
   if (id === 3) return translate('视频');
   return translate('类型{value}', { value: String(value ?? '') });
 }
-/**
- * 私信消息 → 聊天库 IMessage。
- *
- * 抽成纯函数 + useMemo 的原因：以前这段写在 render 里，每敲一个字（输入框 setState）
- * 都会重建全部消息对象 → 整屏消息重渲染，长会话打字明显卡。现在只在消息/会话变化时才算。
- *
- * ⚠️ 两条必须遵守：
- * ① user._id 用真实发送者（库按它决定左右），自己的固定 'SELF'；
- * ② createdAt 归一化到毫秒（接口给秒，直接 new Date(秒) 会变成 1970）。
- * 顺序：聊天库默认 inverted，数组第 0 项显示在最下面 → 必须「新的在前」。
- */
+
 function buildPrivateIms(
   msgs: PrivateMessageWire[],
   targetId: string,
@@ -594,15 +572,14 @@ function buildPrivateIms(
         prevMine = null;
         prevTs = 0;
       }
-      // 3 分钟内同侧消息并组（组内小圆角），换天 / 换人 / 断档都重新起组
-      // 注意：msgs 按新→旧倒序遍历，需先统一毫秒再取绝对差值，否则 ts - prevTs 恒为负。
+
       const curMs = toMs(ts);
       const prevMs = toMs(prevTs);
       const groupStart =
         prevMine === null || prevMine !== mine || Math.abs(prevMs - curMs) > 3 * 60 * 1000;
-      /** 每条消息优先用消息自带的发送者头像，取不到再退回会话头像（普通粉丝也能有头像） */
+
       const senderAvatar = peerAvatarUrl(null, null, item) || peerAvatar;
-      // 媒体只解析一次（以前同一行解析三遍，消息多时渲染明显变慢）
+
       const media = privateMessageMedia(item);
       out.push({
         _id: `m-${msgId(item)}`,
@@ -615,7 +592,7 @@ function buildPrivateIms(
         original: item,
         groupStart,
         isMine: mine,
-        // 交给库自带的媒体渲染
+
         ...(media ? { [media.type]: media.url } : {}),
       });
       prevMine = mine;
@@ -629,10 +606,7 @@ export default function PrivateMessagesScreen() {
   const palette = usePalette();
   const { t } = useI18n();
   const members = useMemberStore((s) => s.members);
-  /**
-   * 成员索引：会话列表每行都要按目标 id 找成员，`members.find` 是 O(成员数)，
-   * 几百条会话 × 上千成员 = 每次渲染十几万次比较（列表滚动/未读刷新时明显掉帧）。
-   */
+
   const memberById = useMemo(() => {
     const map = new Map<string, MemberSummary>();
     for (const item of members as MemberSummary[]) {
@@ -644,11 +618,18 @@ export default function PrivateMessagesScreen() {
     return map;
   }, [members]);
   const showToast = useUiStore((s) => s.showToast);
+  const setPmUnread = useUiStore((s) => s.setPmUnread);
   const [convs, setConvs] = useState<PrivateConversationWire[]>([]);
+  const convsLoadedOnceRef = useRef(false);
+  useEffect(() => {
+    if (!convsLoadedOnceRef.current) return;
+    const total = sumPrivateConversationUnread(convs);
+    if (total !== null) setPmUnread(total);
+  }, [convs, setPmUnread]);
   const [hasMoreConvs, setHasMoreConvs] = useState(false);
   const convCursorRef = useRef(0);
   const convLoadingRef = useRef(false);
-  // 置顶会话（私信区同理：可置顶 + 可调换顺序），按目标用户 id 持久化
+
   const [pinnedConvs, setPinnedConvs] = useState<string[]>([]);
   useEffect(() => {
     AsyncStorage.getItem('yaya_pinned_convs').then((v) => {
@@ -685,7 +666,7 @@ export default function PrivateMessagesScreen() {
     [next[idx], next[to]] = [next[to], next[idx]];
     persistPinned(next);
   };
-  // 会话按时间分组（今天/昨天/更早）：组头 + 组内会话行
+
   const { todayStr, yesterdayStr } = (() => {
     const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
     const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -718,7 +699,7 @@ export default function PrivateMessagesScreen() {
       if (target && pinnedSet.has(target)) pinnedItems.push(c);
       else rest.push(c);
     }
-    // 置顶会话按 pinnedConvs 顺序排列（可调换），其余按时间分组
+
     const pinnedOrdered = pinnedItems
       .slice()
       .sort((a, b) => pinnedConvs.indexOf(convTargetId(a)) - pinnedConvs.indexOf(convTargetId(b)));
@@ -747,24 +728,16 @@ export default function PrivateMessagesScreen() {
     return flat;
   }, [convs, todayStr, yesterdayStr, t, pinnedConvs]);
   const [sel, setSel] = useState<PrivateConversationWire | null>(null);
-  // 键盘高度：edge-to-edge 下 adjustResize 不生效（窗口不缩），手动把聊天容器底部抬起，
-  // 让「消息列表 + 输入框」整体上移（与房间页共用同一 hook）。
-  // ⚠️ 必须挂在组件顶层 —— 之前误放进条件分支（列表/会话两个 return），钩子数量随分支变化直接崩
+
   const keyboardHeight = useKeyboardHeight();
   const insets = useSafeAreaInsets();
-  /**
-   * 输入栏底部安全区（键盘收起时）。
-   * 用户反馈「私信输入框太低」：原来 paddingBottom 直接取 keyboardHeight，
-   * 键盘收起时是 0 → 输入栏贴死屏幕底，被手势导航条压住。
-   * 兜底 hook 的 bottom 是 48（虚拟按键口径），手势条实际约 24，
-   * 所以夹到 [10,24]：手势机型留 24，虚拟按键机型也不至于把面板顶太高。
-   */
+
   const inputBarSafeBottom = Math.max(10, Math.min(insets.bottom, 24));
   const [msgs, setMsgs] = useState<PrivateMessageWire[]>([]);
   const [text, setText] = useState('');
   const [uid, setUid] = useState('');
   const token = useSettingsStore((s) => s.settings.p48Token);
-  // Reset uid when token changes, so next openConv re-fetches
+
   useEffect(() => {
     setUid('');
   }, [token]);
@@ -772,20 +745,19 @@ export default function PrivateMessagesScreen() {
   const [money, setMoney] = useState('');
   const [flipType, setFlipType] = useState(0);
   const [loading, setLoading] = useState(false);
-  /** 会话列表首屏加载专用：与发送/翻页共用同一个 loading 时，会被它们的 finally 提前置 false
-   * → 列表在真正加载完之前就露出「暂无私信」空态（修复） */
+
   const [convLoading, setConvLoading] = useState(false);
   const [convError, setConvError] = useState('');
   const flatRef = useRef<FlatList>(null);
   const [playUrl, setPlayUrl] = useState('');
-  /** 私信图片大图预览（点击气泡里的图片打开，微信式） */
+
   const [zoomUrl, setZoomUrl] = useState('');
-  /** 用户资料卡（点头像：列表头像 / 气泡头像 / 会话页头部头像） */
+
   const [profileTarget, setProfileTarget] = useState<UserProfileTarget | null>(null);
   const requestIdRef = useRef(0);
-  // 会话切换竞态防护：快速切换会话时丢弃慢响应，避免旧会话数据覆盖新会话
+
   const convRequestIdRef = useRef(0);
-  // 回底滚动定时器句柄：卸载/切换会话时清理，防止卸载后触发
+
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -794,11 +766,6 @@ export default function PrivateMessagesScreen() {
     [],
   );
 
-  /**
-   * 对方是不是「成员」：**只有命中成员库才算**（房主/其他成员）。
-   * ⚠️ id 为空必须直接 null —— 否则 `String(m.userId) === ''` 会匹配到 userId 为空的成员记录，
-   * 粉丝会话被误判成成员 → 错误地显示翻牌条（用户要求：非成员不显示翻牌）。
-   */
   const selTargetId = String(sel ? convTargetId(sel) : '').trim();
   const member = useMemo(() => {
     if (!selTargetId) return null;
@@ -860,7 +827,6 @@ export default function PrivateMessagesScreen() {
     };
   }, [member]);
 
-  // 首屏只拉少量批次，剩余走「上滑加载更多」，避免一次性 60 轮全量拉取
   const loadConvs = async (initial = true) => {
     if (convLoadingRef.current) return;
     const requestId = ++requestIdRef.current;
@@ -899,6 +865,7 @@ export default function PrivateMessagesScreen() {
         loops += 1;
       }
       convCursorRef.current = cursor;
+      convsLoadedOnceRef.current = true;
       setConvs((prev) => {
         const merged = initial ? all : [...prev, ...all];
         const seen = new Set<string>();
@@ -913,7 +880,7 @@ export default function PrivateMessagesScreen() {
             (a, b) => Number(b.lastTime || b.msgTime || 0) - Number(a.lastTime || a.msgTime || 0),
           );
       });
-      // 是否还有更多（本批拉满 且 游标有前进）
+
       setHasMoreConvs(loops >= maxLoops && cursor > 0);
     } catch (e) {
       setConvError(errorMessage(e));
@@ -927,12 +894,6 @@ export default function PrivateMessagesScreen() {
   };
   loadConvsRef.current = loadConvs;
 
-  /**
-   * 打开会话。
-   * silent=true：只后台拉最新，不清空列表、不显示 loading、不滚到底。
-   * 发送成功后必须走这个 —— 原来每次发送都 `openConv(selectedConv)`，
-   * 等于「清空 → 骨架屏 → 回填」，发一条消息整屏闪一下（用户反馈卡顿的主要来源）。
-   */
   const openConv = async (c: PrivateConversationWire, opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
     const requestId = ++convRequestIdRef.current;
@@ -954,7 +915,7 @@ export default function PrivateMessagesScreen() {
         if (id && requestId === convRequestIdRef.current) setUid(String(id));
       }
       const res = await pocketApi.getPrivateMessageDetail(convTargetId(c));
-      if (requestId !== convRequestIdRef.current) return; // 已切换会话，丢弃慢响应
+      if (requestId !== convRequestIdRef.current) return;
       const list = unwrapList(res, [
         'content.messageList',
         'content.messages',
@@ -999,11 +960,6 @@ export default function PrivateMessagesScreen() {
     return () => sub.remove();
   }, [navigation, sel, closeConv]);
 
-  /**
-   * 带 targetUserId 直接进会话（房间点粉丝头像 → 用户资料卡「私信」）。
-   * 不依赖会话列表里已存在该会话：直接构造最小会话打开。
-   * 对方不在成员库 → member 为 null → 不显示翻牌条（纯私信会话）。
-   */
   const route = useRoute<RouteProp<RootStackParamList, 'PrivateMessagesScreen'>>();
   const initialRouteTargetRef = useRef('');
   const routeTargetId = String(route?.params?.targetUserId || '').trim();
@@ -1022,7 +978,7 @@ export default function PrivateMessagesScreen() {
     if (!sel) return;
     const selectedConv = sel;
     const requestId = convRequestIdRef.current;
-    // 对方是成员（成员库命中）→ 不支持发图（与 UI 隐藏图片按钮同一判定，双保险）
+
     if (member) {
       showToast(t('成员私信不支持发送图片'));
       return;
@@ -1061,8 +1017,7 @@ export default function PrivateMessagesScreen() {
         mimeType: mime,
       });
       const uploadedItem: WireRecord = uploaded?.content || {};
-      // 图片尺寸：优先用 picker 直接给的 width/height（最可靠），再用接口返回，最后才用 Image.getSize
-      //（getSize 对部分 Android content:// URI 不会回调，只能拿到 0）
+
       const pickerW = Number(asset.width || 0) || 0;
       const pickerH = Number(asset.height || 0) || 0;
       const localSize =
@@ -1146,7 +1101,7 @@ export default function PrivateMessagesScreen() {
         if (!override) setText('');
       } else {
         await pocketApi.sendPrivateMessageReply(convTargetId(selectedConv), txt);
-        if (!override) setText(''); // 发送成功立即清空输入框（openConv 会刷新 requestId，原清空逻辑永远到不了）
+        if (!override) setText('');
         if (requestId !== convRequestIdRef.current) return;
         showToast(t('已发送'));
         await openConv(selectedConv, { silent: true });
@@ -1161,10 +1116,6 @@ export default function PrivateMessagesScreen() {
     }
   };
 
-  /**
-   * 消息 → 库 IMessage（memo 化）。
-   * 以前这段在 render 里现算：输入框每敲一个字都重建全部消息对象，整屏重渲染。
-   */
   const dmIms = useMemo(
     () =>
       sel
@@ -1173,7 +1124,6 @@ export default function PrivateMessagesScreen() {
     [msgs, sel, uid, member],
   );
 
-  /** 会话维度常量：顶层 useCallback，保证 render* 引用稳定（否则每次父渲染整屏消息重渲染） */
   const dmTargetId = sel ? convTargetId(sel) : '';
   const dmPeerName = sel ? convName(sel) : '';
   const dmPeerAvatar = sel ? peerAvatarUrl(sel, member) : '';
@@ -1181,10 +1131,9 @@ export default function PrivateMessagesScreen() {
     if (!dmTargetId) return;
     setProfileTarget({ userId: dmTargetId, nick: dmPeerName, avatar: dmPeerAvatar });
   }, [dmTargetId, dmPeerName, dmPeerAvatar]);
-  /** 气泡头像：旧版实现每条对方消息左侧一个头像，可点开资料卡 */
+
   const renderPeerAvatar = useCallback(
     (props?: { currentMessage?: { original?: PrivateMessageWire } }) => {
-      // 每条消息可能带自己的发送者头像（同一条会话里混入其他发送者时也能对上）
       const url = peerAvatarUrl(sel, member, props?.currentMessage?.original) || dmPeerAvatar;
       const initial = dmPeerName.trim().slice(0, 1).toUpperCase();
       if (!url) {
@@ -1213,9 +1162,6 @@ export default function PrivateMessagesScreen() {
     [sel, member, dmPeerAvatar, dmPeerName, openPeerProfile, palette, t],
   );
 
-  /**
-   * 日期分隔：统一纯数字 yyyy/mm/dd（库自带的 zh 输出是「14 9月」这种不符合中文习惯的格式）
-   */
   const renderDayLabel = useCallback(
     ({
       createdAt,
@@ -1224,14 +1170,12 @@ export default function PrivateMessagesScreen() {
       createdAt?: Date | number | string;
       date?: Date | number | string;
     }) => {
-      // ⚠️ 库回调传的是 createdAt（DayAnimated/index.js: renderDay({...rest, createdAt, isAnimated})），
-      // 不是 date —— 只读 date 会得到 undefined → NaN → 返回 null → 日期分隔根本不显示。
       const input = createdAt ?? date;
       const d = input instanceof Date ? input : new Date(input ?? 0);
       if (Number.isNaN(d.getTime())) return null;
       const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
       const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
-      // 用户要求：日期分隔**居中**（库的 Day 容器居中，但自定义 renderDay 的返回被塞进
+
       return (
         <Text style={[styles.dateSepText, { color: palette.labelSecondary, alignSelf: 'center' }]}>
           {label}
@@ -1241,10 +1185,6 @@ export default function PrivateMessagesScreen() {
     [palette],
   );
 
-  /**
-   * 纯椭圆玻璃气泡（材质 = 全站同一套 GlassSurface）。
-   * 只做气泡本身：左右分列仍由库的 position 决定（不再包一层 row，避免阶梯错位）。
-   */
   const renderEllipseGlassBubble = useCallback(
     ({
       currentMessage,
@@ -1264,8 +1204,7 @@ export default function PrivateMessagesScreen() {
       const hh = Number.isNaN(t0.getTime())
         ? ''
         : `${String(t0.getHours()).padStart(2, '0')}:${String(t0.getMinutes()).padStart(2, '0')}`;
-      // 语音/视频/图片消息：这个气泡原来只渲染 msg.text → 媒体消息只剩「[语音消息]」文字、点不动。
-      // 补上内联媒体：图片直显；语音/视频给播放键 + 内联 PlayerScreen。
+
       const media = item ? privateMessageMedia(item) : null;
       const hasText =
         !!msg.text &&
@@ -1355,7 +1294,6 @@ export default function PrivateMessagesScreen() {
   );
 
   if (sel) {
-    // 会话维度常量都在组件顶层（useCallback/memo），这里只做别名，保持下面 JSX 不动
     const peerName = dmPeerName;
     const peerAvatar = dmPeerAvatar;
     const ims = dmIms;
@@ -1367,7 +1305,7 @@ export default function PrivateMessagesScreen() {
             styles.screen,
             {
               backgroundColor: getPageBackground(),
-              paddingBottom: keyboardHeight || inputBarSafeBottom,
+              paddingBottom: keyboardHeight > 0 ? keyboardHeight + 6 : inputBarSafeBottom,
             },
           ]}
         >
@@ -1400,20 +1338,20 @@ export default function PrivateMessagesScreen() {
               </ScalePressable>
             }
           />
-          {/* 官方 demo 用法：只给 messages / user / onSend，其余全用库默认（气泡、日期、输入条） */}
+
           <View style={{ flex: 1 }}>
             <Chat
               messages={ims}
-              // 背景透明：露出页面/房间背景图（库默认灰底会把它整块盖住）
+
               theme={DM_CHAT_THEME as any}
               locale="zh"
               renderBubble={renderEllipseGlassBubble}
-              // 对方头像（旧版实现同款：每条对方消息左侧头像，点开用户资料卡）
+
               renderAvatar={renderPeerAvatar}
-              // 往上翻历史时给「回到底部」气泡（与房间页一致）
+
               isScrollToBottomEnabled
               scrollToBottomOffset={80}
-              // 日期分隔（用户要求加回）：跨天消息只显示 HH:mm 会看反顺序，加 yyyy/mm/dd 分隔
+
               renderDay={renderDayLabel}
               isDayAnimationEnabled={false}
               user={DM_CHAT_USER as any}
@@ -1422,8 +1360,7 @@ export default function PrivateMessagesScreen() {
                 if (outgoing) void doSend(outgoing);
               }}
               renderInputToolbar={DM_NO_INPUT_TOOLBAR}
-              // 滚动消息列表即收键盘（微信行为）：此前全项目没设过 keyboardDismissMode，
-              // 用户滑列表时键盘一直挂着挡住半屏（用户反馈「输入法不会自动隐藏」）。
+
               listProps={{ keyboardDismissMode: 'on-drag', keyboardShouldPersistTaps: 'handled' }}
             />
           </View>
@@ -1499,7 +1436,6 @@ export default function PrivateMessagesScreen() {
               </Text>
             ) : null}
             <View style={styles.inputRow}>
-              {}
               {member ? null : (
                 <ScalePressable
                   style={[styles.imgPickerBtn, { backgroundColor: palette.fill2 }]}
@@ -1541,7 +1477,6 @@ export default function PrivateMessagesScreen() {
                 }}
                 disabled={loading || !text.trim()}
               >
-                {/* 禁用/在途要有可分辨的视觉态：原来恒为主色实底，空输入看着能点、加载中文字变成「..」 */}
                 <Text
                   style={[
                     styles.sendT,
@@ -1554,14 +1489,14 @@ export default function PrivateMessagesScreen() {
             </View>
           </GlassSurface>
         </View>
-        {/* 大图预览：挂在会话页根层级（放进气泡里会被 FlatList 复用吞掉） */}
+
         {zoomUrl ? <ZoomImageModal url={zoomUrl} onClose={() => setZoomUrl('')} /> : null}
-        {/* 用户资料卡：点头像打开（与房间消息同一套资料卡，含关注 / 私信） */}
+
         <UserProfileSheet
           visible={!!profileTarget}
           target={profileTarget}
           onClose={() => setProfileTarget(null)}
-          // 已经在私信页里，「私信」按钮只收起资料卡
+
           onOpenChat={() => setProfileTarget(null)}
         />
       </View>
@@ -1577,10 +1512,10 @@ export default function PrivateMessagesScreen() {
       <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
         <PerfFlatList
           data={convRows}
-          // 滚动即收键盘：会话列表上方有搜索框，滑列表不该让键盘一直挡着
+
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
-          // 滚动锚点（B6）：刷新/置顶重排后保持可见位置
+
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyExtractor={(item) => item.key}
           initialNumToRender={12}
@@ -1601,84 +1536,95 @@ export default function PrivateMessagesScreen() {
             const unread = Number(conv.noreadNum);
             const latestTime = Number(conv.lastTime || conv.msgTime || 0);
             const isPinned = pinnedConvs.includes(convTargetId(conv));
-            // 会话头像：会话对象自带 → 成员库；都没有才回落首字母
+
             const convTarget = String(convTargetId(conv));
             const convMember = memberById.get(convTarget);
             const convAvatarUrl = peerAvatarUrl(conv, convMember);
             return (
               <View style={styles.convRowWrap}>
                 <TouchableOpacity
-                  style={[
-                    styles.convCard,
-                    {
-                      backgroundColor: 'transparent',
-                      borderColor: isPinned ? palette.tint : palette.hairline,
-                      borderWidth: StyleSheet.hairlineWidth,
-                      borderRadius: 20,
-                    },
-                  ]}
+                  style={{ flex: 1 }}
                   onPress={() => openConv(conv)}
                   activeOpacity={0.88}
                 >
-                  {/* ⚠️ 列表逐行禁止 GlassSurface（每行一个模糊层 → 长列表滚动掉帧）；
-                      改为普通容器 + 外层 Touchable 的 border/bg 表达层次 */}
-                  <View style={styles.convCardRow}>
-                    <ScalePressable
-                      style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}
-                      onPress={() =>
-                        setProfileTarget({ userId: convTarget, nick: name, avatar: convAvatarUrl })
-                      }
-                      accessibilityLabel={t('头像')}
-                    >
-                      {convAvatarUrl ? (
-                        <NetworkImage
-                          source={{ uri: convAvatarUrl }}
-                          style={styles.convAvatarImg}
-                          resizeMode="cover"
-                          thumbnail={AVATAR_THUMB_WIDTH}
-                          fallbackIcon="account-outline"
-                        />
-                      ) : (
-                        <Text style={[styles.convAvatarText, { color: palette.tint }]}>
-                          {name.trim().slice(0, 1).toUpperCase()}
-                        </Text>
-                      )}
-                    </ScalePressable>
-                    <View style={styles.convInfo}>
-                      <View style={styles.convTitleRow}>
-                        <Text style={[styles.convName, { color: palette.label }]} numberOfLines={1}>
-                          {name}
-                        </Text>
-                        {latestTime ? (
+                  <GlassSurface
+                    radius={radii.lg}
+                    role="card"
+                    frostedOnly
+                    style={[
+                      styles.convCard,
+                      {
+                        backgroundColor: 'transparent',
+                        borderColor: isPinned ? palette.tint : palette.innerStroke,
+                        borderWidth: StyleSheet.hairlineWidth,
+                      },
+                    ]}
+                  >
+                    <View style={styles.convCardRow}>
+                      <ScalePressable
+                        style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}
+                        onPress={() =>
+                          setProfileTarget({
+                            userId: convTarget,
+                            nick: name,
+                            avatar: convAvatarUrl,
+                          })
+                        }
+                        accessibilityLabel={t('头像')}
+                      >
+                        {convAvatarUrl ? (
+                          <NetworkImage
+                            source={{ uri: convAvatarUrl }}
+                            style={styles.convAvatarImg}
+                            resizeMode="cover"
+                            thumbnail={AVATAR_THUMB_WIDTH}
+                            fallbackIcon="account-outline"
+                          />
+                        ) : (
+                          <Text style={[styles.convAvatarText, { color: palette.tint }]}>
+                            {name.trim().slice(0, 1).toUpperCase()}
+                          </Text>
+                        )}
+                      </ScalePressable>
+                      <View style={styles.convInfo}>
+                        <View style={styles.convTitleRow}>
                           <Text
-                            style={[styles.convTime, { color: palette.labelTertiary }]}
+                            style={[styles.convName, { color: palette.label }]}
                             numberOfLines={1}
                           >
-                            {formatTimestamp(latestTime).slice(5, 16)}
+                            {name}
                           </Text>
-                        ) : null}
-                      </View>
-                      <View style={styles.convMetaRow}>
-                        <Text
-                          style={[styles.convPrev, { color: palette.labelSecondary }]}
-                          numberOfLines={1}
-                        >
-                          {conv.newestMessage || t('点击查看')}
-                        </Text>
-                        {unread > 0 ? (
-                          <View style={[styles.badge, { backgroundColor: palette.tint }]}>
-                            <Text style={styles.badgeT}>{unread > 99 ? '99+' : unread}</Text>
-                          </View>
-                        ) : (
-                          <MaterialCommunityIcons
-                            name="chevron-right"
-                            size={20}
-                            color={palette.labelTertiary}
-                          />
-                        )}
+                          {latestTime ? (
+                            <Text
+                              style={[styles.convTime, { color: palette.labelTertiary }]}
+                              numberOfLines={1}
+                            >
+                              {formatTimestamp(latestTime).slice(5, 16)}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View style={styles.convMetaRow}>
+                          <Text
+                            style={[styles.convPrev, { color: palette.labelSecondary }]}
+                            numberOfLines={1}
+                          >
+                            {conv.newestMessage || t('点击查看')}
+                          </Text>
+                          {unread > 0 ? (
+                            <View style={[styles.badge, { backgroundColor: palette.tint }]}>
+                              <Text style={styles.badgeT}>{unread > 99 ? '99+' : unread}</Text>
+                            </View>
+                          ) : (
+                            <MaterialCommunityIcons
+                              name="chevron-right"
+                              size={20}
+                              color={palette.labelTertiary}
+                            />
+                          )}
+                        </View>
                       </View>
                     </View>
-                  </View>
+                  </GlassSurface>
                 </TouchableOpacity>
                 <View style={styles.convActions}>
                   {isPinned && pinnedConvs.length > 1 ? (
@@ -1749,7 +1695,7 @@ export default function PrivateMessagesScreen() {
           ListFooterComponent={hasMoreConvs ? <CenterSpinner text={t('加载更多会话…')} /> : null}
         />
       </FadeInView>
-      {/* 列表头像点开资料卡（会话页那份在另一个返回分支里） */}
+
       <UserProfileSheet
         visible={!!profileTarget}
         target={profileTarget}
@@ -1772,9 +1718,16 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   screenContainer: { flex: 1 },
   convList: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 },
-  groupTitle: { fontSize: 13, fontWeight: '800', marginTop: 12, marginBottom: 2, paddingLeft: 4 },
+  groupTitle: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '800',
+    marginTop: 12,
+    marginBottom: 2,
+    paddingLeft: 4,
+  },
   convCard: { marginVertical: 4, flex: 1 },
-  /** 玻璃内部的行布局（padding + row 必须在这里，见上方注释） */
+
   convCardRow: { padding: 12, flexDirection: 'row', alignItems: 'center' },
   convRowWrap: { flexDirection: 'row', alignItems: 'center' },
   convActions: { marginLeft: 8, gap: 8, alignItems: 'center' },
@@ -1789,7 +1742,8 @@ const styles = StyleSheet.create({
   pinMoveBtn: {
     width: 22,
     height: 18,
-    borderRadius: 6,
+    borderRadius: 8,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1802,8 +1756,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   convAvatarImg: { width: 44, height: 44, borderRadius: 999 },
-  convAvatarText: { fontSize: 17, fontWeight: '800' },
-  /** 气泡旁头像 / 会话页头部头像 */
+  convAvatarText: { fontSize: 17, fontFamily: fontFamily.system, fontWeight: '800' },
+
   msgAvatar: {
     width: 36,
     height: 36,
@@ -1812,13 +1766,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  msgAvatarText: { fontSize: 15, fontWeight: '800' },
+  msgAvatarText: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '800' },
   headerAvatar: { width: 34, height: 34, borderRadius: 17 },
   headerAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
   headerAvatarText: { fontSize: 14, fontWeight: '800' },
   convInfo: { flex: 1, marginLeft: 12 },
   convTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  convName: { fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },
+  convName: {
+    fontSize: 15,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
   convTime: { fontSize: 11 },
   convMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
   convPrev: { fontSize: 12, flex: 1, marginRight: 8 },
@@ -1830,7 +1790,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  badgeT: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  badgeT: { color: '#fff', fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
   dateSepText: { fontSize: 10, fontWeight: '700' },
   mediaBtn: {
     marginTop: 4,
@@ -1841,17 +1801,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  mediaBtnText: { fontSize: 12, fontWeight: '800' },
+  mediaBtnText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '800' },
   inlineImg: { marginTop: 4, borderRadius: 14 },
   flipBar: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
   flipName: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
   flipRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   flipChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
-  flipChipT: { fontSize: 11, fontWeight: '700' },
+  flipChipT: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
   flipSpacer: { flex: 1 },
   flipMoney: { fontSize: 11, fontWeight: '700' },
   flipRechargeBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 18 },
-  flipRechargeT: { fontSize: 10, fontWeight: '800' },
+  flipRechargeT: { fontSize: 10, fontFamily: fontFamily.system, fontWeight: '800' },
   flipLabel: { fontSize: 10, fontWeight: '800', marginBottom: 2 },
   inputBar: { paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
@@ -1862,10 +1822,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  input: { flex: 1, padding: 10, borderRadius: 18, borderWidth: 1, fontSize: 14, maxHeight: 80 },
+  input: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    fontSize: 14,
+    fontFamily: fontFamily.system,
+    maxHeight: 80,
+  },
   sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18 },
   ellipseBubble: { paddingVertical: 9, paddingHorizontal: 14, maxWidth: '78%', marginVertical: 2 },
   ellipseText: { fontSize: 15, lineHeight: 21 },
-  ellipseTime: { fontSize: 11, marginTop: 3, alignSelf: 'flex-end' },
+  ellipseTime: { fontSize: 11, fontFamily: fontFamily.system, marginTop: 3, alignSelf: 'flex-end' },
   sendT: { fontWeight: '800', fontSize: 13 },
 });

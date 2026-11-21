@@ -10,7 +10,6 @@ import com.facebook.react.uimanager.ViewManager;
 import java.util.Collections;
 import java.util.List;
 
-/** 应用内更新（下载 APK + 拉起系统安装器） */
 public class ApkUpdaterPackage implements ReactPackage {
   @NonNull
   @Override

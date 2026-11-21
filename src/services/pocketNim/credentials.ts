@@ -1,10 +1,3 @@
-/**
- * 云信登录凭证获取（口袋48 HTTP：im/api/v1/im/userinfo）。
- *
- * 返回 content.accid + content.pwd（旧字段 accId / imUserId / token / imPwd 兜底）。
- * 同一 App 生命周期内只取一次，失败不缓存（下次调用重试）。
- */
-
 import pocketApi from '../../api/pocket48';
 import { ALLOW_CUSTOM_SENDER_PROFILE } from '../../constants/identityFeatures';
 import { getSetting } from '../settings';
@@ -17,20 +10,12 @@ let cached: NimCredentials | null = null;
 let inflight: Promise<NimCredentials | null> | null = null;
 let inflightToken = '';
 let generation = 0;
-/**
- * 缓存凭证对应的口袋 token。
- * 切号（switchBigSmall）/ 重新登录后 token 变了，但缓存里的 accid/token 还是旧号的
- * —— 若不清掉，接下来所有云信操作（弹幕 / 房间消息）都会用**旧身份**发出，
- * 且新旧 accid 不匹配还可能连不上房间（用户反馈的核心问题）。
- * 这里做一层自愈：token 变化即视为凭证过期。
- */
+
 let cachedToken = '';
 
-/** 自身资料（发送身份）缓存：与凭证同源，换号必须一起作废 */
 let selfProfileCache: NimSelfProfile | null = null;
 let selfProfileInflight: Promise<NimSelfProfile | null> | null = null;
 
-/** 当前口袋 token（切号的唯一权威源与其一致） */
 function currentPocketToken(): string {
   try {
     return String(useSettingsStore.getState().settings.p48Token || '');
@@ -44,7 +29,6 @@ export function peekNimCredentials(): NimCredentials | null {
 }
 
 function invalidateChangedAccount(tokenNow: string): void {
-  // token 变了（切号/换号/重新登录）→ 缓存凭证与自身资料一律作废，重取
   if ((cached && cachedToken !== tokenNow) || (inflight && inflightToken !== tokenNow)) {
     logInfo('[nim] 检测到口袋 token 变化，云信凭证缓存作废并重取', 'nim');
     clearNimCredentials();
@@ -63,7 +47,7 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
       const res = await pocketApi.getNimLoginInfo();
       if (requestGeneration !== generation || tokenNow !== currentPocketToken()) return null;
       const creds = normalizeCredentials(res);
-      // 诊断仅记录响应结构和凭证是否有效，不记录凭证内容。
+
       try {
         const content = (res && (res.content || res.data)) || {};
         // eslint-disable-next-line no-console
@@ -75,9 +59,7 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
         );
         // eslint-disable-next-line no-console
         console.log('[nim] creds valid =', Boolean(creds));
-      } catch {
-        /* 诊断失败忽略 */
-      }
+      } catch {}
       if (creds) {
         cached = creds;
         cachedToken = tokenNow;
@@ -98,7 +80,6 @@ export async function loadNimCredentials(force = false): Promise<NimCredentials 
   return request;
 }
 
-/** 头像框/队标/勋章图：与头像同源，空值原样返回 */
 function absFrame(a: string): string {
   const v = String(a || '').trim();
   if (!v) return '';
@@ -108,22 +89,13 @@ function absFrame(a: string): string {
   return `https://source.48.cn${v.startsWith('/') ? v : `/${v}`}`;
 }
 
-/** 相对路径头像 → source.48.cn 绝对地址（App 内同款惯例） */ function absAvatar(
-  a: string,
-): string {
+function absAvatar(a: string): string {
   const v = String(a || '').trim();
   if (!v) return '';
   if (/^https?:\/\//i.test(v)) return v;
   return `https://source.48.cn${v.startsWith('/') ? v : `/${v}`}`;
 }
 
-/**
- * 发送身份（弹幕/房间消息 remoteExtension.user）。
- *
- * getNimLoginInfo 只保证 accid/token/userId —— 昵称/头像/等级经常缺失，
- * 直接发出去别人看到的就是「无名字无头像」（真机实测实锤）。
- * 这里补一手 user/info/reload（登录态校验同款接口，返回完整用户资料），结果缓存。
- */
 export async function loadSelfProfile(force = false): Promise<NimSelfProfile | null> {
   invalidateChangedAccount(currentPocketToken());
   const requestGeneration = generation;
@@ -132,13 +104,11 @@ export async function loadSelfProfile(force = false): Promise<NimSelfProfile | n
   const profile = resolvedProfile ? { ...resolvedProfile } : null;
   if (!profile || requestGeneration !== generation || requestToken !== currentPocketToken())
     return null;
-  // 公开版只发登录账号的真实资料（+ 个性装扮），不注入任何自定义发言身份。
+
   if (!ALLOW_CUSTOM_SENDER_PROFILE) {
     return applySenderDecorations(profile, requestGeneration, requestToken);
   }
-  // 用户自定义发言身份（设置页「发言身份」）优先于登录账号资料
-  // roleId 语义（官方 UserInfo 常量）：1=普通用户 2/3/4/5=成员 999=超管
-  // sessionRole 语义：0=普通观众 1=房管 2=房主 3=成员本人 99=超管
+
   try {
     const [nick, avatar, level, roleId, sessionRole, vip] = await Promise.all([
       getSetting('yaya_send_nickname'),
@@ -158,13 +128,10 @@ export async function loadSelfProfile(force = false): Promise<NimSelfProfile | n
     }
     if (vip === 'on') profile.vip = true;
     else if (vip === 'off') profile.vip = false;
-  } catch {
-    /* 设置读取失败不影响发送 */
-  }
+  } catch {}
   return applySenderDecorations(profile, requestGeneration, requestToken);
 }
 
-/** 个性装扮（头像框 / 勋章）：只改消息展示位，不动账号资料。公开版与权限版都生效。 */
 async function applySenderDecorations(
   profile: NimSelfProfile,
   requestGeneration: number,
@@ -183,9 +150,7 @@ async function applySenderDecorations(
         .map((item: string) => absFrame(item.trim()))
         .filter(Boolean);
     }
-  } catch {
-    /* 设置读取失败不影响发送 */
-  }
+  } catch {}
   return profile;
 }
 
@@ -209,8 +174,7 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
           if (nick) base.nickName = nick;
           const rawAvatar = baseInfo.avatar || u.avatar;
           if (rawAvatar) base.avatar = absAvatar(String(rawAvatar));
-          // level/roleId 以 user/info/reload 为准（覆盖 getNimLoginInfo 的值）：
-          // 真机实测 roleId 被污染后，普通粉丝发房间消息会被当成员处理（出红点提示）
+
           base.level = Number(u.level) || 0;
           base.roleId = Number(u.roleId) || 0;
           base.vip = u.vip === true || u.vip === 1;
@@ -235,11 +199,6 @@ async function resolveSelfProfile(force: boolean): Promise<NimSelfProfile | null
   return selfProfileInflight;
 }
 
-/**
- * 清空云信会话缓存（切号/登出）。
- * ⚠️ 必须连自身资料缓存一起清：只清 cached 的话，新号资料字段缺失时
- * resolveSelfProfile 会回落到旧号的 selfProfileCache → 用旧号的昵称/头像/等级发言。
- */
 export function clearNimCredentials(): void {
   generation += 1;
   cached = null;

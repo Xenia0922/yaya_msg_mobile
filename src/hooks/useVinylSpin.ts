@@ -1,80 +1,107 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Animated, AppState, Easing } from 'react-native';
 
-// 模块级单例：跨组件卸载/重挂持久存在，使唱片旋转有「记忆」——
-// 离开详情页再回来时从当前角度无缝续转，而非重头(0°)。
-// 仅当 trackId 真正变化（切歌）时才归零；重进页面（trackId 不变）不重置。
 export const vinylSpin = new Animated.Value(0);
 
 const ROTATION_MS = 12000;
 let spinAnim: Animated.CompositeAnimation | null = null;
-let spinningTrackId: string | null = null;
+let spinSeq = 0;
+let spinningTrackKey: string | null = null;
 let currentSpinValue = 0;
-let spinListenerId: string | null = null;
+let appActive = AppState.currentState === 'active';
+let appSubInstalled = false;
 
-function ensureSpinListener() {
-  if (spinListenerId) return;
-  spinListenerId = vinylSpin.addListener(({ value }) => {
-    currentSpinValue = value;
-  });
+let desiredTrackKey: string | undefined;
+let desiredPlaying = false;
+const activeConsumers = new Set<symbol>();
+
+function normFrac(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  const f = v - Math.floor(v);
+  return f < 0 ? f + 1 : f;
+}
+
+function stopLoop() {
+  spinSeq += 1;
+  const active = spinAnim;
+  spinAnim = null;
+  if (active) {
+    active.stop();
+    vinylSpin.stopAnimation((val) => {
+      if (Number.isFinite(val)) {
+        currentSpinValue = normFrac(val);
+        vinylSpin.setValue(currentSpinValue);
+      }
+    });
+  }
 }
 
 function startLoop() {
-  if (spinAnim) return;
-  ensureSpinListener();
-  // 依据当前角度推算本圈剩余距离与时长，避免暂停/恢复多次导致角速度倍增。
-  const frac = currentSpinValue - Math.floor(currentSpinValue);
+  if (spinAnim || activeConsumers.size === 0 || !desiredPlaying || !appActive) return;
+  const frac = normFrac(currentSpinValue);
+  currentSpinValue = frac;
+  vinylSpin.setValue(frac);
   const remaining = frac > 0.001 && frac < 0.999 ? 1 - frac : 1;
-  const target = currentSpinValue + remaining;
-  const duration = Math.max(100, Math.round(remaining * ROTATION_MS));
+  const duration = Math.max(80, Math.round(remaining * ROTATION_MS));
+  const mySeq = ++spinSeq;
   const tick = Animated.timing(vinylSpin, {
-    toValue: target,
+    toValue: 1,
     duration,
     easing: Easing.linear,
     useNativeDriver: true,
   });
   spinAnim = tick;
   tick.start(({ finished }) => {
+    if (mySeq !== spinSeq || spinAnim !== tick) return;
     spinAnim = null;
     if (finished) {
-      currentSpinValue = target;
+      currentSpinValue = 0;
+      vinylSpin.setValue(0);
       startLoop();
     }
   });
 }
 
-function stopLoop() {
-  if (spinAnim) {
-    spinAnim.stop();
-    spinAnim = null;
+function syncSpinState() {
+  if (activeConsumers.size === 0) {
+    stopLoop();
+    return;
   }
+  if (desiredTrackKey && desiredTrackKey !== spinningTrackKey) {
+    stopLoop();
+    currentSpinValue = 0;
+    vinylSpin.setValue(0);
+    spinningTrackKey = desiredTrackKey;
+  }
+  if (desiredPlaying && appActive) startLoop();
+  else stopLoop();
 }
 
-export function useVinylSpin(trackId: string | undefined, isPlaying: boolean): Animated.Value {
-  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+function ensureAppStateListener() {
+  if (appSubInstalled) return;
+  appSubInstalled = true;
+  AppState.addEventListener('change', (next) => {
+    appActive = next === 'active';
+    syncSpinState();
+  });
+}
 
+export function useVinylSpin(trackKey: string | undefined, isPlaying: boolean): Animated.Value {
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
-      setAppActive(next === 'active');
-    });
-    return () => sub.remove();
+    ensureAppStateListener();
+    const token = Symbol('vinyl-consumer');
+    activeConsumers.add(token);
+    return () => {
+      activeConsumers.delete(token);
+      if (activeConsumers.size === 0) stopLoop();
+    };
   }, []);
 
-  // 切歌：归零并从顶部起转（保留语义；重进详情页时 trackId 不变故不归零）
   useEffect(() => {
-    if (trackId && trackId !== spinningTrackId) {
-      stopLoop();
-      vinylSpin.setValue(0);
-      currentSpinValue = 0;
-      spinningTrackId = trackId;
-    }
-  }, [trackId]);
-
-  // 播放且在前台：驱动旋转；暂停或切后台：冻结在当前角度（省电）。
-  useEffect(() => {
-    if (isPlaying && appActive) startLoop();
-    else stopLoop();
-  }, [isPlaying, appActive]);
+    desiredTrackKey = trackKey;
+    desiredPlaying = isPlaying;
+    syncSpinState();
+  }, [trackKey, isPlaying]);
 
   return vinylSpin;
 }

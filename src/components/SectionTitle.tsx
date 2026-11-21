@@ -1,13 +1,7 @@
-/**
- * 全站区块标题（统一视觉 token）：
- * - 13px / 700，字距 0.3
- * - 20px 圆角 tintSoft 图标 chip（可选）
- * - 与设置页 Section 标题完全同规格
- */
 import React from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { usePalette } from '../theme';
+import { fontFamily, usePalette } from '../theme';
 import { ScalePressable } from './Motion';
 
 export function SectionTitle({
@@ -69,6 +63,18 @@ const styles = StyleSheet.create({
     marginRight: 7,
   },
   dot: { width: 3, height: 16, borderRadius: 1.5, marginRight: 8 },
-  title: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
-  action: { fontSize: 11, fontWeight: '700', marginRight: 2 },
+  title: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    letterSpacing: Platform.OS === 'android' ? 0 : 0.3,
+    includeFontPadding: false,
+  },
+  action: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    marginRight: 2,
+    includeFontPadding: false,
+  },
 });

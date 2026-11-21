@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useRoute } from '@react-navigation/native';
 import { toMs } from '../utils/format';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { FadeInView } from '../components/Motion';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { FadeInView, ScalePressable } from '../components/Motion';
 import { NetworkImage } from '../components/NetworkImage';
 import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
@@ -10,11 +11,14 @@ import { EmptyState } from '../components/StateViews';
 import { CenterSpinner } from '../components/Loaders';
 import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
+import { userCardFromUserRes } from '../components/UserProfileSheet';
 import pocketApi from '../api/pocket48';
 import { translate, useI18n } from '../i18n';
-import { usePalette } from '../theme';
-import { useMemberStore } from '../store';
+import { usePalette, fontFamily } from '../theme';
+import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { GlassSurface } from '../components/GlassSurface';
+import { readFollowedIdsCache, writeFollowedIdsCache } from '../services/followedIds';
+import { errorMessage } from '../utils/data';
 
 type ArchiveState = {
   data: any;
@@ -50,7 +54,6 @@ function formatDate(time: any) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 兼容官方 starInfo 的日期字符串（如 2018-04-20）与本地时间戳两种格式。 */
 function formatDateValue(value: any) {
   if (value === undefined || value === null || String(value).trim() === '') return '-';
   const text = String(value).trim();
@@ -62,10 +65,17 @@ function formatDateValue(value: any) {
 export default function ProfileScreen() {
   const palette = usePalette();
   const { t } = useI18n();
+  const token = useSettingsStore((s) => s.settings.p48Token);
+  const showToast = useUiStore((s) => s.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [archive, setArchive] = useState<ArchiveState>({ data: null, history: [], error: '' });
   const [loading, setLoading] = useState(false);
-  // 成员切换竞态防护：快速切换成员时丢弃慢响应，避免旧成员的档案覆盖新成员
+  const [followState, setFollowState] = useState<{
+    uid: string;
+    following: boolean;
+    busy: boolean;
+  }>({ uid: '', following: false, busy: false });
+
   const profileReqRef = useRef(0);
 
   const loadProfile = async (member: Member): Promise<boolean> => {
@@ -73,6 +83,35 @@ export default function ProfileScreen() {
     setSelectedMember(member);
     setArchive({ data: null, history: [], error: '' });
     setLoading(true);
+    const followUid = String(member.userId || member.id || '').trim();
+    const followCandidates = Array.from(
+      new Set(
+        [String(member.userId || '').trim(), String(member.id || '').trim()].filter((v) =>
+          /^\d+$/.test(v),
+        ),
+      ),
+    );
+    setFollowState({ uid: followCandidates[0] || followUid, following: false, busy: false });
+    if (followCandidates.length > 0) {
+      void readFollowedIdsCache(token).then((cached) => {
+        if (requestId !== profileReqRef.current) return;
+        const set = new Set(cached.ids.map(String));
+        if (followCandidates.some((id) => set.has(id))) {
+          setFollowState((prev) => ({ ...prev, following: true }));
+        }
+      });
+      void (async () => {
+        for (const cid of followCandidates) {
+          try {
+            const res = await pocketApi.getUserProfile(cid);
+            if (requestId !== profileReqRef.current) return;
+            const parsed = userCardFromUserRes(res);
+            setFollowState({ uid: cid, following: parsed.following, busy: false });
+            return;
+          } catch {}
+        }
+      })();
+    }
     try {
       const memberId = parseInt(String(member.id || ''), 10);
       if (!Number.isFinite(memberId)) {
@@ -85,7 +124,7 @@ export default function ProfileScreen() {
           .catch((e: any) => ({ __error: e?.message || String(e) })),
         pocketApi.getStarHistory(memberId).catch(() => null),
       ]);
-      if (requestId !== profileReqRef.current) return false; // 已切换成员，丢弃慢响应
+      if (requestId !== profileReqRef.current) return false;
 
       const data = archiveRes?.content || archiveRes?.data || archiveRes;
       const error = data?.__error ? String(data.__error) : '';
@@ -108,10 +147,6 @@ export default function ProfileScreen() {
     }
   };
 
-  /**
-   * 从房间/消息点头像进来：路由带 memberId（或 member 对象）→ 直接加载该成员档案，
-   * 不需要用户再在 MemberPicker 里搜一遍（用户需求：房间内点头像加载对方个人资料）。
-   */
   const route = useRoute<any>();
   const members = useMemberStore((s) => s.members);
   const autoLoadedRef = useRef('');
@@ -121,18 +156,18 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!routeMemberId) return;
     const key = `${routeMemberId}:${routeNonce}`;
-    if (autoLoadedRef.current === key) return; // 同一参数只自动加载一次（避免每次重渲染重打接口）
+    if (autoLoadedRef.current === key) return;
     const found = (members as any[]).find((m) =>
       [m?.id, m?.userId, m?.memberId].some((v) => String(v ?? '').trim() === routeMemberId),
     );
-    // 成员库还没加载完时用路由带来的对象兜底；都没有就用最小对象（档案接口只需要 id）
+
     const target = (found ||
       routeParams.member || {
         id: routeMemberId,
         ownerName: String(routeParams.memberName || routeMemberId),
         avatar: String(routeParams.memberAvatar || ''),
       }) as Member;
-    // 仅在加载成功后标记 key：失败时保留重试机会
+
     void loadProfile(target).then((ok) => {
       if (ok) autoLoadedRef.current = key;
     });
@@ -144,10 +179,7 @@ export default function ProfileScreen() {
   const avatar = firstText(starInfo?.starAvatar, starInfo?.avatar, selectedMember?.avatar);
   const name = displayName(selectedMember, starInfo);
   const raw = selectedMember as any;
-  /**
-   * 档案字段优先取官方 starInfo（最新），本地成员库只作兜底。
-   * 之前直接读 raw（selectedMember 的旧缓存），即使接口已返回新 starInfo 也永远显示旧数据。
-   */
+
   const profile = { ...(raw || {}) } as Record<string, any>;
   for (const [key, value] of Object.entries(starInfo || {})) {
     if (value !== undefined && value !== null && String(value).trim() !== '') {
@@ -166,6 +198,7 @@ export default function ProfileScreen() {
       <FadeInView delay={80} duration={300}>
         <View style={styles.pickerWrap}>
           <MemberPicker
+            compact
             selectedMember={selectedMember}
             onSelect={loadProfile}
             placeholder={t('搜索成员查看档案...')}
@@ -197,6 +230,56 @@ export default function ProfileScreen() {
                   {firstText(profile.teamName, profile.team, selectedMember.team)}
                 </Text>
               </View>
+              {/^\d+$/.test(followState.uid) ? (
+                <ScalePressable
+                  onPress={async () => {
+                    if (followState.busy) return;
+                    const uid = followState.uid;
+                    const next = !followState.following;
+                    setFollowState((prev) => ({ ...prev, busy: true }));
+                    try {
+                      if (next) await pocketApi.followMember(uid);
+                      else await pocketApi.unfollowMember(uid);
+                      setFollowState((prev) => ({ ...prev, following: next, busy: false }));
+                      const cached = await readFollowedIdsCache(token).catch(() => ({ ids: [] }));
+                      const nextIds = new Set(cached.ids.map(String));
+                      if (next) nextIds.add(uid);
+                      else nextIds.delete(uid);
+                      void writeFollowedIdsCache(token, Array.from(nextIds));
+                      showToast(
+                        next ? t('已关注 {name}', { name }) : t('已取消关注 {name}', { name }),
+                      );
+                    } catch (err) {
+                      setFollowState((prev) => ({ ...prev, busy: false }));
+                      showToast(t('操作失败：{msg}', { msg: errorMessage(err) }));
+                    }
+                  }}
+                  disabled={followState.busy}
+                  pressedScale={0.94}
+                  activeOpacity={0.85}
+                  style={[
+                    styles.followBtn,
+                    {
+                      backgroundColor: followState.following ? palette.fill2 : palette.tint,
+                      opacity: followState.busy ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={followState.following ? 'account-check' : 'account-plus'}
+                    size={14}
+                    color={followState.following ? palette.labelSecondary : palette.onTint}
+                  />
+                  <Text
+                    style={[
+                      styles.followBtnText,
+                      { color: followState.following ? palette.labelSecondary : palette.onTint },
+                    ]}
+                  >
+                    {followState.following ? t('已关注') : t('关注')}
+                  </Text>
+                </ScalePressable>
+              ) : null}
             </View>
 
             {archive.error ? (
@@ -229,7 +312,7 @@ export default function ProfileScreen() {
             <View style={styles.infoGrid}>
               <InfoItem label={t('成员 ID')} value={firstText(selectedMember.id)} />
               <InfoItem label={t('拼音')} value={firstText(selectedMember.pinyin)} />
-              {/* 状态分类（官方源优先）：在团/退团/毕业/暂休 */}
+
               {selectedMember.state && selectedMember.state !== 'unknown' ? (
                 <InfoItem
                   label={t('状态')}
@@ -434,10 +517,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginVertical: 4,
     padding: 14,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  emptyCard: { marginHorizontal: 16, marginVertical: 4, borderRadius: 20 },
+  emptyCard: { marginHorizontal: 16, marginVertical: 4, borderRadius: 22 },
   profileHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   avatar: { width: 68, height: 68, borderRadius: 36 },
   avatarFallback: {
@@ -447,21 +530,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileTitleWrap: { flex: 1, marginLeft: 14 },
-  name: { fontSize: 22, fontWeight: '800' },
+  profileTitleWrap: { flex: 1, marginLeft: 14, minWidth: 0 },
+  followBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    marginLeft: 8,
+    flexShrink: 0,
+  },
+  followBtnText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
+  name: { fontSize: 22, fontFamily: fontFamily.system, fontWeight: '800' },
   subLine: { marginTop: 5, fontSize: 13 },
   notice: { padding: 12, borderRadius: 14, marginBottom: 14, borderLeftWidth: 3 },
   noticeTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  noticeText: { fontSize: 12, lineHeight: 18 },
+  noticeText: { fontSize: 12, fontFamily: fontFamily.system, lineHeight: 18 },
   retryWrap: { alignSelf: 'flex-start', marginTop: 10 },
   sectionTitle: { fontSize: 15, fontWeight: '800', marginBottom: 10, marginTop: 14 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   infoItem: { width: '48.5%', padding: 10, borderRadius: 14 },
-  infoLabel: { fontSize: 11, marginBottom: 4 },
+  infoLabel: { fontSize: 11, fontFamily: fontFamily.system, marginBottom: 4 },
   infoValue: { fontSize: 13, fontWeight: '600' },
   noteBox: { marginTop: 14, padding: 12, borderRadius: 14 },
   noteLabel: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
-  noteText: { fontSize: 13, lineHeight: 20 },
+  noteText: { fontSize: 13, fontFamily: fontFamily.system, lineHeight: 20 },
   photoItem: { width: 120, height: 160, borderRadius: 14, marginRight: 8 },
   rankRow: {
     flexDirection: 'row',
@@ -470,9 +564,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   rankNo: { width: 28, fontWeight: '800' },
-  rankName: { flex: 1, fontSize: 14, fontWeight: '600' },
+  rankName: { flex: 1, fontSize: 14, fontFamily: fontFamily.system, fontWeight: '600' },
   rankMeta: { maxWidth: 96, fontSize: 12, textAlign: 'right' },
   timelineRow: { paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
   timelineTime: { fontSize: 12, fontWeight: '700', marginBottom: 4 },
-  timelineText: { fontSize: 14, lineHeight: 20 },
+  timelineText: { fontSize: 14, fontFamily: fontFamily.system, lineHeight: 20 },
 });

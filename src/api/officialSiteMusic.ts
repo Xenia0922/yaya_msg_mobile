@@ -1,14 +1,3 @@
-// 官方音乐库（口袋48官网源）
-// 一次性全量、无 token。关键修正：
-// - ix_mp3list_xxx 每首只有 mp3/artist/title，且 artist 字段其实是「专辑名」（全都写成"热恋专属 Love Ver."），
-// 所以不能直接拿 artist 当专辑/歌手。
-// - 真实专辑名来自两条路径：
-// (a) SNH 用 mp3 文件名前缀 → 专辑名 的硬编码映射（SNH_ALBUM_BY_AUDIO_GROUP）；
-// (b) GNZ 用 歌名 → 专辑名 的硬编码映射（GNZ_ALBUM_BY_TITLE）；
-// (c) 兜底：同一音频分组（mp3 前缀）里第一首歌的标题当作专辑名，再去 records 里模糊匹配。
-// - 真实封面与演唱者（team）来自 records_xxx：按专辑名匹配到 record，record.image 是封面、
-// record.team 是演唱者（SNH48 / 袁一琦 / 7SENSES / 鞠婧祎 …）。
-// - 现在不再要求 record.image 非空才保留元数据 —— 无封面时 coverUrl=''，交给 CoverArt 渐变兜底。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithTimeout } from '../utils/network';
 
@@ -23,12 +12,12 @@ export interface OfficialSiteTrack {
   audioGroupKey: string;
   groupLabel: string;
   title: string;
-  /** 真实演唱者（record.team），如 SNH48 / 袁一琦 / 7SENSES / 鞠婧祎 */
+
   artist: string;
-  /** 真实专辑名 */
+
   album: string;
   albumName?: string;
-  /** 演唱者（与 artist 一致，供详情/队列副标题使用） */
+
   joinMemberNames?: string;
   subTitle?: string;
   mp3: string;
@@ -100,7 +89,6 @@ function normalizeAlbumName(name: string): string {
     .replace(/[\s（）()【】\[\]！!?？.,·、]/g, '');
 }
 
-// 从官网 JS 脚本里切出某个变量（数组/对象）的值并 JSON.parse。
 function extractAssignedValue(scriptText: string, variableName: string): any {
   const assignmentIndex = scriptText.indexOf(variableName);
   if (assignmentIndex < 0) return null;
@@ -143,7 +131,6 @@ async function fetchScriptText(url: string): Promise<string> {
   return res.text();
 }
 
-// ---- 唱片（专辑）收集：递归找出带 title+image 的对象 ----
 function collectRecordItems(value: any, result: any[] = []): any[] {
   if (Array.isArray(value)) {
     value.forEach((item) => collectRecordItems(item, result));
@@ -193,16 +180,15 @@ function findRecordForAlbum(recordsMap: Map<string, any>, album: string): any {
   );
 }
 
-/** 用歌曲标题做词级模糊匹配 records（比 findRecordForAlbum 的 includes 更精准） */
 function findRecordByTitleFuzzy(recordsMap: Map<string, any>, title: string): any {
   if (!title) return null;
   const nt = normalizeAlbumName(title);
   if (!nt || nt.length < 2) return null;
-  // 先精确
+
   const exact = recordsMap.get(title) || recordsMap.get(nt);
   if (exact && exact.image) return exact;
   const records: any[] = recordsMap.get('__records') || [];
-  // 拆分歌名为词（按常见分隔符），至少 2 个字符的词才参与匹配
+
   const titleWords = nt.split(/[\s\-_·、，,.·]+/).filter((w) => w.length >= 2);
   if (titleWords.length === 0) return null;
   let best: any = null;
@@ -212,12 +198,12 @@ function findRecordByTitleFuzzy(recordsMap: Map<string, any>, title: string): an
     const rn = normalizeAlbumName(r.title);
     if (!rn) continue;
     const recordWords = rn.split(/[\s\-_·、，,.·]+/).filter((w) => w.length >= 2);
-    // 计算共有词数
+
     const common = titleWords.filter((tw) =>
       recordWords.some((rw) => rw.includes(tw) || tw.includes(rw)),
     );
     const score = common.length;
-    // 放宽：至少 1 个词匹配，或唯一长词（≥4字符）精确包含在 record 名中
+
     if (score >= 1 && score > bestScore) {
       bestScore = score;
       best = r;
@@ -236,7 +222,6 @@ function findRecordByTitleFuzzy(recordsMap: Map<string, any>, title: string): an
   return best;
 }
 
-// 由 mp3 文件名前缀推断「音频分组键」，用于 SNH 的 前缀→专辑 映射
 function getAudioGroupKey(url: string, groupKey = ''): string {
   const fileName =
     String(url || '')
@@ -322,7 +307,6 @@ const SNH_ALBUM_BY_AUDIO_GROUP = new Map<string, string>([
   ['rl', '热恋专属 Love Ver.'],
 ]);
 
-// GNZ：歌名 → 专辑名
 const GNZ_ALBUM_BY_TITLE = new Map<string, string>([
   ['Brave Heart', '此刻到永远'],
   ['HERO', 'HERO'],
@@ -350,7 +334,6 @@ const GNZ_ALBUM_BY_TITLE = new Map<string, string>([
   ['这样的我', '你所不知道的我'],
 ]);
 
-// 少量歌曲（ix_songs_xxx，仅 2 首左右）带有准确 record_name 与 songs_time，优先用
 function buildSongRecordMap(songsData: any): Map<string, any> {
   const songRecordMap = new Map<string, any>();
   const collect = (value: any) => {
@@ -441,7 +424,7 @@ function buildTracks(
       }
       let singer = (record && record.team) || group.label;
       let coverUrl = record && record.image ? record.image : '';
-      // 兜底 1：当前团 records 中用歌曲标题做词级模糊匹配（比 album 匹配更广）
+
       if (!coverUrl) {
         const titleRecordFuzzy = findRecordByTitleFuzzy(recordsMap, item && item.title);
         if (titleRecordFuzzy && titleRecordFuzzy.image) {
@@ -451,7 +434,7 @@ function buildTracks(
           singer = (record && record.team) || singer;
         }
       }
-      // 兜底 1.5：尝试用 item.artist（SNH下即专辑名）匹配 records
+
       if (!coverUrl) {
         const artistRecord = findRecordForAlbum(recordsMap, item && item.artist);
         if (artistRecord && artistRecord.image) {
@@ -461,7 +444,7 @@ function buildTracks(
           singer = (record && record.team) || singer;
         }
       }
-      // 兜底 1.8：尝试用 audioGroupKey 匹配 records（同一音频分组通常同专辑）
+
       if (!coverUrl && audioGroupKey) {
         const groupRecord = findRecordForAlbum(recordsMap, audioGroupKey);
         if (groupRecord && groupRecord.image) {
@@ -471,7 +454,7 @@ function buildTracks(
           singer = (record && record.team) || singer;
         }
       }
-      // 兜底 2：跨团全局 records 精确匹配（仅当全局 record 标题精确包含歌名且 record 有封面时采用）
+
       if (!coverUrl && globalRecordsMap && globalRecordsMap.size > 0) {
         const globalMatch = findRecordForAlbum(globalRecordsMap, item && item.title);
         if (globalMatch && globalMatch.image) {
@@ -480,8 +463,7 @@ function buildTracks(
           singer = (globalMatch && globalMatch.team) || singer;
         }
       }
-      // 关键：保留所有元数据，即使 coverUrl 为空（CoverArt 渐变兜底）。
-      // 仅在 mp3 为空时才返回 null（过滤掉无效条目）。
+
       return {
         id: `${group.key}-${index}`,
         musicId: mp3,
@@ -524,11 +506,9 @@ export async function loadOfficialSiteMusic(force = false): Promise<OfficialSite
           return parsed.list as OfficialSiteTrack[];
         }
       }
-    } catch {
-      /* ignore cache errors */
-    }
+    } catch {}
   }
-  // 第一轮：拉取所有团的脚本并提取 records（用于构建跨团全局兜底匹配）
+
   const groupDataArr = await Promise.allSettled(
     GROUPS.map(async (group) => {
       const text = await fetchScriptText(`${SCRIPT_BASE}/${group.script}`);
@@ -537,19 +517,14 @@ export async function loadOfficialSiteMusic(force = false): Promise<OfficialSite
       let songRecordMap = new Map<string, any>();
       try {
         recordsMap = buildRecordMap(extractAssignedValue(text, group.recordsVar));
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       try {
         songRecordMap = buildSongRecordMap(extractAssignedValue(text, group.songsVar));
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       return { group, list, recordsMap, songRecordMap };
     }),
   );
 
-  // 构建全局 records map（跨团兜底）
   const globalRecordsMap = new Map<string, any>();
   const globalRecordsList: any[] = [];
   for (const r of groupDataArr) {
@@ -566,7 +541,6 @@ export async function loadOfficialSiteMusic(force = false): Promise<OfficialSite
   }
   globalRecordsMap.set('__records', globalRecordsList);
 
-  // 第二轮：为每个团构建 tracks，传入全局兜底 map
   const tracksArr = groupDataArr.map((r) => {
     if (r.status !== 'fulfilled') return [];
     const { group, list, recordsMap, songRecordMap } = r.value;
@@ -587,9 +561,7 @@ export async function loadOfficialSiteMusic(force = false): Promise<OfficialSite
   if (groupDataArr.every((r) => r.status === 'fulfilled')) {
     try {
       await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), list: all }));
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }
   return all;
 }

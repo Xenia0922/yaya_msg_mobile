@@ -29,17 +29,10 @@ import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * 后台播放前台保活服务（媒体样式通知）：
- * - 播放音乐/电台期间以「前台服务 + 通知」持有前台优先级与局部唤醒锁，防后台/锁屏被回收断音；
- * - 通知为 MediaStyle 媒体控制：播放/暂停、上一首、下一首、停止（可折叠显示），
- *   锁屏经 MediaSessionCompat 显示控制；按钮点击 → RadioMediaReceiver → JS 控制播放器。
- * - 播放器本体仍在 RN 进程（LiveExoView / RNV Video），本服务只负责保活与通知交互。
- */
 public class RadioForegroundService extends Service {
-  // v2：渠道重要性 LOW→DEFAULT 后须换 ID（旧渠道被系统缓存不升级，ColorOS 仍按旧 LOW 折叠）
+
   private static final String CHANNEL_ID = "yaya_radio_v2";
-  // P2-P12：与 YayaExoService 的 2024 分开，避免两个前台服务通知互相覆盖
+
   private static final int NOTIFICATION_ID = 2025;
 
   private PowerManager.WakeLock wakeLock;
@@ -55,9 +48,7 @@ public class RadioForegroundService extends Service {
   private long position = 0;
   private long duration = 0;
   private final ExecutorService coverLoader = Executors.newSingleThreadExecutor();
-  // ---- 系统媒体控件（锁屏/厂商媒体中心）进度同步 ----
-  // 系统 MediaStyle 模板的进度/时间来自 MediaSession 的 playbackState，需持续更新；
-  // 本服务每秒本地推进 position 并只写 session state（不重建通知，开销小）。
+
   private final Handler progressHandler = new Handler(Looper.getMainLooper());
   private boolean tickerRunning = false;
   private long lastNotifyMs = 0;
@@ -66,10 +57,10 @@ public class RadioForegroundService extends Service {
     @Override
     public void run() {
       if (isPlaying) {
-        position += 500; // 500ms 步进
-        pushSessionState(); // 先会话
+        position += 500;
+        pushSessionState();
         long now = System.currentTimeMillis();
-        // P2-P13：wakeLock 用带超时的 acquire，并在播放期间每分钟续期，避免异常路径永久持锁
+
         if (wakeLock != null && wakeLock.isHeld() && now - lastWakeRenewMs >= 60000) {
           try {
             wakeLock.acquire(10 * 60 * 1000L);
@@ -77,8 +68,7 @@ public class RadioForegroundService extends Service {
           } catch (Throwable ignored) {
           }
         }
-        // 每 1s 重建通知（完整推送 metadata+MediaStyle token+art）：
-        // ColorOS 疑似只重绘"最新一次完整通知+会话"（三星无需，OPPO 需要）
+
         if (now - lastNotifyMs >= 1000) {
           lastNotifyMs = now;
           try {
@@ -106,7 +96,6 @@ public class RadioForegroundService extends Service {
     progressHandler.removeCallbacks(progressTicker);
   }
 
-  /** 只更新 session 播放状态（系统媒体条进度/锁屏时间据此走），不重建通知 */
   private void pushSessionState() {
     if (mediaSession == null) return;
     try {
@@ -115,13 +104,12 @@ public class RadioForegroundService extends Service {
           | (duration > 0 ? PlaybackState.ACTION_SEEK_TO : 0);
       PlaybackState state = new PlaybackState.Builder()
           .setActions(actions)
-          // 系统媒体卡额外按钮：API21+ 的 PlaybackState.CustomAction（收藏／播放列表）
+
           .addCustomAction(new PlaybackState.CustomAction.Builder("favorite",
               com.yk1z.yayamsg.RadioServiceModule.isFavoriteState() ? "已收藏" : "收藏",
               com.yk1z.yayamsg.RadioServiceModule.isFavoriteState() ? R.drawable.ic_heart : R.drawable.ic_heart_outline).build())
           .addCustomAction(new PlaybackState.CustomAction.Builder("playlist", "播放列表", R.drawable.ic_playlist).build())
-          // ⚠️ 必须用 elapsedRealtime（单调时钟）：SystemUI 用 (now-updated)×speed+position 演算进度，
-          // 用墙钟 currentTimeMillis 会让 ColorOS 算出异常差值 → 播放态进度错乱/归 0
+
           .setState(isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
               position, isPlaying ? 1.0f : 0f, android.os.SystemClock.elapsedRealtime())
           .build();
@@ -134,8 +122,7 @@ public class RadioForegroundService extends Service {
   @Override
   public void onCreate() {
     super.onCreate();
-    // P1-P8：通知渠道必须在首个 startForeground 之前创建（旧实现只在 buildNotification 里建，
-    // 而首次占位通知走 buildMinimalNotification → 渠道不存在时 build 失败 → 5s 契约崩溃）
+
     ensureChannel();
     PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
     if (pm != null) {
@@ -173,7 +160,7 @@ public class RadioForegroundService extends Service {
       }
       @Override
       public void onSeekTo(long pos) {
-        // 系统媒体条拖动：通知 JS seek（value=毫秒）
+
         RadioServiceModule.emitControlWithValue(getApplicationContext(), "seek", (double) pos);
       }
       @Override
@@ -183,18 +170,16 @@ public class RadioForegroundService extends Service {
     });
   }
 
-
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
-    // 高频真实进度：只同步位置到会话（跳过字段/通知重建，避免 500ms×startForeground 开销）
+
     if (intent != null && intent.getBooleanExtra("tickOnly", false)) {
       if (intent.hasExtra("position")) position = (long) (intent.getDoubleExtra("position", 0) * 1000);
       if (isPlaying) pushSessionState();
       return START_NOT_STICKY;
     }
     if (intent != null) {
-      // ⚠️ startForegroundService 5s 契约：解析/封面 decode 可能耗时，先占位进前台
-      // （旧实现解析完才 startForeground → buildNotification/解码慢或抛错即 RemoteServiceException 崩溃）
+
       Notification placeholder = buildMinimalNotification();
       if (placeholder == null) {
         try { placeholder = buildNotification(); } catch (Throwable ignored) {}
@@ -220,7 +205,7 @@ public class RadioForegroundService extends Service {
         if (!nextCover.equals(coverUrl)) {
           coverUrl = nextCover;
           coverBitmap = null;
-          // 封面解码全部移到 coverLoader 后台线程，主线程不再做 decodeFile/decodeDataUri
+
           if (!coverUrl.isEmpty()) loadCover(coverUrl);
         }
       }
@@ -242,30 +227,28 @@ public class RadioForegroundService extends Service {
         + " cover=" + (coverUrl == null || coverUrl.isEmpty() ? "EMPTY" : coverUrl)
         + " title=" + title + " art=" + (coverBitmap != null ? "Y" : "N"));
     }
-    // ⚠️ 唤醒锁只在真正播放时持有：暂停态（isPlaying=false）立即释放，
-    // 否则「暂停的音乐/电台」一直持 PARTIAL_WAKE_LOCK → 后台持续耗电（曾泄漏到 onDestroy 才放）。
+
     if (wakeLock != null) {
       try {
         if (isPlaying) {
-          // 带超时：异常路径下最多持锁 10 分钟，播放中由 progressTicker 每分钟续期
+
           wakeLock.acquire(10 * 60 * 1000L);
           lastWakeRenewMs = System.currentTimeMillis();
         } else {
           if (wakeLock.isHeld()) wakeLock.release();
         }
-      } catch (RuntimeException ignored) { // SecurityException 是其子类，无需单独列出
+      } catch (RuntimeException ignored) {
       }
     }
     return START_NOT_STICKY;
   }
 
-  /** 创建/复用通知渠道（幂等；首个 startForeground 前必须已存在） */
   private void ensureChannel() {
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
-          // IMPORTANCE_DEFAULT：ColorOS 等把 LOW 当"不重要通知"折叠→不投喂媒体中心/锁屏
+
           NotificationChannel channel = new NotificationChannel(
               CHANNEL_ID, "后台播放", NotificationManager.IMPORTANCE_DEFAULT);
           channel.setDescription("播放音乐/电台时保持后台运行");
@@ -277,7 +260,6 @@ public class RadioForegroundService extends Service {
     } catch (Throwable ignored) {}
   }
 
-  /** 5s 契约占位通知（无封面/歌词，最快构建） */
   private Notification buildMinimalNotification() {
     try {
       Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
@@ -292,7 +274,7 @@ public class RadioForegroundService extends Service {
           .setOnlyAlertOnce(true);
       return b.build();
     } catch (Throwable t) {
-      // channel 缺失等极端情况：给系统一个无渠道旧版通知仍满足契约
+
       try {
         return new Notification.Builder(this)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -303,31 +285,30 @@ public class RadioForegroundService extends Service {
     }
   }
 
-  /** 后台下载/解码封面图（4s 超时，失败静默保留无图态） */
   private void loadCover(final String url) {
     if (url == null || url.isEmpty()) return;
     try {
       coverLoader.execute(() -> {
-        // 队列里过期的请求直接丢弃（快速连续换封面时不再为旧 URL 解码）
+
         if (!url.equals(coverUrl)) return;
-        // 本地文件（RN 下载）：后台线程采样解码，不阻塞主线程
+
         if (url.startsWith("file://")) {
           Bitmap bmp = decodeSampledFile(url.substring("file://".length()));
           if (bmp != null) applyCover(url, bmp);
           return;
         }
-        // data: URI（RN 侧已把图片拉成 base64，绕开 Java 网络在个别 ROM 被压制/失败的问题）
+
         if (url.startsWith("data:image")) {
           Bitmap bmp = decodeDataUri(url);
           if (bmp != null) applyCover(url, bmp);
           return;
         }
-        // 独立三连试：原样 → 强制160 → 强制500（snh48 resize 仅部分规格存在；不因"已是 resize"跳过）
+
         String[] tries = { url, variantResize(url, "160x160"), variantResize(url, "500x500") };
         java.util.LinkedHashSet<String> uniq = new java.util.LinkedHashSet<>();
         for (String t : tries) if (t != null && !t.isEmpty()) uniq.add(t);
         for (String t : uniq) {
-          if (!url.equals(coverUrl)) return; // 期间已切封面
+          if (!url.equals(coverUrl)) return;
           if (tryLoadCoverOnce(t)) return;
         }
         Log.i("RadioFg", "cover ALL FAIL");
@@ -335,7 +316,6 @@ public class RadioForegroundService extends Service {
     } catch (Throwable ignored) {}
   }
 
-  /** 生成指定尺寸缩略：替换已有 /resize_xxx/ 或插到路径首 */
   private String variantResize(String u, String size) {
     try {
       java.net.URI uri = new java.net.URI(u);
@@ -349,7 +329,6 @@ public class RadioForegroundService extends Service {
     }
   }
 
-  /** 解码 data:image URI（RN 拉取→base64；采样解码，避免超大图 OOM） */
   private Bitmap decodeDataUri(String u) {
     try {
       if (u == null || !u.startsWith("data:image")) return null;
@@ -371,7 +350,6 @@ public class RadioForegroundService extends Service {
     }
   }
 
-  /** 采样解码本地封面文件（最长边 1024，避免主线程/后台整图解码 OOM） */
   private Bitmap decodeSampledFile(String path) {
     try {
       BitmapFactory.Options bounds = new BitmapFactory.Options();
@@ -407,7 +385,6 @@ public class RadioForegroundService extends Service {
     return sample;
   }
 
-  /** 封面请求是否仍是当前（原 URL 或它的两个 resize 变体） */
   private boolean isCurrentCover(String candidate) {
     String current = coverUrl;
     if (current == null || current.isEmpty() || candidate == null) return false;
@@ -416,7 +393,6 @@ public class RadioForegroundService extends Service {
         || variantResize(current, "500x500").equals(candidate);
   }
 
-  /** 后台线程解码完成 → 主线程校验 URL 竞态后应用（P2-P13） */
   private void applyCover(final String requestUrl, final Bitmap bmp) {
     if (bmp == null) return;
     progressHandler.post(() -> {
@@ -458,9 +434,9 @@ public class RadioForegroundService extends Service {
         Log.i("RadioFg", "cover http " + code);
         return false;
       }
-      // P2-P13：请求期间封面可能已切换，旧 URL 不再落盘到状态
+
       if (!isCurrentCover(url)) return false;
-      // ⚠️ 同一条连接只读一次流（旧实现读两遍 → 第二遍为空 → 解码 null → OPPO 封面=logo）
+
       byte[] bytes = readAll(conn.getInputStream());
       if (bytes == null || bytes.length == 0) {
         Log.i("RadioFg", "cover empty body");
@@ -487,7 +463,6 @@ public class RadioForegroundService extends Service {
     }
   }
 
-  /** 封面加载完成 / 歌词行变化：重发当前通知（前台服务幂等） */
   private void renotify() {
     try {
       NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -505,13 +480,11 @@ public class RadioForegroundService extends Service {
         album == null || album.isEmpty() ? "" : album).trim();
     String text = subLine.isEmpty() ? "牙牙消息" : subLine;
 
-    // 点击通知 → 回到 App
     Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
     PendingIntent contentPi = PendingIntent.getActivity(
         this, 0, open,
         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-    // 媒体控制按钮：广播 → RadioMediaReceiver → JS
     PendingIntent favPi = mediaPi(RadioMediaReceiver.ACTION_FAVORITE, 13);
     PendingIntent listPi = mediaPi(RadioMediaReceiver.ACTION_PLAYLIST, 14);
     PendingIntent prevPi = mediaPi(RadioMediaReceiver.ACTION_PREV, 10);
@@ -519,7 +492,6 @@ public class RadioForegroundService extends Service {
     PendingIntent nextPi = mediaPi(RadioMediaReceiver.ACTION_NEXT, 12);
     PendingIntent stopPi = mediaPi(RadioMediaReceiver.ACTION_STOP, 15);
 
-    // MediaSession 元数据：标题/歌手/专辑/时长 + 封面（锁屏与各厂商媒体中心取封面/时间用）
     try {
       MediaMetadata.Builder md = new MediaMetadata.Builder();
       md.putString(MediaMetadata.METADATA_KEY_TITLE, (title == null || title.isEmpty()) ? "牙牙消息" : title);
@@ -530,16 +502,13 @@ public class RadioForegroundService extends Service {
       mediaSession.setMetadata(md.build());
     } catch (Throwable ignored) {
     }
-    // MediaSession 播放状态：供锁屏展示进度/可拖拽（duration>0 时允许 seek）
+
     long actions = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
         | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS
         | (duration > 0 ? PlaybackState.ACTION_SEEK_TO : 0);
     PlaybackState playbackState = new PlaybackState.Builder()
         .setActions(actions)
-        // ⚠️ 必须用 elapsedRealtime（单调时钟），与 updatePlaybackState() 保持一致：
-        // 这里每次 buildNotification 都被 ticker 每秒调用一次，用墙钟 currentTimeMillis
-        // 会被 SystemUI 的 (now-updated)×speed+position 算成异常差值 → ColorOS 播放中进度归 0。
-        // （历史病灶「修两处漏一处」的另一处，2026-11-07 修正）
+
         .setState(
             isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
             position, isPlaying ? 1.0f : 0f, android.os.SystemClock.elapsedRealtime())
@@ -555,19 +524,19 @@ public class RadioForegroundService extends Service {
     if (coverBitmap != null) {
       builder.setLargeIcon(coverBitmap);
     } else if (appIconBitmap != null) {
-      builder.setLargeIcon(appIconBitmap); // 兜底：无封面也显示 app logo（免去系统色块）
+      builder.setLargeIcon(appIconBitmap);
     }
     builder.setSmallIcon(R.mipmap.ic_launcher)
         .setContentTitle((title == null || title.isEmpty()) ? "牙牙消息" : title)
         .setContentText(text)
         .setCategory(Notification.CATEGORY_TRANSPORT)
-        // 公开可见性：锁屏/安全锁下仍显示封面与控件（部分厂商默认 private 会藏内容→看似无封面/无进度）
+
         .setVisibility(Notification.VISIBILITY_PUBLIC)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setContentIntent(contentPi)
         .setDeleteIntent(stopPi)
-        // 收藏（红心）固定最左；折叠视图仍只放 上一首/播放暂停/下一首
+
         .addAction(R.drawable.ic_heart, "收藏", favPi)
         .addAction(R.drawable.ic_playlist, "播放列表", listPi)
         .addAction(android.R.drawable.ic_media_previous, "上一首", prevPi)
@@ -576,7 +545,7 @@ public class RadioForegroundService extends Service {
         .setStyle(new android.app.Notification.MediaStyle()
             .setMediaSession(mediaSession.getSessionToken())
             .setShowActionsInCompactView(2, 3, 4));
-    // 展开视图：封面 + 标题 + 歌手·专辑 + 滚动歌词（音乐场景；电台无歌词不发以免空布局）
+
     boolean hasMusicMeta = (lyric != null && !lyric.isEmpty())
         || (subLine != null && !subLine.isEmpty() && !"牙牙消息".equals(subLine));
     if (hasMusicMeta) {
@@ -590,7 +559,7 @@ public class RadioForegroundService extends Service {
         } else {
           big.setViewVisibility(R.id.mc_art, android.view.View.GONE);
         }
-        // 纯 MediaSession 路线：通知大视图只放封面/标题/歌词，进度完全走会话（ColorOS 忽略通知内 progress）
+
         builder.setCustomBigContentView(big);
       } catch (Throwable ignored) {
       }

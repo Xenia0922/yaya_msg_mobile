@@ -1,11 +1,12 @@
-/**
- * Pill / Chip —— 玻璃胶囊
- *
- * 保留原 API（label / selected / onPress / accent / style），全站调用点无需改动。
- * 实现走 GlassSurface（chip 材质），旧 reactnatively Chip 已移除。
- */
 import React from 'react';
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { GlassSurface } from './GlassSurface';
 import { usePalette } from '../theme';
 import { typography } from '../theme/typography';
@@ -14,14 +15,14 @@ export interface PillProps {
   label: string;
   selected?: boolean;
   onPress?: () => void;
-  /** 强调填充（实心 tint 底 + 白字），默认 off（玻璃底 + 描边） */
+
   accent?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
 export function Pill({ label, selected, onPress, accent, style }: PillProps) {
   const palette = usePalette();
-  // 选中态不再实心填充：改成「玻璃 + 半透明 tint + tint 描边」，与全站玻璃语言一致（用户要求高级感）
+
   const solid = !!accent;
   const selectedGlass = !!selected && !accent;
 
@@ -30,8 +31,11 @@ export function Pill({ label, selected, onPress, accent, style }: PillProps) {
       numberOfLines={1}
       style={[
         typography.footnote,
-        { fontWeight: '600' },
-        // 选中玻璃底是浅粉半透明：白字对比度过低（≈1.5:1），改用主文字色保证可读
+        {
+          fontWeight: Platform.OS === 'android' ? '600' : '600',
+          includeFontPadding: false,
+        },
+
         { color: solid ? palette.onTint : palette.label },
       ]}
     >
@@ -39,7 +43,6 @@ export function Pill({ label, selected, onPress, accent, style }: PillProps) {
     </Text>
   );
 
-  // 实心强调态不做玻璃（玻璃底下压一层实心色既看不出玻璃，也浪费一次 backdrop 采样）
   if (solid) {
     return (
       <Pressable
@@ -85,5 +88,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
+    borderCurve: 'continuous',
   },
 });

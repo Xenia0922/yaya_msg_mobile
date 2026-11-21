@@ -1,13 +1,19 @@
 import { RoomMessage } from '../types';
 
-/** 时间戳 → 毫秒：10 位(秒)转毫秒；13 位毫秒原样；字符串数字同样处理 */
 export function toMs(ts: number | string | null | undefined): number {
   if (ts === null || ts === undefined || ts === '') return 0;
   let value: number | string = ts;
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return 0;
-    value = /^\d+$/.test(trimmed) ? Number(trimmed) : trimmed.replace(/-/g, '/');
+    if (/^\d+(\.\d+)?$/.test(trimmed)) {
+      value = Number(trimmed);
+    } else {
+      const parsed = Date.parse(trimmed);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      const slashParsed = Date.parse(trimmed.replace(/-/g, '/'));
+      return Number.isFinite(slashParsed) && slashParsed > 0 ? slashParsed : 0;
+    }
   }
   if (typeof value === 'number' && Number.isFinite(value) && value > 0 && value < 10000000000) {
     value *= 1000;
@@ -107,22 +113,32 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * 拼接展示用元信息（专辑 · 歌手 · 团体名），并去重：
- * 官方曲库中 album/artist/groupLabel 经常重复（如 album=SNH48 且 artist=SNH48），
- * 只保留一份团体名，避免「SNH48 · SNH48」。
- */
 export function joinMeta(parts: Array<string | undefined | null>): string {
   const list = parts.filter(Boolean).map(String);
   const out: string[] = [];
   for (const part of list) {
     if (out.some((p) => p === part)) continue;
-    // 短片段（团体名级别）若已被其他片段包含，跳过
+
     if (out.some((p) => p.includes(part) && part.length <= 8)) continue;
-    // 反向：已有片段被当前长片段包含（长片段更完整，跳过已有短片段）
+
     const dupIdx = out.findIndex((p) => part.includes(p) && p.length <= 8);
     if (dupIdx >= 0) out[dupIdx] = part;
     else out.push(part);
   }
   return out.join(' · ');
+}
+
+export function formatTrackSubtitle(track?: {
+  artist?: string | null;
+  groupLabel?: string | null;
+  album?: string | null;
+  title?: string | null;
+}): string {
+  if (!track) return '';
+  const primary = joinMeta([track.artist, track.groupLabel]);
+  if (primary) return primary;
+  const album = String(track.album || '').trim();
+  const title = String(track.title || '').trim();
+  if (album && album !== title) return album;
+  return album;
 }

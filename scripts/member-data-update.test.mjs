@@ -63,7 +63,7 @@ const imports = {
       getState: () => ({ setMembers: (items) => shown.push(items.map((item) => item.id)) }),
     },
   },
-  '../constants': { MEMBERS_URL: 'fallback', MEMBERS_URL_SELF_LIST: ['primary', 'secondary'] },
+  '../constants': { MEMBERS_URL: 'upstream', MEMBERS_URL_SELF_LIST: ['mirror1', 'mirror2'] },
   '../utils/network': {
     fetchWithTimeout: async (url) => {
       requests.push(url.split('?')[0]);
@@ -104,24 +104,38 @@ const api = moduleObject.exports;
 
 const oldResponse = { updatedAt: new Date(oldTime).toISOString(), members: members(9) };
 const newResponse = { updatedAt: new Date(newTime).toISOString(), members: members(10) };
-responses = [oldResponse, newResponse];
+
+// 1. 实时 yk1z 上游成功：直连上游优先（不带 updatedAt 也能立即同步，不卡死在旧镜像）
+requests = [];
+responses = [{ members: members(11) }];
+const liveRes = await api.updateMemberData();
+assert.equal(liveRes.updated, true);
+assert.equal(requests.join(','), 'upstream', '应优先请求实时上游 yk1z');
+assert.equal(JSON.parse(values.get(cacheKey)).count, 11);
+
+// 2. 上游失败时回退自建镜像 CDN，并跳过版本早于缓存的旧节点
+values.set(
+  cacheKey,
+  JSON.stringify({
+    members: members(10),
+    savedAt: Date.now(),
+    count: 10,
+    sourceUpdatedAt: newTime,
+  }),
+);
+requests = [];
+responses = [new Error('upstream blocked'), oldResponse, newResponse];
 await api.updateMemberData();
-assert.equal(requests.join(','), 'primary,secondary', '旧 CDN 应跳过并尝试其他源');
+assert.equal(requests.join(','), 'upstream,mirror1,mirror2', '上游失败后应回退镜像并跳过旧 CDN');
 assert.equal(JSON.parse(values.get(cacheKey)).count, 10);
 assert.equal(JSON.parse(values.get(cacheKey)).sourceUpdatedAt, newTime);
 
+// 3. 所有源均失败时应保留缓存
 requests = [];
-responses = [oldResponse, oldResponse, new Error('fallback offline')];
+responses = [new Error('upstream offline'), oldResponse, oldResponse];
 const rejected = await api.updateMemberData();
 assert.equal(rejected.updated, false, '全部源失败时应保留缓存');
 assert.equal(JSON.parse(values.get(cacheKey)).count, 10);
-
-// P1-C8：上游 yk1z 不带 updatedAt（视为无版本信息），自建镜像挂掉后必须允许它兜底。
-requests = [];
-responses = [oldResponse, oldResponse, { members: members(9) }];
-const fallback = await api.updateMemberData();
-assert.equal(fallback.updated, true, '无版本信息的上游源应可作为 fallback');
-assert.equal(JSON.parse(values.get(cacheKey)).count, 9);
 
 const newerTime = newTime + 1000;
 responses = [{ updatedAt: new Date(newerTime).toISOString(), members: members(9) }];
@@ -149,4 +163,4 @@ assert.ok(
   shown.every((ids) => ids.length === 10),
   '启动缓存读取不能覆盖已完成的新更新',
 );
-console.log('成员数据旧源回退与启动并发测试通过');
+console.log('成员数据直连优先与镜像兜底测试通过');

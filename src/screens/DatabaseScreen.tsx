@@ -3,9 +3,8 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { WebView } from 'react-native-webview';
 import ScreenHeader from '../components/ScreenHeader';
 import { useI18n } from '../i18n';
-import { usePalette } from '../theme';
+import { usePalette, fontFamily } from '../theme';
 
-/** 数据库页面：直接用 gnz.hk/database 的 WebView（其余本地功能全部移除，按用户要求） */
 const DB_URL = 'https://gnz.hk/database';
 
 export default function DatabaseScreen() {
@@ -77,7 +76,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
   },
-  failText: { fontSize: 13 },
+  failText: { fontSize: 13, fontFamily: fontFamily.system },
   retryBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
   retryText: { fontSize: 13, fontWeight: '700' },
 });

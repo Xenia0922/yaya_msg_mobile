@@ -10,7 +10,6 @@ import com.facebook.react.uimanager.ViewManager;
 import java.util.Collections;
 import java.util.List;
 
-/** 敏感凭证加密仓（AndroidKeyStore AES-GCM）：token / cookie / 多账号 vault 加密落盘 */
 public class SecureVaultPackage implements ReactPackage {
   @NonNull
   @Override

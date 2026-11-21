@@ -15,19 +15,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/**
- * B站扫码登录 ticket 换 cookie（B站 2024+ 新协议）。
- *
- * 背景：扫码确认后 passport poll 返回的不再是「query 里带 SESSDATA 的旧式 crossDomain url」，
- * 而是 https://passport.biligame.com/x/passport-login/web/crossDomain?ticket=xxx&gourl=... 。
- * cookie 由访问该 url 时服务端的 Set-Cookie 响应头下发（302）。
- *
- * RN fetch 拿不到这里：
- *  1. RN fetch 自动跟随 302 重定向，中间响应的 Set-Cookie 对 JS 不可见；
- *  2. JS 侧没有可靠手段关掉重定向跟随。
- * 故用原生 OkHttp：followRedirects(false) 停在 302 首包，直接读 Set-Cookie 头回传 JS。
- * JS 通过 NativeModules.BiliLoginModule.fetchTicket(url) 调用（Promise 返回 cookie 串）。
- */
 public class BiliLoginModule extends ReactContextBaseJavaModule {
 
   private static final String DESKTOP_UA =
@@ -51,7 +38,6 @@ public class BiliLoginModule extends ReactContextBaseJavaModule {
     return "BiliLoginModule";
   }
 
-  /** 只允许 B 站 passport 的 crossDomain 换票地址，防止该原生方法被当成任意 URL 的 SSRF/凭据读取器。 */
   private static boolean isAllowedTicketUrl(String raw) {
     try {
       URL url = new URL(raw);
@@ -65,10 +51,6 @@ public class BiliLoginModule extends ReactContextBaseJavaModule {
     }
   }
 
-  /**
-   * 访问 ticket crossDomain url（不跟随 302），把响应里的所有 Set-Cookie 头拼成 "k=v; k=v" 返回。
-   * 无论 302/200，都只取首个响应的 Set-Cookie（cookie 就在这包上）。
-   */
   @ReactMethod
   public void fetchTicket(String ticketUrl, Promise promise) {
     if (ticketUrl == null || ticketUrl.isEmpty()) {
@@ -86,7 +68,6 @@ public class BiliLoginModule extends ReactContextBaseJavaModule {
         .get()
         .build();
 
-    // OkHttp 网络调用不能跑主线程
     client.newCall(request).enqueue(new okhttp3.Callback() {
       @Override
       public void onFailure(@NonNull okhttp3.Call call, @NonNull java.io.IOException e) {
@@ -98,7 +79,7 @@ public class BiliLoginModule extends ReactContextBaseJavaModule {
         try {
           StringBuilder cookie = new StringBuilder();
           for (String line : response.headers("Set-Cookie")) {
-            // "SESSDATA=xxx; Path=/; ..." → 只取 "k=v"，其余属性丢弃
+
             String kv = line == null ? "" : line.trim();
             int semi = kv.indexOf(';');
             if (semi >= 0) kv = kv.substring(0, semi).trim();

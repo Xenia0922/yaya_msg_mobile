@@ -1,11 +1,3 @@
-/**
- * 房间媒体解析工具（从 FollowedRoomsScreen 抽出的纯函数，无 React 依赖）。
- *
- * 抽离目的：该屏 5,000+ 行，媒体/流判定逻辑占其中一大块且全是纯函数；
- * 抽出后主屏只剩 UI 与状态编排，便于维护与单测。
- *
- * 规则与原 FollowedRoomsScreen 实现保持一致；类型收窄时保留了原有 URL 判定范围。
- */
 import { getPath, normalizeUrl, parseMaybeJson, pickText } from '../../utils/data';
 import { normalizePrivateMediaUrl } from '../../utils/mediaUrl';
 import { streamScore } from '../../player/resolve/streamResolver';
@@ -163,9 +155,7 @@ export function collectUrls(value: unknown, result: string[] = [], depth = 0) {
       'avatarUrl',
       'userAvatar',
       'senderAvatar',
-      // 队标/粉丝牌等「身份徽章」图：**永远不是消息内容**。此前只跳过头像类键，
-      // ext.user.teamLogo 会被下面的正则捞出来当图片消息渲染
-      // （用户实测：SNH48-雷薪梦 的文字消息下面挂着绿色 XII 队标大图）。
+
       'teamLogo',
       'teamLogoUrl',
       'teamPic',
@@ -203,8 +193,7 @@ export function collectUrls(value: unknown, result: string[] = [], depth = 0) {
       'user',
       'userInfo',
       'sender',
-      // extInfo/msgExtInfo = 序列化元数据（module/channelRole/user 头像/bubbleId），其中 JSON 字符串会被正则
-      // 捞出头像等非媒体 URL——徐钰涵公式照泄漏主因，一律跳过（真正的媒体在 body/已解析 ext 中另扫）
+
       'extInfo',
       'msgExtInfo',
       'extMsgInfo',
@@ -288,7 +277,6 @@ export function isPlayableMediaUrl(url: string) {
     lower.includes('.flv') ||
     /\.(mp4|mov|m4v|3gp|mp3|m4a|aac|amr|wav)(\?|$)/i.test(lower) ||
     lower.includes('playstream') ||
-    // 原实现为 includes('stream')：保留对无扩展名 /stream?...、streampath 等地址的兼容。
     lower.includes('stream')
   );
 }
@@ -315,7 +303,7 @@ export function classifyMedia(url: string, msgType: string, text: string): Media
   ) {
     return 'audio';
   }
-  // 先按明确扩展名判定（最高优先级）：避免 url 里含 "live" 字样的普通 .mp4/.m3u8 视频被误判成直播。
+
   if (/\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return 'video';
   if (/\.(m3u8|flv|ts)(\?|$)/i.test(url) || url.toLowerCase().startsWith('rtmp://')) return 'live';
   if (/\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return 'audio';
@@ -325,7 +313,7 @@ export function classifyMedia(url: string, msgType: string, text: string): Media
     upperType.includes('EXPRESS')
   )
     return 'image';
-  // 扩展名兜底后再按关键字判定（live/playback/record/replay 等无扩展名场景）
+
   const lower = `${url} ${msgType} ${text}`.toLowerCase();
   if (lower.includes('live') || lower.includes('playback') || lower.includes('replay'))
     return 'live';
@@ -336,9 +324,6 @@ export function classifyMedia(url: string, msgType: string, text: string): Media
   return 'link';
 }
 
-// 诊断：收集媒体消息里所有「疑似时长」的数字字段，用于定位真实 duration 字段名。
-// 仅在 duration 取不到（返回空）时打印；限频每 30s 最多一次。
-// 注意：release 包也打印（去掉 __DEV__ 守卫），便于真机实跑反馈音频时长字段名；低频无碍。
 const __diagThrottle: { last: number } = { last: 0 };
 export function diagDurationFields(label: string, sources: unknown[]) {
   const now = Date.now();

@@ -1,22 +1,3 @@
-/**
- * GlassSurface · 全站液态玻璃基元（唯一玻璃出口）
- *
- * ══ 引擎换成 expo-blur（Android = Dimezis BlurView + 硬件 RenderEffect）══
- * 弃用 react-native-liquid-glassmorphism 的原因：
- * 它的 Android 实现每帧对整个 root 做一次 `rootView.draw(canvas)` 软件重绘抓背景位图，
- * N 块玻璃 = N 份全屏 ARGB 位图 + N 遍 AGSL，实例一多必然掉帧（实测"非常卡"），
- * 而且它只排除"玻璃视图自己"、把兄弟内容折射进来（正是"折射卡片自己的内容"根因）。
- * expo-blur 走 SurfaceFlinger/RenderEffect 硬件模糊管线，没有每帧整屏软件抓图。
- *
- * ══ 材质（按 Apple Liquid Glass 的 Regular 变体）══
- * 浅色 = 白系磨砂（blur + 约 40% 白纱 + 顶部高光带 + 1px 描边）→ 深色文字可读
- * 深色 = 深系磨砂（blur + 约 46% 深纱）→ 官方"深色模式降低通透度、提升对比度"
- * 强调控件 = tintColor 染色
- *
- * ══ 使用铁律 ══
- * 内容作为 children 放进玻璃里（玻璃负责底、内容在上层清晰渲染）。
- * 可调参数只有 role/radius/intensity/tintColor，不要自创。
- */
 import React from 'react';
 import {
   Platform,
@@ -32,104 +13,90 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePalette } from '../theme';
 import { useBlurTarget } from './BlurTarget';
+import { NativeContinuousCornerView } from '../native/ContinuousCornerView';
 
-/** 语义角色 —— 决定用哪组材质 */
 export type GlassRole =
-  | 'card' // 内容卡
-  | 'chip' // 胶囊 / 小控件
-  | 'bar' // 悬浮底栏
-  | 'header' // 页头 / 导航栏
-  | 'selector' // 底栏选中态
-  | 'toast' // 短提示
-  | 'modal' // 弹层 / 面板
-  | 'hero'; // 装饰性主视觉
+  'card' | 'chip' | 'bar' | 'header' | 'selector' | 'toast' | 'modal' | 'hero';
 
 interface Material {
-  /** BlurView 强度（1–100） */
   intensity: number;
 
   reduction: number;
-  /** expo-blur 的 tint（决定模糊结果的底色走向） */
+
   blurTint: 'light' | 'dark';
-  /** 叠在模糊之上的一层纱（底色） */
+
   overlay: string;
-  /** 1px 描边 */
+
+  frostedOverlay: string;
+
   stroke: string;
-  /** 顶部高光带起始不透明度 */
+
   highlight: number;
 }
 
-/**
- * 模糊「降采样系数」：模糊在 1/N 分辨率上计算，再放大铺回。
- *
- * ⚠️【功耗/卡顿】这是全站模糊开销的唯一总闸门（96 处 GlassSurface 共用）。
- * 系数 4 → 6：模糊像素数降到约 44%（(4/6)²），RenderEffect 负载与功耗同比例下降，
- * 而玻璃是**大半径柔和模糊**，降采样到 1/6 后肉眼几乎无差别（不是锐利投影）。
- *
- * 为什么专门为 Android 调：Android 走 `dimezisBlurViewSdk31Plus`（RenderEffect 路线），
- * 而三星 One UI 的 RenderEffect 实现明显慢于同代高通/联发科机型 ——
- * 同一份代码在别家满帧、在三星就掉帧，瓶颈就是这个系数。
- * iOS 走系统 `UIVisualEffectView`，成本不在 JS/GPU 这一侧，保持原值即可。
- */
+const HIGHLIGHT_GRADIENT_STYLE = { height: '42%' } as const;
+
 const BLUR_REDUCTION = Platform.OS === 'android' ? 6 : 4;
 
-/** Apple Regular 材质：浅色白系磨砂 / 深色深系磨砂 */
 const MATERIAL: { light: Material; dark: Material } = {
   light: {
-    // Apple Regular(浅色)：强模糊 + 淡白纱 —— 模糊负责可读，纱淡才透得出去
     intensity: 64,
     reduction: BLUR_REDUCTION,
     blurTint: 'light',
     overlay: 'rgba(255,255,255,0.30)',
-    stroke: 'rgba(255,255,255,0.66)',
+    frostedOverlay: 'rgba(255,255,255,0.72)',
+    stroke: 'rgba(255,255,255,0.68)',
     highlight: 0.24,
   },
   dark: {
-    // 官方：深色模式降低通透度、提升对比度
     intensity: 70,
     reduction: BLUR_REDUCTION,
     blurTint: 'dark',
     overlay: 'rgba(20,20,26,0.40)',
-    stroke: 'rgba(255,255,255,0.10)',
+    frostedOverlay: 'rgba(28,28,36,0.76)',
+    stroke: 'rgba(255,255,255,0.12)',
     highlight: 0.1,
   },
 };
 
-/**
- * 选中态（压在底栏玻璃上那块）。
- * 静止时保持低调（浅灰而非亮白）—— 变化留给交互：拖动时由 AppTabBar 的液化拉伸承担。
- */
 const SELECTOR: { light: Material; dark: Material } = {
   light: {
     ...MATERIAL.light,
     overlay: 'rgba(232,232,238,0.55)',
+    frostedOverlay: 'rgba(232,232,238,0.78)',
     intensity: 44,
     stroke: 'rgba(255,255,255,0.45)',
     highlight: 0.1,
   },
-  dark: { ...MATERIAL.dark, overlay: 'rgba(255,255,255,0.12)', intensity: 52 },
+  dark: {
+    ...MATERIAL.dark,
+    overlay: 'rgba(255,255,255,0.12)',
+    frostedOverlay: 'rgba(42,42,50,0.72)',
+    intensity: 52,
+  },
 };
 
 export interface GlassSurfaceProps extends Omit<ViewProps, 'role'> {
-  /** 语义角色（选材质），默认 card */
   role?: GlassRole;
-  /** 圆角（dp） */
+
   radius?: number;
-  /** 纯背景层模式：铺满父容器、不吃触摸 */
+
   asBackground?: boolean;
-  /** 触摸交互（预留给按压高光；当前仅作语义标记） */
+
+  frostedOnly?: boolean;
+
   interactive?: boolean;
-  /** 覆盖模糊强度 1–100 */
+
   intensity?: number;
-  /** 强调染色（叠在模糊上的颜色） */
+
   tintColor?: string;
-  /** 兼容旧签名（AGSL 时代的色散强度），新引擎忽略 */
+
   iridescence?: number;
-  /** 可点：给了就在内部渲染 TouchableOpacity/Pressable（玻璃自己就是按压容器） */
+
   onPress?: () => void;
   onLongPress?: () => void;
   activeOpacity?: number;
-  /** 兼容 ScalePressable 的按下缩放（仅作语义标记，避免类型报错） */
+
   pressedScale?: number;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -140,6 +107,7 @@ export function GlassSurface({
   role = 'card',
   radius = 22,
   asBackground = false,
+  frostedOnly = false,
   interactive: _interactive,
   intensity,
   tintColor,
@@ -165,61 +133,87 @@ export function GlassSurface({
         ? MATERIAL.dark
         : MATERIAL.light;
 
-  // ── 引擎 ──
-  // 只用 expo-blur 的硬件模糊（Android 31+ = Dimezis RenderEffect）。
-  // 旧 AGSL 库（软件 Canvas 每帧整屏抓图，实测 janky 10% / p50 25ms）已彻底移除。
   const r = radius;
 
-  /**
-   * ⚠️【描边唯一出口】调用方若在 style 里传了 borderWidth / borderColor，
-   * 把它们**接管**到内部描边层渲染，而不是让外层盒子再画一道。
-   *
-   * 旧行为：外层 View 的 style 直接带 borderWidth+borderColor → 内层 absoluteFill 也画一道
-   * → 两条线叠加、圆角处错位、深浅色主题下颜色互搏，观感就是「描边没描好」。
-   * 全站曾有 10+ 处 GlassSurface 调用这样写（SettingsScreen / LoginScreen / DownloadScreen …）。
-   *
-   * 这样改的好处：调用方写法完全不用动、观感自动统一；不传时仍用材质自带描边。
-   */
-  const incoming = StyleSheet.flatten(style) as ViewStyle | undefined;
+  const incoming = style ? (StyleSheet.flatten(style) as ViewStyle | undefined) : undefined;
   const strokeWidth = incoming?.borderWidth ?? 1;
   const strokeColor = (incoming?.borderColor as string) ?? m.stroke;
-  /** 外层盒子：剥离 borderWidth / borderColor（改由内层描边层统一画） */
-  const outerStyle: StyleProp<ViewStyle> = incoming
-    ? (() => {
-        const { borderWidth: _bw, borderColor: _bc, ...restStyles } = incoming;
-        return restStyles as StyleProp<ViewStyle>;
-      })()
-    : style;
-  const outerBoxStyle: StyleProp<ViewStyle> = asBackground
-    ? [StyleSheet.absoluteFill, { borderRadius: r, overflow: 'hidden' }, outerStyle]
-    : [{ borderRadius: r, overflow: 'hidden' }, outerStyle];
+  const useNativeContinuous =
+    Platform.OS === 'android' && r > 0 && NativeContinuousCornerView !== null;
 
-  const inner = (
+  const hasExplicitBorder =
+    incoming !== undefined &&
+    (incoming.borderWidth !== undefined || incoming.borderColor !== undefined);
+  const hasCircularClip =
+    useNativeContinuous &&
+    incoming !== undefined &&
+    (incoming.borderRadius !== undefined || incoming.overflow !== undefined);
+  const outerStyle: StyleProp<ViewStyle> =
+    hasExplicitBorder || hasCircularClip
+      ? (() => {
+          const {
+            borderWidth: _bw,
+            borderColor: _bc,
+            borderRadius: _br,
+            overflow: _ov,
+            ...restStyles
+          } = incoming!;
+          if (useNativeContinuous) return restStyles as StyleProp<ViewStyle>;
+          return {
+            ...restStyles,
+            ...(incoming!.borderRadius !== undefined
+              ? { borderRadius: incoming!.borderRadius }
+              : null),
+            ...(incoming!.overflow !== undefined ? { overflow: incoming!.overflow } : null),
+          } as StyleProp<ViewStyle>;
+        })()
+      : style;
+  const outerBoxStyle: StyleProp<ViewStyle> = useNativeContinuous
+    ? asBackground
+      ? [StyleSheet.absoluteFill, outerStyle]
+      : outerStyle
+    : asBackground
+      ? [
+          StyleSheet.absoluteFill,
+          { borderRadius: r, borderCurve: 'continuous', overflow: 'hidden' },
+          outerStyle,
+        ]
+      : [{ borderRadius: r, borderCurve: 'continuous', overflow: 'hidden' }, outerStyle];
+
+  const fillColor = tintColor ?? (frostedOnly ? m.frostedOverlay : m.overlay);
+  const backdropLayers = (
     <>
-      {/* 底层：硬件模糊（Android 31+ = RenderEffect / Dimezis BlurView） */}
-      <BlurView
-        // 不吃触摸：absoluteFill 的模糊层会挡住子元素里的按钮（tap 切换全失效的根因）
-        pointerEvents="none"
-        // blurTarget = 只包背景层的 BlurTargetView（内部无 BlurView → 不会 RenderNode 互相嵌套）
-        blurTarget={blurTarget ?? undefined}
-        intensity={intensity ?? m.intensity}
-        tint={m.blurTint}
-        blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
-        blurReductionFactor={m.reduction}
-        style={[StyleSheet.absoluteFill, { borderRadius: r }]}
-      />
-      {/* 中层：底色纱 + 描边（调用方传的 borderWidth/borderColor 在此渲染，外层不再重复画） */}
+      {!frostedOnly ? (
+        <BlurView
+          pointerEvents="none"
+
+          blurTarget={blurTarget ?? undefined}
+          intensity={intensity ?? m.intensity}
+          tint={m.blurTint}
+          blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
+          blurReductionFactor={m.reduction}
+          style={
+            useNativeContinuous
+              ? StyleSheet.absoluteFill
+              : [StyleSheet.absoluteFill, { borderRadius: r, borderCurve: 'continuous' }]
+          }
+        />
+      ) : null}
+
       <View
         pointerEvents="none"
         style={[
           StyleSheet.absoluteFill,
-          {
-            borderRadius: r,
-            backgroundColor: tintColor ?? m.overlay,
-            borderWidth: strokeWidth,
-            borderColor: strokeColor,
-            overflow: 'hidden',
-          },
+          useNativeContinuous
+            ? { backgroundColor: fillColor }
+            : {
+                borderRadius: r,
+                borderCurve: 'continuous',
+                backgroundColor: fillColor,
+                borderWidth: strokeWidth,
+                borderColor: strokeColor,
+                overflow: 'hidden',
+              },
         ]}
       >
         <LinearGradient
@@ -228,14 +222,39 @@ export function GlassSurface({
               ? [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.02)', 'transparent']
               : [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.06)', 'transparent']
           }
-          style={{ height: '42%' }}
+          style={HIGHLIGHT_GRADIENT_STYLE}
         />
       </View>
+    </>
+  );
+
+  const inner = useNativeContinuous ? (
+    (onPress || onLongPress) && !asBackground && NativeContinuousCornerView ? (
+      <>
+        <NativeContinuousCornerView
+          pointerEvents="none"
+          cornerRadiusDp={r}
+          strokeWidthDp={strokeWidth}
+          strokeColor={strokeColor}
+          style={StyleSheet.absoluteFill}
+        >
+          {backdropLayers}
+        </NativeContinuousCornerView>
+        {children}
+      </>
+    ) : (
+      <>
+        {backdropLayers}
+        {children}
+      </>
+    )
+  ) : (
+    <>
+      {backdropLayers}
       {children}
     </>
   );
 
-  // 可点玻璃：内部渲染 TouableOpacity/Pressable，玻璃本身就是按压容器
   if ((onPress || onLongPress) && !asBackground) {
     if (activeOpacity != null) {
       return (
@@ -261,6 +280,21 @@ export function GlassSurface({
       >
         {inner}
       </Pressable>
+    );
+  }
+
+  if (useNativeContinuous && NativeContinuousCornerView) {
+    return (
+      <NativeContinuousCornerView
+        pointerEvents={asBackground ? 'none' : 'auto'}
+        cornerRadiusDp={r}
+        strokeWidthDp={strokeWidth}
+        strokeColor={strokeColor}
+        style={outerBoxStyle}
+        {...(rest as any)}
+      >
+        {inner}
+      </NativeContinuousCornerView>
     );
   }
 

@@ -1,37 +1,78 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, Keyboard, KeyboardEvent, Platform } from 'react-native';
+import { KeyboardEvents } from 'react-native-keyboard-controller';
 
-/**
- * 键盘高度（px，含导航栏）。
- *
- * 背景：本项目 Android 侧 `edgeToEdgeEnabled: true`。edge-to-edge 下系统忽略
- * `windowSoftInputMode="adjustResize"`（窗口不随键盘缩放），因此聊天页必须**手动**
- * 把承载「消息列表 + 输入框」的容器底部抬起，才能实现「整页随键盘上移、最新消息一起
- * 顶上去」（像微信等原生聊天软件），而不是只把输入框单独顶起来。
- *
- * 用法：`const kb = useKeyboardHeight;` 然后给聊天页根容器 `paddingBottom: kb`。
- * iOS 用 willShow（跟手），Android 用 didShow（实际生效时机）。
- */
 export function useKeyboardHeight(enabled = true): number {
   const [height, setHeight] = useState(0);
+  const kcHeightRef = useRef(0);
+  const rnHeightRef = useRef(0);
+
   useEffect(() => {
     if (!enabled) {
+      kcHeightRef.current = 0;
+      rnHeightRef.current = 0;
       setHeight(0);
       return;
     }
+
+    const syncHeight = () => {
+      const next = Math.max(kcHeightRef.current, rnHeightRef.current);
+      setHeight((prev) => (prev === next ? prev : next));
+    };
+
+    const subs: Array<{ remove: () => void }> = [];
+
+    try {
+      const kcWillShow = KeyboardEvents.addListener('keyboardWillShow', (e) => {
+        const next = Math.max(0, Math.round(e?.height ?? 0));
+        if (next > 0) {
+          kcHeightRef.current = next;
+          syncHeight();
+        }
+      });
+      const kcDidShow = KeyboardEvents.addListener('keyboardDidShow', (e) => {
+        kcHeightRef.current = Math.max(0, Math.round(e?.height ?? 0));
+        syncHeight();
+      });
+      const kcWillHide = KeyboardEvents.addListener('keyboardWillHide', () => {
+        kcHeightRef.current = 0;
+        rnHeightRef.current = 0;
+        setHeight(0);
+      });
+      const kcDidHide = KeyboardEvents.addListener('keyboardDidHide', () => {
+        kcHeightRef.current = 0;
+        rnHeightRef.current = 0;
+        setHeight(0);
+      });
+      subs.push(kcWillShow, kcDidShow, kcWillHide, kcDidHide);
+    } catch {}
+
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const show = Keyboard.addListener(showEvent, (e: KeyboardEvent) => {
-      setHeight(Math.max(0, Math.round(e?.endCoordinates?.height ?? 0)));
+      rnHeightRef.current = Math.max(0, Math.round(e?.endCoordinates?.height ?? 0));
+      syncHeight();
     });
-    const hide = Keyboard.addListener(hideEvent, () => setHeight(0));
+    const hide = Keyboard.addListener(hideEvent, () => {
+      kcHeightRef.current = 0;
+      rnHeightRef.current = 0;
+      setHeight(0);
+    });
     const appState = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') setHeight(0);
+      if (state !== 'active') {
+        kcHeightRef.current = 0;
+        rnHeightRef.current = 0;
+        setHeight(0);
+      }
     });
+    subs.push(show, hide, appState);
+
     return () => {
-      show.remove();
-      hide.remove();
-      appState.remove();
+      subs.forEach((s) => {
+        try {
+          s.remove();
+        } catch {}
+      });
     };
   }, [enabled]);
   return height;

@@ -1,18 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
 import { logInfo, logWarn } from '../utils/runtimeLog';
 
-/**
- * 原生模块自检（覆盖 P1「原生模块靠手工注册，升级/改配置极易漏，且漏了只是静默失效」）。
- *
- * 背景：本工程有 9 个手写 Package、13 个原生模块，`MainApplication.kt` 手工 add、
- * `settings.gradle` 手工 include。一旦某次改动漏注册，表现不是崩溃，而是**某个功能静默不可用**
- * （例如加固后 SecureVault 漏了 → 凭据加密悄悄降级为明文；Pip 漏了 → 小窗唤不出）。
- *
- * 这里在启动后对照「JS 实际依赖的模块名」检查一遍，缺哪个就写一条 warn 到运行日志。
- * 不阻塞、不弹窗；只用于日志/排障。
- */
-
-/** JS 侧实际使用的原生模块名（与各 Module.getName 对齐） */
 const REQUIRED_MODULES: Array<{ name: string; purpose: string; optional?: boolean }> = [
   { name: 'RadioServiceModule', purpose: '电台前台服务/通知' },
   { name: 'RadioExoModule', purpose: '音乐 ExoPlayer 桥' },
@@ -41,7 +29,6 @@ export function getNativeModuleReport(): NativeModuleReport | null {
   return lastReport;
 }
 
-/** 检查并写日志；返回报告 */
 export function checkNativeModules(): NativeModuleReport {
   if (Platform.OS !== 'android') {
     lastReport = { missing: [], missingRequired: [] };
@@ -70,15 +57,12 @@ export function checkNativeModules(): NativeModuleReport {
   return lastReport;
 }
 
-/** 启动后延迟执行一次（避免和启动高峰抢资源） */
 export function startNativeModuleCheck(delayMs = 3000): void {
   if (ran) return;
   ran = true;
   setTimeout(() => {
     try {
       checkNativeModules();
-    } catch {
-      /* 绝不影响启动 */
-    }
+    } catch {}
   }, delayMs);
 }

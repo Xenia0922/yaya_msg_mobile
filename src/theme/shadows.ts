@@ -1,4 +1,3 @@
-// iOS 26 阴影体系：深色微弱，亮色清晰；玻璃卡片用低深宽阴影
 import { Platform, ViewStyle } from 'react-native';
 
 const shadowImpl = (level: 'xs' | 'sm' | 'md' | 'lg', isDark: boolean) => {

@@ -28,7 +28,7 @@ import {
 } from '../native/LivePlayer';
 import { ensureNotificationPermission } from '../utils/notifications';
 import { logWarn } from '../utils/runtimeLog';
-import { usePalette, makeShadows } from '../theme';
+import { usePalette, makeShadows, fontFamily } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from '../components/GlassSurface';
 import { isRtmpUrl } from '../player/resolve/streamResolver';
@@ -47,16 +47,14 @@ export default function RoomRadioScreen() {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [roomMode, setRoomMode] = useState<'big' | 'small'>(route.params?.initialMode || 'big');
-  // v2.7.4：纯音频模式（上麦/电台流为声音，缺省开启）。
-  // 原生 LiveExoView audioOnly：不渲染画面(避免黑屏)、音频焦点+WAKE_LOCK(切后台/锁屏续播)
+
   const [audioOnly, setAudioOnly] = useState(true);
 
-  // 播放态 refs：供后台换流定时器使用，避免闭包过期
   const selectedMemberRef = useRef<Member | null>(null);
   const roomModeRef = useRef<'big' | 'small'>(roomMode);
   const playingRef = useRef(false);
   const fetchingRef = useRef(false);
-  // 请求序号：快速切换成员/模式时，只允许最新一次 startRadio 的结果落地
+
   const startReqRef = useRef(0);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   roomModeRef.current = roomMode;
@@ -67,7 +65,6 @@ export default function RoomRadioScreen() {
     selectedMemberRef.current = selectedMember;
   }, [selectedMember]);
 
-  // 纯音频模式下的旋转播放指示（绕封面旋转的细环）
   const spinAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     let loop: Animated.CompositeAnimation | null = null;
@@ -92,12 +89,10 @@ export default function RoomRadioScreen() {
   }, [audioOnly, playing, spinAnim]);
   const spinRotate = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
-  /** 拉取电台流地址（房间映射缺失时自动补齐；返回 null 表示未拿到流） */
   const fetchRadioUrl = async (member: Member, mode: 'big' | 'small'): Promise<string | null> => {
-    // 语义保持 2.7.3：小房间=member.yklzId（channelInfoList[1]），大房间=member.channelId（channelInfoList[0]）
     let channelId = mode === 'small' ? member.yklzId || member.channelId : member.channelId;
     let serverId = member.serverId;
-    // 只要「目标频道缺失」就尝试补全（缓存优先 → serverJump → seine），而不是直接 fallback 大房间
+
     const needResolve =
       !channelId ||
       channelId === '0' ||
@@ -141,10 +136,9 @@ export default function RoomRadioScreen() {
     return url || null;
   };
 
-  /** 应用流地址并强制重建播放器（url 变化 → LiveExoView key 变化 → 热换流） */
   const applyStreamUrl = (url: string, member: Member, mode: 'big' | 'small') => {
     if (__DEV__) logWarn(`[radio] ${member.ownerName} ${mode} (rtmp=${isRtmpUrl(url)})`);
-    // 播放互斥：电台开播 → 后台音乐自动暂停（后播者胜）
+
     try {
       const mst = useMusicPlayerStore.getState();
       if (
@@ -153,22 +147,18 @@ export default function RoomRadioScreen() {
           mst.playbackState === 'paused' ||
           mst.playbackState === 'loading')
       ) {
-        // loading 时音乐尚未出声，但异步解析完成仍可能 setUrl+playing；
-        // 置 idle 让 playTrack/resume 的 seq 守卫失效，避免电台与音乐双路出声。
         mst.setPlaybackState(mst.playbackState === 'loading' ? 'idle' : 'paused');
       }
     } catch {}
     setRadioUrl(url);
     setStatus(t('已连接，正在缓冲...'));
     setPlaying(true);
-    // 前台保活：通知栏 + WAKE_LOCK，后台/锁屏续播，通知可一键停止
-    // （先请求 Android 13+ 通知权限，否则前台服务通知不可见，无法从通知栏停止）
+
     ensureNotificationPermission()
       .then(() => startRadioForeground(member.ownerName || '', true))
       .catch(() => {});
   };
 
-  /** 播放期间每 5 分钟后台取新流：wsSecret 签名过期/断流时自动换流 */
   const scheduleStreamRefresh = () => {
     if (refreshTimer.current) return;
     refreshTimer.current = setInterval(
@@ -180,11 +170,9 @@ export default function RoomRadioScreen() {
           .then((fresh) => {
             if (!playingRef.current) return;
             if (fresh) {
-              // 新地址与当前不同 → setRadioUrl 触发 LiveExoView key 重建换流
               setRadioUrl((cur) => (cur && cur === fresh ? cur : fresh));
               logWarn(`[radio] ${m.ownerName} 自动换流${fresh ? '' : ''}`);
             } else {
-              // 后台取不到新流：保留当前流（服务端可能已停但流仍可解码）
               logWarn(`[radio] ${m.ownerName} 后台刷新未拿到新流（保留当前）`);
             }
           })
@@ -201,28 +189,26 @@ export default function RoomRadioScreen() {
     member: Member,
     opts: { instantUrl?: string; mode?: 'big' | 'small' } = {},
   ) => {
-    // ⚠️ 本页自带一路播放器（不使用统一 PlayerScreen），小窗/胶囊若在播会与之并存 →
-    // 双路音频且无法单独静音。开播前先收掉小窗（修复）。
     try {
       useMiniPlayerStore.getState().close();
     } catch {}
-    // 显式 mode 优先（R3：setRoomMode 同 tick 调 startRadio 时 state/ref 均还是旧值，必须显式传参）
+
     const mode = opts.mode ?? roomModeRef.current;
     const reqId = startReqRef.current + 1;
     startReqRef.current = reqId;
     setSelectedMember(member);
-    // ref 同步更新：await 期间外部读取 selectedMemberRef 必须已是本次成员
+
     selectedMemberRef.current = member;
     roomModeRef.current = mode;
     setLoading(true);
     setStatus(t('获取电台地址...'));
     setLoadError('');
-    // 秒开：上麦扫描已拿到的流地址直接开播，不重复请求
+
     if (opts.instantUrl) {
       applyStreamUrl(opts.instantUrl, member, mode);
       scheduleStreamRefresh();
       setLoading(false);
-      // 后台校验一次：拿到的若是新地址立即热换，避免扫描结果过期
+
       fetchingRef.current = true;
       fetchRadioUrl(member, mode)
         .then((fresh) => {
@@ -240,7 +226,7 @@ export default function RoomRadioScreen() {
     setPlaying(false);
     try {
       const url = await fetchRadioUrl(member, mode);
-      // 旧响应：期间已切换成员/模式或停止播放 → 丢弃，禁止 applyStreamUrl
+
       if (reqId !== startReqRef.current) return;
       const current = selectedMemberRef.current;
       if (!current || String(current.id) !== String(member.id) || roomModeRef.current !== mode)
@@ -267,7 +253,6 @@ export default function RoomRadioScreen() {
   };
 
   const stopRadio = () => {
-    // 停止即作废在途 startRadio，防止旧流在停止后又把播放器拉起来
     startReqRef.current += 1;
     setLoading(false);
     if (refreshTimer.current) {
@@ -280,10 +265,6 @@ export default function RoomRadioScreen() {
     stopRadioForeground();
   };
 
-  /**
-   * 「切换上麦胶囊」（用户要求）：把当前流交给全局音频胶囊跨页续播，
-   * 停掉本页播放（含前台服务）并返回上一页 —— 播放由胶囊接管。
-   */
   const toCapsule = () => {
     const m = selectedMember;
     const url = radioUrl;
@@ -310,8 +291,6 @@ export default function RoomRadioScreen() {
           ? t('正在播放')
           : status || t('暂无电台地址');
 
-  // 从上麦页 / 房间内按键带入成员时，进入页面自动开播（2.7.3 语义）。
-  // 有扫描缓存的流地址（route.params.streamUrl）→ 秒开；否则正常请求。
   const autoStartedRef = useRef(false);
   useEffect(() => {
     const m = route.params?.member;
@@ -322,20 +301,18 @@ export default function RoomRadioScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 通知栏「停止/播放暂停/上一首/下一首」→ 电台只处理 stop（通知实际为媒体四键，stop=停播）
   useEffect(() => {
     const offStop = onRadioStopRequested(() => stopRadio());
     const offCtrl = onRadioControlRequested((action) => {
       if (action === 'stop') stopRadio();
       else if (action === 'play_pause') {
-        // 电台通知的暂停/继续：本地 Video paused 切换
         setPlaying((p) => !p);
       }
     });
     return () => {
       offStop();
       offCtrl();
-      // R2: 卸载时清 5 分钟换流定时器（此前仅 stopRadio 清理 → 泄漏 + 卸载后仍 setRadioUrl）
+
       if (refreshTimer.current) {
         clearInterval(refreshTimer.current);
         refreshTimer.current = null;
@@ -352,6 +329,7 @@ export default function RoomRadioScreen() {
       <FadeInView delay={60} duration={360} style={{ flex: 1 }}>
         <View style={styles.pickerWrap}>
           <MemberPicker
+            compact
             selectedMember={selectedMember}
             onSelect={startRadio}
             activeOnly
@@ -389,7 +367,6 @@ export default function RoomRadioScreen() {
           </View>
         </View>
 
-        {/* 状态胶囊条：加载中 / 失败 */}
         {status && !loading ? (
           <View style={styles.statusWrap}>
             <View
@@ -416,7 +393,6 @@ export default function RoomRadioScreen() {
         ) : null}
 
         <View style={styles.scroll}>
-          {/* 播放器大卡 */}
           <GlassSurface
             radius={22}
             role="card"
@@ -426,7 +402,6 @@ export default function RoomRadioScreen() {
               shadows.sm,
             ]}
           >
-            {/* 封面 120 圆角 20 居中；纯音频播放时环绕旋转细环 + 耳机角标 */}
             {selectedMember ? (
               <View style={styles.coverWrap}>
                 {audioOnly && playing ? (
@@ -516,10 +491,8 @@ export default function RoomRadioScreen() {
 
             {radioUrl ? (
               <>
-                {/* 控制行：播放/暂停 56 tint 底白字 + 停止/重播 36 fill2 底 */}
                 <View style={styles.controlsRow}>
                   <ScalePressable
-                    // Y9: 播放中 = 真正暂停（保留 radioUrl/控制条，可再播放），停止走下方停止键
                     onPress={playing ? () => setPlaying(false) : () => setPlaying(true)}
                     pressedScale={0.9}
                     style={[styles.primaryCtrl, { backgroundColor: palette.tint, ...shadows.sm }]}
@@ -569,7 +542,7 @@ export default function RoomRadioScreen() {
                       {t('停止')}
                     </Text>
                   </ScalePressable>
-                  {/* 切换上麦胶囊：交给全局音频胶囊跨页续播（用户要求） */}
+
                   <ScalePressable
                     onPress={toCapsule}
                     pressedScale={0.9}
@@ -583,7 +556,6 @@ export default function RoomRadioScreen() {
                   </ScalePressable>
                 </View>
                 {playing ? (
-                  // react-native-video 播不了 → 用原生 LiveExoView（内置 ExoPlayer RTMP 扩展）播放
                   isRtmpUrl(radioUrl) && Platform.OS === 'android' && LiveExoView ? (
                     <LiveExoView
                       style={styles.hiddenPlayer}
@@ -649,22 +621,24 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
   },
-  statusText: { fontSize: 12, fontWeight: '600' },
+  statusText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '600' },
   scroll: { flex: 1, paddingHorizontal: 16, paddingTop: 8 },
   playerCard: {
-    borderRadius: 20,
+    borderRadius: 22,
+    borderCurve: 'continuous',
     padding: 24,
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
   },
-  cover: { width: 120, height: 120, borderRadius: 20, marginTop: 8 },
+  cover: { width: 120, height: 120, borderRadius: 14, borderCurve: 'continuous', marginTop: 8 },
   coverPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   coverWrap: { alignItems: 'center', justifyContent: 'center' },
   spinRing: {
     position: 'absolute',
     width: 132,
     height: 132,
-    borderRadius: 22,
+    borderRadius: 18,
+    borderCurve: 'continuous',
     borderWidth: 2,
     marginTop: 8,
   },
@@ -679,7 +653,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 999,
   },
-  audioBadgeText: { fontSize: 10, fontWeight: '700' },
+  audioBadgeText: { fontSize: 10, fontFamily: fontFamily.system, fontWeight: '700' },
   playerTitle: { fontSize: 18, fontWeight: '700', marginTop: 16 },
   subtitle: { fontSize: 12, marginTop: 6, textAlign: 'center' },
   inlineLoading: { minHeight: 88 },
@@ -694,12 +668,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     marginTop: 18,
   },
-  fetchBtnText: { fontSize: 15, fontWeight: '700' },
+  fetchBtnText: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '700' },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    // 5 个按钮（播放/重播/静音/停止/胶囊）在窄屏放不下 → 允许换行，居中排布
+
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 22,
@@ -720,7 +694,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
   },
-  secondaryCtrlText: { fontSize: 11, fontWeight: '600' },
+  secondaryCtrlText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '600' },
   hiddenPlayer: { position: 'absolute', width: 1, height: 1, opacity: 0 },
 });
 
@@ -728,16 +702,19 @@ export function RoomRadioSkeleton() {
   const palette = usePalette();
   return (
     <View style={{ padding: 16 }}>
-      <Skeleton width="100%" height={40} radius={14} />
+      <Skeleton width="100%" height={40} radius={20} />
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 12 }}>
         <Skeleton width={80} height={32} radius={999} />
         <Skeleton width={80} height={32} radius={999} />
       </View>
       <View style={{ marginTop: 16, alignItems: 'center' }}>
-        <View
+        <GlassSurface
+          radius={22}
+          role="card"
+          frostedOnly
           style={{
-            backgroundColor: palette.surfaceGlassStrong,
-            borderRadius: 20,
+            backgroundColor: 'transparent',
+            borderColor: palette.innerStroke,
             padding: 24,
             width: '100%',
             alignItems: 'center',
@@ -746,7 +723,7 @@ export function RoomRadioSkeleton() {
           <Skeleton width={120} height={120} radius={20} />
           <Skeleton width="40%" height={18} style={{ marginTop: 16 }} />
           <Skeleton width="25%" height={12} style={{ marginTop: 8 }} />
-        </View>
+        </GlassSurface>
       </View>
     </View>
   );

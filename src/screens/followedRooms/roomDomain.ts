@@ -1,7 +1,3 @@
-/**
- * 房间消息域：发送者解析 / 身份角色 / 消息键与合并 / 礼物与标签 / 头像框等纯函数。
- * 从 FollowedRoomsScreen 抽出（逐字搬迁，规则未改）。
- */
 import { Member, MemberSummary, RoomMessageWire, WireRecord } from '../../types';
 import { t } from '../../i18n';
 import { normalizeUrl, unwrapList, parseMaybeJson, pickText } from '../../utils/data';
@@ -32,11 +28,7 @@ export function senderProfile(item: RoomMessageWire, _room: Member): SenderProfi
   if (!item) return { id: '', name: t('未知用户'), avatar: '' };
   const body = messageBody(item);
   const extUser: WireRecord = extraInfo(item)?.user || {};
-  /**
-   * 只允许从「发送者容器」取字段：
-   * item/body 里还可能有 giftInfo.acceptUser（收礼成员）、replyInfo/giftReplyInfo（被回复者），
-   * 对整条 item 做 deepFindText 会把房主当成送礼粉丝，渲染出「房主感谢礼物」的假消息。
-   */
+
   const senderContainers = [
     extUser,
     item?.user,
@@ -70,7 +62,6 @@ export function senderProfile(item: RoomMessageWire, _room: Member): SenderProfi
     direct(['senderAvatar', 'sender.avatar', 'sender.headImg', 'user.avatar', 'user.headImg']);
 
   return {
-    // ⚠️ 归一化 trim（修复）：id 带空白时 memberIds.has / profile.id === currentUserId
     id: String(id || '').trim(),
     name: name || (id ? t('用户 {id}', { id }) : t('未知用户')),
     avatar: normalizeUrl(String(avatar || '').trim()),
@@ -83,17 +74,16 @@ export function isIdolMessage(
   includeFans: boolean,
   sender?: SenderProfile,
 ) {
-  // room 可能为空（房间切走/关闭时 chatRows 的 memo 仍可能重算）：不能直接读 room.id，否则整屏 CRASH
   if (!room) return false;
   const body = messageBody(item);
   const ext = extraInfo(item);
-  // 调用方已解析过 senderProfile 时直接复用，避免同一条消息重复解析（messageRole 热路径）
+
   const profile = sender || senderProfile(item, room);
   const ownerIds = [room.id, room.userId, room.memberId].map(String).filter(Boolean);
   if (profile.id && ownerIds.includes(String(profile.id))) return true;
-  // 已识别出发送者 ID 且不是房主（其他成员/粉丝在别人房间发言）：显示自己的名字，不套用房主身份
+
   if (profile.id) return false;
-  // 拿不到发送者 ID：退回原来的判断逻辑
+
   if (!includeFans) return true;
   const role = firstTextFrom(
     [item, ext, body],
@@ -123,15 +113,11 @@ export function messageRole(
   if (includeFans && currentUserId && profile.id && String(profile.id) === String(currentUserId))
     return 'mine';
   if (isIdolMessage(item, room, includeFans, profile)) return 'idol';
-  // 其他成员（成员库里的成员，但不是本房房主）在别人房间发言 → 也算「成员消息」。
-  // 用户要求：切到「成员消息」时，别的成员的消息不能被当成粉丝消息过滤掉。
+
   if (profile.id && memberIds && memberIds.has(String(profile.id))) return 'idol';
   return 'fan';
 }
 
-/** 关注 id → 成员匹配：friends/id 返回的是口袋 userId（= 库 id），但也可能落到
- * userId/account/昵称上（库字段异构、新成员入库延迟）。逐字段兜底，避免
- * 「已关注却不显示在房间列表」（周文迪等新成员；用户反馈）。 */
 export function matchFollowedMember<T extends MemberSummary>(
   members: T[],
   id: string,
@@ -146,7 +132,6 @@ export function matchFollowedMember<T extends MemberSummary>(
   });
 }
 
-/** 成员库 id 集合（成员 id / userId / memberId 都可能出现在消息里） */
 export function buildMemberIdSet(members: MemberSummary[]): Set<string> {
   const set = new Set<string>();
   (members || []).forEach((m) => {
@@ -170,8 +155,7 @@ export function userCardFromUserRes(res: unknown) {
   const star = (content?.starInfo || content?.memberInfo || userInfo?.starInfo || {}) as WireRecord;
   const objs = [base, userInfo, star, content];
   const pick = (keys: string[]) => firstTextFrom(objs, keys);
-  // relation / relationType / followStatus / friendStatus / isFollow / followed / isFriend
-  // mutual|both|friend|friends|2|3 → 互相关注；true|followed|following|1 → 已关注
+
   const relationValue = String(
     pick([
       'relation',
@@ -224,16 +208,13 @@ export function messageKey(item: RoomMessageWire) {
     ['text', 'message', 'msgContent', 'content', 'bodys', 'body'],
   );
   const media = firstTextFrom([body, item], ['url', 'fileUrl', 'pictureUrl', 'coverUrl', 'liveId']);
-  // 注意：兜底键【不含 index】—— 同一消息在不同 list 中 index 不同会导致去重失败、重复累积。
-  // 无稳定 id 时以 时间+发送者+内容 作近似键，足以区分不同消息并拦截同批重复。
+
   return String(
     `${getMessageTime(item)}-${profile.id || profile.name || ''}-${text || media || JSON.stringify(body).slice(0, 120)}`,
   );
 }
 
 export function mergeMessages<T extends RoomMessageWire>(prev: T[], next: RoomMessageWire[]): T[] {
-  // 根因防御：prev / next 任一含 undefined 都会「累积污染」整个聊天记录（之前只在外层 filter，
-  // 但 prev 一旦带毒，后续 merge 永远带毒，最终在 renderChatItem 崩溃）。这里双端都过滤 + 诊断。
   const cleanPrev = prev.filter(Boolean);
   if (cleanPrev.length !== prev.length) diagnoseUndefined(prev, 'MERGE_PREV');
   const seen = new Set(cleanPrev.map((item) => messageKey(item)));
@@ -262,8 +243,7 @@ export function roomGiftInfo(
     rawReplyGiftInfo && typeof rawReplyGiftInfo === 'object' && Object.keys(rawReplyGiftInfo).length
       ? rawReplyGiftInfo
       : null;
-  // 礼物回复（GIFTREPLY / AUDIO_GIFT_REPLY）不能被当成「送礼公屏卡」：
-  // 它由回复卡片 + AudioMediaCard 渲染，否则会误显示「感谢礼物：礼物 x1」。
+
   if (msgType.includes('REPLY')) {
     return null;
   }
@@ -273,10 +253,8 @@ export function roomGiftInfo(
     replyGiftInfo ||
     ext.giftInfo ||
     item.giftInfo ||
-    // 部分历史 HTTP 消息把礼物字段直接摊在 body 顶层（没有 giftInfo 包装）
     (body.giftName || body.giftId || body.giftNum ? body : null);
-  // 只认明确的礼物类型或真实 giftInfo/giftName/giftId/giftNum 载荷。
-  // 不能只看 msgType=7：QChat/HTTP 的普通文本也可能落在 7，之前会把全房间消息误判成礼物。
+
   if (!giftInfo && !msgType.includes('GIFT')) return null;
   if (msgType.includes('LIVE') && !giftInfo) return null;
   const name =
@@ -313,7 +291,6 @@ export function mediaLabel(type: MediaType) {
   return '\u94fe\u63a5';
 }
 
-// 限频诊断日志：同 key 在 intervalMs 内只打印一次，便于在 release 包观察真实数据而不刷屏
 const __diagStamps: Record<string, number> = {};
 export function __diagStamp(key: string, intervalMs: number): boolean {
   const now = Date.now();
@@ -331,11 +308,10 @@ export function firstFrameFrom(extUser: WireRecord | null | undefined): string {
       ? b[0] || b.url || b.picPath || ''
       : b;
   const u = String(first || '').trim();
-  // 相对路径（/…）也算有效 —— normalizeUrl 会按宿主补齐
+
   return u && !/^\[/.test(u) ? normalizeUrl(u) : '';
 }
 
-/** 房间消息只显示第一枚勋章，不把它当头像框或消息图片。 */
 export function firstBadgeFrom(extUser: WireRecord | null | undefined): string {
   const value = [extUser?.badge, extUser?.seineBadge, extUser?.badgeList].find((item) =>
     Array.isArray(item) ? item.length > 0 : !!item,
@@ -349,12 +325,6 @@ export function firstBadgeFrom(extUser: WireRecord | null | undefined): string {
   return normalizeUrl(url);
 }
 
-/**
- * 从 user/info/home 响应里泛匹配头像框地址：官方各端字段名不统一
- * （pictureFrame / pfUrl / headFrame / bubble…），按「key 含框类词 + 值是 URL」匹配。
- * 拿不到返回空串 —— 资料卡就不叠框，不影响主流程。
- * ⚠️ badge / medal / level 类键一律跳过（勋章 ≠ 头像框；语义互换教训）。
- */
 export function findFrameUrl(value: unknown, depth = 0): string {
   if (!value || depth > 4) return '';
   if (Array.isArray(value)) {
@@ -377,7 +347,6 @@ export function findFrameUrl(value: unknown, depth = 0): string {
   return '';
 }
 
-/** 直播榜单行（normalizeLiveRank 的输出） */
 export interface LiveRankItem {
   userId: string;
   rank: number;

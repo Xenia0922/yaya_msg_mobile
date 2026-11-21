@@ -19,7 +19,6 @@ import com.facebook.react.modules.core.DeviceEventManagerModule;
 import java.lang.ref.WeakReference;
 import java.util.Map;
 
-/** 原生 Exo 播放桥（exo-native-music）：下发队列/命令，进度等事件回流 JS。 */
 public class RadioExoModule extends ReactContextBaseJavaModule {
   private static WeakReference<ReactApplicationContext> contextRef;
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -65,8 +64,7 @@ public class RadioExoModule extends ReactContextBaseJavaModule {
         ctx.startService(i);
       }
     } catch (Throwable t) {
-      // Android 12+ 后台启动前台服务会抛 ForegroundServiceStartNotAllowedException；
-      // 不能让它打断 RN 调用链（旧实现直接抛出导致 JS 侧红屏/未捕获 Promise）。
+
       android.util.Log.w("RadioExoModule", "start service failed action=" + i.getAction(), t);
     }
   }
@@ -90,7 +88,7 @@ public class RadioExoModule extends ReactContextBaseJavaModule {
     Intent i = new Intent(getReactApplicationContext(), YayaExoService.class)
         .putExtra("cmd", cmd)
         .putExtra("position", positionSec);
-    if ("repeat".equals(cmd)) i.putExtra("repeat", (int) positionSec); // repeat 模式：0 顺序 / 1 单曲循环
+    if ("repeat".equals(cmd)) i.putExtra("repeat", (int) positionSec);
     send(i);
   }
 
@@ -113,7 +111,6 @@ public class RadioExoModule extends ReactContextBaseJavaModule {
     });
   }
 
-  /** 推送下一首/上一首单跳提示（后台切歌走 service 本地，不依赖 JS 异步链路） */
   @ReactMethod
   public void setSkipHints(String nextJson, String prevJson) {
     Intent i = new Intent(getReactApplicationContext(), YayaExoService.class)

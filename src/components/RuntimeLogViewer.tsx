@@ -4,7 +4,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { showDialog } from '../components/AppDialog';
 import { useUiStore } from '../store';
 import { useI18n } from '../i18n';
-import { usePalette, radii, spacing } from '../theme';
+import { usePalette, radii, spacing, fontFamily } from '../theme';
 import { typography } from '../theme/typography';
 import { Pill } from './Pill';
 import { CenterSpinner } from './Loaders';
@@ -271,12 +271,12 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 },
-  time: { fontSize: 11 },
+  time: { fontSize: 11, fontFamily: fontFamily.system },
   badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
   badgeText: { fontSize: 9, color: '#fff', fontWeight: '800' },
   ctx: { fontSize: 11, fontStyle: 'italic', flexShrink: 1 },
   msg: { lineHeight: 18 },
-  stack: { fontSize: 10, marginTop: 4, lineHeight: 14 },
+  stack: { fontSize: 10, fontFamily: fontFamily.system, marginTop: 4, lineHeight: 14 },
   toolbar: {
     flexDirection: 'row',
     padding: 10,
@@ -290,5 +290,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  toolText: { fontWeight: '800', fontSize: 13 },
+  toolText: { fontWeight: '800', fontSize: 13, fontFamily: fontFamily.system },
 });

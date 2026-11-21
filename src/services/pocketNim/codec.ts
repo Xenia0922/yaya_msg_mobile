@@ -1,19 +1,7 @@
-/**
- * 云信消息（直播弹幕 / 会话消息）编解码。
- *
- * 逆向依据（口袋48 7.1.39）：
- * com.pocket.snh48.lib.yunxin.model.ChatMsgUtil#getBaseParams → fromApp/roomId/sourceId/session/bubbleId/user/config
- * com.pocket.snh48.lib.yunxin.model.ChatMsgBuilder#createBarrageNomalMessageMap
- * #createBarrageMemberMessageMap
- * #createTextMessageMap
- * com.pocket.snh48.lib.yunxin.im.IMChatRoom#sendTextMessage → type 判定 + setContent + setRemoteExtension
- */
-
 import { BarrageItem, BarrageKind, NimModule, NimMsgType, NimSelfProfile } from './types';
 import { looksLikeHtml, sanitizeText } from '../../utils/html';
 import { logInfo } from '../../utils/runtimeLog';
 
-/** 官方手机端 config 段（DialogConfig：build 固定 181022，其余为设备信息，服务端只做统计） */
 function buildConfig() {
   return {
     build: '181022',
@@ -24,14 +12,6 @@ function buildConfig() {
   };
 }
 
-/**
- * 从云信消息里取出 remoteExtension（官方 SDK 里叫 remoteExtension，Web SDK 里叫 ext / custom）。
- * 版本差异较大，这里按候选字段依次兜底，字符串形态自动 JSON.parse。
- *
- * ⚠️【安全】绝不能把 msg.content / msg.text 当 ext 解析：普通文本内容完全由发送方控制，
- * 若文本本身是 JSON（如 {"user":{"roleId":2,...}}）会被当成身份资料，伪造「超管/成员」显示（P1-C11）。
- * 只信任协议层的 extension 字段。
- */
 export function readExt(msg: any): Record<string, any> {
   if (!msg) return {};
   const candidates = [
@@ -52,15 +32,12 @@ export function readExt(msg: any): Record<string, any> {
           text.replace(/("(?:userId|uid|id)"\s*:\s*)(\d{16,})(?=\s*[,}])/g, '$1"$2"'),
         );
         if (parsed && typeof parsed === 'object') return parsed;
-      } catch {
-        /* 非法 JSON 继续尝试下一个候选 */
-      }
+      } catch {}
     }
   }
   return {};
 }
 
-/** 官方 roleId：1 成员 / 2 超管（其余为普通用户），仅在收到 ext.user 时可用 */
 function toKind(messageType: string, ext: Record<string, any>): BarrageKind {
   switch (messageType) {
     case NimMsgType.BARRAGE_MEMBER:
@@ -123,6 +100,121 @@ export function isLiveEndMessage(messageType: string): boolean {
   return messageType === 'CLOSELIVE';
 }
 
+export interface LivePkEvent {
+  messageType: string;
+  pkId?: string;
+  pkStatus?: number;
+  users: any[];
+}
+
+export interface LivePkState {
+  active: boolean;
+  users: any[];
+  pkId?: string;
+  endedPkId?: string;
+}
+
+export function extractMultiMicUsers(ext: Record<string, any> | null | undefined): any[] {
+  if (!ext || typeof ext !== 'object') return [];
+  const candidates = [
+    ext.multiMicUserInfoList,
+    ext.pkUserInfoList,
+    ext.userInfoList,
+    ext.multiMicList,
+    ext.micUserList,
+  ];
+  for (const list of candidates) {
+    if (Array.isArray(list)) return list;
+  }
+  return [];
+}
+
+export function parseLivePkEvent(msg: any): LivePkEvent | null {
+  const ext = readExt(msg);
+  const messageType = firstString(ext.messageType);
+  const upper = messageType.toUpperCase();
+  if (!upper) return null;
+  const isPkEvent =
+    upper.startsWith('MULTI_MIC_PK_') ||
+    upper.startsWith('MICROPHONE_CONNECTION_FINISH') ||
+    upper === 'MICROPHONE_CONNECTION_SETTLEMENT';
+  if (!isPkEvent) return null;
+  const pkIdRaw = ext.pkId !== undefined && ext.pkId !== null ? String(ext.pkId).trim() : '';
+  const pkStatusRaw = Number(ext.pkStatus);
+  return {
+    messageType,
+    pkId: pkIdRaw && pkIdRaw !== '0' ? pkIdRaw : undefined,
+    pkStatus: Number.isFinite(pkStatusRaw) ? pkStatusRaw : undefined,
+    users: extractMultiMicUsers(ext),
+  };
+}
+
+export function reduceLivePkState(
+  current: LivePkState,
+  event: {
+    messageType?: string;
+    pkId?: string | number;
+    pkStatus?: number;
+    users?: any[];
+    multiMicUserInfoList?: any[];
+  },
+): LivePkState {
+  const upper = String(event?.messageType || '').toUpperCase();
+  const nextPkId =
+    event?.pkId !== undefined && event?.pkId !== null && String(event.pkId).trim() !== '0'
+      ? String(event.pkId).trim()
+      : '';
+  const nextUsers = Array.isArray(event?.users)
+    ? event.users
+    : Array.isArray(event?.multiMicUserInfoList)
+      ? event.multiMicUserInfoList
+      : [];
+
+  if (
+    upper === 'MULTI_MIC_PK_FINISH' ||
+    upper === 'MULTI_MIC_PK_REFUSE' ||
+    upper === 'MULTI_MIC_PK_TIMEOUT' ||
+    upper.startsWith('MICROPHONE_CONNECTION_FINISH') ||
+    upper === 'MICROPHONE_CONNECTION_SETTLEMENT'
+  ) {
+    return {
+      active: false,
+      users: [],
+      endedPkId: nextPkId || current.pkId || current.endedPkId,
+    };
+  }
+
+  if (upper === 'MULTI_MIC_PK_SUCCESS') {
+    const users = nextUsers.length ? nextUsers : current.users;
+    return {
+      active: users.length > 0,
+      users,
+      pkId: nextPkId || current.pkId,
+    };
+  }
+
+  if (upper === 'MULTI_MIC_PK_SCORE') {
+    if (nextPkId && current.endedPkId && nextPkId === current.endedPkId) return current;
+    if (!current.active && current.endedPkId && !nextPkId) return current;
+    if (event?.pkStatus === 2 || event?.pkStatus === 3) {
+      return {
+        active: false,
+        users: [],
+        endedPkId: nextPkId || current.pkId || current.endedPkId,
+      };
+    }
+    const users = nextUsers.length ? nextUsers : current.users;
+    if (!users.length) return current;
+    return {
+      active: true,
+      users,
+      pkId: nextPkId || current.pkId,
+    };
+  }
+
+  return current;
+}
+
 export function isLiveStreamTransition(messageType: string): boolean {
   const upper = String(messageType || '').toUpperCase();
   if (upper === 'MULTI_MIC_PK_SCORE' || upper === 'MICROPHONE_CONNECTION_SCORE') {
@@ -154,11 +246,10 @@ export function parseLiveUpdate(msg: any): { audience?: string; rankAvatars?: st
   return { audience, rankAvatars };
 }
 
-/** 归一化一条云信聊天室消息；不认识的消息返回 null（例如协议层通知） */
 export function parseChatroomMessage(msg: any): BarrageItem | null {
   if (!msg) return null;
   const type: string = String(msg.type || '');
-  // 聊天室只关心 text / custom 两类（image、audio、file 等暂不展示）
+
   if (type && type !== 'text' && type !== 'custom' && type !== 'tip') return null;
 
   const ext = readExt(msg);
@@ -189,13 +280,6 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
   let text = firstString(ext.text, msg.text);
   let gift: BarrageItem['gift'];
 
-  // ── 官方「富文本模板」消息不能当弹幕显示（用户截图）──
-  // 现象：公屏出现 `我真的变心了（北女一梦女版）：<div><span>欢迎</span><span>黄宣绮</span><img src=…/></div>`
-  // 根因：官方部分 custom 消息（送礼/进房/欢迎卡等）的 ext.text 是**给官方客户端渲染的 HTML**，
-  // 本实现只判断「有没有 text」，于是把整段 HTML 当普通弹幕收下并原样显示。
-  // 处理：命中 HTML 模板时不采用该 text ——
-  // - 礼物/进房：清空 → 走下面的自动文案（"X 送出 N 个 Y" / "X 进入直播间"）；
-  // - 其它未知类型：直接丢弃，不进入公屏（正常弹幕不会是这样）。
   if (text && looksLikeHtml(text)) {
     if (kind === 'gift' || kind === 'enter') {
       text = '';
@@ -218,7 +302,7 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
       tpNum,
       toName,
       picPath: firstString(giftInfo.picPath, giftInfo.icon),
-      // 全屏特效（仅 PRESENT_FULLSCREEN(_TWO) 非空）：zipPath 相对路径 + zipMd5 校验
+
       zipPath: firstString(
         giftInfo.zipPath,
         giftInfo.effectPath,
@@ -244,7 +328,6 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
     text = `${nick} 进入直播间`;
   }
 
-  // 官方富文本弹幕（<div>/<span>/<img>）→ 清洗成纯文本，避免把标签当文字显示
   text = sanitizeText(text);
 
   if (
@@ -255,16 +338,12 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
   )
     return null;
 
+  const extractedMultiMic = extractMultiMicUsers(ext);
   const liveEvent =
     isLiveStreamTransition(messageType) || isLiveEndMessage(messageType)
       ? {
-          multiMicUserInfoList: Array.isArray(ext.multiMicUserInfoList)
-            ? ext.multiMicUserInfoList
-            : Array.isArray(ext.multiMicList)
-              ? ext.multiMicList
-              : Array.isArray(ext.micUserList)
-                ? ext.micUserList
-                : undefined,
+          multiMicUserInfoList: extractedMultiMic.length ? extractedMultiMic : undefined,
+          pkId: ext.pkId !== undefined && ext.pkId !== null ? String(ext.pkId) : undefined,
           pkStatus: ext.pkStatus,
           pkCreateSuccess: ext.pkCreateSuccess,
           pkFailStatus: ext.pkFailStatus,
@@ -288,21 +367,20 @@ export function parseChatroomMessage(msg: any): BarrageItem | null {
 }
 
 export interface BuildLiveBarrageOptions {
-  /** 聊天室 id（= getLiveOne 返回的 content.roomId） */
   roomId: string | number;
-  /** 直播 id（官方 sourceId） */
+
   sourceId: string | number;
   text: string;
   self: NimSelfProfile;
-  /** 'live' 成员直播 / 'public' 公开直播（官方 ModuleType） */
+
   module?: string;
-  /** 弹幕类型，默认 BARRAGE_NORMAL */
+
   messageType?: string;
-  /** 进房榜单内（inTop） */
+
   inTop?: boolean;
-  /** 官方 IM 防伪签名 key（来自启动配置 klbrmk），有则带上 */
+
   imKey?: string;
-  /** 消息 uuid（签名用，缺省由 SDK 生成，此处仅官方同款兼容） */
+
   uuid?: string;
 }
 
@@ -333,24 +411,21 @@ export function buildLiveBarrageExt(options: BuildLiveBarrageOptions): Record<st
     inTop: options.inTop === true,
   };
   if (options.imKey) {
-    // 官方 IMChatRoom#sendMsg 会把 md5 塞进 remoteExtension，供其他客户端校验消息真伪
     ext.md5 = md5Hex(`${options.uuid || ''}${self.accid || ''}${options.imKey}`);
   }
   return ext;
 }
 
 export interface BuildSessionTextOptions {
-  /** 会话房间 id（官方 getRoomInfo.realRoomId） */
   roomId: string | number;
-  /** 会话 sourceId（官方传 sessionId/fromAccount，TEXT 场景传自身 id） */
+
   sourceId: string | number;
   text: string;
   self: NimSelfProfile;
-  /** 气泡 id，官方默认 '0' */
+
   bubbleId?: string;
 }
 
-/** 构造会话（私信/房间）文本消息 remoteExtension（ChatMsgBuilder.createTextMessageMap） */
 export function buildSessionTextExt(options: BuildSessionTextOptions): Record<string, any> {
   const { roomId, sourceId, text, self } = options;
   return {
@@ -373,10 +448,6 @@ export function buildSessionTextExt(options: BuildSessionTextOptions): Record<st
   };
 }
 
-/**
- * MD5（官方 MessageMD5Util.Md5 的等价实现）。仅用于消息防伪标记，非安全用途。
- * 说明：RN 无 node:crypto，这里用标准 RFC1321 实现，避免新增依赖。
- */
 export function md5Hex(input: string): string {
   const add = (a: number, b: number): number => {
     const low = (a & 0xffff) + (b & 0xffff);

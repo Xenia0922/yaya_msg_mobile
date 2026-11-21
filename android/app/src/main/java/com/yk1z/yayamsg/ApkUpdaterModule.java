@@ -31,19 +31,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * 应用内更新：下载对应 ABI 的 APK 并拉起系统安装器。
- *
- * 设计要点：
- * - 下载走原生（60MB+ 大文件，避免 JS 侧 blob/文件 IO 的额外拷贝与内存峰值）；
- *   进度用 DeviceEventEmitter 推给 JS（ApkUpdaterProgress）。
- * - GitHub release 的下载链接会 302 到 objects.githubusercontent.com，HttpURLConnection
- *   默认跟随同协议重定向；仍显式处理一次以兼容新域名。
- * - 下载完成后用 PackageManager.getPackageArchiveInfo 校验包名，防止装到错误/损坏的文件。
- * - Android 8+ 需要「安装未知应用」权限（canRequestPackageInstalls）；没授权时
- *   直接抛 NEED_PERMISSION，由 JS 引导用户去系统设置授权，避免静默失败。
- * - APK 落在 cacheDir/updates，通过 FileProvider 暴露 content:// 给安装器。
- */
 public class ApkUpdaterModule extends ReactContextBaseJavaModule {
   private static final String NAME = "ApkUpdater";
   private static final String EVENT = "ApkUpdaterProgress";
@@ -60,7 +47,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     return NAME;
   }
 
-  /** 设备首选 ABI，如 arm64-v8a / armeabi-v7a / x86_64 */
   @ReactMethod
   public void getDeviceAbi(Promise promise) {
     try {
@@ -71,7 +57,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     }
   }
 
-  /** 是否已获得「安装未知应用」权限（Android 8 以下恒为 true） */
   @ReactMethod
   public void canInstall(Promise promise) {
     try {
@@ -85,7 +70,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     }
   }
 
-  /** 跳转「安装未知应用」授权页 */
   @ReactMethod
   public void openInstallPermissionSettings() {
     ReactApplicationContext ctx = getReactApplicationContext();
@@ -95,7 +79,7 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
       i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       ctx.startActivity(i);
     } catch (Throwable ignored) {
-      // 部分 ROM 没有该页面：退到应用详情
+
       try {
         Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.parse("package:" + ctx.getPackageName()));
@@ -111,13 +95,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     cancelled.set(true);
   }
 
-  /**
-   * 下载 APK 到 cacheDir/updates，完成后 resolve 绝对路径（不自动安装）。
-   *
-   * @param url         首选 APK 直链（对应设备 ABI 的分包）
-   * @param fallbackUrl 首选 404/失败时的兜底直链（universal 包），可为空
-   * @param fileName    落地文件名
-   */
   @ReactMethod
   public void download(String url, String fallbackUrl, String fileName, Promise promise) {
     cancelled.set(false);
@@ -137,7 +114,7 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     io.execute(() -> {
       try {
         if (out.exists()) {
-          //noinspection ResultOfMethodCallIgnored
+
           out.delete();
         }
         boolean ok = false;
@@ -164,7 +141,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
           throw last != null ? last : new Exception("下载失败");
         }
 
-        // 校验：必须是本应用的安装包，防止装错包 / 下载到错误页
         PackageManager pm = ctx.getPackageManager();
         PackageInfo info = pm.getPackageArchiveInfo(out.getAbsolutePath(), 0);
         if (info == null || !ctx.getPackageName().equals(info.packageName)) {
@@ -172,13 +148,13 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
           promise.reject("EBADAPK", "安装包校验失败（不是本应用的安装包）");
           return;
         }
-        // 防降级校验：不允许下载安装 versionCode 低于当前已安装版本的 APK
+
         if (isDowngradeApk(pm, ctx.getPackageName(), info)) {
           if (out.exists()) out.delete();
           promise.reject("EDOWNGRADE", "安装包版本低于当前版本，已拒绝降级安装");
           return;
         }
-        // 校验：签名证书必须与本应用一致（防 CDN/自建源被劫持推伪包）
+
         if (!verifyApkSigner(ctx, out)) {
           if (out.exists()) out.delete();
           promise.reject("EBADSIGN", "安装包签名校验失败（签名与本应用不一致，已拒绝安装）");
@@ -195,7 +171,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     });
   }
 
-  /** 直接安装已下载的 APK（不重新下载） */
   @ReactMethod
   public void installFile(String path, Promise promise) {
     try {
@@ -204,7 +179,7 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
         promise.reject("ENOENT", "安装包不存在");
         return;
       }
-      // 安装前再验一次签名与版本：防止有人绕过 download() 直接传入被替换的缓存文件或旧包
+
       PackageManager pm = getReactApplicationContext().getPackageManager();
       PackageInfo info = pm.getPackageArchiveInfo(f.getAbsolutePath(), 0);
       if (info == null || !getReactApplicationContext().getPackageName().equals(info.packageName)) {
@@ -228,9 +203,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     }
   }
 
-  // ---------------------------------------------------------------- signer check
-
-  /** 已安装本应用的证书摘要集合（SHA-256 hex）。签名轮换时可能含新旧多张。 */
   private static Set<String> installedSignerDigests(PackageManager pm, String pkg) {
     Set<String> out = new HashSet<>();
     try {
@@ -253,7 +225,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     return out;
   }
 
-  /** 待安装 APK 文件的证书摘要集合（SHA-256 hex）。 */
   private static Set<String> apkSignerDigests(PackageManager pm, String apkPath) {
     Set<String> out = new HashSet<>();
     try {
@@ -276,19 +247,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     return out;
   }
 
-  /**
-   * 校验下载的 APK 由与本应用相同的证书签名。
-   *
-   * 威胁模型：自建下载源（gnz48.tech）或 CDN 被劫持，把「包名相同、签名不同」的伪造包
-   * 推给用户；用户若安装即被替换成恶意应用。Android 系统在覆盖安装时会拒绝不同签名的包，
-   * 但「卸载重装」引导 + 伪造包仍能骗到用户，所以必须在下载后、安装前自己拦一道。
-   *
-   * 策略：与「当前已安装应用」的证书摘要集合**完全一致**（等价于系统同签名升级校验）。
-   * 旧实现只要求有交集：若待装 APK 夹带一张与本应用相同的旧证书 + 任意新证书，
-   * 交集校验会放行，但 Android 安装器实际会按签名方案拒绝/替换，属于绕过前置校验。
-   * 好处：不硬编码证书摘要，换签名/多渠道构建不会失效；缺点：若已装的应用本身是伪造包，
-   * 则会自我比对通过（该场景需要用户先被诱导安装过一次，属另一层问题）。
-   */
   private static long versionCodeOf(PackageInfo pi) {
     if (pi == null) return -1L;
     return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? pi.getLongVersionCode() : pi.versionCode;
@@ -310,22 +268,18 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     Set<String> mine = installedSignerDigests(pm, ctx.getPackageName());
     Set<String> theirs = apkSignerDigests(pm, apk.getAbsolutePath());
     if (mine.isEmpty() || theirs.isEmpty()) {
-      // 取不到证书 → 视为不安全，拒绝；保留错误日志便于定位签名读取失败
+
       Log.w("ApkUpdaterModule", "签名校验失败：证书集合为空 installed=" + mine.size() + " apk=" + theirs.size());
       return false;
     }
     if (!mine.equals(theirs)) {
-      // P2-P24：必须集合严格相等，交集校验会被「旧证书 + 任意新证书」的伪造包绕过
+
       Log.w("ApkUpdaterModule", "签名校验失败：证书集合不一致 installed=" + mine.size() + " apk=" + theirs.size());
       return false;
     }
     return true;
   }
 
-  /**
-   * 校验下载落地文件名：只允许纯文件名（禁止 ../、/、\、NUL 等），且必须是 .apk。
-   * 旧实现直接 new File(dir, fileName)，攻击者可传 ../../... 把文件写到任意可写目录。
-   */
   private static String safeUpdateFileName(String raw) {
     if (raw == null) return null;
     String name = raw.trim();
@@ -350,8 +304,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
       return "";
     }
   }
-
-  // ---------------------------------------------------------------- internals
 
   private boolean downloadToFile(String url, File out) throws Exception {
     HttpURLConnection conn = null;
@@ -436,7 +388,6 @@ public class ApkUpdaterModule extends ReactContextBaseJavaModule {
     ctx.startActivity(intent);
   }
 
-  /** 专用异常：JS 侧据此引导去系统设置授权 */
   private static class InstallPermissionException extends Exception {
     InstallPermissionException() {
       super("NEED_PERMISSION");

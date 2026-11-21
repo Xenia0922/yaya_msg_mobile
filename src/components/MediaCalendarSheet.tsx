@@ -2,12 +2,8 @@ import React, { useState } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
-import { usePalette, radiiAlias } from '../theme';
+import { usePalette, radiiAlias, fontFamily } from '../theme';
 
-/**
- * 录播日历选择弹层（纯 RN 月历，零依赖，对标 pocket48_lite 的 CalendarMonth 按钮 + DatePicker）。
- * 从 MediaScreen 拆出，避免页面文件继续膨胀；交互与原实现保持一致。
- */
 export function MediaCalendarSheet({
   visible,
   initial,
@@ -148,12 +144,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  title: { fontSize: 17, fontWeight: '800' },
+  title: { fontSize: 17, fontFamily: fontFamily.system, fontWeight: '800' },
   weekRow: { flexDirection: 'row', marginBottom: 6 },
   week: { flex: 1, textAlign: 'center', fontSize: 12, color: '#999', fontWeight: '700' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   day: { width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  dayText: { fontSize: 15 },
+  dayText: { fontSize: 15, fontFamily: fontFamily.system },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -162,7 +158,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   cancel: { paddingHorizontal: 14, paddingVertical: 6 },
-  cancelText: { fontSize: 14 },
+  cancelText: { fontSize: 14, fontFamily: fontFamily.system },
   today: { borderRadius: radiiAlias.button, paddingHorizontal: 18, paddingVertical: 6 },
   todayText: { fontSize: 14, fontWeight: '800' },
 });

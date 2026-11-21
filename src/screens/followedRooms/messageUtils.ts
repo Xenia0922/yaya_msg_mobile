@@ -1,9 +1,3 @@
-/**
- * 房间消息域纯函数（从 FollowedRoomsScreen 抽出，无 React 依赖）。
- *
- * 范围：消息体解析、时间归一、合并排序、QChat 消息转换、最新消息挑选、房间标签。
- * 规则与 FollowedRoomsScreen 原实现保持一致；类型收窄时保留了原有空值/零值兜底语义。
- */
 import { messagePayload, normalizeUrl, parseMaybeJson, pickText } from '../../utils/data';
 import { toMs } from '../../utils/format';
 import { t } from '../../i18n';
@@ -12,14 +6,12 @@ import { type RoomLiveMessage } from '../../services/pocketNim/qchat';
 
 export type RoomMode = 'big' | 'small';
 
-/** 通用文本限位（房间名等） */
 export function capText(text: string, max = 18) {
   const clean = (text || '').trim();
   if (!clean) return '';
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-/** 送礼面板网格单元格的礼物图（picPath 为相对路径 → normalizeUrl 补全域名） */
 export function rgiftImage(g: WireRecord | null | undefined): string {
   return normalizeUrl(g?.picPath || g?.icon || g?.giftPic || g?.url || '');
 }
@@ -70,30 +62,80 @@ export function deepFindText(value: unknown, keys: string[], depth = 0): string 
   return '';
 }
 
-/**
- * 消息时间统一【归一为毫秒】。
- *
- * ⚠️ 单位混用会造成两处致命后果（修复）：
- * 1) 排序错乱：HTTP 历史消息的 msgTime 是**秒**，QChat/NIM 推送的 time 是**毫秒**，
- * 直接比较会把毫秒消息全排到最前并「钉死」。
- * 2) 轮询水位污染：refreshRoomMessages 用「列表最大原始时间」当水位，
- * 一旦毫秒值（~1.7e12）进入列表顶部，HTTP 秒级新消息（~1.7e9）永远小于水位 →
- * `hasFresh=false` 直接 return，**聊天流永久冻结（新消息永不上屏）**。
- * 统一走 toMs（10 位当秒转毫秒、13 位原样），比较/排序/去重键全部使用归一后的值。
- */
+const PRIORITY_TIME_KEYS = [
+  'msgTime',
+  'messageTime',
+  'ctime',
+  'time',
+  'lastMsgTime',
+  'lastTime',
+  'sendTime',
+  'createTime',
+  'timestamp',
+  'updateTime',
+  'msgDate',
+  'sendDate',
+  'createDate',
+  'updateDate',
+  'dateTime',
+  'msgTimestamp',
+  'serverTime',
+  'clientTime',
+  'msgCreateTime',
+  'publishTime',
+  'lastUpdateTime',
+] as const;
+
+const MIN_VALID_EPOCH_MS = 946684800000;
+
+function pickPositiveTimeFromRecord(rec: WireRecord | null | undefined): number {
+  if (!rec || typeof rec !== 'object') return 0;
+  for (const key of PRIORITY_TIME_KEYS) {
+    const value = rec[key];
+    if (
+      value === undefined ||
+      value === null ||
+      String(value).trim() === '' ||
+      Number(value) === 0
+    ) {
+      continue;
+    }
+    const ms = toMs(value);
+    if (ms > 0) return ms;
+  }
+  for (const [key, value] of Object.entries(rec)) {
+    if (!/(time|date|ctime|mtime|ts)$/i.test(key)) continue;
+    if (value === undefined || value === null || String(value).trim() === '') continue;
+    const ms = toMs(value);
+    if (ms >= MIN_VALID_EPOCH_MS) return ms;
+  }
+  return 0;
+}
+
 export function getMessageTime(item: unknown): number {
-  const msg = item as RoomMessageWire | null | undefined;
-  // 原实现为 msgTime || ctime || 0：msgTime 为 0/空串时必须继续回退到 ctime，
-  // 否则占位消息会被分到 1970 日期桶（integration review P2）。
-  const raw = [msg?.msgTime, msg?.messageTime, msg?.ctime, msg?.time].find(
-    (value) =>
-      value !== undefined && value !== null && String(value).trim() !== '' && Number(value) !== 0,
-  );
-  return toMs(raw) || 0;
+  if (!item || typeof item !== 'object') return 0;
+  const msg = item as WireRecord;
+  const direct = pickPositiveTimeFromRecord(msg);
+  if (direct > 0) return direct;
+
+  const nestedCandidates = [
+    parseObject(msg.extInfo),
+    msg.lastMessage,
+    msg.lastMsg,
+    msg.message,
+    msg.msg,
+    msg.body,
+    msg.bodys,
+  ];
+  for (const candidate of nestedCandidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const nestedTime = pickPositiveTimeFromRecord(candidate as WireRecord);
+    if (nestedTime > 0) return nestedTime;
+  }
+  return 0;
 }
 
 export function getNextTime(res: unknown, list: unknown[]): number {
-  // 优先读服务端游标（兼容 content/data 多层与点路径）；接口的 nextTime 与 msgTime 同为毫秒。
   const cursor = pickText(res, [
     'content.nextTime',
     'content.data.nextTime',
@@ -108,24 +150,21 @@ export function getNextTime(res: unknown, list: unknown[]): number {
   ]);
   if (cursor !== '') {
     const direct = Number(cursor);
-    // 0 / -1 是服务端明确的「没有下一页」语义，必须原样返回，不能再用本页最早消息兜底，
-    // 否则非空末页会被误判为 hasMoreMessages=true，反复请求同一页（integration review P1）。
+
     if (Number.isFinite(direct)) return Math.max(0, direct);
   }
-  // 仅在服务端完全未返回游标字段时，退化用本页最早一条消息的时间作为翻页游标。
+
   const times = (Array.isArray(list) ? list : [])
     .map((item) => getMessageTime(item))
     .filter((time) => Number.isFinite(time) && time > 0);
   return times.length ? Math.min(...times) : 0;
 }
 
-// 诊断标记：undefined/null 元素究竟是「首次进入就带毒」还是「merge 累积污染」由这里打印栈标记区分
 const __msgDiagTag = 'INIT';
 export function diagnoseUndefined(list: unknown[], tag: string) {
   if (!Array.isArray(list)) return;
   const bad = list.map((it, i) => (it == null ? i : -1)).filter((i) => i >= 0);
   if (bad.length) {
-    // 真机/调试时可见：指出是哪个入口首次把 undefined 写进 roomMessages
     // eslint-disable-next-line no-console
     console.warn(
       `[msgDiag:${tag}] 检出 ${bad.length} 个 null/undefined 元素，下标=[${bad.slice(0, 20).join(',')}]`,
@@ -152,7 +191,7 @@ export function qchatToRoomMessage(msg: RoomLiveMessage): RoomMessageWire {
     msgTime: msg.time,
     time: msg.time,
     msgType: msg.messageType,
-    // bodys 沿用 HTTP 消息的「JSON 体」形态：正文 + 类型 + 发送者
+
     bodys: {
       ...msg.attachment,
       text: msg.text,
@@ -172,15 +211,11 @@ export function qchatToRoomMessage(msg: RoomLiveMessage): RoomMessageWire {
     userAvatar: String(user.avatar || ''),
     channelId: msg.channelId,
     serverId: msg.serverId,
-    /** 标记来源：实时（用于排查），不影响渲染 */
+
     __live: true,
   };
 }
 
-/**
- * 大房间最新消息：只认 channelId===大房间 或 成员本人发言。
- * 注意不能按 serverId 兜底——小房间与大房间共用 serverId，兜底会把小房间消息冒充大房间预览。
- */
 export function findLastMessage(
   messages: RoomMessageWire[],
   member?: Member,
@@ -188,12 +223,12 @@ export function findLastMessage(
   if (!member) return null;
   const bigId = String(member.channelId || '');
   const ykid = String(member.yklzId || '');
-  // ① 精确匹配大房间 channelId（唯一可靠判据 —— lastMsgList 有 channelId 字段）
+
   if (bigId) {
     const exact = messages.find((msg) => String(msg.channelId || '') === bigId);
     if (exact) return exact;
   }
-  // ② 兜底：只有 userId/ownerId 命中成员 id，且**不是小房间消息**（否则小房间消息会冒充大房间预览）
+
   return (
     messages.find(
       (msg) =>
@@ -203,7 +238,6 @@ export function findLastMessage(
   );
 }
 
-/** 小房间（yklzId）最新消息：只认 channelId 精确匹配小房间 */
 export function findSmallLastMessage(
   messages: RoomMessageWire[],
   member?: Member,

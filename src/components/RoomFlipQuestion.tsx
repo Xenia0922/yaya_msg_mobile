@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { usePalette } from '../theme';
+import { usePalette, fontFamily } from '../theme';
 import { normalizeUrl } from '../utils/data';
 import { getRoomFlipUser, type RoomFlipUser } from '../services/roomFlipUser';
 import { useI18n } from '../i18n';
@@ -86,6 +86,6 @@ const styles = StyleSheet.create({
   card: { padding: 9, borderLeftWidth: 3, borderRadius: 9, marginBottom: 7 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   avatar: { width: 20, height: 20, borderRadius: 10 },
-  name: { fontSize: 12, fontWeight: '600' },
+  name: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '600' },
   question: { marginTop: 4, fontSize: 13, lineHeight: 18 },
 });

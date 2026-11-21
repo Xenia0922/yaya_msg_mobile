@@ -5,17 +5,10 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * 成员房间消息（云信 QChat / 圈组）原生模块 —— commonlink 协议版。
- *
- * 与官方 SDK 的区别同聊天室：登录鉴权属性里**包名自己填**（白名单包名），
- * 官方 SDK 只能带真实包名 → 必被服务端拒（实测 IM 登录 414）。
- *
- * 事件：PocketNimQChat:status / :message
- */
 class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
@@ -107,13 +100,38 @@ class PocketNimQChatModule(private val reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun subscribeBatch(serverIds: ReadableArray, promise: Promise) {
+    val active = client
+    if (active == null) {
+      promise.resolve(false)
+      return
+    }
+    val ids = ArrayList<String>(serverIds.size())
+    for (i in 0 until serverIds.size()) {
+      val s = serverIds.getString(i)?.trim().orEmpty()
+      if (s.isNotEmpty()) ids.add(s)
+    }
+    if (ids.isEmpty()) {
+      promise.resolve(false)
+      return
+    }
+    Thread({
+      try {
+        promise.resolve(active.subscribeServers(ids))
+      } catch (_: Throwable) {
+        promise.resolve(false)
+      }
+    }, "nim-qchat-sub-batch").also { it.isDaemon = true; it.start() }
+  }
+
+  @ReactMethod
   fun send(serverId: String, channelId: String, text: String, extJson: String, promise: Promise) {
     val active = client
     if (active == null) {
       promise.reject("E_STATE", "成员房间尚未连接")
       return
     }
-    // 24/10 是阻塞请求（最长 12s）：放工作线程，别占住 native-modules 队列
+
     Thread({
       try {
         val msgIdClient = active.sendText(serverId, channelId, text, extJson)

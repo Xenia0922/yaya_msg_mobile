@@ -33,13 +33,12 @@ import { DanmakuItem } from '../utils/danmaku';
 import { errorMessage, normalizeUrl } from '../utils/data';
 import { NetworkImage } from '../components/NetworkImage';
 import { setLiveImmersiveMode } from '../native/LivePlayer';
-import { usePalette } from '../theme';
+import { getPageBackground, usePalette, radii, fontFamily } from '../theme';
 import type { Palette } from '../theme/colors';
+import { GlassSurface } from '../components/GlassSurface';
 import { useI18n } from '../i18n';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { GlassSurface } from '../components/GlassSurface';
 
-/** 直播状态点：直播中 success 呼吸动画（原生驱动）+ 文字；未开播 labelTertiary */
 function StatusDot({
   live,
   active,
@@ -122,7 +121,7 @@ export default function BilibiliLiveScreen() {
   const [status, setStatus] = useState('');
   const [fetchError, setFetchError] = useState('');
   const [configError, setConfigError] = useState('');
-  // B站直播弹幕：WebSocket 实时接收 → DanmakuOverlay（live 模式立即上屏）
+
   const [showDanmaku, setShowDanmaku] = useState(false);
   const playerDanmakuOn = usePlayerStore((s) => s.danmakuOn);
   const [dmItems, setDmItems] = useState<DanmakuItem[]>([]);
@@ -131,10 +130,10 @@ export default function BilibiliLiveScreen() {
   const dmSeq = useRef(0);
   const dmBuffer = useRef<string[]>([]);
   const dmFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 请求序号：切换房间时作废旧 resolveLive 响应，避免旧流覆盖新房间
+
   const watchSeqRef = useRef(0);
   const [showDmSettings, setShowDmSettings] = useState(false);
-  // 登录画质提示（一次）：未登录 B站时接口最高只给 720P，告知用户登录解锁
+
   const qualityHintShown = useRef(false);
   const [qualityHint, setQualityHint] = useState('');
   const qualityHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,7 +142,7 @@ export default function BilibiliLiveScreen() {
     if (qualityHintTimer.current) clearTimeout(qualityHintTimer.current);
     qualityHintTimer.current = setTimeout(() => setQualityHint(''), 5000);
   }, []);
-  // 按所选画质过滤线路；无匹配（画质切换瞬时空集）时回退全量
+
   const visibleCandidates =
     qualityQn == null
       ? candidates
@@ -153,11 +152,7 @@ export default function BilibiliLiveScreen() {
   const safeIndex = Math.min(candidateIndex, Math.max(0, visibleCandidates.length - 1));
   const currentCandidate = visibleCandidates[safeIndex];
   const streamUrl = currentCandidate?.url || '';
-  // B站直播默认走网页内核（flv.js/HLS）：用户反馈原生内核画面左上角带官方 LIVE 红标且兼容性问题多，
-  // 网页内核无该角标。每次进直播间仅强制一次；用户仍可经「更多→切回原生播放器」手动换回。
-  // 公演/48 的 B站直播默认走网页内核：原生内核画面带官方 "LIVE" 红标（用户确认为播放器层问题，网页无标）。
-  // 网页内核现已带防盗链 headers（mpegts.js/hls.js xhrSetup）可正常拉流；每次进直播间仅强制一次，
-  // 仍可经 更多→切回原生播放器 手动换回。
+
   const webForcedRef = useRef(false);
   useEffect(() => {
     if ((currentCandidate?.url || '') && !webForcedRef.current) {
@@ -195,7 +190,6 @@ export default function BilibiliLiveScreen() {
 
   useEffect(
     () => () => {
-      // R5: 卸载时断开弹幕 WS + 清全部定时器（此前仅 closePlayer 清理 → 泄漏/卸载后 setState）
       try {
         danmakuRef.current?.disconnect();
       } catch {}
@@ -220,7 +214,6 @@ export default function BilibiliLiveScreen() {
   }, []);
 
   const closePlayer = useCallback(() => {
-    // 使在途 resolveLive 响应失效，避免关闭后旧响应重新拉起播放器
     watchSeqRef.current += 1;
     webForcedRef.current = false;
     danmakuRef.current?.disconnect();
@@ -237,11 +230,10 @@ export default function BilibiliLiveScreen() {
     setActiveRoom(null);
     setLiveImmersiveMode(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-    // 从主页公演栏直达进来的：退出播放器直接回主页（不再落到 B站列表二级菜单）
+
     if (route.params?.roomId) navigation.goBack();
   }, [navigation, route.params?.roomId]);
 
-  // 应用内小窗：直播流交棒给悬浮小窗
   const handleMiniPlayer = useCallback(() => {
     if (!streamUrl) return;
     useMiniPlayerStore.getState().open({
@@ -250,7 +242,7 @@ export default function BilibiliLiveScreen() {
       cover: '',
       isLive: true,
       position: 0,
-      // 公演/B站：小窗也用网页内核（无 LIVE 标；带增益+防盗链 headers，音量与大屏一致）
+
       web: {
         headers: bilibiliApi.headers(
           currentCandidate?.realRoomId || streamUrl.match(/\/(\d+)/)?.[1] || '',
@@ -281,7 +273,7 @@ export default function BilibiliLiveScreen() {
         }
       }
       setLiveStatuses(next);
-      // 在播房间并行抓取封面 + 场次标题（列表行展示真实封面与标题）
+
       const liveIds = rooms.filter((room) => next[room.roomId]).map((room) => room.roomId);
       if (liveIds.length) {
         const infoResults = await Promise.allSettled(
@@ -306,8 +298,6 @@ export default function BilibiliLiveScreen() {
     [rooms, t],
   );
 
-  // 直播状态实时自动刷新：进入即静默查一次，之后每 30s 轮询；切回前台也立即刷新。
-  // 播放中不轮询（播放器本身在播即代表开播），避免无谓请求。
   const didAutoCheck = useRef(false);
   useEffect(() => {
     if (rooms.length && !didAutoCheck.current) {
@@ -318,7 +308,7 @@ export default function BilibiliLiveScreen() {
 
   useEffect(() => {
     if (!isFocused || streamUrl || !rooms.length) return;
-    // 功耗：失焦或后台暂停开播状态轮询；回到页面/前台再补拉
+
     let id: ReturnType<typeof setInterval> | null = null;
     const start = () => {
       if (!id)
@@ -343,7 +333,6 @@ export default function BilibiliLiveScreen() {
     };
   }, [rooms, streamUrl, checkStatuses, isFocused]);
 
-  // 切回前台时立即刷新开播状态（原 effect 只处理横屏锁复位）
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active' && isFocused && !streamUrl) checkStatuses(true);
@@ -351,12 +340,11 @@ export default function BilibiliLiveScreen() {
     return () => sub.remove();
   }, [checkStatuses, isFocused, streamUrl]);
 
-  // 从主页公演栏带 roomId 进入：直接开播该房间，跳过列表
   useEffect(() => {
     const roomId = route.params?.roomId;
     if (!roomId) return;
     startWatch({ roomId, name: route.params?.roomName || '', isLive: true });
-    // 只在进入时触发一次
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -379,7 +367,7 @@ export default function BilibiliLiveScreen() {
     setShowDanmaku(false);
     try {
       const info = await bilibiliApi.resolveLive(room.roomId);
-      // 旧房间的响应晚到：直接丢弃，不能覆盖当前房间的流/弹幕状态
+
       if (watchSeq !== watchSeqRef.current) return;
       if (!info.streamUrl && !info.streamCandidates?.length) {
         throw new Error(t('没有解析到可播放的直播流'));
@@ -389,11 +377,11 @@ export default function BilibiliLiveScreen() {
         : [{ url: info.streamUrl }];
       setStreamTitle(info.title || room.name || t('B站直播'));
       setCandidates(list);
-      // 默认最高可用画质（resolveLive 已按画质降序排列候选）
+
       const qs = info.qualities || [];
       setQualities(qs);
       setQualityQn(qs.length ? qs[0].qn : null);
-      // 未登录 B站时接口最高只给 720P：一次性轻提示告知登录解锁原画/蓝光
+
       if (
         !qualityHintShown.current &&
         !useSettingsStore.getState().settings.bilibiliCookie &&
@@ -405,7 +393,7 @@ export default function BilibiliLiveScreen() {
           t('未登录B站，当前最高{label}；登录后自动解锁原画/蓝光', { label: qs[0].label }),
         );
       }
-      // 连接弹幕服务（失败静默，不影响播放）；消息节流：300ms 批量上屏，避免高频 setState 卡顿
+
       const dm = new BilibiliDanmaku();
       danmakuRef.current = dm;
       dm.connect(String(info.realRoomId || room.roomId), {
@@ -437,14 +425,12 @@ export default function BilibiliLiveScreen() {
     }
   };
 
-  /** 切换画质：按 qn 过滤线路并回到第一条，Video 随 key 变化重新加载 */
   const pickQuality = (qn: number) => {
     if (qualityQn === qn) return;
     setQualityQn(qn);
     setCandidateIndex(0);
   };
 
-  // 从主页公演栏直达：解析直播流期间显示全屏加载（避免闪一下列表页/长时间黑屏无反馈）
   if (route.params?.roomId && !streamUrl && !fetchError) {
     return (
       <View style={styles.playerPage}>
@@ -457,11 +443,6 @@ export default function BilibiliLiveScreen() {
   }
 
   if (streamUrl) {
-    /* 统一播放器（重写）：B站直播 → PlayerScreen
-       - 候选线路：urls 传全部线路，失败自动切下一线路（PlayerCore 内置）
-       - 画质/弹幕设置/下一线路：extraActions（更多面板）
-       - B站弹幕：children 插槽挂 DanmakuOverlay（WebSocket 数据源保留在页面）
-       - 音量补偿 volume 1.5（B站流响度低） */
     return (
       <View style={styles.playerPage}>
         <PlayerScreen
@@ -471,7 +452,7 @@ export default function BilibiliLiveScreen() {
             urls: visibleCandidates.map((c) => c.url),
             headers: bilibiliApi.headers(currentCandidate?.realRoomId),
             volume: 1,
-            volumeBoost: 1.8, // B站源弱响度：网页内核经 WebAudio 预放大（Exo 原生音量 clamp ≤1 提不了）
+            volumeBoost: 1.8,
           }}
           meta={{ title: streamTitle || t('B站直播') }}
           features={{ kernelSwitch: true, danmaku: true }}
@@ -512,7 +493,6 @@ export default function BilibiliLiveScreen() {
           onClose={closePlayer}
           persistent
         >
-          {/* B站直播弹幕：实时滚动（live 模式立即上屏） */}
           <DanmakuOverlay
             danmaku={dmItems}
             currentTime={dmTick}
@@ -521,7 +501,6 @@ export default function BilibiliLiveScreen() {
           />
         </PlayerScreen>
 
-        {/* 登录画质提示：未登录时一次性告知（区别于换流提示，仅画质相关） */}
         {qualityHint ? (
           <Animated.View
             nativeID="yaya.pip.overlay"
@@ -543,9 +522,8 @@ export default function BilibiliLiveScreen() {
     );
   }
 
-  // 首屏（列表为空且加载中）显示居中转圈；刷新时列表保持不变，仅头部显示加载指示，避免闪屏
   return (
-    <GlassSurface radius={22} role="card" style={styles.container}>
+    <View style={[styles.container, { backgroundColor: getPageBackground() }]}>
       <ScreenHeader
         title={t('B站直播')}
         right={
@@ -562,8 +540,8 @@ export default function BilibiliLiveScreen() {
             styles.status,
             {
               color: palette.labelSecondary,
-              backgroundColor: 'transparent',
-              borderColor: palette.hairline,
+              backgroundColor: palette.surfaceGlassStrong,
+              borderColor: palette.innerStroke,
             },
           ]}
         >
@@ -604,50 +582,59 @@ export default function BilibiliLiveScreen() {
             <ScalePressable
               activeOpacity={0.85}
               pressedScale={0.97}
-              style={[
-                styles.roomItem,
-                { backgroundColor: 'transparent', borderColor: palette.hairline },
-              ]}
               onPress={() => startWatch(item)}
               accessibilityRole="button"
               accessibilityLabel={roomLabel}
             >
-              <View
+              <GlassSurface
+                radius={radii.lg}
+                role="card"
+                frostedOnly
                 style={[
-                  styles.roomIcon,
-                  { backgroundColor: live ? palette.tintSoft : palette.fill2 },
+                  styles.roomItem,
+                  { backgroundColor: 'transparent', borderColor: palette.innerStroke },
                 ]}
               >
-                {info?.cover ? (
-                  <NetworkImage
-                    source={{ uri: info.cover }}
-                    style={styles.roomIcon}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <MaterialCommunityIcons
-                    name="television-classic"
-                    size={22}
-                    color={live ? palette.tint : palette.labelSecondary}
-                  />
-                )}
-              </View>
-              <View style={styles.roomInfo}>
-                <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={2}>
-                  {info?.title || item.name || t('房间号：{id}', { id: item.roomId })}
-                </Text>
-                <Text style={[styles.roomId, { color: palette.labelSecondary }]} numberOfLines={1}>
-                  {item.name || ''}
-                  {item.name ? ' · ' : ''}
-                  {t('房间号：{id}', { id: item.roomId })}
-                </Text>
-              </View>
-              <StatusDot
-                live={live}
-                active={isFocused && appActive}
-                palette={palette}
-                label={live ? t('直播中') : t('未开播')}
-              />
+                <View
+                  style={[
+                    styles.roomIcon,
+                    { backgroundColor: live ? palette.tintSoft : palette.fill2 },
+                  ]}
+                >
+                  {info?.cover ? (
+                    <NetworkImage
+                      source={{ uri: info.cover }}
+                      style={styles.roomIcon}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <MaterialCommunityIcons
+                      name="television-classic"
+                      size={22}
+                      color={live ? palette.tint : palette.labelSecondary}
+                    />
+                  )}
+                </View>
+                <View style={styles.roomInfo}>
+                  <Text style={[styles.roomName, { color: palette.label }]} numberOfLines={2}>
+                    {info?.title || item.name || t('房间号：{id}', { id: item.roomId })}
+                  </Text>
+                  <Text
+                    style={[styles.roomId, { color: palette.labelSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {item.name || ''}
+                    {item.name ? ' · ' : ''}
+                    {t('房间号：{id}', { id: item.roomId })}
+                  </Text>
+                </View>
+                <StatusDot
+                  live={live}
+                  active={isFocused && appActive}
+                  palette={palette}
+                  label={live ? t('直播中') : t('未开播')}
+                />
+              </GlassSurface>
             </ScalePressable>
           );
         }}
@@ -666,18 +653,24 @@ export default function BilibiliLiveScreen() {
         maxToRenderPerBatch={12}
         windowSize={7}
       />
-    </GlassSurface>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   status: {
-    margin: 12,
-    padding: 10,
-    borderRadius: 14,
+    marginHorizontal: 14,
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 22,
+    borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
     fontSize: 12,
+    fontFamily: fontFamily.system,
     textAlign: 'center',
   },
   retryBtn: {
@@ -686,9 +679,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 20,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 999,
+    borderCurve: 'continuous',
   },
-  retryBtnText: { fontSize: 13, fontWeight: '800' },
+  retryBtnText: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '800' },
   playerPage: { flex: 1, backgroundColor: '#000' },
   startingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
   startingText: { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '600' },
@@ -718,27 +712,35 @@ const styles = StyleSheet.create({
     elevation: 4,
     maxWidth: '86%',
   },
-  qualityHintText: { color: '#ffd9e2', fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  qualityHintText: {
+    color: '#ffd9e2',
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
   roomItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    marginHorizontal: 4,
+    marginHorizontal: 8,
     marginVertical: 4,
-    borderRadius: 20,
+    borderRadius: 22,
+    borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
   },
   roomIcon: {
     width: 56,
     height: 56,
     borderRadius: 14,
+    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
     overflow: 'hidden',
   },
   roomInfo: { flex: 1, minWidth: 0 },
-  roomName: { fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  roomName: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '700', lineHeight: 20 },
   roomId: { fontSize: 11, marginTop: 4 },
   statusWrap: { alignItems: 'flex-end', gap: 4, marginLeft: 8, minWidth: 44 },
   statusHalo: {
@@ -749,6 +751,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusLabel: { fontSize: 10, fontWeight: '700' },
+  statusLabel: { fontSize: 10, fontFamily: fontFamily.system, fontWeight: '700' },
   list: { padding: 8, paddingBottom: 40 },
 });

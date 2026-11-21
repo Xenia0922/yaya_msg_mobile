@@ -49,7 +49,6 @@ class PublicDownloadsModule(context: ReactApplicationContext) : ReactContextBase
     }.start()
   }
 
-  /** 只允许导出 App 私有目录（filesDir/cacheDir）内的文件，防止 JS 侧传任意 file:// 路径读取敏感文件。 */
   private fun resolveAppPrivateFile(sourceUri: String): File {
     val source = Uri.parse(sourceUri)
     val file = when (source.scheme) {

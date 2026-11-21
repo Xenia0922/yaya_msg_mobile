@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import pocketApi from '../api/pocket48';
 import { useMemberStore } from '../store';
-import { usePalette } from '../theme';
+import { OFFICIAL_TEAM_LOGOS } from '../utils/members';
+import { usePalette, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
 import { errorMessage, normalizeUrl } from '../utils/data';
 import {
@@ -33,7 +34,6 @@ type Option = {
 };
 type BubbleOption = OfficialRoomBubble;
 
-/** 从任意响应形态里取第一个数组（官方各接口外层包装不一致，且改版过多次） */
 function pickList(source: any, keys: string[]): any[] {
   if (!source) return [];
   if (Array.isArray(source)) return source;
@@ -47,21 +47,7 @@ function pickList(source: any, keys: string[]): any[] {
   }
   return [];
 }
-// 官方成员资料中实际返回的队标，成员库未携带 teamLogo 时仍可选择。
-const TEAM_LOGOS: Array<[string, string]> = [
-  ['SNH48 · SII', '/mediasource/teamLogo2/all/snh48_s2.png'],
-  ['SNH48 · NII', '/mediasource/teamLogo2/all/snh48_n2.png'],
-  ['SNH48 · HII', '/mediasource/teamLogo2/all/snh48_h2.png'],
-  ['SNH48 · X', '/mediasource/teamLogo2/all/snh48_x.png'],
-  ['GNZ48 · G', '/mediasource/teamLogo2/all/gnz48_g.png'],
-  ['GNZ48 · NIII', '/mediasource/teamLogo2/all/gnz48_n3.png'],
-  ['GNZ48 · Z', '/mediasource/teamLogo/all/gnz_z_log2.png'],
-  ['BEJ48 · B', '/mediasource/teamLogo2/all/bej48_b.png'],
-  ['BEJ48 · E', '/mediasource/teamLogo2/all/bej48_e.png'],
-  ['CKG48 · C', '/mediasource/teamLogo/all/ckg_c.png'],
-  ['CKG48 · K', '/mediasource/teamLogo/all/ckg_k.png'],
-  ['预备生', '/mediasource/teamLogo/fulllogo/snh48_team_yubeisheng.png'],
-];
+const TEAM_LOGOS = OFFICIAL_TEAM_LOGOS;
 
 export default function IdentityDecorations({
   accountKey,
@@ -88,7 +74,7 @@ export default function IdentityDecorations({
   liveBubbleId: string;
   liveBubbleName: string;
   onChange: (patch: Record<string, string>) => void;
-  /** 只渲染其中一部分：'team' = 仅队标编辑（账号设置「发言身份」内）；'profile' = 头像框/勋章/气泡/直播装扮；'all' = 全部 */
+
   part?: 'all' | 'team' | 'profile';
 }) {
   const palette = usePalette();
@@ -108,9 +94,9 @@ export default function IdentityDecorations({
   const [settingBubble, setSettingBubble] = useState(false);
   const [settingLive, setSettingLive] = useState(false);
   const [reload, setReload] = useState(0);
-  /** 手动刷新标记：区分「切账号」与「点刷新」，决定状态文案、是否清空旧列表 */
+
   const manualRefreshRef = useRef(false);
-  /** 上一次的账号 key：只有换账号才清空列表，刷新时保留旧数据（否则整块闪空） */
+
   const lastAccountRef = useRef('');
   const [picker, setPicker] = useState<
     'team' | 'frame' | 'badge' | 'bubble' | 'liveEffect' | 'liveBubble' | null
@@ -143,7 +129,6 @@ export default function IdentityDecorations({
   }, [part, t]);
 
   useEffect(() => {
-    // 仅队标模式不需要头像框/勋章/气泡/直播装扮目录，避免重复请求
     if (part === 'team') {
       setLoading(false);
       return;
@@ -152,7 +137,6 @@ export default function IdentityDecorations({
     const accountChanged = lastAccountRef.current !== accountKey;
     lastAccountRef.current = accountKey;
     if (accountChanged) {
-      // 换账号才清空；点「刷新」保留旧列表，避免整块装扮瞬间空掉再长回来
       setFrames([]);
       setBadgeOptions([]);
       setBubbleOptions([]);
@@ -213,14 +197,14 @@ export default function IdentityDecorations({
               name: String(item.badgeName || '勋章'),
               url: String(item.smallPic || item.bigPic || ''),
               greyUrl: String(item.greyPic || ''),
-              // userHas=已拥有；官方 264 枚里账号通常只拥有个位数
+
               owned:
                 item.userHas === undefined
                   ? true
                   : item.userHas === true || item.userHas === 1 || String(item.userHas) === '1',
             }))
             .filter((item: Option) => !!item.url);
-          // 已拥有置顶（否则要滚过上百枚灰色勋章才能找到自己的）
+
           setBadgeOptions(
             options.sort((a: Option, b: Option) => Number(b.owned) - Number(a.owned)),
           );
@@ -307,7 +291,6 @@ export default function IdentityDecorations({
     setSettingBubble(true);
     setStatus(`正在同步口袋官方气泡「${option.name}」…`);
     try {
-      // 默认气泡必须传官方 bubbleId，传 '0' 服务端不认（本机发送侧仍用 '0'）
       await pocketApi.setRoomBubble(option.serverId || option.id);
       setStatus(`已同步口袋官方气泡「${option.name}」`);
     } catch (err) {
@@ -316,7 +299,7 @@ export default function IdentityDecorations({
       setSettingBubble(false);
     }
   };
-  // 一键恢复默认气泡：本机置 '0'，同时把口袋账号切回官方默认
+
   const restoreBubble = async () => {
     if (settingBubble) return;
     const fallback = bubbleOptions.find((option) => option.isDefault);
@@ -332,7 +315,7 @@ export default function IdentityDecorations({
       setSettingBubble(false);
     }
   };
-  /** 直播装扮（进场特效 / 弹幕气泡）：账号级设置，选中即同步到口袋 */
+
   const applyLiveDecoration = async (kind: 'effect' | 'bubble', option: LiveDecoration | null) => {
     if (settingLive) return;
     const isEffect = kind === 'effect';
@@ -348,7 +331,6 @@ export default function IdentityDecorations({
     try {
       if (isEffect) await pocketApi.setLiveSpecialEffect(option?.id || liveEffectId, !!option);
       else {
-        // 清除直播气泡 = 切回官方「普通用户默认气泡」，传 0 / 空 id 服务端会报「弹幕气泡不存在」
         const fallbackBubble = liveBubbleOptions.find((item) => /默认/.test(item.name));
         await pocketApi.setLiveBubble(option?.id || fallbackBubble?.id || '0');
       }
@@ -359,7 +341,7 @@ export default function IdentityDecorations({
       setSettingLive(false);
     }
   };
-  /** 直播装扮网格：目录接口不带「已拥有」，统一按可选渲染，只标出当前选中 */
+
   const renderLiveOptions = (
     options: LiveDecoration[],
     selectedId: string,
@@ -562,8 +544,7 @@ export default function IdentityDecorations({
               <Text style={[styles.section, styles.sectionInline, { color: palette.label }]}>
                 {t('个性装扮')}
               </Text>
-              {/* 刷新放在区块标题行：它刷的是头像框/勋章/气泡/直播装扮**整套**目录，
-              挂在「头像框」那一排会被当成头像框专属操作（用户反馈「刷新按钮不对」） */}
+
               {accountKey
                 ? actionButton(
                     loading ? t('刷新中…') : t('刷新装扮'),
@@ -592,21 +573,23 @@ export default function IdentityDecorations({
             frame,
             () => setPicker('frame'),
           )}
-          <View style={styles.actions}>
-            {frame
-              ? actionButton(t('恢复账号头像框'), 'restore', () =>
-                  onChange({ yaya_send_pfurl: '' }),
-                )
-              : null}
-            {selectedFrame
-              ? actionButton(
-                  accountFrame === selectedFrame.id ? t('账号当前头像框') : t('设置到口袋账号'),
-                  'account-check-outline',
-                  writeAccountFrame,
-                  settingAccount || accountFrame === selectedFrame.id,
-                )
-              : null}
-          </View>
+          {frame || selectedFrame ? (
+            <View style={styles.actions}>
+              {frame
+                ? actionButton(t('恢复账号头像框'), 'restore', () =>
+                    onChange({ yaya_send_pfurl: '' }),
+                  )
+                : null}
+              {selectedFrame
+                ? actionButton(
+                    accountFrame === selectedFrame.id ? t('账号当前头像框') : t('设置到口袋账号'),
+                    'account-check-outline',
+                    writeAccountFrame,
+                    settingAccount || accountFrame === selectedFrame.id,
+                  )
+                : null}
+            </View>
+          ) : null}
           {decorationRow(
             t('勋章'),
             chosenBadges.length
@@ -898,8 +881,8 @@ export default function IdentityDecorations({
 }
 
 const styles = StyleSheet.create({
-  section: { fontSize: 14, fontWeight: '700', marginTop: 16 },
-  /** 区块标题 + 右侧操作的横排 */
+  section: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '700', marginTop: 16 },
+
   sectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -907,7 +890,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   sectionInline: { marginTop: 0 },
-  hint: { fontSize: 11, lineHeight: 17, marginTop: 5 },
+  hint: { fontSize: 11, fontFamily: fontFamily.system, lineHeight: 17, marginTop: 5 },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 8 },
   option: {
     width: 76,
@@ -919,7 +902,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   image: { width: 42, height: 42 },
-  name: { fontSize: 10, marginTop: 3 },
+  name: { fontSize: 10, fontFamily: fontFamily.system, marginTop: 3 },
   vip: { fontSize: 10 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   action: { fontSize: 12, paddingVertical: 6 },
@@ -932,7 +915,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  actionButtonText: { fontSize: 12, fontWeight: '600' },
+  actionButtonText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '600' },
   decorationRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -949,7 +932,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  decorationTitle: { fontSize: 14, fontWeight: '700' },
+  decorationTitle: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '700' },
   decorationSubtitle: { fontSize: 11, marginTop: 3 },
   notice: {
     flexDirection: 'row',
@@ -959,7 +942,7 @@ const styles = StyleSheet.create({
     padding: 10,
     marginTop: 10,
   },
-  noticeText: { flex: 1, fontSize: 11, lineHeight: 16 },
+  noticeText: { flex: 1, fontSize: 11, fontFamily: fontFamily.system, lineHeight: 16 },
   shade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     maxHeight: '75%',

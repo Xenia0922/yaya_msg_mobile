@@ -1,20 +1,6 @@
-/**
- * AppDialog · 全局自绘确认框（替代原生 Alert）
- *
- * 为什么不用 Alert：Android 原生 Alert 样式割裂（系统字体/直角/蓝字按钮），
- * 与液态玻璃 UI 完全不搭；且原生 Alert 在部分 ROM 上只显示前 3 个按钮。
- *
- * 用法（签名与 Alert.alert 兼容，方便替换）：
- * showDialog('删除消息', '撤回并删除这条你发送的消息？', [
- * { text: '取消', style: 'cancel' },
- * { text: '删除', style: 'destructive', onPress: => {...} },
- * ])
- *
- * 宿主：<AppDialogHost /> 挂在导航根节点一次即可（自动浮在所有页面之上）。
- */
 import React from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { usePalette } from '../theme';
+import { fontFamily, usePalette } from '../theme';
 import { useI18n } from '../i18n';
 
 export type DialogButtonStyle = 'default' | 'cancel' | 'destructive';
@@ -35,7 +21,6 @@ let current: DialogState | null = null;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
-/** 打开对话框（签名与 Alert.alert 一致：title, message?, buttons?） */
 export function showDialog(title: string, message?: string, buttons?: DialogButton[]) {
   current = {
     title: String(title || ''),
@@ -45,13 +30,11 @@ export function showDialog(title: string, message?: string, buttons?: DialogButt
   notify();
 }
 
-/** 关闭当前对话框（不触发任何按钮回调） */
 export function hideDialog() {
   current = null;
   notify();
 }
 
-/** 必须在导航根节点挂一次 */
 export function AppDialogHost() {
   const palette = usePalette();
   const { t } = useI18n();
@@ -60,7 +43,7 @@ export function AppDialogHost() {
   React.useEffect(() => {
     const l = () => setState(current);
     listeners.add(l);
-    // 挂载前若已有待显示内容，补一次
+
     if (current) setState(current);
     return () => {
       listeners.delete(l);
@@ -71,11 +54,8 @@ export function AppDialogHost() {
     hideDialog();
     if (btn?.onPress) {
       try {
-        // 同时兜住同步抛错与 Promise rejection（原实现只 catch 同步错误，async 回调会 unhandled rejection）
         void Promise.resolve(btn.onPress()).catch(() => {});
-      } catch {
-        /* 回调异常不影响关闭 */
-      }
+      } catch {}
     }
   };
 
@@ -91,7 +71,6 @@ export function AppDialogHost() {
         />
         {state ? (
           <View style={styles.center} pointerEvents="box-none">
-            {/* 实底面板：Modal 是独立窗口，BlurView 取不到背后的模糊目标，玻璃会渲染成透明/闪烁 */}
             <View
               style={[
                 styles.panel,
@@ -175,10 +154,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   body: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16 },
-  title: { fontSize: 16, fontWeight: '800', textAlign: 'center' },
-  message: { marginTop: 8, fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  title: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '700', textAlign: 'center' },
+  message: {
+    marginTop: 8,
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
   actions: { borderTopWidth: StyleSheet.hairlineWidth },
   btn: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
-  btnText: { fontSize: 15, fontWeight: '600' },
-  btnTextStrong: { fontWeight: '800' },
+  btnText: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '600' },
+  btnTextStrong: { fontWeight: '700' },
 });
