@@ -54,8 +54,6 @@ node scripts/build-apk.js
 | `YAYA_ABIS` | `arm64-v8a,x86_64` | 逗号分隔的 ABI |
 | `YAYA_UNIVERSAL` | `true` | 是否额外构建 universal 包 |
 
-发布构建必须显式提供 `RELEASE_STORE_FILE`、`RELEASE_STORE_PASSWORD`、`RELEASE_KEY_ALIAS`、`RELEASE_KEY_PASSWORD`。为保证 v2.7.5 及之后版本可以覆盖升级，发布签名必须继续使用 `android/app/debug.keystore`（`CN=Android Debug`），不能更换证书。
-
 常用检查：
 
 ```sh
