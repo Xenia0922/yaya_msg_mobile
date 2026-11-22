@@ -15,7 +15,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#6E9EF6"
+        "backgroundColor": "#FFF6F9"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.yk1z.yayamsg",
