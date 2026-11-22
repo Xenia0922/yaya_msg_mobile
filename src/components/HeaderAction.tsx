@@ -38,7 +38,11 @@ export function HeaderAction({ label, onPress, disabled, loading, icon }: Header
         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         style={[
           styles.iconBtn,
-          { backgroundColor: palette.fill2, opacity: inactive && !loading ? 0.4 : 1 },
+          {
+            backgroundColor:
+              palette.name === 'light' ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.12)',
+            opacity: inactive && !loading ? 0.4 : 1,
+          },
         ]}
         accessibilityRole="button"
         accessibilityLabel={label}
@@ -65,7 +69,11 @@ export function HeaderAction({ label, onPress, disabled, loading, icon }: Header
       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       style={[
         styles.pillBtn,
-        { backgroundColor: palette.fill2, opacity: inactive && !loading ? 0.45 : 1 },
+        {
+          backgroundColor:
+            palette.name === 'light' ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.12)',
+          opacity: inactive && !loading ? 0.45 : 1,
+        },
       ]}
       accessibilityRole="button"
       accessibilityLabel={label}

@@ -9,10 +9,10 @@ import {
   type ViewProps,
   type ViewStyle,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { BlurView, type BlurTint } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePalette } from '../theme';
-import { useBlurTarget } from './BlurTarget';
+import { useBlurTarget, useIsInsideBlurTarget } from './BlurTarget';
 import { NativeContinuousCornerView } from '../native/ContinuousCornerView';
 
 export type GlassRole =
@@ -23,7 +23,7 @@ interface Material {
 
   reduction: number;
 
-  blurTint: 'light' | 'dark';
+  blurTint: BlurTint;
 
   overlay: string;
 
@@ -34,9 +34,10 @@ interface Material {
   highlight: number;
 }
 
-const HIGHLIGHT_GRADIENT_STYLE = { height: '42%' } as const;
+const HIGHLIGHT_LOCATIONS = [0, 0.42, 1] as const;
 
-const BLUR_REDUCTION = Platform.OS === 'android' ? 6 : 4;
+const BLUR_REDUCTION = Platform.OS === 'android' ? 10 : 4;
+const CHROME_BLUR_REDUCTION = Platform.OS === 'android' ? 5 : 4;
 
 const MATERIAL: { light: Material; dark: Material } = {
   light: {
@@ -56,6 +57,27 @@ const MATERIAL: { light: Material; dark: Material } = {
     frostedOverlay: 'rgba(28,28,36,0.76)',
     stroke: 'rgba(255,255,255,0.12)',
     highlight: 0.1,
+  },
+};
+
+const CHROME_MATERIAL: { light: Material; dark: Material } = {
+  light: {
+    intensity: 55,
+    reduction: CHROME_BLUR_REDUCTION,
+    blurTint: 'default',
+    overlay: 'rgba(255,255,255,0.32)',
+    frostedOverlay: 'rgba(244,245,251,0.88)',
+    stroke: 'rgba(18,22,36,0.08)',
+    highlight: 0.45,
+  },
+  dark: {
+    intensity: 55,
+    reduction: CHROME_BLUR_REDUCTION,
+    blurTint: 'systemUltraThinMaterialDark',
+    overlay: 'rgba(18,18,26,0.22)',
+    frostedOverlay: 'rgba(28,28,36,0.84)',
+    stroke: 'rgba(255,255,255,0.16)',
+    highlight: 0.14,
   },
 };
 
@@ -124,22 +146,38 @@ export function GlassSurface({
   const palette = usePalette();
   const isDark = palette.name === 'dark';
   const blurTarget = useBlurTarget();
+  const insideBlurTarget = useIsInsideBlurTarget();
+  const isLiveGlassRole =
+    role === 'bar' || role === 'header' || role === 'toast' || role === 'modal';
+  const effectiveFrostedOnly =
+    frostedOnly || (Platform.OS === 'android' && (insideBlurTarget || !isLiveGlassRole));
   const m =
     role === 'selector'
       ? isDark
         ? SELECTOR.dark
         : SELECTOR.light
-      : isDark
-        ? MATERIAL.dark
-        : MATERIAL.light;
+      : role === 'bar' || role === 'header'
+        ? isDark
+          ? CHROME_MATERIAL.dark
+          : CHROME_MATERIAL.light
+        : isDark
+          ? MATERIAL.dark
+          : MATERIAL.light;
 
   const r = radius;
 
   const incoming = style ? (StyleSheet.flatten(style) as ViewStyle | undefined) : undefined;
   const strokeWidth = incoming?.borderWidth ?? 1;
   const strokeColor = (incoming?.borderColor as string) ?? m.stroke;
+  const boxHeight =
+    typeof incoming?.height === 'number'
+      ? incoming.height
+      : typeof incoming?.minHeight === 'number'
+        ? incoming.minHeight
+        : undefined;
+  const isFullCapsule = boxHeight !== undefined && r >= boxHeight * 0.48;
   const useNativeContinuous =
-    Platform.OS === 'android' && r > 0 && NativeContinuousCornerView !== null;
+    Platform.OS === 'android' && r > 0 && !isFullCapsule && NativeContinuousCornerView !== null;
 
   const hasExplicitBorder =
     incoming !== undefined &&
@@ -180,10 +218,10 @@ export function GlassSurface({
         ]
       : [{ borderRadius: r, borderCurve: 'continuous', overflow: 'hidden' }, outerStyle];
 
-  const fillColor = tintColor ?? (frostedOnly ? m.frostedOverlay : m.overlay);
+  const fillColor = tintColor ?? (effectiveFrostedOnly ? m.frostedOverlay : m.overlay);
   const backdropLayers = (
     <>
-      {!frostedOnly ? (
+      {!effectiveFrostedOnly ? (
         <BlurView
           pointerEvents="none"
 
@@ -216,14 +254,25 @@ export function GlassSurface({
               },
         ]}
       >
-        <LinearGradient
-          colors={
-            isDark
-              ? [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.02)', 'transparent']
-              : [`rgba(255,255,255,${m.highlight})`, 'rgba(255,255,255,0.06)', 'transparent']
-          }
-          style={HIGHLIGHT_GRADIENT_STYLE}
-        />
+        {!(Platform.OS === 'android' && effectiveFrostedOnly) ? (
+          <LinearGradient
+            colors={
+              isDark
+                ? [
+                    `rgba(255,255,255,${m.highlight})`,
+                    'rgba(255,255,255,0.03)',
+                    'rgba(255,255,255,0)',
+                  ]
+                : [
+                    `rgba(255,255,255,${m.highlight})`,
+                    'rgba(255,255,255,0.12)',
+                    'rgba(255,255,255,0)',
+                  ]
+            }
+            locations={HIGHLIGHT_LOCATIONS}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
       </View>
     </>
   );

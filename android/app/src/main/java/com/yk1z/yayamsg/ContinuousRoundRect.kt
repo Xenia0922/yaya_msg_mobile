@@ -1,6 +1,7 @@
 package com.yk1z.yayamsg
 
 import android.graphics.Path
+import android.graphics.RectF
 
 internal object ContinuousRoundRect {
   private const val SQRT_2 = 1.4142135623730951
@@ -154,6 +155,11 @@ internal object ContinuousRoundRect {
     val hd = h.toDouble()
     val radius = minOf(r.toDouble(), minOf(wd, hd) / 2.0)
     path.reset()
+    if (minOf(wd, hd) <= radius * 2.04) {
+      val fr = radius.toFloat()
+      path.addRoundRect(RectF(0f, 0f, w, h), fr, fr, Path.Direction.CW)
+      return true
+    }
     if (radius <= 0.0) {
       path.moveTo(0f, 0f)
       path.lineTo(w, 0f)

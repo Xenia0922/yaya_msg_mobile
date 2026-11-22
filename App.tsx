@@ -10,6 +10,7 @@ import {
   Animated,
   Easing,
   AppState,
+  Appearance,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -23,6 +24,7 @@ import {
   useMemberStore,
   useAnnouncementStore,
   useUpdateStore,
+  localTodayKey,
 } from './src/store';
 import { loadMembers } from './src/utils/members';
 import { fetchJson } from './src/utils/network';
@@ -76,11 +78,16 @@ import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { startSignatureHealthCheck } from './src/services/signatureHealth';
 import { startNativeModuleCheck } from './src/services/nativeHealth';
-import { NOTICE_URL, USER_AGENT } from './src/constants';
+import { APP_VERSION, NOTICE_URL, USER_AGENT } from './src/constants';
 import { initRuntimeLog, logCrash, logInfo } from './src/utils/runtimeLog';
 import { fetchCoverToFile, normalizeCoverUrl } from './src/utils/coverToFile';
-import { usePalette } from './src/theme/colors';
+import { Palettes, usePalette } from './src/theme/colors';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import { SquircleView } from './src/components/SquircleView';
+import UpdateInstaller from './src/components/UpdateInstaller';
+import { showDialog } from './src/components/AppDialog';
+import { isApkUpdaterAvailable } from './src/native/ApkUpdater';
+import { translate } from './src/i18n';
 import { useSafeAreaInsets } from './src/hooks/useSafeAreaInsets';
 
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
@@ -841,12 +848,26 @@ function QChatGlobalBridge({ ready }: { ready: boolean }) {
 
 export default function App() {
   const [ready, setReady] = useState(false);
-  const [message, setMessage] = useState('正在初始化...');
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [splashDismissed, setSplashDismissed] = useState(false);
   const appTheme = useResolvedTheme();
   const palette = usePalette();
-  const splashBg = palette.background;
+  const systemScheme = Appearance.getColorScheme();
+  const effectiveSplashTheme = settingsReady
+    ? appTheme
+    : systemScheme === 'dark'
+      ? 'dark'
+      : 'light';
+  const splashPalette = effectiveSplashTheme === 'dark' ? Palettes.dark : Palettes.light;
+  const splashOpacity = React.useRef(new Animated.Value(1)).current;
+  const splashDismissStartedRef = useRef(false);
 
   const { seenIds, markSeen, lastFetched, hydrated } = useAnnouncementStore();
+  const pendingDailyPrompt = useUpdateStore((s) => s.pendingDailyPrompt);
+  const latestVersion = useUpdateStore((s) => s.latestVersion);
+  const latestUrl = useUpdateStore((s) => s.latestUrl);
+  const releaseNotes = useUpdateStore((s) => s.releaseNotes);
+  const [dailyUpdateVisible, setDailyUpdateVisible] = useState(false);
   const [announceModal, setAnnounceModal] = useState<{
     title: string;
     header: string;
@@ -898,43 +919,71 @@ export default function App() {
     let mounted = true;
 
     (async () => {
-      try {
-        const settings = await loadSettings();
-        useSettingsStore.getState().setSettings(settings);
+      const backup = require('./assets/members.json');
+      const [settingsRes, , membersRes] = await Promise.allSettled([
+        loadSettings(),
+        loadPlayerPrefs(),
+        loadMembers(backup),
+      ]);
 
-        recoverInterruptedDownloads().catch(() => {});
+      recoverInterruptedDownloads().catch(() => {});
+      initWasm().catch(() => {});
 
-        await loadPlayerPrefs();
-      } catch (error: any) {
-        if (mounted) setMessage(`设置加载失败：${error?.message || String(error)}`);
+      if (settingsRes.status === 'fulfilled') {
+        useSettingsStore.getState().setSettings(settingsRes.value);
       }
+      if (mounted) setSettingsReady(true);
 
-      initWasm().catch((error: any) => {
-        if (!mounted) return;
-        setMessage((prev) => `${prev}\n签名模块初始化失败：${error?.message || String(error)}`);
-      });
-
-      try {
-        const backup = require('./assets/members.json');
-        const localMembers = await loadMembers(backup);
-        useMemberStore.getState().setMembers(localMembers);
-        if (mounted) setMessage(`已加载随包成员库 ${localMembers.length} 位`);
-
-        const cached = await loadCachedMemberData();
-        if (cached && cached.length >= localMembers.length) {
-          useMemberStore.getState().setMembers(cached);
-        }
-      } catch (error: any) {
-        if (mounted) setMessage(`成员数据加载失败：${error?.message || String(error)}`);
+      let localLen = 0;
+      if (membersRes.status === 'fulfilled') {
+        localLen = membersRes.value.length;
+        useMemberStore.getState().setMembers(membersRes.value);
       }
 
       if (mounted) setReady(true);
+
+      loadCachedMemberData()
+        .then((cached) => {
+          if (cached && cached.length >= localLen) {
+            useMemberStore.getState().setMembers(cached);
+          }
+        })
+        .catch(() => {});
     })();
 
     return () => {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!ready || splashDismissStartedRef.current) return;
+    splashDismissStartedRef.current = true;
+    let alive = true;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    const rafId = requestAnimationFrame(() => {
+      fallbackTimer = setTimeout(() => {
+        if (alive) setSplashDismissed(true);
+      }, 320);
+      Animated.timing(splashOpacity, {
+        toValue: 0,
+        duration: 210,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => {
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+        if (alive) setSplashDismissed(true);
+      });
+    });
+    return () => {
+      alive = false;
+      cancelAnimationFrame(rafId);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
+  }, [ready, splashOpacity]);
 
   useEffect(() => {
     if (!ready) return;
@@ -950,11 +999,54 @@ export default function App() {
     const r2Timer = setTimeout(() => {
       prefetchR2Music().catch(() => {});
     }, 15000);
+
+    const activeSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && useUpdateStore.getState().lastCheckedDate !== localTodayKey()) {
+        useUpdateStore
+          .getState()
+          .checkUpdate()
+          .catch(() => {});
+      }
+    });
+
     return () => {
       clearTimeout(timer);
       clearTimeout(r2Timer);
+      activeSub.remove();
     };
   }, [ready]);
+
+  useEffect(() => {
+    if (!ready || !splashDismissed || announceModal || !pendingDailyPrompt || !latestVersion) {
+      return;
+    }
+    void useUpdateStore.getState().markDailyPromptShown();
+    if (isApkUpdaterAvailable) {
+      setDailyUpdateVisible(true);
+      return;
+    }
+    showDialog(
+      translate('发现新版本 {v}', { v: latestVersion }),
+      releaseNotes || translate('当前版本 v{v}，可前往下载最新版本', { v: APP_VERSION }),
+      [
+        { text: translate('稍后'), style: 'cancel' },
+        {
+          text: translate('立即更新'),
+          onPress: () => {
+            if (latestUrl) Linking.openURL(latestUrl).catch(() => {});
+          },
+        },
+      ],
+    );
+  }, [
+    ready,
+    splashDismissed,
+    announceModal,
+    pendingDailyPrompt,
+    latestVersion,
+    latestUrl,
+    releaseNotes,
+  ]);
 
   useEffect(() => {
     if (!ready) return;
@@ -966,7 +1058,6 @@ export default function App() {
   const content = (
     <KeyboardProvider>
       <View style={{ flex: 1, backgroundColor: palette.background }}>
-        <StatusBar style={appTheme === 'dark' ? 'light' : 'dark'} />
         <SafeAreaBridge>
           <AppNavigator />
         </SafeAreaBridge>
@@ -1044,17 +1135,54 @@ export default function App() {
             </Animated.View>
           </View>
         </Modal>
+
+        <UpdateInstaller
+          visible={dailyUpdateVisible}
+          version={latestVersion}
+          notes={releaseNotes}
+          onClose={() => setDailyUpdateVisible(false)}
+        />
       </View>
     </KeyboardProvider>
   );
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      {!ready ? (
-        <View style={{ flex: 1, backgroundColor: splashBg }} />
-      ) : (
-        <ErrorBoundary>{content}</ErrorBoundary>
-      )}
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: splashPalette.background }}>
+      <StatusBar style={effectiveSplashTheme === 'dark' ? 'light' : 'dark'} />
+      {ready ? <ErrorBoundary>{content}</ErrorBoundary> : null}
+
+      {!splashDismissed ? (
+        <Animated.View
+          pointerEvents={ready ? 'none' : 'auto'}
+          style={[
+            StyleSheet.absoluteFill,
+            anStyles.splashRoot,
+            { backgroundColor: splashPalette.background, opacity: splashOpacity },
+          ]}
+        >
+          <SquircleView
+            radius={24}
+            style={[
+              anStyles.splashIconBox,
+              {
+                borderColor:
+                  effectiveSplashTheme === 'dark'
+                    ? 'rgba(255,255,255,0.18)'
+                    : 'rgba(255,255,255,0.72)',
+              },
+            ]}
+          >
+            <Image
+              source={require('./assets/logo.jpg')}
+              style={anStyles.splashIconImg}
+              resizeMode="cover"
+            />
+            {effectiveSplashTheme === 'dark' ? (
+              <View pointerEvents="none" style={anStyles.splashDarkScrim} />
+            ) : null}
+          </SquircleView>
+        </Animated.View>
+      ) : null}
 
       <WebViewSignerHost />
 
@@ -1066,6 +1194,27 @@ export default function App() {
 }
 
 const anStyles = StyleSheet.create({
+  splashRoot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  splashIconBox: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  splashIconImg: {
+    width: '100%',
+    height: '100%',
+  },
+  splashDarkScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11,11,15,0.14)',
+  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

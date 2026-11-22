@@ -38,7 +38,7 @@ export function SearchBar({
   const palette = usePalette();
   const { t } = useI18n();
   return (
-    <GlassSurface radius={20} role="chip" style={[styles.bar, style]}>
+    <GlassSurface radius={20} role="chip" frostedOnly style={[styles.bar, style]}>
       <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
       <TextInput
         value={value}

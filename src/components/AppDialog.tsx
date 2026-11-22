@@ -62,7 +62,14 @@ export function AppDialogHost() {
   const buttons = state?.buttons || [];
 
   return (
-    <Modal visible={!!state} transparent animationType="fade" onRequestClose={() => close()}>
+    <Modal
+      visible={!!state}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={() => close()}
+    >
       <View style={styles.shade}>
         <TouchableOpacity
           style={StyleSheet.absoluteFill}

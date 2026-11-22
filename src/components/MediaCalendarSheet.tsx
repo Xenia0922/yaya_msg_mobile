@@ -4,7 +4,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { useI18n } from '../i18n';
 import { usePalette, radiiAlias, fontFamily } from '../theme';
 
-export function MediaCalendarSheet({
+export const MediaCalendarSheet = React.memo(function MediaCalendarSheet({
   visible,
   initial,
   onSelect,
@@ -19,6 +19,7 @@ export function MediaCalendarSheet({
   const { t } = useI18n();
   const base = initial || new Date();
   const [view, setView] = useState(() => new Date(base.getFullYear(), base.getMonth(), 1));
+  if (!visible) return null;
   const year = view.getFullYear();
   const month = view.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
@@ -29,7 +30,14 @@ export function MediaCalendarSheet({
   const weekdays = ['日', '一', '二', '三', '四', '五', '六'].map((w) => t(w));
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <TouchableOpacity
         style={styles.mask}
         activeOpacity={1}
@@ -122,7 +130,7 @@ export function MediaCalendarSheet({
       </TouchableOpacity>
     </Modal>
   );
-}
+});
 
 const styles = StyleSheet.create({
   mask: {

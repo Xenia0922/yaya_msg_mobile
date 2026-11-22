@@ -22,6 +22,7 @@ export interface AppTabBarProps {
   items: TabBarItem[];
   activeKey: string;
   onSelect: (key: string) => void;
+  hidden?: boolean;
 }
 
 const BAR_HEIGHT = 64;
@@ -91,6 +92,7 @@ export const AppTabBar = React.memo(function AppTabBar({
   items,
   activeKey,
   onSelect,
+  hidden = false,
 }: AppTabBarProps) {
   const palette = usePalette();
   const isDark = palette.name === 'dark';
@@ -326,9 +328,12 @@ export const AppTabBar = React.memo(function AppTabBar({
   const litIndex = hoverIndex ?? activeIndex;
 
   return (
-    <View pointerEvents="box-none" style={[styles.outer, { paddingBottom: 16 }]}>
+    <View
+      pointerEvents={hidden ? 'none' : 'box-none'}
+      style={[styles.outer, { paddingBottom: 16 }, hidden && styles.outerHidden]}
+    >
       <GestureDetector gesture={composedGesture}>
-        <GlassSurface role="bar" radius={BAR_HEIGHT / 2} style={styles.bar}>
+        <GlassSurface role="bar" radius={BAR_HEIGHT / 2} frostedOnly={hidden} style={styles.bar}>
           <Reanimated.View
             pointerEvents="none"
             style={[styles.indicator, { width: cellW }, indicatorAnimStyle]}
@@ -342,13 +347,13 @@ export const AppTabBar = React.memo(function AppTabBar({
                   backgroundColor:
                     hoverIndex !== null
                       ? isDark
-                        ? 'rgba(255,255,255,0.09)'
-                        : 'rgba(232,232,238,0.42)'
+                        ? 'rgba(255,255,255,0.11)'
+                        : 'rgba(255,255,255,0.62)'
                       : isDark
-                        ? 'rgba(255,255,255,0.12)'
-                        : 'rgba(232,232,238,0.55)',
+                        ? 'rgba(255,255,255,0.16)'
+                        : 'rgba(255,255,255,0.78)',
                   borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)',
+                  borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.88)',
                 },
               ]}
             />
@@ -371,12 +376,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
   },
+  outerHidden: {
+    display: 'none',
+  },
   bar: {
     flexDirection: 'row',
     borderRadius: BAR_HEIGHT / 2,
     borderCurve: 'continuous',
     paddingVertical: BAR_PAD,
     paddingHorizontal: BAR_PAD,
+    height: BAR_HEIGHT,
     minHeight: BAR_HEIGHT,
     overflow: 'hidden',
     ...Platform.select({
@@ -386,7 +395,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 16,
       },
-      android: { elevation: 8 },
+      android: null,
       default: null,
     }),
   },

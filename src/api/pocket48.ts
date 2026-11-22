@@ -951,7 +951,7 @@ export const pocketApi = {
     return pocketPost(
       `${BASE}/im/api/v1/im/team/room/info`,
       { channelId: String(channelId) },
-      { tokenRequired: false, fallback: '获取房间信息失败' },
+      { fallback: '获取房间信息失败' },
     );
   },
 

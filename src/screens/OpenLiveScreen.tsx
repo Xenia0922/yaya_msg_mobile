@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import PlayerScreen, { buildPocketHeaders } from '../player';
 import { Member } from '../types';
@@ -178,6 +179,7 @@ function shortMemberName(member?: Member | null) {
 export default function OpenLiveScreen() {
   const navigation = useNavigation();
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
   const token = useSettingsStore((state) => state.settings.p48Token);
@@ -518,6 +520,8 @@ export default function OpenLiveScreen() {
         visible={!!participants}
         transparent
         animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => {
           participantRequest.current++;
           setParticipants(null);
@@ -531,7 +535,25 @@ export default function OpenLiveScreen() {
               setParticipants(null);
             }}
           />
-          <View style={[styles.participantsSheet, { backgroundColor: palette.surfaceGlassStrong }]}>
+          <View
+            style={[
+              styles.participantsSheet,
+              {
+                backgroundColor: palette.surfaceGlassStrong,
+                paddingBottom: Math.max(18, insets.bottom + 12),
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: palette.fill3,
+                alignSelf: 'center',
+                marginBottom: 10,
+              }}
+            />
             <View style={styles.participantsHeader}>
               <Text style={[styles.cardTitle, { color: palette.label, flex: 1 }]} numberOfLines={1}>
                 {participants?.title} · {t('参与成员')}

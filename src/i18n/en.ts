@@ -1375,4 +1375,8 @@ export const en: Record<string, string> = {
   按分团浏览或输入关键词: 'Browse by group or type a name to search',
   没有找到匹配的成员: 'No matching members found',
   '已选成员：': 'Selected member: ',
+  '展开全部 {count} 位': 'Show all {count}',
+  '{cost} 鸡腿 · {count} 次': '{cost} legs · {count}x',
+  该成员暂未开放私密翻牌: 'Private replies are currently closed for this member',
+  '当前版本 v{v}，可前往下载最新版本': 'Current v{v}. Open the download page to update.',
 };

@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const BG_DIR = `${FileSystem.cacheDirectory || ''}roombg/`;
-const MAP_KEY = 'yaya_room_bg_cache_v1';
+const MAP_KEY = 'yaya_room_bg_cache_v3';
+const LEGACY_MAP_KEYS = ['yaya_room_bg_cache_v1', 'yaya_room_bg_cache_v2'];
 const MAX_ENTRIES = 200;
 
 function hashUrl(url: string): string {
@@ -28,6 +29,7 @@ async function loadMap(): Promise<BgMap> {
   if (mapPromise) return mapPromise;
   mapPromise = (async () => {
     try {
+      for (const k of LEGACY_MAP_KEYS) AsyncStorage.removeItem(k).catch(() => {});
       const raw = await AsyncStorage.getItem(MAP_KEY);
       mapCache = raw ? (JSON.parse(raw) as BgMap) : {};
     } catch {

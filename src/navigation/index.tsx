@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
+import { BottomDockHost, TopDockHost, setBottomDockState } from '../components/DockPortal';
 import {
   NavigationContainer,
   DefaultTheme,
@@ -9,10 +10,12 @@ import {
 } from '@react-navigation/native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createStackNavigator, type StackCardInterpolationProps } from '@react-navigation/stack';
 import {
+  Animated,
   BackHandler,
   DeviceEventEmitter,
+  Easing,
   ImageBackground,
   Keyboard,
   Platform,
@@ -30,7 +33,7 @@ import { refreshActiveRoomMappings } from '../services/roomMapCache';
 
 import '../services/musicPlayer';
 import { RootStackParamList, TabParamList } from './types';
-import { AppTabBar, MCI } from '../components/AppTabBar';
+import { MCI } from '../components/AppTabBar';
 import { AppDialogHost } from '../components/AppDialog';
 import { MiniPlayer } from '../components/MiniPlayer';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
@@ -65,6 +68,56 @@ import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useI18n } from '../i18n';
 import { shouldHideTabBar } from './tabBarVisibility';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+
+const STACK_OPEN_SPEC = {
+  animation: 'timing' as const,
+  config: {
+    duration: 180,
+    easing: Easing.out(Easing.cubic),
+  },
+};
+
+const STACK_CLOSE_SPEC = {
+  animation: 'timing' as const,
+  config: {
+    duration: 150,
+    easing: Easing.out(Easing.cubic),
+  },
+};
+
+function stackCardInterpolator({ current, next, layouts }: StackCardInterpolationProps) {
+  const incomingOpacity = current.progress.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [0, 0, 1],
+    extrapolate: 'clamp',
+  });
+  const outgoingOpacity = next
+    ? next.progress.interpolate({
+        inputRange: [0, 0.4, 1],
+        outputRange: [1, 0, 0],
+        extrapolate: 'clamp',
+      })
+    : 1;
+  const translateXFocused = current.progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Math.min(32, layouts.screen.width * 0.08), 0],
+    extrapolate: 'clamp',
+  });
+  const translateXUnfocused = next
+    ? next.progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -24],
+        extrapolate: 'clamp',
+      })
+    : 0;
+  return {
+    cardStyle: {
+      backgroundColor: 'transparent',
+      opacity: Animated.multiply(incomingOpacity, outgoingOpacity),
+      transform: [{ translateX: Animated.add(translateXFocused, translateXUnfocused) }],
+    },
+  };
+}
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createMaterialTopTabNavigator<TabParamList>();
@@ -195,11 +248,15 @@ function MainTabBar({
     [navigation],
   );
 
-  if (hidden) return null;
-
   const activeKey = state.routes[state.index]?.name || 'Home';
 
-  return <AppTabBar items={items} activeKey={activeKey} onSelect={handleSelect} />;
+  useLayoutEffect(() => {
+    setBottomDockState({ items, activeKey, onSelect: handleSelect, hidden });
+  }, [items, activeKey, handleSelect, hidden]);
+
+  useLayoutEffect(() => () => setBottomDockState(null), []);
+
+  return null;
 }
 
 function MainTabs() {
@@ -362,66 +419,63 @@ export default function AppNavigator() {
 
   return (
     <ErrorBoundary>
-      <>
-        <BlurTargetProvider>
-          <BlurTargetSurface>
-            {screenBackdrop?.uri ? (
-              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                <ImageBackground
-                  source={{ uri: screenBackdrop.uri }}
-                  resizeMode="cover"
-                  style={StyleSheet.absoluteFill}
-                />
-                <View
-                  pointerEvents="none"
-                  style={[StyleSheet.absoluteFill, { backgroundColor: screenBackdrop.scrim }]}
-                />
-              </View>
-            ) : (
-              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                <ImageBackground
-                  source={bgSource as any}
-                  resizeMode="cover"
-                  style={StyleSheet.absoluteFill}
-                />
-                <View
-                  pointerEvents="none"
-                  style={[
-                    StyleSheet.absoluteFill,
+      <BlurTargetProvider>
+        <NavigationContainer
+          ref={navRef}
+          theme={themed}
+          onStateChange={() => {
+            if (Keyboard.isVisible()) Keyboard.dismiss();
+          }}
+        >
+          <>
+            <BlurTargetSurface>
+              {screenBackdrop?.uri ? (
+                <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                  <ImageBackground
+                    source={{ uri: screenBackdrop.uri }}
+                    resizeMode="cover"
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <View
+                    pointerEvents="none"
+                    style={[StyleSheet.absoluteFill, { backgroundColor: screenBackdrop.scrim }]}
+                  />
+                </View>
+              ) : (
+                <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                  <ImageBackground
+                    source={bgSource as any}
+                    resizeMode="cover"
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      StyleSheet.absoluteFill,
+                      {
+                        backgroundColor: hasBackground
+                          ? bgScrim
+                          : theme === 'dark'
+                            ? 'rgba(0,0,0,0.18)'
+                            : 'rgba(255,255,255,0.10)',
+                      },
+                    ]}
+                  />
+                </View>
+              )}
 
-                    {
-                      backgroundColor: hasBackground
-                        ? bgScrim
-                        : theme === 'dark'
-                          ? 'rgba(0,0,0,0.18)'
-                          : 'rgba(255,255,255,0.10)',
-                    },
-                  ]}
-                />
-              </View>
-            )}
-          </BlurTargetSurface>
-
-          <AppDialogHost />
-
-          <NavigationContainer
-            ref={navRef}
-            theme={themed}
-            onStateChange={() => {
-              if (Keyboard.isVisible()) Keyboard.dismiss();
-            }}
-          >
-            <>
               <Stack.Navigator
                 screenOptions={{
                   headerShown: false,
-                  animation: 'none',
                   cardOverlayEnabled: false,
-
                   detachPreviousScreen: true,
-
                   freezeOnBlur: true,
                   cardStyle: { backgroundColor: 'transparent' },
+                  cardStyleInterpolator: stackCardInterpolator,
+                  transitionSpec: {
+                    open: STACK_OPEN_SPEC,
+                    close: STACK_CLOSE_SPEC,
+                  },
                 }}
               >
                 <Stack.Screen name="Main" component={MainTabs} />
@@ -445,17 +499,17 @@ export default function AppNavigator() {
                 <Stack.Screen name="RoomAlbumScreen" component={RoomAlbumStackScreen} />
                 <Stack.Screen name="InvoiceScreen" component={InvoiceStackScreen} />
               </Stack.Navigator>
-              <AppToast />
-
-              <MiniPlayer />
-
-              <PipToggleBridge />
-
-              <KeyboardBackBridge />
-            </>
-          </NavigationContainer>
-        </BlurTargetProvider>
-      </>
+            </BlurTargetSurface>
+            <TopDockHost />
+            <BottomDockHost />
+            <AppToast />
+            <MiniPlayer />
+            <PipToggleBridge />
+            <KeyboardBackBridge />
+          </>
+        </NavigationContainer>
+        <AppDialogHost />
+      </BlurTargetProvider>
     </ErrorBoundary>
   );
 }

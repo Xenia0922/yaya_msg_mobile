@@ -41,7 +41,6 @@ import { usePalette, radii, radiiAlias, fontFamily } from '../theme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
-import { FilterChips } from '../components/FilterChips';
 import { SearchBar } from '../components/SearchBar';
 import { NetworkImage } from '../components/NetworkImage';
 
@@ -302,6 +301,7 @@ export default function FlipScreen() {
   const [content, setContent] = useState('');
   const [balance, setBalance] = useState('');
   const [memberFilter, setMemberFilter] = useState('');
+  const [rankExpanded, setRankExpanded] = useState(false);
   const [memberSheetOpen, setMemberSheetOpen] = useState(false);
   const [memberSheetQuery, setMemberSheetQuery] = useState('');
   const [followedIds, setFollowedIds] = useState<Set<string>>(() => new Set());
@@ -338,10 +338,8 @@ export default function FlipScreen() {
         setFlips((prev) => (replace ? list : [...prev, ...list]));
 
         setHasMore(list.length >= 100 && list.length > 0);
-        if (list.length === 0 && replace) {
+        if (replace) {
           setStatus('');
-        } else if (replace) {
-          flashStatus(t('已加载 {count} 条翻牌记录', { count: list.length }));
         }
         return true;
       } catch (error) {
@@ -353,7 +351,7 @@ export default function FlipScreen() {
         setLoading(false);
       }
     },
-    [flashStatus, t],
+    [t],
   );
 
   useFocusEffect(
@@ -515,17 +513,45 @@ export default function FlipScreen() {
     return picked;
   }, [members, flips, followedIds]);
 
-  const memberAvatarByName = useMemo(() => {
-    const map = new Map<string, string>();
+  const { memberAvatarByName, memberAvatarById } = useMemo(() => {
+    const byName = new Map<string, string>();
+    const byId = new Map<string, string>();
     for (const m of members) {
       const uri = normalizeUrl(m.avatar || '');
       if (!uri) continue;
+      for (const rawId of [m.id, m.userId, m.memberId]) {
+        const k = String(rawId ?? '').trim();
+        if (k && !byId.has(k)) byId.set(k, uri);
+      }
       const shortName = m.ownerName.split('-').pop() || m.ownerName;
-      if (shortName && !map.has(shortName)) map.set(shortName, uri);
-      if (m.ownerName && !map.has(m.ownerName)) map.set(m.ownerName, uri);
+      if (shortName && !byName.has(shortName)) byName.set(shortName, uri);
+      if (m.ownerName && !byName.has(m.ownerName)) byName.set(m.ownerName, uri);
     }
-    return map;
+    return { memberAvatarByName: byName, memberAvatarById: byId };
   }, [members]);
+
+  const resolveFlipMemberAvatar = useCallback(
+    (name: string, flipItem?: any) => {
+      const fromFlip = flipItem
+        ? normalizeUrl(
+            pickText(flipItem, [
+              'memberLogo',
+              'memberAvatar',
+              'avatar',
+              'headImg',
+              'baseUserInfo.avatar',
+              'baseUserInfo.headImg',
+            ]),
+          )
+        : '';
+      if (fromFlip) return fromFlip;
+      const mid = flipItem ? String(flipItem.memberId || flipItem.userId || '').trim() : '';
+      if (mid && memberAvatarById.has(mid)) return memberAvatarById.get(mid) || '';
+      const short = name.split('-').pop() || name;
+      return memberAvatarByName.get(name) || memberAvatarByName.get(short) || '';
+    },
+    [memberAvatarById, memberAvatarByName],
+  );
 
   const sheetMemberRows = useMemo(() => {
     const q = memberSheetQuery.trim().toLowerCase();
@@ -578,7 +604,6 @@ export default function FlipScreen() {
     let durSum = 0;
     let answered = 0;
     const typeStats = { text: 0, audio: 0, video: 0 };
-    const memberMap = new Map<string, { name: string; count: number; cost: number }>();
     for (const f of filteredFlips) {
       const rec = f as any;
       const cost = Number(rec.cost) || 0;
@@ -587,11 +612,6 @@ export default function FlipScreen() {
       if (at === 1) typeStats.text += 1;
       else if (at === 2) typeStats.audio += 1;
       else if (at === 3) typeStats.video += 1;
-      const mn = memberName(rec, t('成员'));
-      const m = memberMap.get(mn) || { name: mn, count: 0, cost: 0 };
-      m.count += 1;
-      m.cost += cost;
-      memberMap.set(mn, m);
       if (Number(rec.status) === 2 && rec.qtime && rec.answerTime) {
         const diff = Number(rec.answerTime) - Number(rec.qtime);
         if (diff > 0) {
@@ -600,8 +620,26 @@ export default function FlipScreen() {
         }
       }
     }
-    const memberRank = [...memberMap.values()].sort((a, b) => b.cost - a.cost);
-    const typeMax = Math.max(1, typeStats.text, typeStats.audio, typeStats.video);
+    const memberMap = new Map<
+      string,
+      { name: string; count: number; cost: number; avatar: string }
+    >();
+    for (const f of flips) {
+      const rec = f as any;
+      const mn = memberName(rec, t('成员'));
+      const cur = memberMap.get(mn) || {
+        name: mn,
+        count: 0,
+        cost: 0,
+        avatar: resolveFlipMemberAvatar(mn, rec),
+      };
+      cur.count += 1;
+      cur.cost += Number(rec.cost) || 0;
+      if (!cur.avatar) cur.avatar = resolveFlipMemberAvatar(mn, rec);
+      memberMap.set(mn, cur);
+    }
+    const memberRank = [...memberMap.values()].sort((a, b) => b.cost - a.cost || b.count - a.count);
+    const typeTotal = typeStats.text + typeStats.audio + typeStats.video;
     const fmtDur = (ms: number) => {
       if (ms <= 0) return '-';
       const s = Math.floor(ms / 1000);
@@ -614,161 +652,315 @@ export default function FlipScreen() {
       totalCount: filteredFlips.length,
       totalCost,
       typeStats,
-      typeMax,
+      typeTotal,
       memberRank,
+      memberCostByName: new Map(memberRank.map((m) => [m.name, m.cost])),
       avgStr: fmtDur(answered > 0 ? durSum / answered : 0),
     };
-  }, [filteredFlips, t]);
+  }, [filteredFlips, flips, resolveFlipMemberAvatar, t]);
+
+  const activeMemberAvatar = memberFilter ? resolveFlipMemberAvatar(memberFilter) : '';
+  const visibleRankRows = rankExpanded
+    ? flipStatsView.memberRank.slice(0, 20)
+    : flipStatsView.memberRank.slice(0, 3);
+  const maxRankCost = Math.max(1, flipStatsView.memberRank[0]?.cost || 0);
 
   const statsHeader = (
     <View style={styles.statsWrap}>
-      <GlassSurface radius={22} role="card" frostedOnly style={styles.statsOverview}>
-        <View style={styles.statCell}>
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-            style={[styles.statValue, { color: palette.tint }]}
-          >
-            {flipStatsView.totalCount}
-          </Text>
-          <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总翻牌数')}</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-            style={[styles.statValue, { color: palette.tint }]}
-          >
-            {flipStatsView.totalCost}
-          </Text>
-          <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总鸡腿')}</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-            style={[styles.statValue, { color: palette.tint }]}
-          >
-            {flipStatsView.avgStr}
-          </Text>
-          <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('平均回复')}</Text>
-        </View>
-      </GlassSurface>
-
-      <GlassSurface radius={22} role="card" frostedOnly style={styles.statsGroup}>
-        <Text style={[styles.groupLabel, { color: palette.label }]}>{t('类型分布')}</Text>
-        {[
-          { key: 'text', label: t('文字'), count: flipStatsView.typeStats.text },
-          { key: 'audio', label: t('语音'), count: flipStatsView.typeStats.audio },
-          { key: 'video', label: t('视频'), count: flipStatsView.typeStats.video },
-        ].map((row) => (
-          <View key={row.key} style={styles.typeRow}>
-            <Text style={[styles.typeRowLabel, { color: palette.labelSecondary }]}>
-              {row.label}
+      <GlassSurface
+        radius={22}
+        role="card"
+        frostedOnly
+        style={[
+          styles.statsOverviewCard,
+          { backgroundColor: 'transparent', borderColor: palette.innerStroke },
+        ]}
+      >
+        <View style={styles.statsMetricRow}>
+          <View style={styles.statCell}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+              style={[styles.statValue, { color: palette.tint }]}
+            >
+              {flipStatsView.totalCount}
             </Text>
-            <View
-              style={[
-                styles.typeTrack,
-                { backgroundColor: palette.fill2, opacity: flipStatsView.typeMax > 0 ? 1 : 0.35 },
-              ]}
-            >
-              {(() => {
-                const pct =
-                  flipStatsView.typeMax > 0
-                    ? Math.max(0, Math.min(100, (row.count / flipStatsView.typeMax) * 100))
-                    : 0;
-                return (
-                  <View
-                    style={[styles.typeFill, { width: `${pct}%`, backgroundColor: palette.tint }]}
-                  />
-                );
-              })()}
-            </View>
-            <Text style={[styles.typeCount, { color: palette.labelTertiary }]}>{row.count}</Text>
+            <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>
+              {t('总翻牌数')}
+            </Text>
           </View>
-        ))}
+          <View style={[styles.statDivider, { backgroundColor: palette.hairline }]} />
+          <View style={styles.statCell}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+              style={[styles.statValue, { color: palette.tint }]}
+            >
+              {flipStatsView.totalCost}
+            </Text>
+            <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>{t('总鸡腿')}</Text>
+          </View>
+          <View style={[styles.statDivider, { backgroundColor: palette.hairline }]} />
+          <View style={styles.statCell}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+              style={[styles.statValue, { color: palette.tint }]}
+            >
+              {flipStatsView.avgStr}
+            </Text>
+            <Text style={[styles.statLabel, { color: palette.labelSecondary }]}>
+              {t('平均回复')}
+            </Text>
+          </View>
+        </View>
+
+        <View style={[styles.distDivider, { backgroundColor: palette.hairline }]} />
+
+        <View style={styles.distSection}>
+          <View style={[styles.distTrack, { backgroundColor: palette.fill2 }]}>
+            {flipStatsView.typeTotal > 0 ? (
+              <>
+                {flipStatsView.typeStats.text > 0 ? (
+                  <View
+                    style={[
+                      styles.distSegment,
+                      {
+                        flex: flipStatsView.typeStats.text,
+                        backgroundColor: palette.tint,
+                      },
+                    ]}
+                  />
+                ) : null}
+                {flipStatsView.typeStats.audio > 0 ? (
+                  <View
+                    style={[
+                      styles.distSegment,
+                      {
+                        flex: flipStatsView.typeStats.audio,
+                        backgroundColor: '#8B7CF6',
+                      },
+                    ]}
+                  />
+                ) : null}
+                {flipStatsView.typeStats.video > 0 ? (
+                  <View
+                    style={[
+                      styles.distSegment,
+                      {
+                        flex: flipStatsView.typeStats.video,
+                        backgroundColor: palette.success,
+                      },
+                    ]}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </View>
+          <View style={styles.distLegendRow}>
+            {[
+              {
+                key: 'text',
+                label: t('文字'),
+                count: flipStatsView.typeStats.text,
+                color: palette.tint,
+              },
+              {
+                key: 'audio',
+                label: t('语音'),
+                count: flipStatsView.typeStats.audio,
+                color: '#8B7CF6',
+              },
+              {
+                key: 'video',
+                label: t('视频'),
+                count: flipStatsView.typeStats.video,
+                color: palette.success,
+              },
+            ].map((item) => (
+              <View key={item.key} style={styles.distLegendItem}>
+                <View style={[styles.distDot, { backgroundColor: item.color }]} />
+                <Text style={[styles.distLegendLabel, { color: palette.labelSecondary }]}>
+                  {item.label}
+                </Text>
+                <Text style={[styles.distLegendCount, { color: palette.label }]}>{item.count}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
       </GlassSurface>
 
-      {flipStatsView.memberRank.length > 1 ? (
-        <GlassSurface radius={22} role="card" frostedOnly style={styles.statsGroup}>
-          <Text style={[styles.groupLabel, { color: palette.label }]}>{t('成员排名')}</Text>
-          {flipStatsView.memberRank.slice(0, 10).map((m, idx) => (
-            <ScalePressable
-              key={`${m.name}-${idx}`}
-              pressedScale={0.98}
-              activeOpacity={0.8}
-              onPress={() => setMemberFilter((prev) => (prev === m.name ? '' : m.name))}
-              style={styles.rankRow}
-            >
-              <Text style={[styles.rankNo, { color: palette.tint }]}>{idx + 1}</Text>
-              <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>
-                {m.name}
-              </Text>
-              <Text style={[styles.rankVal, { color: palette.labelSecondary }]}>
-                {m.cost} · {m.count}
-              </Text>
-            </ScalePressable>
-          ))}
+      {flipStatsView.memberRank.length > 0 ? (
+        <GlassSurface
+          radius={22}
+          role="card"
+          frostedOnly
+          style={[
+            styles.statsGroup,
+            { backgroundColor: 'transparent', borderColor: palette.innerStroke },
+          ]}
+        >
+          <View style={styles.rankHeadRow}>
+            <Text style={[styles.groupLabel, { color: palette.label }]}>{t('成员排名')}</Text>
+            {flipStatsView.memberRank.length > 3 ? (
+              <ScalePressable
+                pressedScale={0.94}
+                onPress={() => setRankExpanded((v) => !v)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.rankToggleText, { color: palette.tint }]}>
+                  {rankExpanded
+                    ? t('收起')
+                    : t('展开全部 {count} 位', { count: flipStatsView.memberRank.length })}
+                </Text>
+              </ScalePressable>
+            ) : null}
+          </View>
+          {visibleRankRows.map((m, idx) => {
+            const active = memberFilter === m.name;
+            const pct = Math.max(4, Math.min(100, Math.round((m.cost / maxRankCost) * 100)));
+            return (
+              <ScalePressable
+                key={`${m.name}-${idx}`}
+                pressedScale={0.98}
+                activeOpacity={0.85}
+                onPress={() => setMemberFilter((prev) => (prev === m.name ? '' : m.name))}
+                style={[styles.rankRow, active && { backgroundColor: palette.tintSoft }]}
+              >
+                <Text
+                  style={[styles.rankNo, { color: idx < 3 ? palette.tint : palette.labelTertiary }]}
+                >
+                  {idx + 1}
+                </Text>
+                {m.avatar ? (
+                  <NetworkImage
+                    source={{ uri: m.avatar }}
+                    style={[styles.rankAvatar, { backgroundColor: palette.fill2 }]}
+                    fallbackIcon="account"
+                    thumbnail={96}
+                  />
+                ) : (
+                  <View style={[styles.rankAvatar, { backgroundColor: palette.fill2 }]}>
+                    <MaterialCommunityIcons
+                      name="account"
+                      size={14}
+                      color={palette.labelTertiary}
+                    />
+                  </View>
+                )}
+                <View style={styles.rankBody}>
+                  <View style={styles.rankTopLine}>
+                    <Text
+                      style={[styles.rankName, { color: active ? palette.tint : palette.label }]}
+                      numberOfLines={1}
+                    >
+                      {m.name}
+                    </Text>
+                    <Text style={[styles.rankMetaText, { color: palette.labelSecondary }]}>
+                      {t('{cost} 鸡腿 · {count} 次', { cost: m.cost, count: m.count })}
+                    </Text>
+                  </View>
+                  <View style={[styles.rankBarTrack, { backgroundColor: palette.fill2 }]}>
+                    <View
+                      style={[
+                        styles.rankBarFill,
+                        { width: `${pct}%`, backgroundColor: palette.tint },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </ScalePressable>
+            );
+          })}
         </GlassSurface>
       ) : null}
 
-      <View style={styles.filterBarRow}>
-        <FilterChips
-          style={styles.filterRail}
-          items={flipMemberNames.slice(0, 14).map((name) => {
-            const count = flipMemberCounts.get(name);
-            return {
-              key: name,
-              label:
-                name === '全部成员'
-                  ? `${t(name)} (${flips.length})`
-                  : count
-                    ? `${name} · ${count}`
-                    : name,
-            };
-          })}
-          value={memberFilter || '全部成员'}
-          onSelect={(name) => setMemberFilter(name === '全部成员' ? '' : name)}
-        />
-        {flipMemberNames.length > 4 ? (
-          <ScalePressable
-            pressedScale={0.95}
-            activeOpacity={0.85}
-            onPress={() => {
-              setMemberSheetQuery('');
-              setMemberSheetOpen(true);
-            }}
-            style={[
-              styles.filterMoreBtn,
-              {
-                backgroundColor: memberFilter ? palette.tintSoft : palette.fill2,
-                borderColor: memberFilter ? palette.tint : palette.hairline,
-              },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="account-search-outline"
-              size={15}
-              color={memberFilter ? palette.tint : palette.labelSecondary}
-            />
-            <Text
+      <View style={styles.sectionHeaderRow}>
+        <Text style={[styles.sectionTitleText, { color: palette.labelSecondary }]}>
+          {t('翻牌明细 · 共 {count} 条', { count: flipStatsView.totalCount })}
+        </Text>
+        {flipMemberNames.length > 2 ? (
+          memberFilter ? (
+            <View
               style={[
-                styles.filterMoreText,
-                { color: memberFilter ? palette.tint : palette.labelSecondary },
+                styles.memberFilterActiveWrap,
+                {
+                  backgroundColor: palette.tintSoft,
+                  borderColor: palette.tint,
+                },
               ]}
-              numberOfLines={1}
             >
-              {memberFilter || t('筛选成员')}
-            </Text>
-          </ScalePressable>
+              <ScalePressable
+                pressedScale={0.96}
+                onPress={() => {
+                  setMemberSheetQuery('');
+                  setMemberSheetOpen(true);
+                }}
+                style={styles.memberFilterPickPart}
+              >
+                {activeMemberAvatar ? (
+                  <NetworkImage
+                    source={{ uri: activeMemberAvatar }}
+                    style={[styles.filterBtnAvatar, { backgroundColor: palette.fill2 }]}
+                    fallbackIcon="account"
+                    thumbnail={64}
+                  />
+                ) : (
+                  <View style={[styles.filterBtnAvatar, { backgroundColor: palette.fill2 }]}>
+                    <MaterialCommunityIcons name="account" size={12} color={palette.tint} />
+                  </View>
+                )}
+                <Text
+                  style={[styles.memberFilterBtnText, { color: palette.tint }]}
+                  numberOfLines={1}
+                >
+                  {memberFilter}
+                </Text>
+              </ScalePressable>
+              <ScalePressable
+                pressedScale={0.9}
+                onPress={() => setMemberFilter('')}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+                accessibilityLabel={t('清除')}
+                style={styles.memberFilterClearBtn}
+              >
+                <MaterialCommunityIcons name="close" size={14} color={palette.tint} />
+              </ScalePressable>
+            </View>
+          ) : (
+            <ScalePressable
+              pressedScale={0.95}
+              activeOpacity={0.85}
+              onPress={() => {
+                setMemberSheetQuery('');
+                setMemberSheetOpen(true);
+              }}
+              style={[
+                styles.memberFilterPill,
+                {
+                  backgroundColor: palette.surfaceGlassStrong,
+                  borderColor: palette.innerStroke,
+                },
+              ]}
+            >
+              <Text
+                style={[styles.memberFilterBtnText, { color: palette.label }]}
+                numberOfLines={1}
+              >
+                {t('全部成员')}
+              </Text>
+              <MaterialCommunityIcons
+                name="chevron-down"
+                size={15}
+                color={palette.labelSecondary}
+              />
+            </ScalePressable>
+          )
         ) : null}
       </View>
-      <Text style={[styles.sectionTitle, { color: palette.labelSecondary }]}>
-        {t('翻牌明细 · 共 {count} 条', { count: flipStatsView.totalCount })}
-      </Text>
     </View>
   );
 
@@ -1067,6 +1259,12 @@ export default function FlipScreen() {
                     time: `${elapsedDays > 0 ? t('{m}天', { m: elapsedDays }) : ''}${elapsedHours > 0 ? t('{m}小时', { m: elapsedHours }) : ''}${t('{m}分', { m: elapsedMinutes })}`,
                   })
                 : '';
+            const cardMemberName = memberName(flip, t('成员'));
+            const cardMemberAvatar = resolveFlipMemberAvatar(cardMemberName, flip);
+            const durText =
+              ansDur > 0
+                ? `${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`
+                : '';
             return (
               <GlassSurface
                 radius={radiiAlias.card}
@@ -1145,67 +1343,88 @@ export default function FlipScreen() {
                   </Text>
                 </View>
 
-                <Text style={[styles.memberName, { color: palette.label }]}>
-                  {memberName(flip, t('成员'))}
-                </Text>
+                <View style={styles.cardMemberRow}>
+                  {cardMemberAvatar ? (
+                    <NetworkImage
+                      source={{ uri: cardMemberAvatar }}
+                      style={[styles.cardMemberAvatar, { backgroundColor: palette.fill2 }]}
+                      fallbackIcon="account"
+                      thumbnail={64}
+                    />
+                  ) : (
+                    <View style={[styles.cardMemberAvatar, { backgroundColor: palette.fill2 }]}>
+                      <MaterialCommunityIcons
+                        name="account"
+                        size={13}
+                        color={palette.labelTertiary}
+                      />
+                    </View>
+                  )}
+                  <Text style={[styles.memberName, { color: palette.label }]} numberOfLines={1}>
+                    {cardMemberName}
+                  </Text>
+                </View>
+
                 <Text style={[styles.cardQ, { color: palette.label }]}>
                   {t('问：{text}', { text: questionText(flip) || t('未返回问题内容') })}
                 </Text>
 
                 {answer ? (
-                  <View style={styles.answerRow}>
-                    <Text style={[styles.cardA, { color: palette.labelSecondary }]}>
-                      {t('答：{text}', { text: answer })}
-                    </Text>
-
-                    {ansDur > 0 && (flipAnswerType === 2 || flipAnswerType === 3) ? (
-                      <Text style={[styles.answerDur, { color: palette.labelTertiary }]}>
-                        {`${Math.floor(ansDur / 60)}:${String(ansDur % 60).padStart(2, '0')}`}
+                  <View style={[styles.answerBox, { backgroundColor: palette.fill3 }]}>
+                    <View style={styles.answerRow}>
+                      <Text style={[styles.cardA, { color: palette.labelSecondary }]}>
+                        {t('答：{text}', { text: answer })}
                       </Text>
-                    ) : null}
-                    {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
-                      <>
-                        <ScalePressable
-                          style={[styles.answerBtn, { backgroundColor: palette.tintSoft }]}
-                          onPress={() => {
-                            logFlipAnswer(flip);
-                            setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl));
-                          }}
-                          pressedScale={0.96}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <MaterialCommunityIcons
-                            name={playingAnswerUrl === answerUrl ? 'chevron-up' : 'play'}
-                            size={16}
-                            color={palette.tint}
-                          />
-                        </ScalePressable>
 
-                        <ScalePressable
-                          style={[styles.answerBtn, { backgroundColor: palette.fill2 }]}
-                          pressedScale={0.96}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                          onPress={() => {
-                            const isVoice = flipAnswerType === 2;
-                            void enqueueDownload({
-                              url: answerUrl,
-                              type: isVoice ? 'voice' : 'video',
-                              name: `${memberName(flip, t('成员'))}-${t(isVoice ? '语音翻牌' : '视频翻牌')}-${formatTimestamp(flip.answerTime || flip.qtime || flip.createTime)}`,
-                            })
-                              .then(() => showToast(t('已加入下载管理')))
-                              .catch((e) =>
-                                showToast(t('下载失败：{msg}', { msg: errorMessage(e) })),
-                              );
-                          }}
-                        >
-                          <MaterialCommunityIcons
-                            name="download"
-                            size={16}
-                            color={palette.labelSecondary}
-                          />
-                        </ScalePressable>
-                      </>
-                    ) : null}
+                      {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
+                        <View style={styles.answerActions}>
+                          <ScalePressable
+                            style={[styles.answerPlayPill, { backgroundColor: palette.tintSoft }]}
+                            onPress={() => {
+                              logFlipAnswer(flip);
+                              setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl));
+                            }}
+                            pressedScale={0.95}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <MaterialCommunityIcons
+                              name={playingAnswerUrl === answerUrl ? 'chevron-up' : 'play'}
+                              size={16}
+                              color={palette.tint}
+                            />
+                            {durText ? (
+                              <Text style={[styles.answerPlayText, { color: palette.tint }]}>
+                                {durText}
+                              </Text>
+                            ) : null}
+                          </ScalePressable>
+
+                          <ScalePressable
+                            style={[styles.answerDlBtn, { backgroundColor: palette.fill2 }]}
+                            pressedScale={0.95}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            onPress={() => {
+                              const isVoice = flipAnswerType === 2;
+                              void enqueueDownload({
+                                url: answerUrl,
+                                type: isVoice ? 'voice' : 'video',
+                                name: `${cardMemberName}-${t(isVoice ? '语音翻牌' : '视频翻牌')}-${formatTimestamp(flip.answerTime || flip.qtime || flip.createTime)}`,
+                              })
+                                .then(() => showToast(t('已加入下载管理')))
+                                .catch((e) =>
+                                  showToast(t('下载失败：{msg}', { msg: errorMessage(e) })),
+                                );
+                            }}
+                          >
+                            <MaterialCommunityIcons
+                              name="download"
+                              size={15}
+                              color={palette.labelSecondary}
+                            />
+                          </ScalePressable>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                 ) : (
                   <Text style={[styles.cardPending, { color: palette.tint }]}>
@@ -1279,6 +1498,8 @@ export default function FlipScreen() {
           visible
           transparent
           animationType="slide"
+          statusBarTranslucent
+          navigationBarTranslucent
           onRequestClose={() => setMemberSheetOpen(false)}
         >
           <Pressable style={styles.sheetShade} onPress={() => setMemberSheetOpen(false)}>
@@ -1293,6 +1514,16 @@ export default function FlipScreen() {
               ]}
               onPress={() => undefined}
             >
+              <View
+                style={{
+                  width: 38,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: palette.fill3,
+                  alignSelf: 'center',
+                  marginBottom: 10,
+                }}
+              />
               <View style={styles.sheetHead}>
                 <Text style={[styles.groupLabel, { color: palette.label }]}>{t('筛选成员')}</Text>
                 <ScalePressable
@@ -1314,7 +1545,10 @@ export default function FlipScreen() {
                   const isAll = name === '全部成员';
                   const active = isAll ? !memberFilter : memberFilter === name;
                   const count = isAll ? flips.length : flipMemberCounts.get(name) || 0;
-                  const avatarUri = isAll ? '' : memberAvatarByName.get(name) || '';
+                  const memberCost = isAll
+                    ? flipStatsView.memberRank.reduce((acc, m) => acc + m.cost, 0)
+                    : flipStatsView.memberCostByName.get(name) || 0;
+                  const avatarUri = isAll ? '' : resolveFlipMemberAvatar(name);
                   return (
                     <ScalePressable
                       key={name}
@@ -1358,7 +1592,7 @@ export default function FlipScreen() {
                         {isAll ? t(name) : name}
                       </Text>
                       <Text style={[styles.sheetRowCount, { color: palette.labelTertiary }]}>
-                        {count}
+                        {t('{cost} 鸡腿 · {count} 次', { cost: memberCost, count })}
                       </Text>
                       {active ? (
                         <MaterialCommunityIcons name="check" size={18} color={palette.tint} />
@@ -1376,7 +1610,6 @@ export default function FlipScreen() {
 }
 
 const styles = StyleSheet.create({
-  answerDur: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700', marginLeft: 6 },
   container: { flex: 1, backgroundColor: 'transparent' },
   sendContainer: { paddingBottom: 48 },
   retryWrap: { alignItems: 'center', marginTop: 6 },
@@ -1439,56 +1672,143 @@ const styles = StyleSheet.create({
   balanceText: { fontSize: 13, fontWeight: '600' },
   sendFooter: { marginTop: 16, marginHorizontal: 16 },
 
-  statsWrap: { paddingBottom: 8 },
-  statsOverview: {
-    flexDirection: 'row',
+  statsWrap: { paddingTop: 4, paddingBottom: 6 },
+  statsOverviewCard: {
     padding: 14,
     marginHorizontal: 16,
-    marginVertical: 6,
+    marginVertical: 5,
     borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  statCell: { flex: 1, alignItems: 'center' },
+  statsMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statCell: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+  statDivider: { width: StyleSheet.hairlineWidth, height: 28 },
   statValue: { fontSize: 18, fontFamily: fontFamily.system, fontWeight: '900' },
-  statLabel: { fontSize: 11, marginTop: 2 },
+  statLabel: { fontSize: 11, fontFamily: fontFamily.system, marginTop: 2 },
+  distDivider: { height: StyleSheet.hairlineWidth, marginVertical: 12 },
+  distSection: { gap: 8 },
+  distTrack: {
+    height: 8,
+    borderRadius: 4,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    gap: 2,
+  },
+  distSegment: { height: '100%' },
+  distLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  distLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  distDot: { width: 7, height: 7, borderRadius: 3.5 },
+  distLegendLabel: { fontSize: 12, fontFamily: fontFamily.system },
+  distLegendCount: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
   statsGroup: {
     padding: 14,
     marginHorizontal: 16,
-    marginVertical: 6,
+    marginVertical: 5,
     borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  typeRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
-
-  typeRowLabel: { minWidth: 34, fontSize: 12, fontFamily: fontFamily.system },
-  typeTrack: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', marginHorizontal: 8 },
-  typeFill: { height: 8, borderRadius: 4 },
-  typeCount: { minWidth: 30, fontSize: 11, textAlign: 'right' },
-  rankRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
-  rankNo: { minWidth: 22, fontSize: 12, fontFamily: fontFamily.system, fontWeight: '900' },
-  rankName: { flex: 1, fontSize: 13 },
-  rankVal: { fontSize: 12, marginLeft: 8 },
-  sectionTitle: { fontSize: 12, marginHorizontal: 16, marginTop: 12, marginBottom: 4 },
-  filterBarRow: {
+  rankHeadRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  rankToggleText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
+  rankRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    borderRadius: 12,
+  },
+  rankNo: {
+    minWidth: 16,
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  rankAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  rankBody: { flex: 1, minWidth: 0, gap: 4 },
+  rankTopLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  rankName: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '600', flex: 1 },
+  rankMetaText: { fontSize: 11, fontFamily: fontFamily.system, marginLeft: 8 },
+  rankBarTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  rankBarFill: { height: '100%', borderRadius: 2 },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
     marginHorizontal: 16,
     marginTop: 10,
+    marginBottom: 4,
   },
-  filterRail: { flex: 1, minWidth: 0 },
-  filterMoreBtn: {
+  sectionTitleText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '600' },
+  memberFilterPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    minHeight: 36,
-    maxWidth: 120,
+    height: 32,
+    paddingHorizontal: 12,
     borderRadius: radii.pill,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  filterMoreText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
+  memberFilterActiveWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 32,
+    maxWidth: 184,
+    borderRadius: radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  memberFilterPickPart: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 6,
+    paddingRight: 6,
+    height: '100%',
+    flexShrink: 1,
+  },
+  filterBtnAvatar: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  memberFilterBtnText: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  memberFilterClearBtn: {
+    height: '100%',
+    paddingLeft: 4,
+    paddingRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sheetShade: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.42)',
@@ -1527,11 +1847,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   sheetAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   sheetRowName: { flex: 1, fontSize: 14, fontFamily: fontFamily.system, fontWeight: '600' },
   sheetRowCount: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '600' },
@@ -1557,17 +1878,41 @@ const styles = StyleSheet.create({
   privacyTagText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.xs },
   statusBadgeText: { fontSize: 11, fontWeight: '700' },
-  memberName: { fontSize: 13, fontWeight: '700', marginBottom: 6 },
-  cardQ: { fontSize: 14, fontFamily: fontFamily.system, marginBottom: 8, lineHeight: 20 },
-  cardA: { fontSize: 13, lineHeight: 19, flex: 1, marginRight: 10 },
-  answerRow: { flexDirection: 'row', alignItems: 'center' },
-  answerBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  cardMemberRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 6 },
+  cardMemberAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingLeft: 2,
+    overflow: 'hidden',
+  },
+  memberName: { fontSize: 13, fontWeight: '700', flexShrink: 1 },
+  cardQ: { fontSize: 14, fontFamily: fontFamily.system, marginBottom: 8, lineHeight: 20 },
+  answerBox: { borderRadius: 14, paddingHorizontal: 11, paddingVertical: 9 },
+  cardA: { fontSize: 13, lineHeight: 19, flex: 1, marginRight: 8 },
+  answerRow: { flexDirection: 'row', alignItems: 'center' },
+  answerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  answerPlayPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    height: 32,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+  },
+  answerPlayText: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    includeFontPadding: false,
+  },
+  answerDlBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   answerMediaCard: { marginTop: 8 },
   cardPending: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '700' },

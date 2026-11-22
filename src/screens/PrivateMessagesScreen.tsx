@@ -10,12 +10,22 @@ import {
   BackHandler,
   FlatList,
   Image,
+  Modal,
+  Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Reanimated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
 import PlayerScreen from '../player';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -39,6 +49,7 @@ import {
 } from '../utils/data';
 import pocketApi from '../api/pocket48';
 import { usePalette, getPageBackground, fontFamily, radii } from '../theme';
+import { useResolvedTheme } from '../hooks/useAppTheme';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { translate, useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
@@ -71,6 +82,17 @@ type FlipPriceRow = {
 
 function convTargetId(conv: PrivateConversationWire | null | undefined): string {
   return String(conv?.targetUserId || conv?.user?.userId || conv?.userId || '');
+}
+function convTimeNumber(conv: PrivateConversationWire | null | undefined): number {
+  return Number(
+    conv?.lastTime ||
+      conv?.newestMessagetime ||
+      conv?.msgTime ||
+      (conv as any)?.updateTime ||
+      (conv as any)?.ctime ||
+      (conv as any)?.time ||
+      0,
+  );
 }
 function convName(conv: PrivateConversationWire): string {
   return pickText(
@@ -604,6 +626,7 @@ function buildPrivateIms(
 export default function PrivateMessagesScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const palette = usePalette();
+  const resolvedTheme = useResolvedTheme();
   const { t } = useI18n();
   const members = useMemberStore((s) => s.members);
 
@@ -716,7 +739,7 @@ export default function PrivateMessagesScreen() {
       );
     }
     for (const c of rest) {
-      groups[idxOf[groupOf(Number(c.lastTime || c.msgTime || 0))]].items.push(c);
+      groups[idxOf[groupOf(convTimeNumber(c))]].items.push(c);
     }
     groups.forEach((g) => {
       if (!g.items.length) return;
@@ -728,11 +751,23 @@ export default function PrivateMessagesScreen() {
     return flat;
   }, [convs, todayStr, yesterdayStr, t, pinnedConvs]);
   const [sel, setSel] = useState<PrivateConversationWire | null>(null);
+  const selRef = useRef<PrivateConversationWire | null>(null);
+  selRef.current = sel;
+  const [convClosing, setConvClosing] = useState(false);
+  const convClosingRef = useRef(false);
+  convClosingRef.current = convClosing;
+  const convCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const convCloseSeqRef = useRef(0);
+  const convEnter = useSharedValue(0);
+  const convEnterStyle = useAnimatedStyle(() => ({
+    opacity: convEnter.value,
+    transform: [{ translateX: (1 - convEnter.value) * 28 }],
+  }));
 
-  const keyboardHeight = useKeyboardHeight();
+  const keyboardHeight = useKeyboardHeight(Boolean(sel && !convClosing));
   const insets = useSafeAreaInsets();
 
-  const inputBarSafeBottom = Math.max(10, Math.min(insets.bottom, 24));
+  const inputBarSafeBottom = Platform.OS === 'ios' ? Math.max(16, insets.bottom) : 16;
   const [msgs, setMsgs] = useState<PrivateMessageWire[]>([]);
   const [text, setText] = useState('');
   const [uid, setUid] = useState('');
@@ -754,6 +789,7 @@ export default function PrivateMessagesScreen() {
   const [zoomUrl, setZoomUrl] = useState('');
 
   const [profileTarget, setProfileTarget] = useState<UserProfileTarget | null>(null);
+  const [actionConv, setActionConv] = useState<PrivateConversationWire | null>(null);
   const requestIdRef = useRef(0);
 
   const convRequestIdRef = useRef(0);
@@ -762,6 +798,7 @@ export default function PrivateMessagesScreen() {
   useEffect(
     () => () => {
       if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+      if (convCloseTimerRef.current) clearTimeout(convCloseTimerRef.current);
     },
     [],
   );
@@ -805,7 +842,12 @@ export default function PrivateMessagesScreen() {
           'customs',
           'list',
         ]);
-        setPrices(list || []);
+        const normalizedPrices = (list || []).slice(0, 3);
+        setPrices(normalizedPrices);
+        const firstOpen = normalizedPrices.find(
+          (row: FlipPriceRow) => Number(row?.privateCost) > 0,
+        );
+        setFlipType(firstOpen ? Number(firstOpen.answerType) : 0);
         setMoney(
           pickText(mr, [
             'content.moneyTotal',
@@ -876,9 +918,7 @@ export default function PrivateMessagesScreen() {
             seen.add(key);
             return true;
           })
-          .sort(
-            (a, b) => Number(b.lastTime || b.msgTime || 0) - Number(a.lastTime || a.msgTime || 0),
-          );
+          .sort((a, b) => convTimeNumber(b) - convTimeNumber(a));
       });
 
       setHasMoreConvs(loops >= maxLoops && cursor > 0);
@@ -894,11 +934,36 @@ export default function PrivateMessagesScreen() {
   };
   loadConvsRef.current = loadConvs;
 
+  const finalizeCloseConv = useCallback((tokenId: number) => {
+    if (tokenId !== convCloseSeqRef.current) return;
+    if (convCloseTimerRef.current) {
+      clearTimeout(convCloseTimerRef.current);
+      convCloseTimerRef.current = null;
+    }
+    convClosingRef.current = false;
+    setConvClosing(false);
+    setSel(null);
+    setMsgs([]);
+    void loadConvsRef.current();
+  }, []);
+
   const openConv = async (c: PrivateConversationWire, opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
     const requestId = ++convRequestIdRef.current;
-    setSel(c);
     if (!silent) {
+      const shouldAnimateEnter = !selRef.current || convClosingRef.current;
+      if (convCloseTimerRef.current) {
+        clearTimeout(convCloseTimerRef.current);
+        convCloseTimerRef.current = null;
+      }
+      convCloseSeqRef.current += 1;
+      convClosingRef.current = false;
+      setConvClosing(false);
+      if (shouldAnimateEnter) {
+        convEnter.value = 0;
+        convEnter.value = withTiming(1, { duration: 190, easing: Easing.out(Easing.cubic) });
+      }
+      setSel(c);
       setMsgs([]);
       setFlipType(0);
       setPlayUrl('');
@@ -907,6 +972,8 @@ export default function PrivateMessagesScreen() {
         clearTimeout(scrollTimerRef.current);
         scrollTimerRef.current = null;
       }
+    } else {
+      setSel(c);
     }
     try {
       if (!uid) {
@@ -942,23 +1009,37 @@ export default function PrivateMessagesScreen() {
   };
 
   const closeConv = useCallback(() => {
+    if (convClosingRef.current || !selRef.current) return;
     ++convRequestIdRef.current;
-    setSel(null);
+    const closeToken = ++convCloseSeqRef.current;
     setLoading(false);
-    void loadConvsRef.current();
-  }, []);
+    convClosingRef.current = true;
+    setConvClosing(true);
+    convCloseTimerRef.current = setTimeout(() => {
+      finalizeCloseConv(closeToken);
+    }, 220);
+    convEnter.value = withTiming(
+      0,
+      { duration: 160, easing: Easing.out(Easing.cubic) },
+      (finished) => {
+        if (finished) {
+          runOnJS(finalizeCloseConv)(closeToken);
+        }
+      },
+    );
+  }, [convEnter, finalizeCloseConv]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!navigation.isFocused()) return false;
-      if (sel) {
+      if (selRef.current && !convClosingRef.current) {
         closeConv();
         return true;
       }
       return false;
     });
     return () => sub.remove();
-  }, [navigation, sel, closeConv]);
+  }, [navigation, closeConv]);
 
   const route = useRoute<RouteProp<RootStackParamList, 'PrivateMessagesScreen'>>();
   const initialRouteTargetRef = useRef('');
@@ -1082,11 +1163,11 @@ export default function PrivateMessagesScreen() {
     const requestId = convRequestIdRef.current;
     setLoading(true);
     try {
-      if (flipType && member) {
+      if (member) {
         const p = prices.find((x) => x.answerType === flipType);
         const cost = p ? Number(p.privateCost) || 0 : 0;
         if (!p || cost <= 0) {
-          showToast(t('该类型私密翻牌未开放，请换一种类型'));
+          showToast(t('该成员暂未开放私密翻牌'));
           setLoading(false);
           return;
         }
@@ -1135,15 +1216,14 @@ export default function PrivateMessagesScreen() {
   const renderPeerAvatar = useCallback(
     (props?: { currentMessage?: { original?: PrivateMessageWire } }) => {
       const url = peerAvatarUrl(sel, member, props?.currentMessage?.original) || dmPeerAvatar;
-      const initial = dmPeerName.trim().slice(0, 1).toUpperCase();
       if (!url) {
         return (
           <ScalePressable
-            style={[styles.msgAvatar, { backgroundColor: palette.tintSoft }]}
+            style={[styles.msgAvatar, { backgroundColor: palette.fill2 }]}
             onPress={openPeerProfile}
             accessibilityLabel={t('查看资料')}
           >
-            <Text style={[styles.msgAvatarText, { color: palette.tint }]}>{initial}</Text>
+            <MaterialCommunityIcons name="account" size={18} color={palette.labelTertiary} />
           </ScalePressable>
         );
       }
@@ -1154,12 +1234,12 @@ export default function PrivateMessagesScreen() {
             style={styles.msgAvatar}
             resizeMode="cover"
             thumbnail={160}
-            fallbackIcon="account-outline"
+            fallbackIcon="account"
           />
         </ScalePressable>
       );
     },
-    [sel, member, dmPeerAvatar, dmPeerName, openPeerProfile, palette, t],
+    [sel, member, dmPeerAvatar, openPeerProfile, palette, t],
   );
 
   const renderDayLabel = useCallback(
@@ -1213,13 +1293,24 @@ export default function PrivateMessagesScreen() {
       const mediaLabel = media
         ? formatDur(media.duration || 0) || (media.type === 'audio' ? t('语音') : t('视频'))
         : '';
+      const isMediaOnly = !hasText && !!media && (media.type === 'audio' || media.type === 'video');
+      const isPlaying = !!media && playUrl === media.url;
+      const tailStyle = {
+        borderBottomRightRadius: mine ? 8 : 20,
+        borderBottomLeftRadius: mine ? 20 : 8,
+      };
       return (
         <GlassSurface
           role="chip"
           radius={22}
           tintColor={mine ? palette.tint : undefined}
+          onPress={
+            isMediaOnly && media
+              ? () => setPlayUrl((p) => (p === media.url ? '' : media.url))
+              : undefined
+          }
           onLongPress={mine && item ? () => confirmDeletePrivateMessage(item) : undefined}
-          style={styles.ellipseBubble}
+          style={[styles.ellipseBubble, tailStyle]}
         >
           {hasText ? (
             <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>
@@ -1241,43 +1332,77 @@ export default function PrivateMessagesScreen() {
                   fallbackIcon="image-off-outline"
                 />
               </ScalePressable>
+            ) : isMediaOnly ? (
+              <View style={styles.mediaInlineRow}>
+                <View
+                  style={[
+                    styles.mediaCircleIcon,
+                    {
+                      backgroundColor: mine ? 'rgba(255,255,255,0.22)' : palette.tintSoft,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={isPlaying ? 'chevron-up' : 'play'}
+                    size={16}
+                    color={mine ? palette.onTint : palette.tint}
+                  />
+                </View>
+                <View style={styles.mediaInlineMeta}>
+                  <Text
+                    style={[
+                      styles.mediaInlineTitle,
+                      { color: mine ? palette.onTint : palette.tint },
+                    ]}
+                  >
+                    {isPlaying
+                      ? t('收起')
+                      : `${t(media.type === 'audio' ? '语音' : '视频')} · ${mediaLabel}`}
+                  </Text>
+                  {hh ? (
+                    <Text
+                      style={[
+                        styles.mediaInlineTime,
+                        { color: mine ? 'rgba(255,255,255,0.82)' : palette.labelTertiary },
+                      ]}
+                    >
+                      {hh}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
             ) : (
               <ScalePressable
                 style={[
                   styles.mediaBtn,
-                  { backgroundColor: mine ? palette.tintSoft : palette.fill2 },
+                  { backgroundColor: mine ? 'rgba(255,255,255,0.20)' : palette.tintSoft },
                 ]}
                 onPress={() => setPlayUrl((p) => (p === media.url ? '' : media.url))}
               >
+                <MaterialCommunityIcons
+                  name={isPlaying ? 'chevron-up' : 'play'}
+                  size={14}
+                  color={mine ? palette.onTint : palette.tint}
+                />
                 <Text
-                  style={[
-                    styles.mediaBtnText,
-                    mine && { color: palette.onTint },
-                    !mine && { color: palette.tint },
-                  ]}
+                  style={[styles.mediaBtnText, { color: mine ? palette.onTint : palette.tint }]}
                 >
-                  {playUrl === media.url ? t('收起') : mediaLabel}
+                  {isPlaying ? t('收起') : mediaLabel}
                 </Text>
-                {playUrl !== media.url ? (
-                  <MaterialCommunityIcons
-                    name="play"
-                    size={14}
-                    color={mine ? palette.onTint : palette.tint}
-                    style={{ marginLeft: 4 }}
-                  />
-                ) : null}
               </ScalePressable>
             )
           ) : null}
-          {media && playUrl === media.url ? (
-            <PlayerScreen
-              inline
-              source={{ kind: media.type === 'audio' ? 'audio' : 'vod', url: media.url }}
-              meta={{ title: t('消息媒体') }}
-              persistent
-            />
+          {media && isPlaying ? (
+            <View style={styles.inlinePlayerWrap}>
+              <PlayerScreen
+                inline
+                source={{ kind: media.type === 'audio' ? 'audio' : 'vod', url: media.url }}
+                meta={{ title: t('消息媒体') }}
+                persistent
+              />
+            </View>
           ) : null}
-          {hh ? (
+          {hh && !isMediaOnly ? (
             <Text
               style={[
                 styles.ellipseTime,
@@ -1293,408 +1418,523 @@ export default function PrivateMessagesScreen() {
     [palette, t, playUrl, confirmDeletePrivateMessage],
   );
 
-  if (sel) {
-    const peerName = dmPeerName;
-    const peerAvatar = dmPeerAvatar;
-    const ims = dmIms;
-
-    return (
-      <View style={styles.screenContainer}>
-        <View
-          style={[
-            styles.screen,
-            {
-              backgroundColor: getPageBackground(),
-              paddingBottom: keyboardHeight > 0 ? keyboardHeight + 6 : inputBarSafeBottom,
-            },
-          ]}
-        >
-          <ScreenHeader
-            title={peerName}
-            onBack={closeConv}
-            leading={
-              <ScalePressable onPress={openPeerProfile} accessibilityLabel={t('查看资料')}>
-                {peerAvatar ? (
-                  <NetworkImage
-                    source={{ uri: peerAvatar }}
-                    style={styles.headerAvatar}
-                    resizeMode="cover"
-                    thumbnail={120}
-                    fallbackIcon="account-outline"
-                  />
-                ) : (
-                  <View
-                    style={[
-                      styles.headerAvatar,
-                      styles.headerAvatarFallback,
-                      { backgroundColor: palette.tintSoft },
-                    ]}
-                  >
-                    <Text style={[styles.headerAvatarText, { color: palette.tint }]}>
-                      {peerName.trim().slice(0, 1).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-              </ScalePressable>
-            }
-          />
-
-          <View style={{ flex: 1 }}>
-            <Chat
-              messages={ims}
-
-              theme={DM_CHAT_THEME as any}
-              locale="zh"
-              renderBubble={renderEllipseGlassBubble}
-
-              renderAvatar={renderPeerAvatar}
-
-              isScrollToBottomEnabled
-              scrollToBottomOffset={80}
-
-              renderDay={renderDayLabel}
-              isDayAnimationEnabled={false}
-              user={DM_CHAT_USER as any}
-              onSend={(msgs) => {
-                const outgoing = String(msgs?.[0]?.text ?? '').trim();
-                if (outgoing) void doSend(outgoing);
-              }}
-              renderInputToolbar={DM_NO_INPUT_TOOLBAR}
-
-              listProps={{ keyboardDismissMode: 'on-drag', keyboardShouldPersistTaps: 'handled' }}
-            />
-          </View>
-          {member ? (
-            <GlassSurface
-              radius={22}
-              role="card"
-              style={[
-                styles.flipBar,
-                { backgroundColor: 'transparent', borderTopColor: palette.hairline },
-              ]}
-            >
-              <Text style={[styles.flipName, { color: palette.labelSecondary }]}>
-                {t('{name} 翻牌', { name: member.ownerName || '' })}
-              </Text>
-              <View style={styles.flipRow}>
-                {prices.slice(0, 3).map((p) => (
-                  <ScalePressable
-                    key={p.answerType}
-                    disabled={Number(p.privateCost) <= 0}
-                    style={[
-                      styles.flipChip,
-                      flipType === p.answerType
-                        ? { backgroundColor: palette.tint }
-                        : {
-                            backgroundColor:
-                              Number(p.privateCost) > 0 ? palette.fill2 : palette.fill3,
-                          },
-                    ]}
-                    onPress={() =>
-                      setFlipType((v) => (v === p.answerType ? 0 : (p.answerType ?? 0)))
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.flipChipT,
-                        flipType === p.answerType
-                          ? { color: palette.onTint }
-                          : { color: palette.labelSecondary },
-                      ]}
-                    >
-                      {flipTypeName(p.answerType)}·
-                      {Number(p.privateCost) > 0 ? Number(p.privateCost) : t('未开放')}
-                    </Text>
-                  </ScalePressable>
-                ))}
-                <View style={styles.flipSpacer} />
-                {money ? (
-                  <Text style={[styles.flipMoney, { color: palette.tint }]}>
-                    {t('余额 {money}', { money })}
-                  </Text>
-                ) : null}
-                <ScalePressable
-                  style={[styles.flipRechargeBtn, { backgroundColor: palette.tint }]}
-                  onPress={() => navigation.navigate('RechargeScreen')}
-                >
-                  <Text style={[styles.flipRechargeT, { color: palette.onTint }]}>{t('充值')}</Text>
-                </ScalePressable>
-              </View>
-            </GlassSurface>
-          ) : null}
-          <GlassSurface
-            radius={22}
-            role="card"
-            style={[
-              styles.inputBar,
-              { backgroundColor: 'transparent', borderTopColor: palette.hairline },
-            ]}
-          >
-            {flipType > 0 ? (
-              <Text style={[styles.flipLabel, { color: palette.tint }]}>
-                {t('私密翻牌·{type}', { type: flipTypeName(flipType) })}
-              </Text>
-            ) : null}
-            <View style={styles.inputRow}>
-              {member ? null : (
-                <ScalePressable
-                  style={[styles.imgPickerBtn, { backgroundColor: palette.fill2 }]}
-                  onPress={() => {
-                    void pickAndSendImage();
-                  }}
-                  disabled={loading || flipType > 0}
-                  accessibilityLabel={t('图片')}
-                >
-                  <MaterialCommunityIcons
-                    name="image-plus"
-                    size={19}
-                    color={flipType > 0 ? palette.labelTertiary : palette.tint}
-                  />
-                </ScalePressable>
-              )}
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: palette.surfaceGlassStrong,
-                    borderColor: palette.innerStroke,
-                    color: palette.label,
-                  },
-                ]}
-                placeholder={t('输入内容...')}
-                placeholderTextColor={palette.labelTertiary}
-                value={text}
-                onChangeText={setText}
-                multiline
-              />
-              <ScalePressable
-                style={[
-                  styles.sendBtn,
-                  { backgroundColor: loading || !text.trim() ? palette.fill3 : palette.tint },
-                ]}
-                onPress={() => {
-                  void doSend();
-                }}
-                disabled={loading || !text.trim()}
-              >
-                <Text
-                  style={[
-                    styles.sendT,
-                    { color: loading || !text.trim() ? palette.labelTertiary : palette.onTint },
-                  ]}
-                >
-                  {loading ? t('发送中') : flipType ? t('翻牌') : t('发送')}
-                </Text>
-              </ScalePressable>
-            </View>
-          </GlassSurface>
-        </View>
-
-        {zoomUrl ? <ZoomImageModal url={zoomUrl} onClose={() => setZoomUrl('')} /> : null}
-
-        <UserProfileSheet
-          visible={!!profileTarget}
-          target={profileTarget}
-          onClose={() => setProfileTarget(null)}
-
-          onOpenChat={() => setProfileTarget(null)}
-        />
-      </View>
-    );
-  }
+  const activePriceRow = member ? prices.find((x) => x.answerType === flipType) : undefined;
+  const activeFlipCost = activePriceRow ? Number(activePriceRow.privateCost) || 0 : 0;
+  const memberSendDisabled = loading || !text.trim() || !activePriceRow || activeFlipCost <= 0;
+  const dmSendDisabled = loading || !text.trim();
+  const sheetBg = resolvedTheme === 'dark' ? '#0B0B0F' : '#ECEDF1';
+  const listCardBg = resolvedTheme === 'dark' ? 'rgba(28,28,36,0.78)' : 'rgba(255,255,255,0.82)';
+  const composerTint = resolvedTheme === 'dark' ? 'rgba(24,24,30,0.86)' : 'rgba(244,245,251,0.90)';
+  const composerBorder =
+    resolvedTheme === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(18,22,36,0.08)';
+  const actionTargetId = actionConv ? convTargetId(actionConv) : '';
+  const actionPinnedIdx = actionTargetId ? pinnedConvs.indexOf(actionTargetId) : -1;
+  const actionIsPinned = actionPinnedIdx >= 0;
+  const actionMember = actionTargetId ? memberById.get(actionTargetId) : undefined;
+  const actionAvatar = actionConv ? peerAvatarUrl(actionConv, actionMember) : '';
+  const actionName = actionConv ? convName(actionConv) : '';
 
   return (
     <View style={[styles.screen, { backgroundColor: getPageBackground() }]}>
-      <ScreenHeader
-        title={t('私信列表')}
-        right={<HeaderAction label={t('刷新')} onPress={() => loadConvs(true)} />}
-      />
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
-        <PerfFlatList
-          data={convRows}
-
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-          keyExtractor={(item) => item.key}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
-          contentContainerStyle={styles.convList}
-          renderItem={({ item }) => {
-            if (item.type === 'header') {
+      <View style={styles.screen} pointerEvents={sel && !convClosing ? 'none' : 'auto'}>
+        <ScreenHeader
+          title={t('私信列表')}
+          right={<HeaderAction label={t('刷新')} onPress={() => loadConvs(true)} />}
+        />
+        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+          <PerfFlatList
+            data={convRows}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            keyExtractor={(item) => item.key}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+            contentContainerStyle={styles.convList}
+            renderItem={({ item }) => {
+              if (item.type === 'header') {
+                return (
+                  <Text style={[styles.groupTitle, { color: palette.labelTertiary }]}>
+                    {item.title}
+                  </Text>
+                );
+              }
+              const conv = item.item;
+              if (!conv) return null;
+              const name = convName(conv);
+              const unread = Number(conv.noreadNum);
+              const latestTime = convTimeNumber(conv);
+              const isPinned = pinnedConvs.includes(convTargetId(conv));
+              const convTarget = String(convTargetId(conv));
+              const convMember = memberById.get(convTarget);
+              const convAvatarUrl = peerAvatarUrl(conv, convMember);
               return (
-                <Text style={[styles.groupTitle, { color: palette.labelTertiary }]}>
-                  {item.title}
-                </Text>
-              );
-            }
-            const conv = item.item;
-            if (!conv) return null;
-            const name = convName(conv);
-            const unread = Number(conv.noreadNum);
-            const latestTime = Number(conv.lastTime || conv.msgTime || 0);
-            const isPinned = pinnedConvs.includes(convTargetId(conv));
-
-            const convTarget = String(convTargetId(conv));
-            const convMember = memberById.get(convTarget);
-            const convAvatarUrl = peerAvatarUrl(conv, convMember);
-            return (
-              <View style={styles.convRowWrap}>
                 <TouchableOpacity
-                  style={{ flex: 1 }}
                   onPress={() => openConv(conv)}
-                  activeOpacity={0.88}
+                  onLongPress={() => setActionConv(conv)}
+                  activeOpacity={0.86}
+                  style={styles.convItemOuter}
                 >
-                  <GlassSurface
-                    radius={radii.lg}
-                    role="card"
-                    frostedOnly
+                  <View
                     style={[
                       styles.convCard,
                       {
-                        backgroundColor: 'transparent',
-                        borderColor: isPinned ? palette.tint : palette.innerStroke,
-                        borderWidth: StyleSheet.hairlineWidth,
+                        backgroundColor: listCardBg,
+                        borderColor: palette.innerStroke,
                       },
                     ]}
                   >
-                    <View style={styles.convCardRow}>
-                      <ScalePressable
-                        style={[styles.convAvatar, { backgroundColor: palette.tintSoft }]}
-                        onPress={() =>
-                          setProfileTarget({
-                            userId: convTarget,
-                            nick: name,
-                            avatar: convAvatarUrl,
-                          })
-                        }
-                        accessibilityLabel={t('头像')}
-                      >
-                        {convAvatarUrl ? (
-                          <NetworkImage
-                            source={{ uri: convAvatarUrl }}
-                            style={styles.convAvatarImg}
-                            resizeMode="cover"
-                            thumbnail={AVATAR_THUMB_WIDTH}
-                            fallbackIcon="account-outline"
-                          />
-                        ) : (
-                          <Text style={[styles.convAvatarText, { color: palette.tint }]}>
-                            {name.trim().slice(0, 1).toUpperCase()}
-                          </Text>
-                        )}
-                      </ScalePressable>
-                      <View style={styles.convInfo}>
-                        <View style={styles.convTitleRow}>
+                    <ScalePressable
+                      style={[styles.convAvatar, { backgroundColor: palette.fill2 }]}
+                      onPress={() =>
+                        setProfileTarget({
+                          userId: convTarget,
+                          nick: name,
+                          avatar: convAvatarUrl,
+                        })
+                      }
+                      accessibilityLabel={t('头像')}
+                    >
+                      {convAvatarUrl ? (
+                        <NetworkImage
+                          source={{ uri: convAvatarUrl }}
+                          style={styles.convAvatarImg}
+                          resizeMode="cover"
+                          thumbnail={AVATAR_THUMB_WIDTH}
+                          fallbackIcon="account"
+                        />
+                      ) : (
+                        <MaterialCommunityIcons
+                          name="account"
+                          size={22}
+                          color={palette.labelTertiary}
+                        />
+                      )}
+                    </ScalePressable>
+                    <View style={styles.convInfo}>
+                      <View style={styles.convTitleRow}>
+                        <View style={styles.convTitleLeft}>
                           <Text
                             style={[styles.convName, { color: palette.label }]}
                             numberOfLines={1}
                           >
                             {name}
                           </Text>
-                          {latestTime ? (
-                            <Text
-                              style={[styles.convTime, { color: palette.labelTertiary }]}
-                              numberOfLines={1}
-                            >
-                              {formatTimestamp(latestTime).slice(5, 16)}
-                            </Text>
+                          {isPinned ? (
+                            <View style={[styles.pinTag, { backgroundColor: palette.tintSoft }]}>
+                              <MaterialCommunityIcons name="pin" size={11} color={palette.tint} />
+                            </View>
                           ) : null}
                         </View>
-                        <View style={styles.convMetaRow}>
+                        {latestTime > 0 ? (
                           <Text
-                            style={[styles.convPrev, { color: palette.labelSecondary }]}
+                            style={[styles.convTime, { color: palette.labelTertiary }]}
                             numberOfLines={1}
                           >
-                            {conv.newestMessage || t('点击查看')}
+                            {formatTimestamp(latestTime).slice(5, 16)}
                           </Text>
-                          {unread > 0 ? (
-                            <View style={[styles.badge, { backgroundColor: palette.tint }]}>
-                              <Text style={styles.badgeT}>{unread > 99 ? '99+' : unread}</Text>
-                            </View>
-                          ) : (
-                            <MaterialCommunityIcons
-                              name="chevron-right"
-                              size={20}
-                              color={palette.labelTertiary}
-                            />
-                          )}
-                        </View>
+                        ) : null}
+                      </View>
+                      <View style={styles.convMetaRow}>
+                        <Text
+                          style={[styles.convPrev, { color: palette.labelSecondary }]}
+                          numberOfLines={1}
+                        >
+                          {conv.newestMessage || t('点击查看')}
+                        </Text>
+                        {unread > 0 ? (
+                          <View style={[styles.badge, { backgroundColor: palette.tint }]}>
+                            <Text style={styles.badgeT}>{unread > 99 ? '99+' : unread}</Text>
+                          </View>
+                        ) : null}
                       </View>
                     </View>
-                  </GlassSurface>
+                  </View>
                 </TouchableOpacity>
-                <View style={styles.convActions}>
-                  {isPinned && pinnedConvs.length > 1 ? (
-                    <View style={styles.pinMoveCol}>
-                      <ScalePressable
-                        style={[styles.pinMoveBtn, { backgroundColor: palette.fill2 }]}
-                        onPress={() => movePinConv(convTargetId(conv), -1)}
-                        pressedScale={0.85}
-                        hitSlop={{ top: 4, bottom: 2, left: 4, right: 4 }}
-                        disabled={pinnedConvs.indexOf(convTargetId(conv)) === 0}
-                      >
-                        <MaterialCommunityIcons
-                          name="chevron-up"
-                          size={13}
-                          color={palette.labelSecondary}
-                        />
-                      </ScalePressable>
-                      <ScalePressable
-                        style={[styles.pinMoveBtn, { backgroundColor: palette.fill2 }]}
-                        onPress={() => movePinConv(convTargetId(conv), 1)}
-                        pressedScale={0.85}
-                        hitSlop={{ top: 2, bottom: 4, left: 4, right: 4 }}
-                        disabled={
-                          pinnedConvs.indexOf(convTargetId(conv)) === pinnedConvs.length - 1
-                        }
-                      >
-                        <MaterialCommunityIcons
-                          name="chevron-down"
-                          size={13}
-                          color={palette.labelSecondary}
-                        />
-                      </ScalePressable>
-                    </View>
-                  ) : null}
-                  <ScalePressable
-                    style={[
-                      styles.convPinBtn,
-                      { backgroundColor: isPinned ? palette.tintSoft : palette.fill2 },
-                    ]}
-                    onPress={() => togglePinConv(conv)}
-                    pressedScale={0.9}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityLabel={isPinned ? t('取消置顶') : t('置顶')}
-                  >
-                    <MaterialCommunityIcons
-                      name={isPinned ? 'pin' : 'pin-outline'}
-                      size={15}
-                      color={isPinned ? palette.tint : palette.labelTertiary}
+              );
+            }}
+            ListEmptyComponent={
+              convLoading ? (
+                <CenterSpinner text={t('正在加载会话…')} />
+              ) : convError ? (
+                <ErrorState title={t('加载失败')} hint={convError} onAction={() => loadConvs()} />
+              ) : (
+                <EmptyState icon="message-outline" title={t('暂无私信')} />
+              )
+            }
+            onEndReached={() => {
+              if (hasMoreConvs) loadConvs(false);
+            }}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={hasMoreConvs ? <CenterSpinner text={t('加载更多会话…')} /> : null}
+          />
+        </FadeInView>
+      </View>
+
+      {sel ? (
+        <Reanimated.View
+          pointerEvents={convClosing ? 'none' : 'auto'}
+          style={[
+            StyleSheet.absoluteFill,
+            styles.screenContainer,
+            { backgroundColor: sheetBg },
+            convEnterStyle,
+          ]}
+        >
+          <View
+            style={[
+              styles.screen,
+              {
+                paddingBottom: keyboardHeight > 0 ? keyboardHeight + 6 : inputBarSafeBottom,
+              },
+            ]}
+          >
+            <ScreenHeader
+              title={dmPeerName}
+              onBack={closeConv}
+              leading={
+                <ScalePressable onPress={openPeerProfile} accessibilityLabel={t('查看资料')}>
+                  {dmPeerAvatar ? (
+                    <NetworkImage
+                      source={{ uri: dmPeerAvatar }}
+                      style={styles.headerAvatar}
+                      resizeMode="cover"
+                      thumbnail={120}
+                      fallbackIcon="account"
                     />
+                  ) : (
+                    <View
+                      style={[
+                        styles.headerAvatar,
+                        styles.headerAvatarFallback,
+                        { backgroundColor: palette.fill2 },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name="account"
+                        size={18}
+                        color={palette.labelTertiary}
+                      />
+                    </View>
+                  )}
+                </ScalePressable>
+              }
+            />
+
+            <View style={{ flex: 1 }}>
+              <Chat
+                messages={dmIms}
+                theme={DM_CHAT_THEME as any}
+                darkTheme={DM_CHAT_THEME as any}
+                locale="zh"
+                renderBubble={renderEllipseGlassBubble}
+                renderAvatar={renderPeerAvatar}
+                isScrollToBottomEnabled
+                scrollToBottomOffset={80}
+                renderDay={renderDayLabel}
+                isDayAnimationEnabled={false}
+                user={DM_CHAT_USER as any}
+                onSend={(sentMsgs) => {
+                  const outgoing = String(sentMsgs?.[0]?.text ?? '').trim();
+                  if (outgoing) void doSend(outgoing);
+                }}
+                renderInputToolbar={DM_NO_INPUT_TOOLBAR}
+                listProps={{ keyboardDismissMode: 'on-drag', keyboardShouldPersistTaps: 'handled' }}
+              />
+            </View>
+
+            {member ? (
+              <GlassSurface
+                role="bar"
+                radius={24}
+                frostedOnly
+                tintColor={composerTint}
+                style={[
+                  styles.memberComposerCard,
+                  {
+                    backgroundColor: 'transparent',
+                    borderColor: composerBorder,
+                    borderWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
+                <View style={styles.flipTierBar}>
+                  <View style={styles.flipTierGroup}>
+                    {prices.length > 0 ? (
+                      prices.map((p) => {
+                        const costVal = Number(p.privateCost);
+                        const open = costVal > 0;
+                        const active = open && flipType === p.answerType;
+                        return (
+                          <ScalePressable
+                            key={p.answerType}
+                            disabled={!open}
+                            pressedScale={0.94}
+                            style={[
+                              styles.flipTierChip,
+                              active
+                                ? { backgroundColor: palette.tint }
+                                : {
+                                    backgroundColor: open ? palette.fill2 : palette.fill3,
+                                    opacity: open ? 1 : 0.48,
+                                  },
+                            ]}
+                            onPress={() => open && setFlipType(Number(p.answerType) || 0)}
+                          >
+                            <Text
+                              style={[
+                                styles.flipTierText,
+                                { color: active ? palette.onTint : palette.labelSecondary },
+                              ]}
+                            >
+                              {flipTypeName(p.answerType)}·{open ? costVal : t('未开放')}
+                            </Text>
+                          </ScalePressable>
+                        );
+                      })
+                    ) : (
+                      <Text style={[styles.flipEmptyText, { color: palette.labelTertiary }]}>
+                        {t('该成员暂未开放私密翻牌')}
+                      </Text>
+                    )}
+                  </View>
+                  <ScalePressable
+                    pressedScale={0.94}
+                    onPress={() => navigation.navigate('RechargeScreen')}
+                    style={[styles.flipRechargePill, { backgroundColor: palette.tintSoft }]}
+                  >
+                    <Text style={[styles.flipRechargeText, { color: palette.tint }]}>
+                      {money ? `${t('余额 {money}', { money })} · ` : ''}
+                      {t('充值')}
+                    </Text>
                   </ScalePressable>
                 </View>
-              </View>
-            );
-          }}
-          ListEmptyComponent={
-            convLoading ? (
-              <CenterSpinner text={t('正在加载会话…')} />
-            ) : convError ? (
-              <ErrorState title={t('加载失败')} hint={convError} onAction={() => loadConvs()} />
+
+                <View style={[styles.composerDivider, { backgroundColor: composerBorder }]} />
+
+                <View style={styles.memberInputRow}>
+                  <TextInput
+                    style={[styles.composerInput, { color: palette.label }]}
+                    placeholder={t('输入你想提问的内容...')}
+                    placeholderTextColor={palette.labelTertiary}
+                    value={text}
+                    onChangeText={setText}
+                    multiline
+                    maxLength={200}
+                  />
+                  <ScalePressable
+                    style={[
+                      styles.memberSendBtn,
+                      { backgroundColor: memberSendDisabled ? palette.fill3 : palette.tint },
+                    ]}
+                    onPress={() => {
+                      void doSend();
+                    }}
+                    disabled={memberSendDisabled}
+                    pressedScale={0.95}
+                  >
+                    <Text
+                      style={[
+                        styles.composerSendText,
+                        { color: memberSendDisabled ? palette.labelTertiary : palette.onTint },
+                      ]}
+                    >
+                      {loading
+                        ? t('发送中')
+                        : activeFlipCost > 0
+                          ? `${activeFlipCost} ${t('翻牌')}`
+                          : t('翻牌')}
+                    </Text>
+                  </ScalePressable>
+                </View>
+              </GlassSurface>
             ) : (
-              <EmptyState icon="message-outline" title={t('暂无私信')} />
-            )
-          }
-          onEndReached={() => {
-            if (hasMoreConvs) loadConvs(false);
-          }}
-          onEndReachedThreshold={0.4}
-          ListFooterComponent={hasMoreConvs ? <CenterSpinner text={t('加载更多会话…')} /> : null}
-        />
-      </FadeInView>
+              <GlassSurface
+                role="bar"
+                radius={25}
+                frostedOnly
+                tintColor={composerTint}
+                style={[
+                  styles.dmComposerPill,
+                  {
+                    backgroundColor: 'transparent',
+                    borderColor: composerBorder,
+                    borderWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
+                <ScalePressable
+                  style={[styles.imgPickerBtn, { backgroundColor: palette.tintSoft }]}
+                  onPress={() => {
+                    void pickAndSendImage();
+                  }}
+                  disabled={loading}
+                  pressedScale={0.92}
+                  accessibilityLabel={t('图片')}
+                >
+                  <MaterialCommunityIcons name="image-plus" size={20} color={palette.tint} />
+                </ScalePressable>
+                <TextInput
+                  style={[styles.composerInput, styles.dmComposerInput, { color: palette.label }]}
+                  placeholder={t('输入内容...')}
+                  placeholderTextColor={palette.labelTertiary}
+                  value={text}
+                  onChangeText={setText}
+                  multiline
+                />
+                <ScalePressable
+                  style={[
+                    styles.dmSendBtn,
+                    { backgroundColor: dmSendDisabled ? palette.fill3 : palette.tint },
+                  ]}
+                  onPress={() => {
+                    void doSend();
+                  }}
+                  disabled={dmSendDisabled}
+                  pressedScale={0.95}
+                >
+                  <Text
+                    style={[
+                      styles.composerSendText,
+                      { color: dmSendDisabled ? palette.labelTertiary : palette.onTint },
+                    ]}
+                  >
+                    {loading ? t('发送中') : t('发送')}
+                  </Text>
+                </ScalePressable>
+              </GlassSurface>
+            )}
+          </View>
+          {zoomUrl ? <ZoomImageModal url={zoomUrl} onClose={() => setZoomUrl('')} /> : null}
+        </Reanimated.View>
+      ) : null}
+
+      <Modal
+        visible={!!actionConv}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setActionConv(null)}
+      >
+        <Pressable style={styles.actionSheetShade} onPress={() => setActionConv(null)}>
+          <Pressable
+            style={[
+              styles.actionSheetPanel,
+              {
+                backgroundColor: palette.surface,
+                borderColor: palette.hairline,
+                paddingBottom: Math.max(20, insets.bottom + 12),
+              },
+            ]}
+            onPress={() => undefined}
+          >
+            <View style={[styles.actionHandle, { backgroundColor: palette.fill3 }]} />
+            <View style={styles.actionHeaderRow}>
+              <View style={[styles.actionAvatar, { backgroundColor: palette.fill2 }]}>
+                {actionAvatar ? (
+                  <NetworkImage
+                    source={{ uri: actionAvatar }}
+                    style={styles.actionAvatarImg}
+                    resizeMode="cover"
+                    thumbnail={120}
+                    fallbackIcon="account"
+                  />
+                ) : (
+                  <MaterialCommunityIcons name="account" size={20} color={palette.labelTertiary} />
+                )}
+              </View>
+              <Text style={[styles.actionTitle, { color: palette.label }]} numberOfLines={1}>
+                {actionName}
+              </Text>
+            </View>
+            <ScalePressable
+              pressedScale={0.98}
+              style={[styles.actionItem, { backgroundColor: palette.fill2 }]}
+              onPress={() => {
+                const c = actionConv;
+                setActionConv(null);
+                if (c) togglePinConv(c);
+              }}
+            >
+              <MaterialCommunityIcons
+                name={actionIsPinned ? 'pin-off-outline' : 'pin-outline'}
+                size={18}
+                color={palette.tint}
+              />
+              <Text style={[styles.actionItemText, { color: palette.label }]}>
+                {actionIsPinned ? t('取消置顶') : t('置顶')}
+              </Text>
+            </ScalePressable>
+            {actionIsPinned && pinnedConvs.length > 1 ? (
+              <View style={styles.actionReorderRow}>
+                <ScalePressable
+                  pressedScale={0.98}
+                  disabled={actionPinnedIdx === 0}
+                  style={[
+                    styles.actionHalfBtn,
+                    {
+                      backgroundColor: palette.fill2,
+                      opacity: actionPinnedIdx === 0 ? 0.45 : 1,
+                    },
+                  ]}
+                  onPress={() => {
+                    if (actionTargetId) movePinConv(actionTargetId, -1);
+                    setActionConv(null);
+                  }}
+                >
+                  <MaterialCommunityIcons name="chevron-up" size={18} color={palette.label} />
+                  <Text style={[styles.actionItemText, { color: palette.label }]}>
+                    {t('置顶上移')}
+                  </Text>
+                </ScalePressable>
+                <ScalePressable
+                  pressedScale={0.98}
+                  disabled={actionPinnedIdx === pinnedConvs.length - 1}
+                  style={[
+                    styles.actionHalfBtn,
+                    {
+                      backgroundColor: palette.fill2,
+                      opacity: actionPinnedIdx === pinnedConvs.length - 1 ? 0.45 : 1,
+                    },
+                  ]}
+                  onPress={() => {
+                    if (actionTargetId) movePinConv(actionTargetId, 1);
+                    setActionConv(null);
+                  }}
+                >
+                  <MaterialCommunityIcons name="chevron-down" size={18} color={palette.label} />
+                  <Text style={[styles.actionItemText, { color: palette.label }]}>
+                    {t('置顶下移')}
+                  </Text>
+                </ScalePressable>
+              </View>
+            ) : null}
+            <ScalePressable
+              pressedScale={0.98}
+              style={[styles.actionItem, { backgroundColor: palette.fill2 }]}
+              onPress={() => {
+                setActionConv(null);
+                if (actionTargetId) {
+                  setProfileTarget({
+                    userId: actionTargetId,
+                    nick: actionName,
+                    avatar: actionAvatar,
+                  });
+                }
+              }}
+            >
+              <MaterialCommunityIcons
+                name="account-circle-outline"
+                size={18}
+                color={palette.labelSecondary}
+              />
+              <Text style={[styles.actionItemText, { color: palette.label }]}>{t('查看资料')}</Text>
+            </ScalePressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <UserProfileSheet
         visible={!!profileTarget}
@@ -1716,47 +1956,35 @@ const DM_NO_INPUT_TOOLBAR = () => null;
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  screenContainer: { flex: 1 },
-  convList: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 },
+  screenContainer: { flex: 1, zIndex: 20 },
+  convList: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 24 },
   groupTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: fontFamily.system,
-    fontWeight: '800',
+    fontWeight: '700',
     marginTop: 12,
-    marginBottom: 2,
+    marginBottom: 6,
     paddingLeft: 4,
   },
-  convCard: { marginVertical: 4, flex: 1 },
-
-  convCardRow: { padding: 12, flexDirection: 'row', alignItems: 'center' },
-  convRowWrap: { flexDirection: 'row', alignItems: 'center' },
-  convActions: { marginLeft: 8, gap: 8, alignItems: 'center' },
-  convPinBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinMoveCol: { gap: 2, alignItems: 'center' },
-  pinMoveBtn: {
-    width: 22,
-    height: 18,
-    borderRadius: 8,
+  convItemOuter: { marginBottom: 8 },
+  convCard: {
+    borderRadius: radii.lg,
     borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
   },
   convAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  convAvatarImg: { width: 44, height: 44, borderRadius: 999 },
-  convAvatarText: { fontSize: 17, fontFamily: fontFamily.system, fontWeight: '800' },
+  convAvatarImg: { width: 48, height: 48, borderRadius: 24 },
 
   msgAvatar: {
     width: 36,
@@ -1766,22 +1994,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  msgAvatarText: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '800' },
   headerAvatar: { width: 34, height: 34, borderRadius: 17 },
   headerAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  headerAvatarText: { fontSize: 14, fontWeight: '800' },
-  convInfo: { flex: 1, marginLeft: 12 },
-  convTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  convInfo: { flex: 1, minWidth: 0, marginLeft: 12 },
+  convTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  convTitleLeft: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },
   convName: {
     fontSize: 15,
     fontFamily: fontFamily.system,
     fontWeight: '700',
-    flex: 1,
-    marginRight: 8,
+    flexShrink: 1,
   },
-  convTime: { fontSize: 11 },
-  convMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
-  convPrev: { fontSize: 12, flex: 1, marginRight: 8 },
+  pinTag: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  convTime: { fontSize: 11, fontFamily: fontFamily.system, flexShrink: 0 },
+  convMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    gap: 8,
+  },
+  convPrev: { fontSize: 13, fontFamily: fontFamily.system, flex: 1 },
   badge: {
     borderRadius: 999,
     minWidth: 20,
@@ -1791,30 +2035,95 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   badgeT: { color: '#fff', fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
-  dateSepText: { fontSize: 10, fontWeight: '700' },
+  dateSepText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '600' },
   mediaBtn: {
-    marginTop: 4,
+    marginTop: 6,
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 11,
     borderRadius: 14,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
-  mediaBtnText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '800' },
+  mediaBtnText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
+  mediaInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 132,
+  },
+  mediaCircleIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaInlineMeta: { gap: 2 },
+  mediaInlineTitle: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    includeFontPadding: false,
+  },
+  mediaInlineTime: { fontSize: 11, fontFamily: fontFamily.system },
+  inlinePlayerWrap: { marginTop: 8 },
   inlineImg: { marginTop: 4, borderRadius: 14 },
-  flipBar: { paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  flipName: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
-  flipRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  flipChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
-  flipChipT: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
-  flipSpacer: { flex: 1 },
-  flipMoney: { fontSize: 11, fontWeight: '700' },
-  flipRechargeBtn: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 18 },
-  flipRechargeT: { fontSize: 10, fontFamily: fontFamily.system, fontWeight: '800' },
-  flipLabel: { fontSize: 10, fontWeight: '800', marginBottom: 2 },
-  inputBar: { paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+
+  memberComposerCard: {
+    marginHorizontal: 12,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  flipTierBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  flipTierGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  flipTierChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
+  flipTierText: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    includeFontPadding: false,
+  },
+  flipEmptyText: { fontSize: 12, fontFamily: fontFamily.system },
+  flipRechargePill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
+  flipRechargeText: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    includeFontPadding: false,
+  },
+  composerDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 2 },
+  memberInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingLeft: 4 },
+  memberSendBtn: {
+    height: 38,
+    minWidth: 72,
+    paddingHorizontal: 14,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  dmComposerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 50,
+    marginHorizontal: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 25,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   imgPickerBtn: {
     width: 38,
     height: 38,
@@ -1822,18 +2131,87 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  input: {
+  composerInput: {
     flex: 1,
-    padding: 10,
-    borderRadius: 18,
-    borderWidth: 1,
-    fontSize: 14,
+    minHeight: 38,
+    maxHeight: 96,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    fontSize: 15,
+    lineHeight: 20,
     fontFamily: fontFamily.system,
-    maxHeight: 80,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
-  sendBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18 },
+  dmComposerInput: { paddingVertical: 6 },
+  dmSendBtn: {
+    height: 38,
+    minWidth: 62,
+    paddingHorizontal: 16,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  composerSendText: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    ...Platform.select({ android: { paddingTop: 1 }, default: null }),
+  },
   ellipseBubble: { paddingVertical: 9, paddingHorizontal: 14, maxWidth: '78%', marginVertical: 2 },
   ellipseText: { fontSize: 15, lineHeight: 21 },
   ellipseTime: { fontSize: 11, fontFamily: fontFamily.system, marginTop: 3, alignSelf: 'flex-end' },
-  sendT: { fontWeight: '800', fontSize: 13 },
+
+  actionSheetShade: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    justifyContent: 'flex-end',
+  },
+  actionSheetPanel: {
+    borderTopLeftRadius: radii.sheet,
+    borderTopRightRadius: radii.sheet,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 8,
+  },
+  actionHandle: { width: 38, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 4 },
+  actionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 6,
+  },
+  actionAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  actionAvatarImg: { width: 36, height: 36, borderRadius: 18 },
+  actionTitle: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '700', flex: 1 },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderRadius: 14,
+  },
+  actionItemText: { fontSize: 14, fontFamily: fontFamily.system, fontWeight: '600' },
+  actionReorderRow: { flexDirection: 'row', gap: 8 },
+  actionHalfBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
 });

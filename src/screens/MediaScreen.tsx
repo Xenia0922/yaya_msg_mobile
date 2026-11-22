@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NetworkImage } from '../components/NetworkImage';
 import { USER_AGENT } from '../constants';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,7 +25,13 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import {
+  RouteProp,
+  useFocusEffect,
+  useIsFocused,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { useDiscoveredLivesStore } from '../store/discoveredLivesStore';
@@ -73,7 +79,8 @@ import { matchFollowedMember } from './followedRooms/roomDomain';
 import { LoginPrompt } from '../components/LoginPrompt';
 import { Button } from '../components/Button';
 import { Skeleton } from '../components/Skeleton';
-import { usePalette } from '../theme';
+import { Palettes, usePalette } from '../theme';
+import type { Palette } from '../theme/colors';
 import { styles } from './media/styles';
 import {
   GRID_COVER_THUMB,
@@ -94,7 +101,6 @@ import {
   acceptUserId,
 } from './media/parsing';
 import { useI18n } from '../i18n';
-import { GlassSurface } from '../components/GlassSurface';
 import { GlassSegmented, GlassSegmentedScroll } from '../components/GlassSegmented';
 import { SearchBar } from '../components/SearchBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,6 +108,8 @@ import { UserProfileSheet, type UserProfileTarget } from '../components/UserProf
 import { ListBottomSpacer } from '../components/ListBottomSpacer';
 
 type MediaRouteProp = RouteProp<TabParamList, 'Media'>;
+
+const liveSheetPalette = Palettes.dark;
 
 const MEDIA_GROUPS: { label: string; id: number; match: string }[] = [
   { label: '全部', id: 0, match: '' },
@@ -199,6 +207,7 @@ const LIVE_ANNOUNCEMENT_CACHE = new Map<string, string>();
 export default function MediaScreen() {
   const route = useRoute<MediaRouteProp>();
   const navigation = useNavigation<any>();
+  const isMediaFocused = useIsFocused();
   const palette = usePalette();
   const { t } = useI18n();
   const setDockHidden = useUiStore((state) => state.setTabBarHidden);
@@ -1486,9 +1495,11 @@ export default function MediaScreen() {
   }, [playing?.item?.liveId, playing?.isLive]);
 
   const switchTab = (next: 'live' | 'vod') => {
-    setTab(next);
-    setNextCursor(0);
-    setHasMore(true);
+    startTransition(() => {
+      setTab(next);
+      setNextCursor(0);
+      setHasMore(true);
+    });
   };
 
   useEffect(() => {
@@ -1908,6 +1919,50 @@ export default function MediaScreen() {
     return () => sub.remove();
   }, []);
 
+  const startPlayRef = useRef(startPlay);
+  startPlayRef.current = startPlay;
+  const handlePlayCard = useCallback((it: VODItem) => {
+    void startPlayRef.current(it);
+  }, []);
+
+  const mediaKeyExtractor = useCallback(
+    (item: any, index: number) => {
+      const base = String(item?.liveId || item?.key || index);
+      return `${base}_${screen.width}_${pipRemount}`;
+    },
+    [pipRemount, screen.width],
+  );
+
+  const renderMediaItem = useCallback(
+    ({ item }: { item: any }) => {
+      if (tab === 'vod') {
+        if (item.type === 'header') {
+          return (
+            <Text style={[styles.vodGroupTitle, { color: palette.labelTertiary }]}>
+              {item.title}
+            </Text>
+          );
+        }
+        return (
+          <View style={styles.vodRow}>
+            <MediaGridCard item={item.left} isVod palette={palette} t={t} onPlay={handlePlayCard} />
+            <MediaGridCard
+              item={item.right}
+              isVod
+              palette={palette}
+              t={t}
+              onPlay={handlePlayCard}
+            />
+          </View>
+        );
+      }
+      return (
+        <MediaGridCard item={item} isVod={false} palette={palette} t={t} onPlay={handlePlayCard} />
+      );
+    },
+    [handlePlayCard, palette, t, tab],
+  );
+
   if (playing && playing.url && isSharePageUrl(String(playing.url))) {
     return (
       <View style={styles.playerPage}>
@@ -2283,6 +2338,7 @@ export default function MediaScreen() {
         <UserProfileSheet
           visible={!!danmakuProfile}
           target={danmakuProfile}
+          appearance="dark"
           onClose={() => setDanmakuProfile(null)}
           onOpenChat={({ id, name }) => {
             setDanmakuProfile(null);
@@ -2316,21 +2372,42 @@ export default function MediaScreen() {
           visible={giftVisible}
           transparent
           animationType="slide"
+          statusBarTranslucent
+          navigationBarTranslucent
           onRequestClose={() => setGiftVisible(false)}
         >
           <View style={styles.modalShade}>
-            <GlassSurface
-              radius={22}
-              role="card"
-              style={[styles.giftPanel, { backgroundColor: 'transparent' }]}
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setGiftVisible(false)} />
+            <View
+              style={[
+                styles.giftPanel,
+                {
+                  backgroundColor: 'rgba(24,24,30,0.96)',
+                  paddingBottom: Math.max(18, insets.bottom + 12),
+                },
+              ]}
             >
+              <View style={styles.sheetHandle} />
               <View style={styles.giftHeader}>
-                <Text style={[styles.giftTitle, { color: palette.label }]}>{t('直播送礼')}</Text>
-                <TouchableOpacity onPress={() => setGiftVisible(false)} activeOpacity={0.8}>
-                  <Text style={[styles.backBtnText, { color: palette.tint }]}>{t('关闭')}</Text>
+                <Text style={[styles.giftTitle, { color: liveSheetPalette.label }]}>
+                  {t('直播送礼')}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setGiftVisible(false)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('关闭')}
+                  style={[styles.sheetCloseBtn, { backgroundColor: liveSheetPalette.fill2 }]}
+                >
+                  <MaterialCommunityIcons
+                    name="close"
+                    size={18}
+                    color={liveSheetPalette.labelSecondary}
+                  />
                 </TouchableOpacity>
               </View>
-              <Text style={[styles.giftStatus, { color: palette.labelSecondary }]}>
+              <Text style={[styles.giftStatus, { color: liveSheetPalette.labelSecondary }]}>
                 {balance ? `${t('余额：{balance} 鸡腿', { balance })} · ` : ''}
                 {giftStatus}
               </Text>
@@ -2347,8 +2424,10 @@ export default function MediaScreen() {
                           styles.giftItem,
                           active && styles.giftItemActive,
                           {
-                            backgroundColor: active ? palette.tintSoft : palette.fill2,
-                            borderColor: active ? palette.tint : palette.hairline,
+                            backgroundColor: active
+                              ? liveSheetPalette.tintSoft
+                              : liveSheetPalette.fill2,
+                            borderColor: active ? liveSheetPalette.tint : liveSheetPalette.hairline,
                           },
                         ]}
                         onPress={() => setSelectedGift(gift)}
@@ -2361,12 +2440,17 @@ export default function MediaScreen() {
                             thumbnail={96}
                           />
                         ) : (
-                          <View style={[styles.giftImage, { backgroundColor: palette.fill3 }]} />
+                          <View
+                            style={[styles.giftImage, { backgroundColor: liveSheetPalette.fill3 }]}
+                          />
                         )}
-                        <Text style={[styles.giftName, { color: palette.label }]} numberOfLines={1}>
+                        <Text
+                          style={[styles.giftName, { color: liveSheetPalette.label }]}
+                          numberOfLines={1}
+                        >
                           {giftName(gift)}
                         </Text>
-                        <Text style={[styles.giftCost, { color: palette.tint }]}>
+                        <Text style={[styles.giftCost, { color: liveSheetPalette.tint }]}>
                           {t('{count} 鸡腿', { count: giftCost(gift) })}
                         </Text>
                       </TouchableOpacity>
@@ -2379,9 +2463,9 @@ export default function MediaScreen() {
                   style={[
                     styles.giftNum,
                     {
-                      color: palette.label,
-                      borderColor: palette.hairline,
-                      backgroundColor: palette.fill2,
+                      color: liveSheetPalette.label,
+                      borderColor: liveSheetPalette.hairline,
+                      backgroundColor: liveSheetPalette.fill2,
                     },
                   ]}
                   keyboardType="numeric"
@@ -2394,7 +2478,10 @@ export default function MediaScreen() {
                   style={[
                     styles.sendGiftBtn,
                     {
-                      backgroundColor: selectedGift && !giftSending ? palette.tint : palette.fill3,
+                      backgroundColor:
+                        selectedGift && !giftSending
+                          ? liveSheetPalette.tint
+                          : liveSheetPalette.fill3,
                     },
                   ]}
                   onPress={sendGift}
@@ -2406,7 +2493,9 @@ export default function MediaScreen() {
                       styles.sendGiftText,
                       {
                         color:
-                          selectedGift && !giftSending ? palette.onTint : palette.labelTertiary,
+                          selectedGift && !giftSending
+                            ? liveSheetPalette.onTint
+                            : liveSheetPalette.labelTertiary,
                       },
                     ]}
                   >
@@ -2426,11 +2515,11 @@ export default function MediaScreen() {
                 }}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.rechargeText, { color: palette.tint }]}>
+                <Text style={[styles.rechargeText, { color: liveSheetPalette.tint }]}>
                   {t('余额不足？去充值鸡腿')}
                 </Text>
               </TouchableOpacity>
-            </GlassSurface>
+            </View>
           </View>
         </Modal>
         <Modal
@@ -2439,21 +2528,41 @@ export default function MediaScreen() {
           animationType="slide"
           presentationStyle="overFullScreen"
           statusBarTranslucent
+          navigationBarTranslucent
           onRequestClose={() => setRankVisible(false)}
         >
           <View style={styles.modalShade}>
-            <GlassSurface
-              radius={22}
-              role="card"
-              style={[styles.giftPanel, { backgroundColor: 'transparent' }]}
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setRankVisible(false)} />
+            <View
+              style={[
+                styles.giftPanel,
+                {
+                  backgroundColor: 'rgba(24,24,30,0.96)',
+                  paddingBottom: Math.max(18, insets.bottom + 12),
+                },
+              ]}
             >
+              <View style={styles.sheetHandle} />
               <View style={styles.giftHeader}>
-                <Text style={[styles.giftTitle, { color: palette.label }]}>{t('贡献榜')}</Text>
-                <TouchableOpacity onPress={() => setRankVisible(false)} activeOpacity={0.8}>
-                  <Text style={[styles.backBtnText, { color: palette.tint }]}>{t('关闭')}</Text>
+                <Text style={[styles.giftTitle, { color: liveSheetPalette.label }]}>
+                  {t('贡献榜')}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setRankVisible(false)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('关闭')}
+                  style={[styles.sheetCloseBtn, { backgroundColor: liveSheetPalette.fill2 }]}
+                >
+                  <MaterialCommunityIcons
+                    name="close"
+                    size={18}
+                    color={liveSheetPalette.labelSecondary}
+                  />
                 </TouchableOpacity>
               </View>
-              <Text style={[styles.giftStatus, { color: palette.labelSecondary }]}>
+              <Text style={[styles.giftStatus, { color: liveSheetPalette.labelSecondary }]}>
                 {rankStatus}
               </Text>
               <ScrollView
@@ -2475,26 +2584,31 @@ export default function MediaScreen() {
                         missingIdMessage: t('该用户没有可加载的口袋资料'),
                       })
                     }
-                    style={[styles.rankRow, { borderBottomColor: palette.hairline }]}
+                    style={[styles.rankRow, { borderBottomColor: liveSheetPalette.hairline }]}
                   >
-                    <Text style={[styles.rankNo, { color: palette.tint }]}>
+                    <Text style={[styles.rankNo, { color: liveSheetPalette.tint }]}>
                       {row.rank || index + 1}
                     </Text>
                     {row.avatar ? (
                       <NetworkImage
                         source={{ uri: row.avatar }}
-                        style={[styles.rankAvatar, { backgroundColor: palette.fill3 }]}
+                        style={[styles.rankAvatar, { backgroundColor: liveSheetPalette.fill3 }]}
                         thumbnail={64}
                       />
                     ) : (
-                      <View style={[styles.rankAvatar, { backgroundColor: palette.fill3 }]} />
+                      <View
+                        style={[styles.rankAvatar, { backgroundColor: liveSheetPalette.fill3 }]}
+                      />
                     )}
                     <View style={styles.rankInfo}>
-                      <Text style={[styles.rankName, { color: palette.label }]} numberOfLines={1}>
+                      <Text
+                        style={[styles.rankName, { color: liveSheetPalette.label }]}
+                        numberOfLines={1}
+                      >
                         {row.name}
                       </Text>
                       <Text
-                        style={[styles.rankValue, { color: palette.labelSecondary }]}
+                        style={[styles.rankValue, { color: liveSheetPalette.labelSecondary }]}
                         numberOfLines={1}
                       >
                         {row.value ? t('贡献 {value}', { value: row.value }) : t('贡献用户')}
@@ -2503,18 +2617,19 @@ export default function MediaScreen() {
                     <MaterialCommunityIcons
                       name="chevron-right"
                       size={16}
-                      color={palette.labelTertiary}
+                      color={liveSheetPalette.labelTertiary}
                     />
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            </GlassSurface>
+            </View>
           </View>
         </Modal>
 
         <UserProfileSheet
           visible={!!rankProfile}
           target={rankProfile}
+          appearance="dark"
           onClose={() => setRankProfile(null)}
           onOpenChat={({ id, name }) => {
             setRankProfile(null);
@@ -2539,6 +2654,7 @@ export default function MediaScreen() {
       <FloatingTabHeader
         leftIsland={
           <GlassSegmented
+            role="bar"
             options={[
               { key: 'live', label: t('直播') },
               { key: 'vod', label: t('录播') },
@@ -2547,6 +2663,7 @@ export default function MediaScreen() {
             onChange={(k) => switchTab(k as 'live' | 'vod')}
             height={FLOATING_BAR_HEIGHT}
             labelFontSize={13}
+            frostedOnly={!isMediaFocused}
             style={styles.headerSeg}
           />
         }
@@ -2556,13 +2673,13 @@ export default function MediaScreen() {
               icon="calendar-month"
               active={!!dateFilter || showCalendar}
               accessibilityLabel={t('日历')}
-              onPress={() => setShowCalendar(true)}
+              onPress={() => startTransition(() => setShowCalendar(true))}
             />
             <FloatingHeaderAction
               icon={showSearch ? 'close' : 'magnify'}
               active={showSearch}
               accessibilityLabel={showSearch ? t('关闭搜索') : t('搜索')}
-              onPress={() => setShowSearch((v) => !v)}
+              onPress={() => startTransition(() => setShowSearch((v) => !v))}
             />
             <FloatingHeaderAction
               icon="refresh"
@@ -2701,11 +2818,7 @@ export default function MediaScreen() {
           keyboardShouldPersistTaps="handled"
 
           data={tab === 'vod' ? ((vodRows ?? []) as any) : list}
-          keyExtractor={(item: any, index) => {
-            const base = String(item?.liveId || item?.key || index);
-
-            return `${base}_${screen.width}_${pipRemount}`;
-          }}
+          keyExtractor={mediaKeyExtractor}
           numColumns={tab === 'vod' ? 1 : 2}
           columnWrapperStyle={tab === 'vod' ? null : styles.vodGridRow}
 
@@ -2713,224 +2826,7 @@ export default function MediaScreen() {
           removeClippedSubviews={false}
 
           updateCellsBatchingPeriod={40}
-          renderItem={({ item }) => {
-            if (tab === 'vod') {
-              if (item.type === 'header') {
-                return (
-                  <Text style={[styles.vodGroupTitle, { color: palette.labelTertiary }]}>
-                    {item.title}
-                  </Text>
-                );
-              }
-              const renderCard = (it: any) => {
-                if (!it) return <View style={styles.vodGridItem} />;
-                const coverUrl = it.liveCover || it.coverPath;
-                const meta = [it.nickname, formatTimestamp(it.startTime).slice(0, 16)]
-                  .filter(Boolean)
-                  .join(' · ');
-                return (
-                  <View style={styles.vodGridItem}>
-                    <TouchableOpacity
-                      style={[
-                        styles.vodGridCard,
-                        {
-                          backgroundColor: 'transparent',
-                          borderColor: palette.hairline,
-                          borderWidth: StyleSheet.hairlineWidth,
-                        },
-                      ]}
-                      onPress={() => startPlay(it)}
-                      activeOpacity={0.88}
-                      accessibilityLabel={it.title || it.liveRoomTitle || t('播放')}
-                    >
-                      <View
-                        style={{
-                          borderRadius: 22,
-                          borderCurve: 'continuous',
-                          overflow: 'hidden',
-                          backgroundColor: palette.surfaceGlassStrong,
-                        }}
-                      >
-                        <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
-                          {coverUrl ? (
-                            <NetworkImage
-                              source={{ uri: thumbUrl(coverUrl, GRID_COVER_THUMB) }}
-                              style={styles.vodGridCoverImg}
-                              resizeMode="cover"
-                            />
-                          ) : (
-                            <View style={styles.vodGridFallback}>
-                              <MaterialCommunityIcons
-                                name="video"
-                                size={30}
-                                color={palette.labelTertiary}
-                              />
-                            </View>
-                          )}
-                          <View
-                            style={[
-                              styles.v2Badge,
-                              styles.vodGridType,
-                              { backgroundColor: 'rgba(0,0,0,0.55)' },
-                            ]}
-                          >
-                            <MaterialCommunityIcons
-                              name={it.liveType === 2 ? 'radio' : 'video'}
-                              size={10}
-                              color="#FFFFFF"
-                              style={{ marginRight: 3 }}
-                            />
-                            <Text style={styles.v2BadgeText}>
-                              {it.liveType === 2 ? t('电台') : t('视频')}
-                            </Text>
-                          </View>
-
-                          <View style={styles.vodBadgeRow}>
-                            {it.endTime && it.startTime ? (
-                              <View
-                                style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
-                              >
-                                <Text style={styles.v2BadgeText}>
-                                  {formatDuration((it.endTime - it.startTime) / 1000)}
-                                </Text>
-                              </View>
-                            ) : null}
-                          </View>
-
-                          <LinearGradient
-                            pointerEvents="none"
-                            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.82)']}
-                            locations={[0, 0.45, 1]}
-                            style={styles.vodShade}
-                          />
-                          <View style={styles.vodInfoOverlay}>
-                            <Text style={styles.vodTitleOverlay} numberOfLines={2}>
-                              {it.title || it.liveRoomTitle || t('无标题')}
-                            </Text>
-                            {meta ? (
-                              <Text style={styles.vodMetaOverlay} numberOfLines={1}>
-                                {meta}
-                              </Text>
-                            ) : null}
-                          </View>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                );
-              };
-              return (
-                <View style={styles.vodRow}>
-                  {renderCard(item.left)}
-                  {renderCard(item.right)}
-                </View>
-              );
-            }
-
-            const coverUrl = item.liveCover || item.coverPath;
-            const meta = [item.nickname, formatTimestamp(item.startTime).slice(0, 16)]
-              .filter(Boolean)
-              .join(' · ');
-            return (
-              <View style={styles.vodGridItem}>
-                <TouchableOpacity
-                  style={[
-                    styles.vodGridCard,
-                    {
-                      backgroundColor: 'transparent',
-                      borderColor: palette.hairline,
-                      borderWidth: StyleSheet.hairlineWidth,
-                    },
-                  ]}
-                  onPress={() => startPlay(item)}
-                  activeOpacity={0.88}
-                  accessibilityLabel={item.title || item.liveRoomTitle || t('播放')}
-                >
-                  <View
-                    style={{
-                      borderRadius: 22,
-                      borderCurve: 'continuous',
-                      overflow: 'hidden',
-                      backgroundColor: palette.surfaceGlassStrong,
-                    }}
-                  >
-                    <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
-                      {coverUrl ? (
-                        <NetworkImage
-                          source={{ uri: thumbUrl(coverUrl, GRID_COVER_THUMB) }}
-                          style={styles.vodGridCoverImg}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={styles.vodGridFallback}>
-                          <MaterialCommunityIcons
-                            name="video"
-                            size={30}
-                            color={palette.labelTertiary}
-                          />
-                        </View>
-                      )}
-                      <View
-                        style={[
-                          styles.v2Badge,
-                          styles.vodGridType,
-                          { backgroundColor: 'rgba(0,0,0,0.55)' },
-                        ]}
-                      >
-                        <MaterialCommunityIcons
-                          name={item.liveType === 2 ? 'radio' : 'video'}
-                          size={10}
-                          color="#FFFFFF"
-                          style={{ marginRight: 3 }}
-                        />
-                        <Text style={styles.v2BadgeText}>
-                          {item.liveType === 2 ? t('电台') : t('视频')}
-                        </Text>
-                      </View>
-
-                      <View style={styles.vodBadgeRow}>
-                        <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
-                          {item.liveType === 2 ? (
-                            <>
-                              <MaterialCommunityIcons
-                                name="radio"
-                                size={11}
-                                color="#FFFFFF"
-                                style={{ marginRight: 3 }}
-                              />
-                              <Text style={styles.v2BadgeText}>{t('电台')}</Text>
-                            </>
-                          ) : (
-                            <>
-                              <LivePulseDot />
-                              <Text style={styles.v2BadgeText}>{t('直播中')}</Text>
-                            </>
-                          )}
-                        </View>
-                      </View>
-
-                      <LinearGradient
-                        pointerEvents="none"
-                        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.82)']}
-                        locations={[0, 0.45, 1]}
-                        style={styles.vodShade}
-                      />
-                      <View style={styles.vodInfoOverlay}>
-                        <Text style={styles.vodTitleOverlay} numberOfLines={2}>
-                          {item.title || item.liveRoomTitle || t('无标题')}
-                        </Text>
-                        {meta ? (
-                          <Text style={styles.vodMetaOverlay} numberOfLines={1}>
-                            {meta}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            );
-          }}
+          renderItem={renderMediaItem}
           ListEmptyComponent={
             !loadedOnce[tab] || (groupId === -1 && !!token && !followedIdsReady) ? (
               <MediaGridSkeleton />
@@ -2981,3 +2877,125 @@ export default function MediaScreen() {
     </View>
   );
 }
+
+const VOD_SHADE_COLORS = ['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.82)'] as const;
+const VOD_SHADE_LOCATIONS = [0, 0.45, 1] as const;
+
+const MediaGridCard = React.memo(function MediaGridCard({
+  item,
+  isVod,
+  palette,
+  t,
+  onPlay,
+}: {
+  item: any;
+  isVod: boolean;
+  palette: Palette;
+  t: (key: string) => string;
+  onPlay: (item: VODItem) => void;
+}) {
+  if (!item) return <View style={styles.vodGridItem} />;
+  const coverUrl = item.liveCover || item.coverPath;
+  const meta = [item.nickname, formatTimestamp(item.startTime).slice(0, 16)]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <View style={styles.vodGridItem}>
+      <TouchableOpacity
+        style={[
+          styles.vodGridCard,
+          {
+            backgroundColor: 'transparent',
+            borderColor: palette.hairline,
+            borderWidth: StyleSheet.hairlineWidth,
+          },
+        ]}
+        onPress={() => onPlay(item)}
+        activeOpacity={0.88}
+        accessibilityLabel={item.title || item.liveRoomTitle || t('播放')}
+      >
+        <View
+          style={{
+            borderRadius: 22,
+            borderCurve: 'continuous',
+            overflow: 'hidden',
+            backgroundColor: palette.surfaceGlassStrong,
+          }}
+        >
+          <View style={[styles.vodGridCover, { backgroundColor: palette.fill3 }]}>
+            {coverUrl ? (
+              <NetworkImage
+                source={{ uri: thumbUrl(coverUrl, GRID_COVER_THUMB) }}
+                style={styles.vodGridCoverImg}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.vodGridFallback}>
+                <MaterialCommunityIcons name="video" size={30} color={palette.labelTertiary} />
+              </View>
+            )}
+            <View
+              style={[styles.v2Badge, styles.vodGridType, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
+            >
+              <MaterialCommunityIcons
+                name={item.liveType === 2 ? 'radio' : 'video'}
+                size={10}
+                color="#FFFFFF"
+                style={{ marginRight: 3 }}
+              />
+              <Text style={styles.v2BadgeText}>{item.liveType === 2 ? t('电台') : t('视频')}</Text>
+            </View>
+
+            <View style={styles.vodBadgeRow}>
+              {isVod ? (
+                item.endTime && item.startTime ? (
+                  <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                    <Text style={styles.v2BadgeText}>
+                      {formatDuration((item.endTime - item.startTime) / 1000)}
+                    </Text>
+                  </View>
+                ) : null
+              ) : (
+                <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                  {item.liveType === 2 ? (
+                    <>
+                      <MaterialCommunityIcons
+                        name="radio"
+                        size={11}
+                        color="#FFFFFF"
+                        style={{ marginRight: 3 }}
+                      />
+                      <Text style={styles.v2BadgeText}>{t('电台')}</Text>
+                    </>
+                  ) : (
+                    <>
+                      <LivePulseDot />
+                      <Text style={styles.v2BadgeText}>{t('直播中')}</Text>
+                    </>
+                  )}
+                </View>
+              )}
+            </View>
+
+            <LinearGradient
+              pointerEvents="none"
+              colors={VOD_SHADE_COLORS as unknown as [string, string, ...string[]]}
+              locations={VOD_SHADE_LOCATIONS as unknown as [number, number, ...number[]]}
+              style={styles.vodShade}
+            />
+            <View style={styles.vodInfoOverlay}>
+              <Text style={styles.vodTitleOverlay} numberOfLines={2}>
+                {item.title || item.liveRoomTitle || t('无标题')}
+              </Text>
+              {meta ? (
+                <Text style={styles.vodMetaOverlay} numberOfLines={1}>
+                  {meta}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+});

@@ -24,7 +24,7 @@ import {
   FloatingTabHeader,
   getFloatingHeaderOffset,
 } from '../components/FloatingTabHeader';
-import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePocketAccountSummary } from '../hooks/usePocketAccountSummary';
 import { ScalePressable } from '../components/Motion';
 import RuntimeLogViewer from '../components/RuntimeLogViewer';
@@ -498,6 +498,8 @@ export default function SettingsScreen() {
         visible={langVisible}
         transparent
         animationType="slide"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setLangVisible(false)}
       >
         <TouchableOpacity
@@ -507,9 +509,25 @@ export default function SettingsScreen() {
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.langSheet, { backgroundColor: palette.surface }]}
+            style={[
+              styles.langSheet,
+              {
+                backgroundColor: palette.surface,
+                paddingBottom: Math.max(20, insets.bottom + 12),
+              },
+            ]}
             onPress={() => {}}
           >
+            <View
+              style={{
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: palette.fill3,
+                alignSelf: 'center',
+                marginBottom: 10,
+              }}
+            />
             <Text style={[styles.langTitle, { color: palette.label }]}>{t('语言')}</Text>
             {LANGUAGE_OPTIONS.map((o) => {
               const selected = (settings.language || 'system') === o.value;

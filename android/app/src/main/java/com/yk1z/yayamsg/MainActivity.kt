@@ -44,11 +44,13 @@ class MainActivity : ReactActivity() {
   private val reassertBackoff = longArrayOf(400, 1200, 3200)
 
   override fun onCreate(savedInstanceState: Bundle?) {
-
-    setTheme(R.style.AppTheme);
-
     super.onCreate(null)
     window.decorView.addOnLayoutChangeListener(compactWindowListener)
+    window.decorView.postDelayed({
+      if (!isFinishing && !isDestroyed) {
+        window.setBackgroundDrawableResource(R.color.splashscreen_background)
+      }
+    }, 650L)
     requestMaxRefreshRate()
   }
 

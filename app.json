@@ -2,7 +2,7 @@
   "expo": {
     "name": "牙牙消息",
     "slug": "yaya-msg-mobile",
-    "version": "2.9.0",
+    "version": "2.9.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -10,16 +10,16 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#fff7fb"
+      "backgroundColor": "#ECEDF1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#6E9EF6"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.yk1z.yayamsg",
-      "versionCode": 3000016,
+      "versionCode": 3000017,
       "usesCleartextTraffic": false,
       "permissions": [
         "INTERNET",

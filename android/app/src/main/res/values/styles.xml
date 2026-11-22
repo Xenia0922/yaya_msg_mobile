@@ -4,8 +4,9 @@
     <item name="android:enforceNavigationBarContrast" tools:targetApi="29">true</item>
     <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
     <item name="colorPrimary">@color/colorPrimary</item>
-    <item name="android:statusBarColor">#ffffff</item>
-    <item name="android:navigationBarColor">#ffffff</item>
+    <item name="android:windowBackground">@color/splashscreen_background</item>
+    <item name="android:statusBarColor">#ECEDF1</item>
+    <item name="android:navigationBarColor">#ECEDF1</item>
     <item name="android:windowLightStatusBar">true</item>
     <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
   </style>

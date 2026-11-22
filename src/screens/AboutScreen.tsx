@@ -11,8 +11,10 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScreenHeader from '../components/ScreenHeader';
 import { GlassSurface } from '../components/GlassSurface';
+import { SquircleView } from '../components/SquircleView';
 import { ListBottomSpacer } from '../components/ListBottomSpacer';
 import { Button } from '../components/Button';
 import UpdateInstaller from '../components/UpdateInstaller';
@@ -92,9 +94,11 @@ function Row({
 export default function AboutScreen() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const hasUpdate = useUpdateStore((s) => s.hasUpdate);
   const latestVersion = useUpdateStore((s) => s.latestVersion);
+  const releaseNotes = useUpdateStore((s) => s.releaseNotes);
   const [updateVisible, setUpdateVisible] = useState(false);
   const [feedbackVisible, setFeedbackVisible] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
@@ -173,9 +177,23 @@ export default function AboutScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
-          <View style={[styles.logoWrap, { backgroundColor: palette.fill3 }]}>
-            <Image source={require('../../assets/logo.jpg')} style={styles.logo} />
-          </View>
+          <SquircleView
+            radius={18}
+            style={[
+              styles.logoWrap,
+              {
+                backgroundColor: palette.fill3,
+                borderColor: palette.hairline,
+                borderWidth: StyleSheet.hairlineWidth,
+              },
+            ]}
+          >
+            <Image
+              source={require('../../assets/logo.jpg')}
+              style={styles.logo}
+              resizeMode="cover"
+            />
+          </SquircleView>
           <Text style={[styles.appName, { color: palette.label }]}>{t('牙牙消息')}</Text>
           <Text style={[styles.appSub, { color: palette.labelSecondary }]}>
             {t('Yaya Message · 口袋48 第三方客户端')}
@@ -262,6 +280,8 @@ export default function AboutScreen() {
         visible={feedbackVisible}
         transparent
         animationType="slide"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setFeedbackVisible(false)}
       >
         <TouchableOpacity
@@ -271,9 +291,25 @@ export default function AboutScreen() {
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.sheet, { backgroundColor: palette.surface }]}
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: palette.surface,
+                paddingBottom: Math.max(20, insets.bottom + 12),
+              },
+            ]}
             onPress={() => {}}
           >
+            <View
+              style={{
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: palette.fill3,
+                alignSelf: 'center',
+                marginBottom: 10,
+              }}
+            />
             <View style={styles.sheetHead}>
               <Text style={[styles.sheetTitle, { color: palette.label }]}>{t('问题与建议')}</Text>
               <TouchableOpacity onPress={() => setFeedbackVisible(false)}>
@@ -338,6 +374,8 @@ export default function AboutScreen() {
         visible={donateVisible}
         transparent
         animationType="slide"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setDonateVisible(false)}
       >
         <TouchableOpacity
@@ -347,9 +385,25 @@ export default function AboutScreen() {
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.sheet, { backgroundColor: palette.surface }]}
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: palette.surface,
+                paddingBottom: Math.max(20, insets.bottom + 12),
+              },
+            ]}
             onPress={() => {}}
           >
+            <View
+              style={{
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: palette.fill3,
+                alignSelf: 'center',
+                marginBottom: 10,
+              }}
+            />
             <View style={styles.sheetHead}>
               <Text style={[styles.sheetTitle, { color: palette.label }]}>{t('赞赏支持')}</Text>
               <TouchableOpacity onPress={() => setDonateVisible(false)}>
@@ -382,6 +436,8 @@ export default function AboutScreen() {
         visible={privacyVisible}
         transparent
         animationType="slide"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setPrivacyVisible(false)}
       >
         <TouchableOpacity
@@ -391,9 +447,25 @@ export default function AboutScreen() {
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.sheet, { backgroundColor: palette.surface }]}
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: palette.surface,
+                paddingBottom: Math.max(20, insets.bottom + 12),
+              },
+            ]}
             onPress={() => {}}
           >
+            <View
+              style={{
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: palette.fill3,
+                alignSelf: 'center',
+                marginBottom: 10,
+              }}
+            />
             <View style={styles.sheetHead}>
               <Text style={[styles.sheetTitle, { color: palette.label }]}>
                 {t('开源协议与隐私')}
@@ -421,6 +493,7 @@ export default function AboutScreen() {
       <UpdateInstaller
         visible={updateVisible}
         version={latestVersion}
+        notes={releaseNotes}
         onClose={() => setUpdateVisible(false)}
       />
     </View>
@@ -440,7 +513,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  logo: { width: 72, height: 72, borderRadius: 18 },
+  logo: { width: '100%', height: '100%' },
   appName: { fontSize: 22, fontFamily: fontFamily.system, fontWeight: '800', marginTop: 12 },
   appSub: { fontSize: 12, marginTop: 4 },
   versionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },

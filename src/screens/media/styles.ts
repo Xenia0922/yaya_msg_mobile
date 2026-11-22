@@ -100,7 +100,6 @@ export const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   playerPageFullscreen: { backgroundColor: '#000' },
-  backBtnText: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '800' },
   announcePanel: {
     position: 'absolute',
     top: 0,
@@ -303,11 +302,29 @@ export const styles = StyleSheet.create({
   memberHitText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
   memberHitTeam: { fontSize: 9, marginLeft: 6, opacity: 0.85 },
   modalShade: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)' },
+  sheetHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  sheetCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   giftPanel: {
     maxHeight: '82%',
     borderTopLeftRadius: radii.sheet,
     borderTopRightRadius: radii.sheet,
-    padding: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
   giftHeader: {
     flexDirection: 'row',

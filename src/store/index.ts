@@ -5,6 +5,16 @@ import { AppSettings, Member } from '../types';
 import { APP_VERSION } from '../constants';
 import { IS_PLUS_BUILD } from '../constants/channel';
 import { DEFAULT_SETTINGS } from '../services/settings';
+import {
+  UpdateCache,
+  evaluateUpdateFromCache,
+  isNewerVersion,
+  localTodayKey,
+  parseUpdateCache,
+  shouldPromptDailyUpdate,
+} from '../utils/updateCache';
+
+export { localTodayKey, parseUpdateCache, isNewerVersion };
 
 interface SettingsState {
   settings: AppSettings;
@@ -152,28 +162,7 @@ const UPDATE_DOWNLOAD_PAGE = 'https://gnz48.tech/app/';
 const UPDATE_TIMEOUT = 8000;
 
 const UPDATE_LAST_CHECK_KEY = 'yaya_update_last_check';
-const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
-
-function parseVersion(v: string): number[] {
-  return String(v || '')
-    .replace(/^v/i, '')
-    .split(/[.\-+]/)
-    .map((seg) => parseInt(seg, 10))
-    .filter((n) => !Number.isNaN(n));
-}
-
-export function isNewerVersion(candidate: string, current: string): boolean {
-  const a = parseVersion(candidate);
-  const b = parseVersion(current);
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i += 1) {
-    const x = a[i] || 0;
-    const y = b[i] || 0;
-    if (x > y) return true;
-    if (x < y) return false;
-  }
-  return false;
-}
+const UPDATE_PROMPT_DATE_KEY = 'yaya_update_prompt_date';
 
 interface UpdateState {
   hasUpdate: boolean;
@@ -182,8 +171,15 @@ interface UpdateState {
 
   latestUrl: string;
 
+  releaseNotes: string;
+
   lastCheckedAt: number;
+
+  lastCheckedDate: string;
+
+  pendingDailyPrompt: boolean;
   checkUpdate: (force?: boolean) => Promise<boolean>;
+  markDailyPromptShown: () => Promise<void>;
 }
 
 let updateChecking = false;
@@ -193,11 +189,28 @@ export const useUpdateStore = create<UpdateState>((set) => ({
   hasUpdate: false,
   latestVersion: '',
   latestUrl: '',
+  releaseNotes: '',
   lastCheckedAt: 0,
+  lastCheckedDate: '',
+  pendingDailyPrompt: false,
+
+  markDailyPromptShown: async () => {
+    const today = localTodayKey();
+    set({ pendingDailyPrompt: false });
+    await AsyncStorage.setItem(UPDATE_PROMPT_DATE_KEY, today).catch(() => {});
+  },
 
   checkUpdate: async (force = false) => {
     if (IS_PLUS_BUILD) {
-      set({ hasUpdate: false, latestVersion: '', latestUrl: '', lastCheckedAt: Date.now() });
+      set({
+        hasUpdate: false,
+        latestVersion: '',
+        latestUrl: '',
+        releaseNotes: '',
+        lastCheckedAt: Date.now(),
+        lastCheckedDate: localTodayKey(),
+        pendingDailyPrompt: false,
+      });
       return false;
     }
 
@@ -206,27 +219,67 @@ export const useUpdateStore = create<UpdateState>((set) => ({
     updateChecking = true;
     const seq = ++updateCheckSeq;
     const { lastCheckedAt } = useUpdateStore.getState();
+    const today = localTodayKey();
 
-    const persisted = await AsyncStorage.getItem(UPDATE_LAST_CHECK_KEY).catch(() => null);
-    const persistedTs = persisted ? Number(persisted) || 0 : 0;
-    const lastTs = Math.max(lastCheckedAt, persistedTs);
-    if (!force && lastTs && Date.now() - lastTs < UPDATE_CHECK_INTERVAL) {
-      if (seq === updateCheckSeq) updateChecking = false;
-      return false;
+    const pairs = await AsyncStorage.multiGet([
+      UPDATE_LAST_CHECK_KEY,
+      UPDATE_PROMPT_DATE_KEY,
+    ]).catch(() => [] as [string, string | null][]);
+    const cacheRaw = pairs.find(([k]) => k === UPDATE_LAST_CHECK_KEY)?.[1] ?? null;
+    const promptedDate = pairs.find(([k]) => k === UPDATE_PROMPT_DATE_KEY)?.[1] ?? '';
+    const cached = parseUpdateCache(cacheRaw);
+
+    if (!force && cached.checkedDate === today) {
+      const evaluated = evaluateUpdateFromCache(
+        cached,
+        APP_VERSION,
+        promptedDate,
+        today,
+        UPDATE_DOWNLOAD_PAGE,
+      );
+      if (seq === updateCheckSeq) {
+        set({
+          ...evaluated,
+          lastCheckedAt: cached.checkedAt || lastCheckedAt,
+          lastCheckedDate: today,
+        });
+        updateChecking = false;
+      }
+      return evaluated.hasUpdate;
     }
-    const finish = (has: boolean, tag: string, url: string) => {
+
+    const commit = (has: boolean, tag: string, url: string, notes: string, persist: boolean) => {
       if (seq !== updateCheckSeq) return;
       const now = Date.now();
       set({
         hasUpdate: has,
         latestVersion: has ? tag : '',
         latestUrl: has ? url : '',
+        releaseNotes: has ? notes : '',
         lastCheckedAt: now,
+        lastCheckedDate: persist ? today : cached.checkedDate,
+        pendingDailyPrompt: shouldPromptDailyUpdate({
+          hasUpdate: has,
+          force,
+          promptedDate,
+          today,
+        }),
       });
-      AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, String(now)).catch(() => {});
+      if (persist) {
+        const nextCache: UpdateCache = {
+          checkedDate: today,
+          checkedAt: now,
+          latestTag: tag,
+          latestUrl: url,
+          releaseNotes: notes,
+        };
+        AsyncStorage.setItem(UPDATE_LAST_CHECK_KEY, JSON.stringify(nextCache)).catch(() => {});
+      }
     };
+
     try {
       let tag = '';
+      let notes = '';
       try {
         const res = await Promise.race([
           fetch(GITHUB_RELEASES_URL, {
@@ -239,6 +292,7 @@ export const useUpdateStore = create<UpdateState>((set) => ({
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: any = parseMaybeJson(await res.text());
         tag = String(data.tag_name || data.name || '');
+        notes = typeof data.body === 'string' ? data.body.trim() : '';
       } catch {
         const UA =
           'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36';
@@ -256,10 +310,21 @@ export const useUpdateStore = create<UpdateState>((set) => ({
       }
 
       const has = !!tag && isNewerVersion(tag, APP_VERSION);
-      finish(has, tag, has ? UPDATE_DOWNLOAD_PAGE : '');
+      commit(has, tag, has ? UPDATE_DOWNLOAD_PAGE : '', has ? notes : '', true);
       return has;
     } catch {
-      finish(false, '', '');
+      const cachedHas = !!cached.latestTag && isNewerVersion(cached.latestTag, APP_VERSION);
+      if (cachedHas) {
+        commit(
+          true,
+          cached.latestTag,
+          cached.latestUrl || UPDATE_DOWNLOAD_PAGE,
+          cached.releaseNotes,
+          false,
+        );
+        return true;
+      }
+      commit(false, '', '', '', false);
       return false;
     } finally {
       if (seq === updateCheckSeq) updateChecking = false;

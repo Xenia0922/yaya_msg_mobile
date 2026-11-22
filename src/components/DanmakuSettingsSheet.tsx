@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassToggle } from './GlassToggle';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDanmakuSettings, DanmakuArea } from '../store/danmakuSettings';
@@ -7,7 +8,6 @@ import { useI18n } from '../i18n';
 import { usePalette, radii, spacing, fontFamily } from '../theme';
 import { typography } from '../theme/typography';
 import { Button } from './Button';
-import { GlassSurface } from '../components/GlassSurface';
 import { GlassSegmented } from '../components/GlassSegmented';
 import { usePlayerStore } from '../player/store/playerStore';
 
@@ -41,6 +41,7 @@ const OPACITIES: { v: number; label: string }[] = [
 
 export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = false }: Props) {
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const { enabled, area, speed, fontSize, opacity, set, reset } = useDanmakuSettings();
 
@@ -62,17 +63,25 @@ export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = fa
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <TouchableOpacity style={styles.mask} activeOpacity={1} onPress={onClose}>
-        <GlassSurface
-          radius={22}
-          role="card"
+        <View
           style={[
             styles.sheet,
             {
-              backgroundColor: 'transparent',
+              backgroundColor: palette.surfaceElevated,
+              borderTopColor: palette.hairline,
+              borderTopWidth: StyleSheet.hairlineWidth,
               borderTopLeftRadius: radii.sheet,
               borderTopRightRadius: radii.sheet,
+              paddingBottom: Math.max(18, insets.bottom + 12),
             },
           ]}
           onStartShouldSetResponder={() => true}
@@ -83,9 +92,10 @@ export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = fa
             <TouchableOpacity
               onPress={onClose}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              activeOpacity={0.6}
+              activeOpacity={0.7}
+              style={[styles.closeBtn, { backgroundColor: palette.fill2 }]}
             >
-              <MaterialCommunityIcons name="close" size={20} color={palette.labelSecondary} />
+              <MaterialCommunityIcons name="close" size={18} color={palette.labelSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -166,7 +176,7 @@ export default function DanmakuSettingsSheet({ visible, onClose, staticFeed = fa
               />
             </View>
           </ScrollView>
-        </GlassSurface>
+        </View>
       </TouchableOpacity>
     </Modal>
   );
@@ -176,7 +186,13 @@ const styles = StyleSheet.create({
   mask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     maxHeight: '82%',
-    paddingBottom: 18,
+  },
+  closeBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   handle: {
     width: 38,

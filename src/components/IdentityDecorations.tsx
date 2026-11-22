@@ -3,12 +3,14 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import pocketApi from '../api/pocket48';
 import { useMemberStore } from '../store';
 import { OFFICIAL_TEAM_LOGOS } from '../utils/members';
@@ -78,6 +80,7 @@ export default function IdentityDecorations({
   part?: 'all' | 'team' | 'profile';
 }) {
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const members = useMemberStore((state) => state.members);
   const [frames, setFrames] = useState<Option[]>([]);
@@ -676,10 +679,31 @@ export default function IdentityDecorations({
         visible={picker !== null}
         transparent
         animationType="slide"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setPicker(null)}
       >
         <View style={styles.shade}>
-          <View style={[styles.sheet, { backgroundColor: palette.surface }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setPicker(null)} />
+          <View
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: palette.surface,
+                paddingBottom: Math.max(18, insets.bottom + 12),
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: palette.fill3,
+                alignSelf: 'center',
+                marginBottom: 10,
+              }}
+            />
             <View style={styles.sheetHeader}>
               <Text style={[styles.section, { color: palette.label, marginTop: 0 }]}>
                 {picker === 'team'

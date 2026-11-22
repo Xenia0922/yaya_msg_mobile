@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine } from '../services/musicPlayer';
 import { lyricIndexAt, lyricTimeForIndex } from '../utils/lyrics';
@@ -25,7 +26,6 @@ import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
 import { formatTrackSubtitle } from '../utils/format';
 import { useVinylSpin } from '../hooks/useVinylSpin';
-import { GlassSurface } from '../components/GlassSurface';
 import { normalizeImageHost } from '../utils/imageThumb';
 
 function formatTime(seconds: number): string {
@@ -364,6 +364,7 @@ function FullScreenPlayerInner({
 }: FullScreenPlayerInnerProps) {
   const { t } = useI18n();
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
   const screenHeightRef = useRef(screenHeight);
   screenHeightRef.current = screenHeight;
@@ -652,6 +653,8 @@ function FullScreenPlayerInner({
         visible={showQueue}
         transparent
         animationType="slide"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setShowQueue(false)}
       >
         <TouchableOpacity
@@ -659,16 +662,17 @@ function FullScreenPlayerInner({
           activeOpacity={1}
           onPress={() => setShowQueue(false)}
         >
-          <GlassSurface
-            radius={22}
-            role="card"
-            tintColor={palette.name === 'dark' ? 'rgba(22,22,26,0.92)' : 'rgba(255,255,255,0.94)'}
+          <View
             style={[
               styles.queueSheet,
               {
-                backgroundColor: 'transparent',
+                backgroundColor:
+                  palette.name === 'dark' ? 'rgba(22,22,26,0.96)' : 'rgba(255,255,255,0.96)',
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: palette.hairline,
                 borderTopLeftRadius: radii.sheet,
                 borderTopRightRadius: radii.sheet,
+                paddingBottom: Math.max(18, insets.bottom + 12),
               },
             ]}
             onStartShouldSetResponder={() => true}
@@ -789,7 +793,7 @@ function FullScreenPlayerInner({
                 );
               }}
             />
-          </GlassSurface>
+          </View>
         </TouchableOpacity>
       </Modal>
     </View>

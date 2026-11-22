@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type RoomMeta = { name: string; bg: string };
 
-const KEY = 'yaya_room_meta_cache_v1';
+const KEY = 'yaya_room_meta_cache_v3';
+const LEGACY_KEYS = ['yaya_room_meta_cache_v1', 'yaya_room_meta_cache_v2'];
 const MAX_ENTRIES = 300;
 
 let cache: Record<string, RoomMeta> | null = null;
@@ -23,6 +24,7 @@ export async function loadRoomMetaCache(): Promise<Record<string, RoomMeta>> {
   if (loading) return loading;
   loading = (async () => {
     try {
+      for (const k of LEGACY_KEYS) AsyncStorage.removeItem(k).catch(() => {});
       const raw = await AsyncStorage.getItem(KEY);
       const parsed = raw ? JSON.parse(raw) : {};
       cache = parsed && typeof parsed === 'object' ? trim(parsed as Record<string, RoomMeta>) : {};

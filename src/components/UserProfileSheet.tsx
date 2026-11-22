@@ -1,18 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NetworkImage } from './NetworkImage';
 import { ScalePressable } from './Motion';
-import { usePalette, fontFamily } from '../theme';
+import { Palettes, usePalette, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
 import { useUiStore } from '../store';
 import { normalizeUrl, pickText, errorMessage } from '../utils/data';
@@ -47,6 +39,7 @@ export interface UserProfileSheetProps {
   }) => void;
 
   onFollowChanged?: (id: string, following: boolean) => void;
+  appearance?: 'auto' | 'dark';
 }
 
 export function userCardFromUserRes(res: any) {
@@ -148,8 +141,11 @@ export function UserProfileSheet({
   onOpenChat,
   onOpenMemberPage,
   onFollowChanged,
+  appearance = 'auto',
 }: UserProfileSheetProps) {
   const palette = usePalette();
+  const p = appearance === 'dark' ? Palettes.dark : palette;
+  const sheetBg = appearance === 'dark' ? 'rgba(24,24,30,0.96)' : palette.surfaceElevated;
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const showToast = useUiStore((state) => state.showToast);
@@ -299,34 +295,35 @@ export function UserProfileSheet({
     !!(target?.member || target?.memberId || card?.isMember || card?.detail?.isStar);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <TouchableOpacity style={styles.shade} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={() => {}}
-          style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 20) }]}
-        >
+        <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.wrap}>
           <View
             style={[
               styles.panel,
               {
-                backgroundColor: palette.surfaceElevated,
-                borderColor: palette.hairline,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderRadius: 22,
-                paddingBottom: Math.max(18, insets.bottom + 8),
+                backgroundColor: sheetBg,
+                borderTopColor: p.hairline,
+                paddingBottom: Math.max(20, insets.bottom + 14),
               },
             ]}
           >
             <View style={styles.handleWrap}>
-              <View style={[styles.handle, { backgroundColor: palette.fill3 }]} />
+              <View style={[styles.handle, { backgroundColor: p.fill3 }]} />
             </View>
 
             <View style={styles.head}>
               {cardAvatar ? (
                 <NetworkImage
                   source={{ uri: cardAvatar }}
-                  style={[styles.avatar, { backgroundColor: palette.fill2 }]}
+                  style={[styles.avatar, { backgroundColor: p.fill2 }]}
                   fallbackIcon="account"
                   thumbnail={160}
                 />
@@ -335,27 +332,27 @@ export function UserProfileSheet({
                   style={[
                     styles.avatar,
                     {
-                      backgroundColor: palette.fill2,
+                      backgroundColor: p.fill2,
                       alignItems: 'center',
                       justifyContent: 'center',
                     },
                   ]}
                 >
-                  <MaterialCommunityIcons name="account" size={30} color={palette.labelTertiary} />
+                  <MaterialCommunityIcons name="account" size={30} color={p.labelTertiary} />
                 </View>
               )}
               <View style={styles.titleWrap}>
-                <Text style={[styles.name, { color: palette.label }]} numberOfLines={1}>
+                <Text style={[styles.name, { color: p.label }]} numberOfLines={1}>
                   {cardName}
                 </Text>
-                <Text style={[styles.meta, { color: palette.labelSecondary }]} numberOfLines={1}>
+                <Text style={[styles.meta, { color: p.labelSecondary }]} numberOfLines={1}>
                   {card?.id && /^\d+$/.test(card.id) ? `${t('用户 ID')}：${card.id}` : ''}
                   {card?.detail?.level
                     ? ` · ${t('等级 {level}', { level: card.detail.level })}`
                     : ''}
                 </Text>
                 {card?.isMember || card?.detail?.team || card?.detail?.period ? (
-                  <Text style={[styles.meta, { color: palette.tint }]} numberOfLines={1}>
+                  <Text style={[styles.meta, { color: p.tint }]} numberOfLines={1}>
                     {[
                       card?.isMember ? t('成员') : '',
                       card?.detail?.team || '',
@@ -366,24 +363,35 @@ export function UserProfileSheet({
                   </Text>
                 ) : null}
               </View>
+              <ScalePressable
+                onPress={onClose}
+                pressedScale={0.92}
+                activeOpacity={0.8}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t('关闭')}
+                style={[styles.closeBtn, { backgroundColor: p.fill2 }]}
+              >
+                <MaterialCommunityIcons name="close" size={18} color={p.labelSecondary} />
+              </ScalePressable>
             </View>
 
             {card?.loading ? (
               <View style={styles.status}>
-                <ActivityIndicator color={palette.tint} />
-                <Text style={[styles.tip, { color: palette.labelSecondary }]}>
+                <ActivityIndicator color={p.tint} />
+                <Text style={[styles.tip, { color: p.labelSecondary }]}>
                   {t('正在加载用户资料…')}
                 </Text>
               </View>
             ) : null}
             {card?.error ? (
-              <View style={[styles.notice, { backgroundColor: palette.fill2 }]}>
-                <Text style={[styles.tip, { color: palette.labelSecondary }]}>{card.error}</Text>
+              <View style={[styles.notice, { backgroundColor: p.fill2 }]}>
+                <Text style={[styles.tip, { color: p.labelSecondary }]}>{card.error}</Text>
               </View>
             ) : null}
             {card?.detail?.signature ? (
-              <View style={[styles.notice, { backgroundColor: palette.fill2 }]}>
-                <Text style={[styles.tip, { color: palette.labelSecondary }]}>
+              <View style={[styles.notice, { backgroundColor: p.fill2 }]}>
+                <Text style={[styles.tip, { color: p.labelSecondary }]}>
                   {card.detail.signature}
                 </Text>
               </View>
@@ -394,7 +402,7 @@ export function UserProfileSheet({
                 style={[
                   styles.btn,
                   {
-                    backgroundColor: card?.following ? palette.fill2 : palette.tint,
+                    backgroundColor: card?.following ? p.fill2 : p.tint,
                     opacity: canFollow ? 1 : 0.5,
                   },
                 ]}
@@ -405,38 +413,31 @@ export function UserProfileSheet({
               >
                 <MaterialCommunityIcons
                   name={card?.following ? 'account-check' : 'account-plus'}
-                  size={14}
-                  color={card?.following ? palette.labelSecondary : palette.onTint}
+                  size={15}
+                  color={card?.following ? p.labelSecondary : p.onTint}
                 />
                 <Text
-                  style={[
-                    styles.btnText,
-                    { color: card?.following ? palette.labelSecondary : palette.onTint },
-                  ]}
+                  style={[styles.btnText, { color: card?.following ? p.labelSecondary : p.onTint }]}
+                  numberOfLines={1}
                 >
                   {card?.mutual ? t('互相关注') : card?.following ? t('已关注') : t('关注')}
                 </Text>
               </ScalePressable>
               <ScalePressable
-                style={[
-                  styles.btn,
-                  { backgroundColor: palette.fill2, opacity: canFollow ? 1 : 0.5 },
-                ]}
+                style={[styles.btn, { backgroundColor: p.fill2, opacity: canFollow ? 1 : 0.5 }]}
                 pressedScale={0.95}
                 activeOpacity={0.85}
                 disabled={!canFollow}
                 onPress={() => card && canFollow && onOpenChat?.({ id: card.id, name: cardName })}
               >
-                <MaterialCommunityIcons
-                  name="message-text-outline"
-                  size={14}
-                  color={palette.tint}
-                />
-                <Text style={[styles.btnText, { color: palette.tint }]}>{t('私信')}</Text>
+                <MaterialCommunityIcons name="message-text-outline" size={15} color={p.tint} />
+                <Text style={[styles.btnText, { color: p.tint }]} numberOfLines={1}>
+                  {t('私信')}
+                </Text>
               </ScalePressable>
               {canOpenMemberPage ? (
                 <ScalePressable
-                  style={[styles.btn, { backgroundColor: palette.fill2 }]}
+                  style={[styles.btn, { backgroundColor: p.fill2 }]}
                   pressedScale={0.95}
                   activeOpacity={0.85}
                   onPress={() =>
@@ -450,20 +451,14 @@ export function UserProfileSheet({
                 >
                   <MaterialCommunityIcons
                     name="card-account-details-outline"
-                    size={14}
-                    color={palette.label}
+                    size={15}
+                    color={p.label}
                   />
-                  <Text style={[styles.btnText, { color: palette.label }]} numberOfLines={1}>
+                  <Text style={[styles.btnText, { color: p.label }]} numberOfLines={1}>
                     {t('成员档案')}
                   </Text>
                 </ScalePressable>
               ) : null}
-              <Pressable
-                style={[styles.ghost, { borderColor: palette.hairline }]}
-                onPress={onClose}
-              >
-                <Text style={[styles.btnText, { color: palette.labelSecondary }]}>{t('关闭')}</Text>
-              </Pressable>
             </View>
           </View>
         </TouchableOpacity>
@@ -474,47 +469,49 @@ export function UserProfileSheet({
 
 const styles = StyleSheet.create({
   shade: { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)', justifyContent: 'flex-end' },
-  wrap: { paddingHorizontal: 12, paddingBottom: 20 },
-  panel: { paddingHorizontal: 18, paddingBottom: 18, overflow: 'hidden' },
-  handleWrap: { alignItems: 'center', paddingVertical: 8 },
+  wrap: { width: '100%' },
+  panel: {
+    width: '100%',
+    paddingHorizontal: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderCurve: 'continuous',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  handleWrap: { alignItems: 'center', paddingTop: 10, paddingBottom: 6 },
   handle: { width: 38, height: 4, borderRadius: 2 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
   avatar: { width: 56, height: 56, borderRadius: 28 },
   titleWrap: { flex: 1, minWidth: 0 },
-  name: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '800' },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  name: { fontSize: 17, fontFamily: fontFamily.system, fontWeight: '800' },
   meta: { fontSize: 12, marginTop: 3 },
-  status: { alignItems: 'center', paddingVertical: 16, gap: 8 },
+  status: { alignItems: 'center', paddingVertical: 14, gap: 8 },
   notice: { marginTop: 12, padding: 10, borderRadius: 12 },
   tip: { fontSize: 12, fontFamily: fontFamily.system, lineHeight: 18 },
   actions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 16,
+    gap: 10,
+    marginTop: 18,
   },
   btn: {
-    flexGrow: 1,
-    flexBasis: '44%',
-    minHeight: 40,
+    flex: 1,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 10,
     borderRadius: 999,
   },
   btnText: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '700' },
-  ghost: {
-    flexGrow: 1,
-    flexBasis: '44%',
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
 });

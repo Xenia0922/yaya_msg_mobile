@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useState } from 'react';
 import {
   Image,
   Platform,
@@ -9,9 +9,11 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { fontFamily, usePalette } from '../theme';
+import { removeTopDockEntry, setTopDockEntry } from './DockPortal';
 import { GlassSurface } from './GlassSurface';
 import { ScalePressable } from './Motion';
 
@@ -30,32 +32,41 @@ interface FloatingTabHeaderProps {
   leftIsland?: React.ReactNode;
 
   right?: React.ReactNode;
+  frostedOnly?: boolean;
+  hidden?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
-export function FloatingTabHeader({
+export const FloatingTabHeader = React.memo(function FloatingTabHeader({
   left,
   onLeftPress,
   leftAccessibilityLabel,
   leftIsland,
   right,
+  frostedOnly = false,
+  hidden = false,
   style,
 }: FloatingTabHeaderProps) {
   const palette = usePalette();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
+  const portalId = useId();
+  const useFrosted = frostedOnly || !isFocused;
   const isDark = palette.name === 'dark';
 
   const scrimColors: [string, string, string] = isDark
-    ? ['rgba(11,11,15,0.84)', 'rgba(11,11,15,0.34)', 'rgba(11,11,15,0)']
-    : ['rgba(236,237,241,0.82)', 'rgba(236,237,241,0.32)', 'rgba(236,237,241,0)'];
+    ? ['rgba(12,12,16,0.92)', 'rgba(12,12,16,0.55)', 'rgba(12,12,16,0)']
+    : ['rgba(242,243,248,0.92)', 'rgba(242,243,248,0.55)', 'rgba(242,243,248,0)'];
 
-  return (
+  const visible = isFocused && !hidden;
+
+  const headerNode = visible ? (
     <View pointerEvents="box-none" style={[styles.overlay, { height: insets.top + 68 }, style]}>
       <LinearGradient
         pointerEvents="none"
         colors={scrimColors}
-        locations={[0, 0.56, 1]}
-        style={[styles.scrim, { height: insets.top + 66 }]}
+        locations={[0, 0.58, 1]}
+        style={[styles.scrim, { height: insets.top + 18 }]}
       />
       <View pointerEvents="box-none" style={[styles.row, { paddingTop: insets.top + 8 }]}>
         {leftIsland ? (
@@ -70,7 +81,12 @@ export function FloatingTabHeader({
               accessibilityLabel={leftAccessibilityLabel}
               style={[styles.leftPressWrap, styles.islandShadow]}
             >
-              <GlassSurface role="bar" radius={FLOATING_BAR_HEIGHT / 2} style={styles.leftGlass}>
+              <GlassSurface
+                role="bar"
+                radius={FLOATING_BAR_HEIGHT / 2}
+                frostedOnly={useFrosted}
+                style={styles.leftGlass}
+              >
                 {left}
               </GlassSurface>
             </ScalePressable>
@@ -78,6 +94,7 @@ export function FloatingTabHeader({
             <GlassSurface
               role="bar"
               radius={FLOATING_BAR_HEIGHT / 2}
+              frostedOnly={useFrosted}
               style={[styles.leftGlass, styles.islandShadow]}
             >
               {left}
@@ -91,6 +108,7 @@ export function FloatingTabHeader({
           <GlassSurface
             role="bar"
             radius={FLOATING_BAR_HEIGHT / 2}
+            frostedOnly={useFrosted}
             style={[styles.rightGlass, styles.islandShadow]}
           >
             {right}
@@ -98,8 +116,20 @@ export function FloatingTabHeader({
         ) : null}
       </View>
     </View>
-  );
-}
+  ) : null;
+
+  useLayoutEffect(() => {
+    if (visible && headerNode) {
+      setTopDockEntry(portalId, headerNode);
+    } else {
+      removeTopDockEntry(portalId);
+    }
+  });
+
+  useLayoutEffect(() => () => removeTopDockEntry(portalId), [portalId]);
+
+  return null;
+});
 
 interface FloatingHeaderActionProps {
   icon: string;
@@ -113,7 +143,7 @@ interface FloatingHeaderActionProps {
   avatarUri?: string;
 }
 
-export function FloatingHeaderAction({
+export const FloatingHeaderAction = React.memo(function FloatingHeaderAction({
   icon,
   onPress,
   accessibilityLabel,
@@ -142,7 +172,11 @@ export function FloatingHeaderAction({
       style={[
         styles.actionBtn,
         {
-          backgroundColor: active ? palette.tint : palette.fill2,
+          backgroundColor: active
+            ? palette.tint
+            : palette.name === 'light'
+              ? 'rgba(255,255,255,0.72)'
+              : 'rgba(255,255,255,0.12)',
         },
       ]}
     >
@@ -173,7 +207,7 @@ export function FloatingHeaderAction({
       ) : null}
     </ScalePressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   overlay: {
@@ -206,7 +240,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.08,
         shadowRadius: 12,
       },
-      android: { elevation: 4 },
+      android: null,
       default: null,
     }),
   },

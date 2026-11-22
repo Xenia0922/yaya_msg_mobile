@@ -28,7 +28,15 @@ export interface GlassSegmentOption<T extends string> {
   dot?: boolean;
 }
 
-function SelectorCapsule({ radius, dark }: { radius: number; dark: boolean }) {
+function SelectorCapsule({
+  radius,
+  dark,
+  transparentTrack = false,
+}: {
+  radius: number;
+  dark: boolean;
+  transparentTrack?: boolean;
+}) {
   return (
     <View
       pointerEvents="none"
@@ -37,9 +45,21 @@ function SelectorCapsule({ radius, dark }: { radius: number; dark: boolean }) {
         {
           borderRadius: radius,
           borderCurve: 'continuous',
-          backgroundColor: dark ? 'rgba(255,255,255,0.12)' : 'rgba(232,232,238,0.55)',
+          backgroundColor: dark
+            ? transparentTrack
+              ? 'rgba(255,255,255,0.16)'
+              : 'rgba(255,255,255,0.14)'
+            : transparentTrack
+              ? 'rgba(255,255,255,0.78)'
+              : 'rgba(255,255,255,0.96)',
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.45)',
+          borderColor: dark
+            ? transparentTrack
+              ? 'rgba(255,255,255,0.18)'
+              : 'rgba(255,255,255,0.16)'
+            : transparentTrack
+              ? 'rgba(255,255,255,0.88)'
+              : 'rgba(18,22,36,0.06)',
         },
       ]}
     />
@@ -57,6 +77,8 @@ interface Props<T extends string> {
   labelFontSize?: number;
 
   frostedOnly?: boolean;
+
+  role?: 'chip' | 'bar';
 }
 
 export function GlassSegmented<T extends string>({
@@ -67,6 +89,7 @@ export function GlassSegmented<T extends string>({
   height = 36,
   labelFontSize = 14,
   frostedOnly = false,
+  role = 'chip',
 }: Props<T>) {
   const palette = usePalette();
   const [trackW, setTrackW] = useState(0);
@@ -250,10 +273,23 @@ export function GlassSegmented<T extends string>({
 
   return (
     <GlassSurface
-      role="chip"
+      role={role}
       radius={height / 2}
       frostedOnly={frostedOnly}
-      style={[styles.track, { height }, style]}
+      tintColor={role === 'bar' || palette.name === 'dark' ? undefined : 'rgba(235,237,245,0.76)'}
+      style={[
+        styles.track,
+        {
+          height,
+          borderColor:
+            role === 'bar'
+              ? undefined
+              : palette.name === 'dark'
+                ? 'rgba(255,255,255,0.12)'
+                : 'rgba(18,22,36,0.07)',
+        },
+        style,
+      ]}
     >
       <GestureDetector gesture={composedGesture}>
         <View
@@ -285,7 +321,11 @@ export function GlassSegmented<T extends string>({
                 pillAnimatedStyle,
               ]}
             >
-              <SelectorCapsule radius={(height - pad * 2) / 2} dark={palette.name === 'dark'} />
+              <SelectorCapsule
+                radius={(height - pad * 2) / 2}
+                dark={palette.name === 'dark'}
+                transparentTrack={role === 'bar'}
+              />
             </Reanimated.View>
           ) : null}
           {options.map((o) => {
@@ -309,7 +349,13 @@ export function GlassSegmented<T extends string>({
                       styles.label,
                       {
                         fontSize: labelFontSize,
-                        color: active ? palette.tint : palette.labelSecondary,
+                        color: active
+                          ? palette.tint
+                          : role === 'bar'
+                            ? palette.name === 'light'
+                              ? palette.label
+                              : 'rgba(255,255,255,0.78)'
+                            : palette.labelSecondary,
                       },
                       active && styles.labelActive,
                     ]}
@@ -358,6 +404,7 @@ export function GlassSegmentedScroll<T extends string>({
   height = 38,
   labelFontSize = 14,
   frostedOnly = false,
+  role = 'chip',
 }: Props<T>) {
   const palette = usePalette();
   const [layouts, setLayouts] = useState<{ x: number; w: number }[]>([]);
@@ -397,10 +444,23 @@ export function GlassSegmentedScroll<T extends string>({
 
   return (
     <GlassSurface
-      role="chip"
+      role={role}
       radius={height / 2}
       frostedOnly={frostedOnly}
-      style={[styles.track, { height }, style]}
+      tintColor={role === 'bar' || palette.name === 'dark' ? undefined : 'rgba(235,237,245,0.76)'}
+      style={[
+        styles.track,
+        {
+          height,
+          borderColor:
+            role === 'bar'
+              ? undefined
+              : palette.name === 'dark'
+                ? 'rgba(255,255,255,0.12)'
+                : 'rgba(18,22,36,0.07)',
+        },
+        style,
+      ]}
     >
       <View style={{ flex: 1, position: 'relative' }}>
         <ScrollView
@@ -416,7 +476,11 @@ export function GlassSegmentedScroll<T extends string>({
                 { height: height - 6, width: w, transform: [{ translateX: x }] },
               ]}
             >
-              <SelectorCapsule radius={(height - 6) / 2} dark={palette.name === 'dark'} />
+              <SelectorCapsule
+                radius={(height - 6) / 2}
+                dark={palette.name === 'dark'}
+                transparentTrack={role === 'bar'}
+              />
             </Animated.View>
           ) : null}
           {options.map((o, i) => {
@@ -452,7 +516,13 @@ export function GlassSegmentedScroll<T extends string>({
                       styles.label,
                       {
                         fontSize: labelFontSize,
-                        color: active ? palette.tint : palette.labelSecondary,
+                        color: active
+                          ? palette.tint
+                          : role === 'bar'
+                            ? palette.name === 'light'
+                              ? palette.label
+                              : 'rgba(255,255,255,0.78)'
+                            : palette.labelSecondary,
                       },
                       active && styles.labelActive,
                     ]}

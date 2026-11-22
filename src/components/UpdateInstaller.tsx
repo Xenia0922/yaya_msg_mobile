@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   AppState,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -29,10 +30,12 @@ type Phase = 'checking' | 'ready' | 'perm' | 'downloading' | 'installing' | 'err
 export default function UpdateInstaller({
   visible,
   version,
+  notes,
   onClose,
 }: {
   visible: boolean;
   version: string;
+  notes?: string;
   onClose: () => void;
 }) {
   const palette = usePalette();
@@ -216,6 +219,9 @@ export default function UpdateInstaller({
         ? `${(received / 1024 / 1024).toFixed(1)} MB`
         : '';
 
+  const trimmedNotes = typeof notes === 'string' ? notes.trim() : '';
+  const showNotes = !!trimmedNotes && (phase === 'ready' || phase === 'checking');
+
   return (
     <Modal
       visible={visible}
@@ -223,6 +229,7 @@ export default function UpdateInstaller({
       animationType="fade"
       onRequestClose={busy ? () => {} : onClose}
       statusBarTranslucent
+      navigationBarTranslucent
     >
       <View style={styles.backdrop}>
         <View
@@ -247,6 +254,18 @@ export default function UpdateInstaller({
               </Text>
             </View>
           </View>
+
+          {showNotes ? (
+            <ScrollView
+              style={[styles.notesBox, { backgroundColor: palette.fill2 }]}
+              contentContainerStyle={styles.notesContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={[styles.notesText, { color: palette.labelSecondary }]}>
+                {trimmedNotes}
+              </Text>
+            </ScrollView>
+          ) : null}
 
           <View style={[styles.track, { backgroundColor: palette.fill2 }]}>
             <View
@@ -341,6 +360,13 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '800' },
   sub: { fontSize: 12, marginTop: 3 },
+  notesBox: {
+    maxHeight: 132,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  notesContent: { paddingHorizontal: 12, paddingVertical: 10 },
+  notesText: { fontSize: 12.5, fontFamily: fontFamily.system, lineHeight: 19 },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3 },
   meta: { fontSize: 12, fontFamily: fontFamily.system, marginTop: 8, lineHeight: 17 },
