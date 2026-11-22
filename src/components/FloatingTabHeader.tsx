@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import {
   Image,
   Platform,
@@ -118,10 +118,13 @@ export const FloatingTabHeader = React.memo(function FloatingTabHeader({
     </View>
   ) : null;
 
+  const wasVisibleRef = useRef(false);
   useLayoutEffect(() => {
     if (visible && headerNode) {
+      wasVisibleRef.current = true;
       setTopDockEntry(portalId, headerNode);
-    } else {
+    } else if (wasVisibleRef.current) {
+      wasVisibleRef.current = false;
       removeTopDockEntry(portalId);
     }
   });

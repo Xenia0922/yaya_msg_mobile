@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NetworkImage } from '../components/NetworkImage';
 import {
   AppState,
+  InteractionManager,
   View,
   Text,
   StyleSheet,
@@ -81,7 +82,11 @@ export default function OnMicScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (AppState.currentState === 'active' && members.length) scan();
+      if (AppState.currentState !== 'active' || !members.length) return;
+      const task = InteractionManager.runAfterInteractions(() => {
+        scan();
+      });
+      return () => task.cancel();
     }, [scan, members.length]),
   );
 

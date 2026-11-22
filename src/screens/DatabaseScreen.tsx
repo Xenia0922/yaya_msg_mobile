@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  InteractionManager,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
 import ScreenHeader from '../components/ScreenHeader';
 import { useI18n } from '../i18n';
@@ -13,35 +20,47 @@ export default function DatabaseScreen() {
   const [, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [webReady, setWebReady] = useState(false);
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => setWebReady(true));
+    return () => task.cancel();
+  }, []);
 
   return (
     <View style={styles.container}>
       <ScreenHeader title={t('数据库')} />
       <View style={styles.body}>
-        <WebView
-          key={reloadKey}
-          source={{ uri: DB_URL }}
-          style={styles.web}
-          javaScriptEnabled
-          domStorageEnabled
-          startInLoadingState
-          originWhitelist={['*']}
-          mixedContentMode="always"
-          onLoadStart={() => {
-            setLoading(true);
-            setFailed(false);
-          }}
-          onLoadEnd={() => setLoading(false)}
-          onError={() => {
-            setLoading(false);
-            setFailed(true);
-          }}
-          renderLoading={() => (
-            <View style={styles.center} pointerEvents="none">
-              <ActivityIndicator size="large" color={palette.tint} />
-            </View>
-          )}
-        />
+        {webReady ? (
+          <WebView
+            key={reloadKey}
+            source={{ uri: DB_URL }}
+            style={styles.web}
+            javaScriptEnabled
+            domStorageEnabled
+            startInLoadingState
+            originWhitelist={['*']}
+            mixedContentMode="always"
+            onLoadStart={() => {
+              setLoading(true);
+              setFailed(false);
+            }}
+            onLoadEnd={() => setLoading(false)}
+            onError={() => {
+              setLoading(false);
+              setFailed(true);
+            }}
+            renderLoading={() => (
+              <View style={styles.center} pointerEvents="none">
+                <ActivityIndicator size="large" color={palette.tint} />
+              </View>
+            )}
+          />
+        ) : (
+          <View style={styles.center} pointerEvents="none">
+            <ActivityIndicator size="large" color={palette.tint} />
+          </View>
+        )}
         {failed ? (
           <View style={styles.failWrap}>
             <Text style={[styles.failText, { color: palette.labelSecondary }]}>

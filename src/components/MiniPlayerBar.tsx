@@ -140,15 +140,16 @@ export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
     <GlassSurface
       radius={26}
       role="bar"
-      tintColor={palette.name === 'dark' ? 'rgba(26,26,32,0.74)' : 'rgba(255,255,255,0.72)'}
+      frostedOnly
+      tintColor={palette.name === 'dark' ? 'rgba(26,26,34,0.95)' : 'rgba(255,255,255,0.95)'}
       style={[
         styles.bar,
         shadows.md,
         {
           backgroundColor: 'transparent',
-          borderColor: palette.innerStroke,
+          borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(18,22,36,0.09)',
           bottom: Math.max(10, insets.bottom - 32),
-          elevation: 4,
+          elevation: 8,
         },
       ]}
       {...panResponder.panHandlers}
@@ -177,7 +178,7 @@ export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
             numberOfLines={1}
             style={[
               typography.caption1,
-              { color: palette.labelTertiary, lineHeight: 14, marginTop: 1 },
+              { color: palette.labelSecondary, lineHeight: 14, marginTop: 1 },
             ]}
           >
             {formatTrackSubtitle(track) || t('官方音乐')}

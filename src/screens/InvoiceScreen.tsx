@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  InteractionManager,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -81,7 +82,10 @@ export default function InvoiceScreen() {
   }, []);
 
   useEffect(() => {
-    fetchOrders();
+    const task = InteractionManager.runAfterInteractions(() => {
+      void fetchOrders();
+    });
+    return () => task.cancel();
   }, [fetchOrders]);
 
   const toggleOrder = (dataId: string) => {

@@ -4,7 +4,7 @@ import { NetworkImage } from '../components/NetworkImage';
 
 import { View, Text, RefreshControl, StyleSheet } from 'react-native';
 import { useUiStore } from '../store';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import { Skeleton } from '../components/Skeleton';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
@@ -271,7 +271,7 @@ export default function PhotosScreen() {
           />
         }
       />
-      <FadeInView delay={60} duration={300} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <View style={styles.pickerCard}>
           <GlassSurface
             radius={22}
@@ -367,7 +367,7 @@ export default function PhotosScreen() {
             }
           />
         )}
-      </FadeInView>
+      </View>
     </View>
   );
 }

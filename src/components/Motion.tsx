@@ -35,15 +35,15 @@ interface FadeInViewProps extends Pick<ViewProps, 'pointerEvents'> {
 export function FadeInView({
   children,
   delay = 0,
-  duration = 300,
-  distance = 10,
+  duration = 160,
+  distance = 5,
   style,
   pointerEvents,
 }: FadeInViewProps) {
-  const progress = useSharedValue(0);
+  const progress = useSharedValue(delay > 0 ? 0 : 0.45);
 
   useEffect(() => {
-    progress.value = 0;
+    progress.value = delay > 0 ? 0 : 0.45;
     progress.value = withDelay(
       delay,
       withTiming(1, { duration, easing: REasing.bezier(0.23, 1, 0.32, 1) }),
@@ -53,7 +53,7 @@ export function FadeInView({
       () => {
         progress.value = 1;
       },
-      delay + duration + 200,
+      delay + duration + 160,
     );
     return () => clearTimeout(guard);
   }, [delay, duration, progress]);

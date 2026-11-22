@@ -25,13 +25,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import {
-  RouteProp,
-  useFocusEffect,
-  useIsFocused,
-  useNavigation,
-  useRoute,
-} from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore } from '../store';
 import { useDiscoveredLivesStore } from '../store/discoveredLivesStore';
@@ -207,7 +201,6 @@ const LIVE_ANNOUNCEMENT_CACHE = new Map<string, string>();
 export default function MediaScreen() {
   const route = useRoute<MediaRouteProp>();
   const navigation = useNavigation<any>();
-  const isMediaFocused = useIsFocused();
   const palette = usePalette();
   const { t } = useI18n();
   const setDockHidden = useUiStore((state) => state.setTabBarHidden);
@@ -2663,7 +2656,6 @@ export default function MediaScreen() {
             onChange={(k) => switchTab(k as 'live' | 'vod')}
             height={FLOATING_BAR_HEIGHT}
             labelFontSize={13}
-            frostedOnly={!isMediaFocused}
             style={styles.headerSeg}
           />
         }

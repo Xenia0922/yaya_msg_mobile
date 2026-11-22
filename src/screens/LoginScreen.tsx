@@ -7,7 +7,6 @@ import QRCode from 'qrcode';
 import { WebView } from 'react-native-webview';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useSettingsStore, useUiStore } from '../store';
-import { FadeInView } from '../components/Motion';
 import { ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
@@ -998,221 +997,202 @@ export default function LoginScreen() {
     >
       <ScreenHeader title={t('账号设置')} style={styles.headerBleed} />
 
-      <FadeInView delay={40} duration={280} distance={8}>
-        <GlassSurface radius={22} role="card" style={styles.card}>
-          <View style={styles.cardHead}>
-            <AccountSectionTitle icon="account-switch-outline" title={t('口袋账号')} compact />
-            <Button
-              title={t('刷新')}
-              variant="tinted"
-              size="sm"
-              onPress={handleCheckToken}
-              disabled={loading}
-            />
-          </View>
-          <Text style={[styles.accountSummary, { color: palette.labelSecondary }]}>
-            {t('当前：{info}', {
-              info: accountInfo.current
-                ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}`
-                : t('先检查Token读取账号'),
-            })}
-          </Text>
-          {accountInfo.users.length ? (
-            accountInfo.users.map((user, index) => {
-              const id = accountId(user);
-              const isCurrent = !!id && id === accountId(accountInfo.current);
-              return (
-                <FadeInView
-                  key={id}
-                  delay={index < 12 ? 60 + index * 25 : 0}
-                  duration={300}
-                  distance={8}
+      <GlassSurface radius={22} role="card" style={styles.card}>
+        <View style={styles.cardHead}>
+          <AccountSectionTitle icon="account-switch-outline" title={t('口袋账号')} compact />
+          <Button
+            title={t('刷新')}
+            variant="tinted"
+            size="sm"
+            onPress={handleCheckToken}
+            disabled={loading}
+          />
+        </View>
+        <Text style={[styles.accountSummary, { color: palette.labelSecondary }]}>
+          {t('当前：{info}', {
+            info: accountInfo.current
+              ? `${accountName(accountInfo.current)} ${accountId(accountInfo.current) ? `(${accountId(accountInfo.current)})` : ''}`
+              : t('先检查Token读取账号'),
+          })}
+        </Text>
+        {accountInfo.users.length ? (
+          accountInfo.users.map((user) => {
+            const id = accountId(user);
+            const isCurrent = !!id && id === accountId(accountInfo.current);
+            return (
+              <ScalePressable
+                key={id}
+                onPress={() => handleSwitchPocketAccount(user)}
+                disabled={loading || isCurrent}
+                activeOpacity={0.7}
+                pressedScale={0.985}
+              >
+                <SquircleView
+                  radius={16}
+                  style={[
+                    styles.accountRow,
+                    isCurrent
+                      ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
+                      : { backgroundColor: palette.fill3, borderColor: 'transparent' },
+                  ]}
                 >
-                  <ScalePressable
-                    onPress={() => handleSwitchPocketAccount(user)}
-                    disabled={loading || isCurrent}
-                    activeOpacity={0.7}
-                    pressedScale={0.985}
-                  >
-                    <SquircleView
-                      radius={16}
+                  <AccountAvatar
+                    uri={
+                      accountAvatar(user) || (isCurrent ? accountAvatar(accountInfo.current) : '')
+                    }
+                    userId={id}
+                  />
+                  <View style={styles.accountTextWrap}>
+                    <Text style={[styles.accountName, { color: palette.label }]} numberOfLines={1}>
+                      {accountName(user)}
+                    </Text>
+                    <Text
+                      style={[styles.accountMeta, { color: palette.labelTertiary }]}
+                      numberOfLines={1}
+                    >
+                      {accountRole(user, t('账号'))}
+                    </Text>
+                  </View>
+                  {!isCurrent ? (
+                    <Button
+                      title={switchingUserId === id ? t('切换中') : t('切换')}
+                      variant="filled"
+                      size="sm"
+                      style={styles.switchActionBtn}
+                      onPress={() => handleSwitchPocketAccount(user)}
+                      disabled={loading || switchingUserId === id}
+                      loading={switchingUserId === id}
+                    />
+                  ) : (
+                    <View
                       style={[
-                        styles.accountRow,
-                        isCurrent
-                          ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
-                          : { backgroundColor: palette.fill3, borderColor: 'transparent' },
+                        styles.currentBadge,
+                        { backgroundColor: palette.tintSoft, borderColor: palette.tint },
                       ]}
                     >
-                      <AccountAvatar
-                        uri={
-                          accountAvatar(user) ||
-                          (isCurrent ? accountAvatar(accountInfo.current) : '')
-                        }
-                        userId={id}
-                      />
-                      <View style={styles.accountTextWrap}>
-                        <Text
-                          style={[styles.accountName, { color: palette.label }]}
-                          numberOfLines={1}
-                        >
-                          {accountName(user)}
-                        </Text>
-                        <Text
-                          style={[styles.accountMeta, { color: palette.labelTertiary }]}
-                          numberOfLines={1}
-                        >
-                          {accountRole(user, t('账号'))}
-                        </Text>
-                      </View>
-                      {!isCurrent ? (
-                        <Button
-                          title={switchingUserId === id ? t('切换中') : t('切换')}
-                          variant="filled"
-                          size="sm"
-                          onPress={() => handleSwitchPocketAccount(user)}
-                          disabled={loading || switchingUserId === id}
-                          loading={switchingUserId === id}
-                        />
-                      ) : (
-                        <View
-                          style={[
-                            styles.currentBadge,
-                            { backgroundColor: palette.tintSoft, borderColor: palette.tint },
-                          ]}
-                        >
-                          <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
-                            {t('当前')}
-                          </Text>
-                        </View>
-                      )}
-                    </SquircleView>
-                  </ScalePressable>
-                </FadeInView>
-              );
-            })
-          ) : (
-            <Text style={[styles.accountEmpty, { color: palette.labelTertiary }]}>
-              {t('登录后可刷新并切换账号')}
-            </Text>
-          )}
-        </GlassSurface>
-
-        <GlassSurface radius={22} role="card" style={styles.card}>
-          <View style={styles.cardHead}>
-            <AccountSectionTitle icon="account-key-outline" title={t('快速切号')} compact />
-            <Button
-              title={t('保存当前账号')}
-              variant="tinted"
-              size="sm"
-              onPress={handleSaveCurrentAccount}
-            />
-          </View>
-          <Text style={[styles.accountSummary, { color: palette.labelTertiary }]}>
-            {t('保存多个完整账号，点一行即整号切换，不用再粘贴 Token')}
+                      <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
+                        {t('当前')}
+                      </Text>
+                    </View>
+                  )}
+                </SquircleView>
+              </ScalePressable>
+            );
+          })
+        ) : (
+          <Text style={[styles.accountEmpty, { color: palette.labelTertiary }]}>
+            {t('登录后可刷新并切换账号')}
           </Text>
-          {savedAccounts.length ? (
-            savedAccounts.map((entry) => {
-              const isCurrent = String(settings.p48Token || '').trim() === entry.token;
-              return (
-                <ScalePressable
-                  key={entry.id}
-                  onPress={() => handleSwitchSavedAccount(entry)}
-                  disabled={isCurrent || switchingVaultId === entry.id}
-                  activeOpacity={0.7}
-                  pressedScale={0.985}
+        )}
+      </GlassSurface>
+
+      <GlassSurface radius={22} role="card" style={styles.card}>
+        <View style={styles.cardHead}>
+          <AccountSectionTitle icon="account-key-outline" title={t('快速切号')} compact />
+          <Button
+            title={t('保存当前账号')}
+            variant="tinted"
+            size="sm"
+            onPress={handleSaveCurrentAccount}
+          />
+        </View>
+        <Text style={[styles.accountSummary, { color: palette.labelTertiary }]}>
+          {t('保存多个完整账号，点一行即整号切换，不用再粘贴 Token')}
+        </Text>
+        {savedAccounts.length ? (
+          savedAccounts.map((entry) => {
+            const isCurrent = String(settings.p48Token || '').trim() === entry.token;
+            return (
+              <ScalePressable
+                key={entry.id}
+                onPress={() => handleSwitchSavedAccount(entry)}
+                disabled={isCurrent || switchingVaultId === entry.id}
+                activeOpacity={0.7}
+                pressedScale={0.985}
+              >
+                <SquircleView
+                  radius={16}
+                  style={[
+                    styles.accountRow,
+                    isCurrent
+                      ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
+                      : { backgroundColor: palette.fill3, borderColor: 'transparent' },
+                  ]}
                 >
-                  <SquircleView
-                    radius={16}
-                    style={[
-                      styles.accountRow,
-                      isCurrent
-                        ? { borderColor: palette.tint, backgroundColor: palette.tintSoft }
-                        : { backgroundColor: palette.fill3, borderColor: 'transparent' },
-                    ]}
-                  >
-                    <View style={{ width: 32, alignItems: 'center' }}>
-                      <MaterialCommunityIcons
-                        name="account-outline"
-                        size={20}
-                        color={palette.tint}
-                      />
-                    </View>
-                    <View style={styles.accountTextWrap}>
-                      <Text
-                        style={[styles.accountName, { color: palette.label }]}
-                        numberOfLines={1}
-                      >
-                        {entry.label}
-                      </Text>
-                      <Text
-                        style={[styles.accountMeta, { color: palette.labelTertiary }]}
-                        numberOfLines={1}
-                      >
-                        {`${t('口袋48')} · ${entry.token.slice(0, 4)}…${entry.token.slice(-4)}`}
-                      </Text>
-                    </View>
-                    {isCurrent ? (
-                      <View
-                        style={[
-                          styles.currentBadge,
-                          { backgroundColor: palette.tintSoft, borderColor: palette.tint },
-                        ]}
-                      >
-                        <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
-                          {t('当前')}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Button
-                        title={switchingVaultId === entry.id ? t('切换中') : t('切换')}
-                        variant="filled"
-                        size="sm"
-                        onPress={() => handleSwitchSavedAccount(entry)}
-                        disabled={switchingVaultId === entry.id}
-                        loading={switchingVaultId === entry.id}
-                      />
-                    )}
-                    <TouchableOpacity
-                      onPress={() => handleRemoveSavedAccount(entry.id)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  <View style={{ width: 32, alignItems: 'center' }}>
+                    <MaterialCommunityIcons name="account-outline" size={20} color={palette.tint} />
+                  </View>
+                  <View style={styles.accountTextWrap}>
+                    <Text style={[styles.accountName, { color: palette.label }]} numberOfLines={1}>
+                      {entry.label}
+                    </Text>
+                    <Text
+                      style={[styles.accountMeta, { color: palette.labelTertiary }]}
+                      numberOfLines={1}
                     >
-                      <MaterialCommunityIcons
-                        name="close-circle-outline"
-                        size={19}
-                        color={palette.labelTertiary}
-                      />
-                    </TouchableOpacity>
-                  </SquircleView>
-                </ScalePressable>
-              );
-            })
-          ) : (
-            <Text style={[styles.accountEmpty, { color: palette.labelTertiary }]}>
-              {t('还没有保存的账号，先登录再点「保存当前账号」')}
-            </Text>
-          )}
-        </GlassSurface>
-      </FadeInView>
+                      {`${t('口袋48')} · ${entry.token.slice(0, 4)}…${entry.token.slice(-4)}`}
+                    </Text>
+                  </View>
+                  {isCurrent ? (
+                    <View
+                      style={[
+                        styles.currentBadge,
+                        { backgroundColor: palette.tintSoft, borderColor: palette.tint },
+                      ]}
+                    >
+                      <Text style={[styles.currentBadgeText, { color: palette.tint }]}>
+                        {t('当前')}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Button
+                      title={switchingVaultId === entry.id ? t('切换中') : t('切换')}
+                      variant="filled"
+                      size="sm"
+                      style={styles.switchActionBtn}
+                      onPress={() => handleSwitchSavedAccount(entry)}
+                      disabled={switchingVaultId === entry.id}
+                      loading={switchingVaultId === entry.id}
+                    />
+                  )}
+                  <TouchableOpacity
+                    onPress={() => handleRemoveSavedAccount(entry.id)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MaterialCommunityIcons
+                      name="close-circle-outline"
+                      size={19}
+                      color={palette.labelTertiary}
+                    />
+                  </TouchableOpacity>
+                </SquircleView>
+              </ScalePressable>
+            );
+          })
+        ) : (
+          <Text style={[styles.accountEmpty, { color: palette.labelTertiary }]}>
+            {t('还没有保存的账号，先登录再点「保存当前账号」')}
+          </Text>
+        )}
+      </GlassSurface>
 
-      <FadeInView delay={20} duration={280} distance={8}>
-        <Text style={[styles.groupLabel, { color: palette.labelSecondary }]}>{t('登录方式')}</Text>
+      <Text style={[styles.groupLabel, { color: palette.labelSecondary }]}>{t('登录方式')}</Text>
 
-        <GlassSegmented
-          options={SEGMENTS.map((seg) => ({ key: String(seg.key), label: seg.label }))}
-          value={String(mode)}
-          onChange={(k) => {
-            if (!loading) {
-              setMode(k as typeof mode);
-              setPassword('');
-              setStatus('');
-            }
-          }}
-          height={38}
-          style={{ marginBottom: 12 }}
-        />
-      </FadeInView>
+      <GlassSegmented
+        options={SEGMENTS.map((seg) => ({ key: String(seg.key), label: seg.label }))}
+        value={String(mode)}
+        onChange={(k) => {
+          if (!loading) {
+            setMode(k as typeof mode);
+            setPassword('');
+            setStatus('');
+          }
+        }}
+        height={38}
+        style={{ marginBottom: 12 }}
+      />
 
-      <FadeInView delay={80} duration={300} distance={8}>
+      <>
         {mode === 'sms' ? (
           <GlassSurface radius={22} role="card" style={styles.card}>
             <AccountSectionTitle icon="message-text-outline" title={t('口袋48验证码登录')} />
@@ -1881,7 +1861,7 @@ export default function LoginScreen() {
             fullWidth
           />
         </GlassSurface>
-      </FadeInView>
+      </>
     </KeyboardAwareScrollView>
   );
 }
@@ -2069,15 +2049,26 @@ const styles = StyleSheet.create({
   accountName: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '700', flexShrink: 1 },
   accountMeta: { marginTop: 3, fontSize: 11, flexShrink: 1 },
   currentBadge: {
-    minHeight: 28,
-    paddingHorizontal: 11,
-    paddingVertical: 4,
+    minWidth: 68,
+    height: 34,
+    paddingHorizontal: 12,
     borderRadius: radii.pill,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  currentBadgeText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
+  currentBadgeText: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    includeFontPadding: false,
+  },
+  switchActionBtn: {
+    minWidth: 68,
+    height: 34,
+    paddingHorizontal: 12,
+    paddingVertical: 0,
+  },
   verifyBox: {
     padding: 12,
     borderRadius: 16,

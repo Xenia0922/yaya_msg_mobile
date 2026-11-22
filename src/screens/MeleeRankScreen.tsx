@@ -2,11 +2,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PerfFlatList } from '../components/PerfFlatList';
 import { NetworkImage } from '../components/NetworkImage';
 
-import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  InteractionManager,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import ScreenHeader from '../components/ScreenHeader';
-import { FadeInView } from '../components/Motion';
 import { GlassSegmented } from '../components/GlassSegmented';
 import MemberPicker from '../components/MemberPicker';
 import pocketApi from '../api/pocket48';
@@ -229,7 +235,11 @@ export default function MeleeRankScreen() {
   }, []);
 
   useEffect(() => {
-    if (mode === 'week') loadRank();
+    if (mode !== 'week') return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      void loadRank();
+    });
+    return () => task.cancel();
   }, [mode, selectedWeek, loadRank]);
 
   useEffect(() => {
@@ -428,7 +438,7 @@ const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
   const heights = [60, 46, 36];
   const tones = [palette.fill2, palette.tintSoft, palette.fill2];
   return (
-    <FadeInView delay={60} duration={320} style={{ marginBottom: 12 }}>
+    <View style={{ marginBottom: 12 }}>
       <GlassSurface
         radius={22}
         role="card"
@@ -510,7 +520,7 @@ const Podium = React.memo(function Podium({ ranks }: { ranks: any[] }) {
           })}
         </View>
       </GlassSurface>
-    </FadeInView>
+    </View>
   );
 });
 
@@ -641,7 +651,7 @@ const PersonSummary = React.memo(function PersonSummary({
   const { t } = useI18n();
   const name = String(member.ownerName || member.id || '');
   return (
-    <FadeInView delay={40} duration={280} style={{ marginBottom: 10 }}>
+    <View style={{ marginBottom: 10 }}>
       <GlassSurface
         radius={22}
         role="card"
@@ -684,7 +694,7 @@ const PersonSummary = React.memo(function PersonSummary({
           </View>
         </View>
       </GlassSurface>
-    </FadeInView>
+    </View>
   );
 });
 

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRoute } from '@react-navigation/native';
 import { toMs } from '../utils/format';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { InteractionManager, View, Text, StyleSheet, ScrollView } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import { NetworkImage } from '../components/NetworkImage';
 import ScreenHeader from '../components/ScreenHeader';
 import { Button } from '../components/Button';
@@ -168,9 +168,12 @@ export default function ProfileScreen() {
         avatar: String(routeParams.memberAvatar || ''),
       }) as Member;
 
-    void loadProfile(target).then((ok) => {
-      if (ok) autoLoadedRef.current = key;
+    const task = InteractionManager.runAfterInteractions(() => {
+      void loadProfile(target).then((ok) => {
+        if (ok) autoLoadedRef.current = key;
+      });
     });
+    return () => task.cancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeMemberId, routeNonce, members]);
 
@@ -195,7 +198,7 @@ export default function ProfileScreen() {
     >
       <ScreenHeader title={t('成员档案')} />
 
-      <FadeInView delay={80} duration={300}>
+      <>
         <View style={styles.pickerWrap}>
           <MemberPicker
             compact
@@ -491,7 +494,7 @@ export default function ProfileScreen() {
             ))}
           </GlassSurface>
         ) : null}
-      </FadeInView>
+      </>
       {loading ? <CenterSpinner /> : null}
     </ScrollView>
   );

@@ -2,10 +2,17 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 
-import { Modal, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  InteractionManager,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useUiStore } from '../store';
-import { FadeInView } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
 import { ScalePressable } from '../components/Motion';
@@ -98,7 +105,10 @@ export default function DownloadScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      const task = InteractionManager.runAfterInteractions(() => {
+        refresh();
+      });
+      return () => task.cancel();
     }, [refresh]),
   );
 
@@ -226,7 +236,7 @@ export default function DownloadScreen() {
         }
       />
 
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <GlassSurface
           radius={22}
           role="card"
@@ -482,7 +492,7 @@ export default function DownloadScreen() {
             );
           }}
         />
-      </FadeInView>
+      </View>
       {imgPreview ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setImgPreview('')}>
           <ScalePressable

@@ -22,7 +22,7 @@ import { Member } from '../types';
 import MemberPicker from '../components/MemberPicker';
 import { SearchBar } from '../components/SearchBar';
 import { useSettingsStore, useUiStore } from '../store';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import ScreenHeader from '../components/ScreenHeader';
 import { HeaderAction } from '../components/HeaderAction';
 import { Skeleton } from '../components/Skeleton';
@@ -363,7 +363,7 @@ export default function OpenLiveScreen() {
         }
       />
 
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <View style={styles.controls}>
           <MemberPicker
             compact
@@ -515,7 +515,7 @@ export default function OpenLiveScreen() {
             </ScalePressable>
           )}
         />
-      </FadeInView>
+      </View>
       <Modal
         visible={!!participants}
         transparent

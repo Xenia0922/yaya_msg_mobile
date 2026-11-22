@@ -72,52 +72,77 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 const STACK_OPEN_SPEC = {
   animation: 'timing' as const,
   config: {
-    duration: 180,
-    easing: Easing.out(Easing.cubic),
+    duration: 220,
+    easing: Easing.bezier(0.22, 1, 0.36, 1),
   },
 };
 
 const STACK_CLOSE_SPEC = {
   animation: 'timing' as const,
   config: {
-    duration: 150,
+    duration: 190,
     easing: Easing.out(Easing.cubic),
   },
 };
 
 function stackCardInterpolator({ current, next, layouts }: StackCardInterpolationProps) {
   const incomingOpacity = current.progress.interpolate({
-    inputRange: [0, 0.35, 1],
-    outputRange: [0, 0, 1],
+    inputRange: [0, 1],
+    outputRange: [0, 1],
     extrapolate: 'clamp',
   });
   const outgoingOpacity = next
     ? next.progress.interpolate({
-        inputRange: [0, 0.4, 1],
+        inputRange: [0, 0.55, 1],
         outputRange: [1, 0, 0],
         extrapolate: 'clamp',
       })
     : 1;
   const translateXFocused = current.progress.interpolate({
     inputRange: [0, 1],
-    outputRange: [Math.min(32, layouts.screen.width * 0.08), 0],
+    outputRange: [Math.min(24, layouts.screen.width * 0.06), 0],
     extrapolate: 'clamp',
   });
   const translateXUnfocused = next
     ? next.progress.interpolate({
         inputRange: [0, 1],
-        outputRange: [0, -24],
+        outputRange: [0, -18],
         extrapolate: 'clamp',
       })
     : 0;
   return {
-    cardStyle: {
-      backgroundColor: 'transparent',
+    containerStyle: {
       opacity: Animated.multiply(incomingOpacity, outgoingOpacity),
       transform: [{ translateX: Animated.add(translateXFocused, translateXUnfocused) }],
     },
+    cardStyle: {
+      backgroundColor: 'transparent',
+    },
   };
 }
+
+const STACK_SCREEN_OPTIONS = {
+  headerShown: false,
+  cardOverlayEnabled: false,
+  detachPreviousScreen: false,
+  freezeOnBlur: true,
+  cardStyle: { backgroundColor: 'transparent' },
+  cardStyleInterpolator: stackCardInterpolator,
+  transitionSpec: {
+    open: STACK_OPEN_SPEC,
+    close: STACK_CLOSE_SPEC,
+  },
+} as const;
+
+const MAIN_TAB_SCREEN_OPTIONS = {
+  lazy: false,
+  swipeEnabled: false,
+  animationEnabled: true,
+} as const;
+
+const styles = StyleSheet.create({
+  screenFill: { flex: 1 },
+});
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createMaterialTopTabNavigator<TabParamList>();
@@ -136,17 +161,31 @@ function withPageMotion<T extends object>(
   _hideTabBar = false,
 ) {
   const MemoizedScreen = React.memo(Screen) as React.ComponentType<T>;
+  const autoKeyboard =
+    Platform.OS === 'android' &&
+    _hideTabBar &&
+    Screen !== PrivateMessagesScreen &&
+    Screen !== OpenLiveScreen &&
+    Screen !== BilibiliLiveScreen;
+  if (!autoKeyboard) {
+    return function StaticMotionScreen(props: T) {
+      return (
+        <ErrorBoundary>
+          <View style={styles.screenFill}>
+            <MemoizedScreen {...props} />
+          </View>
+        </ErrorBoundary>
+      );
+    };
+  }
   return function PageMotionScreen(props: T) {
     const focused = useIsFocused();
-    const autoKeyboard =
-      _hideTabBar &&
-      Screen !== PrivateMessagesScreen &&
-      Screen !== OpenLiveScreen &&
-      Screen !== BilibiliLiveScreen;
-    const keyboardHeight = useKeyboardHeight(Platform.OS === 'android' && autoKeyboard && focused);
+    const keyboardHeight = useKeyboardHeight(focused);
     return (
       <ErrorBoundary>
-        <View style={{ flex: 1, paddingBottom: keyboardHeight }}>
+        <View
+          style={[styles.screenFill, keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : null]}
+        >
           <MemoizedScreen {...props} />
         </View>
       </ErrorBoundary>
@@ -203,12 +242,15 @@ function MainTabBar({
   descriptors,
   navigation,
   hidden,
-}: BottomTabBarProps & { hidden: boolean }) {
+  jumpTo,
+}: BottomTabBarProps & { hidden: boolean; jumpTo?: (key: string) => void }) {
   const { t } = useI18n();
   const stateRef = useRef(state);
   stateRef.current = state;
   const descriptorsRef = useRef(descriptors);
   descriptorsRef.current = descriptors;
+  const jumpToRef = useRef(jumpTo);
+  jumpToRef.current = jumpTo;
 
   const items = useMemo(
     () =>
@@ -242,7 +284,8 @@ function MainTabBar({
         canPreventDefault: true,
       });
       if (curState.index !== index && !event.defaultPrevented) {
-        navigation.navigate(route.name);
+        if (jumpToRef.current) jumpToRef.current(route.key);
+        else navigation.navigate(route.name);
       }
     },
     [navigation],
@@ -263,26 +306,26 @@ function MainTabs() {
   const hiddenByRoute = useUiStore((state) => state.tabBarHiddenByRoute);
   const mainFocused = useIsFocused();
   const { width: windowWidth } = useWindowDimensions();
+  const renderTabBar = useCallback(
+    (props: any) => (
+      <MainTabBar
+        {...props}
+        hidden={shouldHideTabBar(
+          props.state.routes[props.state.index]?.name,
+          mainFocused,
+          hiddenByRoute,
+        )}
+      />
+    ),
+    [mainFocused, hiddenByRoute],
+  );
   return (
     <Tab.Navigator
       tabBarPosition="bottom"
       initialLayout={{ width: windowWidth }}
-      tabBar={(props: any) => (
-        <MainTabBar
-          {...props}
-          hidden={shouldHideTabBar(
-            props.state.routes[props.state.index]?.name,
-            mainFocused,
-            hiddenByRoute,
-          )}
-        />
-      )}
-      screenOptions={{
-        lazy: false,
-        swipeEnabled: false,
-
-        animationEnabled: true,
-      }}
+      keyboardDismissMode="none"
+      tabBar={renderTabBar}
+      screenOptions={MAIN_TAB_SCREEN_OPTIONS}
     >
       <Tab.Screen name="Home" component={HomeTabScreen} options={{ tabBarLabel: '主页' }} />
       <Tab.Screen name="Media" component={MediaTabScreen} options={{ tabBarLabel: '直播' }} />
@@ -424,7 +467,7 @@ export default function AppNavigator() {
           ref={navRef}
           theme={themed}
           onStateChange={() => {
-            if (Keyboard.isVisible()) Keyboard.dismiss();
+            Keyboard.dismiss();
           }}
         >
           <>
@@ -464,20 +507,7 @@ export default function AppNavigator() {
                 </View>
               )}
 
-              <Stack.Navigator
-                screenOptions={{
-                  headerShown: false,
-                  cardOverlayEnabled: false,
-                  detachPreviousScreen: true,
-                  freezeOnBlur: true,
-                  cardStyle: { backgroundColor: 'transparent' },
-                  cardStyleInterpolator: stackCardInterpolator,
-                  transitionSpec: {
-                    open: STACK_OPEN_SPEC,
-                    close: STACK_CLOSE_SPEC,
-                  },
-                }}
-              >
+              <Stack.Navigator screenOptions={STACK_SCREEN_OPTIONS}>
                 <Stack.Screen name="Main" component={MainTabs} />
                 <Stack.Screen name="LoginScreen" component={LoginStackScreen} />
                 <Stack.Screen name="RechargeScreen" component={RechargeStackScreen} />

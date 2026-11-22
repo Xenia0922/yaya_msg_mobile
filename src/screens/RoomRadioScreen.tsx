@@ -8,7 +8,7 @@ import { useI18n } from '../i18n';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import { Pill } from '../components/Pill';
@@ -326,7 +326,7 @@ export default function RoomRadioScreen() {
     <View style={styles.container}>
       <ScreenHeader title={t('房间电台')} />
 
-      <FadeInView delay={60} duration={360} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <View style={styles.pickerWrap}>
           <MemberPicker
             compact
@@ -593,7 +593,7 @@ export default function RoomRadioScreen() {
             ) : null}
           </GlassSurface>
         </View>
-      </FadeInView>
+      </View>
     </View>
   );
 }

@@ -8,7 +8,8 @@ import {
   Animated,
   BackHandler,
   Easing,
-  Platform,
+  InteractionManager,
+  Keyboard,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -36,11 +37,8 @@ import { errorMessage } from '../utils/data';
 import { logWarn } from '../utils/runtimeLog';
 import { fetchCoverToFile, normalizeCoverUrl } from '../utils/coverToFile';
 import { formatTrackSubtitle } from '../utils/format';
-import {
-  FloatingHeaderAction,
-  FloatingTabHeader,
-  getFloatingHeaderOffset,
-} from '../components/FloatingTabHeader';
+import { FloatingHeaderAction, getFloatingHeaderOffset } from '../components/FloatingTabHeader';
+import ScreenHeader from '../components/ScreenHeader';
 import CoverArt from '../components/CoverArt';
 import { NetworkImage } from '../components/NetworkImage';
 import { Skeleton } from '../components/Skeleton';
@@ -372,21 +370,24 @@ export default function MusicLibraryScreen() {
   const nativeSnapshotBlockedKeyRef = useRef({ index: -1, url: '' });
   useEffect(() => {
     let alive = true;
-    void syncNativePlaybackSnapshot()
-      .then((result) => {
-        if (!alive) return;
-        if (result.active && !result.matched) {
-          const current = useMusicPlayerStore.getState();
-          nativeSnapshotBlockedRef.current = true;
-          nativeSnapshotBlockedKeyRef.current = { index: current.currentIndex, url: current.url };
-        }
-        setNativeSnapshotReady(true);
-      })
-      .catch(() => {
-        if (alive) setNativeSnapshotReady(true);
-      });
+    const task = InteractionManager.runAfterInteractions(() => {
+      void syncNativePlaybackSnapshot()
+        .then((result) => {
+          if (!alive) return;
+          if (result.active && !result.matched) {
+            const current = useMusicPlayerStore.getState();
+            nativeSnapshotBlockedRef.current = true;
+            nativeSnapshotBlockedKeyRef.current = { index: current.currentIndex, url: current.url };
+          }
+          setNativeSnapshotReady(true);
+        })
+        .catch(() => {
+          if (alive) setNativeSnapshotReady(true);
+        });
+    });
     return () => {
       alive = false;
+      task.cancel();
     };
   }, []);
   useEffect(() => {
@@ -577,7 +578,6 @@ export default function MusicLibraryScreen() {
   loadAllRef.current = loadAll;
 
   useEffect(() => {
-    loadAllRef.current();
     MusicEngine.setUrlResolver(async (track: any) => {
       if (track?.mp3 && /^https?:/i.test(String(track.mp3))) {
         const u = String(track.mp3);
@@ -617,6 +617,12 @@ export default function MusicLibraryScreen() {
       if (!isPlayableHost(fb)) throw new Error(t('不支持的播放源'));
       return fb;
     });
+    const task = InteractionManager.runAfterInteractions(() => {
+      void loadAllRef.current();
+    });
+    return () => {
+      task.cancel();
+    };
   }, [t]);
 
   const [showFullScreen, setShowFullScreen] = useState(false);
@@ -909,73 +915,67 @@ export default function MusicLibraryScreen() {
 
   return (
     <View style={styles.container}>
-      <FloatingTabHeader
-        onLeftPress={() => {
-          if (albumFilter) setAlbumFilter(null);
-          else navigation.goBack();
-        }}
-        leftAccessibilityLabel={t('关闭')}
-        left={
-          <View style={styles.headerLeftRow}>
-            <View style={styles.headerBackIcon}>
-              <MaterialCommunityIcons name="arrow-left" size={20} color={palette.label} />
-            </View>
-            <Text style={[styles.headerTitle, { color: palette.label }]} numberOfLines={1}>
-              {albumFilter ? albumFilter.album : t('音乐')}
-            </Text>
-          </View>
-        }
-        right={
-          <>
-            {!albumFilter ? (
-              <FloatingHeaderAction
-                icon={showSearch ? 'close' : 'magnify'}
-                active={showSearch}
-                accessibilityLabel={showSearch ? t('关闭') : t('搜索歌曲、成员、专辑')}
-                onPress={() => {
-                  if (showSearch) {
-                    setSearchOpen(false);
-                    setQuery('');
-                  } else {
-                    setSearchOpen(true);
-                  }
-                }}
-              />
-            ) : null}
-            {!albumFilter ? (
-              <FloatingHeaderAction
-                icon={viewMode === 'songs' ? 'album' : 'music-note-outline'}
-                active={viewMode === 'albums'}
-                accessibilityLabel={viewMode === 'songs' ? t('专辑') : t('单曲')}
-                onPress={() => setViewMode((v) => (v === 'songs' ? 'albums' : 'songs'))}
-              />
-            ) : null}
-            {filteredSongs.length > 0 ? (
-              <FloatingHeaderAction
-                icon="shuffle-variant"
-                accessibilityLabel={t('随机播')}
-                onPress={shuffleFiltered}
-              />
-            ) : null}
-            {filteredSongs.length > 0 ? (
-              <FloatingHeaderAction
-                icon="play"
-                iconColor={palette.tint}
-                accessibilityLabel={t('播放全部')}
-                onPress={playAllFiltered}
-              />
-            ) : null}
-            {!albumFilter ? (
-              <FloatingHeaderAction
-                icon="refresh"
-                active={loading}
-                accessibilityLabel={t('刷新')}
-                onPress={() => loadAll(true)}
-              />
-            ) : null}
-          </>
-        }
-      />
+      {!showFullScreen ? (
+        <ScreenHeader
+          title={albumFilter ? albumFilter.album : t('音乐')}
+          onBack={() => {
+            if (albumFilter) setAlbumFilter(null);
+            else navigation.goBack();
+          }}
+          style={styles.floatingHeader}
+          right={
+            <>
+              {!albumFilter ? (
+                <FloatingHeaderAction
+                  icon={showSearch ? 'close' : 'magnify'}
+                  active={showSearch}
+                  accessibilityLabel={showSearch ? t('关闭') : t('搜索歌曲、成员、专辑')}
+                  onPress={() => {
+                    if (showSearch) {
+                      Keyboard.dismiss();
+                      setSearchOpen(false);
+                      setQuery('');
+                    } else {
+                      setSearchOpen(true);
+                    }
+                  }}
+                />
+              ) : null}
+              {!albumFilter ? (
+                <FloatingHeaderAction
+                  icon={viewMode === 'songs' ? 'album' : 'music-note-outline'}
+                  active={viewMode === 'albums'}
+                  accessibilityLabel={viewMode === 'songs' ? t('专辑') : t('单曲')}
+                  onPress={() => setViewMode((v) => (v === 'songs' ? 'albums' : 'songs'))}
+                />
+              ) : null}
+              {filteredSongs.length > 0 ? (
+                <FloatingHeaderAction
+                  icon="shuffle-variant"
+                  accessibilityLabel={t('随机播')}
+                  onPress={shuffleFiltered}
+                />
+              ) : null}
+              {filteredSongs.length > 0 ? (
+                <FloatingHeaderAction
+                  icon="play"
+                  iconColor={palette.tint}
+                  accessibilityLabel={t('播放全部')}
+                  onPress={playAllFiltered}
+                />
+              ) : null}
+              {!albumFilter ? (
+                <FloatingHeaderAction
+                  icon="refresh"
+                  active={loading}
+                  accessibilityLabel={t('刷新')}
+                  onPress={() => loadAll(true)}
+                />
+              ) : null}
+            </>
+          }
+        />
+      ) : null}
 
       {showSearch && !albumFilter ? (
         <View style={{ paddingTop: headerOffset }}>
@@ -1140,27 +1140,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  headerLeftRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    maxWidth: 165,
-  },
-  headerBackIcon: {
-    width: 24,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontFamily: fontFamily.system,
-    fontWeight: '700',
-    flexShrink: 1,
-    includeFontPadding: false,
-    textAlignVertical: 'center',
-    ...Platform.select({ android: { paddingTop: 1 }, default: null }),
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
   },
   tabsBarWrap: {
     paddingHorizontal: 16,

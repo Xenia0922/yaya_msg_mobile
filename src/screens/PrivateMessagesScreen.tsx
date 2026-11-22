@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { showDialog } from '../components/AppDialog';
 import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
@@ -10,6 +10,8 @@ import {
   BackHandler,
   FlatList,
   Image,
+  InteractionManager,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -32,7 +34,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
-import { FadeInView, ScalePressable } from '../components/Motion';
+import { ScalePressable } from '../components/Motion';
 import { CenterSpinner } from '../components/Loaders';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import ScreenHeader from '../components/ScreenHeader';
@@ -753,18 +755,32 @@ export default function PrivateMessagesScreen() {
   const [sel, setSel] = useState<PrivateConversationWire | null>(null);
   const selRef = useRef<PrivateConversationWire | null>(null);
   selRef.current = sel;
-  const [convClosing, setConvClosing] = useState(false);
   const convClosingRef = useRef(false);
-  convClosingRef.current = convClosing;
   const convCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const convEnterRafRef = useRef<number | null>(null);
+  const convEnterPendingRef = useRef(false);
   const convCloseSeqRef = useRef(0);
   const convEnter = useSharedValue(0);
   const convEnterStyle = useAnimatedStyle(() => ({
     opacity: convEnter.value,
-    transform: [{ translateX: (1 - convEnter.value) * 28 }],
+    transform: [{ translateX: (1 - convEnter.value) * 24 }],
   }));
+  useEffect(() => {
+    if (!sel || !convEnterPendingRef.current) return;
+    convEnterPendingRef.current = false;
+    if (convEnterRafRef.current !== null) cancelAnimationFrame(convEnterRafRef.current);
+    convEnterRafRef.current = requestAnimationFrame(() => {
+      convEnterRafRef.current = null;
+      if (!convClosingRef.current) {
+        convEnter.value = withTiming(1, {
+          duration: 210,
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
+        });
+      }
+    });
+  }, [sel, convEnter]);
 
-  const keyboardHeight = useKeyboardHeight(Boolean(sel && !convClosing));
+  const keyboardHeight = useKeyboardHeight(Boolean(sel));
   const insets = useSafeAreaInsets();
 
   const inputBarSafeBottom = Platform.OS === 'ios' ? Math.max(16, insets.bottom) : 16;
@@ -799,6 +815,10 @@ export default function PrivateMessagesScreen() {
     () => () => {
       if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
       if (convCloseTimerRef.current) clearTimeout(convCloseTimerRef.current);
+      if (convEnterRafRef.current !== null) {
+        cancelAnimationFrame(convEnterRafRef.current);
+        convEnterRafRef.current = null;
+      }
     },
     [],
   );
@@ -818,7 +838,10 @@ export default function PrivateMessagesScreen() {
 
   const loadConvsRef = useRef<(initial?: boolean) => Promise<void>>(() => Promise.resolve());
   useEffect(() => {
-    void loadConvsRef.current();
+    const task = InteractionManager.runAfterInteractions(() => {
+      void loadConvsRef.current();
+    });
+    return () => task.cancel();
   }, []);
 
   useEffect(() => {
@@ -941,10 +964,13 @@ export default function PrivateMessagesScreen() {
       convCloseTimerRef.current = null;
     }
     convClosingRef.current = false;
-    setConvClosing(false);
+    convEnterPendingRef.current = false;
+    setLoading(false);
     setSel(null);
     setMsgs([]);
-    void loadConvsRef.current();
+    InteractionManager.runAfterInteractions(() => {
+      void loadConvsRef.current();
+    });
   }, []);
 
   const openConv = async (c: PrivateConversationWire, opts?: { silent?: boolean }) => {
@@ -956,12 +982,15 @@ export default function PrivateMessagesScreen() {
         clearTimeout(convCloseTimerRef.current);
         convCloseTimerRef.current = null;
       }
+      if (convEnterRafRef.current !== null) {
+        cancelAnimationFrame(convEnterRafRef.current);
+        convEnterRafRef.current = null;
+      }
       convCloseSeqRef.current += 1;
       convClosingRef.current = false;
-      setConvClosing(false);
       if (shouldAnimateEnter) {
         convEnter.value = 0;
-        convEnter.value = withTiming(1, { duration: 190, easing: Easing.out(Easing.cubic) });
+        convEnterPendingRef.current = true;
       }
       setSel(c);
       setMsgs([]);
@@ -995,7 +1024,9 @@ export default function PrivateMessagesScreen() {
         prev.map((item) => (convTargetId(item) === targetId ? { ...item, noreadNum: 0 } : item)),
       );
       const sorted = oldestFirst(list, msgTimeNumber);
-      setMsgs(sorted);
+      startTransition(() => {
+        setMsgs(sorted);
+      });
       scrollTimerRef.current = setTimeout(
         () => flatRef.current?.scrollToEnd?.({ animated: false }),
         150,
@@ -1010,17 +1041,25 @@ export default function PrivateMessagesScreen() {
 
   const closeConv = useCallback(() => {
     if (convClosingRef.current || !selRef.current) return;
+    convEnterPendingRef.current = false;
+    if (convEnterRafRef.current !== null) {
+      cancelAnimationFrame(convEnterRafRef.current);
+      convEnterRafRef.current = null;
+    }
+    if (convCloseTimerRef.current) {
+      clearTimeout(convCloseTimerRef.current);
+      convCloseTimerRef.current = null;
+    }
+    Keyboard.dismiss();
     ++convRequestIdRef.current;
     const closeToken = ++convCloseSeqRef.current;
-    setLoading(false);
     convClosingRef.current = true;
-    setConvClosing(true);
     convCloseTimerRef.current = setTimeout(() => {
       finalizeCloseConv(closeToken);
-    }, 220);
+    }, 240);
     convEnter.value = withTiming(
       0,
-      { duration: 160, easing: Easing.out(Easing.cubic) },
+      { duration: 185, easing: Easing.out(Easing.cubic) },
       (finished) => {
         if (finished) {
           runOnJS(finalizeCloseConv)(closeToken);
@@ -1436,12 +1475,12 @@ export default function PrivateMessagesScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: getPageBackground() }]}>
-      <View style={styles.screen} pointerEvents={sel && !convClosing ? 'none' : 'auto'}>
+      <View style={styles.screen} pointerEvents={sel ? 'none' : 'auto'}>
         <ScreenHeader
           title={t('私信列表')}
           right={<HeaderAction label={t('刷新')} onPress={() => loadConvs(true)} />}
         />
-        <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
           <PerfFlatList
             data={convRows}
             keyboardDismissMode="on-drag"
@@ -1569,12 +1608,12 @@ export default function PrivateMessagesScreen() {
             onEndReachedThreshold={0.4}
             ListFooterComponent={hasMoreConvs ? <CenterSpinner text={t('加载更多会话…')} /> : null}
           />
-        </FadeInView>
+        </View>
       </View>
 
       {sel ? (
         <Reanimated.View
-          pointerEvents={convClosing ? 'none' : 'auto'}
+          pointerEvents="auto"
           style={[
             StyleSheet.absoluteFill,
             styles.screenContainer,

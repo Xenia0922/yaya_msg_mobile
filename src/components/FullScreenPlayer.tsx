@@ -471,7 +471,7 @@ function FullScreenPlayerInner({
         style={[styles.page, { transform: [{ translateY: slideAnim }] }]}
         {...panResponder.panHandlers}
       >
-        <View style={styles.topBar}>
+        <View style={[styles.topBar, { paddingTop: Math.max(48, insets.top + 8) }]}>
           <Pressable
             onPress={onClose}
             accessibilityRole="button"

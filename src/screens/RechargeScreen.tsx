@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { InteractionManager, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import pocketApi from '../api/pocket48';
 import ScreenHeader from '../components/ScreenHeader';
@@ -18,6 +18,7 @@ export default function RechargeScreen() {
 
   const [selfPocketId, setSelfPocketId] = useState('');
   const [webSlow, setWebSlow] = useState(false);
+  const [webReady, setWebReady] = useState(false);
   const webViewRef = useRef<WebView>(null);
   const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -28,21 +29,26 @@ export default function RechargeScreen() {
 
   useEffect(() => {
     let active = true;
-    void (async () => {
-      try {
-        const res: any = await pocketApi.loginCheckToken();
-        const id =
-          res?.content?.userInfo?.baseUserInfo?.userId ??
-          res?.content?.userInfo?.userId ??
-          res?.content?.baseUserInfo?.userId ??
-          res?.content?.userId ??
-          '';
-        if (id && active) setSelfPocketId(String(id));
-      } catch {}
-    })();
-    armSlowTimer();
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!active) return;
+      setWebReady(true);
+      armSlowTimer();
+      void (async () => {
+        try {
+          const res: any = await pocketApi.loginCheckToken();
+          const id =
+            res?.content?.userInfo?.baseUserInfo?.userId ??
+            res?.content?.userInfo?.userId ??
+            res?.content?.baseUserInfo?.userId ??
+            res?.content?.userId ??
+            '';
+          if (id && active) setSelfPocketId(String(id));
+        } catch {}
+      })();
+    });
     return () => {
       active = false;
+      task.cancel();
       if (slowTimer.current) clearTimeout(slowTimer.current);
     };
   }, [armSlowTimer]);
@@ -76,49 +82,54 @@ export default function RechargeScreen() {
       />
 
       <View style={[styles.webCard, { borderColor: palette.hairline, overflow: 'hidden' }]}>
-        <WebView
-          ref={webViewRef}
-          source={{ uri: RECHARGE_URL }}
-          style={styles.web}
-          javaScriptEnabled
-          domStorageEnabled
-          originWhitelist={['https://*', 'alipays://*', 'weixin://*']}
-          mixedContentMode="never"
-          startInLoadingState
-          userAgent="Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 PocketFans201807"
-
-          injectedJavaScriptBeforeContentLoaded={
-            selfPocketId
-              ? `window.__POCKET_ID__ = ${JSON.stringify(selfPocketId)}; true;`
-              : undefined
-          }
-          injectedJavaScript={`
-            (function () {
-              try {
-                var el = document.querySelector('#pocket_id');
-                if (el && window.__POCKET_ID__ && !el.value) el.value = window.__POCKET_ID__;
-              } catch (e) {}
-            })();
-            true;
-          `}
-          renderLoading={() => (
-            <View style={styles.webLoading}>
-              <CenterSpinner text={t('正在打开官方充值页...')} />
-            </View>
-          )}
-          onError={(event) => {
-            if (slowTimer.current) clearTimeout(slowTimer.current);
-            setWebError(
-              t('充值页加载失败：{msg}', {
-                msg: String(event.nativeEvent.description).slice(0, 160),
-              }),
-            );
-          }}
-          onLoadEnd={() => {
-            if (slowTimer.current) clearTimeout(slowTimer.current);
-            setWebSlow(false);
-          }}
-        />
+        {webReady ? (
+          <WebView
+            ref={webViewRef}
+            source={{ uri: RECHARGE_URL }}
+            style={styles.web}
+            javaScriptEnabled
+            domStorageEnabled
+            originWhitelist={['https://*', 'alipays://*', 'weixin://*']}
+            mixedContentMode="never"
+            startInLoadingState
+            userAgent="Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 PocketFans201807"
+            injectedJavaScriptBeforeContentLoaded={
+              selfPocketId
+                ? `window.__POCKET_ID__ = ${JSON.stringify(selfPocketId)}; true;`
+                : undefined
+            }
+            injectedJavaScript={`
+              (function () {
+                try {
+                  var el = document.querySelector('#pocket_id');
+                  if (el && window.__POCKET_ID__ && !el.value) el.value = window.__POCKET_ID__;
+                } catch (e) {}
+              })();
+              true;
+            `}
+            renderLoading={() => (
+              <View style={styles.webLoading}>
+                <CenterSpinner text={t('正在打开官方充值页...')} />
+              </View>
+            )}
+            onError={(event) => {
+              if (slowTimer.current) clearTimeout(slowTimer.current);
+              setWebError(
+                t('充值页加载失败：{msg}', {
+                  msg: String(event.nativeEvent.description).slice(0, 160),
+                }),
+              );
+            }}
+            onLoadEnd={() => {
+              if (slowTimer.current) clearTimeout(slowTimer.current);
+              setWebSlow(false);
+            }}
+          />
+        ) : (
+          <View style={styles.webLoading}>
+            <CenterSpinner text={t('正在打开官方充值页...')} />
+          </View>
+        )}
         {webError || webSlow ? (
           <View style={[styles.webErrorWrap, { backgroundColor: palette.background }]}>
             <ErrorState

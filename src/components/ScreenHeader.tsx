@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Platform, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Keyboard, Platform, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../i18n';
@@ -36,6 +36,7 @@ export default function ScreenHeader({
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const goBack = useCallback(() => {
+    Keyboard.dismiss();
     if (onBack) onBack();
     else navigation.goBack();
   }, [onBack, navigation]);

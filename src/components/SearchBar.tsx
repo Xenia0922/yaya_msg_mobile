@@ -1,5 +1,6 @@
-import React, { type ReactNode } from 'react';
+import React, { useRef, type ReactNode } from 'react';
 import {
+  Keyboard,
   StyleSheet,
   TextInput,
   type ReturnKeyTypeOptions,
@@ -37,10 +38,12 @@ export function SearchBar({
 }) {
   const palette = usePalette();
   const { t } = useI18n();
+  const inputRef = useRef<TextInput>(null);
   return (
     <GlassSurface radius={20} role="chip" frostedOnly style={[styles.bar, style]}>
       <MaterialCommunityIcons name="magnify" size={18} color={palette.labelTertiary} />
       <TextInput
+        ref={inputRef}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -56,6 +59,8 @@ export function SearchBar({
         <ScalePressable
           onPress={() => {
             onChangeText('');
+            inputRef.current?.blur();
+            Keyboard.dismiss();
             onClear?.();
           }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

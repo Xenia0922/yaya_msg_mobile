@@ -3,6 +3,7 @@ import { PerfFlatList } from '../components/PerfFlatList';
 import { CenterSpinner } from '../components/Loaders';
 
 import {
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -27,7 +28,6 @@ import { LoginPrompt } from '../components/LoginPrompt';
 import { RootStackParamList } from '../navigation/types';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import pocketApi from '../api/pocket48';
-import { FadeInView } from '../components/Motion';
 import { Member } from '../types';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import { logInfo } from '../utils/runtimeLog';
@@ -356,10 +356,12 @@ export default function FlipScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (mode === 'view') {
+      if (mode !== 'view') return;
+      const task = InteractionManager.runAfterInteractions(() => {
         pageRef.current = 1;
-        loadFlips(1, true);
-      }
+        void loadFlips(1, true);
+      });
+      return () => task.cancel();
     }, [loadFlips, mode]),
   );
 
@@ -977,7 +979,7 @@ export default function FlipScreen() {
         >
           <ScreenHeader title={t('发送翻牌')} />
 
-          <FadeInView delay={60} duration={300}>
+          <>
             <GlassSurface
               radius={22}
               role="card"
@@ -1167,7 +1169,7 @@ export default function FlipScreen() {
                 </Text>
               ) : null}
             </View>
-          </FadeInView>
+          </>
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -1202,7 +1204,7 @@ export default function FlipScreen() {
           />
         </View>
       ) : null}
-      <FadeInView delay={80} duration={300} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
         <PerfFlatList
           data={flipRows}
           keyExtractor={(row) => row.key}
@@ -1491,7 +1493,7 @@ export default function FlipScreen() {
             )
           }
         />
-      </FadeInView>
+      </View>
 
       {memberSheetOpen ? (
         <Modal

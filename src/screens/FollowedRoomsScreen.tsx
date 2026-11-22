@@ -117,7 +117,7 @@ import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import Video, { type OnLoadData } from 'react-native-video';
-import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -193,6 +193,8 @@ import { useBlurTarget } from '../components/BlurTarget';
 import { GlassSegmented } from '../components/GlassSegmented';
 import { setPipPlaying } from '../utils/pip';
 import { ListBottomSpacer } from '../components/ListBottomSpacer';
+
+const ROOMS_LIST_FOOTER = <ListBottomSpacer />;
 type FollowedRoom = {
   memberId: string;
   member?: Member;
@@ -1133,7 +1135,6 @@ export default function FollowedRoomsScreen() {
   const showToast = useUiStore((state) => state.showToast);
   const setScreenBackdrop = useUiStore((state) => state.setScreenBackdrop);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const isRoomsTabFocused = useIsFocused();
   const roomBackdropAppliedRef = useRef(false);
   const roomOrientationTouchedRef = useRef(false);
   const members = useMemberStore((state) => state.members);
@@ -1169,7 +1170,8 @@ export default function FollowedRoomsScreen() {
   const roomMetaRevalidatedRef = useRef<Set<string>>(new Set());
   const onMicStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const openRafRef = useRef<number | null>(null);
+  const roomEnterRafRef = useRef<number | null>(null);
+  const roomEnterPendingRef = useRef(false);
   const closeSeqRef = useRef(0);
   useEffect(
     () => () => {
@@ -1181,9 +1183,9 @@ export default function FollowedRoomsScreen() {
         clearTimeout(closeTimerRef.current);
         closeTimerRef.current = null;
       }
-      if (openRafRef.current !== null) {
-        cancelAnimationFrame(openRafRef.current);
-        openRafRef.current = null;
+      if (roomEnterRafRef.current !== null) {
+        cancelAnimationFrame(roomEnterRafRef.current);
+        roomEnterRafRef.current = null;
       }
     },
     [],
@@ -1228,15 +1230,27 @@ export default function FollowedRoomsScreen() {
   const [selectedRoom, setSelectedRoom] = useState<Member | null>(null);
   const selectedRoomRef = useRef<Member | null>(null);
   selectedRoomRef.current = selectedRoom;
-  const [roomClosing, setRoomClosing] = useState(false);
   const roomClosingRef = useRef(false);
-  roomClosingRef.current = roomClosing;
 
   const roomEnter = useSharedValue(0);
   const roomEnterStyle = useAnimatedStyle(() => ({
     opacity: roomEnter.value,
-    transform: [{ translateX: (1 - roomEnter.value) * 28 }],
+    transform: [{ translateX: (1 - roomEnter.value) * 24 }],
   }));
+  useEffect(() => {
+    if (!selectedRoom || !roomEnterPendingRef.current) return;
+    roomEnterPendingRef.current = false;
+    if (roomEnterRafRef.current !== null) cancelAnimationFrame(roomEnterRafRef.current);
+    roomEnterRafRef.current = requestAnimationFrame(() => {
+      roomEnterRafRef.current = null;
+      if (!roomClosingRef.current) {
+        roomEnter.value = withTiming(1, {
+          duration: 210,
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
+        });
+      }
+    });
+  }, [selectedRoom, roomEnter]);
   const [roomMessages, setRoomMessages] = useState<RoomMessage[]>([]);
 
   const roomMessagesCache = useRef<Record<string, RoomMessage[]>>({});
@@ -1248,7 +1262,7 @@ export default function FollowedRoomsScreen() {
 
   const roomPushCountRef = useRef(0);
 
-  const roomKeyboardHeight = useKeyboardHeight(Boolean(selectedRoom && !roomClosing));
+  const roomKeyboardHeight = useKeyboardHeight(Boolean(selectedRoom));
   const [loading, setLoading] = useState(false);
 
   const [, setRoomLoadedOnce] = useState(false);
@@ -1375,6 +1389,8 @@ export default function FollowedRoomsScreen() {
   const [roomFilter, setRoomFilter] = useState<RoomListFilter>('all');
   const [roomSearchQuery, setRoomSearchQuery] = useState('');
   const [roomSearchOpen, setRoomSearchOpen] = useState(false);
+  const roomSearchInputRef = useRef<TextInput>(null);
+  const roomChatInputRef = useRef<TextInput>(null);
   const [roomMode, setRoomMode] = useState<RoomMode>('big');
   const [showFanMessages, setShowFanMessages] = useState(false);
   useEffect(() => {
@@ -1839,8 +1855,8 @@ export default function FollowedRoomsScreen() {
   const loadFollowedSeqRef = useRef(0);
 
   useEffect(() => {
-    setTabBarHidden((!!selectedRoom && !roomClosing) || !!roomPlayer);
-  }, [roomClosing, roomPlayer, selectedRoom, setTabBarHidden]);
+    setTabBarHidden(!!selectedRoom || !!roomPlayer);
+  }, [roomPlayer, selectedRoom, setTabBarHidden]);
 
   useFocusEffect(
     useCallback(() => {
@@ -2328,7 +2344,10 @@ export default function FollowedRoomsScreen() {
         closeTimerRef.current = null;
       }
       roomClosingRef.current = false;
-      setRoomClosing(false);
+      roomEnterPendingRef.current = false;
+      setTabBarHidden(false);
+      setRoomSearchOpen(false);
+      setRoomSearchQuery('');
       setSelectedRoom(null);
       startTransition(() => {
         setRoomPlayer(null);
@@ -2341,22 +2360,23 @@ export default function FollowedRoomsScreen() {
         setRoomMessages([]);
       });
     },
-    [setScreenBackdrop],
+    [setScreenBackdrop, setTabBarHidden],
   );
 
   const closeRoom = useCallback(() => {
     if (roomClosingRef.current || !selectedRoomRef.current) return;
-    if (openRafRef.current !== null) {
-      cancelAnimationFrame(openRafRef.current);
-      openRafRef.current = null;
+    roomEnterPendingRef.current = false;
+    if (roomEnterRafRef.current !== null) {
+      cancelAnimationFrame(roomEnterRafRef.current);
+      roomEnterRafRef.current = null;
     }
     if (closeTimerRef.current) {
       clearTimeout(closeTimerRef.current);
       closeTimerRef.current = null;
     }
-    if (Keyboard.isVisible()) {
-      Keyboard.dismiss();
-    }
+    roomSearchInputRef.current?.blur();
+    roomChatInputRef.current?.blur();
+    Keyboard.dismiss();
     roomSeqRef.current += 1;
     const closeToken = ++closeSeqRef.current;
     activeChannelRef.current = '';
@@ -2369,21 +2389,19 @@ export default function FollowedRoomsScreen() {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
     roomClosingRef.current = true;
-    setRoomClosing(true);
-    setTabBarHidden(false);
     closeTimerRef.current = setTimeout(() => {
       finalizeCloseRoom(closeToken);
-    }, 220);
+    }, 240);
     roomEnter.value = withTiming(
       0,
-      { duration: 160, easing: Easing.out(Easing.cubic) },
+      { duration: 185, easing: Easing.out(Easing.cubic) },
       (finished) => {
         if (finished) {
           runOnJS(finalizeCloseRoom)(closeToken);
         }
       },
     );
-  }, [finalizeCloseRoom, roomEnter, setTabBarHidden]);
+  }, [finalizeCloseRoom, roomEnter]);
   closeRoomRef.current = closeRoom;
 
   const persistPinned = useCallback(
@@ -2832,14 +2850,7 @@ export default function FollowedRoomsScreen() {
   }, [navigation, recordPreviewTimesFromList, selectedRoom]);
 
   useEffect(() => {
-    if (
-      !token ||
-      !isRoomsTabFocused ||
-      !showRoomListTime ||
-      !roomTimeCacheLoaded ||
-      selectedRoom ||
-      !followed.length
-    ) {
+    if (!token || !showRoomListTime || !roomTimeCacheLoaded || selectedRoom || !followed.length) {
       return;
     }
     type HydrateTarget = {
@@ -2862,121 +2873,140 @@ export default function FollowedRoomsScreen() {
       'messages',
       'list',
     ];
-    const bigQueue: HydrateTarget[] = [];
-    const smallQueue: HydrateTarget[] = [];
-    for (const item of followed) {
-      const m = item.member;
-      const srv = String(m?.serverId || '');
-      const bigCid = String(m?.channelId || '');
-      const bigPreview = item.lastMessage ? messageText(item.lastMessage).trim() : '';
-      if (bigCid && bigCid !== '0' && item.lastMessage && bigPreview) {
-        const directMs = getMessageTime(item.lastMessage);
-        const cached = roomTimeCacheRef.current[bigCid];
-        const sig = `${bigCid}|${bigPreview}`;
-        if (
-          directMs <= 0 &&
-          !(cached && cached.timeMs > 0 && cached.preview === bigPreview) &&
-          !hydratedPreviewKeysRef.current.has(sig)
-        ) {
-          hydratedPreviewKeysRef.current.add(sig);
-          bigQueue.push({
-            channelId: bigCid,
-            serverId: srv,
-            preview: bigPreview,
-            sig,
-            isSmall: false,
-            room: m,
-          });
-        }
-      }
-      const smallCid = String(m?.yklzId || '');
-      const smallPreview = item.lastSmallMessage ? messageText(item.lastSmallMessage).trim() : '';
-      if (smallCid && smallCid !== '0' && item.lastSmallMessage && smallPreview) {
-        const directMs = getMessageTime(item.lastSmallMessage);
-        const cached = roomTimeCacheRef.current[smallCid];
-        const sig = `${smallCid}|${smallPreview}`;
-        if (
-          directMs <= 0 &&
-          !(cached && cached.timeMs > 0 && cached.preview === smallPreview) &&
-          !hydratedPreviewKeysRef.current.has(sig)
-        ) {
-          hydratedPreviewKeysRef.current.add(sig);
-          smallQueue.push({
-            channelId: smallCid,
-            serverId: srv,
-            preview: smallPreview,
-            sig,
-            isSmall: true,
-            room: m,
-          });
-        }
-      }
-    }
-    const queue = [...bigQueue, ...smallQueue];
-    if (!queue.length) return;
-    let alive = true;
-    let cursor = 0;
-    const fetchLatestTime = async (target: HydrateTarget): Promise<number> => {
-      const ownerRes = await pocketApi.getLatestRoomMessage({
-        channelId: target.channelId,
-        serverId: target.serverId,
-        fetchAll: false,
-        timeout: target.isSmall ? 3000 : 4500,
-      });
-      if (!alive) return 0;
-      const ownerList = sortMessagesNewestFirst(
-        unwrapList(ownerRes, MESSAGE_LIST_PATHS).filter(Boolean),
-      );
-      const ownerTs = ownerList.length ? getMessageTime(ownerList[0]) : 0;
-      if (ownerTs > 0 || target.isSmall) return ownerTs;
-
-      const allRes = await pocketApi.getLatestRoomMessage({
-        channelId: target.channelId,
-        serverId: target.serverId,
-        fetchAll: true,
-        timeout: 4000,
-      });
-      if (!alive) return 0;
-      const allList = sortMessagesNewestFirst(
-        unwrapList(allRes, MESSAGE_LIST_PATHS).filter(Boolean),
-      );
-      const roomMember = target.room;
-      if (!roomMember) return 0;
-      const latestIdol = allList.find((msg) => isIdolMessage(msg, roomMember, true));
-      return latestIdol ? getMessageTime(latestIdol) : 0;
-    };
-    const worker = async () => {
-      while (alive) {
-        const idx = cursor++;
-        if (idx >= queue.length) break;
-        const target = queue[idx];
-        try {
-          const ts = await fetchLatestTime(target);
-          if (!alive) break;
-          if (ts > 0) {
-            recordRoomPreviewTime(target.channelId, ts, target.preview);
-          }
-        } catch {
-          if (!target.isSmall && !alive) {
-            hydratedPreviewKeysRef.current.delete(target.sig);
-          }
-        }
-      }
-    };
-    const startTimer = setTimeout(() => {
-      if (!alive) return;
-      const workerCount = Math.min(ROOM_TIME_HYDRATE_CONCURRENCY, queue.length);
-      for (let i = 0; i < workerCount; i += 1) {
-        void worker();
-      }
-    }, ROOM_TIME_HYDRATE_START_DELAY_MS);
-    return () => {
+    let alive = false;
+    let startTimer: ReturnType<typeof setTimeout> | null = null;
+    const stopHydrate = () => {
       alive = false;
-      clearTimeout(startTimer);
+      if (startTimer) {
+        clearTimeout(startTimer);
+        startTimer = null;
+      }
+    };
+    const startHydrate = () => {
+      stopHydrate();
+      const bigQueue: HydrateTarget[] = [];
+      const smallQueue: HydrateTarget[] = [];
+      for (const item of followed) {
+        const m = item.member;
+        const srv = String(m?.serverId || '');
+        const bigCid = String(m?.channelId || '');
+        const bigPreview = item.lastMessage ? messageText(item.lastMessage).trim() : '';
+        if (bigCid && bigCid !== '0' && item.lastMessage && bigPreview) {
+          const directMs = getMessageTime(item.lastMessage);
+          const cached = roomTimeCacheRef.current[bigCid];
+          const sig = `${bigCid}|${bigPreview}`;
+          if (
+            directMs <= 0 &&
+            !(cached && cached.timeMs > 0 && cached.preview === bigPreview) &&
+            !hydratedPreviewKeysRef.current.has(sig)
+          ) {
+            hydratedPreviewKeysRef.current.add(sig);
+            bigQueue.push({
+              channelId: bigCid,
+              serverId: srv,
+              preview: bigPreview,
+              sig,
+              isSmall: false,
+              room: m,
+            });
+          }
+        }
+        const smallCid = String(m?.yklzId || '');
+        const smallPreview = item.lastSmallMessage ? messageText(item.lastSmallMessage).trim() : '';
+        if (smallCid && smallCid !== '0' && item.lastSmallMessage && smallPreview) {
+          const directMs = getMessageTime(item.lastSmallMessage);
+          const cached = roomTimeCacheRef.current[smallCid];
+          const sig = `${smallCid}|${smallPreview}`;
+          if (
+            directMs <= 0 &&
+            !(cached && cached.timeMs > 0 && cached.preview === smallPreview) &&
+            !hydratedPreviewKeysRef.current.has(sig)
+          ) {
+            hydratedPreviewKeysRef.current.add(sig);
+            smallQueue.push({
+              channelId: smallCid,
+              serverId: srv,
+              preview: smallPreview,
+              sig,
+              isSmall: true,
+              room: m,
+            });
+          }
+        }
+      }
+      const queue = [...bigQueue, ...smallQueue];
+      if (!queue.length) return;
+      alive = true;
+      let cursor = 0;
+      const fetchLatestTime = async (target: HydrateTarget): Promise<number> => {
+        const ownerRes = await pocketApi.getLatestRoomMessage({
+          channelId: target.channelId,
+          serverId: target.serverId,
+          fetchAll: false,
+          timeout: target.isSmall ? 3000 : 4500,
+        });
+        if (!alive) return 0;
+        const ownerList = sortMessagesNewestFirst(
+          unwrapList(ownerRes, MESSAGE_LIST_PATHS).filter(Boolean),
+        );
+        const ownerTs = ownerList.length ? getMessageTime(ownerList[0]) : 0;
+        if (ownerTs > 0 || target.isSmall) return ownerTs;
+
+        const allRes = await pocketApi.getLatestRoomMessage({
+          channelId: target.channelId,
+          serverId: target.serverId,
+          fetchAll: true,
+          timeout: 4000,
+        });
+        if (!alive) return 0;
+        const allList = sortMessagesNewestFirst(
+          unwrapList(allRes, MESSAGE_LIST_PATHS).filter(Boolean),
+        );
+        const roomMember = target.room;
+        if (!roomMember) return 0;
+        const latestIdol = allList.find((msg) => isIdolMessage(msg, roomMember, true));
+        return latestIdol ? getMessageTime(latestIdol) : 0;
+      };
+      const worker = async () => {
+        while (alive) {
+          const idx = cursor++;
+          if (idx >= queue.length) break;
+          const target = queue[idx];
+          try {
+            const ts = await fetchLatestTime(target);
+            if (!alive) break;
+            if (ts > 0) {
+              recordRoomPreviewTime(target.channelId, ts, target.preview);
+            }
+          } catch {
+            if (!target.isSmall && !alive) {
+              hydratedPreviewKeysRef.current.delete(target.sig);
+            }
+          }
+        }
+      };
+      startTimer = setTimeout(() => {
+        startTimer = null;
+        if (!alive) return;
+        const workerCount = Math.min(ROOM_TIME_HYDRATE_CONCURRENCY, queue.length);
+        for (let i = 0; i < workerCount; i += 1) {
+          void worker();
+        }
+      }, ROOM_TIME_HYDRATE_START_DELAY_MS);
+    };
+    if (navigation.isFocused()) {
+      startHydrate();
+    }
+    const offFocus = navigation.addListener('focus', startHydrate);
+    const offBlur = navigation.addListener('blur', stopHydrate);
+    return () => {
+      stopHydrate();
+      offFocus();
+      offBlur();
     };
   }, [
     followed,
-    isRoomsTabFocused,
+    navigation,
     recordRoomPreviewTime,
     roomTimeCacheLoaded,
     selectedRoom,
@@ -3014,7 +3044,7 @@ export default function FollowedRoomsScreen() {
       mode: 'internal' | 'enter' = 'enter',
     ) => {
       if (mode === 'enter') {
-        if (Keyboard.isVisible()) Keyboard.dismiss();
+        Keyboard.dismiss();
         setSearchOpen((prev) => (prev ? false : prev));
         setMemberBrowseOpen((prev) => (prev ? false : prev));
         setSearchQuery((prev) => (prev ? '' : prev));
@@ -3036,16 +3066,15 @@ export default function FollowedRoomsScreen() {
           clearTimeout(closeTimerRef.current);
           closeTimerRef.current = null;
         }
-        if (openRafRef.current !== null) {
-          cancelAnimationFrame(openRafRef.current);
-          openRafRef.current = null;
+        if (roomEnterRafRef.current !== null) {
+          cancelAnimationFrame(roomEnterRafRef.current);
+          roomEnterRafRef.current = null;
         }
         closeSeqRef.current += 1;
         roomClosingRef.current = false;
-        setRoomClosing(false);
         if (shouldAnimateEnter) {
           roomEnter.value = 0;
-          roomEnter.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
+          roomEnterPendingRef.current = true;
         }
       }
       setSelectedRoom(room);
@@ -3095,26 +3124,10 @@ export default function FollowedRoomsScreen() {
           setRoomMessages(cached);
         }
       } else if (channelChanged) {
-        if (openRafRef.current !== null) {
-          cancelAnimationFrame(openRafRef.current);
-          openRafRef.current = null;
-        }
         if (cached && cached.length > 0) {
-          if (mode === 'enter') {
-            setRoomMessages([]);
-            setRoomLoadedOnce(true);
-            setLoading(false);
-            openRafRef.current = requestAnimationFrame(() => {
-              openRafRef.current = null;
-              if (openSeq === roomSeqRef.current && !roomClosingRef.current) {
-                setRoomMessages((prev) => (prev.length === 0 ? cached : prev));
-              }
-            });
-          } else {
-            setRoomMessages(cached);
-            setRoomLoadedOnce(true);
-            setLoading(false);
-          }
+          setRoomMessages(cached);
+          setRoomLoadedOnce(true);
+          setLoading(false);
         } else {
           setRoomMessages([]);
           setLoading(true);
@@ -5091,6 +5104,13 @@ export default function FollowedRoomsScreen() {
   );
 
   const roomsHeaderOffset = getFloatingHeaderOffset(insets.top);
+  const roomsListContentStyle = useMemo(
+    () => [
+      styles.listContent,
+      { paddingTop: searchOpen || memberBrowseOpen ? 2 : roomsHeaderOffset },
+    ],
+    [searchOpen, memberBrowseOpen, roomsHeaderOffset],
+  );
 
   const roomOverlayNode = (() => {
     if (!selectedRoom) return null;
@@ -5107,7 +5127,7 @@ export default function FollowedRoomsScreen() {
     const roomSolidBg = resolvedTheme === 'dark' ? '#0B0B0F' : '#ECEDF1';
     return (
       <Reanimated.View
-        pointerEvents={roomClosing ? 'none' : 'auto'}
+        pointerEvents="auto"
         style={[
           StyleSheet.absoluteFill,
           styles.roomRoot,
@@ -6350,6 +6370,7 @@ export default function FollowedRoomsScreen() {
                           color={palette.labelTertiary}
                         />
                         <TextInput
+                          ref={roomSearchInputRef}
                           style={{
                             flex: 1,
                             fontSize: 14,
@@ -6368,7 +6389,11 @@ export default function FollowedRoomsScreen() {
                         />
                         {!!roomSearchQuery ? (
                           <TouchableOpacity
-                            onPress={() => setRoomSearchQuery('')}
+                            onPress={() => {
+                              setRoomSearchQuery('');
+                              roomSearchInputRef.current?.blur();
+                              Keyboard.dismiss();
+                            }}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             activeOpacity={0.7}
                           >
@@ -6444,7 +6469,16 @@ export default function FollowedRoomsScreen() {
                               : 'rgba(255,255,255,0.88)',
                         },
                       ]}
-                      onPress={() => setRoomSearchOpen((v) => !v)}
+                      onPress={() => {
+                        if (roomSearchOpen) {
+                          roomSearchInputRef.current?.blur();
+                          Keyboard.dismiss();
+                          setRoomSearchOpen(false);
+                          setRoomSearchQuery('');
+                        } else {
+                          setRoomSearchOpen(true);
+                        }
+                      }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       pressedScale={0.9}
                     >
@@ -6607,6 +6641,7 @@ export default function FollowedRoomsScreen() {
                   <MaterialCommunityIcons name="gift-outline" size={20} color={palette.tint} />
                 </TouchableOpacity>
                 <TextInput
+                  ref={roomChatInputRef}
                   style={[styles.roomInput, { color: palette.label }]}
                   value={roomDraft}
                   onChangeText={(next) => {
@@ -6787,10 +6822,10 @@ export default function FollowedRoomsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.container} pointerEvents={selectedRoom && !roomClosing ? 'none' : 'auto'}>
+      <View style={styles.container} pointerEvents={selectedRoom ? 'none' : 'auto'}>
         <FloatingTabHeader
-          frostedOnly={!!selectedRoom && !roomClosing}
-          hidden={!!selectedRoom && !roomClosing}
+          frostedOnly={!!selectedRoom}
+          hidden={!!selectedRoom}
           leftIsland={
             <GlassSegmented
               role="bar"
@@ -6803,7 +6838,7 @@ export default function FollowedRoomsScreen() {
               onChange={(k) => startTransition(() => setRoomFilter(k as RoomListFilter))}
               height={FLOATING_BAR_HEIGHT}
               labelFontSize={13}
-              frostedOnly={!isRoomsTabFocused || (!!selectedRoom && !roomClosing)}
+              frostedOnly={!!selectedRoom}
               style={styles.headerSeg}
             />
           }
@@ -7050,11 +7085,8 @@ export default function FollowedRoomsScreen() {
               data={filtered}
               extraData={roomsExtraData}
               keyExtractor={roomsKeyExtractor}
-              contentContainerStyle={[
-                styles.listContent,
-                { paddingTop: searchOpen || memberBrowseOpen ? 2 : roomsHeaderOffset },
-              ]}
-              ListFooterComponent={<ListBottomSpacer />}
+              contentContainerStyle={roomsListContentStyle}
+              ListFooterComponent={ROOMS_LIST_FOOTER}
               keyboardDismissMode="on-drag"
               keyboardShouldPersistTaps="handled"
               renderItem={renderRoomsListItem}
@@ -7105,7 +7137,7 @@ export default function FollowedRoomsScreen() {
               initialNumToRender={10}
               maxToRenderPerBatch={8}
               windowSize={5}
-              removeClippedSubviews={Platform.OS === 'android'}
+              removeClippedSubviews={false}
             />
           )}
         </View>
