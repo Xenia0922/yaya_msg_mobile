@@ -33,9 +33,9 @@
 
 Release 包说明：
 
-- `yaya-msg-mobile-v2.9.1-universal.apk`：通用包（全 ABI，体积最大）
-- `yaya-msg-mobile-v2.9.1-v8a.apk`：arm64 真机包（推荐）
-- `yaya-msg-mobile-v2.9.1-x64.apk`：x86_64 模拟器包
+- `yaya-msg-mobile-v2.9.0-universal.apk`：通用包（全 ABI，体积最大）
+- `yaya-msg-mobile-v2.9.0-v8a.apk`：arm64 真机包（推荐）
+- `yaya-msg-mobile-v2.9.0-x64.apk`：x86_64 模拟器包
 
 App 内「检查更新」始终提供通用包直链；真机如需最小体积，请在 Release 页面按架构下载。
 
