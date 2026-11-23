@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   InteractionManager,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,6 +20,7 @@ import { Pill } from '../components/Pill';
 import { EmptyState, ErrorState } from '../components/StateViews';
 import pocketApi from '../api/pocket48';
 import { errorMessage, unwrapList } from '../utils/data';
+import { formatInvoiceCents, sumSelectedInvoiceCents } from '../utils/invoice';
 import { usePalette, radiiAlias, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
@@ -53,8 +55,12 @@ export default function InvoiceScreen() {
   const [notifyMobile, setNotifyMobile] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const canInvoice = orders.filter((o) => o.invoiceStatus === 0).length;
-  const selectedCount = orders.filter((o) => o.selected).length;
+  const canInvoice = useMemo(() => orders.filter((o) => o.invoiceStatus === 0).length, [orders]);
+  const selectedCount = useMemo(() => orders.filter((o) => o.selected).length, [orders]);
+  const selectedTotalText = useMemo(
+    () => formatInvoiceCents(sumSelectedInvoiceCents(orders)),
+    [orders],
+  );
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -89,9 +95,17 @@ export default function InvoiceScreen() {
   }, [fetchOrders]);
 
   const toggleOrder = (dataId: string) => {
+    if (!dataId) return;
     setOrders((prev) =>
-      prev.map((o) => (o.dataId === dataId ? { ...o, selected: !o.selected } : o)),
+      prev.map((o) => {
+        if (o.dataId !== dataId || o.invoiceStatus !== 0) return o;
+        return { ...o, selected: !o.selected };
+      }),
     );
+  };
+
+  const clearSelection = () => {
+    setOrders((prev) => prev.map((o) => (o.selected ? { ...o, selected: false } : o)));
   };
 
   const handleSubmit = async () => {
@@ -131,14 +145,14 @@ export default function InvoiceScreen() {
     }
   };
 
-  const renderOrder = ({ item }: { item: OrderItem; index: number }) => {
+  const renderOrder = ({ item, index }: { item: OrderItem; index: number }) => {
     const disabled = item.invoiceStatus !== 0;
     const selected = item.selected;
     const statusLabel = statusLabels[item.invoiceStatus] || t('未知');
     const statusColor = item.invoiceStatus === 0 ? palette.success : palette.labelTertiary;
     return (
       <GlassSurface
-        key={item.dataId || String(item.tradeTime)}
+        key={item.dataId || `${item.tradeTime}-${index}`}
         radius={22}
         role="card"
         frostedOnly
@@ -152,32 +166,42 @@ export default function InvoiceScreen() {
           disabled && styles.cardDisabled,
         ]}
       >
-        <View style={styles.orderInfo}>
-          <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>
-            {item.goodsName}
-          </Text>
-          <Text style={[styles.orderMeta, { color: palette.labelSecondary }]}>
-            {item.tradeTime}
-          </Text>
-        </View>
-
-        <Text style={[styles.orderAmount, { color: palette.label }]}>¥{item.totalFee}</Text>
-
-        <View
-          style={[
-            styles.statusPill,
-            { backgroundColor: item.invoiceStatus === 0 ? 'rgba(52,199,89,0.14)' : palette.fill2 },
-          ]}
+        <Pressable
+          onPress={!disabled ? () => toggleOrder(item.dataId) : undefined}
+          disabled={disabled}
+          style={styles.orderCardMain}
         >
-          <Text
+          <View style={styles.orderInfo}>
+            <Text style={[styles.orderName, { color: palette.label }]} numberOfLines={2}>
+              {item.goodsName}
+            </Text>
+            <Text style={[styles.orderMeta, { color: palette.labelSecondary }]}>
+              {item.tradeTime}
+            </Text>
+          </View>
+
+          <Text style={[styles.orderAmount, { color: selected ? palette.tint : palette.label }]}>
+            ¥{item.totalFee}
+          </Text>
+
+          <View
             style={[
-              styles.statusPillText,
-              { color: statusColor, opacity: item.invoiceStatus === 2 ? 0.65 : 1 },
+              styles.statusPill,
+              {
+                backgroundColor: item.invoiceStatus === 0 ? 'rgba(52,199,89,0.14)' : palette.fill2,
+              },
             ]}
           >
-            {statusLabel}
-          </Text>
-        </View>
+            <Text
+              style={[
+                styles.statusPillText,
+                { color: statusColor, opacity: item.invoiceStatus === 2 ? 0.65 : 1 },
+              ]}
+            >
+              {statusLabel}
+            </Text>
+          </View>
+        </Pressable>
 
         {!disabled ? (
           <Pill
@@ -214,6 +238,56 @@ export default function InvoiceScreen() {
           onBack={() => navigation.goBack()}
           right={<HeaderAction label={t('刷新')} onPress={fetchOrders} />}
         />
+        {orders.length > 0 ? (
+          <GlassSurface
+            radius={18}
+            role="card"
+            style={[
+              styles.summaryBar,
+              {
+                backgroundColor: 'transparent',
+                borderColor: selectedCount > 0 ? palette.tint : palette.hairline,
+              },
+            ]}
+          >
+            <View style={styles.summaryLeft}>
+              <Text
+                style={[styles.summaryLabel, { color: palette.labelSecondary }]}
+                numberOfLines={1}
+              >
+                {selectedCount > 0
+                  ? t('已选 {count} 单', { count: selectedCount })
+                  : t('可开票订单 ({count})', { count: canInvoice })}
+              </Text>
+              {selectedCount > 0 ? (
+                <Pressable
+                  onPress={clearSelection}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('清空')}
+                  style={[styles.clearChip, { backgroundColor: palette.fill2 }]}
+                >
+                  <Text style={[styles.clearChipText, { color: palette.labelSecondary }]}>
+                    {t('清空')}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <View style={styles.summaryRight}>
+              <Text style={[styles.summaryAmountLabel, { color: palette.labelSecondary }]}>
+                {t('累计金额')}
+              </Text>
+              <Text
+                style={[
+                  styles.summaryAmount,
+                  { color: selectedCount > 0 ? palette.tint : palette.label },
+                ]}
+              >
+                ¥{selectedTotalText}
+              </Text>
+            </View>
+          </GlassSurface>
+        ) : null}
         <ScrollView
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
@@ -221,7 +295,6 @@ export default function InvoiceScreen() {
         >
           <Text style={[styles.sectionTitle, { color: palette.label }]}>
             {t('可开票订单 ({count})', { count: canInvoice })}
-            {selectedCount > 0 ? t(' · 已选 {count} 单', { count: selectedCount }) : ''}
           </Text>
           {error ? (
             <ErrorState title={t('加载失败')} hint={error} onAction={() => fetchOrders()} />
@@ -377,11 +450,37 @@ export default function InvoiceScreen() {
               keyboardType="phone-pad"
             />
 
+            <View style={[styles.formSummaryRow, { borderTopColor: palette.hairline }]}>
+              <Text style={[styles.formSummaryCount, { color: palette.labelSecondary }]}>
+                {selectedCount > 0
+                  ? t('已选 {count} 单', { count: selectedCount })
+                  : t('请选择要开票的订单')}
+              </Text>
+              <View style={styles.summaryRight}>
+                <Text style={[styles.summaryAmountLabel, { color: palette.labelSecondary }]}>
+                  {t('累计金额')}
+                </Text>
+                <Text
+                  style={[
+                    styles.formSummaryAmount,
+                    { color: selectedCount > 0 ? palette.tint : palette.label },
+                  ]}
+                >
+                  ¥{selectedTotalText}
+                </Text>
+              </View>
+            </View>
+
             <Button
               title={
                 submitting
                   ? t('提交中...')
-                  : t('提交申请 (已选 {count} 单)', { count: selectedCount })
+                  : selectedCount > 0
+                    ? t('提交申请 (已选 {count} 单 · ¥{amount})', {
+                        count: selectedCount,
+                        amount: selectedTotalText,
+                      })
+                    : t('提交申请 (已选 {count} 单)', { count: selectedCount })
               }
               onPress={handleSubmit}
               disabled={submitting || !selectedCount}
@@ -400,7 +499,31 @@ export default function InvoiceScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  scroll: { padding: 16, paddingBottom: 60 },
+  summaryBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  summaryLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1, minWidth: 0 },
+  summaryLabel: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '600' },
+  clearChip: { borderRadius: radiiAlias.chip, paddingHorizontal: 8, paddingVertical: 3 },
+  clearChipText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '600' },
+  summaryRight: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flexShrink: 0 },
+  summaryAmountLabel: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '600' },
+  summaryAmount: {
+    fontSize: 17,
+    fontFamily: fontFamily.system,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  scroll: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 60 },
   sectionTitle: { fontSize: 15, fontFamily: fontFamily.system, fontWeight: '800', marginBottom: 8 },
   orderCard: {
     flexDirection: 'row',
@@ -410,11 +533,18 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  orderCardMain: { flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0 },
   cardDisabled: { opacity: 0.5 },
   orderInfo: { flex: 1, minWidth: 0, paddingRight: 8 },
   orderName: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '600' },
   orderMeta: { fontSize: 11, marginTop: 3 },
-  orderAmount: { flexShrink: 0, fontSize: 15, fontWeight: '800', marginRight: 10 },
+  orderAmount: {
+    flexShrink: 0,
+    fontSize: 15,
+    fontWeight: '800',
+    marginRight: 10,
+    fontVariant: ['tabular-nums'],
+  },
   statusPill: {
     flexShrink: 0,
     borderRadius: radiiAlias.chip,
@@ -453,5 +583,20 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.system,
   },
   fillInput: {},
-  submitBtn: { marginTop: 20 },
+  formSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  formSummaryCount: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '600' },
+  formSummaryAmount: {
+    fontSize: 16,
+    fontFamily: fontFamily.system,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  submitBtn: { marginTop: 12 },
 });

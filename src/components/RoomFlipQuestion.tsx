@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { usePalette, fontFamily } from '../theme';
 import { normalizeUrl } from '../utils/data';
 import { getRoomFlipUser, type RoomFlipUser } from '../services/roomFlipUser';
 import { useI18n } from '../i18n';
+import { NetworkImage } from './NetworkImage';
+import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 
 export default function RoomFlipQuestion({
   question,
@@ -57,7 +59,14 @@ export default function RoomFlipQuestion({
         onPress={() => visible?.userId && onOpenProfile({ id: visible.userId, name, avatar })}
         style={styles.header}
       >
-        {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} /> : null}
+        {avatar ? (
+          <NetworkImage
+            source={{ uri: avatar }}
+            style={styles.avatar}
+            thumbnail={AVATAR_THUMB_WIDTH}
+            fallback={false}
+          />
+        ) : null}
         <Text
           style={[
             styles.name,

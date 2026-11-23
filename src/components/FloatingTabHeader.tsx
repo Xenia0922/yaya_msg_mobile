@@ -1,21 +1,21 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import {
-  Image,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import { Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import Reanimated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { fontFamily, usePalette } from '../theme';
 import { removeTopDockEntry, setTopDockEntry } from './DockPortal';
 import { GlassSurface } from './GlassSurface';
 import { ScalePressable } from './Motion';
+import { NetworkImage } from './NetworkImage';
+import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 
 export const FLOATING_BAR_HEIGHT = 44;
 
@@ -51,7 +51,7 @@ export const FloatingTabHeader = React.memo(function FloatingTabHeader({
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const portalId = useId();
-  const useFrosted = frostedOnly || !isFocused;
+  const useFrosted = frostedOnly || !isFocused || hidden;
   const isDark = palette.name === 'dark';
 
   const scrimColors: [string, string, string] = isDark
@@ -59,9 +59,26 @@ export const FloatingTabHeader = React.memo(function FloatingTabHeader({
     : ['rgba(242,243,248,0.92)', 'rgba(242,243,248,0.55)', 'rgba(242,243,248,0)'];
 
   const visible = isFocused && !hidden;
+  const dockOpacity = useSharedValue(visible ? 1 : 0);
 
-  const headerNode = visible ? (
-    <View pointerEvents="box-none" style={[styles.overlay, { height: insets.top + 68 }, style]}>
+  useEffect(() => {
+    dockOpacity.value = withTiming(visible ? 1 : 0, {
+      duration: 175,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [visible, dockOpacity]);
+
+  const overlayAnimStyle = useAnimatedStyle(() => ({
+    opacity: dockOpacity.value,
+  }));
+
+  const headerNode = isFocused ? (
+    <Reanimated.View
+      pointerEvents={visible ? 'box-none' : 'none'}
+      accessibilityElementsHidden={!visible}
+      importantForAccessibility={visible ? 'yes' : 'no-hide-descendants'}
+      style={[styles.overlay, { height: insets.top + 68 }, overlayAnimStyle, style]}
+    >
       <LinearGradient
         pointerEvents="none"
         colors={scrimColors}
@@ -115,16 +132,16 @@ export const FloatingTabHeader = React.memo(function FloatingTabHeader({
           </GlassSurface>
         ) : null}
       </View>
-    </View>
+    </Reanimated.View>
   ) : null;
 
-  const wasVisibleRef = useRef(false);
+  const wasMountedRef = useRef(false);
   useLayoutEffect(() => {
-    if (visible && headerNode) {
-      wasVisibleRef.current = true;
+    if (isFocused && headerNode) {
+      wasMountedRef.current = true;
       setTopDockEntry(portalId, headerNode);
-    } else if (wasVisibleRef.current) {
-      wasVisibleRef.current = false;
+    } else if (wasMountedRef.current) {
+      wasMountedRef.current = false;
       removeTopDockEntry(portalId);
     }
   });
@@ -184,9 +201,11 @@ export const FloatingHeaderAction = React.memo(function FloatingHeaderAction({
       ]}
     >
       {showAvatar ? (
-        <Image
+        <NetworkImage
           source={{ uri: avatarUri }}
           style={[styles.actionAvatar, { borderColor: active ? palette.onTint : palette.tint }]}
+          thumbnail={AVATAR_THUMB_WIDTH}
+          fallback={false}
           onError={() => setAvatarFailed(true)}
         />
       ) : (

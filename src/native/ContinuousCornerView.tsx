@@ -4,6 +4,7 @@ export interface ContinuousCornerNativeProps extends ViewProps {
   cornerRadiusDp?: number;
   strokeWidthDp?: number;
   strokeColor?: string;
+  clipOutline?: boolean;
 }
 
 export const NativeContinuousCornerView =

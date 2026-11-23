@@ -135,7 +135,6 @@ export const styles = StyleSheet.create({
     gap: 4,
   },
 
-  toolChip: { paddingHorizontal: 10, justifyContent: 'flex-start' },
   quickRow: { flexDirection: 'row', gap: 8 },
   quickCell: {},
   quickCellInner: { width: '100%' },
@@ -171,7 +170,6 @@ export const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   toolChipsContent: {
-    paddingRight: 8,
     gap: 8,
     paddingHorizontal: spacing.md,
 

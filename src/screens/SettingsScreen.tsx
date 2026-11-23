@@ -14,8 +14,9 @@ import {
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { NetworkImage } from '../components/NetworkImage';
+import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import { RootStackParamList, TabParamList } from '../navigation/types';
 import { useSettingsStore, useUiStore, useMemberStore, useUpdateStore } from '../store';
 import { saveSettings } from '../services/settings';
@@ -347,7 +348,12 @@ export default function SettingsScreen() {
                 ]}
               >
                 {account?.avatar ? (
-                  <Image source={{ uri: account.avatar }} style={styles.accountAvatarImg} />
+                  <NetworkImage
+                    source={{ uri: account.avatar }}
+                    style={styles.accountAvatarImg}
+                    thumbnail={AVATAR_THUMB_WIDTH}
+                    fallback={false}
+                  />
                 ) : (
                   <MaterialCommunityIcons name="account" size={24} color={palette.tint} />
                 )}

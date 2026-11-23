@@ -4,7 +4,6 @@ import {
   Animated,
   Easing,
   FlatList,
-  Image,
   Modal,
   PanResponder,
   Pressable,
@@ -21,6 +20,7 @@ import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { MusicEngine } from '../services/musicPlayer';
 import { lyricIndexAt, lyricTimeForIndex } from '../utils/lyrics';
 import CoverArt from './CoverArt';
+import { NetworkImage } from './NetworkImage';
 import { usePalette, radii, spacing, motion, fontFamily } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
@@ -453,11 +453,13 @@ function FullScreenPlayerInner({
     <View style={styles.root}>
       <View style={[styles.backdrop, { backgroundColor: palette.background }]} />
       {coverUri ? (
-        <Image
+        <NetworkImage
           source={{ uri: coverUri }}
           blurRadius={60}
           resizeMode="cover"
           style={styles.backdrop}
+          fallback={false}
+          fadeDuration={0}
         />
       ) : null}
       <View

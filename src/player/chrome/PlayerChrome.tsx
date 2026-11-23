@@ -4,7 +4,6 @@ import {
   Animated,
   FlatList,
   GestureResponderEvent,
-  Image,
   Linking,
   Modal,
   NativeModules,
@@ -20,6 +19,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { NetworkImage } from '../../components/NetworkImage';
+import { AVATAR_THUMB_WIDTH } from '../../utils/imageThumb';
 import { usePlayerStore } from '../store/playerStore';
 import { isRtmpUrl } from '../resolve/streamResolver';
 import { PlayerFeatures, PocketComment, PocketPlayerInfo } from '../types';
@@ -72,7 +73,14 @@ function RankAvatar({ uri, overlap }: { uri: string; overlap: boolean }) {
       <MaterialCommunityIcons name="account" size={18} color="rgba(255,255,255,0.85)" />
     </View>
   ) : (
-    <Image source={{ uri }} resizeMode="cover" onError={() => setFailed(true)} style={style} />
+    <NetworkImage
+      source={{ uri }}
+      resizeMode="cover"
+      thumbnail={AVATAR_THUMB_WIDTH}
+      fallback={false}
+      onError={() => setFailed(true)}
+      style={style}
+    />
   );
 }
 
@@ -104,8 +112,10 @@ function CommentAvatar({ uri, userId }: { uri?: string; userId?: string | number
   }, [normalized, userId, failed]);
   const url = resolved || normalized;
   return url && !failed ? (
-    <Image
+    <NetworkImage
       source={{ uri: url }}
+      thumbnail={AVATAR_THUMB_WIDTH}
+      fallback={false}
       onError={() => setFailed(true)}
       style={styles.pocketCommentAvatar}
     />
@@ -755,7 +765,12 @@ export function PlayerChrome({
             style={styles.pocketIdentity}
           >
             {pocket.avatar ? (
-              <Image source={{ uri: pocket.avatar }} style={styles.pocketAvatar} />
+              <NetworkImage
+                source={{ uri: pocket.avatar }}
+                thumbnail={AVATAR_THUMB_WIDTH}
+                fallbackIcon="account"
+                style={styles.pocketAvatar}
+              />
             ) : (
               <View style={styles.pocketAvatarFallback}>
                 <MaterialCommunityIcons name="account" size={18} color="#fff" />

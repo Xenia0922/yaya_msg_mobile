@@ -105,7 +105,7 @@ export default function PhotosScreen() {
   const showToast = useUiStore((state) => state.showToast);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [photos, setPhotos] = useState<any[]>([]);
-  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewIndex, setPreviewIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -200,18 +200,31 @@ export default function PhotosScreen() {
   );
 
   const photoUrls = useMemo(() => photos.map((p) => deepFindImageUrl(p)), [photos]);
+  const galleryEntries = useMemo(() => {
+    const urls: string[] = [];
+    const indexMap = new Map<number, number>();
+    photoUrls.forEach((u, idx) => {
+      if (!u) return;
+      indexMap.set(idx, urls.length);
+      urls.push(u);
+    });
+    return { urls, indexMap };
+  }, [photoUrls]);
 
   const renderPhotoItem = useCallback(
     ({ item, index }: { item: any; index: number }) => {
       const url = photoUrls[index] || deepFindImageUrl(item);
+      const galleryIdx = galleryEntries.indexMap.get(index);
       return (
-        <View style={{ flex: 1 }}>
+        <View style={styles.gridCell}>
           <ScalePressable
             style={styles.photoCell}
             activeOpacity={0.9}
             pressedScale={0.96}
-            onPress={() => setPreviewUrl(url)}
-            onLongPress={() => downloadPhoto(url)}
+            onPress={() => {
+              if (galleryIdx !== undefined) setPreviewIndex(galleryIdx);
+            }}
+            onLongPress={() => url && downloadPhoto(url)}
           >
             {url ? (
               <NetworkImage
@@ -235,7 +248,7 @@ export default function PhotosScreen() {
         </View>
       );
     },
-    [downloadPhoto, palette, photoUrls],
+    [downloadPhoto, galleryEntries, palette, photoUrls],
   );
 
   const renderSkeletonGrid = () => {
@@ -310,21 +323,25 @@ export default function PhotosScreen() {
           ) : null}
         </View>
         <ZoomImageModal
-          url={previewUrl}
-          onClose={() => setPreviewUrl('')}
-          onDownload={() => {
-            if (!previewUrl) return;
+          url={previewIndex >= 0 ? galleryEntries.urls[previewIndex] || '' : ''}
+          images={galleryEntries.urls}
+          initialIndex={Math.max(0, previewIndex)}
+          onClose={() => setPreviewIndex(-1)}
+          onDownload={(activeUrl) => {
+            const targetUrl = activeUrl || galleryEntries.urls[previewIndex] || '';
+            if (!targetUrl) return;
             void enqueueDownload({
-              url: previewUrl,
+              url: targetUrl,
               type: 'image',
               name: `photo-${Date.now()}.jpg`,
             })
               .then(() => showToast(t('已加入下载管理')))
               .catch((err) => showToast(errorMessage(err)));
           }}
-          onShare={() => {
-            if (!previewUrl) return;
-            void shareRemoteImage(previewUrl).catch(() => showToast(t('分享失败')));
+          onShare={(activeUrl) => {
+            const targetUrl = activeUrl || galleryEntries.urls[previewIndex] || '';
+            if (!targetUrl) return;
+            void shareRemoteImage(targetUrl).catch(() => showToast(t('分享失败')));
           }}
         />
         {loading && photos.length === 0 ? (
@@ -398,6 +415,7 @@ const styles = StyleSheet.create({
   pickerBody: { marginTop: 10 },
   status: { marginTop: 10, fontSize: 12, textAlign: 'center' },
   list: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 96 },
+  gridCell: { width: `${100 / 3}%` as any },
   photoCell: { flex: 1, margin: 3, borderRadius: radii.md, overflow: 'hidden', aspectRatio: 1 },
   photo: { width: '100%', height: '100%' },
   photoFallback: { alignItems: 'center', justifyContent: 'center' },

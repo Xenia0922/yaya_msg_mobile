@@ -21,10 +21,14 @@ import { useI18n } from '../i18n';
 import { LiveExoView, onLiveFirstFrame } from '../native/LivePlayer';
 import { isRtmpUrl } from '../player/resolve/streamResolver';
 import { getPlayerHtml } from './media/player';
+import { SquircleView } from './SquircleView';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 
 const W = 180;
 
 const H_MIN = 104;
+
+const MINI_VIDEO_RADIUS = 22;
 
 const CAPSULE_W = 180;
 const CAPSULE_H = 44;
@@ -43,6 +47,10 @@ export function MiniPlayer() {
   const navigation = useNavigation<any>();
   const palette = usePalette();
   const { width: winW, height: winH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const minTop = Math.max(12, insets.top + 6);
+  const minTopRef = useRef(minTop);
+  minTopRef.current = minTop;
   const info = useMiniPlayerStore((s) => s.info);
   const visible = useMiniPlayerStore((s) => s.visible);
   const playing = useMiniPlayerStore((s) => s.playing);
@@ -121,7 +129,10 @@ export function MiniPlayer() {
         onPanResponderMove: (_e, g) => {
           if (info?.audioOnly) {
             const cx = Math.max(6, Math.min(winW - CAPSULE_W - 6, basePos.current.x + g.dx));
-            const cy = Math.max(0, Math.min(winH - CAPSULE_H - 6, basePos.current.y + g.dy));
+            const cy = Math.max(
+              minTopRef.current,
+              Math.min(winH - CAPSULE_H - 6, basePos.current.y + g.dy),
+            );
             pos.setValue({ x: cx, y: cy });
             return;
           }
@@ -149,11 +160,14 @@ export function MiniPlayer() {
 
           if (info?.audioOnly) {
             const cx = Math.max(6, Math.min(winW - CAPSULE_W - 6, basePos.current.x + g.dx));
-            const cy = Math.max(0, Math.min(winH - CAPSULE_H - 6, basePos.current.y + g.dy));
+            const cy = Math.max(
+              minTopRef.current,
+              Math.min(winH - CAPSULE_H - 6, basePos.current.y + g.dy),
+            );
             basePos.current = { x: cx, y: cy };
             Animated.spring(pos, {
               toValue: { x: cx, y: cy },
-              useNativeDriver: false,
+              useNativeDriver: true,
               friction: 8,
               tension: 110,
             }).start();
@@ -163,14 +177,16 @@ export function MiniPlayer() {
 
           const w = boxW;
           const h = boxHNowRef.current;
+          const minY = minTopRef.current;
+          const maxY = Math.max(minY, winH - h - 6);
           const nx = Math.max(6, Math.min(winW - w - 6, basePos.current.x + g.dx));
-          const ny = Math.max(6, Math.min(winH - h - 6, basePos.current.y + g.dy));
+          const ny = Math.min(Math.max(minY, basePos.current.y + g.dy), maxY);
 
           const targetX = nx + w / 2 < winW / 2 ? 6 : Math.max(6, winW - w - 6);
           basePos.current = { x: targetX, y: ny };
           Animated.spring(pos, {
             toValue: { x: targetX, y: ny },
-            useNativeDriver: false,
+            useNativeDriver: true,
             friction: 7,
             tension: 90,
           }).start();
@@ -293,13 +309,14 @@ export function MiniPlayer() {
   };
 
   useEffect(() => {
+    if (pipCover || winW < 240 || winH < 320) return;
     const maxX = Math.max(6, winW - boxW - 6);
-    const maxY = Math.max(6, winH - boxHNow - 6);
+    const maxY = Math.max(minTop, winH - boxHNow - 6);
     const bx = Math.min(Math.max(6, basePos.current.x), maxX);
-    const by = Math.min(Math.max(6, basePos.current.y), maxY);
+    const by = Math.min(Math.max(minTop, basePos.current.y), maxY);
     basePos.current = { x: bx, y: by };
     pos.setValue({ x: bx, y: by });
-  }, [scale, boxW, boxHNow, winW, winH, pos]);
+  }, [pipCover, scale, boxW, boxHNow, winW, winH, minTop, pos]);
 
   useEffect(() => {
     const liveFixed = !!info?.isLive && !info?.audioOnly;
@@ -341,6 +358,8 @@ export function MiniPlayer() {
 
   if (!visible || !info) return null;
 
+  const miniRadius = pipCover ? 0 : info.audioOnly ? CAPSULE_H / 2 : MINI_VIDEO_RADIUS;
+
   return (
     <>
       <Animated.View
@@ -356,163 +375,172 @@ export function MiniPlayer() {
                   width: info.audioOnly ? CAPSULE_W : boxW,
                   height: info.audioOnly ? CAPSULE_H : boxHNow,
                 }),
-            borderRadius: info.audioOnly ? CAPSULE_H / 2 : undefined,
-            backgroundColor: info.audioOnly ? palette.surfaceGlassStrong : '#000',
-            borderColor: palette.hairline,
             transform: pipCover
               ? [{ translateX: 0 }, { translateY: 0 }]
               : pos.getTranslateTransform(),
           },
         ]}
       >
-        <View
+        <SquircleView
           pointerEvents="none"
-          style={
-            info.audioOnly ? [StyleSheet.absoluteFill, { opacity: 0 }] : StyleSheet.absoluteFill
-          }
+          radius={miniRadius}
+          clipOutline={!pipCover}
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: info.audioOnly ? palette.surfaceGlassStrong : '#000',
+              borderWidth: pipCover ? 0 : StyleSheet.hairlineWidth,
+              borderColor: info.audioOnly ? palette.hairline : 'rgba(255,255,255,0.22)',
+              elevation: pipCover ? 9999 : 8,
+            },
+          ]}
         >
-          {useWebMini ? (
-            <WebView
-              ref={webMiniRef}
-              key={info.url}
-              source={{ html: webMiniHtml }}
-              style={StyleSheet.absoluteFill}
-              javaScriptEnabled
-              domStorageEnabled
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={false}
-              originWhitelist={['*']}
-              mixedContentMode="always"
-              onMessage={(e) => {
-                try {
-                  const d = JSON.parse(e.nativeEvent.data);
-                  if (d.type === 'videosize') {
-                    applyContentSize(Number(d.width) || 0, Number(d.height) || 0);
-                  } else if (d.type === 'progress') {
-                    const t = Number(d.time) || 0;
-                    if (Number.isFinite(t) && t > 0) useMiniPlayerStore.getState().setCurrentPos(t);
-                  }
-                } catch {}
-              }}
-            />
-          ) : isNativeLive && NativeLiveView ? (
-            <NativeLiveView
-              key={info.url}
-              style={StyleSheet.absoluteFill}
-              url={info.url}
-              paused={!playing}
-
-              audioOnly={!!info.audioOnly}
-              onSize={(e) => {
-                const ne = e?.nativeEvent || {};
-                const w = Number(ne.visualWidth) || Number(ne.width) || 0;
-                const h = Number(ne.visualHeight) || Number(ne.height) || 0;
-                applyContentSize(
-                  w,
-                  h,
-                  typeof ne.isLandscape === 'boolean' ? ne.isLandscape : undefined,
-                );
-              }}
-            />
-          ) : (
-            <Video
-              ref={videoRef}
-              key={`${info.url}-${info.position || 0}`}
-              source={{
-                uri: info.url,
-
-                headers: {
-                  'User-Agent': USER_AGENT,
-                  Referer: 'https://h5.48.cn/',
-                  Origin: 'https://h5.48.cn',
-                },
-              }}
-              style={StyleSheet.absoluteFill}
-
-              viewType={ViewType.TEXTURE}
-
-              resizeMode={pipCover || hasNatural || scale !== 1 ? 'contain' : 'cover'}
-              paused={!playing}
-              playInBackground
-              playWhenInactive
-              ignoreSilentSwitch="ignore"
-              onLoad={(e) => {
-                const ns = e?.naturalSize;
-                if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) {
-                  applyContentSize(Number(ns.width), Number(ns.height));
-                } else {
-                  setHasNatural(false);
-                }
-
-                const t = Number(info.position) || 0;
-
-                if (t > 1 && !seekedRef.current && !info.isLive && videoRef.current?.seek) {
-                  seekedRef.current = true;
-                  videoRef.current.seek(t);
-                }
-              }}
-
-              onProgress={(e: any) => {
-                const t = Number(e?.currentTime) || 0;
-                if (!info.isLive && t > 0) useMiniPlayerStore.getState().setCurrentPos(t);
-              }}
-              onEnd={() => setPlaying(false)}
-              onError={(event) => {
-                setErrorMsg(
-                  t('小窗播放失败：{detail}', {
-                    detail: JSON.stringify(event?.error || event).slice(0, 160),
-                  }),
-                );
-              }}
-            />
-          )}
-        </View>
-        {errorMsg ? (
           <View
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                padding: 8,
-              },
-            ]}
             pointerEvents="none"
+            style={
+              info.audioOnly ? [StyleSheet.absoluteFill, { opacity: 0 }] : StyleSheet.absoluteFill
+            }
           >
-            <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#ff6b6b" />
-            <Text
-              style={{
-                color: '#fff',
-                fontSize: 10,
-                fontFamily: fontFamily.system,
-                marginTop: 4,
-                textAlign: 'center',
-              }}
-            >
-              {errorMsg}
-            </Text>
+            {useWebMini ? (
+              <WebView
+                ref={webMiniRef}
+                key={info.url}
+                source={{ html: webMiniHtml }}
+                style={StyleSheet.absoluteFill}
+                javaScriptEnabled
+                domStorageEnabled
+                allowsInlineMediaPlayback
+                mediaPlaybackRequiresUserAction={false}
+                originWhitelist={['*']}
+                mixedContentMode="always"
+                onMessage={(e) => {
+                  try {
+                    const d = JSON.parse(e.nativeEvent.data);
+                    if (d.type === 'videosize') {
+                      applyContentSize(Number(d.width) || 0, Number(d.height) || 0);
+                    } else if (d.type === 'progress') {
+                      const t = Number(d.time) || 0;
+                      if (Number.isFinite(t) && t > 0)
+                        useMiniPlayerStore.getState().setCurrentPos(t);
+                    }
+                  } catch {}
+                }}
+              />
+            ) : isNativeLive && NativeLiveView ? (
+              <NativeLiveView
+                key={info.url}
+                style={StyleSheet.absoluteFill}
+                url={info.url}
+                paused={!playing}
+                audioOnly={!!info.audioOnly}
+                onSize={(e) => {
+                  const ne = e?.nativeEvent || {};
+                  const w = Number(ne.visualWidth) || Number(ne.width) || 0;
+                  const h = Number(ne.visualHeight) || Number(ne.height) || 0;
+                  applyContentSize(
+                    w,
+                    h,
+                    typeof ne.isLandscape === 'boolean' ? ne.isLandscape : undefined,
+                  );
+                }}
+              />
+            ) : (
+              <Video
+                ref={videoRef}
+                key={`${info.url}-${info.position || 0}`}
+                source={{
+                  uri: info.url,
+                  headers: {
+                    'User-Agent': USER_AGENT,
+                    Referer: 'https://h5.48.cn/',
+                    Origin: 'https://h5.48.cn',
+                  },
+                }}
+                style={StyleSheet.absoluteFill}
+                viewType={ViewType.TEXTURE}
+                resizeMode={pipCover || hasNatural || scale !== 1 ? 'contain' : 'cover'}
+                paused={!playing}
+                playInBackground
+                playWhenInactive
+                ignoreSilentSwitch="ignore"
+                onLoad={(e) => {
+                  const ns = e?.naturalSize;
+                  if (ns && Number(ns.width) > 0 && Number(ns.height) > 0) {
+                    applyContentSize(Number(ns.width), Number(ns.height));
+                  } else {
+                    setHasNatural(false);
+                  }
+
+                  const t = Number(info.position) || 0;
+
+                  if (t > 1 && !seekedRef.current && !info.isLive && videoRef.current?.seek) {
+                    seekedRef.current = true;
+                    videoRef.current.seek(t);
+                  }
+                }}
+                onProgress={(e: any) => {
+                  const t = Number(e?.currentTime) || 0;
+                  if (!info.isLive && t > 0) useMiniPlayerStore.getState().setCurrentPos(t);
+                }}
+                onEnd={() => setPlaying(false)}
+                onError={(event) => {
+                  setErrorMsg(
+                    t('小窗播放失败：{detail}', {
+                      detail: JSON.stringify(event?.error || event).slice(0, 160),
+                    }),
+                  );
+                }}
+              />
+            )}
           </View>
-        ) : null}
+          {errorMsg ? (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: 'rgba(0,0,0,0.7)',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  padding: 8,
+                },
+              ]}
+              pointerEvents="none"
+            >
+              <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#ff6b6b" />
+              <Text
+                style={{
+                  color: '#fff',
+                  fontSize: 10,
+                  fontFamily: fontFamily.system,
+                  marginTop: 4,
+                  textAlign: 'center',
+                }}
+              >
+                {errorMsg}
+              </Text>
+            </View>
+          ) : null}
+
+          {!info.audioOnly ? (
+            <View
+              nativeID="yaya.pip.overlay"
+              collapsable={false}
+              style={[styles.titleBar, controlsVisible && !pipCover ? null : styles.hiddenLayer]}
+              pointerEvents="none"
+            >
+              <Text style={styles.title} numberOfLines={1}>
+                {info.title}
+              </Text>
+            </View>
+          ) : null}
+        </SquircleView>
 
         <Animated.View
           {...(!info.audioOnly ? pan.panHandlers : {})}
+          collapsable={false}
           pointerEvents={info.audioOnly ? 'none' : 'auto'}
           style={styles.dragLayer}
         />
-
-        {!info.audioOnly ? (
-          <View
-            nativeID="yaya.pip.overlay"
-            collapsable={false}
-            style={[styles.titleBar, controlsVisible && !pipCover ? null : styles.hiddenLayer]}
-            pointerEvents="none"
-          >
-            <Text style={styles.title} numberOfLines={1}>
-              {info.title}
-            </Text>
-          </View>
-        ) : null}
       </Animated.View>
 
       <Animated.View
@@ -615,20 +643,15 @@ const styles = StyleSheet.create({
   hiddenLayer: { opacity: 0 },
   wrap: {
     position: 'absolute',
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
     zIndex: 999,
   },
 
   wrapPiPFull: {
-    borderRadius: 0,
-    borderWidth: 0,
     elevation: 9999,
     zIndex: 9999,
   },
@@ -648,20 +671,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 8,
-    paddingTop: 14,
-    paddingBottom: 4,
+    paddingHorizontal: 14,
+    paddingTop: 16,
+    paddingBottom: 8,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   title: { color: '#fff', fontSize: 10, fontFamily: fontFamily.system, fontWeight: '700' },
 
   closeBtn: {
     position: 'absolute',
-    top: 4,
-    left: 4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    top: 8,
+    left: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: 'rgba(0,0,0,0.42)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.45)',
@@ -670,11 +693,11 @@ const styles = StyleSheet.create({
   },
   expandBtn: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    top: 8,
+    right: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: 'rgba(0,0,0,0.42)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.45)',

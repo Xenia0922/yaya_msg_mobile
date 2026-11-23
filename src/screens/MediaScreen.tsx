@@ -2949,22 +2949,8 @@ const MediaGridCard = React.memo(function MediaGridCard({
                 ) : null
               ) : (
                 <View style={[styles.v2Badge, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
-                  {item.liveType === 2 ? (
-                    <>
-                      <MaterialCommunityIcons
-                        name="radio"
-                        size={11}
-                        color="#FFFFFF"
-                        style={{ marginRight: 3 }}
-                      />
-                      <Text style={styles.v2BadgeText}>{t('电台')}</Text>
-                    </>
-                  ) : (
-                    <>
-                      <LivePulseDot />
-                      <Text style={styles.v2BadgeText}>{t('直播中')}</Text>
-                    </>
-                  )}
+                  <LivePulseDot />
+                  <Text style={styles.v2BadgeText}>{t('直播中')}</Text>
                 </View>
               )}
             </View>

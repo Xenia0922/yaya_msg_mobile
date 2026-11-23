@@ -267,6 +267,7 @@ public class PipModule extends ReactContextBaseJavaModule {
           .setAspectRatio(new Rational(Math.round(ratio * 10000), 10000));
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         b.setAutoEnterEnabled(autoEnter);
+        b.setSeamlessResizeEnabled(false);
       }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         RemoteAction action = buildToggleAction();

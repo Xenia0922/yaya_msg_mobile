@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -11,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NetworkImage } from './NetworkImage';
 import pocketApi from '../api/pocket48';
 import { useMemberStore } from '../store';
 import { OFFICIAL_TEAM_LOGOS } from '../utils/members';
@@ -366,10 +366,11 @@ export default function IdentityDecorations({
             ]}
           >
             {option.preview ? (
-              <Image
+              <NetworkImage
                 source={{ uri: normalizeUrl(option.preview) }}
                 style={styles.image}
                 resizeMode="contain"
+                fallback={false}
               />
             ) : (
               <MaterialCommunityIcons
@@ -411,7 +412,12 @@ export default function IdentityDecorations({
               },
             ]}
           >
-            <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+            <NetworkImage
+              source={{ uri }}
+              style={styles.image}
+              resizeMode="contain"
+              fallback={false}
+            />
             <Text style={[styles.name, { color: palette.label }]} numberOfLines={1}>
               {option.name}
             </Text>
@@ -446,10 +452,11 @@ export default function IdentityDecorations({
     >
       <View style={[styles.decorationIcon, { backgroundColor: palette.tintSoft }]}>
         {preview ? (
-          <Image
+          <NetworkImage
             source={{ uri: normalizeUrl(preview) }}
             style={styles.image}
             resizeMode="contain"
+            fallback={false}
           />
         ) : (
           <MaterialCommunityIcons name={icon} size={25} color={palette.tint} />
@@ -794,10 +801,11 @@ export default function IdentityDecorations({
                             ]}
                           >
                             {option.previewPath ? (
-                              <Image
+                              <NetworkImage
                                 source={{ uri: normalizeUrl(option.previewPath) }}
                                 style={styles.image}
                                 resizeMode="contain"
+                                fallback={false}
                               />
                             ) : (
                               <MaterialCommunityIcons

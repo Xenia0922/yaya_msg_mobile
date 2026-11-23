@@ -87,6 +87,8 @@ import {
   userCardFromUserRes,
   messageKey,
   mergeMessages,
+  getRoomMessageSearchHaystack,
+  buildRoomMetaSearchHaystack,
   roomGiftInfo,
   mediaLabel,
   __diagStamp,
@@ -141,6 +143,13 @@ import { normalizeGiftList } from '../utils/giftList';
 import {
   ROOM_AT_BOTTOM_OFFSET,
   ROOM_REFRESH_LIMIT,
+  ROOM_SEARCH_DEBOUNCE_MS,
+  ROOM_LOAD_MORE_COOLDOWN_MS,
+  ROOM_SEARCH_MIN_HITS,
+  ROOM_SEARCH_BURST_PAGES,
+  computeHistoryCursorAdvance,
+  shouldAutoLoadMoreOnScroll,
+  shouldSearchAutoContinue,
   splitByFreezeAnchor,
 } from '../services/roomLivePolicy';
 import { probeMediaDurationSeconds } from '../native/MediaProbe';
@@ -895,10 +904,12 @@ function VideoCoverCard({
       accessibilityLabel={t('视频')}
     >
       {hasCover ? (
-        <Image
+        <NetworkImage
           source={{ uri: media.cover }}
           style={styles.videoCoverImg as any}
           resizeMode="cover"
+          thumbnail={700}
+          fallback={false}
           onError={() => setCoverError(true)}
         />
       ) : (
@@ -1113,7 +1124,598 @@ const ROOM_AVATAR_SIZE = 40;
 
 type RoomChatListScrollEvent =
   | NativeSyntheticEvent<NativeScrollEvent>
-  | { readonly eventName?: string; readonly contentOffset?: { readonly y?: number } };
+  | {
+      readonly eventName?: string;
+      readonly contentOffset?: { readonly y?: number };
+      readonly contentSize?: { readonly height?: number };
+      readonly layoutMeasurement?: { readonly height?: number };
+    };
+
+function renderHighlightedTextParts(
+  text: string,
+  qLower: string,
+  highlightStyle: { backgroundColor: string; color: string; fontWeight: '700' },
+  keyPrefix: string,
+) {
+  if (!qLower) return text;
+  const lower = text.toLowerCase();
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  let matchIdx = lower.indexOf(qLower, cursor);
+  if (matchIdx === -1) return text;
+  let count = 0;
+  while (matchIdx !== -1) {
+    if (matchIdx > cursor) nodes.push(text.slice(cursor, matchIdx));
+    const end = matchIdx + qLower.length;
+    nodes.push(
+      <Text key={`${keyPrefix}-h-${count++}`} style={highlightStyle}>
+        {text.slice(matchIdx, end)}
+      </Text>,
+    );
+    cursor = end;
+    matchIdx = lower.indexOf(qLower, cursor);
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
+interface RoomChatRowProps {
+  row: ChatRow;
+  room: Member;
+  showFanMessages: boolean;
+  currentUserId: string;
+  memberIdSet: Set<string>;
+  token: string;
+  palette: Palette;
+  hideVideoCard: boolean;
+  isMediaPlaying: boolean;
+  highlightQuery: string;
+  memberLookupRef: React.MutableRefObject<Map<string, Member>>;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  onOpenProfile: (opts: {
+    id: string;
+    name: string;
+    avatar: string;
+    member?: Member | null;
+    userIds?: string[];
+    missingIdMessage?: string;
+  }) => void;
+  onOpenActions: (
+    item: RoomMessageWire,
+    mine: boolean,
+    senderName: string,
+    media?: RoomMedia | null,
+  ) => void;
+  onPlayMedia: (media: RoomMedia) => void;
+  onPreviewImage: (url: string) => void;
+}
+
+const RoomChatRow = React.memo(function RoomChatRow({
+  row,
+  room,
+  showFanMessages,
+  currentUserId,
+  memberIdSet,
+  token,
+  palette,
+  hideVideoCard,
+  isMediaPlaying,
+  highlightQuery,
+  memberLookupRef,
+  t,
+  onOpenProfile,
+  onOpenActions,
+  onPlayMedia,
+  onPreviewImage,
+}: RoomChatRowProps) {
+  const item = row.item;
+  if (!item) return <View />;
+
+  const role = messageRole(item, room, showFanMessages, currentUserId, memberIdSet);
+  const mine = role === 'mine';
+  const idol = role === 'idol';
+  const msgProfile = senderProfile(item, room);
+  const isRoomOwner = isIdolMessage(item, room, showFanMessages, msgProfile);
+
+  const senderId = String(msgProfile.id || '').trim();
+  const senderMember = senderId ? memberLookupRef.current.get(senderId) : undefined;
+  const isMemberSender = !!senderMember || (Number(extraInfo(item)?.user?.roleId ?? 0) || 0) > 1;
+
+  const profile = senderMember
+    ? {
+        id: senderMember.id,
+        name: (msgProfile.name || '').trim() || senderMember.ownerName,
+        avatar: msgProfile.avatar || senderMember.avatar,
+      }
+    : isRoomOwner
+      ? {
+          id: room.id,
+          name: (msgProfile.name || '').trim() || shortName(room),
+          avatar: msgProfile.avatar || room.avatar,
+        }
+      : msgProfile;
+
+  const tagSource: Member | undefined = senderMember || (isRoomOwner ? room : undefined);
+  const teamLogo = String(tagSource?.teamLogo || '').trim();
+  const media = roomMedia(item);
+  const gift = roomGiftInfo(item);
+  const payload = messagePayload(item);
+  const extPayload = extraInfo(item);
+  const flipInfo = getRoomFlipInfo(payload, String(item?.msgType || item?.extMsgType || ''));
+  const replyInfo =
+    payload?.replyInfo ||
+    payload?.giftReplyInfo ||
+    payload?.reply ||
+    payload?.replay ||
+    payload?.replyGiftInfo ||
+    extPayload?.replyInfo ||
+    extPayload?.giftReplyInfo;
+  const replyName = replyInfo?.replyName || '';
+  const replyQuoted = replyInfo?.replyText || '';
+  const msgTypeUpper = String(
+    item?.msgType || item?.extMsgType || payload?.msgType || payload?.messageType || '',
+  ).toUpperCase();
+  const isGiftReply = Boolean(
+    payload?.giftReplyInfo ||
+    extPayload?.giftReplyInfo ||
+    payload?.replay?.mReplyGiftInfo ||
+    payload?.replyGiftInfo ||
+    msgTypeUpper === 'GIFTREPLY' ||
+    msgTypeUpper === 'AUDIO_GIFT_REPLY',
+  );
+  const body = messageText(item);
+  let giftReplyText = '';
+  if (gift) {
+    const gr = (payload?.giftReplyInfo ||
+      extPayload?.giftReplyInfo ||
+      payload?.replay ||
+      payload?.replyGiftInfo ||
+      payload?.replyInfo ||
+      {}) as WireRecord;
+
+    const rawText =
+      gr.text ||
+      payload.text ||
+      (typeof payload.body === 'string' && !payload.body.startsWith('{') ? payload.body : '');
+    if (typeof rawText === 'string') giftReplyText = rawText.trim();
+  }
+
+  const flipAnswerRaw = firstTextFrom(
+    [payload, item, body],
+    ['answerContent', 'answer', 'answerText', 'replyContent'],
+  );
+  let flipAnswer = '';
+  if (flipAnswerRaw) {
+    try {
+      const j = typeof flipAnswerRaw === 'string' ? JSON.parse(flipAnswerRaw) : flipAnswerRaw;
+      flipAnswer =
+        j && typeof j === 'object'
+          ? String((j as WireRecord).text || (j as WireRecord).content || '')
+          : String(flipAnswerRaw);
+    } catch {
+      flipAnswer = String(flipAnswerRaw);
+    }
+  }
+  const baseText = flipInfo ? flipInfo.answerText : flipAnswer || body;
+  const isMediaLabel = /^\[(语音|图片|视频|链接|直播)\]/.test(baseText);
+  const looksLikeFile =
+    (!media && /^https?:\/\//i.test(String(baseText || ''))) ||
+    /\.(amr|mp3|m4a|aac|mp4|mov|jpg|jpeg|png|gif|webp)(\?|$)/i.test(String(baseText || ''));
+  const bubbleText = gift
+    ? giftReplyText
+    : media
+      ? !isMediaLabel
+        ? baseText
+        : ''
+      : looksLikeFile
+        ? ''
+        : baseText;
+  const mediaA11yLabel = media
+    ? media.type === 'image'
+      ? media.title === t('表情')
+        ? t('表情')
+        : t('图片')
+      : media.type === 'video'
+        ? t('视频')
+        : media.title || t('播放')
+    : '';
+
+  const avatarMember: Member | null = senderMember || (isRoomOwner ? room : null);
+  const extUser: WireRecord = extraInfo(item)?.user || payload?.user || {};
+  const extUserId = String(extUser?.userId ?? extUser?.user_id ?? extUser?.id ?? '').trim();
+  const canOpenProfile = !!avatarMember || !!senderId || !!extUserId;
+  const senderFrameUrl = firstFrameFrom(extUser);
+  const qLower = highlightQuery.trim().toLowerCase();
+  const matchHighlightStyle = {
+    backgroundColor: mine ? 'rgba(255,255,255,0.28)' : palette.tintSoft,
+    color: mine ? palette.onTint : palette.tint,
+    fontWeight: '700' as const,
+  };
+
+  return (
+    <View
+      style={[styles.chatRow, mine && styles.chatRowMine, !row.groupStart && styles.chatRowTight]}
+    >
+      {!mine ? (
+        row.groupStart ? (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            disabled={!canOpenProfile}
+            accessibilityLabel={t('头像')}
+            onPress={() =>
+              onOpenProfile({
+                id: senderId,
+                name: profile.name,
+                avatar: profile.avatar,
+                member: avatarMember,
+                userIds: [extUserId],
+              })
+            }
+          >
+            <View>
+              <AvatarWithFrame
+                avatarUri={profile.avatar ? thumbUrl(profile.avatar, AVATAR_THUMB_WIDTH) : ''}
+                frameUri={senderFrameUrl}
+                size={ROOM_AVATAR_SIZE}
+                fallbackText={avatarInitial(profile.name)}
+                fallbackColor={palette.tint}
+                fallbackBg={palette.fill2}
+              />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.avatarPlaceholder} />
+        )
+      ) : null}
+      <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
+        {row.groupStart ? (
+          <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                flexShrink: 1,
+                minWidth: 0,
+              }}
+            >
+              {isRoomOwner ? (
+                <MaterialCommunityIcons name="crown" size={11} color={palette.tint} />
+              ) : null}
+              <Text
+                style={[
+                  styles.msgSender,
+                  {
+                    color:
+                      isRoomOwner || isMemberSender
+                        ? palette.tint
+                        : mine
+                          ? palette.tint
+                          : palette.labelSecondary,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {profile.name}
+              </Text>
+              <UserDecorRow
+                decor={{
+                  isStar: isRoomOwner || isMemberSender,
+                  roleId: isMemberSender ? 2 : Number(extUser?.roleId ?? extUser?.userRole ?? 0),
+                  teamLogo: String(extUser?.teamLogo || teamLogo || ''),
+                  pfUrl: String(extUser?.pfUrl || ''),
+                  vip: !!extUser?.vip,
+                  level: extUser?.level ?? extUser?.userLevel ?? extUser?.grade,
+                }}
+                size={11}
+              />
+            </View>
+            <Text
+              style={[styles.msgTime, { color: palette.labelSecondary }]}
+              allowFontScaling={false}
+            >
+              {formatTimestamp(getMessageTime(item)).slice(11, 16)}
+            </Text>
+          </View>
+        ) : null}
+
+        <GlassSurface
+          role="chip"
+          radius={18}
+          frostedOnly
+          onLongPress={() =>
+            onOpenActions(item, mine, (profile.name || '').trim() || t('未知用户'))
+          }
+          tintColor={mine ? palette.tint : undefined}
+          accessibilityLabel={mediaA11yLabel || undefined}
+          style={[styles.msgBubble, { alignSelf: mine ? 'flex-end' : 'flex-start' }]}
+        >
+          {flipInfo ? (
+            <RoomFlipQuestion
+              question={flipInfo.question}
+              questionId={flipInfo.questionId}
+              answerId={flipInfo.answerId}
+              token={token || ''}
+              mine={mine}
+              onOpenProfile={onOpenProfile}
+            />
+          ) : null}
+          {replyName || replyQuoted ? (
+            <View
+              style={[
+                styles.replyCard,
+                {
+                  backgroundColor: mine
+                    ? 'rgba(255,255,255,0.18)'
+                    : idol
+                      ? palette.tintSoft
+                      : palette.fill2,
+                  borderLeftColor: mine ? 'rgba(255,255,255,0.85)' : palette.tint,
+                },
+              ]}
+            >
+              {replyName ? (
+                <Text
+                  style={[styles.replyName, { color: mine ? palette.onTint : palette.tint }]}
+                  numberOfLines={1}
+                >
+                  {replyName}
+                </Text>
+              ) : null}
+              {replyQuoted ? (
+                <Text
+                  style={[
+                    styles.replyText,
+                    { color: mine ? 'rgba(255,255,255,0.85)' : palette.labelSecondary },
+                  ]}
+                  numberOfLines={3}
+                >
+                  {replyQuoted}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+          {bubbleText
+            ? (() => {
+                const parts = splitEmojiParts(bubbleText);
+                return (
+                  <Text
+                    style={[
+                      styles.msgBody,
+                      (mine || idol) && styles.msgBodyHighlight,
+                      {
+                        color: mine
+                          ? palette.onTint
+                          : idol
+                            ? palette.label
+                            : palette.labelSecondary,
+                      },
+                    ]}
+                  >
+                    {parts.map((p, i) =>
+                      typeof p === 'string' ? (
+                        renderHighlightedTextParts(p, qLower, matchHighlightStyle, `e-${i}`)
+                      ) : (
+                        <Image
+                          key={`${p.emoji}-${i}`}
+                          source={p.source}
+                          style={{ width: 20, height: 20 }}
+                          resizeMode="contain"
+                        />
+                      ),
+                    )}
+                  </Text>
+                );
+              })()
+            : null}
+          {gift && !giftReplyText && !isGiftReply && !replyName && !replyQuoted ? (
+            <View
+              style={[
+                styles.giftCard,
+                { backgroundColor: palette.fill2, borderColor: palette.tintSoft },
+              ]}
+            >
+              {gift.image ? (
+                <NetworkImage
+                  source={{ uri: gift.image }}
+                  style={[styles.giftImage, { backgroundColor: palette.surfaceGlassStrong }]}
+                  thumbnail={180}
+                />
+              ) : (
+                <View style={[styles.giftImageFallback, { backgroundColor: palette.tint }]}>
+                  <MaterialCommunityIcons name="gift" size={16} color={palette.onTint} />
+                </View>
+              )}
+              <View style={styles.giftTextWrap}>
+                <Text style={[styles.giftName, { color: palette.label }]} numberOfLines={1}>
+                  {isRoomOwner ? t('感谢礼物') : t('送出礼物')}：{gift.name}
+                </Text>
+                <Text style={[styles.giftMeta, { color: palette.labelSecondary }]}>
+                  {t('数量')} x{gift.num}
+                  {gift.total ? ` · ${gift.total}` : ''}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+          {media ? (
+            media.type === 'image' && media.url ? (
+              <TouchableOpacity
+                style={[
+                  styles.inlineImageWrap,
+                  media.title === t('表情') && styles.inlineStickerWrap,
+                  (bubbleText || replyName || replyQuoted) && { marginTop: 8 },
+                ]}
+                onPress={() => onPreviewImage(media.url)}
+                onLongPress={() =>
+                  onOpenActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)
+                }
+                activeOpacity={0.9}
+                accessibilityLabel={media.title === t('表情') ? t('表情') : t('图片')}
+              >
+                <NetworkImage
+                  source={{ uri: media.url }}
+                  style={media.title === t('表情') ? styles.inlineSticker : styles.inlineImage}
+                  resizeMode="cover"
+                  thumbnail={media.title === t('表情') ? 400 : 700}
+                />
+              </TouchableOpacity>
+            ) : media.type === 'live' && media.cover ? (
+              <TouchableOpacity
+                style={styles.liveCardWrap}
+                onPress={() => onPlayMedia(media)}
+                onLongPress={() =>
+                  onOpenActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)
+                }
+                activeOpacity={0.9}
+                accessibilityLabel={media.title || t('播放')}
+              >
+                <LiveCoverImage uri={media.cover} palette={palette} />
+                <View style={styles.liveCardOverlay}>
+                  <View style={styles.livePlayCircle}>
+                    <MaterialCommunityIcons
+                      name="play"
+                      size={22}
+                      color="#FFFFFF"
+                      style={{ marginLeft: 3 }}
+                    />
+                  </View>
+                </View>
+                <View style={styles.liveCardTitleBar}>
+                  <Text style={styles.liveCardTitle} numberOfLines={1}>
+                    {media.title}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : media.type === 'video' && media.url ? (
+              hideVideoCard ? null : (
+                <VideoCoverCard
+                  media={media}
+                  onPress={() => onPlayMedia(media)}
+                  onLongPress={() =>
+                    onOpenActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)
+                  }
+                />
+              )
+            ) : media.type === 'audio' ? (
+              <View style={bubbleText || replyName || replyQuoted ? { marginTop: 8 } : null}>
+                <AudioMediaCard
+                  media={media}
+                  palette={palette}
+                  playing={isMediaPlaying}
+                  onPlay={() => onPlayMedia(media)}
+                  onLongPress={() =>
+                    onOpenActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)
+                  }
+                />
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.mediaCard,
+                  {
+                    backgroundColor: idol || mine ? palette.tint : palette.surfaceGlass,
+                    borderColor: idol || mine ? 'rgba(255,255,255,0.38)' : palette.innerStroke,
+                    borderWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+                activeOpacity={0.92}
+                onLongPress={() =>
+                  onOpenActions(item, mine, (profile.name || '').trim() || t('未知用户'), media)
+                }
+              >
+                {media.cover ? (
+                  <NetworkImage
+                    source={{ uri: media.cover }}
+                    style={styles.liveCover}
+                    resizeMode="cover"
+                    thumbnail={700}
+                  />
+                ) : null}
+                <View style={styles.mediaMeta}>
+                  <Text
+                    style={[
+                      styles.mediaIcon,
+                      idol || mine ? { color: palette.onTint } : { color: palette.tint },
+                    ]}
+                  >
+                    {t(mediaLabel(media.type))}
+                  </Text>
+                  {media.type !== 'video' && media.title ? (
+                    <Text
+                      style={[
+                        styles.mediaTitle,
+                        idol || mine ? { color: palette.onTint } : { color: palette.label },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {media.title}
+                    </Text>
+                  ) : null}
+                  {media.duration ? (
+                    <Text
+                      style={[
+                        styles.mediaDuration,
+                        idol || mine
+                          ? { color: palette.onTint }
+                          : { color: palette.labelSecondary },
+                      ]}
+                    >
+                      {media.duration}s
+                    </Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.mediaPlayBtn,
+                    {
+                      backgroundColor: palette.tint,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                    },
+                  ]}
+                  onPress={() => onPlayMedia(media)}
+                  activeOpacity={0.85}
+                >
+                  <MaterialCommunityIcons
+                    name={isMediaPlaying ? 'pause' : 'play'}
+                    size={14}
+                    color={palette.onTint}
+                  />
+                  <Text style={[styles.mediaPlayText, { color: palette.onTint }]}>
+                    {isMediaPlaying ? t('暂停') : media.duration ? `${media.duration}s` : t('播放')}
+                  </Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            )
+          ) : !bubbleText && !gift ? (
+            <Text
+              style={[
+                styles.msgBody,
+                (idol || mine) && styles.msgBodyHighlight,
+                idol || mine ? { color: palette.onTint } : { color: palette.labelSecondary },
+              ]}
+            >
+              {t('[空消息]')}
+            </Text>
+          ) : null}
+          {media?.url && isMediaPlaying && media.type === 'link' ? (
+            <TouchableOpacity
+              style={styles.openLinkBtn}
+              onPress={() => Linking.openURL(media.url).catch(() => {})}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.openLinkText, { color: palette.tint }]} numberOfLines={1}>
+                {media.url}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </GlassSurface>
+      </View>
+    </View>
+  );
+});
 
 export default function FollowedRoomsScreen() {
   const insets = useSafeAreaInsets();
@@ -1230,6 +1832,7 @@ export default function FollowedRoomsScreen() {
   const [selectedRoom, setSelectedRoom] = useState<Member | null>(null);
   const selectedRoomRef = useRef<Member | null>(null);
   selectedRoomRef.current = selectedRoom;
+  const [roomClosing, setRoomClosing] = useState(false);
   const roomClosingRef = useRef(false);
 
   const roomEnter = useSharedValue(0);
@@ -1253,7 +1856,9 @@ export default function FollowedRoomsScreen() {
   }, [selectedRoom, roomEnter]);
   const [roomMessages, setRoomMessages] = useState<RoomMessage[]>([]);
 
-  const roomMessagesCache = useRef<Record<string, RoomMessage[]>>({});
+  const roomMessagesCache = useRef<
+    Record<string, { messages: RoomMessage[]; nextTime: number; hasMore: boolean }>
+  >({});
 
   const roomMessagesRef = useRef<RoomMessage[]>([]);
   roomMessagesRef.current = roomMessages;
@@ -1264,6 +1869,8 @@ export default function FollowedRoomsScreen() {
 
   const roomKeyboardHeight = useKeyboardHeight(Boolean(selectedRoom));
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
+  loadingRef.current = loading;
 
   const [, setRoomLoadedOnce] = useState(false);
 
@@ -1388,20 +1995,61 @@ export default function FollowedRoomsScreen() {
   );
   const [roomFilter, setRoomFilter] = useState<RoomListFilter>('all');
   const [roomSearchQuery, setRoomSearchQuery] = useState('');
+  const [debouncedRoomSearch, setDebouncedRoomSearch] = useState('');
+  const debouncedRoomSearchRef = useRef('');
+  debouncedRoomSearchRef.current = debouncedRoomSearch;
   const [roomSearchOpen, setRoomSearchOpen] = useState(false);
+  const [searchScanState, setSearchScanState] = useState<{
+    scanning: boolean;
+    scannedCount: number;
+    pausedAtLimit: boolean;
+  }>({ scanning: false, scannedCount: 0, pausedAtLimit: false });
+  const searchScanSeqRef = useRef(0);
   const roomSearchInputRef = useRef<TextInput>(null);
   const roomChatInputRef = useRef<TextInput>(null);
   const [roomMode, setRoomMode] = useState<RoomMode>('big');
+  const roomModeRef = useRef<RoomMode>('big');
+  roomModeRef.current = roomMode;
   const [showFanMessages, setShowFanMessages] = useState(false);
+  const showFanMessagesRef = useRef(false);
+  showFanMessagesRef.current = showFanMessages;
+  const [playingMedia, setPlayingMedia] = useState<RoomMedia | null>(null);
+  const [roomNextTime, setRoomNextTime] = useState(0);
+  const roomNextTimeRef = useRef(0);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const hasMoreMessagesRef = useRef(false);
+  const lastLoadMoreAtRef = useRef(0);
+  const historyInFlightRef = useRef<Promise<{
+    added: number;
+    fetched: number;
+    hasMore: boolean;
+    error?: boolean;
+  }> | null>(null);
+
+  useEffect(() => {
+    const trimmed = roomSearchQuery.trim();
+    if (!roomSearchOpen || !trimmed) {
+      searchScanSeqRef.current += 1;
+      setDebouncedRoomSearch('');
+      setSearchScanState({ scanning: false, scannedCount: 0, pausedAtLimit: false });
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setDebouncedRoomSearch(trimmed);
+    }, ROOM_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [roomSearchQuery, roomSearchOpen]);
+
   useEffect(() => {
     if (activeChannelRef.current && roomMessages.length > 0) {
       const cacheKey = `${activeChannelRef.current}_${showFanMessages ? 'all' : 'idol'}`;
-      roomMessagesCache.current[cacheKey] = roomMessages;
+      roomMessagesCache.current[cacheKey] = {
+        messages: roomMessages,
+        nextTime: roomNextTimeRef.current,
+        hasMore: hasMoreMessagesRef.current,
+      };
     }
-  }, [roomMessages, showFanMessages]);
-  const [playingMedia, setPlayingMedia] = useState<RoomMedia | null>(null);
-  const [roomNextTime, setRoomNextTime] = useState(0);
-  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  }, [roomMessages, showFanMessages, roomNextTime, hasMoreMessages]);
 
   const [roomAtBottom, setRoomAtBottom] = useState(true);
 
@@ -1513,17 +2161,18 @@ export default function FollowedRoomsScreen() {
     memberId: '',
   });
   const roomSeqRef = useRef(0);
-  const msgListRef = useRef<{
-    scrollToOffset?: (params: { offset: number; animated?: boolean }) => void;
-  } | null>(null);
 
   const scrollPosCache = useRef<Record<string, number>>({});
 
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const loadingMoreMessagesRef = useRef(false);
+  const memberIdSetRef = useRef(memberIdSet);
+  memberIdSetRef.current = memberIdSet;
 
   const refreshingRef = useRef(false);
   const [currentUserId, setCurrentUserId] = useState('');
+  const currentUserIdRef = useRef('');
+  currentUserIdRef.current = currentUserId;
 
   const [nimEpoch, setNimEpoch] = useState(getNimSessionEpoch);
   useEffect(
@@ -1855,8 +2504,8 @@ export default function FollowedRoomsScreen() {
   const loadFollowedSeqRef = useRef(0);
 
   useEffect(() => {
-    setTabBarHidden(!!selectedRoom || !!roomPlayer);
-  }, [roomPlayer, selectedRoom, setTabBarHidden]);
+    setTabBarHidden((!!selectedRoom && !roomClosing) || !!roomPlayer);
+  }, [roomPlayer, selectedRoom, roomClosing, setTabBarHidden]);
 
   useFocusEffect(
     useCallback(() => {
@@ -2344,10 +2993,14 @@ export default function FollowedRoomsScreen() {
         closeTimerRef.current = null;
       }
       roomClosingRef.current = false;
+      setRoomClosing(false);
       roomEnterPendingRef.current = false;
+      searchScanSeqRef.current += 1;
       setTabBarHidden(false);
       setRoomSearchOpen(false);
       setRoomSearchQuery('');
+      setDebouncedRoomSearch('');
+      setSearchScanState({ scanning: false, scannedCount: 0, pausedAtLimit: false });
       setSelectedRoom(null);
       startTransition(() => {
         setRoomPlayer(null);
@@ -2378,6 +3031,7 @@ export default function FollowedRoomsScreen() {
     roomChatInputRef.current?.blur();
     Keyboard.dismiss();
     roomSeqRef.current += 1;
+    searchScanSeqRef.current += 1;
     const closeToken = ++closeSeqRef.current;
     activeChannelRef.current = '';
     activeRoomRef.current = { channelId: '', serverId: '', memberId: '' };
@@ -2389,6 +3043,8 @@ export default function FollowedRoomsScreen() {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
     roomClosingRef.current = true;
+    setRoomClosing(true);
+    setTabBarHidden(false);
     closeTimerRef.current = setTimeout(() => {
       finalizeCloseRoom(closeToken);
     }, 240);
@@ -2401,7 +3057,7 @@ export default function FollowedRoomsScreen() {
         }
       },
     );
-  }, [finalizeCloseRoom, roomEnter]);
+  }, [finalizeCloseRoom, roomEnter, setTabBarHidden]);
   closeRoomRef.current = closeRoom;
 
   const persistPinned = useCallback(
@@ -3072,6 +3728,7 @@ export default function FollowedRoomsScreen() {
         }
         closeSeqRef.current += 1;
         roomClosingRef.current = false;
+        setRoomClosing(false);
         if (shouldAnimateEnter) {
           roomEnter.value = 0;
           roomEnterPendingRef.current = true;
@@ -3081,6 +3738,7 @@ export default function FollowedRoomsScreen() {
       lastRoomPushAtRef.current = 0;
       roomPushCountRef.current = 0;
       const openSeq = ++roomSeqRef.current;
+      searchScanSeqRef.current += 1;
       const channelChanged = activeChannelRef.current !== channelId;
       activeChannelRef.current = channelId;
 
@@ -3115,28 +3773,45 @@ export default function FollowedRoomsScreen() {
         }
       }
       setRoomSearchQuery('');
+      setDebouncedRoomSearch('');
+      setSearchScanState({ scanning: false, scannedCount: 0, pausedAtLimit: false });
       setPlayingMedia(null);
       const cacheKey = `${channelId}_${includeFans ? 'all' : 'idol'}`;
       const cached = roomMessagesCache.current[cacheKey];
 
       if (mode === 'internal') {
-        if (cached && cached.length > 0) {
-          setRoomMessages(cached);
+        if (cached && cached.messages.length > 0) {
+          setRoomMessages(cached.messages);
+          roomNextTimeRef.current = cached.nextTime;
+          hasMoreMessagesRef.current = cached.hasMore;
+          setRoomNextTime(cached.nextTime);
+          setHasMoreMessages(cached.hasMore);
+        } else {
+          roomNextTimeRef.current = 0;
+          hasMoreMessagesRef.current = false;
+          setRoomNextTime(0);
+          setHasMoreMessages(false);
         }
       } else if (channelChanged) {
-        if (cached && cached.length > 0) {
-          setRoomMessages(cached);
+        if (cached && cached.messages.length > 0) {
+          setRoomMessages(cached.messages);
           setRoomLoadedOnce(true);
           setLoading(false);
+          roomNextTimeRef.current = cached.nextTime;
+          hasMoreMessagesRef.current = cached.hasMore;
+          setRoomNextTime(cached.nextTime);
+          setHasMoreMessages(cached.hasMore);
         } else {
           setRoomMessages([]);
           setLoading(true);
           setRoomLoadedOnce(false);
+          roomNextTimeRef.current = 0;
+          hasMoreMessagesRef.current = false;
+          setRoomNextTime(0);
+          setHasMoreMessages(false);
         }
       }
       setRoomMsgError('');
-      setRoomNextTime(0);
-      setHasMoreMessages(false);
 
       roomAtBottomRef.current = true;
       setRoomAtBottom(true);
@@ -3260,24 +3935,42 @@ export default function FollowedRoomsScreen() {
             );
           }
         }
-        setRoomMessages(sorted);
-        roomMessagesCache.current[cacheKey] = sorted;
+        const rawNextTime = getNextTime(res, list);
+        const freshNextTime = rawNextTime > 0 && list.length > 0 ? rawNextTime : 0;
+        const freshHasMore = freshNextTime > 0;
+        let finalMessages = sorted;
+        let finalNextTime = freshNextTime;
+        let finalHasMore = freshHasMore;
+        if (
+          cached &&
+          cached.messages.length > sorted.length &&
+          sorted.length > 0 &&
+          getMessageTime(sorted[sorted.length - 1]) <= getMessageTime(cached.messages[0])
+        ) {
+          finalMessages = mergeMessages(cached.messages, sorted);
+          if (cached.nextTime > 0 && (!freshNextTime || cached.nextTime < freshNextTime)) {
+            finalNextTime = cached.nextTime;
+            finalHasMore = cached.hasMore;
+          }
+        }
+        roomMessagesRef.current = finalMessages;
+        roomNextTimeRef.current = finalNextTime;
+        hasMoreMessagesRef.current = finalHasMore;
+        setRoomMessages(finalMessages);
+        roomMessagesCache.current[cacheKey] = {
+          messages: finalMessages,
+          nextTime: finalNextTime,
+          hasMore: finalHasMore,
+        };
 
-        const cidNow = activeChannelRef.current;
-        const saved = cidNow ? scrollPosCache.current[cidNow] || 0 : 0;
-        setTimeout(() => {
-          if (openSeq !== roomSeqRef.current) return;
-          msgListRef.current?.scrollToOffset?.({ offset: saved, animated: false });
-        }, 60);
         setRoomLoadedOnce(true);
         setRoomMsgError('');
         logInfo(
-          `[room] 进房 ${room.ownerName || channelId} ${nextMode} 消息加载耗时 ${Date.now() - roomOpenStart}ms (${sorted.length}条)`,
+          `[room] 进房 ${room.ownerName || channelId} ${nextMode} 消息加载耗时 ${Date.now() - roomOpenStart}ms (${finalMessages.length}条)`,
           'room',
         );
-        const nextTime = getNextTime(res, list);
-        setRoomNextTime(nextTime);
-        setHasMoreMessages(nextTime > 0 && list.length > 0);
+        setRoomNextTime(finalNextTime);
+        setHasMoreMessages(finalHasMore);
 
         const ocChannel = roomChannelId(room, nextMode);
         if (ocChannel) {
@@ -3296,7 +3989,7 @@ export default function FollowedRoomsScreen() {
       } catch (error) {
         if (openSeq !== roomSeqRef.current || activeChannelRef.current !== channelId) return;
         showToast(t('加载失败：{msg}', { msg: errorMessage(error) }));
-        if (!roomMessagesCache.current[cacheKey]?.length) setRoomMessages([]);
+        if (!roomMessagesCache.current[cacheKey]?.messages?.length) setRoomMessages([]);
         setRoomMsgError(errorMessage(error));
       } finally {
         if (openSeq === roomSeqRef.current) setLoading(false);
@@ -3305,70 +3998,264 @@ export default function FollowedRoomsScreen() {
     [currentUserId, recordRoomPreviewTime, roomEnter, showFanMessages, showToast, t],
   );
 
+  const countSearchMatches = useCallback(
+    (messages: RoomMessage[], qLower: string, room: Member | null, includeFans: boolean) => {
+      if (!room || !qLower) return messages.length;
+      const roomMetaLower = buildRoomMetaSearchHaystack(room);
+      const roomMatchesAll = roomMetaLower.includes(qLower);
+      const uid = currentUserIdRef.current;
+      const mids = memberIdSetRef.current;
+      let count = 0;
+      for (let i = 0; i < messages.length; i++) {
+        const item = messages[i];
+        if (!item) continue;
+        if (!includeFans && messageRole(item, room, false, uid, mids) === 'fan') continue;
+        if (roomMatchesAll || getRoomMessageSearchHaystack(item, room).includes(qLower)) {
+          count += 1;
+        }
+      }
+      return count;
+    },
+    [],
+  );
+
+  const fetchSingleOlderPage = useCallback(async () => {
+    if (historyInFlightRef.current) return historyInFlightRef.current;
+    const room = selectedRoomRef.current;
+    const modeNow = roomModeRef.current;
+    const includeFans = showFanMessagesRef.current;
+    const prevCursor = roomNextTimeRef.current;
+    if (!room || !hasMoreMessagesRef.current || prevCursor <= 0) {
+      return { added: 0, fetched: 0, hasMore: false };
+    }
+    const channelId = roomChannelId(room, modeNow);
+    if (!channelId) return { added: 0, fetched: 0, hasMore: false };
+    const seq = roomSeqRef.current;
+
+    let promise: Promise<{
+      added: number;
+      fetched: number;
+      hasMore: boolean;
+      error?: boolean;
+    }> | null = null;
+    promise = (async () => {
+      try {
+        const res = await pocketApi.getRoomMessages({
+          channelId,
+          serverId: room.serverId,
+          nextTime: prevCursor,
+          fetchAll: includeFans,
+          fallbackChannelId: modeNow === 'small' ? room.channelId : undefined,
+        });
+        if (seq !== roomSeqRef.current || activeChannelRef.current !== channelId) {
+          return { added: 0, fetched: 0, hasMore: hasMoreMessagesRef.current };
+        }
+        const list = unwrapList(res, [
+          'content.messageList',
+          'content.message',
+          'content.messages',
+          'content.list',
+          'data.messageList',
+          'data.message',
+          'messageList',
+          'message',
+          'messages',
+          'list',
+        ]);
+        const rawNextTime = getNextTime(res, list);
+        const prevMsgs = roomMessagesRef.current;
+        const merged = mergeMessages(prevMsgs, list as RoomMessage[]);
+        const added = Math.max(0, merged.length - prevMsgs.length);
+        const advance = computeHistoryCursorAdvance(prevCursor, rawNextTime, list.length, added);
+        roomNextTimeRef.current = advance.nextTime;
+        hasMoreMessagesRef.current = advance.hasMore;
+        setRoomNextTime(advance.nextTime);
+        setHasMoreMessages(advance.hasMore);
+        if (merged !== prevMsgs) {
+          diagnoseUndefined(merged, 'LOADMORE');
+          roomMessagesRef.current = merged;
+          setRoomMessages(merged);
+          const cacheKey = `${channelId}_${includeFans ? 'all' : 'idol'}`;
+          roomMessagesCache.current[cacheKey] = {
+            messages: merged,
+            nextTime: advance.nextTime,
+            hasMore: advance.hasMore,
+          };
+        }
+        return { added, fetched: list.length, hasMore: advance.hasMore };
+      } catch (error) {
+        if (seq === roomSeqRef.current && activeChannelRef.current === channelId) {
+          showToast(t('继续加载失败：{msg}', { msg: errorMessage(error) }));
+        }
+        return { added: 0, fetched: 0, hasMore: hasMoreMessagesRef.current, error: true };
+      } finally {
+        if (historyInFlightRef.current === promise) {
+          historyInFlightRef.current = null;
+        }
+      }
+    })();
+
+    historyInFlightRef.current = promise;
+    return promise;
+  }, [showToast, t]);
+
+  const runSearchHistoryBurst = useCallback(
+    async (qRaw: string, targetMatches: number, scanToken: number) => {
+      const qLower = qRaw.trim().toLowerCase();
+      const room = selectedRoomRef.current;
+      const roomToken = roomSeqRef.current;
+      const channelId = activeChannelRef.current;
+      const includeFans = showFanMessagesRef.current;
+      if (!qLower || !room || !channelId) return;
+      if (loadingMoreMessagesRef.current) return;
+
+      let matchCount = countSearchMatches(roomMessagesRef.current, qLower, room, includeFans);
+      if (
+        !shouldSearchAutoContinue({
+          query: qLower,
+          matchCount,
+          targetMatchCount: targetMatches,
+          pagesScannedInBurst: 0,
+          maxPagesPerBurst: ROOM_SEARCH_BURST_PAGES,
+          hasMore: hasMoreMessagesRef.current,
+          nextTime: roomNextTimeRef.current,
+        })
+      ) {
+        setSearchScanState({
+          scanning: false,
+          scannedCount: roomMessagesRef.current.length,
+          pausedAtLimit: false,
+        });
+        return;
+      }
+
+      loadingMoreMessagesRef.current = true;
+      setLoadingMoreMessages(true);
+      setSearchScanState({
+        scanning: true,
+        scannedCount: roomMessagesRef.current.length,
+        pausedAtLimit: false,
+      });
+
+      let burstPages = 0;
+      let hitError = false;
+      try {
+        while (
+          shouldSearchAutoContinue({
+            query: qLower,
+            matchCount,
+            targetMatchCount: targetMatches,
+            pagesScannedInBurst: burstPages,
+            maxPagesPerBurst: ROOM_SEARCH_BURST_PAGES,
+            hasMore: hasMoreMessagesRef.current,
+            nextTime: roomNextTimeRef.current,
+          })
+        ) {
+          if (
+            scanToken !== searchScanSeqRef.current ||
+            roomToken !== roomSeqRef.current ||
+            activeChannelRef.current !== channelId ||
+            debouncedRoomSearchRef.current.trim().toLowerCase() !== qLower
+          ) {
+            return;
+          }
+          burstPages += 1;
+          const stepRes = await fetchSingleOlderPage();
+          if (
+            scanToken !== searchScanSeqRef.current ||
+            roomToken !== roomSeqRef.current ||
+            activeChannelRef.current !== channelId ||
+            debouncedRoomSearchRef.current.trim().toLowerCase() !== qLower
+          ) {
+            return;
+          }
+          matchCount = countSearchMatches(roomMessagesRef.current, qLower, room, includeFans);
+          if (stepRes.error) {
+            hitError = true;
+            break;
+          }
+          setSearchScanState({
+            scanning: true,
+            scannedCount: roomMessagesRef.current.length,
+            pausedAtLimit: false,
+          });
+        }
+      } finally {
+        loadingMoreMessagesRef.current = false;
+        setLoadingMoreMessages(false);
+        if (
+          scanToken === searchScanSeqRef.current &&
+          roomToken === roomSeqRef.current &&
+          activeChannelRef.current === channelId &&
+          debouncedRoomSearchRef.current.trim().toLowerCase() === qLower
+        ) {
+          const pausedAtLimit =
+            hasMoreMessagesRef.current && (hitError || matchCount < targetMatches);
+          setSearchScanState({
+            scanning: false,
+            scannedCount: roomMessagesRef.current.length,
+            pausedAtLimit,
+          });
+        }
+      }
+    },
+    [countSearchMatches, fetchSingleOlderPage],
+  );
+
+  useEffect(() => {
+    const q = debouncedRoomSearch.trim().toLowerCase();
+    if (!selectedRoom || !roomSearchOpen || !q || loading) return;
+    const scanToken = ++searchScanSeqRef.current;
+    void runSearchHistoryBurst(q, ROOM_SEARCH_MIN_HITS, scanToken);
+  }, [
+    debouncedRoomSearch,
+    roomSearchOpen,
+    selectedRoom,
+    loading,
+    roomMode,
+    showFanMessages,
+    runSearchHistoryBurst,
+  ]);
+
   const refreshRoomMessagesRef = useRef<(() => void) | null>(null);
   const loadMoreRoomMessages = useCallback(async () => {
+    const now = Date.now();
     if (
-      !selectedRoom ||
-      loading ||
-      loadingMoreMessages ||
+      !selectedRoomRef.current ||
+      loadingRef.current ||
       loadingMoreMessagesRef.current ||
       refreshingRef.current ||
-      !hasMoreMessages ||
-      !roomNextTime
-    )
+      !hasMoreMessagesRef.current ||
+      roomNextTimeRef.current <= 0 ||
+      now - lastLoadMoreAtRef.current < ROOM_LOAD_MORE_COOLDOWN_MS
+    ) {
       return;
-    const channelId = roomChannelId(selectedRoom, roomMode);
-    if (!channelId) return;
-    const seq = roomSeqRef.current;
+    }
+    lastLoadMoreAtRef.current = now;
+    const q = debouncedRoomSearchRef.current.trim().toLowerCase();
+    if (q) {
+      const scanToken = ++searchScanSeqRef.current;
+      const curHits = countSearchMatches(
+        roomMessagesRef.current,
+        q,
+        selectedRoomRef.current,
+        showFanMessagesRef.current,
+      );
+      await runSearchHistoryBurst(q, curHits + 8, scanToken);
+      return;
+    }
+
     loadingMoreMessagesRef.current = true;
     setLoadingMoreMessages(true);
     try {
-      const res = await pocketApi.getRoomMessages({
-        channelId,
-        serverId: selectedRoom.serverId,
-        nextTime: roomNextTime,
-        fetchAll: showFanMessages,
-        fallbackChannelId: roomMode === 'small' ? selectedRoom.channelId : undefined,
-      });
-
-      if (seq !== roomSeqRef.current || activeChannelRef.current !== channelId) return;
-      const list = unwrapList(res, [
-        'content.messageList',
-        'content.message',
-        'content.messages',
-        'content.list',
-        'data.messageList',
-        'data.message',
-        'messageList',
-        'message',
-        'messages',
-        'list',
-      ]);
-      const nextTime = getNextTime(res, list);
-      setRoomMessages((prev) => {
-        const merged = mergeMessages(prev, list as RoomMessage[]);
-        diagnoseUndefined(merged, 'LOADMORE');
-        return merged;
-      });
-      setRoomNextTime(nextTime);
-      setHasMoreMessages(nextTime > 0 && list.length > 0);
-    } catch (error) {
-      showToast(t('继续加载失败：{msg}', { msg: errorMessage(error) }));
+      await fetchSingleOlderPage();
     } finally {
       loadingMoreMessagesRef.current = false;
       setLoadingMoreMessages(false);
     }
-  }, [
-    hasMoreMessages,
-    loading,
-    loadingMoreMessages,
-    roomMode,
-    roomNextTime,
-    selectedRoom,
-    showFanMessages,
-    showToast,
-    t,
-  ]);
+  }, [countSearchMatches, fetchSingleOlderPage, runSearchHistoryBurst]);
+  const loadMoreRoomMessagesRef = useRef(loadMoreRoomMessages);
+  loadMoreRoomMessagesRef.current = loadMoreRoomMessages;
 
   const refreshRoomMessages = useCallback(async () => {
     if (!selectedRoom || refreshingRef.current) return;
@@ -3864,25 +4751,19 @@ export default function FollowedRoomsScreen() {
       : roomMessages.filter(
           (item) => messageRole(item, selectedRoom, false, currentUserId, memberIdSet) !== 'fan',
         );
-    const q = roomSearchQuery.trim().toLowerCase();
+    const q = debouncedRoomSearch.trim().toLowerCase();
     if (!q) return base;
-    return base.filter((item) => {
-      const profile = senderProfile(item, selectedRoom);
-      const text = messageText(item);
-      return [
-        text,
-        profile.name,
-        profile.id,
-        selectedRoom.ownerName,
-        selectedRoom.team,
-        selectedRoom.groupName,
-      ].some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(q),
-      );
-    });
-  }, [roomMessages, roomSearchQuery, selectedRoom, showFanMessages, currentUserId, memberIdSet]);
+    const roomMetaLower = buildRoomMetaSearchHaystack(selectedRoom);
+    if (roomMetaLower.includes(q)) return base;
+    return base.filter((item) => getRoomMessageSearchHaystack(item, selectedRoom).includes(q));
+  }, [
+    roomMessages,
+    debouncedRoomSearch,
+    selectedRoom,
+    showFanMessages,
+    currentUserId,
+    memberIdSet,
+  ]);
 
   const chatRows = useMemo(() => {
     if (!selectedRoom) return [];
@@ -3999,14 +4880,31 @@ export default function FollowedRoomsScreen() {
   roomLatestImsRef.current = chatIms;
 
   const handleRoomListScroll = useCallback((event: RoomChatListScrollEvent) => {
-    const y =
-      Number(
-        'nativeEvent' in event ? event.nativeEvent?.contentOffset?.y : event.contentOffset?.y,
-      ) || 0;
+    const src: any = 'nativeEvent' in event && event.nativeEvent ? event.nativeEvent : event;
+    const y = Number(src?.contentOffset?.y) || 0;
+    const contentH = Number(src?.contentSize?.height) || 0;
+    const layoutH = Number(src?.layoutMeasurement?.height) || 0;
     const nearBottom = y <= ROOM_AT_BOTTOM_OFFSET;
-    if (nearBottom === roomAtBottomRef.current) return;
-    roomAtBottomRef.current = nearBottom;
-    setRoomAtBottom(nearBottom);
+    if (nearBottom !== roomAtBottomRef.current) {
+      roomAtBottomRef.current = nearBottom;
+      setRoomAtBottom(nearBottom);
+    }
+    if (!debouncedRoomSearchRef.current && activeChannelRef.current) {
+      scrollPosCache.current[activeChannelRef.current] = y;
+    }
+    if (
+      shouldAutoLoadMoreOnScroll({
+        offsetY: y,
+        contentHeight: contentH,
+        layoutHeight: layoutH,
+        hasMore: hasMoreMessagesRef.current,
+        loading: loadingRef.current,
+        loadingMore: loadingMoreMessagesRef.current,
+      }) &&
+      Date.now() - lastLoadMoreAtRef.current >= ROOM_LOAD_MORE_COOLDOWN_MS
+    ) {
+      void loadMoreRoomMessagesRef.current();
+    }
   }, []);
 
   const roomJumpOut = useCallback(() => {
@@ -4018,15 +4916,44 @@ export default function FollowedRoomsScreen() {
     } catch {}
   }, []);
 
+  const loadEarlierWrapperStyle = useMemo(
+    () => ({
+      backgroundColor: palette.fill2,
+      borderColor: palette.hairline,
+      borderWidth: StyleSheet.hairlineWidth,
+    }),
+    [palette],
+  );
+  const loadEarlierTextStyle = useMemo(
+    () => ({
+      color: palette.labelSecondary,
+      fontFamily: fontFamily.system,
+      fontWeight: '600' as const,
+    }),
+    [palette],
+  );
+
   const roomLoadEarlierProps = useMemo(
     () => ({
       isAvailable: hasMoreMessages,
       onPress: loadMoreRoomMessages,
-      isLoading: loading,
-
+      isLoading: loadingMoreMessages,
+      label: debouncedRoomSearch ? t('继续搜更早消息') : t('上滑加载更多'),
+      activityIndicatorColor: palette.tint,
+      wrapperStyle: loadEarlierWrapperStyle,
+      textStyle: loadEarlierTextStyle,
       isInfiniteScrollEnabled: true,
     }),
-    [hasMoreMessages, loadMoreRoomMessages, loading],
+    [
+      hasMoreMessages,
+      loadMoreRoomMessages,
+      loadingMoreMessages,
+      debouncedRoomSearch,
+      t,
+      palette.tint,
+      loadEarlierWrapperStyle,
+      loadEarlierTextStyle,
+    ],
   );
 
   const roomChatListProps = useMemo(
@@ -4035,7 +4962,8 @@ export default function FollowedRoomsScreen() {
 
       contentContainerStyle: ROOM_CHAT_LIST_CONTENT_STYLE,
 
-      scrollEventThrottle: 100,
+      scrollEventThrottle: 80,
+      onEndReachedThreshold: 0.55,
       onScroll: handleRoomListScroll,
 
       onScrollEndDrag: handleRoomListScroll,
@@ -4043,21 +4971,21 @@ export default function FollowedRoomsScreen() {
 
       keyboardDismissMode: 'on-drag' as const,
       keyboardShouldPersistTaps: 'handled' as const,
-      initialNumToRender: 8,
-      maxToRenderPerBatch: 6,
+      initialNumToRender: 10,
+      maxToRenderPerBatch: 8,
       updateCellsBatchingPeriod: 40,
-      windowSize: 7,
+      windowSize: 9,
     }),
     [handleRoomListScroll],
   );
 
   useEffect(() => {
-    if (roomAtBottom) {
+    if (roomAtBottom || debouncedRoomSearch) {
       setRoomFreezeKey(null);
     } else {
       setRoomFreezeKey((prev) => prev ?? roomLatestImsRef.current[0]?._id ?? null);
     }
-  }, [roomAtBottom]);
+  }, [roomAtBottom, debouncedRoomSearch]);
 
   const roomListImsRef = useRef<RoomChatIM[]>([]);
   const { list: roomListIms, pending: roomPendingCount } = useMemo(() => {
@@ -4379,575 +5307,39 @@ export default function FollowedRoomsScreen() {
     }
   }, [msgMenu, showToast, t]);
 
-  const renderChatItem = useCallback(
-    ({ item: row }: { item: ChatRow }) => {
-      const item = row.item;
-
-      if (!item) return <View />;
-      const room = selectedRoom as Member;
-      const role = messageRole(item, room, showFanMessages, currentUserId, memberIdSet);
-      const mine = role === 'mine';
-      const idol = role === 'idol';
-      const msgProfile = senderProfile(item, room);
-
-      const isRoomOwner = isIdolMessage(item, room, showFanMessages);
-
-      const senderId = String(msgProfile.id || '').trim();
-      const senderMember = senderId ? memberLookupRef.current.get(senderId) : undefined;
-      const isMemberSender =
-        !!senderMember || (Number(extraInfo(item)?.user?.roleId ?? 0) || 0) > 1;
-
-      const profile = senderMember
-        ? {
-            id: senderMember.id,
-            name: (msgProfile.name || '').trim() || senderMember.ownerName,
-            avatar: msgProfile.avatar || senderMember.avatar,
-          }
-        : isRoomOwner
-          ? {
-              id: room.id,
-              name: (msgProfile.name || '').trim() || shortName(room),
-              avatar: msgProfile.avatar || room.avatar,
-            }
-          : msgProfile;
-
-      const tagSource: Member | undefined = senderMember || (isRoomOwner ? room : undefined);
-      const teamLogo = String(tagSource?.teamLogo || '').trim();
+  const renderChatMessage = useCallback(
+    ({ currentMessage }: { currentMessage?: { __row?: ChatRow } }) => {
+      const row = currentMessage?.__row;
+      const item = row?.item;
+      if (!row || !item || !selectedRoom) return <View />;
       const media = roomMedia(item);
-      const gift = roomGiftInfo(item);
-      const payload = messagePayload(item);
-      const extPayload = extraInfo(item);
-      const flipInfo = getRoomFlipInfo(payload, String(item?.msgType || item?.extMsgType || ''));
-      const replyInfo =
-        payload?.replyInfo ||
-        payload?.giftReplyInfo ||
-        payload?.reply ||
-        payload?.replay ||
-        payload?.replyGiftInfo ||
-        extPayload?.replyInfo ||
-        extPayload?.giftReplyInfo;
-      const replyName = replyInfo?.replyName || '';
-      const replyQuoted = replyInfo?.replyText || '';
-      const msgTypeUpper = String(
-        item?.msgType || item?.extMsgType || payload?.msgType || payload?.messageType || '',
-      ).toUpperCase();
-      const isGiftReply = Boolean(
-        payload?.giftReplyInfo ||
-        extPayload?.giftReplyInfo ||
-        payload?.replay?.mReplyGiftInfo ||
-        payload?.replyGiftInfo ||
-        msgTypeUpper === 'GIFTREPLY' ||
-        msgTypeUpper === 'AUDIO_GIFT_REPLY',
+      const hideVideoCard = Boolean(
+        media?.type === 'video' &&
+        media.url &&
+        (roomPlayerFullscreen || roomPlayer?.url === media.url || playingMedia?.url === media.url),
       );
-      const body = messageText(item);
-      let giftReplyText = '';
-      if (gift) {
-        const gr = (payload?.giftReplyInfo ||
-          extPayload?.giftReplyInfo ||
-          payload?.replay ||
-          payload?.replyGiftInfo ||
-          payload?.replyInfo ||
-          {}) as WireRecord;
-
-        const rawText =
-          gr.text ||
-          payload.text ||
-          (typeof payload.body === 'string' && !payload.body.startsWith('{') ? payload.body : '');
-        if (typeof rawText === 'string') giftReplyText = rawText.trim();
-      }
-
-      const flipAnswerRaw = firstTextFrom(
-        [payload, item, body],
-        ['answerContent', 'answer', 'answerText', 'replyContent'],
+      const isMediaPlaying = Boolean(
+        playingMedia?.url && media?.url && playingMedia.url === media.url,
       );
-      let flipAnswer = '';
-      if (flipAnswerRaw) {
-        try {
-          const j = typeof flipAnswerRaw === 'string' ? JSON.parse(flipAnswerRaw) : flipAnswerRaw;
-          flipAnswer =
-            j && typeof j === 'object'
-              ? String((j as WireRecord).text || (j as WireRecord).content || '')
-              : String(flipAnswerRaw);
-        } catch {
-          flipAnswer = String(flipAnswerRaw);
-        }
-      }
-      const baseText = flipInfo ? flipInfo.answerText : flipAnswer || body;
-      const isMediaLabel = /^\[(语音|图片|视频|链接|直播)\]/.test(baseText);
-      const looksLikeFile =
-        (!media && /^https?:\/\//i.test(String(baseText || ''))) ||
-        /\.(amr|mp3|m4a|aac|mp4|mov|jpg|jpeg|png|gif|webp)(\?|$)/i.test(String(baseText || ''));
-      const bubbleText = gift
-        ? isGiftReply
-          ? giftReplyText
-          : giftReplyText
-        : media
-          ? !isMediaLabel
-            ? baseText
-            : ''
-          : looksLikeFile
-            ? ''
-            : baseText;
-      const mediaA11yLabel = media
-        ? media.type === 'image'
-          ? media.title === t('表情')
-            ? t('表情')
-            : t('图片')
-          : media.type === 'video'
-            ? t('视频')
-            : media.title || t('播放')
-        : '';
-
-      const avatarMember: Member | null = senderMember || (isRoomOwner ? room : null);
-
-      const extUser: WireRecord = extraInfo(item)?.user || payload?.user || {};
-      const extUserId = String(extUser?.userId ?? extUser?.user_id ?? extUser?.id ?? '').trim();
-      const canOpenProfile = !!avatarMember || !!senderId || !!extUserId;
-
-      const senderFrameUrl = firstFrameFrom(extUser);
-
       return (
-        <View
-          style={[
-            styles.chatRow,
-            mine && styles.chatRowMine,
-            !row.groupStart && styles.chatRowTight,
-          ]}
-        >
-          {!mine ? (
-            row.groupStart ? (
-              <TouchableOpacity
-                activeOpacity={0.8}
-                disabled={!canOpenProfile}
-                accessibilityLabel={t('头像')}
-                onPress={() =>
-                  openSenderProfile({
-                    id: senderId,
-                    name: profile.name,
-                    avatar: profile.avatar,
-                    member: avatarMember,
-                    userIds: [extUserId],
-                  })
-                }
-              >
-                <View>
-                  <AvatarWithFrame
-                    avatarUri={profile.avatar ? thumbUrl(profile.avatar, AVATAR_THUMB_WIDTH) : ''}
-                    frameUri={senderFrameUrl}
-                    size={ROOM_AVATAR_SIZE}
-                    fallbackText={avatarInitial(profile.name)}
-                    fallbackColor={palette.tint}
-                    fallbackBg={palette.fill2}
-                  />
-                </View>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.avatarPlaceholder} />
-            )
-          ) : null}
-          <View style={[styles.msgBlock, mine && styles.msgBlockMine]}>
-            {row.groupStart ? (
-              <View style={[styles.msgMetaLine, mine && styles.msgMetaLineMine]}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 4,
-                    flexShrink: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  {isRoomOwner ? (
-                    <MaterialCommunityIcons name="crown" size={11} color={palette.tint} />
-                  ) : null}
-                  <Text
-                    style={[
-                      styles.msgSender,
-                      {
-                        color:
-                          isRoomOwner || isMemberSender
-                            ? palette.tint
-                            : mine
-                              ? palette.tint
-                              : palette.labelSecondary,
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {profile.name}
-                  </Text>
-
-                  {row.groupStart ? (
-                    <UserDecorRow
-                      decor={{
-                        isStar: isRoomOwner || isMemberSender,
-                        roleId: isMemberSender
-                          ? 2
-                          : Number(extUser?.roleId ?? extUser?.userRole ?? 0),
-                        teamLogo: String(extUser?.teamLogo || teamLogo || ''),
-                        pfUrl: String(extUser?.pfUrl || ''),
-                        vip: !!extUser?.vip,
-                        level: extUser?.level ?? extUser?.userLevel ?? extUser?.grade,
-                      }}
-                      size={11}
-                    />
-                  ) : null}
-                </View>
-                <Text
-                  style={[styles.msgTime, { color: palette.labelSecondary }]}
-                  allowFontScaling={false}
-                >
-                  {formatTimestamp(getMessageTime(item)).slice(11, 16)}
-                </Text>
-              </View>
-            ) : null}
-
-            <GlassSurface
-              role="chip"
-              radius={18}
-              frostedOnly
-              onLongPress={() =>
-                openMessageActions(item, mine, (profile.name || '').trim() || t('未知用户'))
-              }
-              tintColor={mine ? palette.tint : undefined}
-              accessibilityLabel={mediaA11yLabel || undefined}
-              style={[styles.msgBubble, { alignSelf: mine ? 'flex-end' : 'flex-start' }]}
-            >
-              {flipInfo ? (
-                <RoomFlipQuestion
-                  question={flipInfo.question}
-                  questionId={flipInfo.questionId}
-                  answerId={flipInfo.answerId}
-                  token={token || ''}
-                  mine={mine}
-                  onOpenProfile={openSenderProfile}
-                />
-              ) : null}
-              {replyName || replyQuoted ? (
-                <View
-                  style={[
-                    styles.replyCard,
-                    {
-                      backgroundColor: mine
-                        ? 'rgba(255,255,255,0.18)'
-                        : idol
-                          ? palette.tintSoft
-                          : palette.fill2,
-                      borderLeftColor: mine ? 'rgba(255,255,255,0.85)' : palette.tint,
-                    },
-                  ]}
-                >
-                  {replyName ? (
-                    <Text
-                      style={[
-                        styles.replyName,
-                        { color: mine ? palette.onTint : idol ? palette.tint : palette.tint },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {replyName}
-                    </Text>
-                  ) : null}
-                  {replyQuoted ? (
-                    <Text
-                      style={[
-                        styles.replyText,
-                        {
-                          color: mine
-                            ? 'rgba(255,255,255,0.85)'
-                            : idol
-                              ? palette.labelSecondary
-                              : palette.labelSecondary,
-                        },
-                      ]}
-                      numberOfLines={3}
-                    >
-                      {replyQuoted}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
-              {bubbleText
-                ? (() => {
-                    const parts = splitEmojiParts(bubbleText);
-                    return (
-                      <Text
-                        style={[
-                          styles.msgBody,
-                          (mine || idol) && styles.msgBodyHighlight,
-                          {
-                            color: mine
-                              ? palette.onTint
-                              : idol
-                                ? palette.label
-                                : palette.labelSecondary,
-                          },
-                        ]}
-                      >
-                        {parts.map((p, i) =>
-                          typeof p === 'string' ? (
-                            p
-                          ) : (
-                            <Image
-                              key={`${p.emoji}-${i}`}
-                              source={p.source}
-                              style={{ width: 20, height: 20 }}
-                              resizeMode="contain"
-                            />
-                          ),
-                        )}
-                      </Text>
-                    );
-                  })()
-                : null}
-              {gift && !giftReplyText && !isGiftReply && !replyName && !replyQuoted ? (
-                <View
-                  style={[
-                    styles.giftCard,
-                    { backgroundColor: palette.fill2, borderColor: palette.tintSoft },
-                    giftReplyText ? styles.giftCardCompact : null,
-                  ]}
-                >
-                  {!giftReplyText ? (
-                    gift.image ? (
-                      <NetworkImage
-                        source={{ uri: gift.image }}
-                        style={[styles.giftImage, { backgroundColor: palette.surfaceGlassStrong }]}
-                        thumbnail={180}
-                      />
-                    ) : (
-                      <View style={[styles.giftImageFallback, { backgroundColor: palette.tint }]}>
-                        <MaterialCommunityIcons name="gift" size={16} color={palette.onTint} />
-                      </View>
-                    )
-                  ) : null}
-                  <View style={styles.giftTextWrap}>
-                    <Text style={[styles.giftName, { color: palette.label }]} numberOfLines={1}>
-                      {isRoomOwner ? t('感谢礼物') : t('送出礼物')}：{gift.name}
-                    </Text>
-                    <Text style={[styles.giftMeta, { color: palette.labelSecondary }]}>
-                      {t('数量')} x{gift.num}
-                      {gift.total ? ` · ${gift.total}` : ''}
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-              {media ? (
-                media.type === 'image' && media.url ? (
-                  <>
-                    <TouchableOpacity
-                      style={[
-                        styles.inlineImageWrap,
-                        media.title === t('表情') && styles.inlineStickerWrap,
-                        (bubbleText || replyName || replyQuoted) && { marginTop: 8 },
-                      ]}
-                      onPress={() => setFullImageUrl(media.url)}
-                      onLongPress={() =>
-                        openMessageActions(
-                          item,
-                          mine,
-                          (profile.name || '').trim() || t('未知用户'),
-                          media,
-                        )
-                      }
-                      activeOpacity={0.9}
-                      accessibilityLabel={media.title === t('表情') ? t('表情') : t('图片')}
-                    >
-                      <NetworkImage
-                        source={{ uri: media.url }}
-                        style={
-                          media.title === t('表情') ? styles.inlineSticker : styles.inlineImage
-                        }
-                        resizeMode="cover"
-                        thumbnail={media.title === t('表情') ? 400 : 700}
-                      />
-                    </TouchableOpacity>
-                  </>
-                ) : media.type === 'live' && media.cover ? (
-                  <TouchableOpacity
-                    style={styles.liveCardWrap}
-                    onPress={() => playMedia(media)}
-                    onLongPress={() =>
-                      openMessageActions(
-                        item,
-                        mine,
-                        (profile.name || '').trim() || t('未知用户'),
-                        media,
-                      )
-                    }
-                    activeOpacity={0.9}
-                    accessibilityLabel={media.title || t('播放')}
-                  >
-                    <LiveCoverImage uri={media.cover} palette={palette} />
-                    <View style={styles.liveCardOverlay}>
-                      <View style={styles.livePlayCircle}>
-                        <MaterialCommunityIcons
-                          name="play"
-                          size={22}
-                          color="#FFFFFF"
-                          style={{ marginLeft: 3 }}
-                        />
-                      </View>
-                    </View>
-                    <View style={styles.liveCardTitleBar}>
-                      <Text style={styles.liveCardTitle} numberOfLines={1}>
-                        {media.title}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ) : media.type === 'video' && media.url ? (
-                  roomPlayerFullscreen ||
-                  roomPlayer?.url === media.url ||
-                  playingMedia?.url === media.url ? null : (
-                    <VideoCoverCard
-                      media={media}
-                      onPress={() => playMedia(media)}
-                      onLongPress={() =>
-                        openMessageActions(
-                          item,
-                          mine,
-                          (profile.name || '').trim() || t('未知用户'),
-                          media,
-                        )
-                      }
-                    />
-                  )
-                ) : media.type === 'audio' ? (
-                  <View style={bubbleText || replyName || replyQuoted ? { marginTop: 8 } : null}>
-                    <AudioMediaCard
-                      media={media}
-                      palette={palette}
-                      playing={!!(playingMedia?.url && media.url && playingMedia.url === media.url)}
-                      onPlay={() => playMedia(media)}
-                      onLongPress={() =>
-                        openMessageActions(
-                          item,
-                          mine,
-                          (profile.name || '').trim() || t('未知用户'),
-                          media,
-                        )
-                      }
-                    />
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={[
-                      styles.mediaCard,
-                      {
-                        backgroundColor: idol || mine ? palette.tint : palette.surfaceGlass,
-                        borderColor: idol || mine ? 'rgba(255,255,255,0.38)' : palette.innerStroke,
-                        borderWidth: StyleSheet.hairlineWidth,
-                      },
-                    ]}
-                    activeOpacity={0.92}
-                    onLongPress={() =>
-                      openMessageActions(
-                        item,
-                        mine,
-                        (profile.name || '').trim() || t('未知用户'),
-                        media,
-                      )
-                    }
-                  >
-                    {media.cover ? (
-                      <NetworkImage
-                        source={{ uri: media.cover }}
-                        style={styles.liveCover}
-                        resizeMode="cover"
-                        thumbnail={700}
-                      />
-                    ) : null}
-                    <View style={styles.mediaMeta}>
-                      <Text
-                        style={[
-                          styles.mediaIcon,
-                          idol || mine ? { color: palette.onTint } : { color: palette.tint },
-                        ]}
-                      >
-                        {t(mediaLabel(media.type))}
-                      </Text>
-                      {media.type !== 'video' && media.title ? (
-                        <Text
-                          style={[
-                            styles.mediaTitle,
-                            idol || mine ? { color: palette.onTint } : { color: palette.label },
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {media.title}
-                        </Text>
-                      ) : null}
-                      {media.duration ? (
-                        <Text
-                          style={[
-                            styles.mediaDuration,
-                            idol || mine
-                              ? { color: palette.onTint }
-                              : { color: palette.labelSecondary },
-                          ]}
-                        >
-                          {media.duration}s
-                        </Text>
-                      ) : null}
-                    </View>
-                    <TouchableOpacity
-                      style={[
-                        styles.mediaPlayBtn,
-                        {
-                          backgroundColor: palette.tint,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 4,
-                        },
-                      ]}
-                      onPress={() => playMedia(media)}
-                      activeOpacity={0.85}
-                    >
-                      <MaterialCommunityIcons
-                        name={
-                          playingMedia?.url && media.url && playingMedia.url === media.url
-                            ? 'pause'
-                            : 'play'
-                        }
-                        size={14}
-                        color={palette.onTint}
-                      />
-                      <Text style={[styles.mediaPlayText, { color: palette.onTint }]}>
-                        {playingMedia?.url && media.url && playingMedia.url === media.url
-                          ? t('暂停')
-                          : media.duration
-                            ? `${media.duration}s`
-                            : t('播放')}
-                      </Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                )
-              ) : !bubbleText && !gift ? (
-                <Text
-                  style={[
-                    styles.msgBody,
-                    (idol || mine) && styles.msgBodyHighlight,
-                    idol || mine ? { color: palette.onTint } : { color: palette.labelSecondary },
-                  ]}
-                >
-                  {t('[空消息]')}
-                </Text>
-              ) : null}
-              {media?.url && playingMedia?.url === media.url && media.type === 'link' ? (
-                <TouchableOpacity
-                  style={styles.openLinkBtn}
-                  onPress={() => Linking.openURL(media.url).catch(() => {})}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.openLinkText, { color: palette.tint }]} numberOfLines={1}>
-                    {media.url}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </GlassSurface>
-          </View>
-        </View>
+        <RoomChatRow
+          row={row}
+          room={selectedRoom}
+          showFanMessages={showFanMessages}
+          currentUserId={currentUserId}
+          memberIdSet={memberIdSet}
+          token={token || ''}
+          palette={palette}
+          hideVideoCard={hideVideoCard}
+          isMediaPlaying={isMediaPlaying}
+          highlightQuery={debouncedRoomSearch}
+          memberLookupRef={memberLookupRef}
+          t={t}
+          onOpenProfile={openSenderProfile}
+          onOpenActions={openMessageActions}
+          onPlayMedia={playMedia}
+          onPreviewImage={setFullImageUrl}
+        />
       );
     },
     [
@@ -4956,26 +5348,16 @@ export default function FollowedRoomsScreen() {
       currentUserId,
       memberIdSet,
       token,
+      palette,
+      roomPlayerFullscreen,
+      roomPlayer?.url,
+      playingMedia?.url,
+      debouncedRoomSearch,
+      t,
       openSenderProfile,
       openMessageActions,
-      roomPlayerFullscreen,
-      roomPlayer,
-      playingMedia,
-      palette,
-      t,
       playMedia,
-      setFullImageUrl,
     ],
-  );
-
-  const renderChatMessage = useCallback(
-    ({ currentMessage }: { currentMessage?: { __row?: ChatRow } }) => {
-      const row = currentMessage?.__row;
-
-      if (!row) return <View />;
-      return renderChatItem({ item: row });
-    },
-    [renderChatItem],
   );
 
   const openRoomRef = useRef(openRoom);
@@ -5965,7 +6347,7 @@ export default function FollowedRoomsScreen() {
                                     thumbnail={180}
                                   />
                                   {userCard?.frameUrl ? (
-                                    <Image
+                                    <NetworkImage
                                       source={{ uri: normalizeUrl(userCard.frameUrl) }}
                                       style={{
                                         position: 'absolute',
@@ -5979,6 +6361,7 @@ export default function FollowedRoomsScreen() {
                                           2,
                                       }}
                                       resizeMode="contain"
+                                      fallback={false}
                                     />
                                   ) : null}
                                 </View>
@@ -6390,7 +6773,14 @@ export default function FollowedRoomsScreen() {
                         {!!roomSearchQuery ? (
                           <TouchableOpacity
                             onPress={() => {
+                              searchScanSeqRef.current += 1;
                               setRoomSearchQuery('');
+                              setDebouncedRoomSearch('');
+                              setSearchScanState({
+                                scanning: false,
+                                scannedCount: 0,
+                                pausedAtLimit: false,
+                              });
                               roomSearchInputRef.current?.blur();
                               Keyboard.dismiss();
                             }}
@@ -6473,8 +6863,15 @@ export default function FollowedRoomsScreen() {
                         if (roomSearchOpen) {
                           roomSearchInputRef.current?.blur();
                           Keyboard.dismiss();
+                          searchScanSeqRef.current += 1;
                           setRoomSearchOpen(false);
                           setRoomSearchQuery('');
+                          setDebouncedRoomSearch('');
+                          setSearchScanState({
+                            scanning: false,
+                            scannedCount: 0,
+                            pausedAtLimit: false,
+                          });
                         } else {
                           setRoomSearchOpen(true);
                         }
@@ -6528,6 +6925,65 @@ export default function FollowedRoomsScreen() {
                   </ToolbarShell>
                 </View>
               </View>
+
+              {roomSearchOpen && debouncedRoomSearch ? (
+                <ScalePressable
+                  disabled={searchScanState.scanning || !hasMoreMessages}
+                  onPress={() => {
+                    if (!searchScanState.scanning && hasMoreMessages) {
+                      void loadMoreRoomMessages();
+                    }
+                  }}
+                  pressedScale={0.97}
+                  style={{
+                    alignSelf: 'center',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginBottom: 6,
+                    paddingHorizontal: 12,
+                    paddingVertical: 5,
+                    borderRadius: 14,
+                    backgroundColor:
+                      resolvedTheme === 'dark' ? 'rgba(28,28,34,0.82)' : 'rgba(255,255,255,0.86)',
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: palette.hairline,
+                  }}
+                >
+                  {searchScanState.scanning ? (
+                    <ActivityIndicator size="small" color={palette.tint} />
+                  ) : (
+                    <MaterialCommunityIcons
+                      name={hasMoreMessages ? 'history' : 'check-circle-outline'}
+                      size={13}
+                      color={hasMoreMessages ? palette.tint : palette.labelSecondary}
+                    />
+                  )}
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontFamily: fontFamily.system,
+                      fontWeight: '600',
+                      color: hasMoreMessages ? palette.label : palette.labelSecondary,
+                    }}
+                  >
+                    {searchScanState.scanning
+                      ? t('正在搜索历史（已查 {scanned} 条，命中 {hits} 条）…', {
+                          scanned: Math.max(roomMessages.length, searchScanState.scannedCount),
+                          hits: filteredRoomMessages.length,
+                        })
+                      : hasMoreMessages
+                        ? t('已查 {scanned} 条 · 命中 {hits} 条 · 继续搜更早', {
+                            scanned: roomMessages.length,
+                            hits: filteredRoomMessages.length,
+                          })
+                        : t('已搜全部 {scanned} 条消息 · 命中 {hits} 条', {
+                            scanned: roomMessages.length,
+                            hits: filteredRoomMessages.length,
+                          })}
+                  </Text>
+                </ScalePressable>
+              ) : null}
 
               <View style={{ flex: 1, overflow: 'hidden' }}>
                 <Chat
@@ -6822,10 +7278,10 @@ export default function FollowedRoomsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.container} pointerEvents={selectedRoom ? 'none' : 'auto'}>
+      <View style={styles.container} pointerEvents={selectedRoom && !roomClosing ? 'none' : 'auto'}>
         <FloatingTabHeader
-          frostedOnly={!!selectedRoom}
-          hidden={!!selectedRoom}
+          frostedOnly={!!selectedRoom && !roomClosing}
+          hidden={!!selectedRoom && !roomClosing}
           leftIsland={
             <GlassSegmented
               role="bar"
@@ -6838,7 +7294,7 @@ export default function FollowedRoomsScreen() {
               onChange={(k) => startTransition(() => setRoomFilter(k as RoomListFilter))}
               height={FLOATING_BAR_HEIGHT}
               labelFontSize={13}
-              frostedOnly={!!selectedRoom}
+              frostedOnly={!!selectedRoom && !roomClosing}
               style={styles.headerSeg}
             />
           }

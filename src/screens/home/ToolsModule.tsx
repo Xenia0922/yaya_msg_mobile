@@ -37,7 +37,7 @@ export default function ToolsModule({ toolChips, quickCellW, onPressItem }: Tool
                 pressedScale={0.94}
                 accessibilityRole="button"
                 accessibilityLabel={item.title}
-                style={{ minWidth: Math.round(quickCellW * 0.8) }}
+                style={{ minWidth: quickCellW }}
               >
                 <GlassSurface
                   radius={radii.lg}
@@ -45,8 +45,8 @@ export default function ToolsModule({ toolChips, quickCellW, onPressItem }: Tool
                   frostedOnly
                   style={[
                     styles.chip,
-                    styles.toolChip,
                     {
+                      minWidth: quickCellW,
                       backgroundColor: 'transparent',
                       borderColor: palette.innerStroke,
                     },

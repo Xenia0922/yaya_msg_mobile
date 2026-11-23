@@ -22,6 +22,7 @@ import { useI18n } from '../i18n';
 import { shareRemoteImage } from '../services/shareImage';
 import { errorMessage, normalizeUrl, parseMaybeJson, pickText, unwrapList } from '../utils/data';
 import { formatDuration } from '../utils/format';
+import { normalizeImageHost } from '../utils/imageThumb';
 import { usePalette, radiiAlias, fontFamily } from '../theme';
 import { typography } from '../theme/typography';
 import type { Member } from '../types';
@@ -31,6 +32,7 @@ type RoomMode = 'big' | 'small';
 type AlbumItem = {
   id: string;
   url: string;
+  coverUrl?: string;
   type: 'image' | 'video';
   title: string;
   time: number;
@@ -48,25 +50,67 @@ function parseAlbumBody(item: any): any {
   if (typeof raw !== 'string') return {};
   const direct = parseMaybeJson(raw);
   if (direct && typeof direct === 'object') return direct;
-  let clean = raw.replace(/\\\\"/g, '"').replace(/\\\\\\\\/g, '\\\\');
+  if (typeof direct === 'string') {
+    const unwrapped = parseMaybeJson(direct);
+    if (unwrapped && typeof unwrapped === 'object') return unwrapped;
+  }
+  let clean = raw.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
   if (clean.startsWith('"') && clean.endsWith('"')) clean = clean.slice(1, -1);
   const again = parseMaybeJson(clean);
   return again && typeof again === 'object' ? again : {};
 }
 
+function normalizeAlbumMediaUrl(rawUrl: string): string {
+  const clean = String(rawUrl || '')
+    .trim()
+    .replace(/\\\//g, '/');
+  if (!clean) return '';
+  if (/^(avatar|mediasource|backstage|20\d\d)\//i.test(clean)) {
+    return normalizeImageHost(`https://source.48.cn/${clean}`);
+  }
+  return normalizeImageHost(normalizeUrl(clean));
+}
+
 function mediaUrl(item: any): string {
   const body = parseAlbumBody(item);
-  return normalizeUrl(
-    pickText(body, ['url', 'imageUrl', 'videoUrl', 'mediaUrl', 'msg.url', 'message.url']) ||
-      pickText(item, ['url', 'imageUrl', 'videoUrl']),
-  );
+  const raw =
+    pickText(body, [
+      'url',
+      'imageUrl',
+      'imgUrl',
+      'picUrl',
+      'pictureUrl',
+      'videoUrl',
+      'mp4Url',
+      'mediaUrl',
+      'path',
+      'msg.url',
+      'message.url',
+      'imageInfo.url',
+      'imageInfo.imgUrl',
+    ]) || pickText(item, ['url', 'imageUrl', 'imgUrl', 'videoUrl']);
+  return normalizeAlbumMediaUrl(raw);
+}
+
+function mediaCoverUrl(item: any): string {
+  const body = parseAlbumBody(item);
+  const raw =
+    pickText(body, ['coverUrl', 'cover', 'poster', 'videoCover', 'thumbUrl', 'picPath']) ||
+    pickText(item, ['coverUrl', 'cover']);
+  return normalizeAlbumMediaUrl(raw);
 }
 
 function isVideoItem(item: any, url: string): boolean {
   const body = parseAlbumBody(item);
+  const ext = String(body?.ext || '').trim();
   const marker =
-    `${item?.sourceType || ''} ${item?.msgType || ''} ${body?.ext || ''} ${body?.type || ''} ${url}`.toUpperCase();
-  return marker.includes('VIDEO') || /\.(mp4|mov|m4v|3gp|webm)(\?|$)/i.test(url);
+    `${item?.sourceType || ''} ${item?.msgType || ''} ${item?.extMsgType || ''} ${body?.messageType || ''} ${body?.type || ''} ${url}`.toUpperCase();
+  return (
+    marker.includes('VIDEO') ||
+    /^(mp4|mov|m4v|3gp|webm)$/i.test(ext) ||
+    Boolean(body?.videoUrl || body?.mp4Url) ||
+    /\.(mp4|mov|m4v|3gp|webm)(\?|$)/i.test(url)
+  );
 }
 
 function mediaDuration(item: any): number {
@@ -76,6 +120,14 @@ function mediaDuration(item: any): number {
       pickText(item, ['duration', 'videoDuration', 'videoTime', 'length']),
   );
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function formatAlbumDate(ts: number): string {
+  if (!Number.isFinite(ts) || ts <= 0) return '';
+  const d = new Date(ts < 1e12 ? ts * 1000 : ts);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${m}-${day}`;
 }
 
 function toItems(res: any, mode: RoomMode): AlbumItem[] {
@@ -94,10 +146,12 @@ function toItems(res: any, mode: RoomMode): AlbumItem[] {
       const url = mediaUrl(raw);
       const body = parseAlbumBody(raw);
       const type: AlbumItem['type'] = isVideoItem(raw, url) ? 'video' : 'image';
+      const coverUrl = type === 'video' ? mediaCoverUrl(raw) : '';
       const time = Number(raw?.createTime || raw?.msgTime || raw?.ctime || body?.time || 0);
       return {
         id: String(raw?.id || raw?.msgId || raw?.messageId || `${mode}-${time}-${index}`),
         url,
+        coverUrl: coverUrl || undefined,
         type,
         title: pickText(raw, ['starName', 'senderName', 'senderNickName', 'nickName'], ''),
         time: Number.isFinite(time) ? time : 0,
@@ -125,11 +179,10 @@ export default function RoomAlbumScreen() {
   const [member, setMember] = useState<Member | null>(null);
   const [mode, setMode] = useState<RoomMode>('big');
   const [items, setItems] = useState<AlbumItem[]>([]);
-  const [, setCursor] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [preview, setPreview] = useState<AlbumItem | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [playing, setPlaying] = useState<AlbumItem | null>(null);
 
   const reqRef = useRef(0);
@@ -169,7 +222,6 @@ export default function RoomAlbumScreen() {
 
         const advanced = next > 0 && next !== sentCursor;
         cursorRef.current = advanced ? next : cursorRef.current;
-        setCursor(cursorRef.current);
         setHasMore(page.length > 0 && advanced);
       } catch (e) {
         if (rid !== reqRef.current) return;
@@ -193,7 +245,6 @@ export default function RoomAlbumScreen() {
       setItems([]);
       setHasMore(false);
       cursorRef.current = 0;
-      setCursor(0);
       load(next, 'big', false);
     },
     [load],
@@ -206,7 +257,6 @@ export default function RoomAlbumScreen() {
       setItems([]);
       setHasMore(false);
       cursorRef.current = 0;
-      setCursor(0);
       load(member, next, false);
     },
     [member, mode, load],
@@ -215,7 +265,6 @@ export default function RoomAlbumScreen() {
   const refresh = useCallback(() => {
     if (!member) return;
     cursorRef.current = 0;
-    setCursor(0);
     load(member, mode, false);
   }, [member, mode, load]);
 
@@ -242,8 +291,18 @@ export default function RoomAlbumScreen() {
 
   const openItem = useCallback((item: AlbumItem) => {
     if (item.type === 'video') setPlaying(item);
-    else setPreview(item);
+    else setPreviewUrl(item.url);
   }, []);
+
+  const imageGalleryUrls = useMemo(
+    () => items.filter((item) => item.type === 'image' && !!item.url).map((item) => item.url),
+    [items],
+  );
+  const previewIndex = useMemo(() => {
+    if (!previewUrl) return 0;
+    const idx = imageGalleryUrls.indexOf(previewUrl);
+    return idx >= 0 ? idx : 0;
+  }, [previewUrl, imageGalleryUrls]);
 
   const counts = useMemo(() => {
     let image = 0;
@@ -265,12 +324,25 @@ export default function RoomAlbumScreen() {
           accessibilityLabel={item.type === 'video' ? t('视频') : t('图片')}
           pressedScale={0.96}
         >
-          <NetworkImage
-            source={{ uri: item.url }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="cover"
-            thumbnail={THUMB_W}
-          />
+          {item.type === 'video' ? (
+            item.coverUrl ? (
+              <NetworkImage
+                source={{ uri: item.coverUrl }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+                thumbnail={THUMB_W}
+              />
+            ) : (
+              <View style={styles.videoFallbackBg} pointerEvents="none" />
+            )
+          ) : (
+            <NetworkImage
+              source={{ uri: item.url }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+              thumbnail={THUMB_W}
+            />
+          )}
           {item.type === 'video' ? (
             <>
               <View style={styles.videoShade} pointerEvents="none" />
@@ -280,6 +352,11 @@ export default function RoomAlbumScreen() {
               {item.duration > 0 ? (
                 <View style={styles.durationBadge} pointerEvents="none">
                   <Text style={styles.durationText}>{formatDuration(item.duration)}</Text>
+                </View>
+              ) : null}
+              {!item.coverUrl && item.time > 0 ? (
+                <View style={styles.videoDateBadge} pointerEvents="none">
+                  <Text style={styles.durationText}>{formatAlbumDate(item.time)}</Text>
                 </View>
               ) : null}
             </>
@@ -402,17 +479,19 @@ export default function RoomAlbumScreen() {
       )}
 
       <ZoomImageModal
-        url={preview ? preview.url : ''}
-        onClose={() => setPreview(null)}
-        onDownload={() => {
-          const u = preview ? preview.url : '';
+        url={previewUrl}
+        images={imageGalleryUrls}
+        initialIndex={previewIndex}
+        onClose={() => setPreviewUrl('')}
+        onDownload={(activeUrl) => {
+          const u = activeUrl || previewUrl;
           if (!u) return;
           void enqueueDownload({ url: u, type: 'image', name: `album-${Date.now()}.jpg` })
             .then(() => showToast(t('已加入下载管理')))
             .catch((err) => showToast(errorMessage(err)));
         }}
-        onShare={() => {
-          const u = preview ? preview.url : '';
+        onShare={(activeUrl) => {
+          const u = activeUrl || previewUrl;
           if (!u) return;
           void shareRemoteImage(u).catch(() => showToast(t('分享失败')));
         }}
@@ -455,6 +534,7 @@ const styles = StyleSheet.create({
   },
 
   videoShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.16)' },
+  videoFallbackBg: { ...StyleSheet.absoluteFillObject, backgroundColor: '#181820' },
   playWrap: {
     position: 'absolute',
     top: '50%',
@@ -479,6 +559,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderCurve: 'continuous',
     backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  videoDateBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderCurve: 'continuous',
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   durationText: {
     color: '#FFFFFF',

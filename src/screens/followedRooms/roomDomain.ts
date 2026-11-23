@@ -1,6 +1,6 @@
 import { Member, MemberSummary, RoomMessageWire, WireRecord } from '../../types';
 import { t } from '../../i18n';
-import { normalizeUrl, unwrapList, parseMaybeJson, pickText } from '../../utils/data';
+import { normalizeUrl, unwrapList, parseMaybeJson, pickText, messageText } from '../../utils/data';
 import { type MediaType } from './mediaUtils';
 import {
   messageBody,
@@ -24,8 +24,16 @@ export function shortName(member?: Member, fallback = '') {
   return raw.replace(/^(SNH48|GNZ48|BEJ48|CKG48|CGT48)-/, '');
 }
 
+const senderProfileCache = new WeakMap<object, SenderProfile>();
+const messageKeyCache = new WeakMap<object, string>();
+const messageSearchHaystackCache = new WeakMap<object, string>();
+
 export function senderProfile(item: RoomMessageWire, _room: Member): SenderProfile {
   if (!item) return { id: '', name: t('未知用户'), avatar: '' };
+  if (typeof item === 'object') {
+    const cached = senderProfileCache.get(item);
+    if (cached) return cached;
+  }
   const body = messageBody(item);
   const extUser: WireRecord = extraInfo(item)?.user || {};
 
@@ -61,11 +69,13 @@ export function senderProfile(item: RoomMessageWire, _room: Member): SenderProfi
     firstTextFrom(senderContainers, ['avatar', 'headImg', 'headUrl']) ||
     direct(['senderAvatar', 'sender.avatar', 'sender.headImg', 'user.avatar', 'user.headImg']);
 
-  return {
+  const res: SenderProfile = {
     id: String(id || '').trim(),
     name: name || (id ? t('用户 {id}', { id }) : t('未知用户')),
     avatar: normalizeUrl(String(avatar || '').trim()),
   };
+  if (typeof item === 'object') senderProfileCache.set(item, res);
+  return res;
 }
 
 export function isIdolMessage(
@@ -198,33 +208,67 @@ export function userCardFromUserRes(res: unknown) {
 
 export function messageKey(item: RoomMessageWire) {
   if (!item) return `empty-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  if (typeof item === 'object') {
+    const cached = messageKeyCache.get(item);
+    if (cached) return cached;
+  }
   const direct =
     item.id || item.msgId || item.messageId || item.clientMsgId || item.uuid || item.msgUuid;
-  if (direct) return String(direct);
-  const profile = senderProfile(item, {} as Member);
-  const body = messageBody(item);
-  const text = firstTextFrom(
-    [body, item],
-    ['text', 'message', 'msgContent', 'content', 'bodys', 'body'],
-  );
-  const media = firstTextFrom([body, item], ['url', 'fileUrl', 'pictureUrl', 'coverUrl', 'liveId']);
+  let computed: string;
+  if (direct) {
+    computed = String(direct);
+  } else {
+    const profile = senderProfile(item, {} as Member);
+    const body = messageBody(item);
+    const text = firstTextFrom(
+      [body, item],
+      ['text', 'message', 'msgContent', 'content', 'bodys', 'body'],
+    );
+    const media = firstTextFrom(
+      [body, item],
+      ['url', 'fileUrl', 'pictureUrl', 'coverUrl', 'liveId'],
+    );
+    computed = String(
+      `${getMessageTime(item)}-${profile.id || profile.name || ''}-${text || media || JSON.stringify(body).slice(0, 120)}`,
+    );
+  }
+  if (typeof item === 'object') messageKeyCache.set(item, computed);
+  return computed;
+}
 
-  return String(
-    `${getMessageTime(item)}-${profile.id || profile.name || ''}-${text || media || JSON.stringify(body).slice(0, 120)}`,
-  );
+export function getRoomMessageSearchHaystack(item: RoomMessageWire, room: Member): string {
+  if (!item || typeof item !== 'object') return '';
+  const hit = messageSearchHaystackCache.get(item);
+  if (hit !== undefined) return hit;
+  const profile = senderProfile(item, room);
+  const text = messageText(item);
+  const haystack = `${text}\u0001${profile.name}\u0001${profile.id}`.toLowerCase();
+  messageSearchHaystackCache.set(item, haystack);
+  return haystack;
+}
+
+export function buildRoomMetaSearchHaystack(room?: Member | null): string {
+  if (!room) return '';
+  return `${room.ownerName || ''}\u0001${room.team || ''}\u0001${room.groupName || ''}`.toLowerCase();
 }
 
 export function mergeMessages<T extends RoomMessageWire>(prev: T[], next: RoomMessageWire[]): T[] {
   const cleanPrev = prev.filter(Boolean);
   if (cleanPrev.length !== prev.length) diagnoseUndefined(prev, 'MERGE_PREV');
+  const cleanNext = Array.isArray(next) ? next.filter(Boolean) : [];
+  if (cleanNext.length === 0 && cleanPrev.length === prev.length) return prev;
   const seen = new Set(cleanPrev.map((item) => messageKey(item)));
   const merged = [...cleanPrev];
-  next.filter(Boolean).forEach((item) => {
+  let added = 0;
+  for (let i = 0; i < cleanNext.length; i++) {
+    const item = cleanNext[i];
     const key = messageKey(item);
-    if (seen.has(key)) return;
+    if (seen.has(key)) continue;
     seen.add(key);
     merged.push(item as T);
-  });
+    added += 1;
+  }
+  if (added === 0 && cleanPrev.length === prev.length) return prev;
   return sortMessagesNewestFirst(merged);
 }
 

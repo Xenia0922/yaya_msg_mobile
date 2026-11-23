@@ -4,14 +4,19 @@ import { NativeContinuousCornerView } from '../native/ContinuousCornerView';
 
 export interface SquircleViewProps extends ViewProps {
   radius?: number;
+  clipOutline?: boolean;
   children?: React.ReactNode;
 }
 
-export function SquircleView({ radius, style, children, ...rest }: SquircleViewProps) {
+export function SquircleView({ radius, clipOutline, style, children, ...rest }: SquircleViewProps) {
   const incoming = style ? (StyleSheet.flatten(style) as ViewStyle | undefined) : undefined;
   const r = radius ?? (typeof incoming?.borderRadius === 'number' ? incoming.borderRadius : 0);
 
-  if (Platform.OS === 'android' && r > 0 && NativeContinuousCornerView) {
+  if (
+    Platform.OS === 'android' &&
+    (r > 0 || clipOutline !== undefined) &&
+    NativeContinuousCornerView
+  ) {
     const strokeWidth = typeof incoming?.borderWidth === 'number' ? incoming.borderWidth : 0;
     const strokeColor =
       typeof incoming?.borderColor === 'string' ? incoming.borderColor : 'transparent';
@@ -41,6 +46,7 @@ export function SquircleView({ radius, style, children, ...rest }: SquircleViewP
         cornerRadiusDp={r}
         strokeWidthDp={strokeWidth}
         strokeColor={strokeColor}
+        clipOutline={Boolean(clipOutline) && r > 0}
         style={hostStyle}
         {...rest}
       >

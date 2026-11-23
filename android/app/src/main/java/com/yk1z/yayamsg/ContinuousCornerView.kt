@@ -7,15 +7,20 @@ import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
 import android.os.Build
+import android.view.SurfaceView
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import com.facebook.react.views.view.ReactViewGroup
+import java.util.WeakHashMap
 import kotlin.math.min
 
 class ContinuousCornerView(context: Context) : ReactViewGroup(context) {
   private var cornerRadiusDp: Float = 0f
   private var strokeWidthDp: Float = 0f
   private var strokeColor: Int = Color.TRANSPARENT
+  private var clipOutline: Boolean = false
+  private val clippedSurfaces = WeakHashMap<SurfaceView, ViewOutlineProvider>()
 
   private val clipPath = Path()
   private val strokePath = Path()
@@ -46,7 +51,12 @@ class ContinuousCornerView(context: Context) : ReactViewGroup(context) {
         }
         rebuildPathsIfNeeded(w, h)
         val rPx = currentRadiusPx(w, h)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && hasClipPath) {
+        val canUsePath = if (clipOutline) {
+          Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        } else {
+          Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        }
+        if (canUsePath && hasClipPath) {
           try {
             outline.setPath(clipPath)
             return
@@ -59,12 +69,23 @@ class ContinuousCornerView(context: Context) : ReactViewGroup(context) {
     }
   }
 
+  fun setClipOutline(enabled: Boolean) {
+    if (enabled != clipOutline) {
+      clipOutline = enabled
+      clipToOutline = enabled
+      invalidateOutline()
+      syncDescendantSurfaceOutlines()
+      invalidate()
+    }
+  }
+
   fun setCornerRadiusDp(dp: Float) {
     val safe = if (dp.isFinite() && dp > 0f) dp else 0f
     if (safe != cornerRadiusDp) {
       cornerRadiusDp = safe
       dirty = true
       invalidateOutline()
+      syncDescendantSurfaceOutlines()
       invalidate()
     }
   }
@@ -90,6 +111,78 @@ class ContinuousCornerView(context: Context) : ReactViewGroup(context) {
     super.onSizeChanged(w, h, oldw, oldh)
     dirty = true
     invalidateOutline()
+    syncDescendantSurfaceOutlines()
+  }
+
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    super.onLayout(changed, left, top, right, bottom)
+    if (clipOutline) {
+      syncDescendantSurfaceOutlines()
+      post {
+        if (clipOutline) syncDescendantSurfaceOutlines()
+      }
+    }
+  }
+
+  private fun syncDescendantSurfaceOutlines() {
+    scanSurfaceViews(this)
+  }
+
+  private fun scanSurfaceViews(group: ViewGroup) {
+    val count = group.childCount
+    for (i in 0 until count) {
+      val child = group.getChildAt(i) ?: continue
+      if (child is SurfaceView) {
+        applySurfaceOutline(child)
+      } else if (child is ViewGroup) {
+        scanSurfaceViews(child)
+      }
+    }
+  }
+
+  private fun applySurfaceOutline(sv: SurfaceView) {
+    val shouldClip = clipOutline && cornerRadiusDp > 0f
+    var provider = clippedSurfaces[sv]
+    if (provider == null && shouldClip) {
+      provider = object : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+          val pW = this@ContinuousCornerView.width
+          val pH = this@ContinuousCornerView.height
+          val vW = view.width
+          val vH = view.height
+          if (pW <= 0 || pH <= 0 || vW <= 0 || vH <= 0) {
+            outline.setEmpty()
+            return
+          }
+          val rPx = currentRadiusPx(pW, pH)
+          if (!clipOutline || rPx <= 0f) {
+            outline.setRect(0, 0, vW, vH)
+            return
+          }
+          rebuildPathsIfNeeded(pW, pH)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            hasClipPath &&
+            vW == pW &&
+            vH == pH
+          ) {
+            try {
+              outline.setPath(clipPath)
+              return
+            } catch (_: Throwable) {
+            }
+          }
+          outline.setRoundRect(0, 0, vW, vH, rPx)
+        }
+      }
+      clippedSurfaces[sv] = provider
+      sv.outlineProvider = provider
+    }
+    if (sv.clipToOutline != shouldClip) {
+      sv.clipToOutline = shouldClip
+    }
+    if (provider != null) {
+      sv.invalidateOutline()
+    }
   }
 
   private fun currentRadiusPx(w: Int, h: Int): Float {

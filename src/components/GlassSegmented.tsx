@@ -413,14 +413,11 @@ export function GlassSegmentedScroll<T extends string>({
     options.findIndex((o) => o.key === value),
   );
   const x = useRef(new Animated.Value(0)).current;
-  const w = useRef(new Animated.Value(0)).current;
   const target = layouts[idx];
 
   const lastXRef = useRef<number | null>(null);
   useEffect(() => {
     if (!target) return;
-
-    w.setValue(target.w);
 
     if (lastXRef.current === null) {
       lastXRef.current = target.x;
@@ -436,9 +433,9 @@ export function GlassSegmentedScroll<T extends string>({
       toValue: target.x,
       tension: 220,
       friction: 30,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start();
-  }, [target, x, w]);
+  }, [target, x]);
 
   if (!options.length) return null;
 
@@ -473,7 +470,7 @@ export function GlassSegmentedScroll<T extends string>({
               pointerEvents="none"
               style={[
                 styles.scrollPill,
-                { height: height - 6, width: w, transform: [{ translateX: x }] },
+                { height: height - 6, width: target.w, transform: [{ translateX: x }] },
               ]}
             >
               <SelectorCapsule

@@ -12,6 +12,14 @@ import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
   private var compactPlayerWindow = false
+  private var pipTransitionActive = false
+  private var hostPauseDeferredForPip = false
+  private val deferredPauseSafetyCheck = Runnable {
+    if (hostPauseDeferredForPip && !isInPictureInPictureModeNow() && !isCompactPlayerWindow() && !hasWindowFocus()) {
+      pipTransitionActive = false
+      flushDeferredHostPause()
+    }
+  }
   private val compactWindowListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
     val compact = isCompactPlayerWindow()
     if (compact != compactPlayerWindow) {
@@ -108,9 +116,46 @@ class MainActivity : ReactActivity() {
     }
   }
 
+  private fun isInPictureInPictureModeNow(): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
+
+  private fun shouldKeepReactActiveForPip(): Boolean {
+    if (isFinishing || isDestroyed) return false
+    if (isInPictureInPictureModeNow()) return true
+    if (pipTransitionActive) return true
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && PipModule.videoPlaying && PipModule.pipEnabled && !hasWindowFocus()) {
+      return true
+    }
+    return false
+  }
+
+  private fun flushDeferredHostPause() {
+    if (!hostPauseDeferredForPip) return
+    hostPauseDeferredForPip = false
+    try {
+      reactDelegate?.onHostPause()
+    } catch (_: Throwable) {}
+  }
+
+  private fun forceRelayoutTree(view: android.view.View?) {
+    if (view == null) return
+    view.requestLayout()
+    if (view is android.view.TextureView || view is LiveExoView) {
+      view.invalidate()
+    }
+    if (view is android.view.ViewGroup) {
+      for (i in 0 until view.childCount) {
+        forceRelayoutTree(view.getChildAt(i))
+      }
+    }
+  }
+
   override fun onResume() {
     super.onResume()
 
+    pipTransitionActive = false
+    hostPauseDeferredForPip = false
+    reassertHandler.removeCallbacks(deferredPauseSafetyCheck)
     reassertHandler.removeCallbacks(delayedReassert)
     if (!PipModule.videoPlaying) {
       reassertExoSession()
@@ -125,6 +170,9 @@ class MainActivity : ReactActivity() {
 
   override fun onStop() {
     super.onStop()
+    pipTransitionActive = false
+    reassertHandler.removeCallbacks(deferredPauseSafetyCheck)
+    flushDeferredHostPause()
   }
 
   override fun onStart() {
@@ -194,6 +242,7 @@ class MainActivity : ReactActivity() {
         return
       }
       PipOverlayController.setHidden(this, true)
+      pipTransitionActive = true
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         PipModule.emitPipChanged(true)
@@ -240,13 +289,15 @@ class MainActivity : ReactActivity() {
         }
 
         reassertHandler.postDelayed({
-          if (!isCompactPlayerWindow() && !isFinishing && !isDestroyed) {
+          if (!isCompactPlayerWindow() && !isInPictureInPictureModeNow() && !isFinishing && !isDestroyed) {
             android.util.Log.w("YayaPip", "PiP 未生效（1.2s 后仍不在 PiP）→ 回滚盖层")
             PipModule.diag("ERROR", "PiP 未生效（1.2s 后仍不在 PiP）→ 回滚盖层")
+            pipTransitionActive = false
             PipModule.setCompactWindowMode(false)
             PipOverlayController.setHidden(this, false)
             PipModule.emitPipChanged(false)
             PipModule.emitPipDenied("timeout")
+            if (!hasWindowFocus()) flushDeferredHostPause()
           }
         }, 1200)
         return
@@ -266,11 +317,13 @@ class MainActivity : ReactActivity() {
           }
 
           android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            if (!isCompactPlayerWindow()) {
+            if (!isCompactPlayerWindow() && !isInPictureInPictureModeNow()) {
+              pipTransitionActive = false
               PipModule.setCompactWindowMode(false)
               PipOverlayController.setHidden(this, false)
               PipModule.emitPipChanged(false)
               PipModule.emitPipDenied("timeout")
+              if (!hasWindowFocus()) flushDeferredHostPause()
             }
           }, 900)
         }, PIP_ENTER_DELAY_MS)
@@ -297,16 +350,33 @@ class MainActivity : ReactActivity() {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
     android.util.Log.i("YayaPip", "onPipModeChanged inPip=$isInPictureInPictureMode vp=${PipModule.videoPlaying} pe=${PipModule.pipEnabled}")
     PipModule.diag(if (isInPictureInPictureMode) "INFO" else "WARN", "onPipModeChanged inPip=$isInPictureInPictureMode")
+    pipTransitionActive = isInPictureInPictureMode
+    if (isInPictureInPictureMode) {
+      hostPauseDeferredForPip = true
+      reassertHandler.removeCallbacks(deferredPauseSafetyCheck)
+      try {
+        reactDelegate?.onHostResume()
+      } catch (_: Throwable) {}
+    }
     compactPlayerWindow = isInPictureInPictureMode || isCompactPlayerWindow()
     PipModule.setCompactWindowMode(compactPlayerWindow)
     PipOverlayController.setHidden(this, compactPlayerWindow)
     PipModule.emitPipChanged(compactPlayerWindow)
-    window.decorView.requestLayout()
+    forceRelayoutTree(window.decorView)
+    window.decorView.invalidate()
     if (isInPictureInPictureMode) {
       window.decorView.postDelayed({
-        window.decorView.requestLayout()
-        window.decorView.invalidate()
-      }, 160L)
+        if (isInPictureInPictureModeNow()) {
+          forceRelayoutTree(window.decorView)
+          window.decorView.invalidate()
+        }
+      }, 60L)
+      window.decorView.postDelayed({
+        if (isInPictureInPictureModeNow()) {
+          forceRelayoutTree(window.decorView)
+          window.decorView.invalidate()
+        }
+      }, 180L)
     } else {
       window.decorView.postDelayed({
         val stillCompact = isCompactPlayerWindow()
@@ -314,8 +384,8 @@ class MainActivity : ReactActivity() {
         PipModule.setCompactWindowMode(stillCompact)
         PipOverlayController.setHidden(this, stillCompact)
         PipModule.emitPipChanged(stillCompact)
-        window.decorView.requestLayout()
-      }, 300L)
+        forceRelayoutTree(window.decorView)
+      }, 220L)
     }
   }
 
@@ -323,6 +393,7 @@ class MainActivity : ReactActivity() {
     pruneThirdPartyPipListeners()
     super.onPictureInPictureUiStateChanged(pipState)
     if (Build.VERSION.SDK_INT >= 35 && pipState.isTransitioningToPip) {
+      pipTransitionActive = true
       PipModule.setCompactWindowMode(true)
       PipOverlayController.setHidden(this, true)
       PipModule.emitPipChanged(true)
@@ -375,7 +446,23 @@ class MainActivity : ReactActivity() {
               this,
               mainComponentName,
               fabricEnabled
-          ){})
+          ){
+            override fun onPause() {
+              if (this@MainActivity.shouldKeepReactActiveForPip()) {
+                this@MainActivity.hostPauseDeferredForPip = true
+                this@MainActivity.reassertHandler.removeCallbacks(this@MainActivity.deferredPauseSafetyCheck)
+                this@MainActivity.reassertHandler.postDelayed(this@MainActivity.deferredPauseSafetyCheck, 1200L)
+                return
+              }
+              this@MainActivity.hostPauseDeferredForPip = false
+              super.onPause()
+            }
+
+            override fun onResume() {
+              this@MainActivity.hostPauseDeferredForPip = false
+              super.onResume()
+            }
+          })
   }
 
   override fun invokeDefaultOnBackPressed() {

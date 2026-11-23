@@ -1208,6 +1208,12 @@ export const zhHant: Record<string, string> = {
   '说点什么…': '說點什麼…',
   搜索: '搜尋',
   '搜索聊天记录...': '搜尋聊天記錄...',
+  继续搜更早消息: '繼續搜尋更早訊息',
+  '正在搜索历史（已查 {scanned} 条，命中 {hits} 条）…':
+    '正在搜尋歷史（已查 {scanned} 則，命中 {hits} 則）…',
+  '已查 {scanned} 条 · 命中 {hits} 条 · 继续搜更早':
+    '已查 {scanned} 則 · 命中 {hits} 則 · 繼續搜尋更早',
+  '已搜全部 {scanned} 条消息 · 命中 {hits} 条': '已搜尋全部 {scanned} 則訊息 · 命中 {hits} 則',
   头像框: '頭像框',
   投屏: '投屏',
   '图片不能超过 20MB': '圖片不能超過 20MB',
@@ -1350,4 +1356,7 @@ export const zhHant: Record<string, string> = {
   '{cost} 鸡腿 · {count} 次': '{cost} 雞腿 · {count} 次',
   该成员暂未开放私密翻牌: '該成員暫未開放私密翻牌',
   '当前版本 v{v}，可前往下载最新版本': '目前版本 v{v}，可前往下載最新版本',
+  '已选 {count} 单': '已選 {count} 單',
+  累计金额: '累計金額',
+  '提交申请 (已选 {count} 单 · ¥{amount})': '提交申請 (已選 {count} 單 · ¥{amount})',
 };

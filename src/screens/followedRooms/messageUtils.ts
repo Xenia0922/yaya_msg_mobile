@@ -22,13 +22,27 @@ export function parseObject(value: unknown): WireRecord {
   return {};
 }
 
+const extraInfoCache = new WeakMap<object, WireRecord>();
+const messageBodyCache = new WeakMap<object, WireRecord>();
+const messageTimeCache = new WeakMap<object, number>();
+
 export function extraInfo(item: RoomMessageWire): WireRecord {
-  return parseObject(item?.extInfo);
+  if (!item || typeof item !== 'object') return {};
+  const hit = extraInfoCache.get(item);
+  if (hit) return hit;
+  const parsed = parseObject(item?.extInfo);
+  extraInfoCache.set(item, parsed);
+  return parsed;
 }
 
 export function messageBody(item: RoomMessageWire): WireRecord {
+  if (!item || typeof item !== 'object') return {};
+  const hit = messageBodyCache.get(item);
+  if (hit) return hit;
   const body = messagePayload(item);
-  return body && typeof body === 'object' ? (body as WireRecord) : {};
+  const res = body && typeof body === 'object' ? (body as WireRecord) : {};
+  messageBodyCache.set(item, res);
+  return res;
 }
 
 export function firstTextFrom(objects: unknown[], paths: string[]) {
@@ -114,12 +128,17 @@ function pickPositiveTimeFromRecord(rec: WireRecord | null | undefined): number 
 
 export function getMessageTime(item: unknown): number {
   if (!item || typeof item !== 'object') return 0;
+  const hit = messageTimeCache.get(item);
+  if (hit !== undefined) return hit;
   const msg = item as WireRecord;
   const direct = pickPositiveTimeFromRecord(msg);
-  if (direct > 0) return direct;
+  if (direct > 0) {
+    messageTimeCache.set(item, direct);
+    return direct;
+  }
 
   const nestedCandidates = [
-    parseObject(msg.extInfo),
+    extraInfo(msg as RoomMessageWire),
     msg.lastMessage,
     msg.lastMsg,
     msg.message,
@@ -130,8 +149,12 @@ export function getMessageTime(item: unknown): number {
   for (const candidate of nestedCandidates) {
     if (!candidate || typeof candidate !== 'object') continue;
     const nestedTime = pickPositiveTimeFromRecord(candidate as WireRecord);
-    if (nestedTime > 0) return nestedTime;
+    if (nestedTime > 0) {
+      messageTimeCache.set(item, nestedTime);
+      return nestedTime;
+    }
   }
+  messageTimeCache.set(item, 0);
   return 0;
 }
 

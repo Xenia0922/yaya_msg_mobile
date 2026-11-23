@@ -1234,6 +1234,12 @@ export const en: Record<string, string> = {
   '说点什么…': 'Say something…',
   搜索: 'Search',
   '搜索聊天记录...': 'Search chat history...',
+  继续搜更早消息: 'Search earlier messages',
+  '正在搜索历史（已查 {scanned} 条，命中 {hits} 条）…':
+    'Searching history ({scanned} checked, {hits} matched)…',
+  '已查 {scanned} 条 · 命中 {hits} 条 · 继续搜更早':
+    '{scanned} checked · {hits} matched · Search earlier',
+  '已搜全部 {scanned} 条消息 · 命中 {hits} 条': 'Searched all {scanned} messages · {hits} matched',
   头像框: 'Avatar frame',
   投屏: 'Cast',
   '图片不能超过 20MB': "Images can't exceed 20 MB",
@@ -1379,4 +1385,7 @@ export const en: Record<string, string> = {
   '{cost} 鸡腿 · {count} 次': '{cost} legs · {count}x',
   该成员暂未开放私密翻牌: 'Private replies are currently closed for this member',
   '当前版本 v{v}，可前往下载最新版本': 'Current v{v}. Open the download page to update.',
+  '已选 {count} 单': '{count} selected',
+  累计金额: 'Total amount',
+  '提交申请 (已选 {count} 单 · ¥{amount})': 'Submit ({count} selected · ¥{amount})',
 };

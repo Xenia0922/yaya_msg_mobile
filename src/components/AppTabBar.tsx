@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
+  Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GlassSurface } from './GlassSurface';
@@ -325,12 +327,28 @@ export const AppTabBar = React.memo(function AppTabBar({
     ],
   }));
 
+  const barVisibility = useSharedValue(hidden ? 0 : 1);
+
+  useEffect(() => {
+    barVisibility.value = withTiming(hidden ? 0 : 1, {
+      duration: 175,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [hidden, barVisibility]);
+
+  const barAnimStyle = useAnimatedStyle(() => ({
+    opacity: barVisibility.value,
+    transform: [{ translateY: (1 - barVisibility.value) * 14 }],
+  }));
+
   const litIndex = hoverIndex ?? activeIndex;
 
   return (
-    <View
+    <Reanimated.View
       pointerEvents={hidden ? 'none' : 'box-none'}
-      style={[styles.outer, { paddingBottom: 16 }, hidden && styles.outerHidden]}
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
+      style={[styles.outer, { paddingBottom: 16 }, barAnimStyle]}
     >
       <GestureDetector gesture={composedGesture}>
         <GlassSurface role="bar" radius={BAR_HEIGHT / 2} frostedOnly={hidden} style={styles.bar}>
@@ -363,7 +381,7 @@ export const AppTabBar = React.memo(function AppTabBar({
           ))}
         </GlassSurface>
       </GestureDetector>
-    </View>
+    </Reanimated.View>
   );
 });
 
@@ -375,9 +393,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     paddingHorizontal: 16,
-  },
-  outerHidden: {
-    display: 'none',
   },
   bar: {
     flexDirection: 'row',

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Image, View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
+import { NetworkImage } from './NetworkImage';
+import { AVATAR_THUMB_WIDTH, normalizeImageHost } from '../utils/imageThumb';
 
 export type UserDecor = {
   isStar?: boolean;
@@ -11,12 +13,17 @@ export type UserDecor = {
 };
 
 export function absDecorUrl(u: string): string {
-  const raw = String(u || '').trim();
+  const raw = String(u || '')
+    .trim()
+    .replace(/\\\//g, '/');
   if (!raw) return '';
-  if (raw.startsWith('//')) return `https:${raw}`;
-  if (raw.startsWith('/'))
-    return `https://${/^(avatar|mediasource|backstage)\b/i.test(raw.slice(1)) ? 'source.48.cn' : 'source1.48.cn'}${raw}`;
-  return raw;
+  if (raw.startsWith('//')) return normalizeImageHost(`https:${raw}`);
+  if (raw.startsWith('/')) {
+    return normalizeImageHost(
+      `https://${/^(avatar|mediasource|backstage)\b/i.test(raw.slice(1)) ? 'source.48.cn' : 'source1.48.cn'}${raw}`,
+    );
+  }
+  return normalizeImageHost(raw);
 }
 
 export function levelBadgeNumber(level?: number | string): number {
@@ -74,10 +81,11 @@ export function TeamLogoImage({
   }, [resolved]);
   if (!resolved || failed) return <>{fallback}</>;
   return (
-    <Image
+    <NetworkImage
       source={{ uri: resolved }}
       style={{ width: size * widthRatio, height: size }}
       resizeMode="contain"
+      fallback={false}
       onError={() => setFailed(true)}
     />
   );
@@ -121,12 +129,20 @@ export function AvatarWithFrame({
   fallbackBg?: string;
 }) {
   const frame = absDecorUrl(String(frameUri || ''));
+  const resolvedAvatar = absDecorUrl(String(avatarUri || ''));
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [resolvedAvatar]);
   return (
     <View style={{ width: size, height: size }}>
-      {avatarUri ? (
-        <Image
-          source={{ uri: avatarUri }}
+      {resolvedAvatar && !avatarFailed ? (
+        <NetworkImage
+          source={{ uri: resolvedAvatar }}
           style={{ width: size, height: size, borderRadius: size / 2 }}
+          thumbnail={AVATAR_THUMB_WIDTH}
+          fallback={false}
+          onError={() => setAvatarFailed(true)}
         />
       ) : (
         <View
@@ -148,7 +164,7 @@ export function AvatarWithFrame({
         </View>
       )}
       {frame ? (
-        <Image
+        <NetworkImage
           source={{ uri: frame }}
           style={{
             position: 'absolute',
@@ -158,6 +174,7 @@ export function AvatarWithFrame({
             top: (size - size * 1.42) / 2,
           }}
           resizeMode="contain"
+          fallback={false}
         />
       ) : null}
     </View>

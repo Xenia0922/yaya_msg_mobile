@@ -29,4 +29,9 @@ class ContinuousCornerViewManager : ViewGroupManager<ContinuousCornerView>() {
   fun setStrokeColor(view: ContinuousCornerView, color: Int?) {
     view.setStrokeColor(color ?: Color.TRANSPARENT)
   }
+
+  @ReactProp(name = "clipOutline", defaultBoolean = false)
+  fun setClipOutline(view: ContinuousCornerView, enabled: Boolean) {
+    view.setClipOutline(enabled)
+  }
 }

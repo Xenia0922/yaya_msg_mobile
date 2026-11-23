@@ -1,7 +1,11 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, ImageProps, StyleSheet, View } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { normalizeImageHost, thumbUrl } from '../utils/imageThumb';
+import { USER_AGENT } from '../constants';
+import { buildImageFallbackCandidates } from '../utils/imageThumb';
+
+const POCKET_IMAGE_HEADERS = { 'User-Agent': USER_AGENT, Referer: 'https://h5.48.cn/' };
+const DEFAULT_IMAGE_HEADERS = { 'User-Agent': USER_AGENT };
 
 type NetworkImageProps = ImageProps & {
   fallback?: boolean;
@@ -9,6 +13,8 @@ type NetworkImageProps = ImageProps & {
   fallbackIcon?: string;
 
   thumbnail?: number;
+
+  highResFallback?: number;
 };
 
 export function NetworkImage({
@@ -18,41 +24,69 @@ export function NetworkImage({
   onError,
   style,
   thumbnail,
+  highResFallback,
   ...rest
 }: NetworkImageProps) {
   const [errored, setErrored] = useState(false);
 
-  const [useOriginal, setUseOriginal] = useState(false);
+  const [candidateIdx, setCandidateIdx] = useState(0);
 
   const rawUri =
     rest.source && typeof rest.source === 'object' && 'uri' in rest.source
-      ? (rest.source as any).uri
+      ? String((rest.source as any).uri || '').trim()
       : undefined;
-  const uri = rawUri ? normalizeImageHost(rawUri) : undefined;
 
-  const thumbUri = thumbnail && uri ? thumbUrl(uri, thumbnail) : '';
+  const candidates = useMemo(
+    () =>
+      rawUri
+        ? buildImageFallbackCandidates(rawUri, {
+            thumbnail,
+            highResWidth: highResFallback,
+          })
+        : [],
+    [rawUri, thumbnail, highResFallback],
+  );
 
-  const thumbed = !!thumbUri && thumbUri !== uri;
-  const source = uri
-    ? { ...(rest.source as any), uri: thumbed && !useOriginal ? thumbUri : uri }
-    : rest.source;
+  const active = candidates[candidateIdx] || candidates[0];
+  const existingHeaders =
+    rest.source && typeof rest.source === 'object' && 'headers' in rest.source
+      ? ((rest.source as any).headers as Record<string, string> | undefined)
+      : undefined;
+
+  const source = useMemo(() => {
+    if (!active) return rest.source;
+    const baseSource =
+      rest.source && typeof rest.source === 'object' ? (rest.source as Record<string, any>) : {};
+    const { headers: _unusedHeaders, ...otherFields } = baseSource;
+    const baseHeaders =
+      active.headerMode === 'pocket'
+        ? POCKET_IMAGE_HEADERS
+        : active.headerMode === 'ua'
+          ? DEFAULT_IMAGE_HEADERS
+          : undefined;
+    const mergedHeaders =
+      baseHeaders || existingHeaders ? { ...baseHeaders, ...existingHeaders } : undefined;
+    return mergedHeaders
+      ? { ...otherFields, uri: active.uri, headers: mergedHeaders }
+      : { ...otherFields, uri: active.uri };
+  }, [active, rest.source, existingHeaders]);
 
   const handleError = useCallback(
     (e: any) => {
-      if (thumbed && !useOriginal) {
-        setUseOriginal(true);
+      if (candidateIdx + 1 < candidates.length) {
+        setCandidateIdx((idx) => idx + 1);
         return;
       }
       if (onError) onError(e);
       if (fallback) setErrored(true);
     },
-    [thumbed, useOriginal, fallback, onError],
+    [candidateIdx, candidates.length, fallback, onError],
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     setErrored(false);
-    setUseOriginal(false);
-  }, [uri]);
+    setCandidateIdx(0);
+  }, [rawUri, thumbnail, highResFallback]);
 
   if (errored) {
     return (
@@ -70,8 +104,7 @@ export function NetworkImage({
   return (
     <Image
       {...rest}
-
-      key={String((source as any)?.uri || '')}
+      key={active ? `${active.uri}#${candidateIdx}` : String((source as any)?.uri || '')}
       source={source}
       style={style}
       fadeDuration={fadeDuration ?? 0}

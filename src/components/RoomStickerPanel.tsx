@@ -16,6 +16,7 @@ import { usePalette, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
 import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
 import emojiAssets from '../utils/emojiAssets';
+import { NetworkImage } from './NetworkImage';
 import { ALLOW_VIP_STICKERS, VIP_FEATURE_NOTICE } from '../constants/identityFeatures';
 
 type Group = { name: string; vip: boolean; stickers: RoomSticker[] };
@@ -191,15 +192,20 @@ export default function RoomStickerPanel({
             }
             accessibilityLabel={item.emoji || item.sticker?.sourceName || t('发送表情包')}
           >
-            <Image
-              source={
-                item.emoji
-                  ? emojiAssets[item.emoji]
-                  : { uri: normalizeUrl(item.sticker?.sourcePath) }
-              }
-              style={selected === 0 ? styles.emoji : styles.sticker}
-              resizeMode="contain"
-            />
+            {item.emoji ? (
+              <Image
+                source={emojiAssets[item.emoji]}
+                style={selected === 0 ? styles.emoji : styles.sticker}
+                resizeMode="contain"
+              />
+            ) : (
+              <NetworkImage
+                source={{ uri: normalizeUrl(item.sticker?.sourcePath) }}
+                style={selected === 0 ? styles.emoji : styles.sticker}
+                resizeMode="contain"
+                fallback={false}
+              />
+            )}
           </TouchableOpacity>
         )}
       />

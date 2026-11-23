@@ -20,5 +20,9 @@
     <domain includeSubdomains="true">yaya-data.pages.dev</domain>
     <domain includeSubdomains="true">meet48.xyz</domain>
     <domain includeSubdomains="true">ckg48.cn</domain>
+    <domain includeSubdomains="true">yunxinsvr.com</domain>
+    <domain includeSubdomains="true">netease.im</domain>
+    <domain includeSubdomains="true">netease.com</domain>
+    <domain includeSubdomains="true">127.net</domain>
   </domain-config>
 </network-security-config>

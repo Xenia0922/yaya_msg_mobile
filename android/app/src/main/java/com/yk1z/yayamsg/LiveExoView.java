@@ -397,30 +397,23 @@ public class LiveExoView extends FrameLayout {
         requestLayout();
         invalidate();
         textureView.requestLayout();
-        applyAspectTransform();
+        applyAspectTransform(getWidth(), getHeight());
         textureView.invalidate();
         textureView.postInvalidateOnAnimation();
         handler.postDelayed(() -> {
           if (released || player == null || audioOnly || !textureView.isAvailable()) return;
-
-          if (isInPip() == lastInPip && textureView.getSurfaceTexture() == lastSurfaceTexture) {
-            try {
-              player.clearVideoTextureView(textureView);
-              player.setVideoTextureView(textureView);
-              player.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT);
-            } catch (Throwable ignored) {
-            }
-          }
+          requestLayout();
           textureView.requestLayout();
-          applyAspectTransform();
+          applyAspectTransform(getWidth(), getHeight());
           textureView.invalidate();
           textureView.postInvalidateOnAnimation();
-        }, 140L);
+        }, 120L);
         handler.postDelayed(() -> {
           ensurePlayerSurface();
-          applyAspectTransform();
+          applyAspectTransform(getWidth(), getHeight());
+          textureView.invalidate();
           textureView.postInvalidateOnAnimation();
-        }, 360L);
+        }, 320L);
       }
     }
   }
@@ -507,7 +500,7 @@ public class LiveExoView extends FrameLayout {
       statusText.layout(sx, sy, sx + tw, sy + th);
     }
     ensurePlayerSurface();
-    applyAspectTransform();
+    applyAspectTransform(w, h);
   }
 
   public void setCoverPortrait(boolean coverPortrait) {
