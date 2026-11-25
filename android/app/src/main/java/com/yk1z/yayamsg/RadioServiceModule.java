@@ -60,6 +60,7 @@ public class RadioServiceModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void setFavoriteState(boolean active) {
     favoriteState = !!active;
+    YayaExoService.refreshSessionState();
   }
 
   public static boolean isFavoriteState() {

@@ -42,36 +42,63 @@ export function buildLyricEntries(raw: RawIndexEntry[]): LyricEntry[] {
 }
 
 let cachedMatcher: { entries: LyricEntry[]; matcher: any } | null = null;
+let inflightMatcher: Promise<{ entries: LyricEntry[]; matcher: any }> | null = null;
 
 export async function getLyricsMatcher() {
   if (cachedMatcher) return cachedMatcher;
+  if (inflightMatcher) return inflightMatcher;
 
-  try {
-    const raw = await AsyncStorage.getItem(INDEX_CACHE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (
-        parsed &&
-        parsed.t &&
-        Date.now() - parsed.t < INDEX_CACHE_TTL &&
-        Array.isArray(parsed.index)
-      ) {
-        const entries = buildLyricEntries(parsed.index);
-        if (entries.length) {
-          cachedMatcher = { entries, matcher: new LyricsMatcher(entries) };
-          return cachedMatcher;
+  inflightMatcher = (async () => {
+    let staleMatcher: { entries: LyricEntry[]; matcher: any } | null = null;
+    try {
+      const raw = await AsyncStorage.getItem(INDEX_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.index) && parsed.index.length) {
+          const entries = buildLyricEntries(parsed.index);
+          if (entries.length) {
+            const built = { entries, matcher: new LyricsMatcher(entries) };
+            if (parsed.t && Date.now() - parsed.t < INDEX_CACHE_TTL) {
+              cachedMatcher = built;
+              return cachedMatcher;
+            }
+            staleMatcher = built;
+          }
         }
       }
-    }
-  } catch {}
+    } catch {}
 
-  const resp = await fetchWithTimeout('https://yaya-data.pages.dev/lyrics-index.json', {}, 10000);
-  const raw: RawIndexEntry[] = parseMaybeJson(await resp.text()) || [];
-  const entries = buildLyricEntries(raw);
-  const matcher = new LyricsMatcher(entries);
-  cachedMatcher = { entries, matcher };
+    try {
+      const resp = await fetchWithTimeout(
+        'https://yaya-data.pages.dev/lyrics-index.json',
+        {},
+        10000,
+      );
+      if (!resp.ok) throw new Error(`lyrics-index HTTP ${resp.status}`);
+      const raw: RawIndexEntry[] = parseMaybeJson(await resp.text()) || [];
+      const entries = buildLyricEntries(raw);
+      if (!entries.length && staleMatcher) {
+        cachedMatcher = staleMatcher;
+        return staleMatcher;
+      }
+      const matcher = new LyricsMatcher(entries);
+      cachedMatcher = { entries, matcher };
+      try {
+        await AsyncStorage.setItem(INDEX_CACHE_KEY, JSON.stringify({ t: Date.now(), index: raw }));
+      } catch {}
+      return cachedMatcher;
+    } catch (error) {
+      if (staleMatcher) {
+        cachedMatcher = staleMatcher;
+        return staleMatcher;
+      }
+      throw error;
+    }
+  })();
+
   try {
-    await AsyncStorage.setItem(INDEX_CACHE_KEY, JSON.stringify({ t: Date.now(), index: raw }));
-  } catch {}
-  return cachedMatcher;
+    return await inflightMatcher;
+  } finally {
+    inflightMatcher = null;
+  }
 }

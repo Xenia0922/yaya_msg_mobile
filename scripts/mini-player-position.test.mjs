@@ -12,17 +12,29 @@ const compiled = ts.transpileModule(source, {
 const module = { exports: {} };
 const create = (init) => {
   let state;
+  const get = () => state;
   const set = (update) => {
     state = { ...state, ...(typeof update === 'function' ? update(state) : update) };
   };
-  state = init(set);
+  state = init(set, get);
   return { getState: () => state };
 };
+const noop = () => {};
 vm.runInNewContext(compiled, {
   module,
   exports: module.exports,
-  require: (name) =>
-    name === 'zustand' ? { create } : { useMusicPlayerStore: { getState: () => ({ queue: [] }) } },
+  require: (name) => {
+    if (name === 'zustand') return { create };
+    if (name === '../services/audioFocus') {
+      return {
+        claimAudioFocus: noop,
+        registerAudioHandler: () => noop,
+        releaseAudioFocus: noop,
+        setRadioForegroundActive: noop,
+      };
+    }
+    return { useMusicPlayerStore: { getState: () => ({ queue: [] }) } };
+  },
 });
 const store = module.exports.useMiniPlayerStore;
 const info = {

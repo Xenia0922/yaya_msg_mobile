@@ -408,12 +408,24 @@ export function GlassSegmentedScroll<T extends string>({
 }: Props<T>) {
   const palette = usePalette();
   const [layouts, setLayouts] = useState<{ x: number; w: number }[]>([]);
+  const layoutsRef = useRef<{ x: number; w: number }[]>([]);
+  const layoutRafRef = useRef<number | null>(null);
   const idx = Math.max(
     0,
     options.findIndex((o) => o.key === value),
   );
   const x = useRef(new Animated.Value(0)).current;
   const target = layouts[idx];
+
+  useEffect(
+    () => () => {
+      if (layoutRafRef.current !== null) {
+        cancelAnimationFrame(layoutRafRef.current);
+        layoutRafRef.current = null;
+      }
+    },
+    [],
+  );
 
   const lastXRef = useRef<number | null>(null);
   useEffect(() => {
@@ -488,15 +500,15 @@ export function GlassSegmentedScroll<T extends string>({
                 onPress={() => onChange(o.key)}
                 onLayout={(e) => {
                   const { x: lx, width: lw } = e.nativeEvent.layout;
-                  setLayouts((prev) => {
-                    const cur = prev[i];
-
-                    if (cur && Math.abs(cur.x - lx) < 0.5 && Math.abs(cur.w - lw) < 0.5)
-                      return prev;
-                    const next = [...prev];
-                    next[i] = { x: lx, w: lw };
-                    return next;
-                  });
+                  const cur = layoutsRef.current[i];
+                  if (cur && Math.abs(cur.x - lx) < 0.5 && Math.abs(cur.w - lw) < 0.5) return;
+                  layoutsRef.current[i] = { x: lx, w: lw };
+                  if (layoutRafRef.current === null) {
+                    layoutRafRef.current = requestAnimationFrame(() => {
+                      layoutRafRef.current = null;
+                      setLayouts([...layoutsRef.current]);
+                    });
+                  }
                 }}
                 style={[styles.scrollCell, { height }]}
                 accessibilityRole="button"

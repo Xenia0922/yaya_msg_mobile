@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Animated,
+  BackHandler,
   Easing,
   FlatList,
   Modal,
@@ -15,17 +16,19 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMusicPlayerStore } from '../store/musicPlayerStore';
+import { useMusicPlayerStore, LyricLine } from '../store/musicPlayerStore';
 import { MusicEngine } from '../services/musicPlayer';
 import { lyricIndexAt, lyricTimeForIndex } from '../utils/lyrics';
 import CoverArt from './CoverArt';
 import { NetworkImage } from './NetworkImage';
+import { ScalePressable } from './Motion';
 import { usePalette, radii, spacing, motion, fontFamily } from '../theme';
 import { typography } from '../theme/typography';
 import { useI18n } from '../i18n';
 import { formatTrackSubtitle } from '../utils/format';
-import { useVinylSpin } from '../hooks/useVinylSpin';
 import { normalizeImageHost } from '../utils/imageThumb';
 
 function formatTime(seconds: number): string {
@@ -37,28 +40,43 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-const QUEUE_ROW_HEIGHT = 62;
+function formatCountdown(msRemaining: number): string {
+  const sec = Math.max(0, Math.ceil(msRemaining / 1000));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+const SPEED_CYCLE = [1.0, 1.25, 1.5, 0.75];
+function nextPlaybackSpeed(cur: number): number {
+  const idx = SPEED_CYCLE.findIndex((x) => Math.abs(x - cur) < 0.05);
+  return SPEED_CYCLE[(idx + 1) % SPEED_CYCLE.length];
+}
+
+const QUEUE_ROW_HEIGHT = 60;
 
 interface FullScreenProgressBarProps {
   tintColor: string;
-  backgroundColor: string;
-  trackColor: string;
-  timeColor: string;
+  bufferingText: string;
 }
 
 const FullScreenProgressBar = React.memo(function FullScreenProgressBar({
   tintColor,
-  backgroundColor,
-  trackColor,
-  timeColor,
+  bufferingText,
 }: FullScreenProgressBarProps) {
   const duration = useMusicPlayerStore((s) => s.duration);
   const position = useMusicPlayerStore((s) => s.position);
-  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
+  const buffered = useMusicPlayerStore((s) => s.buffered);
+  const buffering = useMusicPlayerStore((s) => s.buffering);
+  const playbackState = useMusicPlayerStore((s) => s.playbackState);
 
-  const progRef2 = useRef<View>(null);
-  const progW2 = useRef(0);
-  const progX2 = useRef(0);
+  const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
+  const bufferedRatio =
+    duration > 0 ? Math.min(1, Math.max(progress, buffered / duration)) : progress;
+
+  const progRef = useRef<View>(null);
+  const progW = useRef(0);
+  const progX = useRef(-1);
   const [dragRatio, setDragRatio] = useState<number | null>(null);
   const dragRatioRef = useRef<number>(0);
   const gestureActive = useRef(false);
@@ -72,13 +90,25 @@ const FullScreenProgressBar = React.memo(function FullScreenProgressBar({
     [],
   );
 
-  const ratioFromX = (pageX: number): number | null => {
-    const w = progW2.current;
+  const ratioFromEvent = (e: any): number | null => {
+    const w = progW.current;
     if (!w || w < 2) return null;
-    return Math.max(0, Math.min(1, (pageX - progX2.current) / w));
+    const ne = e?.nativeEvent;
+    if (!ne) return null;
+    const relX =
+      progX.current >= 0 && Number.isFinite(ne.pageX)
+        ? ne.pageX - progX.current
+        : Number.isFinite(ne.locationX)
+          ? ne.locationX
+          : null;
+    if (relX === null) return null;
+    return Math.max(0, Math.min(1, relX / w));
   };
   const onProgGrant = (e: any) => {
-    const r = ratioFromX(e.nativeEvent.pageX);
+    progRef.current?.measureInWindow?.((x) => {
+      if (Number.isFinite(x)) progX.current = x;
+    });
+    const r = ratioFromEvent(e);
     if (r == null) {
       gestureActive.current = false;
       return;
@@ -91,7 +121,7 @@ const FullScreenProgressBar = React.memo(function FullScreenProgressBar({
     setDragRatio(r);
   };
   const onProgMove = (e: any) => {
-    const r = ratioFromX(e.nativeEvent.pageX);
+    const r = ratioFromEvent(e);
     if (r == null) return;
     pendingRatio.current = r;
     if (progRaf.current) return;
@@ -118,57 +148,107 @@ const FullScreenProgressBar = React.memo(function FullScreenProgressBar({
     pendingRatio.current = 0;
     setDragRatio(null);
   };
-  const shownRatio = dragRatio ?? progress;
+
+  const shownRatio = Math.max(0, Math.min(1, dragRatio ?? progress));
+  const shownTime = dragRatio !== null && duration > 0 ? dragRatio * duration : position;
+  const isBufferingActive = buffering && playbackState === 'playing' && dragRatio === null;
 
   return (
-    <View style={styles.progressRow}>
-      <Text style={[styles.progTime, { color: timeColor }]}>{formatTime(position)}</Text>
+    <View style={styles.progressWrap}>
       <View
-        ref={progRef2}
+        ref={progRef}
         style={styles.progBg}
         onLayout={(e) => {
-          progW2.current = e.nativeEvent.layout.width;
-          progRef2.current?.measureInWindow?.((x) => {
-            progX2.current = x;
+          progW.current = e.nativeEvent.layout.width;
+          requestAnimationFrame(() => {
+            progRef.current?.measureInWindow?.((x) => {
+              if (Number.isFinite(x)) progX.current = x;
+            });
           });
         }}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
+        onResponderTerminationRequest={() => false}
         onResponderGrant={onProgGrant}
         onResponderMove={onProgMove}
         onResponderRelease={onProgRelease}
         onResponderTerminate={onProgRelease}
       >
-        <View style={[styles.progTrack, { backgroundColor: trackColor }]} />
+        <View pointerEvents="none" style={styles.progTrack} />
+        {bufferedRatio > 0 ? (
+          <View
+            pointerEvents="none"
+            style={[styles.progBuffer, { width: `${bufferedRatio * 100}%` as any }]}
+          />
+        ) : null}
         <View
+          pointerEvents="none"
           style={[
             styles.progFg,
             { width: `${shownRatio * 100}%` as any, backgroundColor: tintColor },
           ]}
         />
         <View
+          pointerEvents="none"
           style={[
-            styles.progThumb,
+            dragRatio !== null ? styles.progThumbActive : styles.progThumb,
             {
               left: `${shownRatio * 100}%` as any,
-              backgroundColor: tintColor,
-              borderColor: backgroundColor,
+              backgroundColor: '#FFFFFF',
+              borderColor: tintColor,
             },
           ]}
         />
       </View>
-      <Text style={[styles.progTime, { color: timeColor }]}>{formatTime(duration)}</Text>
+      <View style={styles.timeRow}>
+        <Text
+          style={[styles.progTime, dragRatio !== null && { color: '#FFFFFF', fontWeight: '700' }]}
+        >
+          {formatTime(shownTime)}
+        </Text>
+        {isBufferingActive ? <Text style={styles.bufferingCaption}>{bufferingText}</Text> : null}
+        <Text style={styles.progTime}>{formatTime(duration)}</Text>
+      </View>
     </View>
   );
 });
 
+const FullScreenLyricPreview = React.memo(function FullScreenLyricPreview({
+  lyrics,
+  emptyText,
+  onPress,
+}: {
+  lyrics: LyricLine[];
+  emptyText: string;
+  onPress: () => void;
+}) {
+  const position = useMusicPlayerStore((s) => s.position);
+  const idx = useMemo(() => lyricIndexAt(lyrics, position), [lyrics, position]);
+  const currentLine = idx >= 0 ? lyrics[idx]?.text : lyrics[0]?.text || '';
+  const nextLine = idx >= 0 ? lyrics[idx + 1]?.text || '' : lyrics[1]?.text || '';
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.lyricPreviewBox, pressed && { opacity: 0.7 }]}
+    >
+      <Text numberOfLines={1} style={styles.lyricPreviewActive}>
+        {currentLine || emptyText}
+      </Text>
+      {nextLine ? (
+        <Text numberOfLines={1} style={styles.lyricPreviewNext}>
+          {nextLine}
+        </Text>
+      ) : null}
+    </Pressable>
+  );
+});
+
 interface FullScreenLyricsListProps {
-  lyrics: any[];
+  lyrics: LyricLine[];
   lrcIdx: number;
   lyricSize: number;
   tintColor: string;
-  tintSoftColor: string;
-  mutedColor: string;
   emptyText: string;
 }
 
@@ -177,27 +257,67 @@ const FullScreenLyricsList = React.memo(function FullScreenLyricsList({
   lrcIdx,
   lyricSize,
   tintColor,
-  tintSoftColor,
-  mutedColor,
   emptyText,
 }: FullScreenLyricsListProps) {
   const [spacerH, setSpacerH] = useState(160);
   const lyricScrollRef = useRef<ScrollView>(null);
-  const lrcScrollH = useRef(400);
+  const lrcScrollH = useRef(380);
   const lineYOffsets = useRef<number[]>([]);
+  const lineHeights = useRef<number[]>([]);
+  const scrollYRef = useRef(0);
+  const manualResumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [manualLineIdx, setManualLineIdx] = useState<number | null>(null);
 
   useEffect(() => {
     lineYOffsets.current = new Array(lyrics.length).fill(0);
-  }, [lyrics]);
+    lineHeights.current = new Array(lyrics.length).fill(lyricSize * 1.6 + 16);
+    setManualLineIdx(null);
+  }, [lyrics, lyricSize]);
+
+  useEffect(
+    () => () => {
+      if (manualResumeTimer.current) clearTimeout(manualResumeTimer.current);
+    },
+    [],
+  );
+
+  const findCenterLineIndex = useCallback(
+    (scrollY: number): number => {
+      if (!lyrics.length) return -1;
+      const centerY = scrollY + lrcScrollH.current / 2;
+      let best = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < lyrics.length; i += 1) {
+        const y = lineYOffsets.current[i] ?? 0;
+        if (y <= 0) continue;
+        const mid = y + (lineHeights.current[i] || lyricSize * 1.6 + 16) / 2;
+        const d = Math.abs(mid - centerY);
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
+      }
+      return best;
+    },
+    [lyrics.length, lyricSize],
+  );
+
+  const scheduleManualResume = useCallback(() => {
+    if (manualResumeTimer.current) clearTimeout(manualResumeTimer.current);
+    manualResumeTimer.current = setTimeout(() => {
+      manualResumeTimer.current = null;
+      setManualLineIdx(null);
+    }, 3000);
+  }, []);
 
   useEffect(() => {
-    if (lrcIdx < 0 || !lyricScrollRef.current) return;
-    const lineH = lyricSize * 1.6 + 16;
+    if (manualLineIdx !== null || lrcIdx < 0 || !lyricScrollRef.current) return;
+    const lineH = lineHeights.current[lrcIdx] || lyricSize * 1.6 + 16;
     let tries = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const center = () => {
       const y = lineYOffsets.current[lrcIdx] ?? 0;
-      if (y > 0 || tries >= 16) {
+      if (y > 0 || tries >= 12) {
         if (y > 0) {
           const target = Math.max(0, y - lrcScrollH.current / 2 + lineH / 2);
           lyricScrollRef.current?.scrollTo?.({ y: target, animated: true });
@@ -211,57 +331,115 @@ const FullScreenLyricsList = React.memo(function FullScreenLyricsList({
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [lrcIdx, lyricSize, lyrics]);
+  }, [lrcIdx, lyricSize, lyrics, manualLineIdx]);
+
+  const manualLine = manualLineIdx !== null ? lyrics[manualLineIdx] : null;
 
   return (
-    <ScrollView
-      ref={lyricScrollRef}
-      style={styles.lyricScroll}
-      showsVerticalScrollIndicator={false}
-      onLayout={(e) => {
-        lrcScrollH.current = e.nativeEvent.layout.height;
-        setSpacerH(Math.max(120, lrcScrollH.current / 2));
-      }}
-    >
-      <View style={{ height: spacerH }} />
-      {lyrics.length > 0 ? (
-        lyrics.map((l, i) => (
+    <View style={styles.lyricListWrap}>
+      <ScrollView
+        ref={lyricScrollRef}
+        style={styles.lyricScroll}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={32}
+        onLayout={(e) => {
+          lrcScrollH.current = e.nativeEvent.layout.height;
+          setSpacerH(Math.max(120, lrcScrollH.current / 2));
+        }}
+        onScrollBeginDrag={() => {
+          if (!lyrics.length) return;
+          if (manualResumeTimer.current) {
+            clearTimeout(manualResumeTimer.current);
+            manualResumeTimer.current = null;
+          }
+          setManualLineIdx(findCenterLineIndex(scrollYRef.current));
+        }}
+        onScroll={(e) => {
+          const y = e.nativeEvent.contentOffset.y;
+          scrollYRef.current = y;
+          if (manualLineIdx !== null) {
+            const next = findCenterLineIndex(y);
+            if (next >= 0 && next !== manualLineIdx) setManualLineIdx(next);
+          }
+        }}
+        onScrollEndDrag={() => {
+          if (manualLineIdx !== null) scheduleManualResume();
+        }}
+        onMomentumScrollEnd={() => {
+          if (manualLineIdx !== null) scheduleManualResume();
+        }}
+      >
+        <View style={{ height: spacerH }} />
+        {lyrics.length > 0 ? (
+          lyrics.map((l, i) => {
+            const isActive = i === lrcIdx;
+            const isPreview = manualLineIdx !== null && i === manualLineIdx;
+            return (
+              <Pressable
+                key={`${i}-${l.time}`}
+                onLayout={(e) => {
+                  lineYOffsets.current[i] = e.nativeEvent.layout.y;
+                  lineHeights.current[i] = e.nativeEvent.layout.height;
+                }}
+                onPress={() => {
+                  const time = lyricTimeForIndex(lyrics, i);
+                  if (time >= 0) {
+                    if (manualResumeTimer.current) clearTimeout(manualResumeTimer.current);
+                    setManualLineIdx(null);
+                    useMusicPlayerStore.getState().setSeekTarget(time);
+                  }
+                }}
+              >
+                <Text
+                  style={[
+                    styles.lyricLine,
+                    {
+                      fontSize: lyricSize,
+                      lineHeight: lyricSize * 1.55,
+                      color: isPreview ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.42)',
+                    },
+                    isActive && {
+                      color: '#FFFFFF',
+                      fontWeight: '800',
+                      fontSize: lyricSize + 2,
+                      textShadowColor: tintColor,
+                      textShadowOffset: { width: 0, height: 0 },
+                      textShadowRadius: 10,
+                    },
+                  ]}
+                >
+                  {l.text}
+                </Text>
+              </Pressable>
+            );
+          })
+        ) : (
+          <Text style={[styles.lyricLine, { color: 'rgba(255,255,255,0.46)' }]}>{emptyText}</Text>
+        )}
+        <View style={{ height: spacerH }} />
+      </ScrollView>
+
+      {manualLine ? (
+        <View pointerEvents="box-none" style={styles.centerSeekGuide}>
+          <Text style={styles.centerSeekTime}>{formatTime(manualLine.time)}</Text>
+          <View style={styles.centerSeekHairline} />
           <Pressable
-            key={i}
-            onLayout={(e) => {
-              lineYOffsets.current[i] = e.nativeEvent.layout.y;
-            }}
             onPress={() => {
-              const time = lyricTimeForIndex(lyrics, i);
-              if (time >= 0) useMusicPlayerStore.getState().setSeekTarget(time);
+              if (manualResumeTimer.current) clearTimeout(manualResumeTimer.current);
+              setManualLineIdx(null);
+              useMusicPlayerStore.getState().setSeekTarget(manualLine.time);
             }}
+            style={({ pressed }) => [
+              styles.centerSeekBtn,
+              { backgroundColor: tintColor },
+              pressed && { opacity: 0.75 },
+            ]}
           >
-            <Text
-              style={[
-                styles.lyricLine,
-                {
-                  fontSize: lyricSize,
-                  lineHeight: lyricSize * 1.6,
-                  color: mutedColor,
-                },
-                i === lrcIdx && {
-                  color: tintColor,
-                  fontWeight: '900',
-                  textShadowColor: tintSoftColor,
-                  textShadowOffset: { width: 0, height: 0 },
-                  textShadowRadius: 8,
-                },
-              ]}
-            >
-              {l.text}
-            </Text>
+            <Icon name="play" size={14} color="#FFFFFF" />
           </Pressable>
-        ))
-      ) : (
-        <Text style={[styles.lyricLine, { color: mutedColor }]}>{emptyText}</Text>
-      )}
-      <View style={{ height: spacerH }} />
-    </ScrollView>
+        </View>
+      ) : null}
+    </View>
   );
 });
 
@@ -270,13 +448,11 @@ function FullScreenLyricsPanel({
   lyricSize,
   onDecreaseSize,
   onIncreaseSize,
-  onBackToCover,
 }: {
-  lyrics: any[];
+  lyrics: LyricLine[];
   lyricSize: number;
   onDecreaseSize: () => void;
   onIncreaseSize: () => void;
-  onBackToCover: () => void;
 }) {
   const { t } = useI18n();
   const palette = usePalette();
@@ -284,43 +460,23 @@ function FullScreenLyricsPanel({
   const lrcIdx = useMemo(() => lyricIndexAt(lyrics, position), [lyrics, position]);
 
   return (
-    <>
+    <View style={styles.lyricsPanel}>
       <View style={styles.lyricToolRow}>
         <Pressable
           onPress={onDecreaseSize}
           accessibilityRole="button"
           accessibilityLabel="A-"
-          style={({ pressed }) => [
-            styles.lyricToolBtn,
-            { backgroundColor: palette.fill2 },
-            pressed && { opacity: 0.6 },
-          ]}
+          style={({ pressed }) => [styles.lyricToolBtn, pressed && { opacity: 0.6 }]}
         >
-          <Icon name="format-font-size-decrease" size={16} color={palette.labelSecondary} />
+          <Icon name="format-font-size-decrease" size={16} color="rgba(255,255,255,0.78)" />
         </Pressable>
         <Pressable
           onPress={onIncreaseSize}
           accessibilityRole="button"
           accessibilityLabel="A+"
-          style={({ pressed }) => [
-            styles.lyricToolBtn,
-            { backgroundColor: palette.fill2 },
-            pressed && { opacity: 0.6 },
-          ]}
+          style={({ pressed }) => [styles.lyricToolBtn, pressed && { opacity: 0.6 }]}
         >
-          <Icon name="format-font-size-increase" size={16} color={palette.labelSecondary} />
-        </Pressable>
-        <Pressable
-          onPress={onBackToCover}
-          accessibilityRole="button"
-          accessibilityLabel={t('单曲')}
-          style={({ pressed }) => [
-            styles.lyricToolBtn,
-            { backgroundColor: palette.fill2 },
-            pressed && { opacity: 0.6 },
-          ]}
-        >
-          <Icon name="disc" size={16} color={palette.labelSecondary} />
+          <Icon name="format-font-size-increase" size={16} color="rgba(255,255,255,0.78)" />
         </Pressable>
       </View>
       <FullScreenLyricsList
@@ -328,25 +484,51 @@ function FullScreenLyricsPanel({
         lrcIdx={lrcIdx}
         lyricSize={lyricSize}
         tintColor={palette.tint}
-        tintSoftColor={palette.tintSoft}
-        mutedColor={palette.labelTertiary}
         emptyText={t('暂无歌词')}
       />
-    </>
+    </View>
   );
+}
+
+function SleepCountdownBadge({
+  sleepTimerEndAt,
+  sleepAfterTrack,
+}: {
+  sleepTimerEndAt: number | null;
+  sleepAfterTrack: boolean;
+}) {
+  const { t } = useI18n();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!sleepTimerEndAt) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [sleepTimerEndAt]);
+
+  if (sleepAfterTrack) {
+    return <Text style={styles.utilPillTextActive}>{t('本首后')}</Text>;
+  }
+  if (sleepTimerEndAt && sleepTimerEndAt > now) {
+    return <Text style={styles.utilPillTextActive}>{formatCountdown(sleepTimerEndAt - now)}</Text>;
+  }
+  return <Text style={styles.utilPillText}>{t('定时')}</Text>;
 }
 
 interface FullScreenPlayerInnerProps {
   track: any;
   isPlaying: boolean;
-  isSpinning: boolean;
   isLoading: boolean;
   playMode: string;
-  lyrics: any[];
+  speed: number;
+  sleepTimerEndAt: number | null;
+  sleepAfterTrack: boolean;
+  lyrics: LyricLine[];
   favorites: string[];
   toggleFavorite: (_id: string, _track?: any) => void;
   currentIndex: number;
   queue: any[];
+  initialSheet: 'none' | 'queue';
   onClose: () => void;
 }
 
@@ -354,20 +536,24 @@ function FullScreenPlayerInner({
   onClose,
   track,
   isPlaying,
-  isSpinning,
   isLoading,
   playMode,
+  speed,
+  sleepTimerEndAt,
+  sleepAfterTrack,
   lyrics,
   toggleFavorite,
   currentIndex,
   queue,
+  initialSheet,
 }: FullScreenPlayerInnerProps) {
   const { t } = useI18n();
   const palette = usePalette();
   const insets = useSafeAreaInsets();
-  const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const screenHeightRef = useRef(screenHeight);
   screenHeightRef.current = screenHeight;
+
   const trackFavId = track ? String(track.musicId || track.id || '') : '';
   const isFav = trackFavId ? useMusicPlayerStore.getState().isFavorite(trackFavId, track) : false;
   const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
@@ -384,14 +570,41 @@ function FullScreenPlayerInner({
   const [showLyrics, setShowLyrics] = useState(false);
   const showLyricsRef = useRef(showLyrics);
   showLyricsRef.current = showLyrics;
-  const [lyricSize, setLyricSize] = useState(17);
-  const [showQueue, setShowQueue] = useState(false);
+  const [lyricSize, setLyricSize] = useState(18);
+  const [showQueue, setShowQueue] = useState(initialSheet === 'queue');
+  const [showSleepSheet, setShowSleepSheet] = useState(false);
   const queueListRef = useRef<FlatList<any>>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const coverScale = useRef(new Animated.Value(isPlaying ? 1 : 0.94)).current;
 
-  const trackSpinKey = String(track?.musicId || track?.id || track?.title || '') || undefined;
-  const spinValue = useVinylSpin(trackSpinKey, isSpinning);
-  const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  useEffect(() => {
+    if (initialSheet === 'queue') setShowQueue(true);
+  }, [initialSheet]);
+
+  useEffect(() => {
+    Animated.spring(coverScale, {
+      toValue: isPlaying ? 1 : 0.94,
+      damping: 18,
+      stiffness: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [isPlaying, coverScale]);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showSleepSheet) {
+        setShowSleepSheet(false);
+        return true;
+      }
+      if (showQueue) {
+        setShowQueue(false);
+        return true;
+      }
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [showQueue, showSleepSheet, onClose]);
 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -399,12 +612,12 @@ function FullScreenPlayerInner({
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) =>
-        !showLyricsRef.current && gs.dy > 14 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.2,
+        !showLyricsRef.current && gs.dy > 16 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.3,
       onPanResponderMove: (_, gs) => {
         if (!showLyricsRef.current && gs.dy > 0) slideAnim.setValue(gs.dy);
       },
       onPanResponderRelease: (_, gs) => {
-        if (!showLyricsRef.current && gs.dy > 80) {
+        if (!showLyricsRef.current && gs.dy > 85) {
           Animated.timing(slideAnim, {
             toValue: screenHeightRef.current,
             duration: motion.duration.fast,
@@ -417,6 +630,20 @@ function FullScreenPlayerInner({
             ...motion.spring.bouncy,
             useNativeDriver: true,
           }).start();
+        }
+      },
+    }),
+  ).current;
+
+  const coverSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > 22 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.4,
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx < -48) {
+          void MusicEngine.next().catch(() => {});
+        } else if (gs.dx > 48) {
+          void MusicEngine.prev().catch(() => {});
         }
       },
     }),
@@ -442,58 +669,85 @@ function FullScreenPlayerInner({
     return () => clearTimeout(timer);
   }, [showQueue, scrollQueueToCurrent]);
 
-  const decLyricSize = useCallback(() => setLyricSize((s) => Math.max(13, s - 2)), []);
+  const decLyricSize = useCallback(() => setLyricSize((s) => Math.max(14, s - 2)), []);
   const incLyricSize = useCallback(() => setLyricSize((s) => Math.min(24, s + 2)), []);
 
-  const iconSecondary = palette.labelSecondary;
-  const iconStrong = palette.label;
-  const isDark = palette.name === 'dark';
+  const coverSize = Math.min(screenWidth - 76, 276);
+  const hasSleep = Boolean(sleepAfterTrack || sleepTimerEndAt);
 
   return (
     <View style={styles.root}>
-      <View style={[styles.backdrop, { backgroundColor: palette.background }]} />
+      <StatusBar style="light" />
+      <View style={[styles.backdrop, { backgroundColor: '#0A0B11' }]} />
       {coverUri ? (
         <NetworkImage
           source={{ uri: coverUri }}
-          blurRadius={60}
+          blurRadius={64}
           resizeMode="cover"
-          style={styles.backdrop}
+          style={[styles.backdrop, { opacity: 0.46 }]}
           fallback={false}
-          fadeDuration={0}
+          fadeDuration={120}
         />
       ) : null}
-      <View
+      <LinearGradient
         pointerEvents="none"
-        style={[
-          styles.backdrop,
-          { backgroundColor: isDark ? 'rgba(12,12,16,0.78)' : 'rgba(246,247,251,0.84)' },
+        colors={[
+          'rgba(10,11,17,0.36)',
+          'rgba(10,11,17,0.54)',
+          'rgba(10,11,17,0.78)',
+          'rgba(10,11,17,0.95)',
         ]}
+        locations={[0, 0.36, 0.68, 1]}
+        style={styles.backdrop}
       />
+
       <Animated.View
         style={[styles.page, { transform: [{ translateY: slideAnim }] }]}
         {...panResponder.panHandlers}
       >
-        <View style={[styles.topBar, { paddingTop: Math.max(48, insets.top + 8) }]}>
-          <Pressable
+        <View style={[styles.topBar, { paddingTop: Math.max(46, insets.top + 8) }]}>
+          <ScalePressable
             onPress={onClose}
+            pressedScale={0.88}
             accessibilityRole="button"
             accessibilityLabel={t('关闭')}
-            style={({ pressed }) => [styles.topBtn, pressed && { opacity: 0.6 }]}
+            style={styles.topBtn}
           >
-            <Icon name="chevron-down" size={28} color={palette.label} />
-          </Pressable>
-          <View style={styles.topCenter}>
-            <Text style={[typography.headline, { color: palette.label }]} numberOfLines={1}>
-              {track.title || t('未知')}
-            </Text>
-            <Text
-              style={[typography.caption1, { color: palette.labelTertiary, marginTop: 2 }]}
-              numberOfLines={1}
+            <Icon name="chevron-down" size={28} color="#FFFFFF" />
+          </ScalePressable>
+
+          <View style={styles.modeSegPill}>
+            <Pressable
+              onPress={() => setShowLyrics(false)}
+              style={[styles.modeSegTab, !showLyrics && styles.modeSegTabActive]}
             >
-              {formatTrackSubtitle(track) || t('官方音乐')}
-            </Text>
+              <Text style={[styles.modeSegText, !showLyrics && styles.modeSegTextActive]}>
+                {t('歌曲')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setShowLyrics(true)}
+              style={[styles.modeSegTab, showLyrics && styles.modeSegTabActive]}
+            >
+              <Text style={[styles.modeSegText, showLyrics && styles.modeSegTextActive]}>
+                {t('歌词')}
+              </Text>
+            </Pressable>
           </View>
-          <View style={styles.topBtn} />
+
+          <ScalePressable
+            onPress={() => setShowSleepSheet(true)}
+            pressedScale={0.88}
+            accessibilityRole="button"
+            accessibilityLabel={t('定时关闭')}
+            style={[styles.topBtn, hasSleep && { backgroundColor: 'rgba(255,255,255,0.16)' }]}
+          >
+            <Icon
+              name={hasSleep ? 'timer-check-outline' : 'timer-outline'}
+              size={22}
+              color={hasSleep ? palette.tint : 'rgba(255,255,255,0.82)'}
+            />
+          </ScalePressable>
         </View>
 
         {showLyrics ? (
@@ -502,52 +756,104 @@ function FullScreenPlayerInner({
             lyricSize={lyricSize}
             onDecreaseSize={decLyricSize}
             onIncreaseSize={incLyricSize}
-            onBackToCover={() => setShowLyrics(false)}
           />
         ) : (
-          <Pressable
-            style={styles.discWrap}
-            onPress={() => setShowLyrics(true)}
-            accessibilityRole="button"
-            accessibilityLabel={t('轻点封面看歌词')}
-          >
-            <Animated.View
-              style={[
-                styles.disc,
-                {
-                  borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.85)',
-                  transform: [{ rotate: spin }],
-                },
-              ]}
-            >
-              <CoverArt
-                key={coverUri || track.title || '♪'}
-                uri={coverUri || undefined}
-                title={track.title || '♪'}
-                size={248}
-                round
-              />
-            </Animated.View>
-          </Pressable>
+          <View style={styles.songBody}>
+            <View style={styles.coverStage} {...coverSwipeResponder.panHandlers}>
+              <Animated.View
+                style={[
+                  styles.coverCard,
+                  {
+                    width: coverSize,
+                    height: coverSize,
+                    transform: [{ scale: coverScale }],
+                  },
+                ]}
+              >
+                <CoverArt
+                  uri={coverUri || undefined}
+                  title={track.title || '♪'}
+                  size={coverSize}
+                  borderRadius={22}
+                  thumbnail={540}
+                />
+              </Animated.View>
+            </View>
+
+            <View style={styles.trackMetaRow}>
+              <View style={styles.trackMetaTexts}>
+                <Text numberOfLines={1} style={styles.trackTitle}>
+                  {track.title || t('未知')}
+                </Text>
+                <Text numberOfLines={1} style={styles.trackSub}>
+                  {formatTrackSubtitle(track) || t('官方音乐')}
+                </Text>
+              </View>
+              <ScalePressable
+                onPress={() => {
+                  if (trackFavId) toggleFavorite(trackFavId, track);
+                }}
+                pressedScale={0.82}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={isFav ? t('已收藏') : t('收藏')}
+                style={[styles.favHeartBtn, isFav && { backgroundColor: 'rgba(255,77,109,0.18)' }]}
+              >
+                <Icon
+                  name={isFav ? 'heart' : 'heart-outline'}
+                  size={23}
+                  color={isFav ? '#FF4D6D' : 'rgba(255,255,255,0.78)'}
+                />
+              </ScalePressable>
+            </View>
+
+            <FullScreenLyricPreview
+              lyrics={lyrics}
+              emptyText={t('暂无歌词')}
+              onPress={() => setShowLyrics(true)}
+            />
+          </View>
         )}
 
-        <View style={styles.ctrlWrap}>
-          <FullScreenProgressBar
-            tintColor={palette.tint}
-            backgroundColor={palette.background}
-            trackColor={palette.fill3}
-            timeColor={palette.labelTertiary}
-          />
+        <View style={[styles.ctrlWrap, { paddingBottom: Math.max(24, insets.bottom + 14) }]}>
+          <FullScreenProgressBar tintColor={palette.tint} bufferingText={t('正在缓冲…')} />
+
           <View style={styles.btnRow}>
-            <Pressable
+            <ScalePressable
+              onPress={() => MusicEngine.cycleMode()}
+              pressedScale={0.88}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('播放模式')}
+              style={styles.sideCtrlBtn}
+            >
+              <Icon
+                name={
+                  playMode === 'single'
+                    ? 'repeat-once'
+                    : playMode === 'random'
+                      ? 'shuffle-variant'
+                      : 'repeat'
+                }
+                size={23}
+                color={playMode === 'sequential' ? 'rgba(255,255,255,0.76)' : palette.tint}
+              />
+            </ScalePressable>
+
+            <ScalePressable
               onPress={() => {
                 void MusicEngine.prev().catch(() => {});
               }}
-              style={({ pressed }) => [styles.transportBtn, pressed && { opacity: 0.6 }]}
+              pressedScale={0.88}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('上一首')}
+              style={styles.transportBtn}
             >
-              <Icon name="skip-previous" size={32} color={iconStrong} />
-            </Pressable>
-            <Pressable
+              <Icon name="skip-previous" size={34} color="#FFFFFF" />
+            </ScalePressable>
+
+            <ScalePressable
               onPress={() => {
                 try {
                   if (isLoading) {
@@ -561,96 +867,100 @@ function FullScreenPlayerInner({
                   MusicEngine.togglePause();
                 } catch {}
               }}
-              style={({ pressed }) => [
-                styles.playBtn,
-                { backgroundColor: palette.tint },
-                pressed && { transform: [{ scale: 0.94 }] },
-              ]}
+              pressedScale={0.92}
+              accessibilityRole="button"
+              accessibilityLabel={isLoading ? t('取消') : isPlaying ? t('暂停') : t('播放')}
+              style={[styles.playBtn, { backgroundColor: palette.tint }]}
             >
               {isLoading ? (
-                <ActivityIndicator size="small" color={palette.onTint} />
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Icon name={isPlaying ? 'pause' : 'play'} size={36} color={palette.onTint} />
+                <Icon name={isPlaying ? 'pause' : 'play'} size={34} color="#FFFFFF" />
               )}
-            </Pressable>
-            <Pressable
+            </ScalePressable>
+
+            <ScalePressable
               onPress={() => {
                 void MusicEngine.next().catch(() => {});
               }}
-              style={({ pressed }) => [styles.transportBtn, pressed && { opacity: 0.6 }]}
-            >
-              <Icon name="skip-next" size={32} color={iconStrong} />
-            </Pressable>
-          </View>
-          <View style={styles.utilityRow}>
-            <Pressable
-              onPress={() => {
-                if (trackFavId) toggleFavorite(trackFavId, track);
-              }}
-              style={({ pressed }) => [
-                styles.sideBtn,
-                isFav && { backgroundColor: palette.tintSoft },
-                pressed && { opacity: 0.6 },
-              ]}
-            >
-              <Icon
-                name={isFav ? 'heart' : 'heart-outline'}
-                size={21}
-                color={isFav ? palette.danger : iconSecondary}
-              />
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                MusicEngine.cycleMode();
-              }}
-              style={({ pressed }) => [styles.sideBtn, pressed && { opacity: 0.6 }]}
-            >
-              <Icon
-                name={
-                  playMode === 'single'
-                    ? 'repeat-once'
-                    : playMode === 'random'
-                      ? 'shuffle-variant'
-                      : 'repeat'
-                }
-                size={21}
-                color={iconSecondary}
-              />
-            </Pressable>
-            <Pressable
-              onPress={() => setShowLyrics(!showLyrics)}
+              pressedScale={0.88}
+              hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={t('点击任意歌词跳播')}
-              style={({ pressed }) => [
-                styles.sideBtn,
-                showLyrics && { backgroundColor: palette.tintSoft },
-                pressed && { opacity: 0.6 },
-              ]}
+              accessibilityLabel={t('下一首')}
+              style={styles.transportBtn}
             >
-              <Icon
-                name="script-text-outline"
-                size={21}
-                color={showLyrics ? palette.tint : iconSecondary}
-              />
-            </Pressable>
-            <Pressable
+              <Icon name="skip-next" size={34} color="#FFFFFF" />
+            </ScalePressable>
+
+            <ScalePressable
               onPress={() => setShowQueue(true)}
+              pressedScale={0.88}
+              hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={t('播放列表（{count}）', { count: queue.length })}
-              style={({ pressed }) => [
-                styles.topQueuePill,
-                { backgroundColor: palette.fill2 },
-                pressed && { opacity: 0.65 },
-              ]}
+              style={styles.sideCtrlBtn}
             >
-              <Icon name="playlist-music" size={15} color={palette.labelSecondary} />
-              <Text style={[styles.topQueueText, { color: palette.labelSecondary }]}>
-                {queue.length > 0 ? `${Math.max(1, currentIndex + 1)}/${queue.length}` : '0'}
+              <Icon name="playlist-music" size={24} color="rgba(255,255,255,0.82)" />
+            </ScalePressable>
+          </View>
+
+          <View style={styles.utilityRow}>
+            <ScalePressable
+              onPress={() => {
+                const nextSp = nextPlaybackSpeed(speed);
+                useMusicPlayerStore.getState().setSpeed(nextSp);
+              }}
+              pressedScale={0.94}
+              style={[styles.utilPill, Math.abs(speed - 1.0) > 0.05 && styles.utilPillActive]}
+            >
+              <Icon
+                name="speedometer"
+                size={15}
+                color={Math.abs(speed - 1.0) > 0.05 ? palette.tint : 'rgba(255,255,255,0.72)'}
+              />
+              <Text
+                style={
+                  Math.abs(speed - 1.0) > 0.05 ? styles.utilPillTextActive : styles.utilPillText
+                }
+              >
+                {`${speed}x`}
               </Text>
-            </Pressable>
+            </ScalePressable>
+
+            <ScalePressable
+              onPress={() => setShowSleepSheet(true)}
+              pressedScale={0.94}
+              style={[styles.utilPill, hasSleep && styles.utilPillActive]}
+            >
+              <Icon
+                name="timer-outline"
+                size={15}
+                color={hasSleep ? palette.tint : 'rgba(255,255,255,0.72)'}
+              />
+              <SleepCountdownBadge
+                sleepTimerEndAt={sleepTimerEndAt}
+                sleepAfterTrack={sleepAfterTrack}
+              />
+            </ScalePressable>
+
+            <ScalePressable
+              onPress={() => setShowLyrics((v) => !v)}
+              pressedScale={0.94}
+              style={[styles.utilPill, showLyrics && styles.utilPillActive]}
+            >
+              <Icon
+                name={showLyrics ? 'disc' : 'script-text-outline'}
+                size={15}
+                color={showLyrics ? palette.tint : 'rgba(255,255,255,0.72)'}
+              />
+              <Text style={showLyrics ? styles.utilPillTextActive : styles.utilPillText}>
+                {showLyrics ? t('封面') : t('歌词')}
+              </Text>
+            </ScalePressable>
           </View>
         </View>
       </Animated.View>
+
       <Modal
         visible={showQueue}
         transparent
@@ -660,38 +970,51 @@ function FullScreenPlayerInner({
         onRequestClose={() => setShowQueue(false)}
       >
         <TouchableOpacity
-          style={styles.queueMask}
+          style={styles.sheetMask}
           activeOpacity={1}
           onPress={() => setShowQueue(false)}
         >
           <View
-            style={[
-              styles.queueSheet,
-              {
-                backgroundColor:
-                  palette.name === 'dark' ? 'rgba(22,22,26,0.96)' : 'rgba(255,255,255,0.96)',
-                borderTopWidth: StyleSheet.hairlineWidth,
-                borderTopColor: palette.hairline,
-                borderTopLeftRadius: radii.sheet,
-                borderTopRightRadius: radii.sheet,
-                paddingBottom: Math.max(18, insets.bottom + 12),
-              },
-            ]}
+            style={[styles.queueSheet, { paddingBottom: Math.max(18, insets.bottom + 12) }]}
             onStartShouldSetResponder={() => true}
           >
-            <View style={[styles.queueHandle, { backgroundColor: palette.fill3 }]} />
+            <View style={styles.sheetHandle} />
             <View style={styles.queueHeader}>
               <TouchableOpacity
                 onPress={() => scrollQueueToCurrent(true)}
                 activeOpacity={0.7}
                 style={styles.queueHeaderTitle}
               >
-                <Icon name="playlist-music" size={18} color={palette.tint} />
-                <Text style={[styles.queueCountText, { color: palette.label }]}>
-                  {queue.length}
+                <Icon name="playlist-music" size={19} color={palette.tint} />
+                <Text style={styles.queueHeaderText}>
+                  {t('播放队列')} ({queue.length})
                 </Text>
               </TouchableOpacity>
               <View style={styles.queueActions}>
+                <ScalePressable
+                  onPress={() => MusicEngine.cycleMode()}
+                  pressedScale={0.92}
+                  style={styles.queueActionPill}
+                >
+                  <Icon
+                    name={
+                      playMode === 'single'
+                        ? 'repeat-once'
+                        : playMode === 'random'
+                          ? 'shuffle-variant'
+                          : 'repeat'
+                    }
+                    size={15}
+                    color="rgba(255,255,255,0.85)"
+                  />
+                  <Text style={styles.queueActionPillText}>
+                    {playMode === 'single'
+                      ? t('单曲')
+                      : playMode === 'random'
+                        ? t('随机')
+                        : t('顺序')}
+                  </Text>
+                </ScalePressable>
                 <TouchableOpacity
                   onPress={() => {
                     MusicEngine.stop();
@@ -703,24 +1026,24 @@ function FullScreenPlayerInner({
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel={t('清空')}
-                  style={[styles.queueActionBtn, { backgroundColor: palette.fill2 }]}
+                  style={styles.queueActionBtn}
                 >
-                  <Icon name="trash-can-outline" size={17} color={palette.labelSecondary} />
+                  <Icon name="trash-can-outline" size={17} color="rgba(255,255,255,0.75)" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setShowQueue(false)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   activeOpacity={0.6}
-                  style={[styles.queueActionBtn, { backgroundColor: palette.fill2 }]}
+                  style={styles.queueActionBtn}
                 >
-                  <Icon name="close" size={17} color={iconSecondary} />
+                  <Icon name="close" size={17} color="rgba(255,255,255,0.75)" />
                 </TouchableOpacity>
               </View>
             </View>
             <FlatList
               ref={queueListRef}
               data={queue}
-              keyExtractor={(t, i) => String(t.musicId || t.id || i)}
+              keyExtractor={(item, i) => String(item.musicId || item.id || i)}
               initialNumToRender={14}
               maxToRenderPerBatch={14}
               getItemLayout={(_, index) => ({
@@ -748,9 +1071,9 @@ function FullScreenPlayerInner({
                 return (
                   <View style={styles.queueItemRow}>
                     <TouchableOpacity
-                      style={[styles.queueItem, active && { backgroundColor: palette.tintSoft }]}
+                      style={[styles.queueItem, active && styles.queueItemActive]}
                       onPress={() => {
-                        MusicEngine.playAt(index);
+                        void MusicEngine.playAt(index);
                         setShowQueue(false);
                       }}
                       activeOpacity={0.7}
@@ -759,12 +1082,15 @@ function FullScreenPlayerInner({
                         uri={uri}
                         title={item.title || '♪'}
                         size={42}
-                        round
-                        active={active}
+                        borderRadius={10}
+                        thumbnail={110}
                       />
                       <View style={styles.queueInfo}>
                         <Text
-                          style={[typography.subhead, { color: palette.label, fontWeight: '700' }]}
+                          style={[
+                            typography.subhead,
+                            { color: active ? palette.tint : '#FFFFFF', fontWeight: '700' },
+                          ]}
                           numberOfLines={1}
                         >
                           {item.title || t('未知')}
@@ -772,7 +1098,7 @@ function FullScreenPlayerInner({
                         <Text
                           style={[
                             typography.caption1,
-                            { color: palette.labelTertiary, marginTop: 2 },
+                            { color: 'rgba(255,255,255,0.55)', marginTop: 2 },
                           ]}
                           numberOfLines={1}
                         >
@@ -784,17 +1110,90 @@ function FullScreenPlayerInner({
 
                     <Pressable
                       onPress={() => {
-                        MusicEngine.removeFromQueue(id).catch(() => {});
+                        void MusicEngine.removeFromQueue(id).catch(() => {});
                       }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={({ pressed }) => [styles.queueRemove, pressed && { opacity: 0.5 }]}
                     >
-                      <Icon name="close" size={17} color={palette.labelTertiary} />
+                      <Icon name="close" size={17} color="rgba(255,255,255,0.5)" />
                     </Pressable>
                   </View>
                 );
               }}
             />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={showSleepSheet}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setShowSleepSheet(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetMask}
+          activeOpacity={1}
+          onPress={() => setShowSleepSheet(false)}
+        >
+          <View
+            style={[styles.sleepSheet, { paddingBottom: Math.max(20, insets.bottom + 12) }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sleepSheetTitle}>{t('定时关闭')}</Text>
+            {[
+              {
+                label: t('关闭定时'),
+                active: !hasSleep,
+                onPress: () => useMusicPlayerStore.getState().clearSleepTimer(),
+              },
+              {
+                label: t('播完本首后暂停'),
+                active: sleepAfterTrack,
+                onPress: () => useMusicPlayerStore.getState().setSleepAfterTrack(true),
+              },
+              {
+                label: t('{min} 分钟后', { min: 15 }),
+                active: false,
+                onPress: () => useMusicPlayerStore.getState().setSleepTimer(15),
+              },
+              {
+                label: t('{min} 分钟后', { min: 30 }),
+                active: false,
+                onPress: () => useMusicPlayerStore.getState().setSleepTimer(30),
+              },
+              {
+                label: t('{min} 分钟后', { min: 60 }),
+                active: false,
+                onPress: () => useMusicPlayerStore.getState().setSleepTimer(60),
+              },
+            ].map((opt, idx) => (
+              <ScalePressable
+                key={idx}
+                onPress={() => {
+                  opt.onPress();
+                  setShowSleepSheet(false);
+                }}
+                pressedScale={0.98}
+                style={[
+                  styles.sleepOptRow,
+                  opt.active && { backgroundColor: 'rgba(255,255,255,0.08)' },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sleepOptText,
+                    opt.active && { color: palette.tint, fontWeight: '700' },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+                {opt.active ? <Icon name="check" size={18} color={palette.tint} /> : null}
+              </ScalePressable>
+            ))}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -804,22 +1203,25 @@ function FullScreenPlayerInner({
 
 interface Props {
   visible: boolean;
+  initialSheet?: 'none' | 'queue';
   onClose: () => void;
 }
 
-export default function FullScreenPlayer({ visible, onClose }: Props) {
+export default function FullScreenPlayer({ visible, initialSheet = 'none', onClose }: Props) {
   const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
   const queue = useMusicPlayerStore((s) => s.queue);
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
   const playMode = useMusicPlayerStore((s) => s.playMode);
+  const speed = useMusicPlayerStore((s) => s.speed);
+  const sleepTimerEndAt = useMusicPlayerStore((s) => s.sleepTimerEndAt);
+  const sleepAfterTrack = useMusicPlayerStore((s) => s.sleepAfterTrack);
   const lyrics = useMusicPlayerStore((s) => s.lyrics);
   const favorites = useMusicPlayerStore((s) => s.favorites);
   const toggleFavorite = useMusicPlayerStore((s) => s.toggleFavorite);
 
   const track = queue[currentIndex] || null;
   const isLoading = playbackState === 'loading';
-  const isSpinning = playbackState === 'playing';
-  const isPlaying = isSpinning || isLoading;
+  const isPlaying = playbackState === 'playing' || isLoading;
 
   if (!visible || !track) return null;
 
@@ -828,28 +1230,39 @@ export default function FullScreenPlayer({ visible, onClose }: Props) {
       onClose={onClose}
       track={track}
       isPlaying={isPlaying}
-      isSpinning={isSpinning}
       isLoading={isLoading}
       playMode={playMode}
+      speed={speed}
+      sleepTimerEndAt={sleepTimerEndAt}
+      sleepAfterTrack={sleepAfterTrack}
       lyrics={lyrics}
       favorites={favorites}
       toggleFavorite={toggleFavorite}
       currentIndex={currentIndex}
       queue={queue}
+      initialSheet={initialSheet}
     />
   );
 }
 
 const styles = StyleSheet.create({
-  root: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 999, elevation: 999 },
+  root: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 999,
+    elevation: 999,
+  },
   backdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   page: { flex: 1 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 48,
-    paddingBottom: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingBottom: 6,
   },
   topBtn: {
     width: 40,
@@ -858,88 +1271,227 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topQueuePill: {
-    minWidth: 44,
-    height: 30,
-    paddingHorizontal: 9,
-    borderRadius: 15,
-    borderCurve: 'continuous',
+  modeSegPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 18,
+    padding: 3,
+    gap: 2,
   },
-  topQueueText: {
+  modeSegTab: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 15,
+  },
+  modeSegTabActive: {
+    backgroundColor: 'rgba(255,255,255,0.20)',
+  },
+  modeSegText: {
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+  },
+  modeSegTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  songBody: {
+    flex: 1,
+    justifyContent: 'space-evenly',
+    paddingHorizontal: 26,
+    paddingVertical: 6,
+  },
+  coverStage: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  coverCard: {
+    borderRadius: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    elevation: 14,
+  },
+  trackMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  trackMetaTexts: { flex: 1, minWidth: 0 },
+  trackTitle: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    fontFamily: fontFamily.system,
+    fontWeight: '800',
+    lineHeight: 27,
+  },
+  trackSub: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    marginTop: 3,
+  },
+  favHeartBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  lyricPreviewBox: {
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  lyricPreviewActive: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 14,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    lineHeight: 21,
+  },
+  lyricPreviewNext: {
+    color: 'rgba(255,255,255,0.44)',
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    lineHeight: 19,
+    marginTop: 2,
+  },
+  lyricsPanel: { flex: 1, paddingHorizontal: 18 },
+  lyricToolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  lyricToolBtn: {
+    width: 34,
+    height: 30,
+    borderRadius: radii.sm,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lyricListWrap: { flex: 1, position: 'relative' },
+  lyricScroll: { flex: 1 },
+  lyricLine: {
+    textAlign: 'center',
+    paddingVertical: 9,
+    fontFamily: fontFamily.system,
+  },
+  centerSeekGuide: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
+    marginTop: -14,
+    height: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  centerSeekTime: {
+    color: 'rgba(255,255,255,0.78)',
     fontSize: 11,
     fontFamily: fontFamily.system,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    backgroundColor: 'rgba(18,20,28,0.78)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
-  topCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
-  discWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  disc: {
-    width: 248,
-    height: 248,
-    borderRadius: 124,
+  centerSeekHairline: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  centerSeekBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 8,
   },
-  lyricScroll: { flex: 1 },
-  lyricToolRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 6,
+  ctrlWrap: { paddingHorizontal: 26 },
+  progressWrap: { marginBottom: 14 },
+  progBg: { height: 28, justifyContent: 'center' },
+  progTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
-  lyricToolBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.sm },
-  lyricLine: { textAlign: 'center', paddingVertical: 8 },
-  ctrlWrap: { paddingHorizontal: 24, paddingBottom: 26 },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 18 },
-  progTime: { fontSize: 10, fontFamily: fontFamily.system, width: 40, textAlign: 'center' },
-  progBg: { flex: 1, height: 28, justifyContent: 'center' },
-  progTrack: { position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 2 },
+  progBuffer: {
+    position: 'absolute',
+    left: 0,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.34)',
+  },
   progFg: { position: 'absolute', left: 0, height: 4, borderRadius: 2 },
   progThumb: {
     position: 'absolute',
-    top: 7,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    top: 8,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     borderWidth: 2,
-    transform: [{ translateX: -7 }],
+    transform: [{ translateX: -6 }],
+  },
+  progThumbActive: {
+    position: 'absolute',
+    top: 6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2.5,
+    transform: [{ translateX: -8 }],
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  progTime: {
+    color: 'rgba(255,255,255,0.58)',
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    fontVariant: ['tabular-nums'],
+  },
+  bufferingCaption: {
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 10,
+    fontFamily: fontFamily.system,
   },
   btnRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  sideCtrlBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 36,
   },
   transportBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  utilityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 14,
-    paddingHorizontal: 10,
-  },
-  sideBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -949,16 +1501,61 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  queueMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  queueSheet: { maxHeight: '82%', paddingBottom: 18 },
-  queueHandle: {
+  utilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 18,
+  },
+  utilPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  utilPillActive: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  utilPillText: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+  },
+  utilPillTextActive: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  sheetMask: { flex: 1, backgroundColor: 'rgba(0,0,0,0.58)', justifyContent: 'flex-end' },
+  sheetHandle: {
     width: 38,
     height: 4,
     borderRadius: 2,
     alignSelf: 'center',
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: 10,
+    marginBottom: 6,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  queueSheet: {
+    maxHeight: '78%',
+    backgroundColor: 'rgba(22,23,31,0.97)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.14)',
+    borderTopLeftRadius: radii.sheet,
+    borderTopRightRadius: radii.sheet,
   },
   queueHeader: {
     flexDirection: 'row',
@@ -967,21 +1564,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
-  queueHeaderTitle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  queueCountText: {
+  queueHeaderTitle: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  queueHeaderText: {
+    color: '#FFFFFF',
     fontSize: 15,
     fontFamily: fontFamily.system,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   queueActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  queueActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  queueActionPillText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+  },
   queueActionBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    borderCurve: 'continuous',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   queueItemRow: { height: QUEUE_ROW_HEIGHT, flexDirection: 'row', alignItems: 'center' },
   queueItem: {
@@ -992,6 +1605,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: spacing.md,
   },
+  queueItemActive: { backgroundColor: 'rgba(255,255,255,0.08)' },
   queueRemove: {
     width: 40,
     height: 40,
@@ -1000,4 +1614,33 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   queueInfo: { flex: 1, minWidth: 0 },
+  sleepSheet: {
+    backgroundColor: 'rgba(22,23,31,0.98)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.14)',
+    borderTopLeftRadius: radii.sheet,
+    borderTopRightRadius: radii.sheet,
+    paddingHorizontal: 18,
+  },
+  sleepSheetTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    paddingVertical: 10,
+  },
+  sleepOptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginBottom: 4,
+  },
+  sleepOptText: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 15,
+    fontFamily: fontFamily.system,
+  },
 });

@@ -447,6 +447,8 @@ export interface AppSettings {
   yaya_followed_custom_order: string[];
   yaya_music_play_mode: 'sequential' | 'random' | 'single';
   yaya_music_volume: number;
+  yaya_music_cache_limit_mb: number;
+  yaya_music_minibar_enabled?: boolean;
   yaya_audio_program_play_mode: 'sequential' | 'random' | 'single';
   yaya_auto_checkin_enabled: boolean;
   yaya_auto_checkin_last_date: string;

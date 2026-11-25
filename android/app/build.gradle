@@ -125,8 +125,8 @@ android {
         // minSdk 26（Android 8）：兜底兼容 HarmonyOS 2/3/4 全系（基座 Android 8-10）及更老 Android 机型
         minSdkVersion Math.max(rootProject.ext.minSdkVersion as int, 26)
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3000017
-        versionName "2.9.1"
+        versionCode 3000018
+        versionName "2.10.0"
 
         // ABI 统一由下方 splits.abi 控制（真机 armeabi-v7a/arm64-v8a + 模拟器 x86_64）。
         // 不要同时设置 ndk.abiFilters：与 splits 冲突时 AGP 会直接报
@@ -287,6 +287,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-datasource:1.8.0")
+    implementation("androidx.media3:media3-database:1.8.0")
     implementation("androidx.media3:media3-session:1.8.0")
     // 礼物全屏特效：腾讯 libpag（服务端下发 giftpag.pag）
     implementation("com.tencent.tav:libpag:4.5.98")

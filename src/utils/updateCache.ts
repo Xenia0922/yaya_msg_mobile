@@ -61,6 +61,12 @@ export function isNewerVersion(candidate: string, current: string): boolean {
   return false;
 }
 
+export function formatReleaseNotesForDisplay(notes: string): string {
+  const trimmed = String(notes || '').trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/^#+\s+[^\n]*(?:\r?\n)+/, '').trim();
+}
+
 export function shouldPromptDailyUpdate({
   hasUpdate,
   force,

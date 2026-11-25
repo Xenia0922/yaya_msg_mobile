@@ -17,7 +17,6 @@ interface MatchRequest {
   song: string;
   artist?: string;
   group?: string;
-
   album?: string;
 }
 
@@ -33,11 +32,28 @@ export function setManualMatch(songName: string, filePath: string) {
   manualCache.set(songName, filePath);
 }
 
+function indexPush(map: Map<string, LyricEntry[]>, key: string, entry: LyricEntry) {
+  if (!key) return;
+  const list = map.get(key);
+  if (list) list.push(entry);
+  else map.set(key, [entry]);
+}
+
 export class LyricsMatcher {
   private entries: LyricEntry[];
+  private byPath = new Map<string, LyricEntry>();
+  private bySongStrict = new Map<string, LyricEntry[]>();
+  private bySongMedium = new Map<string, LyricEntry[]>();
+  private bySongLoose = new Map<string, LyricEntry[]>();
 
   constructor(entries: LyricEntry[]) {
     this.entries = entries;
+    for (const e of entries) {
+      this.byPath.set(e.filePath, e);
+      indexPush(this.bySongStrict, e.normalized.song.strict, e);
+      indexPush(this.bySongMedium, e.normalized.song.medium, e);
+      indexPush(this.bySongLoose, e.normalized.song.loose, e);
+    }
   }
 
   private pickVersion(list: LyricEntry[], album?: string): LyricEntry {
@@ -70,53 +86,50 @@ export class LyricsMatcher {
 
     const cached = manualCache.get(req.song);
     if (cached) {
-      const entry = this.entries.find((e) => e.filePath === cached);
+      const entry = this.byPath.get(cached);
       if (entry) return { entry, tier: 1, score: 1 };
     }
 
     if (reqArtist && reqGroup) {
-      const hits = this.entries.filter(
+      const strictHits = this.bySongStrict.get(reqSong.strict) || [];
+      const hits = strictHits.filter(
         (e) =>
-          e.normalized.song.strict === reqSong.strict &&
           e.normalized.artist.strict === reqArtist.strict &&
           e.normalized.group.loose === reqGroup.loose,
       );
       if (hits.length) return { entry: this.pickVersion(hits, req.album), tier: 2, score: 1 };
     }
 
+    const mediumHits = this.bySongMedium.get(reqSong.medium) || [];
+
     if (reqGroup) {
-      const hits = this.entries.filter(
-        (e) =>
-          e.normalized.song.medium === reqSong.medium &&
-          e.normalized.group.loose === reqGroup.loose,
-      );
+      const hits = mediumHits.filter((e) => e.normalized.group.loose === reqGroup.loose);
       if (hits.length) return { entry: this.pickVersion(hits, req.album), tier: 3, score: 1 };
     }
 
     if (reqArtist) {
-      const hit = this.entries.find(
-        (e) =>
-          e.normalized.song.medium === reqSong.medium &&
-          e.normalized.artist.medium === reqArtist.medium,
-      );
+      const hit = mediumHits.find((e) => e.normalized.artist.medium === reqArtist.medium);
       if (hit) return { entry: hit, tier: 4, score: 1 };
     }
 
     if (reqArtist) {
-      const candidates = this.entries.filter((e) => e.normalized.song.loose === reqSong.loose);
+      const candidates = this.bySongLoose.get(reqSong.loose) || [];
       if (candidates.length > 0) {
         const best = candidates
-          .map((e) => ({ entry: e, sim: similarity(reqArtist!.loose, e.normalized.artist.loose) }))
+          .map((e) => ({ entry: e, sim: similarity(reqArtist.loose, e.normalized.artist.loose) }))
           .sort((a, b) => b.sim - a.sim)[0];
         return { entry: best.entry, tier: 5, score: best.sim };
       }
     }
 
-    const fuzzy = this.entries
-      .map((e) => ({ entry: e, sim: similarity(reqSong.loose, e.normalized.song.loose) }))
-      .filter((f) => f.sim > 0.9)
-      .sort((a, b) => b.sim - a.sim);
-    if (fuzzy.length > 0) return { entry: fuzzy[0].entry, tier: 6, score: fuzzy[0].sim };
+    let bestFuzzy: { entry: LyricEntry; sim: number } | null = null;
+    for (const e of this.entries) {
+      const sim = similarity(reqSong.loose, e.normalized.song.loose);
+      if (sim > 0.9 && (!bestFuzzy || sim > bestFuzzy.sim)) {
+        bestFuzzy = { entry: e, sim };
+      }
+    }
+    if (bestFuzzy) return { entry: bestFuzzy.entry, tier: 6, score: bestFuzzy.sim };
 
     return null;
   }

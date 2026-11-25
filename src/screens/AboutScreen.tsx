@@ -200,16 +200,20 @@ export default function AboutScreen() {
           </Text>
           <View style={styles.versionRow}>
             <Text style={[styles.versionText, { color: palette.tint }]}>{`v${APP_VERSION}`}</Text>
-            {hasUpdate && !IS_PLUS_BUILD ? <View style={styles.updateDot} /> : null}
+            {hasUpdate && !IS_PLUS_BUILD ? (
+              <View style={styles.updatePill}>
+                <View style={styles.updateDot} />
+                <Text style={styles.updateHint}>
+                  {latestVersion
+                    ? t('有新版本 {version}', { version: latestVersion })
+                    : t('有新版本')}
+                </Text>
+              </View>
+            ) : null}
           </View>
-          {hasUpdate && latestVersion ? (
-            <Text style={[styles.updateHint, { color: palette.labelSecondary }]}>
-              {t('有新版本 {version}', { version: latestVersion })}
-            </Text>
-          ) : null}
           <Button
-            title={hasUpdate && !IS_PLUS_BUILD ? t('有新版本') : t('检查更新')}
-            variant="tinted"
+            title={hasUpdate && !IS_PLUS_BUILD ? t('立即更新') : t('检查更新')}
+            variant={hasUpdate && !IS_PLUS_BUILD ? 'filled' : 'tinted'}
             size="sm"
             onPress={checkVersion}
             style={styles.checkBtn}
@@ -518,8 +522,17 @@ const styles = StyleSheet.create({
   appSub: { fontSize: 12, marginTop: 4 },
   versionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   versionText: { fontSize: 12, fontWeight: '700' },
-  updateDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FF4D67' },
-  updateHint: { fontSize: 11, fontFamily: fontFamily.system, marginTop: 5 },
+  updatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,59,48,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3B30' },
+  updateHint: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700', color: '#FF3B30' },
   checkBtn: { marginTop: 10 },
   sectionTitleRow: {
     flexDirection: 'row',

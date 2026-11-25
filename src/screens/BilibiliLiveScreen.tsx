@@ -236,6 +236,14 @@ export default function BilibiliLiveScreen() {
 
   const handleMiniPlayer = useCallback(() => {
     if (!streamUrl) return;
+    const roomId = String(
+      activeRoom?.roomId ||
+        route.params?.roomId ||
+        currentCandidate?.realRoomId ||
+        streamUrl.match(/\/(\d+)/)?.[1] ||
+        '',
+    );
+    const roomName = String(activeRoom?.name || route.params?.roomName || streamTitle || '');
     useMiniPlayerStore.getState().open({
       url: streamUrl,
       title: streamTitle || t('B站直播'),
@@ -249,10 +257,28 @@ export default function BilibiliLiveScreen() {
         ),
         volumeBoost: 1.8,
       },
-      backTo: { mode: 'live', playUrl: streamUrl, playTitle: streamTitle, playCover: '' },
+      backTo: {
+        screen: roomId ? 'BilibiliLiveScreen' : 'Media',
+        biliRoomId: roomId || undefined,
+        biliRoomName: roomName || undefined,
+        mode: 'live',
+        playUrl: streamUrl,
+        playTitle: streamTitle,
+        playCover: '',
+      },
     });
     closePlayer();
-  }, [streamUrl, streamTitle, closePlayer, currentCandidate?.realRoomId, t]);
+  }, [
+    streamUrl,
+    streamTitle,
+    closePlayer,
+    currentCandidate?.realRoomId,
+    activeRoom?.roomId,
+    activeRoom?.name,
+    route.params?.roomId,
+    route.params?.roomName,
+    t,
+  ]);
 
   const refreshingRef = useRef(false);
   const checkStatuses = useCallback(
@@ -340,13 +366,16 @@ export default function BilibiliLiveScreen() {
     return () => sub.remove();
   }, [checkStatuses, isFocused, streamUrl]);
 
+  const lastRouteWatchRef = useRef('');
   useEffect(() => {
-    const roomId = route.params?.roomId;
+    const roomId = String(route.params?.roomId || '').trim();
     if (!roomId) return;
+    const key = `${roomId}|${String(route.params?.roomName || '')}`;
+    if (lastRouteWatchRef.current === key && streamUrl) return;
+    lastRouteWatchRef.current = key;
     startWatch({ roomId, name: route.params?.roomName || '', isLive: true });
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [route.params?.roomId, route.params?.roomName]);
 
   const startWatch = async (room: BilibiliLiveRoom) => {
     const watchSeq = watchSeqRef.current + 1;

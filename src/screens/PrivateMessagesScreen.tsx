@@ -4,6 +4,7 @@ import { PerfFlatList } from '../components/PerfFlatList';
 import { Chat } from '@kesha-antonov/react-native-chat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { usePocketAccountSummary } from '../hooks/usePocketAccountSummary';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 
 import {
@@ -29,7 +30,8 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
-import PlayerScreen from '../player';
+import Clipboard from '@react-native-clipboard/clipboard';
+import PlayerScreen, { buildPocketHeaders } from '../player';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
@@ -43,8 +45,10 @@ import { formatTimestamp, toMs } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
 import {
   errorMessage,
+  isDeletedMessage,
   messagePayload,
   messageText,
+  normalizeUrl,
   parseMaybeJson,
   pickText,
   unwrapList,
@@ -59,6 +63,9 @@ import { sumPrivateConversationUnread } from '../utils/privateUnread';
 import { AVATAR_THUMB_WIDTH } from '../utils/imageThumb';
 import { NetworkImage } from '../components/NetworkImage';
 import ZoomImageModal from '../components/ZoomImageModal';
+import { VoiceMessageBar } from '../components/VoiceMessageBar';
+import { enqueueDownload } from '../services/downloads';
+import { shareRemoteImage } from '../services/shareImage';
 import { UserProfileSheet, type UserProfileTarget } from '../components/UserProfileSheet';
 import {
   MEDIA_INFO_KEYS,
@@ -267,6 +274,14 @@ type MediaInfo = {
   height?: number;
 } | null;
 
+type PrivateFlipCard = {
+  question: string;
+  answerText: string;
+  answerType: number;
+  cost?: number;
+  media: MediaInfo;
+};
+
 type PrivateChatIM = {
   _id: string;
   text: string;
@@ -275,6 +290,10 @@ type PrivateChatIM = {
   original: PrivateMessageWire;
   groupStart: boolean;
   isMine: boolean;
+  timeHeaderLabel: string;
+  exactTimeLabel: string;
+  media: MediaInfo;
+  flipCard: PrivateFlipCard | null;
   image?: string;
   video?: string;
   audio?: string;
@@ -564,6 +583,108 @@ function flipTypeName(value: unknown) {
   return translate('类型{value}', { value: String(value ?? '') });
 }
 
+function formatPrivateTimelineLabel(ts: number): string {
+  const ms = toMs(ts);
+  if (!ms) return '';
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startYesterday = startToday - 86400000;
+  if (ms >= startToday) return time;
+  if (ms >= startYesterday) return translate('昨天 {time}', { time });
+  if (d.getFullYear() === now.getFullYear()) {
+    return translate('{m}月{d}日 {time}', { m: d.getMonth() + 1, d: d.getDate(), time });
+  }
+  return translate('{y}年{m}月{d}日 {time}', {
+    y: d.getFullYear(),
+    m: d.getMonth() + 1,
+    d: d.getDate(),
+    time,
+  });
+}
+
+function isMediaPlaceholderText(value: string): boolean {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  return (
+    /^\[(语音|视频|图片|媒体|链接)消息\]$/.test(trimmed) ||
+    trimmed === '[空消息]' ||
+    trimmed === translate('[语音消息]') ||
+    trimmed === translate('[视频消息]') ||
+    trimmed === translate('[图片消息]') ||
+    trimmed === translate('[空消息]')
+  );
+}
+
+function extractPrivateFlipCard(
+  msg: PrivateMessageWire,
+  resolvedMedia: MediaInfo,
+): PrivateFlipCard | null {
+  const payload = messagePayload(msg);
+  const flipKeys = [
+    'flipCardInfo',
+    'filpCardInfo',
+    'flipCardAudioInfo',
+    'filpCardAudioInfo',
+    'flipCardVideoInfo',
+    'filpCardVideoInfo',
+  ];
+
+  let parsedCard: WireRecord | null = null;
+  for (const key of flipKeys) {
+    const raw = payload?.[key] || msg?.[key] || msg?.content?.[key];
+    if (!raw) continue;
+    const candidate = typeof raw === 'string' ? parseMaybeJson(raw) : raw;
+    if (candidate && typeof candidate === 'object') {
+      parsedCard = candidate as WireRecord;
+      break;
+    }
+  }
+
+  const qRaw = String(
+    parsedCard?.question || parsedCard?.answerQuestion || payload?.question || msg?.question || '',
+  ).trim();
+
+  if (!parsedCard && !qRaw) return null;
+
+  const ansSource =
+    parsedCard?.answer ??
+    payload?.answer ??
+    payload?.answerContent ??
+    msg?.answer ??
+    msg?.answerContent ??
+    '';
+  const ansParsed = typeof ansSource === 'string' ? parseMaybeJson(ansSource) : ansSource;
+  let answerText = '';
+  if (ansParsed && typeof ansParsed === 'object') {
+    answerText = String(ansParsed.text || ansParsed.content || ansParsed.answer || '').trim();
+  } else if (typeof ansParsed === 'string') {
+    answerText = ansParsed.trim();
+  } else if (typeof ansSource === 'string') {
+    answerText = ansSource.trim();
+  }
+  if (isMediaPlaceholderText(answerText)) {
+    answerText = '';
+  }
+
+  const inferType =
+    Number(
+      parsedCard?.answerType || answerTypeFromContext(msg) || answerTypeFromContext(parsedCard),
+    ) || (resolvedMedia?.type === 'audio' ? 2 : resolvedMedia?.type === 'video' ? 3 : 1);
+  const rawCost = Number(parsedCard?.cost || parsedCard?.price || payload?.cost || msg?.cost || 0);
+
+  return {
+    question: qRaw,
+    answerText,
+    answerType: inferType,
+    ...(Number.isFinite(rawCost) && rawCost > 0 ? { cost: rawCost } : null),
+    media: resolvedMedia,
+  };
+}
+
 function buildPrivateIms(
   msgs: PrivateMessageWire[],
   targetId: string,
@@ -571,58 +692,62 @@ function buildPrivateIms(
   peerName: string,
   peerAvatar: string,
 ): PrivateChatIM[] {
-  const out: PrivateChatIM[] = [];
-  let prevMine: boolean | null = null;
-  let prevTs = 0;
-  let prevDay = '';
   const dayOf = (ts: number) => {
-    const d = new Date(ts > 0 && ts < 1e12 ? ts * 1000 : ts);
+    const ms = toMs(ts);
+    if (!ms) return '';
+    const d = new Date(ms);
     return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
   };
-  [...msgs]
-    .sort((a, b) => {
-      const va = msgTimeNumber(a);
-      const vb = msgTimeNumber(b);
-      const ka = va > 0 && va < 1e12 ? va * 1000 : va;
-      const kb = vb > 0 && vb < 1e12 ? vb * 1000 : vb;
-      return kb - ka;
-    })
-    .forEach((item) => {
-      const ts = msgTimeNumber(item);
-      const mine = isMineMessage(item, targetId, uid);
-      const day = dayOf(ts);
-      if (day !== prevDay) {
-        prevDay = day;
-        prevMine = null;
-        prevTs = 0;
-      }
 
-      const curMs = toMs(ts);
-      const prevMs = toMs(prevTs);
-      const groupStart =
-        prevMine === null || prevMine !== mine || Math.abs(prevMs - curMs) > 3 * 60 * 1000;
+  const visibleMsgs = (Array.isArray(msgs) ? msgs : []).filter((item) => !isDeletedMessage(item));
+  const sortedOldest = oldestFirst(visibleMsgs, msgTimeNumber);
+  const out: PrivateChatIM[] = [];
+  let prevMine: boolean | null = null;
+  let prevMs = 0;
+  let prevDay = '';
 
-      const senderAvatar = peerAvatarUrl(null, null, item) || peerAvatar;
+  sortedOldest.forEach((item) => {
+    const ts = msgTimeNumber(item);
+    const curMs = toMs(ts);
+    const mine = isMineMessage(item, targetId, uid);
+    const day = dayOf(ts);
+    const dayChanged = Boolean(day && day !== prevDay);
+    const showTimeHeader =
+      curMs > 0 && (prevMs <= 0 || dayChanged || Math.abs(curMs - prevMs) >= 5 * 60 * 1000);
+    const groupStart =
+      showTimeHeader ||
+      prevMine === null ||
+      prevMine !== mine ||
+      Math.abs(curMs - prevMs) > 3 * 60 * 1000;
 
-      const media = privateMessageMedia(item);
-      out.push({
-        _id: `m-${msgId(item)}`,
-        text: privateMessageText(item) || '',
-        createdAt: new Date(ts > 0 && ts < 1e12 ? ts * 1000 : ts),
-        user: {
-          _id: mine ? 'SELF' : String(targetId || 'peer'),
-          ...(mine ? {} : { avatar: senderAvatar, name: peerName }),
-        },
-        original: item,
-        groupStart,
-        isMine: mine,
+    if (day) prevDay = day;
+    if (curMs > 0) prevMs = curMs;
+    prevMine = mine;
 
-        ...(media ? { [media.type]: media.url } : {}),
-      });
-      prevMine = mine;
-      prevTs = ts;
+    const senderAvatar = peerAvatarUrl(null, null, item) || peerAvatar;
+    const media = privateMessageMedia(item);
+    const flipCard = extractPrivateFlipCard(item, media);
+
+    out.push({
+      _id: `m-${msgId(item)}`,
+      text: privateMessageText(item) || '',
+      createdAt: new Date(curMs || Date.now()),
+      user: {
+        _id: mine ? 'SELF' : String(targetId || 'peer'),
+        ...(mine ? {} : { avatar: senderAvatar, name: peerName }),
+      },
+      original: item,
+      groupStart,
+      isMine: mine,
+      timeHeaderLabel: showTimeHeader ? formatPrivateTimelineLabel(ts) : '',
+      exactTimeLabel: curMs > 0 ? formatTimestamp(ts) : '',
+      media,
+      flipCard,
+      ...(media ? { [media.type]: media.url } : {}),
     });
-  return out;
+  });
+
+  return out.reverse();
 }
 
 export default function PrivateMessagesScreen() {
@@ -788,9 +913,14 @@ export default function PrivateMessagesScreen() {
   const [text, setText] = useState('');
   const [uid, setUid] = useState('');
   const token = useSettingsStore((s) => s.settings.p48Token);
+  const myAccount = usePocketAccountSummary(token);
+  const [myAvatarFallback, setMyAvatarFallback] = useState('');
+  const myAvatarUri = myAccount?.avatar || myAvatarFallback;
 
+  const prevTokenRef = useRef(token);
   useEffect(() => {
     setUid('');
+    setMyAvatarFallback('');
   }, [token]);
   const [prices, setPrices] = useState<FlipPriceRow[]>([]);
   const [money, setMoney] = useState('');
@@ -800,9 +930,13 @@ export default function PrivateMessagesScreen() {
   const [convLoading, setConvLoading] = useState(false);
   const [convError, setConvError] = useState('');
   const flatRef = useRef<FlatList>(null);
-  const [playUrl, setPlayUrl] = useState('');
-
-  const [zoomUrl, setZoomUrl] = useState('');
+  const [zoomPreview, setZoomPreview] = useState<{
+    url: string;
+    images: string[];
+    index: number;
+  } | null>(null);
+  const [videoModal, setVideoModal] = useState<{ url: string; kind: 'audio' | 'vod' } | null>(null);
+  const [actionMsg, setActionMsg] = useState<PrivateChatIM | null>(null);
 
   const [profileTarget, setProfileTarget] = useState<UserProfileTarget | null>(null);
   const [actionConv, setActionConv] = useState<PrivateConversationWire | null>(null);
@@ -843,6 +977,30 @@ export default function PrivateMessagesScreen() {
     });
     return () => task.cancel();
   }, []);
+
+  useEffect(() => {
+    if (prevTokenRef.current === token) return;
+    prevTokenRef.current = token;
+    requestIdRef.current += 1;
+    convRequestIdRef.current += 1;
+    convCloseSeqRef.current += 1;
+    convClosingRef.current = false;
+    convsLoadedOnceRef.current = false;
+    convCursorRef.current = 0;
+    convLoadingRef.current = false;
+    setLoading(false);
+    setConvLoading(false);
+    setConvError('');
+    setHasMoreConvs(false);
+    setSel(null);
+    setMsgs([]);
+    setConvs([]);
+    setPrices([]);
+    setMoney('');
+    if (token) {
+      void loadConvsRef.current(true);
+    }
+  }, [token]);
 
   useEffect(() => {
     if (!member) {
@@ -968,6 +1126,9 @@ export default function PrivateMessagesScreen() {
     setLoading(false);
     setSel(null);
     setMsgs([]);
+    setZoomPreview(null);
+    setVideoModal(null);
+    setActionMsg(null);
     InteractionManager.runAfterInteractions(() => {
       void loadConvsRef.current();
     });
@@ -995,7 +1156,9 @@ export default function PrivateMessagesScreen() {
       setSel(c);
       setMsgs([]);
       setFlipType(0);
-      setPlayUrl('');
+      setZoomPreview(null);
+      setVideoModal(null);
+      setActionMsg(null);
       setLoading(true);
       if (scrollTimerRef.current) {
         clearTimeout(scrollTimerRef.current);
@@ -1005,10 +1168,19 @@ export default function PrivateMessagesScreen() {
       setSel(c);
     }
     try {
-      if (!uid) {
+      if (!uid || !myAvatarFallback) {
         const info = await pocketApi.getNimLoginInfo().catch(() => null);
         const id = pickText(info, ['content.userInfo.userId', 'content.userId', 'id', 'userId']);
+        const av = normalizeUrl(
+          pickText(info, [
+            'content.userInfo.avatar',
+            'content.avatar',
+            'userInfo.avatar',
+            'avatar',
+          ]),
+        );
         if (id && requestId === convRequestIdRef.current) setUid(String(id));
+        if (av && requestId === convRequestIdRef.current) setMyAvatarFallback(av);
       }
       const res = await pocketApi.getPrivateMessageDetail(convTargetId(c));
       if (requestId !== convRequestIdRef.current) return;
@@ -1023,7 +1195,8 @@ export default function PrivateMessagesScreen() {
       setConvs((prev) =>
         prev.map((item) => (convTargetId(item) === targetId ? { ...item, noreadNum: 0 } : item)),
       );
-      const sorted = oldestFirst(list, msgTimeNumber);
+      const visibleList = list.filter((item) => Boolean(item) && !isDeletedMessage(item));
+      const sorted = oldestFirst(visibleList, msgTimeNumber);
       startTransition(() => {
         setMsgs(sorted);
       });
@@ -1252,113 +1425,240 @@ export default function PrivateMessagesScreen() {
     setProfileTarget({ userId: dmTargetId, nick: dmPeerName, avatar: dmPeerAvatar });
   }, [dmTargetId, dmPeerName, dmPeerAvatar]);
 
-  const renderPeerAvatar = useCallback(
-    (props?: { currentMessage?: { original?: PrivateMessageWire } }) => {
-      const url = peerAvatarUrl(sel, member, props?.currentMessage?.original) || dmPeerAvatar;
-      if (!url) {
-        return (
-          <ScalePressable
-            style={[styles.msgAvatar, { backgroundColor: palette.fill2 }]}
-            onPress={openPeerProfile}
-            accessibilityLabel={t('查看资料')}
-          >
-            <MaterialCommunityIcons name="account" size={18} color={palette.labelTertiary} />
-          </ScalePressable>
-        );
+  const dmImageGallery = useMemo(() => {
+    const urls: string[] = [];
+    const seen = new Set<string>();
+    for (let i = dmIms.length - 1; i >= 0; i -= 1) {
+      const media = dmIms[i]?.media;
+      if (media?.type === 'image' && media.url && !seen.has(media.url)) {
+        seen.add(media.url);
+        urls.push(media.url);
       }
-      return (
-        <ScalePressable onPress={openPeerProfile} accessibilityLabel={t('查看资料')}>
-          <NetworkImage
-            source={{ uri: url }}
-            style={styles.msgAvatar}
-            resizeMode="cover"
-            thumbnail={160}
-            fallbackIcon="account"
-          />
-        </ScalePressable>
-      );
+    }
+    return urls;
+  }, [dmIms]);
+
+  const openImagePreview = useCallback(
+    (imageUrl: string) => {
+      if (!imageUrl) return;
+      const idx = dmImageGallery.indexOf(imageUrl);
+      if (idx >= 0) {
+        setZoomPreview({ url: imageUrl, images: dmImageGallery, index: idx });
+      } else {
+        setZoomPreview({ url: imageUrl, images: [imageUrl], index: 0 });
+      }
     },
-    [sel, member, dmPeerAvatar, openPeerProfile, palette, t],
+    [dmImageGallery],
   );
 
-  const renderDayLabel = useCallback(
-    ({
-      createdAt,
-      date,
-    }: {
-      createdAt?: Date | number | string;
-      date?: Date | number | string;
-    }) => {
-      const input = createdAt ?? date;
-      const d = input instanceof Date ? input : new Date(input ?? 0);
-      if (Number.isNaN(d.getTime())) return null;
-      const p2 = (n: number) => (n < 10 ? `0${n}` : String(n));
-      const label = `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`;
+  const openActionSheet = useCallback((msg: PrivateChatIM) => {
+    Keyboard.dismiss();
+    setActionMsg(msg);
+  }, []);
 
-      return (
-        <Text style={[styles.dateSepText, { color: palette.labelSecondary, alignSelf: 'center' }]}>
-          {label}
-        </Text>
-      );
+  const copyActionMsgText = useCallback(
+    (msg: PrivateChatIM) => {
+      const fc = msg.flipCard;
+      const textToCopy = fc
+        ? [fc.question ? `${t('问')}: ${fc.question}` : '', fc.answerText]
+            .filter(Boolean)
+            .join('\n')
+        : !isMediaPlaceholderText(msg.text)
+          ? msg.text
+          : '';
+      if (!textToCopy) {
+        showToast(t('暂无可复制文字'));
+        return;
+      }
+      Clipboard.setString(textToCopy);
+      showToast(t('已复制'));
     },
-    [palette],
+    [showToast, t],
   );
 
-  const renderEllipseGlassBubble = useCallback(
-    ({
-      currentMessage,
-      position,
-    }: {
-      currentMessage: {
-        original?: PrivateMessageWire;
-        text?: string;
-        createdAt?: Date | number | string;
-      };
-      position?: 'left' | 'right';
-    }) => {
+  const downloadActionMsgMedia = useCallback(
+    (msg: PrivateChatIM) => {
+      const media = msg.media;
+      if (!media?.url) return;
+      const dlType = media.type === 'audio' ? 'voice' : media.type === 'video' ? 'video' : 'image';
+      const ext = dlType === 'image' ? 'jpg' : dlType === 'voice' ? 'mp3' : 'mp4';
+      void enqueueDownload({
+        url: media.url,
+        type: dlType,
+        name: `dm-${dmPeerName || 'media'}-${Date.now()}.${ext}`,
+      })
+        .then(() => showToast(t('已加入下载管理')))
+        .catch((e) => showToast(t('下载失败：{msg}', { msg: errorMessage(e) })));
+    },
+    [dmPeerName, showToast, t],
+  );
+
+  const renderPrivateMessageRow = useCallback(
+    ({ currentMessage }: { currentMessage?: PrivateChatIM }) => {
       const msg = currentMessage;
-      const item = msg?.original;
-      const mine = position === 'right';
-      const t0 = msg?.createdAt instanceof Date ? msg.createdAt : new Date(msg?.createdAt ?? 0);
-      const hh = Number.isNaN(t0.getTime())
-        ? ''
-        : `${String(t0.getHours()).padStart(2, '0')}:${String(t0.getMinutes()).padStart(2, '0')}`;
-
-      const media = item ? privateMessageMedia(item) : null;
-      const hasText =
-        !!msg.text &&
-        !/^\[(语音|视频|图片|媒体|链接)消息\]$/.test(String(msg.text)) &&
-        msg.text !== '[空消息]';
-      const mediaLabel = media
-        ? formatDur(media.duration || 0) || (media.type === 'audio' ? t('语音') : t('视频'))
+      if (!msg) return <View />;
+      const mine = msg.isMine;
+      const item = msg.original;
+      const media = msg.media;
+      const flip = msg.flipCard;
+      const avatarUri = msg.user?.avatar || dmPeerAvatar;
+      const selfAvatarUri = mine
+        ? normalizeUrl(pickText(item, ['user.avatar', 'avatar'])) || myAvatarUri
         : '';
-      const isMediaOnly = !hasText && !!media && (media.type === 'audio' || media.type === 'video');
-      const isPlaying = !!media && playUrl === media.url;
-      const tailStyle = {
-        borderBottomRightRadius: mine ? 8 : 20,
-        borderBottomLeftRadius: mine ? 20 : 8,
-      };
-      return (
-        <GlassSurface
-          role="chip"
-          radius={22}
-          tintColor={mine ? palette.tint : undefined}
-          onPress={
-            isMediaOnly && media
-              ? () => setPlayUrl((p) => (p === media.url ? '' : media.url))
-              : undefined
-          }
-          onLongPress={mine && item ? () => confirmDeletePrivateMessage(item) : undefined}
-          style={[styles.ellipseBubble, tailStyle]}
-        >
-          {hasText ? (
-            <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>
-              {msg.text}
-            </Text>
-          ) : null}
-          {media ? (
-            media.type === 'image' ? (
-              <ScalePressable onPress={() => setZoomUrl(media.url)} accessibilityLabel={t('图片')}>
+      const hasText = !flip && !isMediaPlaceholderText(msg.text);
+
+      const videoCardNode =
+        media && media.type === 'video' ? (
+          <ScalePressable
+            pressedScale={0.97}
+            onPress={() => setVideoModal({ url: media.url, kind: 'vod' })}
+            onLongPress={() => openActionSheet(msg)}
+            style={[
+              styles.videoReplyCard,
+              {
+                backgroundColor: mine ? 'rgba(255,255,255,0.18)' : palette.fill2,
+                borderColor: mine ? 'rgba(255,255,255,0.28)' : palette.innerStroke,
+              },
+            ]}
+          >
+            <View
+              style={[styles.videoPlayBadge, { backgroundColor: mine ? '#FFFFFF' : palette.tint }]}
+            >
+              <MaterialCommunityIcons
+                name="play"
+                size={16}
+                color={mine ? palette.tint : palette.onTint}
+              />
+            </View>
+            <View style={styles.videoCardMeta}>
+              <Text
+                style={[styles.videoCardTitle, { color: mine ? palette.onTint : palette.label }]}
+                numberOfLines={1}
+              >
+                {t('视频消息')}
+              </Text>
+              {media.duration ? (
+                <Text
+                  style={[
+                    styles.videoCardSub,
+                    { color: mine ? 'rgba(255,255,255,0.82)' : palette.labelSecondary },
+                  ]}
+                >
+                  {formatDur(media.duration)}
+                </Text>
+              ) : null}
+            </View>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={18}
+              color={mine ? 'rgba(255,255,255,0.82)' : palette.labelTertiary}
+            />
+          </ScalePressable>
+        ) : null;
+
+      let bubbleContent: React.ReactNode;
+      if (flip) {
+        const flipBadgeText =
+          flip.answerType === 2
+            ? t('私密翻牌 · 语音回复')
+            : flip.answerType === 3
+              ? t('私密翻牌 · 视频回复')
+              : flip.answerText
+                ? t('私密翻牌 · 文字回复')
+                : t('私密翻牌');
+        bubbleContent = (
+          <GlassSurface
+            role="chip"
+            radius={18}
+            frostedOnly
+            tintColor={mine ? palette.tint : undefined}
+            onPress={() => openActionSheet(msg)}
+            onLongPress={() => openActionSheet(msg)}
+            style={styles.flipCardBubble}
+          >
+            <View style={styles.flipBadgeRow}>
+              <View
+                style={[
+                  styles.flipTypeBadge,
+                  { backgroundColor: mine ? 'rgba(255,255,255,0.2)' : palette.tintSoft },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name={
+                    flip.answerType === 2
+                      ? 'microphone-outline'
+                      : flip.answerType === 3
+                        ? 'video-outline'
+                        : 'card-text-outline'
+                  }
+                  size={12}
+                  color={mine ? palette.onTint : palette.tint}
+                />
+                <Text
+                  style={[
+                    styles.flipTypeBadgeText,
+                    { color: mine ? palette.onTint : palette.tint },
+                  ]}
+                >
+                  {flipBadgeText}
+                </Text>
+              </View>
+              {flip.cost ? (
+                <Text
+                  style={[
+                    styles.flipCostBadge,
+                    { color: mine ? 'rgba(255,255,255,0.8)' : palette.labelTertiary },
+                  ]}
+                >
+                  {t('{cost} 鸡腿', { cost: flip.cost })}
+                </Text>
+              ) : null}
+            </View>
+
+            {flip.question ? (
+              <View
+                style={[
+                  styles.flipQuoteBox,
+                  {
+                    backgroundColor: mine ? 'rgba(255,255,255,0.16)' : palette.fill2,
+                    borderLeftColor: mine ? '#FFFFFF' : palette.tint,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.flipQuoteText,
+                    { color: mine ? 'rgba(255,255,255,0.92)' : palette.labelSecondary },
+                  ]}
+                >
+                  {flip.question}
+                </Text>
+              </View>
+            ) : null}
+
+            {flip.answerText ? (
+              <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>
+                {flip.answerText}
+              </Text>
+            ) : null}
+
+            {media?.type === 'audio' ? (
+              <VoiceMessageBar
+                url={media.url}
+                duration={media.duration}
+                onTint={mine}
+                fullWidth
+                onLongPress={() => openActionSheet(msg)}
+                onFallbackPlay={() => setVideoModal({ url: media.url, kind: 'audio' })}
+                style={flip.answerText ? styles.mediaTopGap : undefined}
+              />
+            ) : media?.type === 'image' ? (
+              <ScalePressable
+                onPress={() => openImagePreview(media.url)}
+                onLongPress={() => openActionSheet(msg)}
+                accessibilityLabel={t('图片')}
+                style={flip.answerText ? styles.mediaTopGap : undefined}
+              >
                 <NetworkImage
                   source={{ uri: media.url }}
                   style={[
@@ -1367,94 +1667,193 @@ export default function PrivateMessagesScreen() {
                     { backgroundColor: palette.fill2 },
                   ]}
                   resizeMode="cover"
-                  thumbnail={400}
+                  thumbnail={450}
                   fallbackIcon="image-off-outline"
                 />
               </ScalePressable>
-            ) : isMediaOnly ? (
-              <View style={styles.mediaInlineRow}>
-                <View
-                  style={[
-                    styles.mediaCircleIcon,
-                    {
-                      backgroundColor: mine ? 'rgba(255,255,255,0.22)' : palette.tintSoft,
-                    },
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name={isPlaying ? 'chevron-up' : 'play'}
-                    size={16}
-                    color={mine ? palette.onTint : palette.tint}
-                  />
-                </View>
-                <View style={styles.mediaInlineMeta}>
-                  <Text
-                    style={[
-                      styles.mediaInlineTitle,
-                      { color: mine ? palette.onTint : palette.tint },
-                    ]}
-                  >
-                    {isPlaying
-                      ? t('收起')
-                      : `${t(media.type === 'audio' ? '语音' : '视频')} · ${mediaLabel}`}
-                  </Text>
-                  {hh ? (
-                    <Text
-                      style={[
-                        styles.mediaInlineTime,
-                        { color: mine ? 'rgba(255,255,255,0.82)' : palette.labelTertiary },
-                      ]}
-                    >
-                      {hh}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
             ) : (
+              videoCardNode
+            )}
+          </GlassSurface>
+        );
+      } else if (!hasText && media?.type === 'image') {
+        bubbleContent = (
+          <ScalePressable
+            pressedScale={0.97}
+            onPress={() => openImagePreview(media.url)}
+            onLongPress={() => openActionSheet(msg)}
+            accessibilityLabel={t('图片')}
+            style={[
+              styles.pureImageCard,
+              imageBox(media.width, media.height),
+              {
+                backgroundColor: palette.fill2,
+                borderColor: palette.innerStroke,
+              },
+            ]}
+          >
+            <NetworkImage
+              source={{ uri: media.url }}
+              style={styles.pureImageFill}
+              resizeMode="cover"
+              thumbnail={500}
+              fallbackIcon="image-off-outline"
+            />
+          </ScalePressable>
+        );
+      } else if (!hasText && media?.type === 'audio') {
+        bubbleContent = (
+          <VoiceMessageBar
+            url={media.url}
+            duration={media.duration}
+            solid={mine}
+            onLongPress={() => openActionSheet(msg)}
+            onFallbackPlay={() => setVideoModal({ url: media.url, kind: 'audio' })}
+          />
+        );
+      } else {
+        bubbleContent = (
+          <GlassSurface
+            role="chip"
+            radius={18}
+            frostedOnly
+            tintColor={mine ? palette.tint : undefined}
+            onPress={() => openActionSheet(msg)}
+            onLongPress={() => openActionSheet(msg)}
+            style={styles.ellipseBubble}
+          >
+            {hasText ? (
+              <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>
+                {msg.text}
+              </Text>
+            ) : !media ? (
+              <Text style={[styles.ellipseText, { color: mine ? palette.onTint : palette.label }]}>
+                {t('[空消息]')}
+              </Text>
+            ) : null}
+            {media?.type === 'image' ? (
               <ScalePressable
-                style={[
-                  styles.mediaBtn,
-                  { backgroundColor: mine ? 'rgba(255,255,255,0.20)' : palette.tintSoft },
-                ]}
-                onPress={() => setPlayUrl((p) => (p === media.url ? '' : media.url))}
+                onPress={() => openImagePreview(media.url)}
+                onLongPress={() => openActionSheet(msg)}
+                accessibilityLabel={t('图片')}
+                style={hasText ? styles.mediaTopGap : undefined}
               >
-                <MaterialCommunityIcons
-                  name={isPlaying ? 'chevron-up' : 'play'}
-                  size={14}
-                  color={mine ? palette.onTint : palette.tint}
+                <NetworkImage
+                  source={{ uri: media.url }}
+                  style={[
+                    styles.inlineImg,
+                    imageBox(media.width, media.height),
+                    { backgroundColor: palette.fill2 },
+                  ]}
+                  resizeMode="cover"
+                  thumbnail={450}
+                  fallbackIcon="image-off-outline"
                 />
-                <Text
-                  style={[styles.mediaBtnText, { color: mine ? palette.onTint : palette.tint }]}
-                >
-                  {isPlaying ? t('收起') : mediaLabel}
-                </Text>
               </ScalePressable>
-            )
-          ) : null}
-          {media && isPlaying ? (
-            <View style={styles.inlinePlayerWrap}>
-              <PlayerScreen
-                inline
-                source={{ kind: media.type === 'audio' ? 'audio' : 'vod', url: media.url }}
-                meta={{ title: t('消息媒体') }}
-                persistent
+            ) : null}
+            {media?.type === 'audio' ? (
+              <VoiceMessageBar
+                url={media.url}
+                duration={media.duration}
+                onTint={mine}
+                onLongPress={() => openActionSheet(msg)}
+                onFallbackPlay={() => setVideoModal({ url: media.url, kind: 'audio' })}
+                style={hasText ? styles.mediaTopGap : undefined}
               />
+            ) : null}
+            {videoCardNode ? (
+              <View style={hasText ? styles.mediaTopGap : undefined}>{videoCardNode}</View>
+            ) : null}
+          </GlassSurface>
+        );
+      }
+
+      return (
+        <View key={item ? msgId(item) : msg._id}>
+          {msg.timeHeaderLabel ? (
+            <View style={styles.timelineWrap}>
+              <View style={[styles.timelinePill, { backgroundColor: palette.fill2 }]}>
+                <Text style={[styles.timelineText, { color: palette.labelTertiary }]}>
+                  {msg.timeHeaderLabel}
+                </Text>
+              </View>
             </View>
           ) : null}
-          {hh && !isMediaOnly ? (
-            <Text
-              style={[
-                styles.ellipseTime,
-                { color: mine ? 'rgba(255,255,255,0.85)' : palette.labelSecondary },
-              ]}
-            >
-              {hh}
-            </Text>
-          ) : null}
-        </GlassSurface>
+          <View
+            style={[
+              styles.msgRow,
+              mine ? styles.msgRowMine : styles.msgRowPeer,
+              msg.groupStart
+                ? msg.timeHeaderLabel
+                  ? styles.msgRowAfterTimeline
+                  : styles.msgRowGroupStart
+                : styles.msgRowGroupItem,
+            ]}
+          >
+            {!mine ? (
+              msg.groupStart ? (
+                <ScalePressable
+                  onPress={openPeerProfile}
+                  accessibilityLabel={t('查看资料')}
+                  style={styles.msgAvatarTouch}
+                >
+                  {avatarUri ? (
+                    <NetworkImage
+                      source={{ uri: avatarUri }}
+                      style={[styles.msgAvatar, { backgroundColor: palette.fill2 }]}
+                      resizeMode="cover"
+                      thumbnail={160}
+                      fallbackIcon="account"
+                    />
+                  ) : (
+                    <View style={[styles.msgAvatar, { backgroundColor: palette.fill2 }]}>
+                      <MaterialCommunityIcons
+                        name="account"
+                        size={18}
+                        color={palette.labelTertiary}
+                      />
+                    </View>
+                  )}
+                </ScalePressable>
+              ) : (
+                <View style={styles.msgAvatarSpacer} />
+              )
+            ) : null}
+
+            <View style={[styles.msgBubbleWrap, mine && styles.msgBubbleWrapMine]}>
+              {bubbleContent}
+            </View>
+
+            {mine ? (
+              msg.groupStart ? (
+                <View style={styles.msgAvatarTouch}>
+                  {selfAvatarUri ? (
+                    <NetworkImage
+                      source={{ uri: selfAvatarUri }}
+                      style={[styles.msgAvatar, { backgroundColor: palette.fill2 }]}
+                      resizeMode="cover"
+                      thumbnail={160}
+                      fallbackIcon="account"
+                    />
+                  ) : (
+                    <View style={[styles.msgAvatar, { backgroundColor: palette.fill2 }]}>
+                      <MaterialCommunityIcons
+                        name="account"
+                        size={18}
+                        color={palette.labelTertiary}
+                      />
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.msgAvatarSpacer} />
+              )
+            ) : null}
+          </View>
+        </View>
       );
     },
-    [palette, t, playUrl, confirmDeletePrivateMessage],
+    [dmPeerAvatar, myAvatarUri, openPeerProfile, openActionSheet, openImagePreview, palette, t],
   );
 
   const activePriceRow = member ? prices.find((x) => x.answerType === flipType) : undefined;
@@ -1475,7 +1874,12 @@ export default function PrivateMessagesScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: getPageBackground() }]}>
-      <View style={styles.screen} pointerEvents={sel ? 'none' : 'auto'}>
+      <View
+        style={styles.screen}
+        pointerEvents={sel ? 'none' : 'auto'}
+        importantForAccessibility={sel ? 'no-hide-descendants' : 'auto'}
+        accessibilityElementsHidden={!!sel}
+      >
         <ScreenHeader
           title={t('私信列表')}
           right={<HeaderAction label={t('刷新')} onPress={() => loadConvs(true)} />}
@@ -1659,19 +2063,48 @@ export default function PrivateMessagesScreen() {
                   )}
                 </ScalePressable>
               }
+              right={
+                member ? (
+                  <ScalePressable
+                    pressedScale={0.94}
+                    onPress={openPeerProfile}
+                    style={styles.headerRoleBtn}
+                  >
+                    <MaterialCommunityIcons name="crown" size={14} color={palette.tint} />
+                    <Text
+                      style={[styles.headerRoleText, { color: palette.tint }]}
+                      numberOfLines={1}
+                    >
+                      {member.team || t('成员')}
+                    </Text>
+                  </ScalePressable>
+                ) : (
+                  <ScalePressable
+                    pressedScale={0.92}
+                    onPress={openPeerProfile}
+                    style={styles.headerIconBtn}
+                    accessibilityLabel={t('查看资料')}
+                  >
+                    <MaterialCommunityIcons
+                      name="account-circle-outline"
+                      size={20}
+                      color={palette.label}
+                    />
+                  </ScalePressable>
+                )
+              }
             />
 
-            <View style={{ flex: 1 }}>
+            <View style={styles.screen}>
               <Chat
                 messages={dmIms}
                 theme={DM_CHAT_THEME as any}
                 darkTheme={DM_CHAT_THEME as any}
                 locale="zh"
-                renderBubble={renderEllipseGlassBubble}
-                renderAvatar={renderPeerAvatar}
+                renderMessage={renderPrivateMessageRow as any}
                 isScrollToBottomEnabled
                 scrollToBottomOffset={80}
-                renderDay={renderDayLabel}
+                renderDay={DM_NO_DAY}
                 isDayAnimationEnabled={false}
                 user={DM_CHAT_USER as any}
                 onSend={(sentMsgs) => {
@@ -1762,30 +2195,38 @@ export default function PrivateMessagesScreen() {
                     multiline
                     maxLength={200}
                   />
-                  <ScalePressable
-                    style={[
-                      styles.memberSendBtn,
-                      { backgroundColor: memberSendDisabled ? palette.fill3 : palette.tint },
-                    ]}
-                    onPress={() => {
-                      void doSend();
-                    }}
-                    disabled={memberSendDisabled}
-                    pressedScale={0.95}
-                  >
+                  <View style={styles.memberSendCol}>
                     <Text
-                      style={[
-                        styles.composerSendText,
-                        { color: memberSendDisabled ? palette.labelTertiary : palette.onTint },
-                      ]}
+                      style={[styles.charCountText, { color: palette.labelTertiary }]}
+                      allowFontScaling={false}
                     >
-                      {loading
-                        ? t('发送中')
-                        : activeFlipCost > 0
-                          ? `${activeFlipCost} ${t('翻牌')}`
-                          : t('翻牌')}
+                      {text.length}/200
                     </Text>
-                  </ScalePressable>
+                    <ScalePressable
+                      style={[
+                        styles.memberSendBtn,
+                        { backgroundColor: memberSendDisabled ? palette.fill3 : palette.tint },
+                      ]}
+                      onPress={() => {
+                        void doSend();
+                      }}
+                      disabled={memberSendDisabled}
+                      pressedScale={0.95}
+                    >
+                      <Text
+                        style={[
+                          styles.composerSendText,
+                          { color: memberSendDisabled ? palette.labelTertiary : palette.onTint },
+                        ]}
+                      >
+                        {loading
+                          ? t('发送中')
+                          : activeFlipCost > 0
+                            ? `${activeFlipCost} ${t('翻牌')}`
+                            : t('翻牌')}
+                      </Text>
+                    </ScalePressable>
+                  </View>
                 </View>
               </GlassSurface>
             ) : (
@@ -1845,7 +2286,171 @@ export default function PrivateMessagesScreen() {
               </GlassSurface>
             )}
           </View>
-          {zoomUrl ? <ZoomImageModal url={zoomUrl} onClose={() => setZoomUrl('')} /> : null}
+          <ZoomImageModal
+            url={zoomPreview?.url || ''}
+            images={zoomPreview?.images}
+            initialIndex={zoomPreview?.index ?? 0}
+            onClose={() => setZoomPreview(null)}
+            onDownload={(activeUrl) => {
+              const target = activeUrl || zoomPreview?.url;
+              if (!target) return;
+              return enqueueDownload({
+                url: target,
+                type: 'image',
+                name: `dm-${dmPeerName || 'image'}-${Date.now()}.jpg`,
+              })
+                .then(() => showToast(t('下载完成')))
+                .catch((e) => {
+                  showToast(t('下载失败：{msg}', { msg: errorMessage(e) }));
+                  throw e;
+                });
+            }}
+            onShare={(activeUrl) => {
+              const target = activeUrl || zoomPreview?.url;
+              if (!target) return;
+              void shareRemoteImage(target).catch(() => showToast(t('分享失败')));
+            }}
+          />
+
+          {videoModal ? (
+            <Modal
+              visible
+              animationType="fade"
+              statusBarTranslucent
+              navigationBarTranslucent
+              onRequestClose={() => setVideoModal(null)}
+            >
+              <PlayerScreen
+                source={{
+                  kind: videoModal.kind,
+                  url: videoModal.url,
+                  audioOnly: videoModal.kind === 'audio',
+                  headers: buildPocketHeaders(),
+                }}
+                meta={{ title: t('消息媒体') }}
+                features={{ kernelSwitch: true, rate: true }}
+                onClose={() => setVideoModal(null)}
+              />
+            </Modal>
+          ) : null}
+
+          <Modal
+            visible={!!actionMsg}
+            transparent
+            animationType="slide"
+            statusBarTranslucent
+            navigationBarTranslucent
+            onRequestClose={() => setActionMsg(null)}
+          >
+            <Pressable style={styles.actionSheetShade} onPress={() => setActionMsg(null)}>
+              <Pressable
+                style={[
+                  styles.actionSheetPanel,
+                  {
+                    backgroundColor: palette.surface,
+                    borderColor: palette.hairline,
+                    paddingBottom: Math.max(20, insets.bottom + 12),
+                  },
+                ]}
+                onPress={() => undefined}
+              >
+                <View style={[styles.actionHandle, { backgroundColor: palette.fill3 }]} />
+                {actionMsg ? (
+                  <>
+                    <View style={[styles.msgTimeMetaCard, { backgroundColor: palette.fill2 }]}>
+                      <View style={styles.msgTimeMetaRow}>
+                        <Text style={[styles.msgTimeMetaLabel, { color: palette.labelSecondary }]}>
+                          {t('发送时间')}
+                        </Text>
+                        <Text style={[styles.msgTimeMetaValue, { color: palette.label }]}>
+                          {actionMsg.exactTimeLabel || t('未知时间')}
+                        </Text>
+                      </View>
+                      {actionMsg.flipCard?.question ||
+                      actionMsg.flipCard?.answerText ||
+                      !isMediaPlaceholderText(actionMsg.text) ? (
+                        <Text
+                          style={[styles.msgSnippetText, { color: palette.labelSecondary }]}
+                          numberOfLines={2}
+                        >
+                          {actionMsg.flipCard
+                            ? actionMsg.flipCard.question || actionMsg.flipCard.answerText
+                            : actionMsg.text}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {(
+                      actionMsg.flipCard
+                        ? Boolean(actionMsg.flipCard.question || actionMsg.flipCard.answerText)
+                        : !isMediaPlaceholderText(actionMsg.text)
+                    ) ? (
+                      <ScalePressable
+                        pressedScale={0.98}
+                        style={[styles.actionItem, { backgroundColor: palette.fill2 }]}
+                        onPress={() => {
+                          const target = actionMsg;
+                          setActionMsg(null);
+                          copyActionMsgText(target);
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="content-copy"
+                          size={18}
+                          color={palette.label}
+                        />
+                        <Text style={[styles.actionItemText, { color: palette.label }]}>
+                          {t('复制文字')}
+                        </Text>
+                      </ScalePressable>
+                    ) : null}
+
+                    {actionMsg.media?.url ? (
+                      <ScalePressable
+                        pressedScale={0.98}
+                        style={[styles.actionItem, { backgroundColor: palette.fill2 }]}
+                        onPress={() => {
+                          const target = actionMsg;
+                          setActionMsg(null);
+                          downloadActionMsgMedia(target);
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="download-outline"
+                          size={18}
+                          color={palette.tint}
+                        />
+                        <Text style={[styles.actionItemText, { color: palette.label }]}>
+                          {actionMsg.media.type === 'image' ? t('保存图片') : t('下载媒体')}
+                        </Text>
+                      </ScalePressable>
+                    ) : null}
+
+                    {actionMsg.isMine && realServerMsgId(actionMsg.original) ? (
+                      <ScalePressable
+                        pressedScale={0.98}
+                        style={[styles.actionItem, { backgroundColor: 'rgba(255,59,48,0.12)' }]}
+                        onPress={() => {
+                          const target = actionMsg.original;
+                          setActionMsg(null);
+                          confirmDeletePrivateMessage(target);
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="trash-can-outline"
+                          size={18}
+                          color={palette.danger}
+                        />
+                        <Text style={[styles.actionItemText, { color: palette.danger }]}>
+                          {t('删除消息')}
+                        </Text>
+                      </ScalePressable>
+                    ) : null}
+                  </>
+                ) : null}
+              </Pressable>
+            </Pressable>
+          </Modal>
         </Reanimated.View>
       ) : null}
 
@@ -1992,6 +2597,7 @@ export default function PrivateMessagesScreen() {
 const DM_CHAT_THEME = { colors: { background: 'transparent' } } as const;
 const DM_CHAT_USER = { _id: 'SELF' } as const;
 const DM_NO_INPUT_TOOLBAR = () => null;
+const DM_NO_DAY = () => null;
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
@@ -2025,6 +2631,7 @@ const styles = StyleSheet.create({
   },
   convAvatarImg: { width: 48, height: 48, borderRadius: 24 },
 
+  msgAvatarTouch: { flexShrink: 0 },
   msgAvatar: {
     width: 36,
     height: 36,
@@ -2033,8 +2640,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  msgAvatarSpacer: { width: 36, height: 1, flexShrink: 0 },
   headerAvatar: { width: 34, height: 34, borderRadius: 17 },
   headerAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  headerRoleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    height: 32,
+  },
+  headerRoleText: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    maxWidth: 96,
+    includeFontPadding: false,
+  },
+  headerIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   convInfo: { flex: 1, minWidth: 0, marginLeft: 12 },
   convTitleRow: {
     flexDirection: 'row',
@@ -2074,41 +2703,135 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   badgeT: { color: '#fff', fontSize: 11, fontFamily: fontFamily.system, fontWeight: '700' },
-  dateSepText: { fontSize: 11, fontFamily: fontFamily.system, fontWeight: '600' },
-  mediaBtn: {
-    marginTop: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 11,
-    borderRadius: 14,
-    alignSelf: 'flex-start',
+
+  timelineWrap: {
+    alignItems: 'center',
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  timelinePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  timelineText: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+  },
+  msgRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  msgRowMine: { justifyContent: 'flex-end' },
+  msgRowPeer: { justifyContent: 'flex-start' },
+  msgRowAfterTimeline: { marginTop: 6 },
+  msgRowGroupStart: { marginTop: 12 },
+  msgRowGroupItem: { marginTop: 4 },
+  msgBubbleWrap: {
+    flex: 1,
+    alignItems: 'flex-start',
+    minWidth: 0,
+  },
+  msgBubbleWrapMine: {
+    alignItems: 'flex-end',
+  },
+
+  ellipseBubble: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    maxWidth: '82%',
+  },
+  ellipseText: {
+    fontSize: 15,
+    lineHeight: 21,
+    fontFamily: fontFamily.system,
+  },
+  flipCardBubble: {
+    padding: 12,
+    maxWidth: '84%',
+    minWidth: 210,
+  },
+  flipBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
+  },
+  flipTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
-  mediaBtnText: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '700' },
-  mediaInlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minWidth: 132,
-  },
-  mediaCircleIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mediaInlineMeta: { gap: 2 },
-  mediaInlineTitle: {
-    fontSize: 13,
+  flipTypeBadgeText: {
+    fontSize: 11,
     fontFamily: fontFamily.system,
     fontWeight: '700',
     includeFontPadding: false,
   },
-  mediaInlineTime: { fontSize: 11, fontFamily: fontFamily.system },
-  inlinePlayerWrap: { marginTop: 8 },
-  inlineImg: { marginTop: 4, borderRadius: 14 },
+  flipCostBadge: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    fontWeight: '600',
+  },
+  flipQuoteBox: {
+    borderLeftWidth: 3,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginBottom: 9,
+  },
+  flipQuoteText: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: fontFamily.system,
+  },
+  mediaTopGap: { marginTop: 8 },
+  inlineImg: { borderRadius: 14 },
+  pureImageCard: {
+    borderRadius: 18,
+    borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  pureImageFill: { width: '100%', height: '100%' },
+  videoReplyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 14,
+    borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
+    minWidth: 168,
+  },
+  videoPlayBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoCardMeta: { flex: 1, minWidth: 0, gap: 1 },
+  videoCardTitle: {
+    fontSize: 13,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+  },
+  videoCardSub: {
+    fontSize: 11,
+    fontFamily: fontFamily.system,
+    fontVariant: ['tabular-nums'],
+  },
 
   memberComposerCard: {
     marginHorizontal: 12,
@@ -2143,6 +2866,13 @@ const styles = StyleSheet.create({
   },
   composerDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 2 },
   memberInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingLeft: 4 },
+  memberSendCol: { alignItems: 'flex-end', gap: 4 },
+  charCountText: {
+    fontSize: 10,
+    fontFamily: fontFamily.system,
+    fontVariant: ['tabular-nums'],
+    paddingRight: 4,
+  },
   memberSendBtn: {
     height: 38,
     minWidth: 72,
@@ -2200,9 +2930,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
     ...Platform.select({ android: { paddingTop: 1 }, default: null }),
   },
-  ellipseBubble: { paddingVertical: 9, paddingHorizontal: 14, maxWidth: '78%', marginVertical: 2 },
-  ellipseText: { fontSize: 15, lineHeight: 21 },
-  ellipseTime: { fontSize: 11, fontFamily: fontFamily.system, marginTop: 3, alignSelf: 'flex-end' },
 
   actionSheetShade: {
     flex: 1,
@@ -2234,6 +2961,26 @@ const styles = StyleSheet.create({
   },
   actionAvatarImg: { width: 36, height: 36, borderRadius: 18 },
   actionTitle: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '700', flex: 1 },
+  msgTimeMetaCard: {
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  msgTimeMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  msgTimeMetaLabel: { fontSize: 12, fontFamily: fontFamily.system, fontWeight: '600' },
+  msgTimeMetaValue: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  msgSnippetText: { fontSize: 12, fontFamily: fontFamily.system, lineHeight: 17 },
   actionItem: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -10,9 +10,13 @@ export const ROOM_SEARCH_DEBOUNCE_MS = 220;
 
 export const ROOM_LOAD_MORE_COOLDOWN_MS = 260;
 
-export const ROOM_SEARCH_MIN_HITS = 12;
+export const ROOM_SEARCH_MIN_HITS = 15;
 
-export const ROOM_SEARCH_BURST_PAGES = 6;
+export const ROOM_SEARCH_BURST_PAGES = 80;
+
+export const ROOM_SEARCH_PAGE_DELAY_MS = 220;
+
+export const ROOM_SEARCH_MAX_CONSECUTIVE_ERRORS = 2;
 
 export interface HistoryCursorAdvance {
   nextTime: number;
@@ -71,7 +75,9 @@ export function shouldSearchAutoContinue(params: {
   maxPagesPerBurst?: number;
   hasMore: boolean;
   nextTime: number;
+  pausedByUser?: boolean;
 }): boolean {
+  if (params.pausedByUser) return false;
   if (!params.query.trim()) return false;
   if (!params.hasMore || params.nextTime <= 0) return false;
   const maxPages = params.maxPagesPerBurst ?? ROOM_SEARCH_BURST_PAGES;

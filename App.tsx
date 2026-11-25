@@ -9,8 +9,11 @@ import {
   StyleSheet,
   Animated,
   Easing,
+  InteractionManager,
   AppState,
   Appearance,
+  DeviceEventEmitter,
+  ToastAndroid,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -29,7 +32,9 @@ import {
 import { loadMembers } from './src/utils/members';
 import { fetchJson } from './src/utils/network';
 import { loadCachedMemberData } from './src/services/memberData';
-import { prefetchR2Music } from './src/api/r2Music';
+import { hydrateMusicCatalogFromCache } from './src/services/musicCatalog';
+import { initRoomBgCache } from './src/services/roomBgCache';
+import { loadRoomMetaCache } from './src/services/roomMetaCache';
 import { initWasm, WebViewSignerHost } from './src/auth';
 import {
   startRadioForeground,
@@ -40,9 +45,13 @@ import {
 } from './src/native/LivePlayer';
 import {
   subscribeExo,
-  exoPlayTrack,
+  exoPlayQueue,
+  ExoTrackItem,
   exoControl,
   exoSetSkipHints,
+  exoUpdateArt,
+  exoSetCacheLimitMb,
+  exoConsumePendingOpenFullScreen,
   isNativeExoDisabled,
   setNativeExoActive,
   setNativeExoDisabled,
@@ -58,18 +67,21 @@ import {
 import { onQChatMessage } from './src/native/PocketNimQChat';
 import { parseVoiceEvent } from './src/services/pocketNim/voiceEvent';
 import { useOnMicStore } from './src/store/onMicStore';
-import pocketApi from './src/api/pocket48';
-import { unwrapList } from './src/utils/data';
+import { fetchFollowedIdsShared, subscribeFollowedIds } from './src/services/pocketSharedData';
 import { ensureNotificationPermission } from './src/utils/notifications';
 import {
   useMusicPlayerStore,
   flushMusicPlayerStorage,
+  trackIdentityKey,
   PlayMode,
+  Track,
 } from './src/store/musicPlayerStore';
 import {
   MusicEngine,
   applyNativeSnapshot,
+  getTrackVolume,
   isExoRecentlyArmed,
+  isPlayableHost,
   noteExoArmed,
   noteExoProgress,
   resetExoArm,
@@ -78,14 +90,16 @@ import { FadeInView } from './src/components/Motion';
 import { runAutoCheckinIfNeeded } from './src/services/autoCheckin';
 import { startSignatureHealthCheck } from './src/services/signatureHealth';
 import { startNativeModuleCheck } from './src/services/nativeHealth';
-import { APP_VERSION, NOTICE_URL, USER_AGENT } from './src/constants';
-import { initRuntimeLog, logCrash, logInfo } from './src/utils/runtimeLog';
-import { fetchCoverToFile, normalizeCoverUrl } from './src/utils/coverToFile';
+import { NOTICE_URL, USER_AGENT } from './src/constants';
+import { initRuntimeLog, logCrash, logInfo, logWarn } from './src/utils/runtimeLog';
+import { fetchCoverToFile, normalizeCoverUrl, peekCoverFile } from './src/utils/coverToFile';
+import { lyricIndexAt } from './src/utils/lyrics';
 import { Palettes, usePalette } from './src/theme/colors';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { SquircleView } from './src/components/SquircleView';
+import { VoiceAudioHost } from './src/components/VoiceAudioHost';
+import UpdateBanner from './src/components/UpdateBanner';
 import UpdateInstaller from './src/components/UpdateInstaller';
-import { showDialog } from './src/components/AppDialog';
 import { isApkUpdaterAvailable } from './src/native/ApkUpdater';
 import { translate } from './src/i18n';
 import { useSafeAreaInsets } from './src/hooks/useSafeAreaInsets';
@@ -133,13 +147,121 @@ installGlobalErrorHandler();
 initRuntimeLog().catch(() => {});
 
 function currentLyricIndex(lines: Array<{ time: number; text: string }>, pos: number): number {
-  if (!lines || lines.length === 0) return -1;
-  let idx = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    if (lines[i].time <= pos + 0.4) idx = i;
-    else break;
+  return lyricIndexAt(lines, pos + 0.4);
+}
+
+const NATIVE_HEADERS = {
+  'User-Agent': USER_AGENT,
+  Referer: 'https://h5.48.cn/',
+  Origin: 'https://h5.48.cn',
+};
+
+function buildNativeQueueWindow(
+  queue: Track[],
+  currentIndex: number,
+  currentUrl: string,
+  playMode: PlayMode,
+): { items: ExoTrackItem[]; targetIndex: number } {
+  if (!queue.length || currentIndex < 0 || currentIndex >= queue.length || !currentUrl) {
+    return { items: [], targetIndex: -1 };
   }
-  return idx;
+  const indices: number[] = [];
+  if (playMode === 'random') {
+    for (let k = 2; k >= 1; k -= 1) {
+      if (queue.length > k) indices.push((currentIndex - k + queue.length) % queue.length);
+    }
+    indices.push(currentIndex);
+    const pool: number[] = [];
+    for (let i = 0; i < queue.length; i += 1) {
+      if (!indices.includes(i)) pool.push(i);
+    }
+    for (let i = pool.length - 1; i > 0 && indices.length < 15; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+      indices.push(pool[i]);
+    }
+  } else if (queue.length <= 36) {
+    for (let i = 0; i < queue.length; i += 1) indices.push(i);
+  } else {
+    for (let b = 5; b >= 1; b -= 1) {
+      indices.push((currentIndex - b + queue.length) % queue.length);
+    }
+    indices.push(currentIndex);
+    for (let a = 1; a <= 19; a += 1) {
+      indices.push((currentIndex + a) % queue.length);
+    }
+  }
+
+  const curPos = indices.indexOf(currentIndex);
+  const toItem = (t: Track, idx: number, u: string): ExoTrackItem => {
+    const rawCover = String(t?.coverUrl || t?.cover || t?.thumbPath || '');
+    const normCover = normalizeCoverUrl(rawCover);
+    return {
+      url: u,
+      trackId: String(t?.musicId || t?.id || ''),
+      title: String(t?.title || '音乐'),
+      artist: String(t?.artist || t?.groupLabel || ''),
+      album: String(t?.album || ''),
+      art: peekCoverFile(normCover) || normCover,
+      queueIndex: idx,
+      volume: getTrackVolume(u),
+    };
+  };
+
+  const beforeItems: ExoTrackItem[] = [];
+  for (let i = curPos - 1; i >= 0; i -= 1) {
+    const idx = indices[i];
+    const t = queue[idx];
+    const u = idx === currentIndex ? currentUrl : MusicEngine.getWarmUrl(t);
+    if (!u || !isPlayableHost(u)) break;
+    beforeItems.unshift(toItem(t, idx, u));
+  }
+
+  const items: ExoTrackItem[] = [...beforeItems];
+  const targetIndex = items.length;
+  items.push(toItem(queue[currentIndex], currentIndex, currentUrl));
+
+  for (let i = curPos + 1; i < indices.length; i += 1) {
+    const idx = indices[i];
+    const t = queue[idx];
+    const u = MusicEngine.getWarmUrl(t);
+    if (!u || !isPlayableHost(u)) break;
+    items.push(toItem(t, idx, u));
+  }
+
+  return { items, targetIndex };
+}
+
+function nativeRepeatModeFor(playMode: PlayMode, queueLen: number, windowLen: number): number {
+  if (playMode === 'single') return 1;
+  if (playMode === 'sequential' && queueLen > 0 && windowLen >= queueLen) return 2;
+  return 0;
+}
+
+function warmAndPushTrackArt(track: Track | null | undefined) {
+  if (!track) return;
+  const coverRaw = String(
+    (track as any).coverUrl || (track as any).cover || (track as any).thumbPath || '',
+  );
+  if (!coverRaw) return;
+  const norm = normalizeCoverUrl(coverRaw);
+  if (!norm) return;
+  const tId = trackIdentityKey(track);
+  const existing = peekCoverFile(norm);
+  if (existing && existing.startsWith('file://')) {
+    if (isNativeExoActive()) exoUpdateArt(tId, existing);
+    return;
+  }
+  void fetchCoverToFile(norm)
+    .then((local) => {
+      if (!local || !local.startsWith('file://')) return;
+      const cur = useMusicPlayerStore.getState();
+      const curTrack = cur.queue[cur.currentIndex];
+      if (isNativeExoActive() && trackIdentityKey(curTrack) === tId) {
+        exoUpdateArt(tId, local);
+      }
+    })
+    .catch(() => {});
 }
 
 async function pushExoAfterSwitch() {
@@ -151,62 +273,37 @@ async function pushExoAfterSwitch() {
     if (isNativeExoDisabled() || st.error || st.playbackState !== 'playing' || !url || !track)
       return;
     if (isExoRecentlyArmed(url)) return;
+    const wasActive = isNativeExoActive();
     setNativeExoActive(true);
-    const headers = {
-      'User-Agent': USER_AGENT,
-      Referer: 'https://h5.48.cn/',
-      Origin: 'https://h5.48.cn',
-    };
 
     let resumeAt = 0;
     if (st.seekPending && Number(st.seekTarget) > 0) {
       resumeAt = Number(st.seekTarget);
       useMusicPlayerStore.getState().consumeSeekTarget();
+    } else if (!wasActive && Number(st.position) > 0) {
+      resumeAt = Number(st.position);
     }
-    const vol = /(gnz\.hk|gnz-music|music\.gnz)/i.test(url) ? 0.86 : 1;
-    const rep = st.playMode === 'single' ? 1 : 0;
-    const send = (art: string) => {
-      noteExoArmed(url);
+    const { items, targetIndex } = buildNativeQueueWindow(
+      st.queue,
+      st.currentIndex,
+      url,
+      st.playMode,
+    );
+    if (!items.length || targetIndex < 0) return;
 
-      if (__DEV__)
-        console.warn(
-          `[push-global] ${art ? 'art-refresh' : 'initial'} url=${String(url).slice(0, 50)} resumeAt=${resumeAt}`,
-        );
-      exoPlayTrack(
-        {
-          url,
-          trackId: String((track as any).musicId || (track as any).id || ''),
-          title: String(track.title || '音乐'),
-          artist: String((track as any).artist || (track as any).groupLabel || ''),
-          album: String((track as any).album || ''),
-          art,
-        },
-        art ? 0 : resumeAt,
-        true,
-        headers,
-        vol,
-        rep,
+    const vol = getTrackVolume(url);
+    const rep = nativeRepeatModeFor(st.playMode, st.queue.length, items.length);
+    noteExoArmed(url);
+
+    if (__DEV__) {
+      console.warn(
+        `[push-global] queueLen=${items.length} target=${targetIndex} url=${String(url).slice(0, 50)} resumeAt=${resumeAt}`,
       );
-    };
-    send('');
-    const coverRaw =
-      String((track as any).coverUrl || (track as any).cover || (track as any).thumbPath || '') ||
-      '';
-    if (coverRaw) {
-      let art = '';
-      try {
-        art = await Promise.race([
-          fetchCoverToFile(normalizeCoverUrl(coverRaw)),
-          new Promise<string>((res) => setTimeout(() => res(''), 1500)),
-        ]);
-      } catch {
-        art = '';
-      }
-      const st2 = useMusicPlayerStore.getState();
-      if (st2.url === url && st2.playbackState === 'playing' && !isNativeExoDisabled()) {
-        send(art || String((track as any).coverUrl || (track as any).cover || ''));
-      }
     }
+
+    exoPlayQueue(items, targetIndex, resumeAt, true, NATIVE_HEADERS, vol, rep, st.speed);
+
+    warmAndPushTrackArt(track);
   } catch {}
 }
 
@@ -241,11 +338,14 @@ async function pushSkipHints() {
       t && u
         ? {
             url: u,
+            trackId: String(t.musicId || t.id || ''),
             title: String(t.title || '音乐'),
             artist: String(t.artist || t.groupLabel || ''),
             album: String(t.album || ''),
             index: i,
-            art: skipHintArts[dir],
+            art:
+              skipHintArts[dir] ||
+              peekCoverFile(normalizeCoverUrl(String(t.coverUrl || t.cover || ''))),
           }
         : null;
     const [nUrl, pUrl] = await Promise.all([
@@ -285,11 +385,19 @@ async function pushSkipHints() {
   } catch {}
 }
 
-function MusicForegroundBridge() {
+function MusicForegroundBridge({ ready }: { ready: boolean }) {
+  const cacheLimitMb = useSettingsStore((s) => s.settings.yaya_music_cache_limit_mb);
   const lastNativePlayingRef = useRef(false);
   const radioStoppedRef = useRef(false);
   const syncPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncResumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trackRetryRef = useRef<{ key: string; count: number; consecutiveErrors: number }>({
+    key: '',
+    count: 0,
+    consecutiveErrors: 0,
+  });
+  const consumedExoSeekRef = useRef(0);
   const clearSyncPause = () => {
     if (syncPauseTimer.current) {
       clearTimeout(syncPauseTimer.current);
@@ -300,6 +408,12 @@ function MusicForegroundBridge() {
     if (syncResumeTimer.current) {
       clearTimeout(syncResumeTimer.current);
       syncResumeTimer.current = null;
+    }
+  };
+  const clearRetryTimer = () => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
     }
   };
   const armSyncPause = () => {
@@ -321,6 +435,28 @@ function MusicForegroundBridge() {
     }, 1200);
   };
 
+  useEffect(() => {
+    if (!ready) return;
+    exoSetCacheLimitMb(cacheLimitMb || 300);
+  }, [ready, cacheLimitMb]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const handleOpenFullScreen = () => {
+      const st = useMusicPlayerStore.getState();
+      if (st.queue.length > 0 && st.currentIndex >= 0) {
+        st.openFullScreen('none');
+      } else {
+        DeviceEventEmitter.emit('OpenMusicLibrary');
+      }
+    };
+    const sub = DeviceEventEmitter.addListener('OpenFullScreenMusic', handleOpenFullScreen);
+    void exoConsumePendingOpenFullScreen().then((pending) => {
+      if (pending) handleOpenFullScreen();
+    });
+    return () => sub.remove();
+  }, [ready]);
+
   const lastPushKeyRef = useRef('');
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackStateG = useMusicPlayerStore((s) => s.playbackState);
@@ -328,53 +464,151 @@ function MusicForegroundBridge() {
   const currentIndexG = useMusicPlayerStore((s) => s.currentIndex);
   const queueLenG = useMusicPlayerStore((s) => s.queue.length);
   const playModeG = useMusicPlayerStore((s) => s.playMode);
+  const speedG = useMusicPlayerStore((s) => s.speed);
+  const sleepTimerEndAtG = useMusicPlayerStore((s) => s.sleepTimerEndAt);
+  const seekPendingG = useMusicPlayerStore((s) => s.seekPending);
+  const seekTargetG = useMusicPlayerStore((s) => s.seekTarget);
+  const seekNonceG = useMusicPlayerStore((s) => s.seekNonce);
+  const nextQueueSigG = useMusicPlayerStore((s) => {
+    if (!s.queue.length || s.currentIndex < 0) return '';
+    const nextTrack = s.queue[(s.currentIndex + 1) % s.queue.length];
+    const prevTrack = s.queue[(s.currentIndex - 1 + s.queue.length) % s.queue.length];
+    return `${s.queue.length}|${s.playMode}|${trackIdentityKey(nextTrack)}|${trackIdentityKey(prevTrack)}`;
+  });
+  const lastNeighborKeyRef = useRef('');
+  const [nativeDisabled, setNativeDisabled] = useState(() => isNativeExoDisabled());
+  useEffect(() => subscribeNativeExoDisabled(setNativeDisabled), []);
+
   useEffect(() => {
     if (playbackStateG !== 'playing' || !playUrlG) return;
     const key = `${playUrlG}|${currentIndexG}`;
     if (key === lastPushKeyRef.current) return;
     lastPushKeyRef.current = key;
+    lastNeighborKeyRef.current = `${key}|${nextQueueSigG}`;
     if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
 
     pushTimerRef.current = setTimeout(() => {
       pushExoAfterSwitch().catch(() => {});
     }, 20);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackStateG, playUrlG, currentIndexG]);
+
+  useEffect(() => {
+    if (nativeDisabled || playbackStateG !== 'playing' || !playUrlG || !isNativeExoActive()) return;
+    const composite = `${playUrlG}|${currentIndexG}|${nextQueueSigG}`;
+    if (!lastNeighborKeyRef.current || composite === lastNeighborKeyRef.current) {
+      lastNeighborKeyRef.current = composite;
+      return;
+    }
+    lastNeighborKeyRef.current = composite;
+    const timer = setTimeout(() => {
+      const st = useMusicPlayerStore.getState();
+      if (
+        isNativeExoDisabled() ||
+        st.playbackState !== 'playing' ||
+        !st.url ||
+        !isNativeExoActive()
+      )
+        return;
+      const { items, targetIndex } = buildNativeQueueWindow(
+        st.queue,
+        st.currentIndex,
+        st.url,
+        st.playMode,
+      );
+      if (items.length > 0 && targetIndex >= 0) {
+        exoPlayQueue(
+          items,
+          targetIndex,
+          0,
+          true,
+          NATIVE_HEADERS,
+          getTrackVolume(st.url),
+          nativeRepeatModeFor(st.playMode, st.queue.length, items.length),
+          st.speed,
+        );
+      }
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [nativeDisabled, playbackStateG, playUrlG, currentIndexG, nextQueueSigG]);
+
+  useEffect(() => {
+    if (nativeDisabled || !seekPendingG || !seekNonceG) return;
+    if (seekNonceG === consumedExoSeekRef.current) return;
+    if (!playUrlG || (playbackStateG !== 'playing' && playbackStateG !== 'paused')) return;
+    if (!isNativeExoActive() && playbackStateG !== 'playing') return;
+    if (!isNativeExoActive()) return;
+    consumedExoSeekRef.current = seekNonceG;
+    useMusicPlayerStore.getState().setPosition(seekTargetG);
+    exoControl('seek', seekTargetG);
+    useMusicPlayerStore.getState().consumeSeekTarget();
+  }, [nativeDisabled, seekPendingG, seekTargetG, seekNonceG, playUrlG, playbackStateG]);
+
+  useEffect(() => {
+    if (nativeDisabled || !isNativeExoActive()) return;
+    const windowFits = queueLenG > 0 && queueLenG <= 36;
+    const rep = playModeG === 'single' ? 1 : playModeG === 'sequential' && windowFits ? 2 : 0;
+    exoControl('repeat', rep);
+  }, [nativeDisabled, playModeG, queueLenG]);
+
+  useEffect(() => {
+    if (nativeDisabled || !isNativeExoActive()) return;
+    exoControl('speed', speedG);
+  }, [nativeDisabled, speedG]);
+
+  useEffect(() => {
+    if (!sleepTimerEndAtG) return;
+    const check = () => {
+      const endAt = useMusicPlayerStore.getState().sleepTimerEndAt;
+      if (!endAt) return;
+      if (Date.now() >= endAt) {
+        const st = useMusicPlayerStore.getState();
+        st.clearSleepTimer();
+        if (st.playbackState === 'playing') {
+          MusicEngine.togglePause();
+        }
+        ToastAndroid.show(translate('定时关闭已触发，已暂停播放'), ToastAndroid.SHORT);
+      }
+    };
+    const id = setInterval(check, 1000);
+    return () => clearInterval(id);
+  }, [sleepTimerEndAtG]);
 
   useEffect(() => {
     if (playbackStateG !== 'playing' || !playUrlG || isNativeExoDisabled()) return;
     const t = setTimeout(() => {
       if (!isNativeExoDisabled()) pushSkipHints().catch(() => {});
-    }, 40);
+    }, 60);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackStateG, playUrlG, currentIndexG, queueLenG, playModeG]);
+
   useEffect(() => {
     if (playbackStateG === 'idle') {
       lastPushKeyRef.current = '';
       radioStoppedRef.current = false;
+      clearRetryTimer();
+      trackRetryRef.current = { key: '', count: 0, consecutiveErrors: 0 };
       resetExoArm();
-
       setNativeExoActive(false);
       setNativeExoDisabled(false);
-
       try {
         exoControl('stop');
       } catch {}
     } else if (playbackStateG !== 'playing') {
       lastPushKeyRef.current = '';
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackStateG]);
 
   useEffect(() => {
     if (isNativeExoDisabled()) return;
     if (playbackStateG === 'paused' && lastNativePlayingRef.current) {
       exoControl('pause');
-    } else if (playbackStateG === 'playing' && !lastNativePlayingRef.current) {
+    } else if (
+      playbackStateG === 'playing' &&
+      !lastNativePlayingRef.current &&
+      isNativeExoActive()
+    ) {
       exoControl('resume');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playbackStateG]);
 
   useEffect(
@@ -405,8 +639,12 @@ function MusicForegroundBridge() {
                 artist: String(p?.artist || ''),
                 album: String(p?.album || ''),
                 position: Math.max(0, Number(p?.position) || 0),
+                buffered: Math.max(0, Number(p?.buffered) || 0),
+                buffering: !!p?.buffering,
                 duration: Math.max(0, Number(p?.duration) || 0),
                 playing: playingN,
+                speed: Number(p?.speed) > 0 ? Number(p.speed) : st.speed,
+                queueIndex: typeof p?.index === 'number' ? p.index : -1,
               });
               return;
             }
@@ -414,12 +652,18 @@ function MusicForegroundBridge() {
             const current = st.queue[st.currentIndex];
             const currentId = current ? String(current.musicId || current.id || '') : '';
             const staleTrack = !!p?.trackId && !!currentId && String(p.trackId) !== currentId;
-
             const staleUrl = !!p?.url && !!st.url && String(p.url) !== String(st.url);
             if (!staleUrl && !staleTrack) {
               if (playingN) noteExoProgress();
               if (Number(p?.duration) > 0) st.setDuration(Number(p.duration));
-              if (typeof p?.position === 'number') st.setPosition(p.position);
+              if (typeof p?.position === 'number') {
+                st.setPosition(p.position);
+                if (playingN && p.position > 1) {
+                  trackRetryRef.current = { key: '', count: 0, consecutiveErrors: 0 };
+                }
+              }
+              if (typeof p?.buffered === 'number') st.setBuffered(p.buffered);
+              if (typeof p?.buffering === 'boolean') st.setBuffering(p.buffering);
             }
             if (playingN) {
               clearSyncPause();
@@ -428,10 +672,69 @@ function MusicForegroundBridge() {
               clearSyncResume();
               armSyncPause();
             }
+          } else if (type === 'track_changed') {
+            clearSyncPause();
+            clearSyncResume();
+            const st = useMusicPlayerStore.getState();
+            if (!st.queue.length) return;
+            const reason = Number(p?.reason ?? -1);
+            if (st.sleepAfterTrack && (reason === 1 || reason === 0)) {
+              st.clearSleepTimer();
+              exoControl('pause');
+              st.setPlaybackState('paused');
+              ToastAndroid.show(translate('本首已播完，已暂停播放'), ToastAndroid.SHORT);
+              return;
+            }
+            const urlN = String(p?.url || '');
+            const idxN = typeof p?.index === 'number' ? p.index : -1;
+            const synced = MusicEngine.syncFromNativeTrack({
+              index: idxN,
+              url: urlN,
+              trackId: String(p?.trackId || ''),
+              title: String(p?.title || ''),
+              artist: String(p?.artist || ''),
+              album: String(p?.album || ''),
+              playing: st.playbackState === 'playing',
+            });
+            if (synced) {
+              const after = useMusicPlayerStore.getState();
+              lastPushKeyRef.current = `${after.url}|${after.currentIndex}`;
+              warmAndPushTrackArt(after.queue[after.currentIndex]);
+              if (after.queue.length > 36 && after.playbackState === 'playing') {
+                const { items, targetIndex } = buildNativeQueueWindow(
+                  after.queue,
+                  after.currentIndex,
+                  after.url,
+                  after.playMode,
+                );
+                if (
+                  items.length > 0 &&
+                  targetIndex >= 0 &&
+                  (items.length - 1 - targetIndex <= 3 || targetIndex <= 1)
+                ) {
+                  exoPlayQueue(
+                    items,
+                    targetIndex,
+                    0,
+                    true,
+                    NATIVE_HEADERS,
+                    getTrackVolume(after.url),
+                    nativeRepeatModeFor(after.playMode, after.queue.length, items.length),
+                    after.speed,
+                  );
+                }
+              }
+            }
           } else if (type === 'ended') {
             clearSyncPause();
             clearSyncResume();
             const st = useMusicPlayerStore.getState();
+            if (st.sleepAfterTrack) {
+              st.clearSleepTimer();
+              st.setPlaybackState('paused');
+              ToastAndroid.show(translate('本首已播完，已暂停播放'), ToastAndroid.SHORT);
+              return;
+            }
             if (st.queue.length && st.playbackState === 'playing' && st.playMode !== 'single') {
               MusicEngine.next().catch(() => {});
             }
@@ -452,22 +755,16 @@ function MusicForegroundBridge() {
                 : -1;
             const track = idx >= 0 ? st0.queue[idx] : null;
             if (idx >= 0 && track) {
-              (MusicEngine as any)._playSeq += 1;
-              useMusicPlayerStore.setState({
-                currentIndex: idx,
+              MusicEngine.syncFromNativeTrack({
+                index: idx,
                 url: urlN,
-                playbackState: 'playing',
-                position: 0,
-                duration: 0,
-                seekTarget: 0,
-                seekPending: false,
-                seekTargetGuard: 0,
-                error: null,
-                lyrics: [],
+                trackId: String(p?.trackId || ''),
+                title: String(p?.title || ''),
+                artist: String(p?.artist || ''),
+                album: String(p?.album || ''),
+                playing: true,
               });
-
-              MusicEngine._fetchLyrics(track);
-              MusicEngine._prewarmNextTrack();
+              warmAndPushTrackArt(track);
             } else {
               applyNativeSnapshot({
                 active: true,
@@ -477,9 +774,14 @@ function MusicForegroundBridge() {
                 artist: String(p?.artist || ''),
                 album: String(p?.album || ''),
                 position: 0,
+                buffered: 0,
+                buffering: true,
                 duration: 0,
                 playing: true,
+                speed: st0.speed,
               });
+              const sNow = useMusicPlayerStore.getState();
+              warmAndPushTrackArt(sNow.queue[sNow.currentIndex]);
             }
           } else if (type === 'cmd') {
             const c = String(p?.cmd || '');
@@ -487,6 +789,45 @@ function MusicForegroundBridge() {
             if (st.playbackState === 'idle') st.setPlaybackState('loading');
             if (c === 'next') MusicEngine.next().catch(() => {});
             else if (c === 'prev') MusicEngine.prev().catch(() => {});
+          } else if (type === 'track_error') {
+            clearSyncPause();
+            clearSyncResume();
+            const st = useMusicPlayerStore.getState();
+            const cur = st.queue[st.currentIndex];
+            const errKey = `${trackIdentityKey(cur)}|${String(p?.url || st.url)}`;
+            const msg = String(p?.message || 'playback error');
+            logWarn(`[exo] track_error ${errKey}: ${msg}`, 'music');
+            if (!cur || st.playbackState === 'idle') return;
+
+            const rec = trackRetryRef.current;
+            if (rec.key === errKey && rec.count >= 1) {
+              const nextConsec = rec.consecutiveErrors + 1;
+              trackRetryRef.current = { key: '', count: 0, consecutiveErrors: nextConsec };
+              if (nextConsec < 3 && st.queue.length > 1 && st.playMode !== 'single') {
+                ToastAndroid.show(translate('当前歌曲加载失败，已自动跳过'), ToastAndroid.SHORT);
+                void MusicEngine.next().catch(() => {});
+              } else {
+                trackRetryRef.current.consecutiveErrors = 0;
+                st.setError(translate('播放失败，请检查网络连接'));
+              }
+            } else {
+              trackRetryRef.current = {
+                key: errKey,
+                count: rec.key === errKey ? rec.count + 1 : 1,
+                consecutiveErrors: rec.consecutiveErrors,
+              };
+              clearRetryTimer();
+              retryTimerRef.current = setTimeout(() => {
+                retryTimerRef.current = null;
+                const sNow = useMusicPlayerStore.getState();
+                const trNow = sNow.queue[sNow.currentIndex];
+                if (trNow && sNow.playbackState !== 'idle') {
+                  resetExoArm();
+                  lastPushKeyRef.current = '';
+                  void MusicEngine.playTrack(trNow, sNow.queue).catch(() => {});
+                }
+              }, 800);
+            }
           } else if (type === 'error') {
             clearSyncPause();
             clearSyncResume();
@@ -500,9 +841,9 @@ function MusicForegroundBridge() {
   useEffect(
     () => () => {
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+      clearRetryTimer();
       clearSyncPause();
       clearSyncResume();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
     [],
   );
@@ -516,7 +857,6 @@ function MusicForegroundBridge() {
   const playbackState = useMusicPlayerStore((s) => s.playbackState);
   const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
   const position = useMusicPlayerStore((s) => s.position);
-  const duration = useMusicPlayerStore((s) => s.duration);
 
   const lastNotifySig = useRef('');
 
@@ -634,7 +974,6 @@ function MusicForegroundBridge() {
       const text = idx >= 0 && lyrics[idx] ? lyrics[idx].text : '';
       updateRadioLyric(text);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, lyrics, position]);
 
   useEffect(
@@ -649,15 +988,7 @@ function MusicForegroundBridge() {
     [],
   );
 
-  const [nativeDisabled, setNativeDisabled] = useState(() => isNativeExoDisabled());
-  useEffect(() => subscribeNativeExoDisabled(setNativeDisabled), []);
-  const playVolumeG = useMemo(() => {
-    const u = String(playUrlG || '').toLowerCase();
-    return /(gnz\.hk|gnz-music|music\.gnz)/.test(u) || /\.r2\.|r2-music/i.test(u) ? 0.86 : 1.0;
-  }, [playUrlG]);
-  const seekPendingG = useMusicPlayerStore((s) => s.seekPending);
-  const seekTargetG = useMusicPlayerStore((s) => s.seekTarget);
-  const seekNonceG = useMusicPlayerStore((s) => s.seekNonce);
+  const playVolumeG = useMemo(() => getTrackVolume(playUrlG), [playUrlG]);
   const fallbackVideoRef = useRef<any>(null);
   const [fallbackReady, setFallbackReady] = useState(false);
   const consumedFallbackSeekRef = useRef(0);
@@ -697,6 +1028,7 @@ function MusicForegroundBridge() {
       }}
       style={{ width: 0, height: 0, position: 'absolute', opacity: 0 }}
       volume={playVolumeG}
+      rate={speedG}
       paused={playbackStateG !== 'playing'}
       repeat={playModeG === 'single'}
       ignoreSilentSwitch="ignore"
@@ -735,7 +1067,11 @@ function MusicForegroundBridge() {
       }}
       onProgress={(e) => {
         try {
-          useMusicPlayerStore.getState().setPosition(e.currentTime || 0);
+          const st = useMusicPlayerStore.getState();
+          st.setPosition(e.currentTime || 0);
+          if (typeof (e as any).playableDuration === 'number') {
+            st.setBuffered((e as any).playableDuration);
+          }
         } catch {}
       }}
       onEnd={() => {
@@ -768,25 +1104,32 @@ function QChatGlobalBridge({ ready }: { ready: boolean }) {
     if (!ready || !p48Token) return;
     let disposed = false;
 
+    const subscribeFollowedRooms = (ids: Set<string>) => {
+      if (disposed || !ids.size) return;
+      const curMembers = useMemberStore.getState().members;
+      const serverIds = curMembers
+        .filter((m) => ids.has(String(m.id || '')) || ids.has(String(m.userId || '')))
+        .map((m) => String(m.serverId || '').trim())
+        .filter((s) => /^\d+$/.test(s) && s !== '0');
+      if (serverIds.length) void subscribeRoomChannelsBatch(serverIds);
+    };
+
     const connectAndSubscribe = async () => {
       if (disposed || AppState.currentState !== 'active') return;
       const ok = await ensureGlobalQChatConnection();
       if (!ok || disposed) return;
       try {
-        const res = await pocketApi.getFollowedIds();
-        if (disposed) return;
-        const ids = new Set(
-          unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String),
-        );
-        if (!ids.size) return;
-        const curMembers = useMemberStore.getState().members;
-        const serverIds = curMembers
-          .filter((m) => ids.has(String(m.id || '')) || ids.has(String(m.userId || '')))
-          .map((m) => String(m.serverId || '').trim())
-          .filter((s) => /^\d+$/.test(s) && s !== '0');
-        if (serverIds.length) void subscribeRoomChannelsBatch(serverIds);
+        const list = await fetchFollowedIdsShared(p48Token);
+        if (disposed || !list.length) return;
+        subscribeFollowedRooms(new Set(list));
       } catch {}
     };
+
+    const offFollowed = subscribeFollowedIds((ids, tk) => {
+      if (!disposed && tk && tk === String(p48Token || '').trim()) {
+        subscribeFollowedRooms(ids);
+      }
+    });
 
     const offMsg = onQChatMessage((message) => {
       try {
@@ -834,6 +1177,7 @@ function QChatGlobalBridge({ ready }: { ready: boolean }) {
 
     return () => {
       disposed = true;
+      offFollowed();
       offMsg();
       sub.remove();
       if (bgPauseTimer.current) {
@@ -868,6 +1212,7 @@ export default function App() {
   const latestUrl = useUpdateStore((s) => s.latestUrl);
   const releaseNotes = useUpdateStore((s) => s.releaseNotes);
   const [dailyUpdateVisible, setDailyUpdateVisible] = useState(false);
+  const [updateBannerVisible, setUpdateBannerVisible] = useState(false);
   const [announceModal, setAnnounceModal] = useState<{
     title: string;
     header: string;
@@ -942,6 +1287,9 @@ export default function App() {
 
       if (mounted) setReady(true);
 
+      initRoomBgCache().catch(() => {});
+      loadRoomMetaCache().catch(() => {});
+
       loadCachedMemberData()
         .then((cached) => {
           if (cached && cached.length >= localLen) {
@@ -996,9 +1344,12 @@ export default function App() {
       .checkUpdate()
       .catch(() => {});
 
+    let prefCancel: { cancel?: () => void } | null = null;
     const r2Timer = setTimeout(() => {
-      prefetchR2Music().catch(() => {});
-    }, 15000);
+      prefCancel = InteractionManager.runAfterInteractions(() => {
+        hydrateMusicCatalogFromCache().catch(() => {});
+      });
+    }, 2500);
 
     const activeSub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active' && useUpdateStore.getState().lastCheckedDate !== localTodayKey()) {
@@ -1012,6 +1363,7 @@ export default function App() {
     return () => {
       clearTimeout(timer);
       clearTimeout(r2Timer);
+      prefCancel?.cancel?.();
       activeSub.remove();
     };
   }, [ready]);
@@ -1021,32 +1373,8 @@ export default function App() {
       return;
     }
     void useUpdateStore.getState().markDailyPromptShown();
-    if (isApkUpdaterAvailable) {
-      setDailyUpdateVisible(true);
-      return;
-    }
-    showDialog(
-      translate('发现新版本 {v}', { v: latestVersion }),
-      releaseNotes || translate('当前版本 v{v}，可前往下载最新版本', { v: APP_VERSION }),
-      [
-        { text: translate('稍后'), style: 'cancel' },
-        {
-          text: translate('立即更新'),
-          onPress: () => {
-            if (latestUrl) Linking.openURL(latestUrl).catch(() => {});
-          },
-        },
-      ],
-    );
-  }, [
-    ready,
-    splashDismissed,
-    announceModal,
-    pendingDailyPrompt,
-    latestVersion,
-    latestUrl,
-    releaseNotes,
-  ]);
+    setUpdateBannerVisible(true);
+  }, [ready, splashDismissed, announceModal, pendingDailyPrompt, latestVersion]);
 
   useEffect(() => {
     if (!ready) return;
@@ -1136,6 +1464,20 @@ export default function App() {
           </View>
         </Modal>
 
+        <UpdateBanner
+          visible={updateBannerVisible && !dailyUpdateVisible && !announceModal}
+          version={latestVersion}
+          onDismiss={() => setUpdateBannerVisible(false)}
+          onPress={() => {
+            setUpdateBannerVisible(false);
+            if (isApkUpdaterAvailable) {
+              setDailyUpdateVisible(true);
+            } else if (latestUrl) {
+              Linking.openURL(latestUrl).catch(() => {});
+            }
+          }}
+        />
+
         <UpdateInstaller
           visible={dailyUpdateVisible}
           version={latestVersion}
@@ -1186,7 +1528,9 @@ export default function App() {
 
       <WebViewSignerHost />
 
-      <MusicForegroundBridge />
+      <MusicForegroundBridge ready={ready} />
+
+      <VoiceAudioHost />
 
       <QChatGlobalBridge ready={ready} />
     </GestureHandlerRootView>

@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 // 生成 src/constants/buildChannel.ts：构建渠道 + 出包标识。
 //
-// 背景：渠道此前写死在 src/constants/channel.ts，靠人工改字面量。改漏一次就会出现
-// 「plus 分支出的包按公开版运行」（权限功能全关、应用内更新被打开），且从包体表面看不出来。
-// 现在由构建脚本在打包前写入，CI 与本机共用同一份逻辑，包内可自证是哪个渠道、哪次出包。
+// 由构建脚本在打包前写入，CI 与本机共用同一份逻辑，用于识别构建渠道与批次。
 //
 // 用法：
 //   node scripts/write-build-channel.js            # 自动推断（CI 看仓库名，本地看分支）
@@ -78,8 +76,7 @@ function detectFlavor() {
     .trim()
     .toLowerCase();
   if (fromEnv) return fromEnv;
-  // 私有出包仓库（仓库名以 _plus 结尾）固定 plus，与分支是 plus/ci-build/分离 HEAD 无关；
-  // 公开仓库的 ci-build 分支仍按公版处理。
+  // 仓库名以 _plus 结尾时固定 plus，与分支名称或 detached HEAD 无关。
   const repo = String(process.env.GITHUB_REPOSITORY || originRepoName()).trim();
   if (/yaya_msg_mobile_plus$/i.test(repo)) return 'plus';
   const branch = currentBranch();

@@ -10,6 +10,17 @@ export interface PocketAccountSummary {
 const accountCache = new Map<string, PocketAccountSummary>();
 const inflightMap = new Map<string, Promise<PocketAccountSummary | null>>();
 
+export function clearPocketAccountSummaryCache(token?: string): void {
+  if (token !== undefined) {
+    const trimmed = String(token || '').trim();
+    accountCache.delete(trimmed);
+    inflightMap.delete(trimmed);
+    return;
+  }
+  accountCache.clear();
+  inflightMap.clear();
+}
+
 async function fetchAccountSummary(token: string): Promise<PocketAccountSummary | null> {
   const existing = inflightMap.get(token);
   if (existing) return existing;

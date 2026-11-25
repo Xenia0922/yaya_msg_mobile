@@ -27,6 +27,15 @@ function getBottomDockSnapshot() {
   return bottomDockState;
 }
 
+export function useBottomDockVisible(): boolean {
+  const state = useSyncExternalStore(
+    subscribeBottomDock,
+    getBottomDockSnapshot,
+    getBottomDockSnapshot,
+  );
+  return Boolean(state && !state.hidden);
+}
+
 export const BottomDockHost = React.memo(function BottomDockHost() {
   const state = useSyncExternalStore(
     subscribeBottomDock,

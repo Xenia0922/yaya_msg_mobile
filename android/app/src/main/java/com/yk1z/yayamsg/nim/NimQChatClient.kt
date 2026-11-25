@@ -40,6 +40,7 @@ class NimQChatClient(
   private val main = Handler(Looper.getMainLooper())
   private val stateLock = Any()
   private val subscribedServerIds = mutableSetOf<Long>()
+  private val activeSubscribedServerIds = mutableSetOf<Long>()
   private val deviceId = UUID.randomUUID().toString()
   private var nimSession: NimCommonlinkSession? = null
   private var qchatSession: NimCommonlinkSession? = null
@@ -113,7 +114,10 @@ class NimQChatClient(
         loginCommandId = QCHAT_LOGIN_COMMAND_ID,
         tag = "QChat",
         onConnected = {
-          val sids = synchronized(subscribedServerIds) { subscribedServerIds.toList() }
+          val sids = synchronized(subscribedServerIds) {
+            activeSubscribedServerIds.clear()
+            subscribedServerIds.toList()
+          }
           if (sids.isNotEmpty() && !stopped) {
             Thread({
               try {
@@ -165,12 +169,13 @@ class NimQChatClient(
   fun subscribeServers(serverIds: List<String>): Boolean {
     val validIds = serverIds.mapNotNull { it.trim().toLongOrNull() }.filter { it > 0L }.distinct()
     if (validIds.isEmpty()) return false
-    val newIds: List<Long>
+    val toSend: List<Long>
     synchronized(subscribedServerIds) {
-      newIds = validIds.filter { subscribedServerIds.add(it) }
+      for (sid in validIds) subscribedServerIds.add(sid)
+      toSend = validIds.filter { it !in activeSubscribedServerIds }
     }
-    val toSend = if (newIds.isNotEmpty()) newIds else validIds
     val session = synchronized(stateLock) { qchatSession }
+    if (toSend.isEmpty()) return !stopped && session != null && session.connected
     if (stopped || session == null || !session.connected) return false
     return try {
       sendSubscribe(session, toSend)
@@ -179,8 +184,8 @@ class NimQChatClient(
     }
   }
 
-  private fun sendSubscribe(session: NimCommonlinkSession, serverIds: List<Long>): Boolean {
-    if (serverIds.isEmpty()) return false
+  private fun sendSubscribePacket(session: NimCommonlinkSession, serverIds: List<Long>): Int {
+    if (serverIds.isEmpty()) return 0
     val bodyParts = ArrayList<ByteArray>(2 + serverIds.size)
 
     bodyParts.add(NimProtocol.littleEndianInt32(1))
@@ -191,7 +196,47 @@ class NimQChatClient(
     val body = NimProtocol.concat(*bodyParts.toTypedArray())
     val response = session.request(QCHAT_SUBSCRIBE_SERVICE_ID, QCHAT_SUBSCRIBE_ALL_COMMAND_ID, body, 10_000)
     Log.i("NimCommonlink", "[QChat] 25/7 subscribe count=${serverIds.size} code=${response.resultCode}")
-    return response.resultCode == 200 || response.resultCode == 0
+    return response.resultCode
+  }
+
+  private fun sendSubscribe(session: NimCommonlinkSession, serverIds: List<Long>): Boolean {
+    if (serverIds.isEmpty()) return false
+    var anyOk = false
+    for (chunk in serverIds.chunked(QCHAT_SUBSCRIBE_BATCH_SIZE)) {
+      if (stopped || !session.connected) break
+      val code = sendSubscribePacket(session, chunk)
+      if (code == 200 || code == 0) {
+        synchronized(subscribedServerIds) {
+          activeSubscribedServerIds.addAll(chunk)
+        }
+        anyOk = true
+      } else if (code == 414 && chunk.size > 1) {
+        for (sid in chunk) {
+          if (stopped || !session.connected) break
+          val singleCode = sendSubscribePacket(session, listOf(sid))
+          if (singleCode == 200 || singleCode == 0) {
+            synchronized(subscribedServerIds) {
+              activeSubscribedServerIds.add(sid)
+            }
+            anyOk = true
+          } else if (singleCode == 414) {
+            synchronized(subscribedServerIds) {
+              subscribedServerIds.remove(sid)
+              activeSubscribedServerIds.remove(sid)
+            }
+            Log.w("NimCommonlink", "[QChat] 25/7 reject sid=$sid code=414")
+          }
+        }
+      } else if (code == 414 && chunk.size == 1) {
+        val sid = chunk[0]
+        synchronized(subscribedServerIds) {
+          subscribedServerIds.remove(sid)
+          activeSubscribedServerIds.remove(sid)
+        }
+        Log.w("NimCommonlink", "[QChat] 25/7 reject sid=$sid code=414")
+      }
+    }
+    return anyOk
   }
 
   fun sendText(serverId: String, channelId: String, text: String, extJson: String): String {
@@ -237,11 +282,14 @@ class NimQChatClient(
     val nim: NimCommonlinkSession?
     synchronized(stateLock) {
       stopped = true
-      subscribedServerIds.clear()
       qchat = qchatSession
       nim = nimSession
       qchatSession = null
       nimSession = null
+    }
+    synchronized(subscribedServerIds) {
+      subscribedServerIds.clear()
+      activeSubscribedServerIds.clear()
     }
     qchat?.destroy()
     nim?.destroy()
@@ -357,5 +405,6 @@ class NimQChatClient(
     private const val QCHAT_MSG_COMMAND_ID = 11
     private const val QCHAT_SUBSCRIBE_SERVICE_ID = 25
     private const val QCHAT_SUBSCRIBE_ALL_COMMAND_ID = 7
+    private const val QCHAT_SUBSCRIBE_BATCH_SIZE = 10
   }
 }

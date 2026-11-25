@@ -3,7 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlayerSource, PlayerMeta, DanmakuSource } from '../types';
 import { isRtmpUrl } from '../resolve/streamResolver';
 
-import { useMusicPlayerStore } from '../../store/musicPlayerStore';
+import {
+  claimAudioFocus,
+  registerAudioHandler,
+  releaseAudioFocus,
+} from '../../services/audioFocus';
 
 export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
@@ -136,15 +140,7 @@ export const usePlayerStore = create<PlayerState>((set) => ({
 
   open: (source, meta = { title: '' }, danmaku = { type: 'none' }) => {
     try {
-      const mst = useMusicPlayerStore.getState();
-      if (
-        mst.queue.length &&
-        (mst.playbackState === 'playing' ||
-          mst.playbackState === 'paused' ||
-          mst.playbackState === 'loading')
-      ) {
-        mst.setPlaybackState(mst.playbackState === 'loading' ? 'idle' : 'paused');
-      }
+      claimAudioFocus('video');
     } catch {}
     return set((s) => {
       const urls = (source.urls && source.urls.length ? source.urls : [source.url]).filter(Boolean);
@@ -178,7 +174,10 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     });
   },
 
-  close: () =>
+  close: () => {
+    try {
+      releaseAudioFocus('video');
+    } catch {}
     set({
       source: null,
       meta: { title: '' },
@@ -191,7 +190,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       fullscreen: false,
       detectedLandscape: false,
       detectedAspect: null,
-    }),
+    });
+  },
 
   setState: (state) => set({ state }),
   setPosition: (position) =>
@@ -292,3 +292,12 @@ export async function loadPlayerPrefs() {
 }
 
 export default usePlayerStore;
+
+try {
+  registerAudioHandler('video', (nextOwner) => {
+    const st = usePlayerStore.getState();
+    if (!st.source || st.state === 'idle') return;
+    if (nextOwner === 'voice') st.setState('paused');
+    else st.close();
+  });
+} catch {}

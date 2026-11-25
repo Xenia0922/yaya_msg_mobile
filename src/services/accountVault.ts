@@ -1,10 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { saveSettings } from './settings';
-import { resetNimSession } from './pocketNim/session';
+import { resetAccountSession } from './sessionReset';
 import { useSettingsStore } from '../store';
-import { useMusicPlayerStore } from '../store/musicPlayerStore';
-import { MusicEngine } from './musicPlayer';
-import { useMiniPlayerStore } from '../store/miniPlayerStore';
 import { encryptSecret, decryptSecret } from '../native/SecureVault';
 import { normalizePocketDeviceId, normalizePocketToken } from '../utils/pocketToken';
 import { resolveBoundPocketDeviceId } from '../api/pocketHeaders';
@@ -114,14 +111,7 @@ export async function switchSavedAccount(entry: SavedAccount): Promise<void> {
   const token = normalizePocketToken(entry?.token);
   if (!token) throw new Error('该账号没有 Token');
 
-  try {
-    useMiniPlayerStore.getState().close();
-  } catch {}
-  try {
-    MusicEngine.stop();
-    const music = useMusicPlayerStore.getState();
-    if (music.playbackState !== 'idle') music.setPlaybackState('idle');
-  } catch {}
+  resetAccountSession('快速切号', { stopMusic: true });
   const patch = {
     p48Token: token,
     p48DeviceId: normalizePocketDeviceId(entry?.deviceId),
@@ -129,5 +119,4 @@ export async function switchSavedAccount(entry: SavedAccount): Promise<void> {
   };
   useSettingsStore.getState().setSettings(patch);
   await saveSettings(patch);
-  resetNimSession('快速切号');
 }

@@ -959,8 +959,18 @@ export const pocketApi = {
     channelId: string | number,
     fallbackChannelId?: string | number,
     serverId?: string | number,
-  ) {
-    const cid = String(channelId);
+  ): Promise<{
+    name: string;
+    bg: string;
+    ok: boolean;
+    bgAuthoritative: boolean;
+    siblings: Record<string, { name: string; bg: string }>;
+  }> {
+    const cid = String(channelId || '').trim();
+    const fbCid =
+      fallbackChannelId !== undefined && fallbackChannelId !== null
+        ? String(fallbackChannelId).trim()
+        : '';
 
     let resolvedSid = serverId;
     if (!resolvedSid || String(resolvedSid) === '0' || String(resolvedSid) === '') {
@@ -973,8 +983,17 @@ export const pocketApi = {
       } catch {}
     }
 
+    const normBg = (raw: unknown): string => {
+      const s = String(raw ?? '')
+        .trim()
+        .replace(/\\\//g, '/');
+      if (!s) return '';
+      if (/^(?:https?:)?\/\//i.test(s) || s.startsWith('/')) return normalizeUrl(s);
+      return normalizeUrl(`/${s}`);
+    };
+
     const pickBg = (o: WireRecord | null | undefined): string => {
-      if (!o) return '';
+      if (!o || typeof o !== 'object') return '';
       return String(
         o.bgImg ||
           o.bgImgUrl ||
@@ -986,37 +1005,60 @@ export const pocketApi = {
           o.homeBgImgUrl ||
           o.bannerUrl ||
           o.serverBgWallImg ||
+          o.bgWallImg ||
+          o.roomBgImg ||
+          o.bgPath ||
+          o.bgUrl ||
           '',
       );
     };
-    const tryRoomInfo = async (target: string): Promise<{ name: string; bg: string }> => {
-      const res = await this.getRoomInfo(target).catch(() => null);
-      const content = (res?.content || res?.data || {}) as WireRecord;
-      if (res?.status && Number(res.status) !== 200) return { name: '', bg: '' };
-      const ci = content.channelInfo || {};
-      let name = String(ci.channelName || '');
-      let bg = pickBg(ci);
-      if (!name && Array.isArray(content.channelInfoList)) {
-        const hit = (content.channelInfoList as WireRecord[]).find(
-          (c) => String(c?.channelId) === target,
-        );
-        if (hit) {
-          name = String(hit.channelName || '');
-          bg = pickBg(hit);
-        }
-      }
-      if (!bg) bg = pickBg(content.userChatConfig as WireRecord);
-      if (!bg && Array.isArray(content.channelInfoList)) {
-        const anyHit = (content.channelInfoList as WireRecord[]).find(
-          (c) => String(c?.channelId) === target,
-        );
-        if (anyHit) bg = pickBg(anyHit);
-      }
-      return { name, bg: bg ? normalizeUrl(bg) : '' };
+
+    const siblings: Record<string, { name: string; bg: string }> = {};
+    const recordSibling = (sibCid: unknown, name: string, bg: string) => {
+      const key = String(sibCid ?? '').trim();
+      if (!key || key === '0' || key === 'undefined') return;
+      const n = String(name || '').trim();
+      const b = normBg(bg);
+      if (!n && !b) return;
+      const prev = siblings[key];
+      siblings[key] = { name: n || prev?.name || '', bg: b || prev?.bg || '' };
     };
-    let meta = await tryRoomInfo(cid);
+
+    const tryRoomInfo = async (
+      target: string,
+    ): Promise<{ name: string; bg: string; ok: boolean }> => {
+      const res = await this.getRoomInfo(target).catch(() => null);
+      const ok = Boolean(res) && (!res?.status || Number(res.status) === 200);
+      if (!ok) return { name: '', bg: '', ok: false };
+      const content = (res?.content || res?.data || {}) as WireRecord;
+      const ci = (content.channelInfo || {}) as WireRecord;
+      const list = Array.isArray(content.channelInfoList)
+        ? (content.channelInfoList as WireRecord[])
+        : [];
+      const hit = list.find((c) => String(c?.channelId) === target);
+      const name = String(ci.channelName || hit?.channelName || '').trim();
+      const rawBg =
+        pickBg(ci) ||
+        pickBg(hit) ||
+        pickBg(content.userChatConfig as WireRecord) ||
+        pickBg(content.roomInfo as WireRecord) ||
+        pickBg(content.chatServerInfo as WireRecord) ||
+        pickBg(content.serverInfo as WireRecord) ||
+        pickBg(content);
+      for (let i = 0; i < list.length; i += 1) {
+        const c = list[i];
+        recordSibling(c?.channelId, String(c?.channelName || ''), pickBg(c));
+      }
+      return { name, bg: normBg(rawBg), ok: true };
+    };
+
+    const primary = cid ? await tryRoomInfo(cid) : { name: '', bg: '', ok: false };
+    let meta = { name: primary.name, bg: primary.bg };
+    let seineOk = false;
+    let fallbackOk = false;
+
     if (
-      (!meta.bg || (!meta.name && !meta.bg)) &&
+      (!meta.bg || !meta.name) &&
       resolvedSid !== undefined &&
       resolvedSid !== null &&
       String(resolvedSid) !== '' &&
@@ -1024,37 +1066,44 @@ export const pocketApi = {
     ) {
       try {
         const res = await this.getSeineServerDetail(Number(resolvedSid)).catch(() => null);
-        const content = (res?.content || res?.data || {}) as WireRecord;
-        const list: WireRecord[] = Array.isArray(content.channelInfoList)
-          ? (content.channelInfoList as WireRecord[])
-          : [];
-        const hit =
-          list.find((c) => String(c?.channelId) === cid) ||
-          (fallbackChannelId !== undefined && fallbackChannelId !== null
-            ? list.find((c) => String(c?.channelId) === String(fallbackChannelId))
-            : undefined);
-        const si = content.chatServerInfo || {};
-        const bg = meta.bg || pickBg(hit) || pickBg(si);
-        if (hit || bg) {
-          meta = {
-            name: meta.name || (hit ? String(hit.channelName || '') : ''),
-            bg: bg ? normalizeUrl(String(bg)) : meta.bg || '',
-          };
+        seineOk = Boolean(res) && (!res?.status || Number(res.status) === 200);
+        if (seineOk) {
+          const content = (res?.content || res?.data || {}) as WireRecord;
+          const list: WireRecord[] = Array.isArray(content.channelInfoList)
+            ? (content.channelInfoList as WireRecord[])
+            : [];
+          const si = (content.chatServerInfo || {}) as WireRecord;
+          const serverBg = pickBg(si);
+          for (let i = 0; i < list.length; i += 1) {
+            const c = list[i];
+            recordSibling(c?.channelId, String(c?.channelName || ''), pickBg(c));
+          }
+          const exactHit = list.find((c) => String(c?.channelId) === cid);
+          const fallbackHit =
+            fbCid && fbCid !== cid ? list.find((c) => String(c?.channelId) === fbCid) : undefined;
+          const isSmallFallback = Boolean(fbCid && fbCid !== cid);
+          const bg =
+            meta.bg ||
+            normBg(
+              pickBg(exactHit) || (isSmallFallback ? pickBg(fallbackHit) || serverBg : serverBg),
+            );
+          const name = meta.name || (exactHit ? String(exactHit.channelName || '').trim() : '');
+          meta = { name, bg };
         }
       } catch {}
     }
 
-    if (
-      !meta.name &&
-      !meta.bg &&
-      fallbackChannelId !== undefined &&
-      fallbackChannelId !== null &&
-      String(fallbackChannelId) !== cid
-    ) {
-      const fb = await tryRoomInfo(String(fallbackChannelId)).catch(() => ({ name: '', bg: '' }));
+    if (!meta.bg && fbCid && fbCid !== cid) {
+      const fb = await tryRoomInfo(fbCid).catch(() => ({ name: '', bg: '', ok: false }));
+      fallbackOk = fb.ok;
+      if (fb.name || fb.bg) recordSibling(fbCid, fb.name, fb.bg);
       if (fb.bg) meta = { name: meta.name || fb.name, bg: fb.bg };
     }
-    return meta;
+
+    const ok = primary.ok || seineOk || fallbackOk;
+    const bgAuthoritative =
+      primary.ok && (Boolean(meta.bg) || !fbCid || fbCid === cid || fallbackOk || seineOk);
+    return { name: meta.name, bg: meta.bg, ok, bgAuthoritative, siblings };
   },
 
   async getRoomAlbum(params: { channelId: string; nextTime?: number }) {
@@ -1533,9 +1582,12 @@ export const pocketApi = {
 
   async operateRoomVoice(params: { channelId: string; serverId: string }) {
     const channelId = String(params.channelId || '');
+    const hadServerId = Boolean(params.serverId && String(params.serverId) !== '0');
     let serverId = String(params.serverId || '');
-    if (!serverId || serverId === '0') serverId = await resolveServerId(channelId);
-    rememberServerId(channelId, serverId);
+    if (!hadServerId) {
+      serverId = await resolveServerId(channelId);
+      rememberServerId(channelId, serverId);
+    }
     return pocketPost(
       `${BASE}/im/api/v1/team/voice/operate`,
       {

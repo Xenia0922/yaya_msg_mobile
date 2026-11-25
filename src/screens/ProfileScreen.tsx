@@ -17,7 +17,7 @@ import { translate, useI18n } from '../i18n';
 import { usePalette, fontFamily } from '../theme';
 import { useMemberStore, useSettingsStore, useUiStore } from '../store';
 import { GlassSurface } from '../components/GlassSurface';
-import { readFollowedIdsCache, writeFollowedIdsCache } from '../services/followedIds';
+import { hydrateFollowedIdsShared, mutateFollowedIdShared } from '../services/pocketSharedData';
 import { errorMessage } from '../utils/data';
 
 type ArchiveState = {
@@ -93,7 +93,7 @@ export default function ProfileScreen() {
     );
     setFollowState({ uid: followCandidates[0] || followUid, following: false, busy: false });
     if (followCandidates.length > 0) {
-      void readFollowedIdsCache(token).then((cached) => {
+      void hydrateFollowedIdsShared(token).then((cached) => {
         if (requestId !== profileReqRef.current) return;
         const set = new Set(cached.ids.map(String));
         if (followCandidates.some((id) => set.has(id))) {
@@ -244,11 +244,7 @@ export default function ProfileScreen() {
                       if (next) await pocketApi.followMember(uid);
                       else await pocketApi.unfollowMember(uid);
                       setFollowState((prev) => ({ ...prev, following: next, busy: false }));
-                      const cached = await readFollowedIdsCache(token).catch(() => ({ ids: [] }));
-                      const nextIds = new Set(cached.ids.map(String));
-                      if (next) nextIds.add(uid);
-                      else nextIds.delete(uid);
-                      void writeFollowedIdsCache(token, Array.from(nextIds));
+                      mutateFollowedIdShared(token, uid, next);
                       showToast(
                         next ? t('已关注 {name}', { name }) : t('已取消关注 {name}', { name }),
                       );

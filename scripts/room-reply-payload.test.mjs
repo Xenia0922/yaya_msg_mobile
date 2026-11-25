@@ -19,7 +19,7 @@ const sandbox = {
   require: (n) => (n === './html' ? htmlMod.exports : { translate: (s) => s }),
 };
 vm.runInNewContext(compiled, sandbox);
-const { messagePayload, messageText, humanizeRawMessageText } = sandbox.exports;
+const { messagePayload, messageText, messagePreviewText, humanizeRawMessageText } = sandbox.exports;
 
 // 实时推送（QChat）把官方 bodys 原文塞在 bodys.text 里：REPLY 是一整段 JSON。
 const replyBody = JSON.stringify({
@@ -90,4 +90,214 @@ assert.ok(giftPayload.giftReplyInfo, 'giftReplyInfo 应被成功解析');
 assert.equal(giftPayload.giftReplyInfo.replyName, '柠檬茴香');
 assert.equal(giftPayload.giftReplyInfo.voiceUrl, '/voice/2026/11/16/zwd_flower.m4a');
 
-console.log('房间 REPLY / GIFTREPLY 消息解析（推送/轮询/复制/语音礼物回复）测试通过');
+// DELETE 控制消息 / 墓碑识别、ID 提取、房间过滤与预览跳过
+{
+  /** @param {string} relPath @param {Record<string, any>} imports */
+  function loadTs(relPath, imports) {
+    const src = readFileSync(new URL(relPath, import.meta.url), 'utf8');
+    const out = ts.transpileModule(src, {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2020,
+        esModuleInterop: true,
+      },
+    }).outputText;
+    const mod = { exports: {} };
+    vm.runInNewContext(out, {
+      module: mod,
+      exports: mod.exports,
+      require: (/** @type {string} */ id) => {
+        if (!(id in imports)) throw new Error(`Unexpected require("${id}") in ${relPath}`);
+        return imports[id];
+      },
+      console,
+    });
+    return mod.exports;
+  }
+
+  const dataMod = loadTs('../src/utils/data.ts', {
+    '../i18n': { translate: (/** @type {any} */ s) => s },
+    './html': htmlMod.exports,
+    './imageThumb': {},
+    './emojiMap': { __esModule: true, default: {} },
+  });
+  const formatMod = loadTs('../src/utils/format.ts', {});
+  const messageUtils = loadTs('../src/screens/followedRooms/messageUtils.ts', {
+    '../../utils/data': dataMod,
+    '../../utils/format': formatMod,
+    '../../i18n': { t: (/** @type {any} */ s) => s },
+  });
+  const roomDomain = loadTs('../src/screens/followedRooms/roomDomain.ts', {
+    '../../i18n': { t: (/** @type {any} */ s) => s },
+    '../../utils/data': dataMod,
+    './messageUtils': messageUtils,
+  });
+
+  // (a) QChat pushed DELETE control message
+  const qchatDel = {
+    msgType: 'DELETE',
+    msgTime: 1732400002000,
+    bodys: {
+      text: '',
+      messageType: 'DELETE',
+      deleteInfo: { msgIdClient: 'orig-1' },
+      user: { userId: 123, nickName: '测试' },
+    },
+  };
+  assert.equal(dataMod.isDeletedMessage(qchatDel), true);
+  assert.equal(dataMod.isHiddenControlMessage(qchatDel), true);
+  assert.equal(dataMod.messageText(qchatDel), '');
+  assert.equal(dataMod.extractDeletedMessageIds(qchatDel).includes('orig-1'), true);
+
+  // (b) HTTP tombstone DELETE + raw 'DELETE' string + extInfo DELETE
+  const httpDel = {
+    msgType: 'DELETE',
+    msgIdClient: 'orig-2',
+    bodys: '{"messageType":"DELETE"}',
+  };
+  assert.equal(dataMod.isDeletedMessage(httpDel), true);
+  assert.equal(dataMod.messageText(httpDel), '');
+  assert.equal(dataMod.extractDeletedMessageIds(httpDel).includes('orig-2'), true);
+
+  const rawStringDel = { bodys: 'DELETE' };
+  assert.equal(dataMod.isDeletedMessage(rawStringDel), true);
+  assert.equal(dataMod.messageText(rawStringDel), '');
+
+  const extInfoDel = {
+    msgIdClient: 'orig-3',
+    extInfo: '{"messageType":"DELETE"}',
+    bodys: { text: '', user: { userId: 1 } },
+  };
+  assert.equal(dataMod.isDeletedMessage(extInfoDel), true);
+  assert.equal(dataMod.messageText(extInfoDel), '');
+  assert.equal(dataMod.extractDeletedMessageIds(extInfoDel).includes('orig-3'), true);
+
+  // (c) TEAM_VOICE / VOICE_OPERATE hidden control but not DELETE
+  const teamVoice = {
+    msgType: 'TEAM_VOICE',
+    bodys: { messageType: 'TEAM_VOICE', operateType: 'openVoice' },
+  };
+  const voiceOp = {
+    msgType: 'VOICE_OPERATE',
+    bodys: { messageType: 'VOICE_OPERATE' },
+  };
+  assert.equal(dataMod.isDeletedMessage(teamVoice), false);
+  assert.equal(dataMod.isHiddenControlMessage(teamVoice), true);
+  assert.equal(dataMod.messageText(teamVoice), '');
+  assert.equal(dataMod.isDeletedMessage(voiceOp), false);
+  assert.equal(dataMod.isHiddenControlMessage(voiceOp), true);
+  assert.equal(dataMod.messageText(voiceOp), '');
+
+  // (d) Normal user TEXT literal 'DELETE' must NOT be treated as DELETE control
+  const userTextObj = { msgType: 'TEXT', bodys: { text: 'DELETE', messageType: 'TEXT' } };
+  const userTextStr = { msgType: 'TEXT', bodys: 'DELETE' };
+  assert.equal(dataMod.isDeletedMessage(userTextObj), false);
+  assert.equal(dataMod.isHiddenControlMessage(userTextObj), false);
+  assert.equal(dataMod.messageText(userTextObj), 'DELETE');
+  assert.equal(dataMod.isDeletedMessage(userTextStr), false);
+  assert.equal(dataMod.isHiddenControlMessage(userTextStr), false);
+  assert.equal(dataMod.messageText(userTextStr), 'DELETE');
+
+  // (e) qchatToRoomMessage preserves msgIdClient and messageKey resolves it
+  const mappedLive = messageUtils.qchatToRoomMessage({
+    uuid: 'client-uuid-99',
+    serverId: 10,
+    channelId: 20,
+    fromAccount: 'acc',
+    fromNick: 'Tester',
+    time: 1732400001000,
+    text: 'hello',
+    messageType: 'TEXT',
+    attachment: {},
+    ext: { user: { userId: 77, nickName: 'Tester' } },
+  });
+  assert.equal(mappedLive.msgIdClient, 'client-uuid-99');
+  assert.equal(roomDomain.messageKey({ msgIdClient: 'only-client-1' }), 'only-client-1');
+
+  // (f) mergeMessages evicts deleted target by msgIdClient without inserting DELETE tombstone
+  const existing = {
+    msgIdClient: 'orig-1',
+    msgTime: 1732400001000,
+    msgType: 'TEXT',
+    bodys: { text: '准备撤回的消息', messageType: 'TEXT' },
+  };
+  const kept = {
+    msgId: 'keep-1',
+    msgTime: 1732400000000,
+    msgType: 'TEXT',
+    bodys: { text: '保留消息', messageType: 'TEXT' },
+  };
+  const afterMerge = roomDomain.mergeMessages([existing, kept], [qchatDel]);
+  assert.deepEqual(
+    Array.from(afterMerge, (/** @type {any} */ m) => m.msgId || m.msgIdClient),
+    ['keep-1'],
+    '收到带 msgIdClient 的 DELETE 后必须移除原消息且不残留 DELETE 气泡',
+  );
+
+  // (g) filterVisibleRoomMessages strips DELETE + TEAM_VOICE and evicts target messages
+  const filteredRes = roomDomain.filterVisibleRoomMessages([
+    {
+      msgIdClient: 'orig-2',
+      msgTime: 1732400001500,
+      msgType: 'TEXT',
+      bodys: { text: '将被过滤', messageType: 'TEXT' },
+    },
+    httpDel,
+    teamVoice,
+    kept,
+  ]);
+  assert.equal(filteredRes.deletedIdsFound.includes('orig-2'), true);
+  assert.deepEqual(
+    Array.from(filteredRes.visible, (/** @type {any} */ m) => m.msgId || m.msgIdClient),
+    ['keep-1'],
+  );
+
+  // (h) findLastMessage / findSmallLastMessage skip DELETE records
+  const member = { id: '77', channelId: '20', yklzId: '21' };
+  const bigMsgs = [
+    { ...qchatDel, channelId: '20', userId: '77' },
+    { ...kept, channelId: '20', userId: '77', msgTime: 1732400000500 },
+  ];
+  const smallMsgs = [
+    { ...httpDel, channelId: '21', userId: '77' },
+    {
+      msgId: 'small-keep',
+      channelId: '21',
+      userId: '77',
+      msgType: 'TEXT',
+      bodys: { text: '小房间消息' },
+    },
+  ];
+  assert.equal(messageUtils.findLastMessage(bigMsgs, member)?.msgId, 'keep-1');
+  assert.equal(messageUtils.findSmallLastMessage(smallMsgs, member)?.msgId, 'small-keep');
+
+  // (i) messagePreviewText preserves media labels for room list rows while messageText remains empty
+  const imgMsg = {
+    msgId: 'img-1',
+    msgType: 'IMAGE',
+    bodys: JSON.stringify({ url: 'https://source.48.cn/a.jpg', width: 100, height: 100 }),
+  };
+  const audioMsg = {
+    msgId: 'aud-1',
+    msgType: 'AUDIO',
+    bodys: JSON.stringify({ url: 'https://source.48.cn/a.m4a', dur: 3000 }),
+  };
+  const videoMsg = {
+    msgId: 'vid-1',
+    msgType: 'VIDEO',
+    bodys: JSON.stringify({ url: 'https://source.48.cn/a.mp4' }),
+  };
+  const captionedImg = {
+    msgId: 'img-2',
+    msgType: 'IMAGE',
+    bodys: { text: '早安图', url: 'https://source.48.cn/b.jpg' },
+  };
+  assert.equal(messageText(imgMsg), '', 'chat bubble skips redundant [图片消息]');
+  assert.equal(messagePreviewText(imgMsg), '[图片消息]', 'room list keeps [图片消息]');
+  assert.equal(messagePreviewText(audioMsg), '[语音消息]');
+  assert.equal(messagePreviewText(videoMsg), '[视频消息]');
+  assert.equal(messagePreviewText(captionedImg), '早安图');
+  assert.equal(messagePreviewText(httpDel), '', 'deleted control msg stays empty in preview');
+}
+
+console.log('房间 REPLY / GIFTREPLY 与 DELETE 控制消息过滤测试通过');

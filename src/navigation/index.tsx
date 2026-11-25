@@ -1,6 +1,11 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BlurTargetProvider, BlurTargetSurface } from '../components/BlurTarget';
-import { BottomDockHost, TopDockHost, setBottomDockState } from '../components/DockPortal';
+import {
+  BottomDockHost,
+  TopDockHost,
+  setBottomDockState,
+  useBottomDockVisible,
+} from '../components/DockPortal';
 import {
   NavigationContainer,
   DefaultTheme,
@@ -24,7 +29,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useSettingsStore, useUiStore } from '../store';
+import { useSettingsStore, useUiStore, useUpdateStore } from '../store';
+import { IS_PLUS_BUILD } from '../constants/channel';
 import { setPipEnabled, listenPipToggle, listenPipDenied } from '../utils/pip';
 import { Palettes } from '../theme/colors';
 import { fixDataUriMime } from '../utils/dataUri';
@@ -36,8 +42,12 @@ import { RootStackParamList, TabParamList } from './types';
 import { MCI } from '../components/AppTabBar';
 import { AppDialogHost } from '../components/AppDialog';
 import { MiniPlayer } from '../components/MiniPlayer';
+import MiniPlayerBar from '../components/MiniPlayerBar';
+import FullScreenPlayer from '../components/FullScreenPlayer';
 import { useMiniPlayerStore } from '../store/miniPlayerStore';
+import { useMusicPlayerStore } from '../store/musicPlayerStore';
 import { usePlayerStore } from '../player/store/playerStore';
+import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import HomeScreen from '../screens/HomeScreen';
 import MediaScreen from '../screens/MediaScreen';
 import FollowedRoomsScreen from '../screens/FollowedRoomsScreen';
@@ -63,11 +73,18 @@ import RoomAlbumScreen from '../screens/RoomAlbumScreen';
 import InvoiceScreen from '../screens/InvoiceScreen';
 import AppToast from '../components/AppToast';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { NetworkImage } from '../components/NetworkImage';
 import { ui } from '../theme/ui';
 import { useResolvedTheme } from '../hooks/useAppTheme';
 import { useI18n } from '../i18n';
 import { shouldHideTabBar } from './tabBarVisibility';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import {
+  getActiveRouteName,
+  notifyTransitionStart,
+  setActiveRouteName,
+  useActiveRouteName,
+} from '../services/perfScheduler';
 
 const STACK_OPEN_SPEC = {
   animation: 'timing' as const,
@@ -245,6 +262,7 @@ function MainTabBar({
   jumpTo,
 }: BottomTabBarProps & { hidden: boolean; jumpTo?: (key: string) => void }) {
   const { t } = useI18n();
+  const hasUpdate = useUpdateStore((s) => s.hasUpdate);
   const stateRef = useRef(state);
   stateRef.current = state;
   const descriptorsRef = useRef(descriptors);
@@ -267,9 +285,10 @@ function MainTabBar({
           key: route.name,
           icon: fallback.icon,
           label: fallback.label,
+          badgeDot: route.name === 'Settings' && hasUpdate && !IS_PLUS_BUILD,
         };
       }),
-    [state.routes, t],
+    [hasUpdate, state.routes, t],
   );
 
   const handleSelect = useCallback(
@@ -284,6 +303,7 @@ function MainTabBar({
         canPreventDefault: true,
       });
       if (curState.index !== index && !event.defaultPrevented) {
+        notifyTransitionStart('tab', 340);
         if (jumpToRef.current) jumpToRef.current(route.key);
         else navigation.navigate(route.name);
       }
@@ -407,6 +427,91 @@ function PipToggleBridge() {
   return null;
 }
 
+const HIDDEN_MINI_ROUTES = new Set([
+  'RoomRadioScreen',
+  'OpenLiveScreen',
+  'OnMicScreen',
+  'BilibiliLiveScreen',
+  'PrivateMessagesScreen',
+  'LoginScreen',
+  'RechargeScreen',
+]);
+
+const GlobalMusicOverlay = React.memo(function GlobalMusicOverlay() {
+  const activeRouteName = useActiveRouteName();
+  const bottomDockVisible = useBottomDockVisible();
+  const insets = useSafeAreaInsets();
+  const hasTrack = useMusicPlayerStore((s) => s.queue.length > 0 && s.currentIndex >= 0);
+  const isActive = useMusicPlayerStore((s) => s.playbackState !== 'idle');
+  const miniBarDismissed = useMusicPlayerStore((s) => s.miniBarDismissed);
+  const sessionActivated = useMusicPlayerStore((s) => s.sessionActivated);
+  const fullScreenOpen = useMusicPlayerStore((s) => s.fullScreenOpen);
+  const fullScreenInitialSheet = useMusicPlayerStore((s) => s.fullScreenInitialSheet);
+  const openFullScreen = useMusicPlayerStore((s) => s.openFullScreen);
+  const closeFullScreen = useMusicPlayerStore((s) => s.closeFullScreen);
+
+  const homeModulesHidden = useSettingsStore((s) => s.settings.home_modules_hidden);
+  const miniBarEnabled = useSettingsStore((s) => s.settings.yaya_music_minibar_enabled !== false);
+  const homeShowsResume = !(homeModulesHidden || []).includes('resume');
+  const onHome = activeRouteName === 'Home';
+  const onMusicScreen = activeRouteName === 'MusicLibraryScreen';
+
+  const hiddenByRoute = useUiStore((s) => s.tabBarHiddenByRoute);
+  const videoMiniVisible = useMiniPlayerStore((s) => s.visible);
+  const videoBusy = usePlayerStore((s) =>
+    Boolean(
+      s.source &&
+      s.state !== 'idle' &&
+      (s.fullscreen || s.state === 'playing' || s.state === 'loading'),
+    ),
+  );
+  const [kbVisible, setKbVisible] = useState(false);
+
+  useEffect(() => {
+    const s1 = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
+    const s2 = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
+    return () => {
+      s1.remove();
+      s2.remove();
+    };
+  }, []);
+
+  const hideMini =
+    !miniBarEnabled ||
+    !hasTrack ||
+    !isActive ||
+    miniBarDismissed ||
+    fullScreenOpen ||
+    videoMiniVisible ||
+    videoBusy ||
+    kbVisible ||
+    HIDDEN_MINI_ROUTES.has(activeRouteName) ||
+    (onHome && homeShowsResume) ||
+    (!onMusicScreen && !sessionActivated) ||
+    (activeRouteName === 'Rooms' && !!hiddenByRoute.Rooms) ||
+    (activeRouteName === 'Media' && !!hiddenByRoute.Media);
+
+  const bottomOffset = bottomDockVisible
+    ? 88
+    : Math.max(12, insets.bottom > 0 ? Math.min(insets.bottom, 28) + 6 : 12);
+
+  return (
+    <>
+      {!hideMini ? (
+        <MiniPlayerBar
+          bottomOffset={bottomOffset}
+          onOpenFullScreen={() => openFullScreen('none')}
+        />
+      ) : null}
+      <FullScreenPlayer
+        visible={fullScreenOpen}
+        initialSheet={fullScreenInitialSheet}
+        onClose={closeFullScreen}
+      />
+    </>
+  );
+});
+
 export default function AppNavigator() {
   const navRef = useNavigationContainerRef();
 
@@ -435,11 +540,17 @@ export default function AppNavigator() {
     theme === 'dark'
       ? require('../../assets/defaults/bg-dark.jpg')
       : require('../../assets/defaults/bg-light.jpg');
-  const bgSource = hasBackground ? { uri: customBg } : defaultBg;
-  const themed = {
-    ...navTheme,
-    colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' },
-  };
+  const bgSource = useMemo(
+    () => (hasBackground ? { uri: customBg } : defaultBg),
+    [hasBackground, customBg, defaultBg],
+  );
+  const themed = useMemo(
+    () => ({
+      ...navTheme,
+      colors: { ...navTheme.colors, background: 'transparent', card: 'transparent' },
+    }),
+    [navTheme],
+  );
 
   const bgScrim = theme === 'dark' ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.34)';
 
@@ -466,18 +577,33 @@ export default function AppNavigator() {
         <NavigationContainer
           ref={navRef}
           theme={themed}
+          onReady={() => {
+            try {
+              const name = navRef.getCurrentRoute()?.name;
+              if (name) setActiveRouteName(name);
+            } catch {}
+          }}
           onStateChange={() => {
-            Keyboard.dismiss();
+            if (Keyboard.isVisible()) Keyboard.dismiss();
+            try {
+              const name = navRef.getCurrentRoute()?.name;
+              if (name && name !== getActiveRouteName()) {
+                notifyTransitionStart('route', 300);
+                setActiveRouteName(name);
+              }
+            } catch {}
           }}
         >
           <>
             <BlurTargetSurface>
               {screenBackdrop?.uri ? (
                 <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-                  <ImageBackground
+                  <NetworkImage
                     source={{ uri: screenBackdrop.uri }}
                     resizeMode="cover"
                     style={StyleSheet.absoluteFill}
+                    fallback={false}
+                    fadeDuration={0}
                   />
                   <View
                     pointerEvents="none"
@@ -532,6 +658,7 @@ export default function AppNavigator() {
             </BlurTargetSurface>
             <TopDockHost />
             <BottomDockHost />
+            <GlobalMusicOverlay />
             <AppToast />
             <MiniPlayer />
             <PipToggleBridge />

@@ -330,13 +330,16 @@ export default function PhotosScreen() {
           onDownload={(activeUrl) => {
             const targetUrl = activeUrl || galleryEntries.urls[previewIndex] || '';
             if (!targetUrl) return;
-            void enqueueDownload({
+            return enqueueDownload({
               url: targetUrl,
               type: 'image',
               name: `photo-${Date.now()}.jpg`,
             })
-              .then(() => showToast(t('已加入下载管理')))
-              .catch((err) => showToast(errorMessage(err)));
+              .then(() => showToast(t('下载完成')))
+              .catch((err) => {
+                showToast(errorMessage(err));
+                throw err;
+              });
           }}
           onShare={(activeUrl) => {
             const targetUrl = activeUrl || galleryEntries.urls[previewIndex] || '';

@@ -3,6 +3,7 @@ import pocketApi from '../api/pocket48';
 import { useMemberStore, useSettingsStore } from '../store';
 import { isRoomMember } from '../utils/members';
 import { logInfo, logWarn } from '../utils/runtimeLog';
+import { cacheRoomMetasFromSeineDetail } from './roomMetaCache';
 
 const ROOM_MAP_KEY = 'yaya_member_room_map_v3';
 
@@ -170,13 +171,15 @@ export async function refreshActiveRoomMappings(): Promise<void> {
       try {
         const result = await pocketApi.getSeineServerDetail(Number(sid));
         if (useSettingsStore.getState().settings.p48Token !== token) return;
-        const parsed = parseSeineDetail(result?.content || result?.data || {});
+        const detailContent = result?.content || result?.data || {};
+        const parsed = parseSeineDetail(detailContent);
         if (
           !/^[1-9]\d*$/.test(parsed.channelId) ||
           (parsed.serverId && parsed.serverId !== sid) ||
           parsed.channelId === parsed.yklzId
         )
           throw new Error('房间映射无效');
+        cacheRoomMetasFromSeineDetail(detailContent);
         failures = 0;
         const previous = roomMap[String(member.id)];
         const entry: RoomMapEntry = {
@@ -278,6 +281,7 @@ export async function resolveMemberRooms(
       const content = res?.content || res?.data || {};
       const parsed = parseSeineDetail(content);
       if (parsed.channelId) {
+        cacheRoomMetasFromSeineDetail(content);
         channelId = channelId || parsed.channelId;
         if (!yklzId) yklzId = parsed.yklzId;
         if (!serverId) serverId = parsed.serverId || serverId;

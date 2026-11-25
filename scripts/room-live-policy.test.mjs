@@ -19,6 +19,8 @@ const {
   ROOM_LOAD_MORE_COOLDOWN_MS,
   ROOM_SEARCH_MIN_HITS,
   ROOM_SEARCH_BURST_PAGES,
+  ROOM_SEARCH_PAGE_DELAY_MS,
+  ROOM_SEARCH_MAX_CONSECUTIVE_ERRORS,
   splitByFreezeAnchor,
   computeHistoryCursorAdvance,
   shouldAutoLoadMoreOnScroll,
@@ -60,7 +62,9 @@ assert.deepEqual(
 
 assert.ok(ROOM_SEARCH_DEBOUNCE_MS >= 150 && ROOM_SEARCH_DEBOUNCE_MS <= 350);
 assert.ok(ROOM_LOAD_MORE_COOLDOWN_MS >= 150);
-assert.ok(ROOM_SEARCH_MIN_HITS >= 6 && ROOM_SEARCH_BURST_PAGES >= 3);
+assert.ok(ROOM_SEARCH_MIN_HITS >= 12 && ROOM_SEARCH_BURST_PAGES >= 60);
+assert.ok(ROOM_SEARCH_PAGE_DELAY_MS >= 40 && ROOM_SEARCH_PAGE_DELAY_MS <= 250);
+assert.ok(ROOM_SEARCH_MAX_CONSECUTIVE_ERRORS >= 1 && ROOM_SEARCH_MAX_CONSECUTIVE_ERRORS <= 4);
 
 // 历史翻页游标推进与防卡死死循环保护
 assert.deepEqual(
@@ -137,22 +141,22 @@ assert.equal(
   shouldSearchAutoContinue({
     query: '晚安',
     matchCount: 3,
-    targetMatchCount: 12,
-    pagesScannedInBurst: 2,
-    maxPagesPerBurst: 6,
+    targetMatchCount: 15,
+    pagesScannedInBurst: 10,
+    maxPagesPerBurst: 80,
     hasMore: true,
     nextTime: 12345,
   }),
   true,
-  '命中数不足且未超突发预算时继续搜索更早历史',
+  '命中数不足且未超深度扫描上限时持续搜索更早历史',
 );
 assert.equal(
   shouldSearchAutoContinue({
     query: '晚安',
-    matchCount: 12,
-    targetMatchCount: 12,
+    matchCount: 15,
+    targetMatchCount: 15,
     pagesScannedInBurst: 2,
-    maxPagesPerBurst: 6,
+    maxPagesPerBurst: 80,
     hasMore: true,
     nextTime: 12345,
   }),
@@ -161,16 +165,30 @@ assert.equal(
 );
 assert.equal(
   shouldSearchAutoContinue({
+    query: '晚安',
+    matchCount: 2,
+    targetMatchCount: 15,
+    pagesScannedInBurst: 5,
+    maxPagesPerBurst: 80,
+    hasMore: true,
+    nextTime: 12345,
+    pausedByUser: true,
+  }),
+  false,
+  '用户点击暂停后必须立刻停止自动深搜',
+);
+assert.equal(
+  shouldSearchAutoContinue({
     query: '不存在',
     matchCount: 0,
-    targetMatchCount: 12,
-    pagesScannedInBurst: 6,
-    maxPagesPerBurst: 6,
+    targetMatchCount: 15,
+    pagesScannedInBurst: 80,
+    maxPagesPerBurst: 80,
     hasMore: true,
     nextTime: 12345,
   }),
   false,
-  '达到单次扫描页上限时暂停，由用户手动点续查或上划继续',
+  '达到深度扫描上限时暂停，由用户手动点续查或上划继续',
 );
 
 console.log('房间持续刷新、历史翻页与搜索自动加载策略测试通过');

@@ -14,6 +14,8 @@ function isTitleLine(text: string, time: number): boolean {
 
 export function parseLrc(raw: string): LyricLine[] {
   if (!raw) return [];
+  const offsetMatch = raw.match(/\[offset\s*:\s*([+-]?\d+)\]/i);
+  const offsetSec = offsetMatch ? parseInt(offsetMatch[1], 10) / 1000 : 0;
   const lines: LyricLine[] = [];
   const timeTagRe = /\[(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)\]/g;
   for (const rawLine of raw.split(/\r?\n/)) {
@@ -22,7 +24,8 @@ export function parseLrc(raw: string): LyricLine[] {
     timeTagRe.lastIndex = 0;
     let tm: RegExpExecArray | null;
     while ((tm = timeTagRe.exec(rawLine)) !== null) {
-      times.push(parseInt(tm[1], 10) * 60 + parseFloat(tm[2]));
+      const parsed = parseInt(tm[1], 10) * 60 + parseFloat(tm[2]);
+      times.push(Math.max(0, Math.round((parsed + offsetSec) * 1000) / 1000));
       textStart = tm.index + tm[0].length;
     }
     if (!times.length) continue;
@@ -36,8 +39,20 @@ export function parseLrc(raw: string): LyricLine[] {
 }
 
 export function lyricIndexAt(lines: LyricLine[], posSec: number): number {
-  for (let i = lines.length - 1; i >= 0; i--) if (posSec >= lines[i].time) return i;
-  return -1;
+  if (!lines || lines.length === 0) return -1;
+  let lo = 0;
+  let hi = lines.length - 1;
+  let hit = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (lines[mid].time <= posSec) {
+      hit = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return hit;
 }
 
 export function lyricTimeForIndex(lines: LyricLine[], idx: number): number {

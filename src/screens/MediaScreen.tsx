@@ -39,7 +39,7 @@ import {
 } from '../components/FloatingTabHeader';
 import { VODItem, Member } from '../types';
 import { formatTimestamp, formatDuration } from '../utils/format';
-import { errorMessage, normalizeUrl, pickText, unwrapList } from '../utils/data';
+import { errorMessage, normalizeUrl, pickText } from '../utils/data';
 import { normalizeGiftList } from '../utils/giftList';
 import { thumbUrl } from '../utils/imageThumb';
 import { getResumePosition, saveResumePosition } from '../utils/resumePosition';
@@ -68,7 +68,14 @@ import {
 } from '../utils/danmaku';
 import { memberSearchText } from '../utils/members';
 import { EmptyState } from '../components/StateViews';
-import { readFollowedIdsCache, writeFollowedIdsCache } from '../services/followedIds';
+import {
+  fetchFollowedIdsShared,
+  fetchLiveListShared,
+  hydrateFollowedIdsShared,
+  mutateFollowedIdShared,
+  peekFollowedIdsShared,
+  subscribeFollowedIds,
+} from '../services/pocketSharedData';
 import { matchFollowedMember } from './followedRooms/roomDomain';
 import { LoginPrompt } from '../components/LoginPrompt';
 import { Button } from '../components/Button';
@@ -280,8 +287,10 @@ export default function MediaScreen() {
     top: { name: string; value: string }[];
   }>(null);
   const playRequestRef = useRef(0);
-  const hidePlayerEffects = usePlayerStore((s) => s.hideEffects || s.cleanScreen);
-  const cleanScreen = usePlayerStore((s) => s.cleanScreen);
+  const hidePlayerEffects = usePlayerStore((s) =>
+    playing ? s.hideEffects || s.cleanScreen : false,
+  );
+  const cleanScreen = usePlayerStore((s) => (playing ? s.cleanScreen : false));
 
   const liveBarrageId = playing?.isLive
     ? String(playing.item?.liveId || playing.item?.id || '')
@@ -586,7 +595,9 @@ export default function MediaScreen() {
 
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [followedIdsReady, setFollowedIdsReady] = useState(false);
-  const danmakuClock = usePlayerStore((s) => s.position);
+  const danmakuClock = usePlayerStore((s) =>
+    playing && !playing.isLive && showDanmaku ? s.position : 0,
+  );
 
   const [, setDuration] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -970,9 +981,12 @@ export default function MediaScreen() {
         let finalCursor = cursor;
 
         if (userId !== undefined && userId !== null && userId !== '' && Number(cursor) === 0) {
-          const probe = await pocketApi
-            .getLiveList({ next: 0, record: mode === 'vod', debug: true, size: 100 })
-            .catch(() => null);
+          const probe =
+            mode === 'live'
+              ? await fetchLiveListShared({ debug: true }).catch(() => null)
+              : await pocketApi
+                  .getLiveList({ next: 0, record: true, debug: true, size: 100 })
+                  .catch(() => null);
           if (probe) {
             const probeList = normalizeLiveList(probe);
             const probeNext =
@@ -981,13 +995,16 @@ export default function MediaScreen() {
             else if (probeNext) finalCursor = probeNext;
           }
         }
-        const res = await pocketApi.getLiveList({
-          next: finalCursor,
-          record: mode === 'vod',
-          debug: true,
-          userId,
-          size: 100,
-        });
+        const res =
+          mode === 'live' && Number(finalCursor) === 0 && !userId
+            ? await fetchLiveListShared({ force: !silent, debug: true })
+            : await pocketApi.getLiveList({
+                next: finalCursor,
+                record: mode === 'vod',
+                debug: true,
+                userId,
+                size: 100,
+              });
 
         const shellList = (res?.content ?? res?.data ?? res)?.liveList;
         if (!Array.isArray(shellList)) throw new Error('直播列表参数错误：缺少 liveList');
@@ -1139,10 +1156,9 @@ export default function MediaScreen() {
         return merged.sort((a: any, b: any) => startTimeOf(b) - startTimeOf(a) || 0);
       });
     try {
-      const idsRes = await pocketApi.getFollowedIds().catch(() => null);
-      const ids = idsRes
-        ? unwrapList(idsRes, ['content.data', 'content', 'data', 'list']).map(String)
-        : [];
+      const ids = await fetchFollowedIdsShared(useSettingsStore.getState().settings.p48Token).catch(
+        () => [] as string[],
+      );
 
       const userIds: string[] = [];
       const seen = new Set<string>();
@@ -1215,8 +1231,24 @@ export default function MediaScreen() {
 
   useEffect(() => {
     let alive = true;
+    const trimmedToken = String(token || '').trim();
+    setFollowedIds(peekFollowedIdsShared(trimmedToken));
+    const offSub = subscribeFollowedIds((ids, tk) => {
+      if (alive && tk === trimmedToken) {
+        setFollowedIds(ids);
+        setFollowedIdsReady(true);
+      }
+    });
 
-    void readFollowedIdsCache(token).then((cached) => {
+    if (!trimmedToken) {
+      setFollowedIdsReady(true);
+      return () => {
+        alive = false;
+        offSub();
+      };
+    }
+
+    void hydrateFollowedIdsShared(trimmedToken).then((cached) => {
       if (!alive || !cached.cached) return;
       setFollowedIds(new Set(cached.ids));
       setFollowedIdsReady(true);
@@ -1231,14 +1263,11 @@ export default function MediaScreen() {
     const load = () => {
       if (AppState.currentState !== 'active' || !navigation.isFocused()) return;
       lastFollowedFetchAtRef.current = Date.now();
-      pocketApi
-        .getFollowedIds()
-        .then((res) => {
+      fetchFollowedIdsShared(trimmedToken)
+        .then((ids) => {
           if (!alive) return;
-          const ids = unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String);
           setFollowedIds(new Set(ids));
           setFollowedIdsReady(true);
-          void writeFollowedIdsCache(token, ids);
         })
         .catch(() => {
           if (alive) setFollowedIdsReady(true);
@@ -1258,6 +1287,7 @@ export default function MediaScreen() {
     const offBlur = navigation.addListener('blur', cancelFollowDefer);
     return () => {
       alive = false;
+      offSub();
       cancelFollowDefer();
       offFocus();
       offBlur();
@@ -1265,7 +1295,10 @@ export default function MediaScreen() {
   }, [navigation, token]);
 
   useEffect(() => {
-    setFollowedIdsReady(false);
+    followLoadingRef.current = false;
+    setFollowFetching(false);
+    setFollowedIds(peekFollowedIdsShared(token));
+    setFollowedIdsReady(!String(token || '').trim());
   }, [token]);
 
   useEffect(() => {
@@ -2351,13 +2384,7 @@ export default function MediaScreen() {
             });
           }}
           onFollowChanged={(id, following) => {
-            setFollowedIds((prev) => {
-              const next = new Set(prev);
-              if (following) next.add(id);
-              else next.delete(id);
-              void writeFollowedIdsCache(token, Array.from(next));
-              return next;
-            });
+            mutateFollowedIdShared(token, id, following);
           }}
         />
 

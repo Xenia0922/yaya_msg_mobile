@@ -1,4 +1,10 @@
-import { messagePayload, normalizeUrl, parseMaybeJson, pickText } from '../../utils/data';
+import {
+  isHiddenControlMessage,
+  messagePayload,
+  normalizeUrl,
+  parseMaybeJson,
+  pickText,
+} from '../../utils/data';
 import { toMs } from '../../utils/format';
 import { t } from '../../i18n';
 import { Member, RoomMessage, RoomMessageWire, WireRecord } from '../../types';
@@ -211,6 +217,7 @@ export function qchatToRoomMessage(msg: RoomLiveMessage): RoomMessageWire {
   return {
     uuid: msg.uuid,
     msgId: msg.uuid,
+    msgIdClient: msg.uuid,
     msgTime: msg.time,
     time: msg.time,
     msgType: msg.messageType,
@@ -248,13 +255,16 @@ export function findLastMessage(
   const ykid = String(member.yklzId || '');
 
   if (bigId) {
-    const exact = messages.find((msg) => String(msg.channelId || '') === bigId);
+    const exact = messages.find(
+      (msg) => String(msg.channelId || '') === bigId && !isHiddenControlMessage(msg),
+    );
     if (exact) return exact;
   }
 
   return (
     messages.find(
       (msg) =>
+        !isHiddenControlMessage(msg) &&
         String(msg.userId || msg.ownerId || '') === String(member.id || '') &&
         (!ykid || ykid === '0' || String(msg.channelId || '') !== ykid),
     ) || null
@@ -268,7 +278,10 @@ export function findSmallLastMessage(
   if (!member) return null;
   const ykid = String(member.yklzId || '');
   if (!ykid || ykid === '0' || ykid === 'undefined') return null;
-  return messages.find((msg) => String(msg.channelId || '') === ykid) || null;
+  return (
+    messages.find((msg) => String(msg.channelId || '') === ykid && !isHiddenControlMessage(msg)) ||
+    null
+  );
 }
 
 export function roomChannelId(member: Member, mode: RoomMode) {

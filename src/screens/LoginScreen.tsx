@@ -19,7 +19,7 @@ import {
   switchSavedAccount,
   type SavedAccount,
 } from '../services/accountVault';
-import { resetNimSession } from '../services/pocketNim/session';
+import { resetAccountSession } from '../services/sessionReset';
 import pocketApi, { isPocketAuthError } from '../api/pocket48';
 import bilibiliApi from '../api/bilibili';
 import { errorMessage, normalizeUrl, pickText } from '../utils/data';
@@ -423,11 +423,13 @@ export default function LoginScreen() {
   const savePocketToken = async (token: string, message: string, deviceId = '') => {
     const clean = normalizePocketToken(token) || token.trim();
     const cleanDeviceId = normalizePocketDeviceId(deviceId);
+    const prevToken = normalizePocketToken(useSettingsStore.getState().settings.p48Token);
     try {
+      if (prevToken !== clean) {
+        resetAccountSession('切换/保存口袋账号');
+      }
       setSettings({ p48Token: clean, p48DeviceId: cleanDeviceId });
       await saveSettings({ p48Token: clean, p48DeviceId: cleanDeviceId });
-
-      resetNimSession('切换/保存口袋账号');
 
       void saveCurrentAccount()
         .then(setSavedAccounts)

@@ -4,8 +4,10 @@ import { fetchWithTimeout } from '../utils/network';
 
 const R2_MUSIC_URL = 'https://gnz.hk/api/r2-music?metadata_v=3';
 
-const CACHE_KEY = 'yaya_r2_music_cache_v2';
-const CACHE_TTL = 24 * 60 * 60 * 1000;
+export const R2_MUSIC_CACHE_KEY = 'yaya_r2_music_cache_v2';
+export const R2_MUSIC_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+export const R2_MANUAL_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+export const R2_REFRESH_RETRY_MIN_MS = 6 * 60 * 60 * 1000;
 
 export interface R2MusicTrack {
   id: string;
@@ -82,21 +84,65 @@ export function normalizeR2Tracks(tracks: R2MusicTrack[]): any[] {
 }
 
 let inflight: Promise<any[]> | null = null;
+let memoryCache: any[] | null = null;
+let memoryAt = 0;
 
 let refreshing = false;
 
 let lastRefreshAttempt = 0;
 
-const REFRESH_RETRY_MIN_MS = 10 * 60 * 1000;
+const updateListeners = new Set<(list: any[]) => void>();
 
-async function readR2Cache(): Promise<any[] | null> {
+function notifyR2MusicUpdated(list: any[]): void {
+  for (const listener of updateListeners) {
+    try {
+      listener(list);
+    } catch {}
+  }
+}
+
+export function subscribeR2MusicUpdate(listener: (list: any[]) => void): () => void {
+  updateListeners.add(listener);
+  return () => {
+    updateListeners.delete(listener);
+  };
+}
+
+export function getR2MemorySnapshot(): { list: any[] | null; updatedAt: number } {
+  return { list: memoryCache, updatedAt: memoryAt };
+}
+
+export function resetR2MusicCacheForTest(): void {
+  inflight = null;
+  memoryCache = null;
+  memoryAt = 0;
+  refreshing = false;
+  lastRefreshAttempt = 0;
+}
+
+async function readR2Cache(): Promise<{ list: any[]; t: number } | null> {
   try {
-    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    const raw = await AsyncStorage.getItem(R2_MUSIC_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.list) && parsed.list.length) return parsed.list;
+      if (parsed && Array.isArray(parsed.list) && parsed.list.length) {
+        return { list: parsed.list, t: Number(parsed.t) || 0 };
+      }
     }
   } catch {}
+  return null;
+}
+
+export async function hydrateR2MusicFromCache(): Promise<any[] | null> {
+  if (memoryCache && memoryCache.length) return memoryCache;
+  const cached = await readR2Cache();
+  if (cached && cached.list.length) {
+    if (!memoryCache || !memoryCache.length) {
+      memoryCache = cached.list;
+      memoryAt = cached.t;
+    }
+    return memoryCache;
+  }
   return null;
 }
 
@@ -107,17 +153,28 @@ async function fetchR2MusicAndCache(): Promise<any[]> {
     const tracks = await fetchR2MusicRaw();
     const normalized = normalizeR2Tracks(tracks);
     if (!normalized.length) throw new Error('R2 音乐列表为空');
+    memoryCache = normalized;
+    memoryAt = Date.now();
     try {
-      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), list: normalized }));
+      await AsyncStorage.setItem(
+        R2_MUSIC_CACHE_KEY,
+        JSON.stringify({ t: memoryAt, list: normalized }),
+      );
     } catch {}
+    notifyR2MusicUpdated(normalized);
     return normalized;
   })();
 
   try {
     return await inflight;
   } catch (error) {
+    if (memoryCache && memoryCache.length) return memoryCache;
     const cached = await readR2Cache();
-    if (cached && cached.length) return cached;
+    if (cached && cached.list.length) {
+      memoryCache = cached.list;
+      memoryAt = cached.t;
+      return cached.list;
+    }
     throw error;
   } finally {
     inflight = null;
@@ -126,7 +183,7 @@ async function fetchR2MusicAndCache(): Promise<any[]> {
 
 function refreshR2MusicInBackground(): void {
   if (refreshing || inflight) return;
-  if (Date.now() - lastRefreshAttempt < REFRESH_RETRY_MIN_MS) return;
+  if (Date.now() - lastRefreshAttempt < R2_REFRESH_RETRY_MIN_MS) return;
   lastRefreshAttempt = Date.now();
   refreshing = true;
   fetchR2MusicAndCache()
@@ -138,15 +195,32 @@ function refreshR2MusicInBackground(): void {
 
 export async function loadR2Music(force = false): Promise<any[]> {
   if (!force) {
-    const raw = await AsyncStorage.getItem(CACHE_KEY).catch(() => null);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.list) && parsed.list.length) {
-          if (parsed.t && Date.now() - parsed.t >= CACHE_TTL) refreshR2MusicInBackground();
-          return parsed.list;
-        }
-      } catch {}
+    if (memoryCache && memoryCache.length) {
+      if (memoryAt <= 0 || Date.now() - memoryAt >= R2_MUSIC_CACHE_TTL_MS) {
+        refreshR2MusicInBackground();
+      }
+      return memoryCache;
+    }
+    const cached = await readR2Cache();
+    if (cached && cached.list.length) {
+      memoryCache = cached.list;
+      memoryAt = cached.t;
+      if (cached.t <= 0 || Date.now() - cached.t >= R2_MUSIC_CACHE_TTL_MS) {
+        refreshR2MusicInBackground();
+      }
+      return cached.list;
+    }
+  } else {
+    if (!memoryCache || !memoryCache.length) {
+      await hydrateR2MusicFromCache();
+    }
+    if (
+      memoryCache &&
+      memoryCache.length &&
+      memoryAt > 0 &&
+      Date.now() - memoryAt < R2_MANUAL_REFRESH_COOLDOWN_MS
+    ) {
+      return memoryCache;
     }
   }
   return fetchR2MusicAndCache();
@@ -154,7 +228,7 @@ export async function loadR2Music(force = false): Promise<any[]> {
 
 export async function prefetchR2Music(): Promise<void> {
   try {
-    await loadR2Music(false);
+    await hydrateR2MusicFromCache();
   } catch {}
 }
 

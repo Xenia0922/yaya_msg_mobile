@@ -3,6 +3,7 @@ import { showDialog } from '../components/AppDialog';
 import { LinearGradient } from 'expo-linear-gradient';
 import { toMs } from '../utils/format';
 import {
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -29,8 +30,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePocketAccountSummary } from '../hooks/usePocketAccountSummary';
 import { ScalePressable } from '../components/Motion';
 import RuntimeLogViewer from '../components/RuntimeLogViewer';
+import UpdateInstaller from '../components/UpdateInstaller';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { APP_VERSION } from '../constants';
+import { IS_PLUS_BUILD } from '../constants/channel';
+import { isApkUpdaterAvailable } from '../native/ApkUpdater';
 import { getMemberDataMeta, MemberDataMeta, updateMemberData } from '../services/memberData';
 import { fontFamily, usePalette, getPageBackground } from '../theme';
 import { useI18n, LANGUAGE_OPTIONS } from '../i18n';
@@ -79,6 +83,7 @@ function Row({
   icon,
   title,
   value,
+  badge,
   onPress,
   danger,
   withChevron = true,
@@ -87,6 +92,7 @@ function Row({
   icon: string;
   title: string;
   value?: string;
+  badge?: string;
   onPress?: () => void;
   danger?: boolean;
   withChevron?: boolean;
@@ -123,7 +129,14 @@ function Row({
       >
         {title}
       </Text>
-      {value ? (
+      {badge ? (
+        <View style={styles.rowBadgePill}>
+          <View style={styles.rowBadgeDot} />
+          <Text style={styles.rowBadgeText} numberOfLines={1}>
+            {badge}
+          </Text>
+        </View>
+      ) : value ? (
         wrapValue ? (
           <Text style={[styles.rowValue, styles.rowValueWrap, { color: palette.labelTertiary }]}>
             {value}
@@ -194,6 +207,11 @@ export default function SettingsScreen() {
   const memberCount = useMemberStore((state) => state.members.length);
   const { t } = useI18n();
   const hasUpdate = useUpdateStore((s) => s.hasUpdate);
+  const latestVersion = useUpdateStore((s) => s.latestVersion);
+  const latestUrl = useUpdateStore((s) => s.latestUrl);
+  const releaseNotes = useUpdateStore((s) => s.releaseNotes);
+  const showUpdateBadge = hasUpdate && !IS_PLUS_BUILD;
+  const [updateVisible, setUpdateVisible] = useState(false);
   const [meta, setMeta] = useState<MemberDataMeta | null>(null);
   const [logVisible, setLogVisible] = useState(false);
   const [memberSyncing, setMemberSyncing] = useState(false);
@@ -325,6 +343,77 @@ export default function SettingsScreen() {
           contentContainerStyle={[styles.content, { paddingTop: headerOffset }]}
           showsVerticalScrollIndicator={false}
         >
+          {showUpdateBadge ? (
+            <GlassSurface
+              radius={22}
+              role="card"
+              frostedOnly
+              style={[styles.updateBannerCard, { borderColor: palette.tintSoft }]}
+            >
+              <ScalePressable
+                style={styles.updateBannerTap}
+                pressedScale={0.98}
+                activeOpacity={0.9}
+                onPress={() => {
+                  if (isApkUpdaterAvailable) {
+                    setUpdateVisible(true);
+                  } else if (latestUrl) {
+                    Linking.openURL(latestUrl).catch(() => {});
+                  } else {
+                    navigation.navigate('AboutScreen' as never);
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  latestVersion ? t('发现新版本 {v}', { v: latestVersion }) : t('有新版本')
+                }
+              >
+                <LinearGradient
+                  colors={[palette.tintSoft, 'transparent']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                  pointerEvents="none"
+                />
+                <View style={[styles.updateBannerIcon, { backgroundColor: palette.tintSoft }]}>
+                  <MaterialCommunityIcons
+                    name="cellphone-arrow-down"
+                    size={20}
+                    color={palette.tint}
+                  />
+                  <View
+                    style={[
+                      styles.updateBannerDot,
+                      { borderColor: palette.name === 'dark' ? '#1E1E24' : '#FFFFFF' },
+                    ]}
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={[styles.updateBannerTitle, { color: palette.label }]}
+                    numberOfLines={1}
+                  >
+                    {latestVersion ? t('发现新版本 {v}', { v: latestVersion }) : t('有新版本')}
+                  </Text>
+                  <Text
+                    style={[styles.updateBannerSub, { color: palette.labelSecondary }]}
+                    numberOfLines={1}
+                  >
+                    {t('当前 v{v} · 点击查看并更新', { v: APP_VERSION })}
+                  </Text>
+                </View>
+                <View style={[styles.updateBannerPill, { backgroundColor: palette.tint }]}>
+                  <Text
+                    style={[styles.updateBannerPillText, { color: palette.onTint }]}
+                    numberOfLines={1}
+                  >
+                    {t('立即更新')}
+                  </Text>
+                </View>
+              </ScalePressable>
+            </GlassSurface>
+          ) : null}
+
           <Section title={t('账号与资料')} icon="account-circle-outline">
             <TouchableOpacity
               style={styles.accountCard}
@@ -481,7 +570,7 @@ export default function SettingsScreen() {
             <Row
               icon="information-outline"
               title={t('关于软件')}
-              value={hasUpdate ? t('有新版本') : undefined}
+              badge={showUpdateBadge ? latestVersion || t('有新版本') : undefined}
               onPress={() => navigation.navigate('AboutScreen' as never)}
             />
             <View style={[styles.divider, { backgroundColor: palette.innerStroke }]} />
@@ -567,6 +656,13 @@ export default function SettingsScreen() {
       </Modal>
 
       <RuntimeLogViewer visible={logVisible} onClose={() => setLogVisible(false)} />
+
+      <UpdateInstaller
+        visible={updateVisible}
+        version={latestVersion}
+        notes={releaseNotes}
+        onClose={() => setUpdateVisible(false)}
+      />
     </>
   );
 }
@@ -644,6 +740,76 @@ const styles = StyleSheet.create({
     marginRight: 6,
     maxWidth: '48%',
     textAlign: 'right',
+  },
+  rowBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,59,48,0.12)',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+    marginRight: 6,
+  },
+  rowBadgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#FF3B30',
+  },
+  rowBadgeText: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+    color: '#FF3B30',
+  },
+  updateBannerCard: {
+    marginTop: 12,
+    overflow: 'hidden',
+  },
+  updateBannerTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
+    overflow: 'hidden',
+  },
+  updateBannerIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  updateBannerDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#FF3B30',
+    borderWidth: 1.5,
+  },
+  updateBannerTitle: {
+    fontSize: 15,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
+  },
+  updateBannerSub: {
+    fontSize: 12,
+    fontFamily: fontFamily.system,
+    marginTop: 2,
+  },
+  updateBannerPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  updateBannerPillText: {
+    fontSize: 12.5,
+    fontFamily: fontFamily.system,
+    fontWeight: '700',
   },
   rowLabel: { fontSize: 12, fontFamily: fontFamily.system, lineHeight: 18, marginBottom: 6 },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 54 },

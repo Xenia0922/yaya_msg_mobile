@@ -1,6 +1,14 @@
 import { Member, MemberSummary, RoomMessageWire, WireRecord } from '../../types';
 import { t } from '../../i18n';
-import { normalizeUrl, unwrapList, parseMaybeJson, pickText, messageText } from '../../utils/data';
+import {
+  extractDeletedMessageIds,
+  isHiddenControlMessage,
+  normalizeUrl,
+  unwrapList,
+  parseMaybeJson,
+  pickText,
+  messageText,
+} from '../../utils/data';
 import { type MediaType } from './mediaUtils';
 import {
   messageBody,
@@ -206,6 +214,30 @@ export function userCardFromUserRes(res: unknown) {
   };
 }
 
+export function collectRoomMessageIds(item: RoomMessageWire): string[] {
+  if (!item || typeof item !== 'object') return [];
+  const rawIds = [
+    item.msgIdClient,
+    item.clientMsgId,
+    item.uuid,
+    item.msgUuid,
+    item.msgId,
+    item.messageId,
+    item.id,
+    item.msgIdServer,
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of rawIds) {
+    if (raw === undefined || raw === null) continue;
+    const val = String(raw).trim();
+    if (!val || seen.has(val)) continue;
+    seen.add(val);
+    out.push(val);
+  }
+  return out;
+}
+
 export function messageKey(item: RoomMessageWire) {
   if (!item) return `empty-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   if (typeof item === 'object') {
@@ -213,7 +245,14 @@ export function messageKey(item: RoomMessageWire) {
     if (cached) return cached;
   }
   const direct =
-    item.id || item.msgId || item.messageId || item.clientMsgId || item.uuid || item.msgUuid;
+    item.id ||
+    item.msgId ||
+    item.messageId ||
+    item.msgIdClient ||
+    item.clientMsgId ||
+    item.uuid ||
+    item.msgUuid ||
+    item.msgIdServer;
   let computed: string;
   if (direct) {
     computed = String(direct);
@@ -236,6 +275,45 @@ export function messageKey(item: RoomMessageWire) {
   return computed;
 }
 
+export function matchesDeletedMessageId(
+  item: RoomMessageWire,
+  deletedIds: ReadonlySet<string>,
+): boolean {
+  if (!item || !deletedIds.size) return false;
+  if (deletedIds.has(messageKey(item))) return true;
+  return collectRoomMessageIds(item).some((id) => deletedIds.has(id));
+}
+
+export function filterVisibleRoomMessages<T extends RoomMessageWire>(
+  list: T[],
+  externalDeletedIds?: ReadonlySet<string>,
+): { visible: T[]; deletedIdsFound: string[] } {
+  const deletedIdsFound: string[] = [];
+  const foundSet = new Set<string>();
+  const combined = new Set<string>(externalDeletedIds ? Array.from(externalDeletedIds) : []);
+  const items = Array.isArray(list) ? list : [];
+
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    if (!item) continue;
+    const extracted = extractDeletedMessageIds(item);
+    for (let j = 0; j < extracted.length; j += 1) {
+      const id = extracted[j];
+      combined.add(id);
+      if (!foundSet.has(id)) {
+        foundSet.add(id);
+        deletedIdsFound.push(id);
+      }
+    }
+  }
+
+  const visible = items.filter(
+    (item): item is T =>
+      Boolean(item) && !isHiddenControlMessage(item) && !matchesDeletedMessageId(item, combined),
+  );
+  return { visible, deletedIdsFound };
+}
+
 export function getRoomMessageSearchHaystack(item: RoomMessageWire, room: Member): string {
   if (!item || typeof item !== 'object') return '';
   const hit = messageSearchHaystackCache.get(item);
@@ -253,22 +331,47 @@ export function buildRoomMetaSearchHaystack(room?: Member | null): string {
 }
 
 export function mergeMessages<T extends RoomMessageWire>(prev: T[], next: RoomMessageWire[]): T[] {
-  const cleanPrev = prev.filter(Boolean);
-  if (cleanPrev.length !== prev.length) diagnoseUndefined(prev, 'MERGE_PREV');
-  const cleanNext = Array.isArray(next) ? next.filter(Boolean) : [];
-  if (cleanNext.length === 0 && cleanPrev.length === prev.length) return prev;
-  const seen = new Set(cleanPrev.map((item) => messageKey(item)));
+  const cleanPrevRaw = prev.filter(Boolean);
+  if (cleanPrevRaw.length !== prev.length) diagnoseUndefined(prev, 'MERGE_PREV');
+  const cleanNextRaw = Array.isArray(next) ? next.filter(Boolean) : [];
+
+  const deletedIds = new Set<string>();
+  for (let i = 0; i < cleanPrevRaw.length; i += 1) {
+    extractDeletedMessageIds(cleanPrevRaw[i]).forEach((id) => deletedIds.add(id));
+  }
+  for (let i = 0; i < cleanNextRaw.length; i += 1) {
+    extractDeletedMessageIds(cleanNextRaw[i]).forEach((id) => deletedIds.add(id));
+  }
+
+  const cleanPrev = cleanPrevRaw.filter(
+    (item) => !isHiddenControlMessage(item) && !matchesDeletedMessageId(item, deletedIds),
+  );
+  const removedFromPrev = cleanPrev.length !== prev.length;
+
+  const cleanNext = cleanNextRaw.filter(
+    (item) => !isHiddenControlMessage(item) && !matchesDeletedMessageId(item, deletedIds),
+  );
+  if (cleanNext.length === 0 && !removedFromPrev) return prev;
+
+  const seen = new Set<string>();
+  const registerSeen = (item: RoomMessageWire) => {
+    seen.add(messageKey(item));
+    collectRoomMessageIds(item).forEach((id) => seen.add(id));
+  };
+  const hasSeen = (item: RoomMessageWire) =>
+    seen.has(messageKey(item)) || collectRoomMessageIds(item).some((id) => seen.has(id));
+
+  cleanPrev.forEach(registerSeen);
   const merged = [...cleanPrev];
   let added = 0;
-  for (let i = 0; i < cleanNext.length; i++) {
+  for (let i = 0; i < cleanNext.length; i += 1) {
     const item = cleanNext[i];
-    const key = messageKey(item);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (hasSeen(item)) continue;
+    registerSeen(item);
     merged.push(item as T);
     added += 1;
   }
-  if (added === 0 && cleanPrev.length === prev.length) return prev;
+  if (added === 0 && !removedFromPrev) return prev;
   return sortMessagesNewestFirst(merged);
 }
 

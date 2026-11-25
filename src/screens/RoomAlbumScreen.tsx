@@ -486,9 +486,12 @@ export default function RoomAlbumScreen() {
         onDownload={(activeUrl) => {
           const u = activeUrl || previewUrl;
           if (!u) return;
-          void enqueueDownload({ url: u, type: 'image', name: `album-${Date.now()}.jpg` })
-            .then(() => showToast(t('已加入下载管理')))
-            .catch((err) => showToast(errorMessage(err)));
+          return enqueueDownload({ url: u, type: 'image', name: `album-${Date.now()}.jpg` })
+            .then(() => showToast(t('下载完成')))
+            .catch((err) => {
+              showToast(errorMessage(err));
+              throw err;
+            });
         }}
         onShare={(activeUrl) => {
           const u = activeUrl || previewUrl;

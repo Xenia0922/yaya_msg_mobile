@@ -892,14 +892,6 @@ export const styles = StyleSheet.create({
     marginLeft: 6,
     flexShrink: 1,
   },
-  hiddenAudioVideo: {
-    width: 1,
-    height: 1,
-    position: 'absolute',
-    top: -9999,
-    left: -9999,
-    opacity: 0,
-  },
   roomLiveEndedOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 40,

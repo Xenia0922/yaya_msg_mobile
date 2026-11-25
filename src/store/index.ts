@@ -43,16 +43,38 @@ interface MemberState {
   ) => void;
 }
 
+function applyMemberPatch<K extends keyof Member>(
+  member: Member,
+  patch: Partial<Pick<Member, K>>,
+): Member {
+  let changed = false;
+  const definedPatch: Partial<Pick<Member, K>> = {};
+  for (const key of Object.keys(patch) as K[]) {
+    const nextVal = patch[key];
+    if (nextVal !== undefined) {
+      definedPatch[key] = nextVal;
+      if (member[key] !== nextVal) changed = true;
+    }
+  }
+  return changed ? { ...member, ...definedPatch } : member;
+}
+
 export const useMemberStore = create<MemberState>((set) => ({
   members: [],
   membersLoaded: false,
   setMembers: (members) => set({ members, membersLoaded: true }),
   updateMemberRoomIds: (channelId, patch) =>
-    set((state) => ({
-      members: state.members.map((member) =>
-        String(member.channelId) === String(channelId) ? { ...member, ...patch } : member,
-      ),
-    })),
+    set((state) => {
+      const targetChannelId = String(channelId);
+      let changed = false;
+      const nextMembers = state.members.map((member) => {
+        if (String(member.channelId) !== targetChannelId) return member;
+        const updated = applyMemberPatch(member, patch);
+        if (updated !== member) changed = true;
+        return updated;
+      });
+      return changed ? { members: nextMembers } : state;
+    }),
   batchUpdateSmallRooms: (updates) => {
     if (!updates.length) return;
     const byChannel = new Map<string, string>();
@@ -60,39 +82,74 @@ export const useMemberStore = create<MemberState>((set) => ({
       if (item.channelId && item.yklzId) byChannel.set(String(item.channelId), item.yklzId);
     }
     if (!byChannel.size) return;
-    set((state) => ({
-      members: state.members.map((member) => {
+    set((state) => {
+      let changed = false;
+      const nextMembers = state.members.map((member) => {
         const yklzId = byChannel.get(String(member.channelId));
-        return yklzId && member.yklzId !== yklzId ? { ...member, yklzId } : member;
-      }),
-    }));
+        if (yklzId && member.yklzId !== yklzId) {
+          changed = true;
+          return { ...member, yklzId };
+        }
+        return member;
+      });
+      return changed ? { members: nextMembers } : state;
+    });
   },
   patchMemberByUserId: (memberId, patch) =>
-    set((state) => ({
-      members: state.members.map((member) =>
-        String(member.id) === String(memberId) ? { ...member, ...patch } : member,
-      ),
-    })),
+    set((state) => {
+      const targetMemberId = String(memberId);
+      let changed = false;
+      const nextMembers = state.members.map((member) => {
+        if (String(member.id) !== targetMemberId) return member;
+        const updated = applyMemberPatch(member, patch);
+        if (updated !== member) changed = true;
+        return updated;
+      });
+      return changed ? { members: nextMembers } : state;
+    }),
 }));
+
+export function toastDurationMs(message: string): number {
+  return Math.min(5000, Math.max(2200, 1500 + message.length * 28));
+}
+
+export function shouldRenderToast(params: {
+  message: string;
+  toastId: number;
+  passive: boolean;
+  mountedToastId: number;
+}): boolean {
+  return Boolean(params.message) && (!params.passive || params.toastId > params.mountedToastId);
+}
+
+let toastFailsafeTimer: ReturnType<typeof setTimeout> | null = null;
+function clearToastFailsafeTimer() {
+  if (toastFailsafeTimer) {
+    clearTimeout(toastFailsafeTimer);
+    toastFailsafeTimer = null;
+  }
+}
 
 interface UiState {
   tabBarHiddenByRoute: { Media: boolean; Rooms: boolean };
   toastMessage: string;
   toastTone: 'success' | 'error' | 'info' | null;
+  toastId: number;
 
   screenBackdrop: { uri: string; scrim: string } | null;
   pmUnread: number;
   setTabBarHidden: (hidden: boolean, route: 'Media' | 'Rooms') => void;
   showToast: (message: string, tone?: 'success' | 'error' | 'info') => void;
-  hideToast: () => void;
+  hideToast: (expectedId?: number) => void;
   setScreenBackdrop: (v: { uri: string; scrim: string } | null) => void;
   setPmUnread: (count: number) => void;
 }
 
-export const useUiStore = create<UiState>((set) => ({
+export const useUiStore = create<UiState>((set, get) => ({
   tabBarHiddenByRoute: { Media: false, Rooms: false },
   toastMessage: '',
   toastTone: null,
+  toastId: 0,
   screenBackdrop: null,
   pmUnread: 0,
   setTabBarHidden: (hidden, route) =>
@@ -101,8 +158,31 @@ export const useUiStore = create<UiState>((set) => ({
         ? state
         : { tabBarHiddenByRoute: { ...state.tabBarHiddenByRoute, [route]: hidden } },
     ),
-  showToast: (message, tone) => set({ toastMessage: message, toastTone: tone ?? null }),
-  hideToast: () => set({ toastMessage: '', toastTone: null }),
+  showToast: (message, tone) => {
+    clearToastFailsafeTimer();
+    const text = String(message || '').trim();
+    if (!text) {
+      set({ toastMessage: '', toastTone: null });
+      return;
+    }
+    const nextId = get().toastId + 1;
+    set({ toastMessage: text, toastTone: tone ?? null, toastId: nextId });
+    toastFailsafeTimer = setTimeout(
+      () => {
+        toastFailsafeTimer = null;
+        get().hideToast(nextId);
+      },
+      toastDurationMs(text) + 600,
+    );
+    if (typeof (toastFailsafeTimer as any)?.unref === 'function') {
+      (toastFailsafeTimer as any).unref();
+    }
+  },
+  hideToast: (expectedId) => {
+    if (expectedId !== undefined && get().toastId !== expectedId) return;
+    clearToastFailsafeTimer();
+    set({ toastMessage: '', toastTone: null });
+  },
   setScreenBackdrop: (v) =>
     set((state) => {
       const prev = state.screenBackdrop;

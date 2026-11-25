@@ -34,7 +34,11 @@ import { logInfo } from '../utils/runtimeLog';
 import { formatTimestamp, toMs } from '../utils/format';
 import { parseDurationSeconds } from '../utils/duration';
 import { enqueueDownload } from '../services/downloads';
-import { readFollowedIdsCache } from '../services/followedIds';
+import {
+  hydrateFollowedIdsShared,
+  peekFollowedIdsShared,
+  subscribeFollowedIds,
+} from '../services/pocketSharedData';
 import { isRoomMember } from '../utils/members';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { usePalette, radii, radiiAlias, fontFamily } from '../theme';
@@ -43,6 +47,7 @@ import { useI18n } from '../i18n';
 import { GlassSurface } from '../components/GlassSurface';
 import { SearchBar } from '../components/SearchBar';
 import { NetworkImage } from '../components/NetworkImage';
+import { VoiceMessageBar } from '../components/VoiceMessageBar';
 
 type FlipNavProp = StackNavigationProp<RootStackParamList, 'FlipScreen'>;
 type FlipRouteProp = RouteProp<RootStackParamList, 'FlipScreen'>;
@@ -304,19 +309,30 @@ export default function FlipScreen() {
   const [rankExpanded, setRankExpanded] = useState(false);
   const [memberSheetOpen, setMemberSheetOpen] = useState(false);
   const [memberSheetQuery, setMemberSheetQuery] = useState('');
-  const [followedIds, setFollowedIds] = useState<Set<string>>(() => new Set());
+  const [followedIds, setFollowedIds] = useState<Set<string>>(() =>
+    peekFollowedIdsShared(useSettingsStore.getState().settings.p48Token),
+  );
   const members = useMemberStore((state) => state.members);
   const p48Token = useSettingsStore((state) => state.settings.p48Token || '');
+  const prevTokenRef = useRef(p48Token);
   const insets = useSafeAreaInsets();
   const [playingAnswerUrl, setPlayingAnswerUrl] = useState('');
 
   useEffect(() => {
     let alive = true;
-    void readFollowedIdsCache(p48Token).then((cached) => {
-      if (alive && cached.cached) setFollowedIds(new Set(cached.ids));
+    const trimmed = String(p48Token || '').trim();
+    setFollowedIds(peekFollowedIdsShared(trimmed));
+    const offSub = subscribeFollowedIds((ids, tk) => {
+      if (alive && tk === trimmed) setFollowedIds(ids);
     });
+    if (trimmed) {
+      void hydrateFollowedIdsShared(trimmed).then((cached) => {
+        if (alive && cached.cached) setFollowedIds(new Set(cached.ids));
+      });
+    }
     return () => {
       alive = false;
+      offSub();
     };
   }, [p48Token]);
 
@@ -364,6 +380,25 @@ export default function FlipScreen() {
       return () => task.cancel();
     }, [loadFlips, mode]),
   );
+
+  useEffect(() => {
+    if (prevTokenRef.current === p48Token) return;
+    prevTokenRef.current = p48Token;
+    priceRequestRef.current += 1;
+    loadingRef.current = false;
+    pageRef.current = 1;
+    setLoading(false);
+    setFlips([]);
+    setHasMore(true);
+    setSelectedMember(null);
+    setPrices([]);
+    setAnswerType(null);
+    setBalance('');
+    setCost('');
+    setStatus('');
+    setStatusError(false);
+    setPlayingAnswerUrl('');
+  }, [p48Token]);
 
   useEffect(() => {
     if (mode !== 'send') return;
@@ -1371,14 +1406,59 @@ export default function FlipScreen() {
                   {t('问：{text}', { text: questionText(flip) || t('未返回问题内容') })}
                 </Text>
 
-                {answer ? (
+                {answerUrl && flipAnswerType === 2 ? (
+                  <View style={styles.voiceFlipWrap}>
+                    {answer &&
+                    answer !== t('语音回复') &&
+                    answer !== '语音回复' &&
+                    answer !== answerUrl ? (
+                      <Text style={[styles.voiceFlipNote, { color: palette.labelSecondary }]}>
+                        {answer}
+                      </Text>
+                    ) : null}
+                    <VoiceMessageBar
+                      url={answerUrl}
+                      duration={ansDur}
+                      fullWidth
+                      onFallbackPlay={() => {
+                        logFlipAnswer(flip);
+                        setPlayingAnswerUrl((prev) => (prev === answerUrl ? '' : answerUrl));
+                      }}
+                      trailingAction={
+                        <ScalePressable
+                          style={[styles.answerDlBtn, { backgroundColor: palette.fill2 }]}
+                          pressedScale={0.95}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          accessibilityLabel={t('下载')}
+                          onPress={() => {
+                            void enqueueDownload({
+                              url: answerUrl,
+                              type: 'voice',
+                              name: `${cardMemberName}-${t('语音翻牌')}-${formatTimestamp(flip.answerTime || flip.qtime || flip.createTime)}`,
+                            })
+                              .then(() => showToast(t('已加入下载管理')))
+                              .catch((e) =>
+                                showToast(t('下载失败：{msg}', { msg: errorMessage(e) })),
+                              );
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name="download-outline"
+                            size={16}
+                            color={palette.labelSecondary}
+                          />
+                        </ScalePressable>
+                      }
+                    />
+                  </View>
+                ) : answer ? (
                   <View style={[styles.answerBox, { backgroundColor: palette.fill3 }]}>
                     <View style={styles.answerRow}>
                       <Text style={[styles.cardA, { color: palette.labelSecondary }]}>
                         {t('答：{text}', { text: answer })}
                       </Text>
 
-                      {answerUrl && (flipAnswerType === 2 || flipAnswerType === 3) ? (
+                      {answerUrl && flipAnswerType === 3 ? (
                         <View style={styles.answerActions}>
                           <ScalePressable
                             style={[styles.answerPlayPill, { backgroundColor: palette.tintSoft }]}
@@ -1406,11 +1486,10 @@ export default function FlipScreen() {
                             pressedScale={0.95}
                             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                             onPress={() => {
-                              const isVoice = flipAnswerType === 2;
                               void enqueueDownload({
                                 url: answerUrl,
-                                type: isVoice ? 'voice' : 'video',
-                                name: `${cardMemberName}-${t(isVoice ? '语音翻牌' : '视频翻牌')}-${formatTimestamp(flip.answerTime || flip.qtime || flip.createTime)}`,
+                                type: 'video',
+                                name: `${cardMemberName}-${t('视频翻牌')}-${formatTimestamp(flip.answerTime || flip.qtime || flip.createTime)}`,
                               })
                                 .then(() => showToast(t('已加入下载管理')))
                                 .catch((e) =>
@@ -1910,12 +1989,14 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   answerDlBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  voiceFlipWrap: { gap: 6 },
+  voiceFlipNote: { fontSize: 13, lineHeight: 19 },
   answerMediaCard: { marginTop: 8 },
   cardPending: { fontSize: 13, fontFamily: fontFamily.system, fontWeight: '700' },
   cardMeta: { fontSize: 11, marginTop: 8 },

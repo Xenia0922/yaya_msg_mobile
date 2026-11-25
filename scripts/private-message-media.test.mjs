@@ -22,7 +22,7 @@ assert.equal(
   normalizePrivateMediaUrl('http://source.48.cn/a/b.jpg', 'source'),
   'https://source.48.cn/a/b.jpg',
 );
-// 相对路径：图片走 source，音视频走 mp4（与桌面版一致）
+// 相对路径：图片走 source，音视频走 mp4
 assert.equal(
   normalizePrivateMediaUrl('/filesystem/upload/x.jpg', 'source'),
   'https://source.48.cn/filesystem/upload/x.jpg',
@@ -37,7 +37,7 @@ assert.equal(
 );
 assert.equal(normalizePrivateMediaUrl('voice/a.mp3', 'mp4'), 'https://mp4.48.cn/voice/a.mp3');
 
-// imgUrl 是私信图片的实际字段名（桌面版优先读它）
+// imgUrl 是私信图片的实际字段名
 const message = {
   messageType: 'IMAGE',
   imgUrl: '/filesystem/upload/2026/11/03/abc.jpg',

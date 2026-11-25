@@ -34,6 +34,7 @@ const imports = {
   },
   '../utils/members': { isRoomMember: (m) => m.isInGroup !== false },
   '../utils/runtimeLog': { logInfo() {}, logWarn() {} },
+  './roomMetaCache': { cacheRoomMetasFromSeineDetail() {} },
   '../api/pocket48': {
     __esModule: true,
     default: {

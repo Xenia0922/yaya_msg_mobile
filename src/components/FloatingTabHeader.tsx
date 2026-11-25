@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useIsFocused } from '@react-navigation/native';
@@ -54,9 +54,13 @@ export const FloatingTabHeader = React.memo(function FloatingTabHeader({
   const useFrosted = frostedOnly || !isFocused || hidden;
   const isDark = palette.name === 'dark';
 
-  const scrimColors: [string, string, string] = isDark
-    ? ['rgba(12,12,16,0.92)', 'rgba(12,12,16,0.55)', 'rgba(12,12,16,0)']
-    : ['rgba(242,243,248,0.92)', 'rgba(242,243,248,0.55)', 'rgba(242,243,248,0)'];
+  const scrimColors = useMemo<[string, string, string]>(
+    () =>
+      isDark
+        ? ['rgba(12,12,16,0.92)', 'rgba(12,12,16,0.55)', 'rgba(12,12,16,0)']
+        : ['rgba(242,243,248,0.92)', 'rgba(242,243,248,0.55)', 'rgba(242,243,248,0)'],
+    [isDark],
+  );
 
   const visible = isFocused && !hidden;
   const dockOpacity = useSharedValue(visible ? 1 : 0);
@@ -72,68 +76,85 @@ export const FloatingTabHeader = React.memo(function FloatingTabHeader({
     opacity: dockOpacity.value,
   }));
 
-  const headerNode = isFocused ? (
-    <Reanimated.View
-      pointerEvents={visible ? 'box-none' : 'none'}
-      accessibilityElementsHidden={!visible}
-      importantForAccessibility={visible ? 'yes' : 'no-hide-descendants'}
-      style={[styles.overlay, { height: insets.top + 68 }, overlayAnimStyle, style]}
-    >
-      <LinearGradient
-        pointerEvents="none"
-        colors={scrimColors}
-        locations={[0, 0.58, 1]}
-        style={[styles.scrim, { height: insets.top + 18 }]}
-      />
-      <View pointerEvents="box-none" style={[styles.row, { paddingTop: insets.top + 8 }]}>
-        {leftIsland ? (
-          <View style={styles.islandShadow}>{leftIsland}</View>
-        ) : left ? (
-          onLeftPress ? (
-            <ScalePressable
-              onPress={onLeftPress}
-              pressedScale={0.96}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              accessibilityRole="button"
-              accessibilityLabel={leftAccessibilityLabel}
-              style={[styles.leftPressWrap, styles.islandShadow]}
-            >
+  const headerNode = useMemo(
+    () =>
+      isFocused ? (
+        <Reanimated.View
+          pointerEvents={visible ? 'box-none' : 'none'}
+          accessibilityElementsHidden={!visible}
+          importantForAccessibility={visible ? 'yes' : 'no-hide-descendants'}
+          style={[styles.overlay, { height: insets.top + 68 }, overlayAnimStyle, style]}
+        >
+          <LinearGradient
+            pointerEvents="none"
+            colors={scrimColors}
+            locations={[0, 0.58, 1]}
+            style={[styles.scrim, { height: insets.top + 18 }]}
+          />
+          <View pointerEvents="box-none" style={[styles.row, { paddingTop: insets.top + 8 }]}>
+            {leftIsland ? (
+              <View style={styles.islandShadow}>{leftIsland}</View>
+            ) : left ? (
+              onLeftPress ? (
+                <ScalePressable
+                  onPress={onLeftPress}
+                  pressedScale={0.96}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={leftAccessibilityLabel}
+                  style={[styles.leftPressWrap, styles.islandShadow]}
+                >
+                  <GlassSurface
+                    role="bar"
+                    radius={FLOATING_BAR_HEIGHT / 2}
+                    frostedOnly={useFrosted}
+                    style={styles.leftGlass}
+                  >
+                    {left}
+                  </GlassSurface>
+                </ScalePressable>
+              ) : (
+                <GlassSurface
+                  role="bar"
+                  radius={FLOATING_BAR_HEIGHT / 2}
+                  frostedOnly={useFrosted}
+                  style={[styles.leftGlass, styles.islandShadow]}
+                >
+                  {left}
+                </GlassSurface>
+              )
+            ) : (
+              <View />
+            )}
+
+            {right ? (
               <GlassSurface
                 role="bar"
                 radius={FLOATING_BAR_HEIGHT / 2}
                 frostedOnly={useFrosted}
-                style={styles.leftGlass}
+                style={[styles.rightGlass, styles.islandShadow]}
               >
-                {left}
+                {right}
               </GlassSurface>
-            </ScalePressable>
-          ) : (
-            <GlassSurface
-              role="bar"
-              radius={FLOATING_BAR_HEIGHT / 2}
-              frostedOnly={useFrosted}
-              style={[styles.leftGlass, styles.islandShadow]}
-            >
-              {left}
-            </GlassSurface>
-          )
-        ) : (
-          <View />
-        )}
-
-        {right ? (
-          <GlassSurface
-            role="bar"
-            radius={FLOATING_BAR_HEIGHT / 2}
-            frostedOnly={useFrosted}
-            style={[styles.rightGlass, styles.islandShadow]}
-          >
-            {right}
-          </GlassSurface>
-        ) : null}
-      </View>
-    </Reanimated.View>
-  ) : null;
+            ) : null}
+          </View>
+        </Reanimated.View>
+      ) : null,
+    [
+      isFocused,
+      visible,
+      insets.top,
+      overlayAnimStyle,
+      style,
+      scrimColors,
+      leftIsland,
+      left,
+      onLeftPress,
+      leftAccessibilityLabel,
+      useFrosted,
+      right,
+    ],
+  );
 
   const wasMountedRef = useRef(false);
   useLayoutEffect(() => {
@@ -144,7 +165,7 @@ export const FloatingTabHeader = React.memo(function FloatingTabHeader({
       wasMountedRef.current = false;
       removeTopDockEntry(portalId);
     }
-  });
+  }, [isFocused, portalId, headerNode]);
 
   useLayoutEffect(() => () => removeTopDockEntry(portalId), [portalId]);
 

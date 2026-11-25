@@ -11,42 +11,34 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useMusicPlayerStore } from '../store/musicPlayerStore';
-import { usePalette, motion, makeShadows } from '../theme';
+import { usePalette, makeShadows } from '../theme';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
 import { typography } from '../theme/typography';
 import { normalizeImageHost } from '../utils/imageThumb';
 import { MusicEngine } from '../services/musicPlayer';
 import CoverArt from './CoverArt';
+import { ScalePressable } from './Motion';
 import { useI18n } from '../i18n';
 import { formatTrackSubtitle } from '../utils/format';
-import { useVinylSpin } from '../hooks/useVinylSpin';
 import { GlassSurface } from '../components/GlassSurface';
 
-interface Props {
-  onOpenFullScreen?: () => void;
-}
-
-export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
-  const palette = usePalette();
-  const shadows = makeShadows(palette.name === 'dark');
-  const insets = useSafeAreaInsets();
-  const { t } = useI18n();
-  const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
-  const queue = useMusicPlayerStore((s) => s.queue);
-  const playbackState = useMusicPlayerStore((s) => s.playbackState);
-  const playMode = useMusicPlayerStore((s) => s.playMode);
+const MiniProgressLine = React.memo(function MiniProgressLine({
+  tintColor,
+  trackColor,
+  bufferColor,
+}: {
+  tintColor: string;
+  trackColor: string;
+  bufferColor: string;
+}) {
   const duration = useMusicPlayerStore((s) => s.duration);
   const position = useMusicPlayerStore((s) => s.position);
+  const buffered = useMusicPlayerStore((s) => s.buffered);
 
-  const track = queue[currentIndex] || null;
-  const isLoading = playbackState === 'loading';
-  const isError = playbackState === 'error';
-
-  const showPause = playbackState === 'playing' || isLoading;
   const progress = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
+  const bufRatio = duration > 0 ? Math.min(1, Math.max(progress, buffered / duration)) : progress;
 
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const displayPos = useRef(new Animated.Value(0)).current;
+  const displayPos = useRef(new Animated.Value(progress)).current;
   useEffect(() => {
     Animated.timing(displayPos, {
       toValue: progress,
@@ -56,9 +48,49 @@ export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
     }).start();
   }, [progress, displayPos]);
 
-  const trackSpinKey = String(track?.musicId || track?.id || track?.title || '') || undefined;
-  const spinValue = useVinylSpin(trackSpinKey, playbackState === 'playing');
-  const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  return (
+    <View pointerEvents="none" style={[styles.progressTrack, { backgroundColor: trackColor }]}>
+      {bufRatio > 0 ? (
+        <View
+          style={[
+            styles.progressBuffer,
+            { backgroundColor: bufferColor, width: `${bufRatio * 100}%` as any },
+          ]}
+        />
+      ) : null}
+      <Animated.View
+        style={[
+          styles.progressFill,
+          {
+            backgroundColor: tintColor,
+            transform: [{ scaleX: displayPos }],
+            transformOrigin: 'left',
+          },
+        ]}
+      />
+    </View>
+  );
+});
+
+interface Props {
+  onOpenFullScreen?: () => void;
+  bottomOffset?: number;
+}
+
+export default React.memo(function MiniPlayerBar({ onOpenFullScreen, bottomOffset }: Props) {
+  const palette = usePalette();
+  const shadows = makeShadows(palette.name === 'dark');
+  const insets = useSafeAreaInsets();
+  const { t } = useI18n();
+  const currentIndex = useMusicPlayerStore((s) => s.currentIndex);
+  const queue = useMusicPlayerStore((s) => s.queue);
+  const playbackState = useMusicPlayerStore((s) => s.playbackState);
+  const buffering = useMusicPlayerStore((s) => s.buffering);
+
+  const track = queue[currentIndex] || null;
+  const isLoading = playbackState === 'loading' || (playbackState === 'playing' && buffering);
+  const isError = playbackState === 'error';
+  const showPause = playbackState === 'playing' || playbackState === 'loading';
 
   const onOpenFullScreenRef = useRef(onOpenFullScreen);
   onOpenFullScreenRef.current = onOpenFullScreen;
@@ -66,31 +98,19 @@ export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) =>
-        gs.dy < -16 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.4,
+        (gs.dy < -16 && Math.abs(gs.dy) > Math.abs(gs.dx) * 1.3) ||
+        (Math.abs(gs.dx) > 22 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.4),
       onPanResponderRelease: (_, gs) => {
-        if (gs.dy < -24) onOpenFullScreenRef.current?.();
+        if (gs.dy < -24 && Math.abs(gs.dy) > Math.abs(gs.dx)) {
+          onOpenFullScreenRef.current?.();
+        } else if (gs.dx < -44) {
+          void MusicEngine.next().catch(() => {});
+        } else if (gs.dx > 44) {
+          void MusicEngine.prev().catch(() => {});
+        }
       },
     }),
   ).current;
-
-  const pressIn = useCallback(
-    () =>
-      Animated.spring(scaleAnim, {
-        toValue: 0.94,
-        ...motion.spring.bouncy,
-        useNativeDriver: true,
-      }).start(),
-    [scaleAnim],
-  );
-  const pressOut = useCallback(
-    () =>
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        ...motion.spring.bouncy,
-        useNativeDriver: true,
-      }).start(),
-    [scaleAnim],
-  );
 
   const rawCover = (track?.coverUrl || track?.cover || track?.thumbPath || '') as string;
   const coverUri = useMemo(
@@ -119,26 +139,23 @@ export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
   }, []);
 
   const handlePrev = useCallback(() => {
-    try {
-      MusicEngine.prev();
-    } catch {}
+    void MusicEngine.prev().catch(() => {});
   }, []);
   const handleNext = useCallback(() => {
-    try {
-      MusicEngine.next();
-    } catch {}
+    void MusicEngine.next().catch(() => {});
   }, []);
-  const handleMode = useCallback(() => {
-    try {
-      MusicEngine.cycleMode();
-    } catch {}
+  const handleClose = useCallback(() => {
+    useMusicPlayerStore.getState().dismissMiniBar();
   }, []);
 
   if (!track || playbackState === 'idle') return null;
 
+  const computedBottom =
+    bottomOffset ?? Math.max(12, insets.bottom > 0 ? Math.min(insets.bottom, 28) + 6 : 12);
+
   return (
     <GlassSurface
-      radius={26}
+      radius={22}
       role="bar"
       frostedOnly
       tintColor={palette.name === 'dark' ? 'rgba(26,26,34,0.95)' : 'rgba(255,255,255,0.95)'}
@@ -148,22 +165,22 @@ export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
         {
           backgroundColor: 'transparent',
           borderColor: palette.name === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(18,22,36,0.09)',
-          bottom: Math.max(10, insets.bottom - 32),
-          elevation: 8,
+          bottom: computedBottom,
+          elevation: 10,
         },
       ]}
       {...panResponder.panHandlers}
     >
       <Pressable onPress={onOpenFullScreen} style={styles.row}>
-        <Animated.View style={[styles.cover, { transform: [{ rotate: spin }] }]}>
+        <View style={styles.cover}>
           <CoverArt
-            key={coverUri || track.title || '♪'}
             uri={coverUri || undefined}
             title={track.title || '♪'}
             size={42}
-            round
+            borderRadius={11}
+            thumbnail={120}
           />
-        </Animated.View>
+        </View>
         <View style={styles.info}>
           <Text
             numberOfLines={1}
@@ -178,82 +195,70 @@ export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
             numberOfLines={1}
             style={[
               typography.caption1,
-              { color: palette.labelSecondary, lineHeight: 14, marginTop: 1 },
+              { color: palette.labelSecondary, lineHeight: 15, marginTop: 1 },
             ]}
           >
             {formatTrackSubtitle(track) || t('官方音乐')}
           </Text>
         </View>
         <View style={styles.actions}>
-          <Pressable
-            onPress={handleMode}
-            onPressIn={pressIn}
-            onPressOut={pressOut}
-            style={styles.modeBtn}
-          >
-            <Icon
-              name={
-                playMode === 'single'
-                  ? 'repeat-once'
-                  : playMode === 'random'
-                    ? 'shuffle-variant'
-                    : 'repeat'
-              }
-              size={18}
-              color={palette.labelSecondary}
-            />
-          </Pressable>
-          <Pressable
+          <ScalePressable
             onPress={handlePrev}
-            onPressIn={pressIn}
-            onPressOut={pressOut}
+            pressedScale={0.88}
+            hitSlop={6}
             style={styles.smallCtrlBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t('上一首')}
           >
-            <Icon name="skip-previous" size={24} color={palette.label} />
-          </Pressable>
-          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <Pressable
-              onPress={handleToggle}
-              onPressIn={pressIn}
-              onPressOut={pressOut}
-              style={styles.playBtn}
-              accessibilityRole="button"
-              accessibilityLabel={isLoading ? t('取消') : showPause ? t('暂停') : t('播放')}
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color={palette.tint} />
-              ) : (
-                <Icon
-                  name={isError ? 'refresh-circle' : showPause ? 'pause-circle' : 'play-circle'}
-                  size={34}
-                  color={isError ? palette.danger : palette.tint}
-                />
-              )}
-            </Pressable>
-          </Animated.View>
-          <Pressable
+            <Icon name="skip-previous" size={21} color={palette.label} />
+          </ScalePressable>
+          <ScalePressable
+            onPress={handleToggle}
+            pressedScale={0.9}
+            hitSlop={4}
+            style={[styles.playBtn, { backgroundColor: palette.tintSoft }]}
+            accessibilityRole="button"
+            accessibilityLabel={isLoading ? t('取消') : showPause ? t('暂停') : t('播放')}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color={palette.tint} />
+            ) : (
+              <Icon
+                name={isError ? 'refresh' : showPause ? 'pause' : 'play'}
+                size={20}
+                color={isError ? palette.danger : palette.tint}
+              />
+            )}
+          </ScalePressable>
+          <ScalePressable
             onPress={handleNext}
-            onPressIn={pressIn}
-            onPressOut={pressOut}
+            pressedScale={0.88}
+            hitSlop={6}
             style={styles.smallCtrlBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t('下一首')}
           >
-            <Icon name="skip-next" size={24} color={palette.label} />
-          </Pressable>
+            <Icon name="skip-next" size={21} color={palette.label} />
+          </ScalePressable>
+          <View style={[styles.closeDivider, { backgroundColor: palette.separator }]} />
+          <ScalePressable
+            onPress={handleClose}
+            pressedScale={0.86}
+            hitSlop={8}
+            style={styles.closeBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t('隐藏播放栏')}
+          >
+            <Icon name="close" size={17} color={palette.labelTertiary} />
+          </ScalePressable>
         </View>
       </Pressable>
 
-      <View pointerEvents="none" style={[styles.progressTrack, { backgroundColor: palette.fill3 }]}>
-        <Animated.View
-          style={[
-            styles.progressFill,
-            {
-              backgroundColor: palette.tint,
-              transform: [{ scaleX: displayPos }],
-              transformOrigin: 'left',
-            },
-          ]}
-        />
-      </View>
+      <MiniProgressLine
+        tintColor={palette.tint}
+        trackColor={palette.fill3}
+        bufferColor={palette.name === 'dark' ? 'rgba(255,255,255,0.22)' : 'rgba(18,22,36,0.14)'}
+      />
     </GlassSurface>
   );
 });
@@ -261,57 +266,67 @@ export default React.memo(function MiniPlayerBar({ onOpenFullScreen }: Props) {
 const styles = StyleSheet.create({
   bar: {
     position: 'absolute',
-    left: 12,
-    right: 12,
-    borderRadius: 26,
+    left: 14,
+    right: 14,
+    borderRadius: 22,
     borderCurve: 'continuous',
     borderWidth: StyleSheet.hairlineWidth,
-    paddingTop: 9,
+    paddingTop: 8,
     paddingBottom: 10,
     paddingHorizontal: 10,
     overflow: 'hidden',
   },
   progressTrack: {
     position: 'absolute',
-    left: 20,
-    right: 20,
+    left: 16,
+    right: 16,
     bottom: 0,
     height: 2.5,
     borderRadius: 2,
     overflow: 'hidden',
   },
+  progressBuffer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+  },
   progressFill: {
     ...StyleSheet.absoluteFillObject,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 },
   cover: {
     width: 42,
     height: 42,
-    borderRadius: 21,
-    backgroundColor: '#1a1a1a',
+    borderRadius: 11,
     overflow: 'hidden',
   },
   info: { flex: 1, minWidth: 0 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   playBtn: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 19,
+    borderRadius: 17,
   },
   smallCtrlBtn: {
-    width: 32,
-    height: 36,
+    width: 28,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 18,
+    borderRadius: 14,
   },
-  modeBtn: {
-    width: 32,
-    height: 36,
+  closeDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 16,
+    marginHorizontal: 2,
+  },
+  closeBtn: {
+    width: 24,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 18,
+    borderRadius: 12,
   },
 });

@@ -17,6 +17,7 @@ const {
   isNewerVersion,
   shouldPromptDailyUpdate,
   evaluateUpdateFromCache,
+  formatReleaseNotesForDisplay,
 } = module.exports;
 
 assert.equal(localTodayKey(new Date(2026, 10, 5, 9, 30)), '2026-11-05');
@@ -100,5 +101,13 @@ assert.equal(
   }),
   false,
 );
+
+assert.equal(
+  formatReleaseNotesForDisplay('# v2.10.0\n\n新增A\n修复B\n'),
+  '新增A\n修复B',
+  '应剥离发布说明首行 Markdown 标题避免弹窗重复显示标题',
+);
+assert.equal(formatReleaseNotesForDisplay('新增A\n修复B'), '新增A\n修复B');
+assert.equal(formatReleaseNotesForDisplay('   '), '');
 
 console.log('每日更新检测与弹窗频控测试通过');

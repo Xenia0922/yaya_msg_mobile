@@ -20,6 +20,7 @@ export interface ResumeModuleProps {
   resumeLabel: string;
   lyricLine: string;
   playbackState: PlaybackState;
+  onOpenPlayer: () => void;
   onOpenLibrary: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -34,6 +35,7 @@ export default function ResumeModule({
   resumeLabel,
   lyricLine,
   playbackState,
+  onOpenPlayer,
   onOpenLibrary,
   onPrev,
   onNext,
@@ -47,11 +49,16 @@ export default function ResumeModule({
 
   return (
     <View style={styles.sectionOuter}>
-      <SectionTitle icon="history" title={t('最近播放')} />
+      <SectionTitle
+        icon="history"
+        title={t('最近播放')}
+        actionLabel={t('曲库')}
+        onAction={onOpenLibrary}
+      />
       <FadeInView delay={0} duration={320}>
         <GlassCard strong padding={12} radius={22}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <ScalePressable onPress={onOpenLibrary} pressedScale={0.94} hitSlop={4}>
+            <ScalePressable onPress={onOpenPlayer} pressedScale={0.94} hitSlop={4}>
               <View style={[styles.musicCover, { backgroundColor: palette.tintSoft }]}>
                 {currentTrack?.coverUrl || currentTrack?.cover ? (
                   <NetworkImage
@@ -66,7 +73,7 @@ export default function ResumeModule({
               </View>
             </ScalePressable>
             <ScalePressable
-              onPress={onOpenLibrary}
+              onPress={onOpenPlayer}
               pressedScale={0.98}
               style={{ flex: 1, marginHorizontal: 8, minWidth: 0 }}
             >
@@ -140,7 +147,7 @@ export default function ResumeModule({
             </View>
           </View>
 
-          <ScalePressable onPress={onOpenLibrary} pressedScale={0.99} style={{ marginTop: 6 }}>
+          <ScalePressable onPress={onOpenPlayer} pressedScale={0.99} style={{ marginTop: 6 }}>
             <MarqueeText
               text={lyricLine || t('暂无歌词')}
               style={[typography.footnote, { color: palette.labelSecondary }]}

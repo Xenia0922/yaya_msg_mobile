@@ -46,6 +46,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   yaya_followed_custom_order: [],
   yaya_music_play_mode: 'sequential',
   yaya_music_volume: 0.7,
+  yaya_music_cache_limit_mb: 300,
+  yaya_music_minibar_enabled: true,
   yaya_audio_program_play_mode: 'sequential',
   yaya_auto_checkin_enabled: false,
   yaya_auto_checkin_last_date: '',

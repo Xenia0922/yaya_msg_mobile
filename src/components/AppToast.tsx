@@ -2,16 +2,17 @@ import React, { useEffect, useRef } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from '../hooks/useSafeAreaInsets';
-import { useUiStore } from '../store';
+import { shouldRenderToast, toastDurationMs, useUiStore } from '../store';
 import { usePalette } from '../theme';
 import { typography } from '../theme/typography';
+
+const EXIT_DURATION_MS = 140;
 
 type ToastTone = 'success' | 'error' | 'info';
 
@@ -23,7 +24,7 @@ function inferToastTone(message: string): ToastTone {
   )
     return 'error';
   if (
-    /成功|已更新|已保存|已复制|已完成|已是最新|已连接|已发送|已删除|已登录|已退出|success|saved|copied|updated|completed|connected|sent|deleted|成功|保存|コピー|성공|저장/i.test(
+    /成功|已更新|已保存|已复制|已完成|下载完成|已加入下载|已是最新|已连接|已发送|已删除|已登录|已退出|success|saved|copied|updated|completed|connected|sent|deleted|成功|保存|コピー|성공|저장/i.test(
       message,
     )
   )
@@ -31,15 +32,22 @@ function inferToastTone(message: string): ToastTone {
   return 'info';
 }
 
-export default function AppToast() {
+export default function AppToast({ passive = false }: { passive?: boolean } = {}) {
   const message = useUiStore((state) => state.toastMessage);
   const explicitTone = useUiStore((state) => state.toastTone);
+  const toastId = useUiStore((state) => state.toastId);
   const hideToast = useUiStore((state) => state.hideToast);
   const palette = usePalette();
   const insets = useSafeAreaInsets();
   const ty = useSharedValue(-8);
   const op = useSharedValue(0);
-  const seqRef = useRef(0);
+  const mountedToastIdRef = useRef(passive ? useUiStore.getState().toastId : 0);
+  const shouldShow = shouldRenderToast({
+    message,
+    toastId,
+    passive,
+    mountedToastId: mountedToastIdRef.current,
+  });
 
   const animStyle = useAnimatedStyle(() => ({
     opacity: op.value,
@@ -47,12 +55,11 @@ export default function AppToast() {
   }));
 
   useEffect(() => {
-    if (!message) {
+    if (!shouldShow) {
       ty.value = -8;
       op.value = 0;
       return;
     }
-    const seq = ++seqRef.current;
 
     ty.value = -8;
     op.value = 0;
@@ -60,22 +67,29 @@ export default function AppToast() {
     ty.value = withTiming(0, { duration: 150, easing: enterEase });
     op.value = withTiming(1, { duration: 150, easing: enterEase });
 
-    const duration = Math.min(5000, Math.max(2200, 1500 + message.length * 28));
-    const timer = setTimeout(() => {
+    const duration = toastDurationMs(message);
+    let clearTimer: ReturnType<typeof setTimeout> | null = null;
+    const exitTimer = setTimeout(() => {
       const exitEase = Easing.in(Easing.cubic);
-      ty.value = withTiming(-6, { duration: 140, easing: exitEase });
-      op.value = withTiming(0, { duration: 140, easing: exitEase }, (finished) => {
-        if (finished && seqRef.current === seq) {
-          runOnJS(hideToast)();
-        }
-      });
+      ty.value = withTiming(-6, { duration: EXIT_DURATION_MS, easing: exitEase });
+      op.value = withTiming(0, { duration: EXIT_DURATION_MS, easing: exitEase });
+      if (!passive) {
+        clearTimer = setTimeout(() => {
+          clearTimer = null;
+          hideToast(toastId);
+        }, EXIT_DURATION_MS + 30);
+      }
     }, duration);
     return () => {
-      clearTimeout(timer);
+      clearTimeout(exitTimer);
+      if (clearTimer) {
+        clearTimeout(clearTimer);
+        clearTimer = null;
+      }
     };
-  }, [hideToast, message, op, ty]);
+  }, [hideToast, message, op, passive, shouldShow, toastId, ty]);
 
-  if (!message) return null;
+  if (!shouldShow) return null;
 
   const tone = explicitTone ?? inferToastTone(message);
   const toneColor =

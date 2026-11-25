@@ -31,20 +31,26 @@ function hashStr(s: string): number {
 interface Props {
   uri?: string;
   title: string;
-
   size?: number;
-
   fill?: boolean;
-
   round?: boolean;
-
+  borderRadius?: number;
+  thumbnail?: number;
   active?: boolean;
 }
 
-export default function CoverArt({ uri, title, size, fill, round, active }: Props) {
+export default React.memo(function CoverArt({
+  uri,
+  title,
+  size,
+  fill,
+  round,
+  borderRadius,
+  thumbnail,
+  active,
+}: Props) {
   const [c1, c2] = PALETTE[hashStr(title || '♪') % PALETTE.length];
   const [errored, setErrored] = React.useState(false);
-  const [loaded, setLoaded] = React.useState(false);
   const retried = React.useRef(false);
   const mounted = React.useRef(true);
   const retryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -53,7 +59,6 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
     mounted.current = true;
     return () => {
       mounted.current = false;
-
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     };
@@ -61,21 +66,12 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
 
   React.useEffect(() => {
     setErrored(false);
-    setLoaded(false);
     retried.current = false;
     if (retryTimerRef.current) {
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     }
   }, [uri]);
-
-  React.useEffect(() => {
-    if (!uri || loaded) return;
-    const timer = setTimeout(() => {
-      if (mounted.current) setErrored(true);
-    }, 15000);
-    return () => clearTimeout(timer);
-  }, [uri, loaded]);
 
   const handleImageError = React.useCallback(() => {
     if (!retried.current) {
@@ -85,17 +81,28 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
       retryTimerRef.current = setTimeout(() => {
         retryTimerRef.current = null;
         if (mounted.current) setErrored(false);
-      }, 3000);
+      }, 2500);
     } else {
       if (mounted.current) setErrored(true);
     }
   }, []);
 
+  const computedRadius = fill
+    ? round
+      ? radii.pill
+      : (borderRadius ?? 0)
+    : round
+      ? (size || 0) / 2
+      : (borderRadius ?? 0);
+
   const boxStyle: any = fill
-    ? { ...StyleSheet.absoluteFillObject, borderRadius: round ? radii.pill : 0 }
-    : { width: size, height: size, borderRadius: round ? (size || 0) / 2 : 0 };
+    ? { ...StyleSheet.absoluteFillObject, borderRadius: computedRadius }
+    : { width: size, height: size, borderRadius: computedRadius };
   const showImage = !!uri && !errored;
+  const imageSource = React.useMemo(() => (uri ? { uri } : undefined), [uri]);
   const iconSize = fill ? 44 : Math.round((size || 0) * 0.34);
+  const resolvedThumb =
+    thumbnail ?? (!fill && size ? Math.min(360, Math.max(120, Math.round(size * 2))) : undefined);
 
   return (
     <View style={[styles.box, boxStyle, { backgroundColor: c1 }]}>
@@ -105,35 +112,31 @@ export default function CoverArt({ uri, title, size, fill, round, active }: Prop
           { backgroundColor: c2, opacity: 0.5, transform: [{ rotate: '35deg' }] },
         ]}
       />
-      {showImage ? (
+      <MaterialCommunityIcons
+        name="music"
+        size={iconSize}
+        color="rgba(255,255,255,0.95)"
+        style={{
+          textShadowColor: 'rgba(0,0,0,0.38)',
+          textShadowOffset: { width: 0, height: 1 },
+          textShadowRadius: 3,
+        }}
+      />
+      {showImage && imageSource ? (
         <NetworkImage
-          key={uri}
-          source={{ uri }}
-          style={[StyleSheet.absoluteFill, { borderRadius: round ? radii.pill : 0 }]}
+          source={imageSource}
+          style={[StyleSheet.absoluteFill, { borderRadius: computedRadius }]}
           resizeMode="cover"
-
-          resizeMethod="scale"
-          fadeDuration={200}
+          thumbnail={resolvedThumb}
+          fadeDuration={0}
           fallback={false}
-          onLoad={() => setLoaded(true)}
           onError={handleImageError}
         />
-      ) : (
-        <MaterialCommunityIcons
-          name="music"
-          size={iconSize}
-          color="rgba(255,255,255,0.95)"
-          style={{
-            textShadowColor: 'rgba(0,0,0,0.38)',
-            textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 3,
-          }}
-        />
-      )}
+      ) : null}
       {active ? <View style={[styles.activeDot, { backgroundColor: '#fff' }]} /> : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   box: { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },

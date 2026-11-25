@@ -16,7 +16,7 @@ export const MEMBERS_URL_SELF_LIST = [
 
 export const MEMBERS_URL = 'https://data.gnz.hk/members.json';
 
-export const APP_VERSION = '2.9.1';
+export const APP_VERSION = '2.10.0';
 
 export const MEMBER_DATA_SOURCE_URL = 'https://github.com/yk1z/yaya_msg';
 

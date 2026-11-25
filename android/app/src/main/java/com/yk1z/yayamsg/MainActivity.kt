@@ -53,6 +53,7 @@ class MainActivity : ReactActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(null)
+    handleMusicIntent(intent)
     window.decorView.addOnLayoutChangeListener(compactWindowListener)
     window.decorView.postDelayed({
       if (!isFinishing && !isDestroyed) {
@@ -60,6 +61,19 @@ class MainActivity : ReactActivity() {
       }
     }, 650L)
     requestMaxRefreshRate()
+  }
+
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    handleMusicIntent(intent)
+  }
+
+  private fun handleMusicIntent(intent: android.content.Intent?) {
+    if (intent?.getBooleanExtra("openFullScreenMusic", false) == true) {
+      intent.removeExtra("openFullScreenMusic")
+      RadioExoModule.notifyOpenFullScreenMusic()
+    }
   }
 
   private fun requestMaxRefreshRate() {

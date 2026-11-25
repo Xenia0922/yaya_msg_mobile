@@ -14,11 +14,14 @@ import { EmptyState, ErrorState } from '../components/StateViews';
 import { Pill } from '../components/Pill';
 import { NetworkImage } from '../components/NetworkImage';
 import { Skeleton } from '../components/Skeleton';
-import { errorMessage, pickText } from '../utils/data';
-import pocketApi from '../api/pocket48';
-import { resolveMemberRooms } from '../services/roomMapCache';
-import { useMemberStore } from '../store';
-import { useMusicPlayerStore } from '../store/musicPlayerStore';
+import { errorMessage } from '../utils/data';
+import { fetchMemberRadioStream } from '../services/radio';
+import {
+  claimAudioFocus,
+  registerAudioHandler,
+  releaseAudioFocus,
+  setRadioForegroundActive,
+} from '../services/audioFocus';
 import {
   LiveExoView,
   startRadioForeground,
@@ -51,13 +54,19 @@ export default function RoomRadioScreen() {
   const [audioOnly, setAudioOnly] = useState(true);
 
   const selectedMemberRef = useRef<Member | null>(null);
+  const radioUrlRef = useRef('');
   const roomModeRef = useRef<'big' | 'small'>(roomMode);
   const playingRef = useRef(false);
   const fetchingRef = useRef(false);
+  const ownsForegroundRef = useRef(false);
+  const handedOffToCapsuleRef = useRef(false);
+  const autoRetryUsedRef = useRef(false);
+  const lastParamKeyRef = useRef('');
 
   const startReqRef = useRef(0);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   roomModeRef.current = roomMode;
+  radioUrlRef.current = radioUrl;
   useEffect(() => {
     playingRef.current = playing;
   }, [playing]);
@@ -89,74 +98,36 @@ export default function RoomRadioScreen() {
   }, [audioOnly, playing, spinAnim]);
   const spinRotate = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
-  const fetchRadioUrl = async (member: Member, mode: 'big' | 'small'): Promise<string | null> => {
-    let channelId = mode === 'small' ? member.yklzId || member.channelId : member.channelId;
-    let serverId = member.serverId;
-
-    const needResolve =
-      !channelId ||
-      channelId === '0' ||
-      channelId === 'undefined' ||
-      (mode === 'small' &&
-        (!member.yklzId || member.yklzId === '0' || member.yklzId === 'undefined'));
-    if (needResolve) {
-      const room = await resolveMemberRooms(String(member.id || ''), {
-        name: member.ownerName,
-        knownChannelId: member.channelId,
-        knownYklzId: member.yklzId,
-        knownServerId: member.serverId,
-      });
-      channelId = mode === 'small' ? room.yklzId || room.channelId : room.channelId;
-      serverId = room.serverId || member.serverId;
-      if (channelId) {
-        useMemberStore.getState().patchMemberByUserId(String(member.id || ''), {
-          channelId: room.channelId || member.channelId,
-          yklzId: room.yklzId || member.yklzId,
-          serverId,
-        });
-      }
-    }
-    if (!channelId || channelId === '0' || channelId === 'undefined') {
-      const err: any = new Error('NO_CHANNEL');
-      err.code = 'NO_CHANNEL';
-      throw err;
-    }
-    const res = await pocketApi.operateRoomVoice({ channelId, serverId });
-    if (res?.status && Number(res.status) !== 200) return null;
-    const url = pickText(res, [
-      'content.streamUrl',
-      'content.url',
-      'content.streamPath',
-      'content.playUrl',
-      'data.streamUrl',
-      'data.url',
-      'streamUrl',
-      'url',
-    ]);
-    return url || null;
+  const syncNotification = (member: Member, mode: 'big' | 'small', isPlaying: boolean) => {
+    ensureNotificationPermission()
+      .then(() => {
+        if (handedOffToCapsuleRef.current) return;
+        startRadioForeground(
+          {
+            title: member.ownerName || '',
+            artist: mode === 'small' ? t('小房间') : t('大房间'),
+            isPlaying,
+            position: 0,
+            duration: 0,
+          },
+          true,
+        );
+      })
+      .catch(() => {});
   };
 
   const applyStreamUrl = (url: string, member: Member, mode: 'big' | 'small') => {
     if (__DEV__) logWarn(`[radio] ${member.ownerName} ${mode} (rtmp=${isRtmpUrl(url)})`);
-
-    try {
-      const mst = useMusicPlayerStore.getState();
-      if (
-        mst.queue.length &&
-        (mst.playbackState === 'playing' ||
-          mst.playbackState === 'paused' ||
-          mst.playbackState === 'loading')
-      ) {
-        mst.setPlaybackState(mst.playbackState === 'loading' ? 'idle' : 'paused');
-      }
-    } catch {}
+    handedOffToCapsuleRef.current = false;
+    ownsForegroundRef.current = true;
+    autoRetryUsedRef.current = false;
+    claimAudioFocus('radio');
+    setRadioForegroundActive(true);
     setRadioUrl(url);
+    radioUrlRef.current = url;
     setStatus(t('已连接，正在缓冲...'));
     setPlaying(true);
-
-    ensureNotificationPermission()
-      .then(() => startRadioForeground(member.ownerName || '', true))
-      .catch(() => {});
+    syncNotification(member, mode, true);
   };
 
   const scheduleStreamRefresh = () => {
@@ -166,12 +137,12 @@ export default function RoomRadioScreen() {
         const m = selectedMemberRef.current;
         if (!m || !playingRef.current || fetchingRef.current) return;
         fetchingRef.current = true;
-        fetchRadioUrl(m, roomModeRef.current)
-          .then((fresh) => {
+        fetchMemberRadioStream(m, roomModeRef.current)
+          .then((res) => {
             if (!playingRef.current) return;
-            if (fresh) {
-              setRadioUrl((cur) => (cur && cur === fresh ? cur : fresh));
-              logWarn(`[radio] ${m.ownerName} 自动换流${fresh ? '' : ''}`);
+            if (res.url) {
+              setRadioUrl((cur) => (cur && cur === res.url ? cur : res.url!));
+              logWarn(`[radio] ${m.ownerName} 自动换流`);
             } else {
               logWarn(`[radio] ${m.ownerName} 后台刷新未拿到新流（保留当前）`);
             }
@@ -189,16 +160,13 @@ export default function RoomRadioScreen() {
     member: Member,
     opts: { instantUrl?: string; mode?: 'big' | 'small' } = {},
   ) => {
-    try {
-      useMiniPlayerStore.getState().close();
-    } catch {}
-
     const mode = opts.mode ?? roomModeRef.current;
     const reqId = startReqRef.current + 1;
     startReqRef.current = reqId;
+    handedOffToCapsuleRef.current = false;
     setSelectedMember(member);
-
     selectedMemberRef.current = member;
+    setRoomMode(mode);
     roomModeRef.current = mode;
     setLoading(true);
     setStatus(t('获取电台地址...'));
@@ -210,10 +178,10 @@ export default function RoomRadioScreen() {
       setLoading(false);
 
       fetchingRef.current = true;
-      fetchRadioUrl(member, mode)
-        .then((fresh) => {
+      fetchMemberRadioStream(member, mode)
+        .then((res) => {
           if (reqId !== startReqRef.current || !playingRef.current) return;
-          if (fresh) setRadioUrl((cur) => (cur && cur === fresh ? cur : fresh));
+          if (res.url) setRadioUrl((cur) => (cur && cur === res.url ? cur : res.url!));
           else logWarn(`[radio] ${member.ownerName} 校验未拿到新流（秒开继续播放）`);
         })
         .catch(() => {})
@@ -222,17 +190,19 @@ export default function RoomRadioScreen() {
         });
       return;
     }
+
     setRadioUrl('');
+    radioUrlRef.current = '';
     setPlaying(false);
     try {
-      const url = await fetchRadioUrl(member, mode);
-
+      const res = await fetchMemberRadioStream(member, mode);
       if (reqId !== startReqRef.current) return;
       const current = selectedMemberRef.current;
-      if (!current || String(current.id) !== String(member.id) || roomModeRef.current !== mode)
+      if (!current || String(current.id) !== String(member.id) || roomModeRef.current !== mode) {
         return;
-      if (url) {
-        applyStreamUrl(url, member, mode);
+      }
+      if (res.url) {
+        applyStreamUrl(res.url, member, res.mode);
         scheduleStreamRefresh();
       } else {
         logWarn(`[radio] ${member.ownerName} ${mode} 未开启电台`);
@@ -261,24 +231,92 @@ export default function RoomRadioScreen() {
     }
     setPlaying(false);
     setRadioUrl('');
+    radioUrlRef.current = '';
     setStatus(t('已停止'));
-    stopRadioForeground();
+    if (ownsForegroundRef.current) {
+      ownsForegroundRef.current = false;
+      setRadioForegroundActive(false);
+      stopRadioForeground();
+    }
+    releaseAudioFocus('radio');
+  };
+
+  const toggleRadioPlaying = () => {
+    const m = selectedMemberRef.current || selectedMember;
+    const next = !playingRef.current;
+    if (next) {
+      if (m && radioUrlRef.current) {
+        ownsForegroundRef.current = true;
+        claimAudioFocus('radio');
+        setRadioForegroundActive(true);
+        syncNotification(m, roomModeRef.current, true);
+      }
+      setPlaying(true);
+    } else {
+      setPlaying(false);
+      setRadioForegroundActive(false);
+      releaseAudioFocus('radio');
+      if (m) syncNotification(m, roomModeRef.current, false);
+    }
+  };
+
+  const handlePlaybackError = (rawMessage: string) => {
+    const m = selectedMemberRef.current;
+    if (m && !autoRetryUsedRef.current) {
+      autoRetryUsedRef.current = true;
+      setStatus(t('获取电台地址...'));
+      void fetchMemberRadioStream(m, roomModeRef.current)
+        .then((res) => {
+          if (res.url && selectedMemberRef.current?.id === m.id) {
+            applyStreamUrl(res.url, m, res.mode);
+            return;
+          }
+          setStatus(t('播放失败：{error}', { error: rawMessage.slice(0, 120) }));
+        })
+        .catch(() => {
+          setStatus(t('播放失败：{error}', { error: rawMessage.slice(0, 120) }));
+        });
+      return;
+    }
+    setStatus(t('播放失败：{error}', { error: rawMessage.slice(0, 120) }));
   };
 
   const toCapsule = () => {
-    const m = selectedMember;
-    const url = radioUrl;
+    const m = selectedMemberRef.current || selectedMember;
+    const url = radioUrlRef.current || radioUrl;
     if (!m || !url) return;
+    const mode = roomModeRef.current;
     const title = `${m.ownerName || ''} · ${t('上麦')}`;
+    handedOffToCapsuleRef.current = true;
+    ownsForegroundRef.current = false;
+    lastParamKeyRef.current = '';
+    startReqRef.current += 1;
+    if (refreshTimer.current) {
+      clearInterval(refreshTimer.current);
+      refreshTimer.current = null;
+    }
+    setLoading(false);
+    setPlaying(false);
+    setRadioUrl('');
+    radioUrlRef.current = '';
+    releaseAudioFocus('radio');
     useMiniPlayerStore.getState().open({
       url,
       title,
       cover: m.avatar,
       isLive: true,
       audioOnly: true,
-      backTo: { mode: 'live', playUrl: url, playTitle: title, playCover: m.avatar },
+      radioRefresh: { member: m, mode },
+      backTo: {
+        screen: 'RoomRadioScreen',
+        mode: 'live',
+        playUrl: url,
+        playTitle: title,
+        playCover: m.avatar,
+        radioMember: m,
+        radioMode: mode,
+      },
     });
-    stopRadio();
     navigation.goBack();
   };
 
@@ -291,36 +329,64 @@ export default function RoomRadioScreen() {
           ? t('正在播放')
           : status || t('暂无电台地址');
 
-  const autoStartedRef = useRef(false);
-  useEffect(() => {
-    const m = route.params?.member;
-    if (m && !autoStartedRef.current) {
-      autoStartedRef.current = true;
-      startRadio(m, { instantUrl: route.params?.streamUrl || '' });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const routeMember = route.params?.member;
+  const routeMode = route.params?.initialMode || 'big';
+  const routeUrl = route.params?.streamUrl || '';
+  const paramKey = routeMember ? `${String(routeMember.id || '')}|${routeMode}|${routeUrl}` : '';
 
   useEffect(() => {
-    const offStop = onRadioStopRequested(() => stopRadio());
-    const offCtrl = onRadioControlRequested((action) => {
-      if (action === 'stop') stopRadio();
-      else if (action === 'play_pause') {
-        setPlaying((p) => !p);
+    if (!routeMember || !paramKey || lastParamKeyRef.current === paramKey) return;
+    lastParamKeyRef.current = paramKey;
+    startRadio(routeMember, { instantUrl: routeUrl, mode: routeMode });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramKey]);
+
+  useEffect(() => {
+    const offFocusAudio = registerAudioHandler('radio', (reason) => {
+      if (reason === 'reset') {
+        lastParamKeyRef.current = '';
+      }
+      if (!handedOffToCapsuleRef.current) {
+        stopRadio();
       }
     });
+    const offStop = onRadioStopRequested(() => {
+      if (handedOffToCapsuleRef.current) return;
+      if (playingRef.current || radioUrlRef.current || ownsForegroundRef.current) {
+        stopRadio();
+      }
+    });
+    const offCtrl = onRadioControlRequested((action) => {
+      if (handedOffToCapsuleRef.current) return;
+      if (!playingRef.current && !radioUrlRef.current && !ownsForegroundRef.current) return;
+      if (action === 'stop') stopRadio();
+      else if (action === 'play_pause') toggleRadioPlaying();
+      else if (action === 'play' && !playingRef.current) toggleRadioPlaying();
+      else if (action === 'pause' && playingRef.current) toggleRadioPlaying();
+    });
     return () => {
+      offFocusAudio();
       offStop();
       offCtrl();
-
       if (refreshTimer.current) {
         clearInterval(refreshTimer.current);
         refreshTimer.current = null;
       }
-      stopRadioForeground();
+      if (!handedOffToCapsuleRef.current && ownsForegroundRef.current) {
+        ownsForegroundRef.current = false;
+        setRadioForegroundActive(false);
+        stopRadioForeground();
+        releaseAudioFocus('radio');
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const lowerRadioUrl = radioUrl.toLowerCase();
+  const useNativeLiveExo =
+    (isRtmpUrl(lowerRadioUrl) || lowerRadioUrl.includes('.flv')) &&
+    Platform.OS === 'android' &&
+    !!LiveExoView;
 
   return (
     <View style={styles.container}>
@@ -331,7 +397,7 @@ export default function RoomRadioScreen() {
           <MemberPicker
             compact
             selectedMember={selectedMember}
-            onSelect={startRadio}
+            onSelect={(m) => startRadio(m)}
             activeOnly
             placeholder={t('选择成员获取上麦音频...')}
           />
@@ -493,7 +559,7 @@ export default function RoomRadioScreen() {
               <>
                 <View style={styles.controlsRow}>
                   <ScalePressable
-                    onPress={playing ? () => setPlaying(false) : () => setPlaying(true)}
+                    onPress={toggleRadioPlaying}
                     pressedScale={0.9}
                     style={[styles.primaryCtrl, { backgroundColor: palette.tint, ...shadows.sm }]}
                     activeOpacity={0.8}
@@ -556,13 +622,19 @@ export default function RoomRadioScreen() {
                   </ScalePressable>
                 </View>
                 {playing ? (
-                  isRtmpUrl(radioUrl) && Platform.OS === 'android' && LiveExoView ? (
+                  useNativeLiveExo && LiveExoView ? (
                     <LiveExoView
                       style={styles.hiddenPlayer}
                       url={radioUrl}
                       audioOnly={audioOnly}
+                      paused={!playing || muted}
                       key={`${radioUrl}|${audioOnly ? 'a' : 'v'}`}
-                      onSize={() => {}}
+                      onSize={() => {
+                        setStatus(t('正在播放'));
+                      }}
+                      onError={(e: any) =>
+                        handlePlaybackError(String(e?.nativeEvent?.message || 'playback error'))
+                      }
                     />
                   ) : (
                     <Video
@@ -575,16 +647,12 @@ export default function RoomRadioScreen() {
                       playInBackground
                       playWhenInactive
                       onLoad={() => setStatus(t('正在播放'))}
-                      onError={(e: any) =>
-                        setStatus(
-                          t('播放失败：{error}', {
-                            error: JSON.stringify(e?.error || e).slice(0, 120),
-                          }),
-                        )
-                      }
+                      onError={(e: any) => handlePlaybackError(JSON.stringify(e?.error || e))}
                       onEnd={() => {
                         setStatus(t('上麦已结束'));
                         setPlaying(false);
+                        setRadioForegroundActive(false);
+                        releaseAudioFocus('radio');
                       }}
                     />
                   )
@@ -673,7 +741,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 22,

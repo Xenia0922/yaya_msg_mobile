@@ -21,7 +21,13 @@ import {
 import { GlassCard } from '../components/GlassCard';
 import { ScalePressable } from '../components/Motion';
 import { useI18n } from '../i18n';
-import { readFollowedIdsCache, writeFollowedIdsCache } from '../services/followedIds';
+import {
+  fetchFollowedIdsShared,
+  fetchLiveListShared,
+  hydrateFollowedIdsShared,
+  peekFollowedIdsShared,
+  subscribeFollowedIds,
+} from '../services/pocketSharedData';
 import { pocketApi } from '../api/pocket48';
 import { externalApi } from '../api/external';
 import bilibiliApi from '../api/bilibili';
@@ -510,8 +516,13 @@ export default function HomeScreen() {
       return;
     }
     let alive = true;
+    const trimmedToken = String(token || '').trim();
+    setFollowedIds(peekFollowedIdsShared(trimmedToken));
+    const offSub = subscribeFollowedIds((ids, tk) => {
+      if (alive && tk === trimmedToken) setFollowedIds(ids);
+    });
 
-    void readFollowedIdsCache(token).then((cached) => {
+    void hydrateFollowedIdsShared(trimmedToken).then((cached) => {
       if (alive && cached.cached) setFollowedIds(new Set(cached.ids));
     });
     let deferTimer: ReturnType<typeof setTimeout> | null = null;
@@ -523,13 +534,10 @@ export default function HomeScreen() {
     };
     const loadFollowedIds = () => {
       lastFollowedIdsAtRef.current = Date.now();
-      pocketApi
-        .getFollowedIds()
-        .then((res: any) => {
+      fetchFollowedIdsShared(trimmedToken)
+        .then((ids) => {
           if (!alive) return;
-          const ids = unwrapList(res, ['content.data', 'content', 'data', 'list']).map(String);
           setFollowedIds(new Set(ids));
-          void writeFollowedIdsCache(token, ids);
         })
         .catch(() => {});
     };
@@ -550,6 +558,7 @@ export default function HomeScreen() {
     });
     return () => {
       alive = false;
+      offSub();
       cancelDefer();
       offFocus();
       offBlur();
@@ -580,17 +589,7 @@ export default function HomeScreen() {
           })
           .catch(() => {});
       }
-      withTimeout(
-        pocketApi.getLiveList({
-          groupId: 0,
-          liveType: 0,
-          next: 0,
-          record: false,
-
-          size: 100,
-        }),
-        10000,
-      )
+      withTimeout(fetchLiveListShared({ force: authoritative }), 10000)
         .then((res: any) => {
           if (!focusedRef.current || !isAppForeground()) return;
           if (!res) throw new Error('timeout');
@@ -768,12 +767,31 @@ export default function HomeScreen() {
 
   const lyricsList = useMusicPlayerStore((s) => s.lyrics);
   const playbackForLyric = useMusicPlayerStore((s) => s.playbackState);
+  const pausedPosForLyric = useMusicPlayerStore((s) =>
+    s.playbackState === 'paused' ? s.position : 0,
+  );
   const [lyricIdx, setLyricIdx] = useState(-1);
   const lyricAnchor = useRef({ pos: 0, at: Date.now(), last: -1 });
 
   useEffect(() => {
-    if (!lyricsList.length || (playbackForLyric !== 'playing' && playbackForLyric !== 'loading')) {
+    if (!lyricsList.length || playbackForLyric === 'idle') {
       setLyricIdx(-1);
+      return;
+    }
+    if (playbackForLyric !== 'playing' && playbackForLyric !== 'loading') {
+      let lo = 0;
+      let hi = lyricsList.length - 1;
+      let hit = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (lyricsList[mid].time <= pausedPosForLyric) {
+          hit = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      setLyricIdx(hit);
       return;
     }
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -830,7 +848,7 @@ export default function HomeScreen() {
       appSub.remove();
       stopTicker();
     };
-  }, [lyricsList, playbackForLyric, navigation]);
+  }, [lyricsList, playbackForLyric, pausedPosForLyric, navigation]);
 
   const lyricLine = lyricIdx >= 0 ? lyricsList[lyricIdx]?.text || '' : '';
 
@@ -845,6 +863,10 @@ export default function HomeScreen() {
   const openMusicLibrary = useCallback(() => {
     handleNav({ title: '', desc: '', route: 'MusicLibraryScreen', icon: '' });
   }, [handleNav]);
+
+  const openMusicPlayer = useCallback(() => {
+    useMusicPlayerStore.getState().openFullScreen('none');
+  }, []);
 
   const handleMusicPrev = useCallback(() => {
     void MusicEngine.prev();
@@ -1158,6 +1180,7 @@ export default function HomeScreen() {
                   resumeLabel={resumeLabel}
                   lyricLine={lyricLine}
                   playbackState={musicPlaybackState}
+                  onOpenPlayer={openMusicPlayer}
                   onOpenLibrary={openMusicLibrary}
                   onPrev={handleMusicPrev}
                   onNext={handleMusicNext}

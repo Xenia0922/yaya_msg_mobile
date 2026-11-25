@@ -18,6 +18,7 @@ export interface TabBarItem {
   key: string;
   label: string;
   icon: (props: { color: string; size: number }) => React.ReactNode;
+  badgeDot?: boolean;
 }
 
 export interface AppTabBarProps {
@@ -71,6 +72,14 @@ const TabCell = React.memo(function TabCell({
     >
       <Reanimated.View style={[styles.cellIcon, iconAnimStyle]}>
         {item.icon({ color: active ? palette.tint : palette.labelSecondary, size: 23 })}
+        {item.badgeDot ? (
+          <View
+            style={[
+              styles.badgeDot,
+              { borderColor: palette.name === 'dark' ? '#1E1E24' : '#FFFFFF' },
+            ]}
+          />
+        ) : null}
       </Reanimated.View>
       <Text
         numberOfLines={1}
@@ -430,6 +439,16 @@ const styles = StyleSheet.create({
     borderRadius: INNER_RADIUS,
   },
   cellIcon: { alignItems: 'center', justifyContent: 'center' },
+  badgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -5,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#FF3B30',
+    borderWidth: 1.5,
+  },
 });
 
 export function MCI(name: string) {

@@ -18,7 +18,22 @@ import { USER_AGENT } from '../constants';
 import { usePalette, fontFamily } from '../theme';
 import { setPipPlaying, setPipAspect } from '../utils/pip';
 import { useI18n } from '../i18n';
-import { LiveExoView, onLiveFirstFrame } from '../native/LivePlayer';
+import {
+  LiveExoView,
+  onLiveFirstFrame,
+  onRadioControlRequested,
+  onRadioStopRequested,
+  startRadioForeground,
+  stopRadioForeground,
+} from '../native/LivePlayer';
+import { isNativeExoActive } from '../native/RadioExo';
+import {
+  getActiveAudioOwner,
+  isRadioForegroundActive,
+  setRadioForegroundActive,
+} from '../services/audioFocus';
+import { fetchMemberRadioStream } from '../services/radio';
+import { ensureNotificationPermission } from '../utils/notifications';
 import { isRtmpUrl } from '../player/resolve/streamResolver';
 import { getPlayerHtml } from './media/player';
 import { SquircleView } from './SquircleView';
@@ -102,17 +117,33 @@ export function MiniPlayer() {
 
   const backToFull = useCallback(() => {
     if (!info) return;
+    const target = info.backTo;
     const playPosition = useMiniPlayerStore.getState().currentPos;
     close();
+    if (target.screen === 'RoomRadioScreen' && target.radioMember) {
+      (navigation as any).navigate('RoomRadioScreen', {
+        member: target.radioMember,
+        initialMode: target.radioMode || 'big',
+        streamUrl: info.url || target.playUrl,
+      });
+      return;
+    }
+    if (target.screen === 'BilibiliLiveScreen' && target.biliRoomId) {
+      (navigation as any).navigate('BilibiliLiveScreen', {
+        roomId: target.biliRoomId,
+        roomName: target.biliRoomName || target.playTitle || '',
+      });
+      return;
+    }
     (navigation as any).navigate('Media', {
-      mode: info.backTo.mode,
-      playUrl: info.backTo.playUrl,
-      playLiveId: info.backTo.playLiveId,
-      playTitle: info.backTo.playTitle,
-      playCover: info.backTo.playCover,
+      mode: target.mode,
+      playUrl: target.playUrl,
+      playLiveId: target.playLiveId,
+      playTitle: target.playTitle,
+      playCover: target.playCover,
       playNonce: ++navNonceRef.current,
 
-      ...(info.backTo.mode !== 'live' ? { playPosition } : {}),
+      ...(target.mode !== 'live' ? { playPosition } : {}),
     });
   }, [info, close, navigation]);
 
@@ -140,11 +171,16 @@ export function MiniPlayer() {
         },
         onPanResponderRelease: (_e, g) => {
           if (Math.abs(g.dx) < TAP_SLOP && Math.abs(g.dy) < TAP_SLOP) {
+            if (info?.audioOnly) {
+              lastTapAt.current = 0;
+              backToFull();
+              return;
+            }
             const now = Date.now();
 
             if (now - lastTapAt.current < DOUBLE_TAP_MS) {
               lastTapAt.current = 0;
-              if (!info?.audioOnly) cycleScale();
+              cycleScale();
               showControls();
               return;
             }
@@ -194,7 +230,7 @@ export function MiniPlayer() {
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [info, winW, winH, navigation, showControls, boxW, cycleScale],
+    [info, winW, winH, navigation, showControls, boxW, cycleScale, backToFull],
   );
 
   const [pipCover, setPipCover] = useState(false);
@@ -282,9 +318,136 @@ export function MiniPlayer() {
     style?: any;
     url: string;
     onSize?: (e: any) => void;
+    onError?: (e: any) => void;
     audioOnly?: boolean;
     paused?: boolean;
   }> | null;
+
+  const isRadioCapsule = Boolean(visible && info?.audioOnly && info?.radioRefresh);
+  const capsuleRadioForegroundRef = useRef(false);
+  const radioRetryUsedRef = useRef(false);
+
+  useEffect(() => {
+    radioRetryUsedRef.current = false;
+  }, [visible, info?.radioRefresh?.member?.id, info?.radioRefresh?.mode]);
+
+  useEffect(() => {
+    if (!isRadioCapsule || !info?.radioRefresh) {
+      if (capsuleRadioForegroundRef.current) {
+        capsuleRadioForegroundRef.current = false;
+        if (getActiveAudioOwner() !== 'radio') {
+          setRadioForegroundActive(false);
+          if (getActiveAudioOwner() !== 'music' && !isNativeExoActive()) {
+            stopRadioForeground();
+          }
+        }
+      }
+      return undefined;
+    }
+    let cancelled = false;
+    capsuleRadioForegroundRef.current = true;
+    setRadioForegroundActive(playing);
+    if (playing) {
+      ensureNotificationPermission()
+        .then(() => {
+          const cur = useMiniPlayerStore.getState();
+          if (cancelled || !cur.visible || !cur.playing || !cur.info?.radioRefresh) return;
+          startRadioForeground(
+            {
+              title: cur.info.title || cur.info.radioRefresh.member.ownerName || '',
+              artist: cur.info.radioRefresh.mode === 'small' ? t('小房间') : t('大房间'),
+              isPlaying: true,
+              position: 0,
+              duration: 0,
+            },
+            true,
+          );
+        })
+        .catch(() => {});
+    } else if (getActiveAudioOwner() !== 'radio' && !isNativeExoActive()) {
+      stopRadioForeground();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [isRadioCapsule, playing, info?.title, info?.radioRefresh, t]);
+
+  useEffect(() => {
+    if (!isRadioCapsule || !playing || !info?.radioRefresh) return undefined;
+    const { member, mode } = info.radioRefresh;
+    const id = setInterval(
+      () => {
+        fetchMemberRadioStream(member, mode)
+          .then((res) => {
+            if (res.url) useMiniPlayerStore.getState().updateUrl(res.url);
+          })
+          .catch(() => {});
+      },
+      4.5 * 60 * 1000,
+    );
+    return () => clearInterval(id);
+  }, [isRadioCapsule, playing, info?.radioRefresh]);
+
+  useEffect(() => {
+    if (!isRadioCapsule) return undefined;
+    const offStop = onRadioStopRequested(() => {
+      if (!isRadioForegroundActive()) return;
+      const cur = useMiniPlayerStore.getState();
+      if (cur.visible && cur.info?.audioOnly && cur.info?.radioRefresh) cur.close();
+    });
+    const offCtrl = onRadioControlRequested((action) => {
+      if (!isRadioForegroundActive()) return;
+      const cur = useMiniPlayerStore.getState();
+      if (!cur.visible || !cur.info?.audioOnly || !cur.info?.radioRefresh) return;
+      if (action === 'stop') cur.close();
+      else if (action === 'play_pause') cur.setPlaying(!cur.playing);
+      else if (action === 'play' && !cur.playing) cur.setPlaying(true);
+      else if (action === 'pause' && cur.playing) cur.setPlaying(false);
+    });
+    return () => {
+      offStop();
+      offCtrl();
+    };
+  }, [isRadioCapsule]);
+
+  useEffect(
+    () => () => {
+      if (capsuleRadioForegroundRef.current) {
+        capsuleRadioForegroundRef.current = false;
+        if (getActiveAudioOwner() !== 'radio') {
+          setRadioForegroundActive(false);
+          if (getActiveAudioOwner() !== 'music' && !isNativeExoActive()) {
+            stopRadioForeground();
+          }
+        }
+      }
+    },
+    [],
+  );
+
+  const tryRefreshCapsuleStream = useCallback(
+    (fallbackDetail: string) => {
+      const rr = useMiniPlayerStore.getState().info?.radioRefresh;
+      if (rr && !radioRetryUsedRef.current) {
+        radioRetryUsedRef.current = true;
+        void fetchMemberRadioStream(rr.member, rr.mode)
+          .then((res) => {
+            if (res.url) {
+              setErrorMsg('');
+              useMiniPlayerStore.getState().updateUrl(res.url);
+              return;
+            }
+            setErrorMsg(t('小窗播放失败：{detail}', { detail: fallbackDetail.slice(0, 160) }));
+          })
+          .catch(() => {
+            setErrorMsg(t('小窗播放失败：{detail}', { detail: fallbackDetail.slice(0, 160) }));
+          });
+        return;
+      }
+      setErrorMsg(t('小窗播放失败：{detail}', { detail: fallbackDetail.slice(0, 160) }));
+    },
+    [t],
+  );
 
   const useWebMini = !!info?.web && !!info?.isLive && /^https?:\/\//i.test(lowerUrl);
   const webMiniRef = useRef<WebView>(null);
@@ -443,6 +606,9 @@ export function MiniPlayer() {
                     typeof ne.isLandscape === 'boolean' ? ne.isLandscape : undefined,
                   );
                 }}
+                onError={(e: any) =>
+                  tryRefreshCapsuleStream(String(e?.nativeEvent?.message || 'live error'))
+                }
               />
             ) : (
               <Video
@@ -484,11 +650,7 @@ export function MiniPlayer() {
                 }}
                 onEnd={() => setPlaying(false)}
                 onError={(event) => {
-                  setErrorMsg(
-                    t('小窗播放失败：{detail}', {
-                      detail: JSON.stringify(event?.error || event).slice(0, 160),
-                    }),
-                  );
+                  tryRefreshCapsuleStream(JSON.stringify(event?.error || event));
                 }}
               />
             )}

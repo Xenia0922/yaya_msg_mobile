@@ -68,17 +68,30 @@ const pendingSubscribeServerIds = new Set<string>();
 
 const subscribedInSession = new Set<string>();
 
+let flushPendingPromise: Promise<boolean> | null = null;
+
 async function flushPendingSubscriptions(): Promise<boolean> {
   if (!isPocketNimQChatAvailable() || pendingSubscribeServerIds.size === 0) return false;
+  if (flushPendingPromise) {
+    await flushPendingPromise;
+  }
   const toSend = Array.from(pendingSubscribeServerIds).filter(
     (sid) => !subscribedInSession.has(sid),
   );
   if (!toSend.length) return true;
-  const ok = await qchatSubscribeBatch(toSend);
-  if (ok) {
-    for (const sid of toSend) subscribedInSession.add(sid);
+  const gen = qchatGeneration;
+  const run = qchatSubscribeBatch(toSend).then((ok) => {
+    if (ok && gen === qchatGeneration && qchatLiveState === 'connected') {
+      for (const sid of toSend) subscribedInSession.add(sid);
+    }
+    return ok;
+  });
+  flushPendingPromise = run;
+  try {
+    return await run;
+  } finally {
+    if (flushPendingPromise === run) flushPendingPromise = null;
   }
-  return ok;
 }
 
 function maskAccid(accid: string): string {
@@ -176,6 +189,7 @@ export function resetQChatSession(reason = ''): void {
   observeRefGeneration = qchatGeneration;
   pendingSubscribeServerIds.clear();
   subscribedInSession.clear();
+  flushPendingPromise = null;
   try {
     qchatDisconnect();
   } catch {}

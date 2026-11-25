@@ -1,67 +1,142 @@
 import { AppState, DeviceEventEmitter, NativeModules, ToastAndroid } from 'react-native';
-import { flushMusicPlayerStorage, useMusicPlayerStore, Track } from '../store/musicPlayerStore';
-import { usePlayerStore } from '../player/store/playerStore';
+import * as FileSystem from 'expo-file-system/legacy';
+import {
+  flushMusicPlayerStorage,
+  resolveTrackDurationSec,
+  useMusicPlayerStore,
+  Track,
+  LyricLine,
+} from '../store/musicPlayerStore';
+import {
+  claimAudioFocus,
+  isRadioForegroundActive,
+  registerAudioHandler,
+  releaseAudioFocus,
+} from './audioFocus';
 import { USER_AGENT } from '../constants';
 import { logWarn } from '../utils/runtimeLog';
 import { normalizeUrl } from '../utils/data';
 import { parseLrc } from '../utils/lyrics';
 import { getLyricsMatcher } from '../utils/lyricsIndex';
 import { fetchWithTimeout } from '../utils/network';
-import {
-  exoGetPlaybackSnapshot,
-  exoPlayTrack,
-  exoControl,
-  ExoPlaybackSnapshot,
-  isNativeExoDisabled,
-} from '../native/RadioExo';
+import { exoGetPlaybackSnapshot, exoControl, ExoPlaybackSnapshot } from '../native/RadioExo';
 import { onRadioControlRequested } from '../native/LivePlayer';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LYRICS_BASE_URL = 'https://yaya-data.pages.dev/lyrics';
-
-const LYRICS_CACHE_KEY = 'yaya_lyric_cache_v1';
 const LYRICS_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+const LYRICS_MEM_MAX = 40;
+const LYRICS_DISK_MAX = 200;
 
-async function readLyricCache(): Promise<Record<string, { t: number; text: string }>> {
-  try {
-    const raw = await AsyncStorage.getItem(LYRICS_CACHE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
+const lyricMemoryCache = new Map<string, LyricLine[]>();
+let lyricDirReady: Promise<boolean> | null = null;
+let lyricPrunePending = false;
+
+function lyricCacheDir(): string {
+  return `${FileSystem.cacheDirectory || ''}lyrics/`;
+}
+
+function hashKey(key: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function lyricFileFor(cacheKey: string): string {
+  return `${lyricCacheDir()}lrc_${hashKey(cacheKey)}.lrc`;
+}
+
+function ensureLyricDir(): Promise<boolean> {
+  if (!lyricDirReady) {
+    lyricDirReady = (async () => {
+      try {
+        await FileSystem.makeDirectoryAsync(lyricCacheDir(), { intermediates: true });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+  }
+  return lyricDirReady;
+}
+
+function setLyricMemory(cacheKey: string, lines: LyricLine[]): void {
+  lyricMemoryCache.delete(cacheKey);
+  lyricMemoryCache.set(cacheKey, lines);
+  while (lyricMemoryCache.size > LYRICS_MEM_MAX) {
+    const oldest = lyricMemoryCache.keys().next();
+    if (!oldest.done) lyricMemoryCache.delete(oldest.value);
+    else break;
   }
 }
 
-let _lyricWriteChain: Promise<void> = Promise.resolve();
-function saveLyricCache(cacheKey: string, text: string): void {
-  _lyricWriteChain = _lyricWriteChain.then(async () => {
-    try {
-      const cache = await readLyricCache();
-      cache[cacheKey] = { t: Date.now(), text };
-      const keys = Object.keys(cache);
-      if (keys.length > 200) {
-        const oldest = keys
-          .map((k) => ({ k, t: cache[k].t }))
-          .sort((a, b) => a.t - b.t)
-          .slice(0, keys.length - 200)
-          .map((x) => x.k);
-        oldest.forEach((k) => delete cache[k]);
-      }
-      await AsyncStorage.setItem(LYRICS_CACHE_KEY, JSON.stringify(cache));
-    } catch {}
-  });
+async function readLyricDisk(cacheKey: string): Promise<string | null> {
+  try {
+    const ok = await ensureLyricDir();
+    if (!ok) return null;
+    const path = lyricFileFor(cacheKey);
+    const info: any = await FileSystem.getInfoAsync(path);
+    if (!info?.exists) return null;
+    const mtimeMs = info.modificationTime ? info.modificationTime * 1000 : 0;
+    if (mtimeMs > 0 && Date.now() - mtimeMs >= LYRICS_CACHE_TTL) return null;
+    return await FileSystem.readAsStringAsync(path);
+  } catch {
+    return null;
+  }
+}
+
+async function pruneLyricDisk(): Promise<void> {
+  if (lyricPrunePending) return;
+  lyricPrunePending = true;
+  try {
+    const dir = lyricCacheDir();
+    const names = await FileSystem.readDirectoryAsync(dir);
+    if (names.length <= LYRICS_DISK_MAX) return;
+    const stats = await Promise.all(
+      names.map(async (name) => {
+        const p = `${dir}${name}`;
+        try {
+          const info: any = await FileSystem.getInfoAsync(p);
+          return { p, t: info?.modificationTime ? Number(info.modificationTime) : 0 };
+        } catch {
+          return { p, t: 0 };
+        }
+      }),
+    );
+    stats.sort((a, b) => a.t - b.t);
+    const toRemove = stats.slice(0, stats.length - LYRICS_DISK_MAX);
+    await Promise.all(toRemove.map((x) => FileSystem.deleteAsync(x.p, { idempotent: true })));
+  } catch {
+  } finally {
+    lyricPrunePending = false;
+  }
+}
+
+function saveLyricDisk(cacheKey: string, text: string): void {
+  ensureLyricDir()
+    .then(async (ok) => {
+      if (!ok) return;
+      await FileSystem.writeAsStringAsync(lyricFileFor(cacheKey), text);
+      void pruneLyricDisk();
+    })
+    .catch(() => {});
 }
 
 export function isPlayableHost(url: string): boolean {
   try {
     const host = new URL(url).hostname.toLowerCase();
     if (host.endsWith('.48.cn') || host === 'snh48.com' || host === 'www.snh48.com') return true;
-
     return host === 'music.gnz.hk';
   } catch {
     return false;
   }
+}
+
+export function getTrackVolume(url: string): number {
+  const u = String(url || '').toLowerCase();
+  return /(gnz\.hk|gnz-music|music\.gnz)/.test(u) || /\.r2\.|r2-music/i.test(u) ? 0.86 : 1.0;
 }
 
 export function mediaUrl(path: string): string {
@@ -75,7 +150,7 @@ type TrackUrlResolver = (track: Track) => Promise<string | null>;
 const PLAY_UA = USER_AGENT;
 const PLAY_REFERER = 'https://h5.48.cn/';
 
-function trackKey(track: Track): string {
+export function trackKey(track: Track): string {
   return String(
     (track as any).musicId || (track as any).id || `${track.title}|${track.artist || ''}`,
   );
@@ -83,9 +158,22 @@ function trackKey(track: Track): string {
 
 function findNativeTrackIndex(
   queue: Track[],
-  snapshot: ExoPlaybackSnapshot,
+  snapshot: Pick<
+    ExoPlaybackSnapshot,
+    'trackId' | 'url' | 'title' | 'artist' | 'album' | 'queueIndex'
+  >,
   currentIndex: number,
 ): number {
+  if (
+    typeof snapshot.queueIndex === 'number' &&
+    snapshot.queueIndex >= 0 &&
+    snapshot.queueIndex < queue.length
+  ) {
+    const byQueueIdx = queue[snapshot.queueIndex];
+    const idMatches =
+      !snapshot.trackId || String(byQueueIdx?.musicId || byQueueIdx?.id || '') === snapshot.trackId;
+    if (idMatches) return snapshot.queueIndex;
+  }
   if (snapshot.trackId) {
     const byId = queue.findIndex(
       (track) => String(track.musicId || track.id || '') === snapshot.trackId,
@@ -136,31 +224,41 @@ export function applyNativeSnapshot(snapshot: ExoPlaybackSnapshot): {
     !trackChanged && !snapshot.playing && snapshot.position <= 0 && st.position > 0
       ? st.position
       : snapshot.position;
+  const preservedDuration =
+    snapshot.duration > 0
+      ? snapshot.duration
+      : trackChanged
+        ? resolveTrackDurationSec(st.queue[index])
+        : st.duration || resolveTrackDurationSec(st.queue[index]);
   useMusicPlayerStore.setState({
     currentIndex: index,
     url: snapshot.url,
+    sessionActivated: true,
     position: preservedPosition,
-    duration: snapshot.duration > 0 ? snapshot.duration : trackChanged ? 0 : st.duration,
+    buffered: snapshot.buffered > 0 ? snapshot.buffered : trackChanged ? 0 : st.buffered,
+    buffering: !!snapshot.buffering,
+    duration: preservedDuration,
     playbackState: snapshot.playing ? 'playing' : 'paused',
+    ...(snapshot.speed > 0 ? { speed: snapshot.speed } : null),
     seekTarget: 0,
     seekPending: false,
     seekTargetGuard: preservedPosition,
     seekNonce: 0,
     seekFrom: preservedPosition,
-
-    ...(trackChanged ? { lyrics: [] } : {}),
+    ...(trackChanged ? { lyrics: [] } : null),
     seekIssuedAt: 0,
     error: null,
   });
   if (snapshot.playing) {
+    claimAudioFocus('music');
     noteExoArmed(snapshot.url);
     noteExoProgress();
   }
   flushMusicPlayerStorage();
-  if (trackChanged) {
-    MusicEngine._playSeq += 1;
-    const tr = useMusicPlayerStore.getState().queue[index];
-    if (tr) void MusicEngine._fetchLyrics(tr);
+  const tr = useMusicPlayerStore.getState().queue[index];
+  if (tr && (trackChanged || !useMusicPlayerStore.getState().lyrics.length)) {
+    if (trackChanged) MusicEngine._playSeq += 1;
+    void MusicEngine._fetchLyrics(tr);
   }
   return { active: true, matched: true };
 }
@@ -198,7 +296,13 @@ export async function syncNativePlaybackSnapshot(): Promise<{ active: boolean; m
         useMusicPlayerStore.persist.onFinishHydration(() => resolve()),
       );
     }
-    return applyNativeSnapshot(await exoGetPlaybackSnapshot());
+    const res = await applyNativeSnapshot(await exoGetPlaybackSnapshot());
+    const st = useMusicPlayerStore.getState();
+    const cur = st.queue[st.currentIndex];
+    if (cur && (!st.lyrics || st.lyrics.length === 0)) {
+      void MusicEngine._fetchLyrics(cur);
+    }
+    return res;
   } catch {
     return { active: false, matched: false };
   }
@@ -209,15 +313,71 @@ export const MusicEngine = {
     return useMusicPlayerStore.getState();
   },
   _urlResolver: null as TrackUrlResolver | null,
-
   _playSeq: 0,
-
   _warmUrls: new Map<string, string>(),
-  _warmUrlsMax: 40,
-
+  _warmUrlsMax: 60,
   _autoSkipDepth: 0,
-
   _skipTs: 0,
+
+  getWarmUrl(track: Track): string {
+    const hit = this._warmUrls.get(trackKey(track));
+    if (hit) return hit;
+    const direct = String(track?.mp3 || '').trim();
+    if (direct && /^https?:/i.test(direct) && isPlayableHost(direct)) return direct;
+    return '';
+  },
+
+  syncFromNativeTrack(params: {
+    index: number;
+    url: string;
+    trackId: string;
+    title: string;
+    artist: string;
+    album: string;
+    playing: boolean;
+  }): boolean {
+    const st = useMusicPlayerStore.getState();
+    if (!st.queue.length) return false;
+    const idx = findNativeTrackIndex(
+      st.queue,
+      {
+        queueIndex: params.index,
+        trackId: params.trackId,
+        url: params.url,
+        title: params.title,
+        artist: params.artist,
+        album: params.album,
+      },
+      st.currentIndex,
+    );
+    if (idx < 0 || !st.queue[idx]) return false;
+    const track = st.queue[idx];
+    this._playSeq += 1;
+    if (params.playing) claimAudioFocus('music');
+    if (params.url) {
+      this._cacheWarmUrl(trackKey(track), params.url);
+      noteExoArmed(params.url);
+    }
+    useMusicPlayerStore.setState((prev) => ({
+      currentIndex: idx,
+      url: params.url || prev.url,
+      playbackState: params.playing ? 'playing' : 'paused',
+      sessionActivated: true,
+      position: 0,
+      buffered: 0,
+      duration: resolveTrackDurationSec(track),
+      buffering: params.playing,
+      seekTarget: 0,
+      seekPending: false,
+      seekTargetGuard: 0,
+      error: null,
+      lyrics: [],
+    }));
+    st.recordRecent(track);
+    this._fetchLyrics(track);
+    this._prewarmNextTrack();
+    return true;
+  },
 
   async _warmUrl(url: string): Promise<void> {
     try {
@@ -291,12 +451,6 @@ export const MusicEngine = {
     return null;
   },
 
-  screenAttached: false,
-
-  setScreenAttached(attached: boolean) {
-    this.screenAttached = attached;
-  },
-
   setUrlResolver(resolver: TrackUrlResolver) {
     this._urlResolver = resolver;
   },
@@ -356,6 +510,8 @@ export const MusicEngine = {
       url: useMusicPlayerStore.getState().url,
       duration: 0,
       position: 0,
+      buffered: 0,
+      buffering: false,
       lyrics: [],
       error: null,
     });
@@ -374,10 +530,7 @@ export const MusicEngine = {
   },
 
   async playTrack(track: Track, queue?: Track[]) {
-    try {
-      const ps = usePlayerStore.getState();
-      if (ps.source && ps.state !== 'idle') ps.close();
-    } catch {}
+    claimAudioFocus('music');
     const seq = ++this._playSeq;
 
     try {
@@ -403,6 +556,7 @@ export const MusicEngine = {
       if (!url) throw new Error('no url');
       if (!isPlayableHost(url)) throw new Error('不支持的播放源');
       if (!/^https?:\/\//i.test(url)) throw new Error('非法播放地址');
+      this._cacheWarmUrl(trackKey(track), url);
       store.setUrl(url);
       store.setPlaybackState('playing');
       this._autoSkipDepth = 0;
@@ -435,10 +589,7 @@ export const MusicEngine = {
   },
 
   async resume() {
-    try {
-      const ps = usePlayerStore.getState();
-      if (ps.source && ps.state !== 'idle') ps.close();
-    } catch {}
+    claimAudioFocus('music');
     const seq = ++this._playSeq;
     const store = useMusicPlayerStore.getState();
     const track = store.queue[store.currentIndex];
@@ -468,6 +619,7 @@ export const MusicEngine = {
       if (!url) throw new Error('no url');
       if (!isPlayableHost(url)) throw new Error('不支持的播放源');
       if (!/^https?:\/\//i.test(url)) throw new Error('非法播放地址');
+      this._cacheWarmUrl(trackKey(track), url);
       store.setUrl(url);
       store.setPlaybackState('playing');
       this._prewarmNextTrack();
@@ -533,6 +685,8 @@ export const MusicEngine = {
         playbackState: 'idle',
         position: 0,
         duration: 0,
+        buffered: 0,
+        buffering: false,
         seekTarget: 0,
         seekPending: false,
         seekTargetGuard: 0,
@@ -544,10 +698,10 @@ export const MusicEngine = {
 
   togglePause() {
     const s = useMusicPlayerStore.getState();
-
     if (s.playbackState === 'loading') return;
 
     if (!s.url && s.queue[s.currentIndex]) {
+      claimAudioFocus('music');
       const t = s.queue[s.currentIndex];
       const seq = ++this._playSeq;
       s.setPlaybackState('loading');
@@ -585,6 +739,7 @@ export const MusicEngine = {
           const sameTrack =
             curTrack && String(curTrack.musicId || curTrack.id) === String(t.musicId || t.id);
           if (!sameTrack) return;
+          this._cacheWarmUrl(trackKey(t), url);
           cur.setUrl(url);
           cur.setPlaybackState('playing');
           if (!cur.lyrics || cur.lyrics.length === 0) this._fetchLyrics(t);
@@ -602,6 +757,12 @@ export const MusicEngine = {
     }
 
     const willPlay = s.playbackState !== 'playing';
+    if (willPlay) {
+      claimAudioFocus('music');
+      if (s.queue[s.currentIndex]) s.recordRecent(s.queue[s.currentIndex]);
+    } else {
+      releaseAudioFocus('music');
+    }
     s.setPlaybackState(willPlay ? 'playing' : 'paused');
     if (willPlay && s.queue[s.currentIndex] && (!s.lyrics || s.lyrics.length === 0)) {
       this._fetchLyrics(s.queue[s.currentIndex]);
@@ -610,15 +771,21 @@ export const MusicEngine = {
 
   stop() {
     this._playSeq++;
+    releaseAudioFocus('music');
     resetExoArm();
-
     exoControl('pause');
     exoControl('stop');
+    useMusicPlayerStore.getState().clearSleepTimer();
+    useMusicPlayerStore.getState().closeFullScreen();
     useMusicPlayerStore.getState().setPlaybackState('idle');
     useMusicPlayerStore.setState({
       url: '',
+      miniBarDismissed: true,
+      sessionActivated: false,
       position: 0,
       duration: 0,
+      buffered: 0,
+      buffering: false,
       seekTarget: 0,
       seekPending: false,
       seekTargetGuard: 0,
@@ -636,10 +803,34 @@ export const MusicEngine = {
 
   async _fetchLyrics(track: Track) {
     const seq = this._playSeq;
-    const commit = (lines: any[]) => {
+    const commit = (lines: LyricLine[]) => {
       if (seq !== this._playSeq) return;
       useMusicPlayerStore.getState().setLyrics(lines);
     };
+    const loadAndCommitByFile = async (filePath: string) => {
+      const cacheKey = `lyric:${filePath}`;
+      const memHit = lyricMemoryCache.get(cacheKey);
+      if (memHit) {
+        commit(memHit);
+        return;
+      }
+      const diskHit = await readLyricDisk(cacheKey);
+      if (diskHit !== null) {
+        const parsed = parseLrc(diskHit);
+        setLyricMemory(cacheKey, parsed);
+        commit(parsed);
+        return;
+      }
+      const url = `${LYRICS_BASE_URL}/${encodeURI(filePath)}`;
+      const lrcResp = await fetchWithTimeout(url, {}, 10000);
+      if (!lrcResp?.ok) throw new Error(`lyrics HTTP ${lrcResp?.status}`);
+      const raw = await lrcResp.text();
+      const parsed = parseLrc(raw);
+      setLyricMemory(cacheKey, parsed);
+      commit(parsed);
+      saveLyricDisk(cacheKey, raw);
+    };
+
     const title = String(track.title || '').trim();
     if (!title) return;
 
@@ -660,39 +851,22 @@ export const MusicEngine = {
     candidates.push('');
 
     const coreTitle = title.replace(/[（(].*?[)）]/g, '').trim();
-
     const albumName = String((track as any).album || (track as any).albumName || '').trim();
+
     if (coreTitle && coreTitle !== title) {
-      const coreGroupCandidates: string[] = [];
-      for (const g of candidates) {
-        if (!g) continue;
-        coreGroupCandidates.push(g);
-      }
+      const coreGroupCandidates = candidates.filter(Boolean);
       try {
         const { matcher } = await getLyricsMatcher();
         for (const g of coreGroupCandidates) {
           const r = matcher.match({ song: coreTitle, group: g, album: albumName });
           if (r) {
-            const url = `${LYRICS_BASE_URL}/${encodeURI(r.entry.filePath)}`;
-            const cacheKey = `lyric:${r.entry.filePath}`;
-            const cache = await readLyricCache();
-            const hit = cache[cacheKey];
-            if (hit && Date.now() - hit.t < LYRICS_CACHE_TTL) {
-              commit(parseLrc(hit.text));
-              return;
-            }
-            const lrcResp = await fetchWithTimeout(url, {}, 10000);
-
-            if (!lrcResp?.ok) throw new Error(`lyrics HTTP ${lrcResp?.status}`);
-            const raw = await lrcResp.text();
-            commit(parseLrc(raw));
-
-            saveLyricCache(cacheKey, raw);
+            await loadAndCommitByFile(r.entry.filePath);
             return;
           }
         }
       } catch {}
     }
+
     try {
       const { matcher } = await getLyricsMatcher();
       let best: ReturnType<typeof matcher.match> = null;
@@ -704,22 +878,7 @@ export const MusicEngine = {
           best = r;
       }
       if (best) {
-        const url = `${LYRICS_BASE_URL}/${encodeURI(best.entry.filePath)}`;
-        const cacheKey = `lyric:${best.entry.filePath}`;
-        const cache = await readLyricCache();
-        const hit = cache[cacheKey];
-        if (hit && Date.now() - hit.t < LYRICS_CACHE_TTL) {
-          commit(parseLrc(hit.text));
-          return;
-        }
-        const lrcResp = await fetchWithTimeout(url, {}, 10000);
-        if (!lrcResp.ok) {
-          logWarn(`[lyrics] fetch ${lrcResp.status} ${title}`, 'music');
-          return;
-        }
-        const raw = await lrcResp.text();
-        commit(parseLrc(raw));
-        saveLyricCache(cacheKey, raw);
+        await loadAndCommitByFile(best.entry.filePath);
       } else {
         logWarn(`[lyrics] no match for ${title} group=${rawGroup}`, 'music');
       }
@@ -729,7 +888,7 @@ export const MusicEngine = {
   },
 };
 
-function syncFavoriteToNative() {
+export function syncFavoriteToNative() {
   try {
     const st = useMusicPlayerStore.getState();
     const cur = st.queue[st.currentIndex];
@@ -766,58 +925,31 @@ function installMusicBridge() {
     syncFavoriteToNative();
   });
 
-  let lastPushedUrl = '';
-  useMusicPlayerStore.subscribe((st, prev) => {
+  registerAudioHandler('music', (reason) => {
     try {
-      if (!st.url || st.playbackState === 'idle') {
-        if (lastPushedUrl) exoControl('stop');
-        lastPushedUrl = '';
-        resetExoArm();
-        return;
+      const st = useMusicPlayerStore.getState();
+      if (st.playbackState === 'playing' || st.playbackState === 'loading') {
+        MusicEngine._playSeq += 1;
+        exoControl('pause');
+        st.setPlaybackState(st.playbackState === 'loading' ? 'idle' : 'paused');
+      } else if (reason === 'reset' && st.playbackState !== 'idle') {
+        exoControl('pause');
+        st.setPlaybackState('paused');
       }
-      if (st.playbackState === 'loading' && prev.playbackState !== 'loading') lastPushedUrl = '';
-      if (MusicEngine.screenAttached) return;
-      if (isNativeExoDisabled()) return;
-      if (st.url === lastPushedUrl || isExoRecentlyArmed(st.url)) {
-        lastPushedUrl = st.url;
-        return;
-      }
-      if (st.playbackState !== 'playing') return;
-      const tr = st.queue[st.currentIndex];
-      if (!tr) return;
-      lastPushedUrl = st.url;
-      noteExoArmed(st.url);
-      const resumeAt = st.seekPending && Number(st.seekTarget) > 0 ? Number(st.seekTarget) : 0;
-      if (resumeAt > 0) st.consumeSeekTarget();
-      exoPlayTrack(
-        {
-          url: st.url,
-          trackId: String(tr.musicId || tr.id || ''),
-          title: String(tr.title || '音乐'),
-          artist: String((tr as any).artist || (tr as any).groupLabel || ''),
-          album: String((tr as any).album || ''),
-          art: String(tr.coverUrl || tr.cover || ''),
-        },
-        resumeAt,
-        true,
-        {
-          'User-Agent': USER_AGENT,
-          Referer: 'https://h5.48.cn/',
-          Origin: 'https://h5.48.cn',
-        },
-        1,
-        st.playMode === 'single' ? 1 : 0,
-      );
     } catch {}
   });
 
   onRadioControlRequested((action, value) => {
     try {
+      if (action !== 'playlist' && isRadioForegroundActive()) return;
       const st = useMusicPlayerStore.getState();
 
       if (action === 'playlist') {
-        ToastAndroid.show('打开播放列表', ToastAndroid.SHORT);
-        DeviceEventEmitter.emit('OpenMusicLibrary');
+        if (st.queue.length > 0 && st.currentIndex >= 0) {
+          st.openFullScreen('queue');
+        } else {
+          DeviceEventEmitter.emit('OpenMusicLibrary');
+        }
         return;
       }
       if (!st.queue.length || st.playbackState === 'idle') {
@@ -852,17 +984,23 @@ function installMusicBridge() {
           const was = st.isFavorite(key, cur);
           st.toggleFavorite(key, cur);
           syncFavoriteToNative();
-
           ToastAndroid.show(was ? '已取消收藏' : '已收藏', ToastAndroid.SHORT);
           break;
         }
         case 'stop':
+          releaseAudioFocus('music');
           resetExoArm();
+          st.clearSleepTimer();
+          st.closeFullScreen();
           useMusicPlayerStore.setState({
             url: '',
             playbackState: 'idle',
+            miniBarDismissed: true,
+            sessionActivated: false,
             position: 0,
             duration: 0,
+            buffered: 0,
+            buffering: false,
             seekTarget: 0,
             seekPending: false,
             seekTargetGuard: 0,

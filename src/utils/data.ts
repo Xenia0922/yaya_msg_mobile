@@ -117,6 +117,72 @@ export function replaceEmojiText(text: string): string {
   });
 }
 
+const DELETED_MESSAGE_TYPES = new Set([
+  'DELETE',
+  'DELETE_MSG',
+  'MSG_DELETE',
+  'DELETE_MESSAGE',
+  'TEAM_DELETE',
+  'REVOKE',
+  'RECALL',
+  'RECALL_MSG',
+]);
+
+const CONTROL_ONLY_MESSAGE_TYPES = new Set(['TEAM_VOICE', 'VOICE_OPERATE']);
+
+const TOP_LEVEL_CONTROL_WRAPPER_TYPES = new Set([
+  '',
+  'CUSTOM',
+  '100',
+  'QCHATCUSTOM',
+  'SYSTEM',
+  'NOTIFICATION',
+]);
+
+const METADATA_BODY_KEYS = new Set([
+  'messageType',
+  'msgType',
+  'extMsgType',
+  'type',
+  'msgId',
+  'msgIdClient',
+  'msgIdServer',
+  'clientMsgId',
+  'uuid',
+  'msgUuid',
+  'id',
+  'channelId',
+  'serverId',
+  'roomId',
+  'userId',
+  'ownerId',
+  'accid',
+  'fromAccount',
+  'bubbleId',
+  'source',
+  'module',
+  'operateType',
+  'platform',
+  'version',
+  'timestamp',
+  'msgTime',
+  'time',
+]);
+
+function extractMessageTypes(...sources: any[]): string[] {
+  const out: string[] = [];
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue;
+    for (const key of ['msgType', 'extMsgType', 'messageType', 'type']) {
+      const raw = src[key];
+      if (raw === undefined || raw === null) continue;
+      const val = String(raw).trim().toUpperCase();
+      if (val) out.push(val);
+    }
+  }
+  return out;
+}
+
 export function messagePayload(item: any): any {
   const raw = item?.bodys ?? item?.body ?? item?.msgContent ?? item?.content ?? item?.message;
   const body = parseMaybeJson(raw);
@@ -136,7 +202,12 @@ export function messagePayload(item: any): any {
           inner.replyGiftInfo ||
           inner.voiceInfo ||
           inner.audioInfo ||
-          inner.messageType)
+          inner.msgType ||
+          inner.messageType ||
+          inner.deleteInfo ||
+          inner.deleteMsgInfo ||
+          inner.revokeInfo ||
+          inner.recallInfo)
       ) {
         return { ...body, ...inner };
       }
@@ -151,6 +222,117 @@ export function messagePayload(item: any): any {
   }
   if (typeof raw === 'string') return raw;
   return null;
+}
+
+function isTruthyDeleteFlag(value: unknown): boolean {
+  return value === true || value === 1 || value === '1';
+}
+
+export function isDeletedMessage(item: any): boolean {
+  if (!item || typeof item !== 'object') return false;
+  const body = messagePayload(item);
+  const ext = parseMaybeJson(item?.extInfo ?? item?.ext);
+  const att = parseMaybeJson(item?.attachment);
+
+  const types = extractMessageTypes(item, body, ext, att);
+  if (types.some((tp) => DELETED_MESSAGE_TYPES.has(tp))) return true;
+
+  for (const box of [item, body, ext, att]) {
+    if (!box || typeof box !== 'object') continue;
+    for (const flagKey of [
+      'isDelete',
+      'deleted',
+      'isDeleted',
+      'isRevoke',
+      'revoked',
+      'isRecall',
+      'recalled',
+    ]) {
+      if (isTruthyDeleteFlag(box[flagKey])) return true;
+    }
+    for (const infoKey of ['deleteInfo', 'deleteMsgInfo', 'revokeInfo', 'recallInfo']) {
+      if (box[infoKey] && typeof box[infoKey] === 'object') return true;
+    }
+  }
+
+  const topType = String(item?.msgType ?? item?.extMsgType ?? '')
+    .trim()
+    .toUpperCase();
+  if (TOP_LEVEL_CONTROL_WRAPPER_TYPES.has(topType)) {
+    const rawCandidate =
+      typeof body === 'string'
+        ? body
+        : body && typeof body === 'object'
+          ? (body.text ?? item?.bodys ?? item?.body ?? item?.text)
+          : (item?.bodys ?? item?.body ?? item?.text);
+    if (typeof rawCandidate === 'string' && rawCandidate.trim().toUpperCase() === 'DELETE') {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function isHiddenControlMessage(item: any): boolean {
+  if (!item || typeof item !== 'object') return false;
+  if (isDeletedMessage(item)) return true;
+  const body = messagePayload(item);
+  const ext = parseMaybeJson(item?.extInfo ?? item?.ext);
+  const att = parseMaybeJson(item?.attachment);
+  const types = extractMessageTypes(item, body, ext, att);
+  return types.some((tp) => CONTROL_ONLY_MESSAGE_TYPES.has(tp));
+}
+
+export function extractDeletedMessageIds(item: any): string[] {
+  if (!isDeletedMessage(item)) return [];
+  const body = messagePayload(item);
+  const ext = parseMaybeJson(item?.extInfo ?? item?.ext);
+  const att = parseMaybeJson(item?.attachment);
+  const containers: any[] = [
+    item,
+    body,
+    ext,
+    att,
+    body?.deleteInfo,
+    body?.deleteMsgInfo,
+    body?.revokeInfo,
+    body?.recallInfo,
+    ext?.deleteInfo,
+    ext?.deleteMsgInfo,
+    att?.deleteInfo,
+    att?.deleteMsgInfo,
+  ];
+  const keys = [
+    'msgIdClient',
+    'delMsgIdClient',
+    'deleteMsgIdClient',
+    'deleteMsgId',
+    'targetMsgId',
+    'targetMsgIdClient',
+    'recallMsgId',
+    'revokeMsgId',
+    'clientMsgId',
+    'msgId',
+    'messageId',
+    'uuid',
+    'msgUuid',
+    'msgIdServer',
+    'id',
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const box of containers) {
+    if (!box || typeof box !== 'object') continue;
+    for (const k of keys) {
+      const raw = box[k];
+      if (raw === undefined || raw === null) continue;
+      const val = String(raw).trim();
+      if (!val || seen.has(val)) continue;
+      seen.add(val);
+      out.push(val);
+    }
+  }
+  return out;
 }
 
 export function humanizeRawMessageText(raw: string): string {
@@ -170,6 +352,7 @@ export function humanizeRawMessageText(raw: string): string {
 }
 
 function messageTextRaw(item: any): string {
+  if (isHiddenControlMessage(item)) return '';
   const body = messagePayload(item);
   const type = String(
     item?.msgType || body?.msgType || body?.messageType || body?.type || '',
@@ -297,7 +480,8 @@ function messageTextRaw(item: any): string {
     'title',
   ]);
   if (!text && body && typeof body === 'object') {
-    for (const [_key, val] of Object.entries(body as Record<string, any>)) {
+    for (const [key, val] of Object.entries(body as Record<string, any>)) {
+      if (METADATA_BODY_KEYS.has(key)) continue;
       if (
         typeof val === 'string' &&
         val.trim() &&
@@ -311,7 +495,8 @@ function messageTextRaw(item: any): string {
         const t = pickText(val, ['text', 'body', 'content', 'message', 'title', 'description']);
         if (t) return replaceEmojiText(String(t));
 
-        for (const [_k2, v2] of Object.entries(val)) {
+        for (const [k2, v2] of Object.entries(val)) {
+          if (METADATA_BODY_KEYS.has(k2)) continue;
           if (typeof v2 === 'string' && v2.trim() && !v2.startsWith('http') && v2.length < 500) {
             return replaceEmojiText(v2);
           }
@@ -340,6 +525,36 @@ function messageTextRaw(item: any): string {
 
 export function messageText(item: any): string {
   return sanitizeText(messageTextRaw(item));
+}
+
+export function messagePreviewText(item: any): string {
+  if (!item || isHiddenControlMessage(item)) return '';
+  const text = messageText(item);
+  if (text) return text;
+  const body = messagePayload(item);
+  const type = String(
+    item?.msgType || body?.msgType || body?.messageType || body?.type || '',
+  ).toUpperCase();
+  if (
+    type === 'AUDIO' ||
+    type === 'AUDIO_REPLY' ||
+    type === 'AUDIO_GIFT_REPLY' ||
+    type === 'FLIPCARD_AUDIO'
+  ) {
+    return translate('[语音消息]');
+  }
+  if (type === 'VIDEO') return translate('[视频消息]');
+  if (type === 'IMAGE') return translate('[图片消息]');
+  if (type === 'EXPRESSIMAGE' || type === 'EXPRESS') return translate('[表情]');
+  if (type === 'LIVEPUSH' || type === 'SHARE_LIVE') return translate('[直播消息]');
+  const url = pickText(body, ['url', 'message.url', 'msg.url', 'audioUrl', 'videoUrl', 'imageUrl']);
+  if (url) {
+    if (/\.(mp3|m4a|aac|amr|wav)(\?|$)/i.test(url)) return translate('[语音消息]');
+    if (/\.(mp4|mov|m4v|3gp)(\?|$)/i.test(url)) return translate('[视频消息]');
+    if (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(url)) return translate('[图片消息]');
+    return translate('[链接消息]');
+  }
+  return '';
 }
 
 export function messageImageUrl(item: any): string {

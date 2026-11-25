@@ -23,6 +23,7 @@ import {
   openInstallPermissionSettings,
 } from '../native/ApkUpdater';
 import { buildApkAsset, findSelfHostedUrl } from '../utils/appUpdate';
+import { formatReleaseNotesForDisplay } from '../utils/updateCache';
 import { IS_PLUS_BUILD } from '../constants/channel';
 
 type Phase = 'checking' | 'ready' | 'perm' | 'downloading' | 'installing' | 'error';
@@ -219,8 +220,9 @@ export default function UpdateInstaller({
         ? `${(received / 1024 / 1024).toFixed(1)} MB`
         : '';
 
-  const trimmedNotes = typeof notes === 'string' ? notes.trim() : '';
+  const trimmedNotes = formatReleaseNotesForDisplay(notes || '');
   const showNotes = !!trimmedNotes && (phase === 'ready' || phase === 'checking');
+  const showProgressTrack = phase === 'downloading' || phase === 'installing';
 
   return (
     <Modal
@@ -259,7 +261,7 @@ export default function UpdateInstaller({
             <ScrollView
               style={[styles.notesBox, { backgroundColor: palette.fill2 }]}
               contentContainerStyle={styles.notesContent}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
             >
               <Text style={[styles.notesText, { color: palette.labelSecondary }]}>
                 {trimmedNotes}
@@ -267,18 +269,26 @@ export default function UpdateInstaller({
             </ScrollView>
           ) : null}
 
-          <View style={[styles.track, { backgroundColor: palette.fill2 }]}>
-            <View
-              style={[
-                styles.fill,
-                {
-                  backgroundColor: palette.tint,
-                  width: `${phase === 'downloading' ? Math.max(percent, 2) : phase === 'installing' ? 100 : 0}%`,
-                },
-              ]}
-            />
-          </View>
-          <Text style={[styles.meta, { color: palette.labelTertiary }]} numberOfLines={1}>
+          {showProgressTrack ? (
+            <View style={[styles.track, { backgroundColor: palette.fill2 }]}>
+              <View
+                style={[
+                  styles.fill,
+                  {
+                    backgroundColor: palette.tint,
+                    width: `${phase === 'downloading' ? Math.max(percent, 2) : 100}%`,
+                  },
+                ]}
+              />
+            </View>
+          ) : null}
+          <Text
+            style={[
+              styles.meta,
+              { color: palette.labelTertiary, marginTop: showProgressTrack ? 8 : 0 },
+            ]}
+            numberOfLines={1}
+          >
             {phase === 'downloading'
               ? `${t('下载中')}${percent > 0 ? ` · ${percent}%` : ''}${sizeText ? ` · ${sizeText}` : ''}`
               : phase === 'installing'
@@ -361,7 +371,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontFamily: fontFamily.system, fontWeight: '800' },
   sub: { fontSize: 12, marginTop: 3 },
   notesBox: {
-    maxHeight: 132,
+    maxHeight: 168,
     borderRadius: 12,
     marginBottom: 14,
   },

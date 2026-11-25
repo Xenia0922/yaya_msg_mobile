@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import { useMusicPlayerStore } from './musicPlayerStore';
+import type { Member } from '../types';
+import {
+  claimAudioFocus,
+  registerAudioHandler,
+  releaseAudioFocus,
+  setRadioForegroundActive,
+} from '../services/audioFocus';
 
 export interface MiniPlayerInfo {
   url: string;
@@ -18,7 +24,13 @@ export interface MiniPlayerInfo {
 
   web?: { headers?: Record<string, string>; volumeBoost?: number };
 
+  radioRefresh?: {
+    member: Member;
+    mode: 'big' | 'small';
+  };
+
   backTo: {
+    screen?: 'Media' | 'RoomRadioScreen' | 'BilibiliLiveScreen';
     mode: 'live' | 'vod';
     playUrl: string;
     playLiveId?: string;
@@ -26,6 +38,10 @@ export interface MiniPlayerInfo {
     playCover?: string;
 
     playPosition?: number;
+    radioMember?: Member;
+    radioMode?: 'big' | 'small';
+    biliRoomId?: string;
+    biliRoomName?: string;
   };
 }
 
@@ -38,13 +54,14 @@ interface MiniPlayerState {
 
   sysToggleSeq: number;
   open: (info: MiniPlayerInfo) => void;
+  updateUrl: (url: string) => void;
   close: () => void;
   setPlaying: (p: boolean) => void;
   setCurrentPos: (p: number) => void;
   requestSysToggle: () => void;
 }
 
-export const useMiniPlayerStore = create<MiniPlayerState>((set) => ({
+export const useMiniPlayerStore = create<MiniPlayerState>((set, get) => ({
   info: null,
   visible: false,
   playing: true,
@@ -52,15 +69,8 @@ export const useMiniPlayerStore = create<MiniPlayerState>((set) => ({
   sysToggleSeq: 0,
   open: (info) => {
     try {
-      const mst = useMusicPlayerStore.getState();
-      if (
-        mst.queue.length &&
-        (mst.playbackState === 'playing' ||
-          mst.playbackState === 'paused' ||
-          mst.playbackState === 'loading')
-      ) {
-        mst.setPlaybackState(mst.playbackState === 'loading' ? 'idle' : 'paused');
-      }
+      claimAudioFocus('mini');
+      setRadioForegroundActive(Boolean(info.audioOnly && info.radioRefresh));
     } catch {}
     const position = info.position;
     set({
@@ -71,8 +81,50 @@ export const useMiniPlayerStore = create<MiniPlayerState>((set) => ({
         !info.isLive && position != null && Number.isFinite(position) ? Math.max(0, position) : 0,
     });
   },
-  close: () => set({ visible: false, info: null, currentPos: 0 }),
-  setPlaying: (playing) => set({ playing }),
+  updateUrl: (url) =>
+    set((s) => {
+      if (!s.info || !url || s.info.url === url) return s;
+      return {
+        info: {
+          ...s.info,
+          url,
+          backTo: { ...s.info.backTo, playUrl: url },
+        },
+      };
+    }),
+  close: () => {
+    const hadRadio = Boolean(get?.()?.info?.audioOnly && get?.()?.info?.radioRefresh);
+    try {
+      if (hadRadio) setRadioForegroundActive(false);
+      releaseAudioFocus('mini');
+    } catch {}
+    set({ visible: false, info: null, currentPos: 0 });
+  },
+  setPlaying: (playing) => {
+    const cur = get?.();
+    if (playing && cur?.visible) {
+      try {
+        claimAudioFocus('mini');
+        if (cur.info?.audioOnly && cur.info?.radioRefresh) {
+          setRadioForegroundActive(true);
+        }
+      } catch {}
+    } else if (!playing && cur?.info?.audioOnly && cur?.info?.radioRefresh) {
+      try {
+        setRadioForegroundActive(false);
+      } catch {}
+    }
+    set({ playing });
+  },
   setCurrentPos: (currentPos) => set({ currentPos }),
   requestSysToggle: () => set((s) => ({ sysToggleSeq: s.sysToggleSeq + 1 })),
 }));
+
+try {
+  registerAudioHandler('mini', (reason) => {
+    const st = useMiniPlayerStore.getState();
+    if (!st.visible) return;
+    if (reason === 'voice') st.setPlaying(false);
+    else st.close();
+  });
+} catch {}

@@ -6,7 +6,8 @@ import { NetworkImage } from './NetworkImage';
 import { ScalePressable } from './Motion';
 import { Palettes, usePalette, fontFamily } from '../theme';
 import { useI18n } from '../i18n';
-import { useUiStore } from '../store';
+import { useSettingsStore, useUiStore } from '../store';
+import { mutateFollowedIdShared } from '../services/pocketSharedData';
 import { normalizeUrl, pickText, errorMessage } from '../utils/data';
 import pocketApi from '../api/pocket48';
 
@@ -278,6 +279,7 @@ export function UserProfileSheet({
           following: next,
           mutual: next ? cachedDetail.mutual : false,
         });
+      mutateFollowedIdShared(useSettingsStore.getState().settings.p48Token, id, next);
       onFollowChanged?.(id, next);
     } catch (err) {
       setCard((c) => (c && c.id === id ? { ...c, followBusy: false } : c));

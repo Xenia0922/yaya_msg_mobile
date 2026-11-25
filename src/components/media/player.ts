@@ -71,7 +71,6 @@ export function getPlayerHtml(
   var startTime = ${JSON.stringify(startTime)};
   var EXTRA_HEADERS = ${JSON.stringify(extraHeaders || {})};
   var VOLUME_BOOST = ${JSON.stringify(volumeBoost || 1)};
- // B站等弱响度源经 WebAudio GainNode 预放大（gain>1 合法；ExoPlayer/原生音量被系统 clamp ≤1）
   if (VOLUME_BOOST > 1.0001) {
     try {
       var AC = window.AudioContext || window.webkitAudioContext;
@@ -90,7 +89,6 @@ export function getPlayerHtml(
       }
     } catch (e) {}
   }
- // 请求级防盗链头（B站流必需；flv/hls 的 XHR 都经它补头）
   function applyHeaders(xhr) {
     try {
       for (var k in EXTRA_HEADERS) {
@@ -100,7 +98,6 @@ export function getPlayerHtml(
   }
   function makeXhrSetup() { return function(xhr) { applyHeaders(xhr); }; }
 
- // 续播位置回传：定期 + 暂停时上报当前进度（由 RN 侧落盘）
   function reportProgress() {
     if (window.ReactNativeWebView && video.currentTime > 0) {
       try {
@@ -116,7 +113,6 @@ export function getPlayerHtml(
   });
   setInterval(reportProgress, 2000);
 
- // 画面真实可播立即撤掉 loading（flv.play promise 在部分 WebView 不 resolve → spinner 常驻）
   var startedSent = false;
   function markStarted() {
     hideLoading();
@@ -129,8 +125,6 @@ export function getPlayerHtml(
   video.addEventListener('canplay', markStarted);
   video.addEventListener('error', function() { showError('视频源错误'); });
 
- // 时长回传：RN 侧进度条与「可拖动」判定依赖它
- // （此前从不上报 → store.duration 恒 0 → 进度条 0:00 且拖不动）
   function reportDuration() {
     if (!window.ReactNativeWebView) return;
     var d = video.duration;
@@ -146,10 +140,8 @@ export function getPlayerHtml(
     reportDuration();
   });
   video.addEventListener('durationchange', reportDuration);
- // 分辨率确认/切换（flv.js 起播瞬间 videoWidth 常为 0，playing/resize 后才可信）
   video.addEventListener('resize', reportVideoSize);
   video.addEventListener('playing', reportVideoSize);
- // B站/公演网页直播 → 系统 PiP 比例跟随源（RN 侧收到后 setPipAspect）
   function reportVideoSize() {
     if (!window.ReactNativeWebView) return;
     var w = video.videoWidth, h = video.videoHeight;
@@ -160,7 +152,6 @@ export function getPlayerHtml(
     }
   }
 
- // 外部控制指令（RN 控制层）：seek / 倍速 / 播放暂停
   if (window.ReactNativeWebView) {
     window.addEventListener('message', function(ev) {
       var msg = {};

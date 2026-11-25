@@ -410,6 +410,8 @@ export function WebViewSigner() {
   return (
     <View
       pointerEvents="none"
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
       style={{
         position: 'absolute',
         left: 0,
