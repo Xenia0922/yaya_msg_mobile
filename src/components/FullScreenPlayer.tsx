@@ -58,11 +58,13 @@ const QUEUE_ROW_HEIGHT = 60;
 interface FullScreenProgressBarProps {
   tintColor: string;
   bufferingText: string;
+  compact?: boolean;
 }
 
 const FullScreenProgressBar = React.memo(function FullScreenProgressBar({
   tintColor,
   bufferingText,
+  compact = false,
 }: FullScreenProgressBarProps) {
   const duration = useMusicPlayerStore((s) => s.duration);
   const position = useMusicPlayerStore((s) => s.position);
@@ -154,7 +156,7 @@ const FullScreenProgressBar = React.memo(function FullScreenProgressBar({
   const isBufferingActive = buffering && playbackState === 'playing' && dragRatio === null;
 
   return (
-    <View style={styles.progressWrap}>
+    <View style={[styles.progressWrap, compact && styles.progressWrapCompact]}>
       <View
         ref={progRef}
         style={styles.progBg}
@@ -340,6 +342,7 @@ const FullScreenLyricsList = React.memo(function FullScreenLyricsList({
       <ScrollView
         ref={lyricScrollRef}
         style={styles.lyricScroll}
+        fadingEdgeLength={64}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={32}
         onLayout={(e) => {
@@ -672,7 +675,14 @@ function FullScreenPlayerInner({
   const decLyricSize = useCallback(() => setLyricSize((s) => Math.max(14, s - 2)), []);
   const incLyricSize = useCallback(() => setLyricSize((s) => Math.min(24, s + 2)), []);
 
-  const coverSize = Math.min(screenWidth - 76, 276);
+  const isCompactH = screenHeight < 700;
+  const topBarPadTop = Math.max(insets.top + 8, isCompactH ? 24 : 38);
+  const ctrlPadBottom = Math.max(insets.bottom + (isCompactH ? 10 : 14), isCompactH ? 14 : 24);
+  const topBarEstH = topBarPadTop + 40 + 6;
+  const ctrlEstH = (isCompactH ? 52 : 60) + 64 + (isCompactH ? 42 : 50) + ctrlPadBottom;
+  const metaAndPreviewEstH = isCompactH ? 156 : 168;
+  const maxCoverByHeight = Math.floor(screenHeight - topBarEstH - ctrlEstH - metaAndPreviewEstH);
+  const coverSize = Math.max(132, Math.min(screenWidth - 76, 276, maxCoverByHeight));
   const hasSleep = Boolean(sleepAfterTrack || sleepTimerEndAt);
 
   return (
@@ -705,7 +715,7 @@ function FullScreenPlayerInner({
         style={[styles.page, { transform: [{ translateY: slideAnim }] }]}
         {...panResponder.panHandlers}
       >
-        <View style={[styles.topBar, { paddingTop: Math.max(46, insets.top + 8) }]}>
+        <View style={[styles.topBar, { paddingTop: topBarPadTop }]}>
           <ScalePressable
             onPress={onClose}
             pressedScale={0.88}
@@ -735,19 +745,25 @@ function FullScreenPlayerInner({
             </Pressable>
           </View>
 
-          <ScalePressable
-            onPress={() => setShowSleepSheet(true)}
-            pressedScale={0.88}
-            accessibilityRole="button"
-            accessibilityLabel={t('定时关闭')}
-            style={[styles.topBtn, hasSleep && { backgroundColor: 'rgba(255,255,255,0.16)' }]}
-          >
-            <Icon
-              name={hasSleep ? 'timer-check-outline' : 'timer-outline'}
-              size={22}
-              color={hasSleep ? palette.tint : 'rgba(255,255,255,0.82)'}
-            />
-          </ScalePressable>
+          {showLyrics ? (
+            <ScalePressable
+              onPress={() => {
+                if (trackFavId) toggleFavorite(trackFavId, track);
+              }}
+              pressedScale={0.82}
+              accessibilityRole="button"
+              accessibilityLabel={isFav ? t('已收藏') : t('收藏')}
+              style={[styles.topBtn, isFav && { backgroundColor: 'rgba(255,77,109,0.20)' }]}
+            >
+              <Icon
+                name={isFav ? 'heart' : 'heart-outline'}
+                size={22}
+                color={isFav ? '#FF4D6D' : 'rgba(255,255,255,0.82)'}
+              />
+            </ScalePressable>
+          ) : (
+            <View style={styles.topBtn} />
+          )}
         </View>
 
         {showLyrics ? (
@@ -758,7 +774,7 @@ function FullScreenPlayerInner({
             onIncreaseSize={incLyricSize}
           />
         ) : (
-          <View style={styles.songBody}>
+          <View style={[styles.songBody, isCompactH && styles.songBodyCompact]}>
             <View style={styles.coverStage} {...coverSwipeResponder.panHandlers}>
               <Animated.View
                 style={[
@@ -815,8 +831,12 @@ function FullScreenPlayerInner({
           </View>
         )}
 
-        <View style={[styles.ctrlWrap, { paddingBottom: Math.max(24, insets.bottom + 14) }]}>
-          <FullScreenProgressBar tintColor={palette.tint} bufferingText={t('正在缓冲…')} />
+        <View style={[styles.ctrlWrap, { paddingBottom: ctrlPadBottom }]}>
+          <FullScreenProgressBar
+            tintColor={palette.tint}
+            bufferingText={t('正在缓冲…')}
+            compact={isCompactH}
+          />
 
           <View style={styles.btnRow}>
             <ScalePressable
@@ -904,7 +924,7 @@ function FullScreenPlayerInner({
             </ScalePressable>
           </View>
 
-          <View style={styles.utilityRow}>
+          <View style={[styles.utilityRow, isCompactH && styles.utilityRowCompact]}>
             <ScalePressable
               onPress={() => {
                 const nextSp = nextPlaybackSpeed(speed);
@@ -941,21 +961,6 @@ function FullScreenPlayerInner({
                 sleepTimerEndAt={sleepTimerEndAt}
                 sleepAfterTrack={sleepAfterTrack}
               />
-            </ScalePressable>
-
-            <ScalePressable
-              onPress={() => setShowLyrics((v) => !v)}
-              pressedScale={0.94}
-              style={[styles.utilPill, showLyrics && styles.utilPillActive]}
-            >
-              <Icon
-                name={showLyrics ? 'disc' : 'script-text-outline'}
-                size={15}
-                color={showLyrics ? palette.tint : 'rgba(255,255,255,0.72)'}
-              />
-              <Text style={showLyrics ? styles.utilPillTextActive : styles.utilPillText}>
-                {showLyrics ? t('封面') : t('歌词')}
-              </Text>
             </ScalePressable>
           </View>
         </View>
@@ -1302,6 +1307,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-evenly',
     paddingHorizontal: 26,
     paddingVertical: 6,
+    overflow: 'hidden',
+  },
+  songBodyCompact: {
+    paddingVertical: 2,
   },
   coverStage: {
     alignItems: 'center',
@@ -1380,7 +1389,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  lyricListWrap: { flex: 1, position: 'relative' },
+  lyricListWrap: { flex: 1, position: 'relative', marginTop: 4, marginBottom: 8 },
   lyricScroll: { flex: 1 },
   lyricLine: {
     textAlign: 'center',
@@ -1423,6 +1432,7 @@ const styles = StyleSheet.create({
   },
   ctrlWrap: { paddingHorizontal: 26 },
   progressWrap: { marginBottom: 14 },
+  progressWrapCompact: { marginBottom: 8 },
   progBg: { height: 28, justifyContent: 'center' },
   progTrack: {
     position: 'absolute',
@@ -1513,6 +1523,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
     marginTop: 18,
+  },
+  utilityRowCompact: {
+    marginTop: 12,
   },
   utilPill: {
     flexDirection: 'row',
